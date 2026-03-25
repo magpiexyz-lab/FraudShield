@@ -9,7 +9,9 @@ Follow checkpoint-resumption protocol per `patterns/checkpoint-resumption.md`.
 
 - `package.json` exists (app is bootstrapped). If not -> stop: "No app found. Run `/bootstrap` first."
 - `npm run build` passes. If not -> stop: "App has build errors. Run `/change fix build errors` first."
-- If `quality: production` already set in experiment.yaml AND no `$ARGUMENTS`: stop -- "Already in production mode. Use `/harden <module>` to harden a specific module, or `/change` for new features."
+- If `quality: production` already set in experiment.yaml AND no `$ARGUMENTS`:
+  * If `stack.testing` is absent from experiment.yaml: proceed (harden will add the missing testing stack). Log: "Production mode is set but testing stack is missing — proceeding to add it."
+  * Otherwise: stop -- "Already in production mode. Use `/harden <module>` to harden a specific module, or `/change` for new features."
 - If `.claude/current-plan.md` exists AND the current branch starts with `chore/harden`:
   1. Read frontmatter. If parsing fails: stop -- "Plan file has corrupted frontmatter. Delete `.claude/current-plan.md` and re-run `/harden` to start fresh."
   2. Use values directly -- do NOT re-scan or re-classify. Read context_files to restore context.
