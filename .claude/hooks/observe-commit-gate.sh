@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # observe-commit-gate.sh — Claude Code PreToolUse hook for Bash commands.
-# Blocks final /resolve commit unless observation epilogue has been performed.
+# Blocks final /resolve and /review commits unless observation epilogue has been performed.
 # Skills that run /verify (bootstrap, change, harden, distribute) are exempt —
 # verify-report.md proves STATE 6 auto-observe ran.
 
@@ -16,14 +16,14 @@ if [[ "$COMMAND" != *"git commit"* ]]; then
   exit 0
 fi
 
-# Only enforce on fix/ branches (/resolve uses fix/ prefix)
+# Only enforce on fix/ branches (/resolve) and chore/review-fixes branches (/review)
 BRANCH=$(get_branch)
-if [[ ! "$BRANCH" =~ ^fix/ ]]; then
+if [[ ! "$BRANCH" =~ ^fix/ ]] && [[ ! "$BRANCH" =~ ^chore/review-fixes ]]; then
   exit 0
 fi
 
-# Allow WIP commits (only enforce on final commits containing "Fix #")
-if [[ "$COMMAND" != *"Fix #"* ]] && [[ "$COMMAND" != *"Fix \#"* ]]; then
+# Allow WIP commits (only enforce on final commits)
+if [[ "$COMMAND" != *"Fix #"* ]] && [[ "$COMMAND" != *"Fix \#"* ]] && [[ "$COMMAND" != *"Automated review-fix"* ]]; then
   exit 0
 fi
 

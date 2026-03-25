@@ -58,8 +58,9 @@
    - If no `## CLI Provisioning` section found — treat as no CLI (stack file predates CLI metadata)
    - Do NOT stop for missing external CLIs — record status for display in Step 2.
 
-Create `.claude/deploy-context.json` to initialize state tracking:
+Clean stale epilogue artifacts and create context file to initialize state tracking:
 ```bash
+rm -f .claude/observe-result.json
 cat > .claude/deploy-context.json << CTXEOF
 {"skill":"deploy","branch":"$(git branch --show-current)","timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","run_id":"deploy-$(date -u +%Y-%m-%dT%H:%M:%SZ)","deploy_mode":"<initial|update>","added_services":[<list>],"removed_services":[<list>],"unchanged_services":[<list>],"completed_states":[0]}
 CTXEOF

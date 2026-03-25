@@ -202,4 +202,4 @@ test -f .claude/deploy-manifest.json && echo "OK" || echo "FAIL"
 bash .claude/scripts/advance-state.sh deploy 5
 ```
 
-**NEXT:** TERMINAL
+**NEXT:** Read [state-6-skill-epilogue.md](state-6-skill-epilogue.md) to continue.

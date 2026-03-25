@@ -41,4 +41,4 @@ echo "Solution presented, awaiting user decision"
 bash .claude/scripts/advance-state.sh solve 2
 ```
 
-**NEXT:** TERMINAL -- user decides next action.
+**NEXT:** Read [state-3-skill-epilogue.md](state-3-skill-epilogue.md) to continue.

@@ -24,5 +24,6 @@ Read each STATE's file **only when transitioning to that state**. Do NOT read ah
 | 1 | PLAN | Plan | [state-1-plan.md](../patterns/rollback/state-1-plan.md) |
 | 2 | USER_APPROVAL | Plan | [state-2-user-approval.md](../patterns/rollback/state-2-user-approval.md) |
 | 3 | EXECUTE | Implement | [state-3-execute.md](../patterns/rollback/state-3-execute.md) |
+| 4 | SKILL_EPILOGUE | Implement | [state-4-skill-epilogue.md](../patterns/rollback/state-4-skill-epilogue.md) |
 
 Begin at STATE 0. Read [state-0-read-context.md](../patterns/rollback/state-0-read-context.md) now.

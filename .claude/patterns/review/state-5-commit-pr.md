@@ -79,4 +79,4 @@ gh pr list --head "$(git branch --show-current)" --json number,title --limit 1
 bash .claude/scripts/advance-state.sh review 5
 ```
 
-**NEXT:** TERMINAL — review complete.
+**NEXT:** Read [state-6-skill-epilogue.md](state-6-skill-epilogue.md) to continue.

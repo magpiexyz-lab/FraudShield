@@ -54,8 +54,9 @@ Collect these data points and present a summary before asking questions:
 
 Present the summary and then proceed to STATE 1.
 
-Create `.claude/retro-context.json` to initialize state tracking:
+Clean stale epilogue artifacts and create context file to initialize state tracking:
 ```bash
+rm -f .claude/observe-result.json
 cat > .claude/retro-context.json << CTXEOF
 {"skill":"retro","branch":"$(git branch --show-current)","timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","run_id":"retro-$(date -u +%Y-%m-%dT%H:%M:%SZ)","completed_states":[0]}
 CTXEOF

@@ -29,8 +29,9 @@
    - If `stripe` in manifest: `which stripe` + `stripe whoami` (soft — webhook
      deletion is nice-to-have)
 
-Create `.claude/teardown-context.json` to initialize state tracking:
+Clean stale epilogue artifacts and create context file to initialize state tracking:
 ```bash
+rm -f .claude/observe-result.json
 cat > .claude/teardown-context.json << CTXEOF
 {"skill":"teardown","branch":"$(git branch --show-current)","timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","run_id":"teardown-$(date -u +%Y-%m-%dT%H:%M:%SZ)","completed_states":[0]}
 CTXEOF

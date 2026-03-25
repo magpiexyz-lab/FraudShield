@@ -20,5 +20,6 @@ Read each STATE's file **only when transitioning to that state**. Do NOT read ah
 | 0 | INPUT_PARSE | Plan | [state-0-input-parse.md](../patterns/solve/state-0-input-parse.md) |
 | 1 | EXECUTE | Implement | [state-1-execute.md](../patterns/solve/state-1-execute.md) |
 | 2 | OUTPUT | Implement | [state-2-output.md](../patterns/solve/state-2-output.md) |
+| 3 | SKILL_EPILOGUE | Implement | [state-3-skill-epilogue.md](../patterns/solve/state-3-skill-epilogue.md) |
 
 Begin at STATE 0. Read [state-0-input-parse.md](../patterns/solve/state-0-input-parse.md) now.

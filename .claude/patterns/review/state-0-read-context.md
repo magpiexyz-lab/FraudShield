@@ -49,8 +49,9 @@
 - Observation hot spots computed (possibly none)
 - `.claude/review-context.json` exists with state tracking initialized
 
-Create the context file to initialize state tracking:
+Clean stale epilogue artifacts and create the context file to initialize state tracking:
 ```bash
+rm -f .claude/observe-result.json
 cat > .claude/review-context.json << CTXEOF
 {"skill":"review","branch":"$(git branch --show-current)","timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","run_id":"review-$(date -u +%Y-%m-%dT%H:%M:%SZ)","completed_states":[0]}
 CTXEOF

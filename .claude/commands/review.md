@@ -35,6 +35,7 @@ Read each STATE's file **only when transitioning to that state**. Do NOT read ah
 | 3 | UPDATE_INVENTORY | Finalize | [state-3-update-inventory.md](../patterns/review/state-3-update-inventory.md) |
 | 4 | FINAL_VALIDATION | Finalize | [state-4-final-validation.md](../patterns/review/state-4-final-validation.md) |
 | 5 | COMMIT_PR | Finalize | [state-5-commit-pr.md](../patterns/review/state-5-commit-pr.md) |
+| 6 | SKILL_EPILOGUE | Finalize | [state-6-skill-epilogue.md](../patterns/review/state-6-skill-epilogue.md) |
 
 ## Loop Dispatch
 

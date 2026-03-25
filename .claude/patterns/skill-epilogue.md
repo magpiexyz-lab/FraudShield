@@ -1,17 +1,19 @@
-# Skill Epilogue — Template Observation for Non-Verify Skills
+# Skill Epilogue — Unified Quality Assurance at Skill Termination
 
-Follow this procedure at the end of code-writing skills that do NOT run `/verify`.
+Follow this procedure at the end of every skill that does NOT embed `/verify`.
+Two strategies, dispatched by evidence type:
 
 ## Applicability
 
-**Required for:** `/resolve` (and future code-writing skills that commit without running /verify)
+| Strategy | Skills | When |
+|----------|--------|------|
+| **A — Code Observation** | `/resolve`, `/review`, `/deploy`, `/spec` | Skill produces diffs or modifies template files → spawn observer agent |
+| **B — Execution Audit** | `/audit`, `/solve`, `/iterate`, `/retro`, `/rollback`, `/teardown` | Analysis-only, no diffs → inline friction check |
 
 **Skip for:**
 - Skills that embed `/verify` (`/bootstrap`, `/change`, `/harden`, `/distribute`) — verify.md STATE 6 handles observation
-- Skills with own validation loop (`/review` — iterative fix-validate in states 2a-2f, produces `review-complete.json`)
-- Analysis-only skills (`/iterate`, `/retro`, `/solve`, `/optimize-prompt`, `/rollback`, `/teardown`) — no code changes to observe
-- `/spec` — uses inline observation at Step 7c.2 (no commit gate possible)
-- `/deploy` — observation remains best-effort at Step 5e (no commit gate possible)
+- `/optimize-prompt` — stateless utility, no state machine
+- `/verify` itself — has its own STATE 6 + STATE 7
 
 ## Step 1: Collect evidence (artifact-based, not memory-based)
 
@@ -93,9 +95,59 @@ If evidence exists (non-empty diff or fix-log entries):
 4. If observer spawning fails for any reason, write observe-result.json with
    `"verdict": "no-template-issues"` and continue. Observation is best-effort.
 
+## Strategy B: Execution Audit
+
+For analysis-only skills (`/audit`, `/solve`, `/iterate`, `/retro`, `/rollback`, `/teardown`).
+These skills have no diffs to observe, so the observer agent is never spawned.
+
+### Step B1: Verify execution completeness
+
+Read `.claude/<skill>-context.json` and verify that `completed_states` includes
+all expected states from `state-registry.json` for this skill (excluding the
+epilogue state itself). If any expected state is missing, record it as friction.
+
+### Step B2: Check for friction
+
+Scan the execution for signs of template-caused friction:
+- Did any state require retries or error recovery?
+- Did the skill produce partial or unexpected results?
+- Were any template files (`.claude/patterns/`, `.claude/stacks/`, `.claude/commands/`,
+  `scripts/`) read during execution and found to be ambiguous, incomplete, or contradictory?
+
+If no friction detected, skip to Step B4.
+
+### Step B3: Evaluate template root cause (Path 2)
+
+If friction was detected in Step B2, evaluate inline against observe.md Path 2 criteria:
+- **Condition A:** Is a template file the root cause? (not user code, not experiment config)
+- **Condition B:** Is it NOT an environment issue? (not missing CLI, not network)
+- **Condition C:** Is it NOT specific to this project? ("Would another developer with a
+  different experiment.yaml hit this same problem?")
+
+If all three conditions are true, follow observe.md's Redaction, Dedup, and Issue Creation
+sections directly. Do NOT spawn a separate agent — evaluate inline.
+
+### Step B4: Write result
+
+Write `.claude/observe-result.json`:
+```json
+{
+  "skill": "<skill-name>",
+  "timestamp": "<ISO 8601>",
+  "strategy": "execution-audit",
+  "friction_detected": true | false,
+  "observations_filed": 0,
+  "verdict": "clean" | "filed" | "no-template-issues"
+}
+```
+- `"clean"` — no friction detected
+- `"filed"` — observation issue created on template repo
+- `"no-template-issues"` — friction existed but did not trace to a template file
+
 ## Constraints
 
 - **Best-effort.** Any failure in the epilogue → write observe-result.json with
   `"verdict": "clean"` and continue. Never block the skill.
 - **Max 1 observer spawn per epilogue.** Combine all evidence into a single evaluation.
+  Strategy B never spawns a subagent.
 - **No project-specific data in observer prompt.** Follow observe.md redaction rules.

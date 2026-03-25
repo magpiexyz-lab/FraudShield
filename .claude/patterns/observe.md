@@ -9,14 +9,15 @@ This procedure is called:
 1. By verify.md's "Auto-Observe" section — after all fixes (build, visual, security) are complete
 2. By deploy.md Step 5e — after deployment fixes
 3. Manually — for ad-hoc fixes outside of skills
-4. By skill-epilogue.md — after code-writing skills that don't run /verify (e.g., /resolve)
+4. By skill-epilogue.md Strategy A — after code-writing skills that don't run /verify (e.g., /resolve, /review)
+5. By skill-epilogue.md Strategy B — inline Path 2 evaluation for analysis-only skills
 
 When called, you should already know which fix(es) to evaluate. Proceed
 directly to Trigger Evaluation below.
 
-**If you are running `/review`, `/iterate`, or `/retro`,
-skip this entire procedure** — these skills do not make code changes that
-trigger observations. `/review` fixes are already captured in the review PR.
+**If you are running `/iterate` or `/retro`,
+skip this entire procedure** — these skills use Strategy B in skill-epilogue.md,
+which handles observation inline without calling this procedure directly.
 
 ## Prerequisites
 

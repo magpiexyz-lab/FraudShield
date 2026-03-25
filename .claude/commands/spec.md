@@ -28,6 +28,7 @@ Read each STATE's file **only when transitioning to that state**. Do NOT read ah
 | 5 | VARIANTS | Plan | [state-5-variants.md](../patterns/spec/state-5-variants.md) |
 | 6 | STACK_FUNNEL | Plan | [state-6-stack-funnel.md](../patterns/spec/state-6-stack-funnel.md) |
 | 7 | OUTPUT | Implement | [state-7-output.md](../patterns/spec/state-7-output.md) |
+| 8 | SKILL_EPILOGUE | Implement | [state-8-skill-epilogue.md](../patterns/spec/state-8-skill-epilogue.md) |
 
 Begin at STATE 0. Read [state-0-input-parse.md](../patterns/spec/state-0-input-parse.md) now.
 

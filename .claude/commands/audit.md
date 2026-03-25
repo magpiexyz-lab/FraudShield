@@ -21,6 +21,7 @@ Read each STATE's file **only when transitioning to that state**. Do NOT read ah
 | 0 | SCOPE_AND_BASELINE | Plan | [state-0-scope-and-baseline.md](../patterns/audit/state-0-scope-and-baseline.md) |
 | 1 | PARALLEL_ANALYSIS | Implement | [state-1-parallel-analysis.md](../patterns/audit/state-1-parallel-analysis.md) |
 | 2 | PRIORITIZE_AND_OUTPUT | Implement | [state-2-prioritize-and-output.md](../patterns/audit/state-2-prioritize-and-output.md) |
+| 3 | SKILL_EPILOGUE | Implement | [state-3-skill-epilogue.md](../patterns/audit/state-3-skill-epilogue.md) |
 
 Begin at STATE 0. Read [state-0-scope-and-baseline.md](../patterns/audit/state-0-scope-and-baseline.md) now.
 

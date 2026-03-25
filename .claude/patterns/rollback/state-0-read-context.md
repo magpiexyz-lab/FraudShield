@@ -17,8 +17,9 @@ If no `### Rollback` subsection exists, STOP: "Rollback procedure not documented
 
 Read `experiment/experiment.yaml` to determine the archetype (`type` field, default: `web-app`).
 
-Create `.claude/rollback-context.json` to initialize state tracking:
+Clean stale epilogue artifacts and create context file to initialize state tracking:
 ```bash
+rm -f .claude/observe-result.json
 cat > .claude/rollback-context.json << CTXEOF
 {"skill":"rollback","branch":"$(git branch --show-current)","timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","run_id":"rollback-$(date -u +%Y-%m-%dT%H:%M:%SZ)","completed_states":[0]}
 CTXEOF

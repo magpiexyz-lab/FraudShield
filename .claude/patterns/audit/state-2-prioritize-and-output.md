@@ -134,4 +134,4 @@ if [ -f .claude/audit-context.json ]; then echo "OK"; else echo "FAIL"; fi
 bash .claude/scripts/advance-state.sh audit 2
 ```
 
-**NEXT:** TERMINAL
+**NEXT:** Read [state-3-skill-epilogue.md](state-3-skill-epilogue.md) to continue.

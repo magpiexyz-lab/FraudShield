@@ -132,13 +132,20 @@ Follow the database patterns defined in your active database stack file (`.claud
 - Auto memory is an accelerator, not a dependency — skills must function correctly with empty auto memory (fresh developer, fresh machine)
 
 ## Rule 12: Template Observations
-Template-rooted issues are detected and filed automatically during the
-verification procedure (verify.md § Auto-Observe) and the skill epilogue
-(`.claude/patterns/skill-epilogue.md` — for code-writing skills that don't
-run /verify, such as /resolve). No manual note-taking is required. When
-fixing bugs outside of a skill context (ad-hoc requests), evaluate whether
-the root cause is in a template file and follow `.claude/patterns/observe.md`
-if so.
+Template-rooted issues are detected and filed automatically. Every skill
+terminates with a quality check via one of three mechanisms:
+- **Verify-embedded skills** (/bootstrap, /change, /harden, /distribute):
+  verify.md STATE 6 Auto-Observe handles observation.
+- **Strategy A skills** (/resolve, /review, /deploy, /spec): the skill's
+  epilogue state (`.claude/patterns/skill-epilogue.md` Strategy A) spawns
+  an observer agent when diffs exist.
+- **Strategy B skills** (/audit, /solve, /iterate, /retro, /rollback,
+  /teardown): the skill's epilogue state (Strategy B) performs an inline
+  execution audit and Path 2 friction evaluation.
+
+No manual note-taking is required. When fixing bugs outside of a skill
+context (ad-hoc requests), evaluate whether the root cause is in a
+template file and follow `.claude/patterns/observe.md` if so.
 
 ## Rule 13: Skill Execution Pattern
 All 15 skills use state machines with JIT (Just-In-Time) dispatch. Each skill's command file (`.claude/commands/<skill>.md`) contains a dispatch table pointing to state files at `.claude/patterns/<skill>/state-*.md`. Read only one state file at a time — never read ahead.

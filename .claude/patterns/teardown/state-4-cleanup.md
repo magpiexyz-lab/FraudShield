@@ -72,4 +72,4 @@ test ! -f .claude/deploy-manifest.json && echo "OK" || echo "FAIL"
 bash .claude/scripts/advance-state.sh teardown 4
 ```
 
-**NEXT:** TERMINAL
+**NEXT:** Read [state-5-skill-epilogue.md](state-5-skill-epilogue.md) to continue.

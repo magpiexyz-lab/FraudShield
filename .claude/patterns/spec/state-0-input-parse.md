@@ -74,8 +74,9 @@ Display the parsed input and confirm before proceeding:
 
 Wait for user confirmation.
 
-Create `.claude/spec-context.json` to initialize state tracking:
+Clean stale epilogue artifacts and create context file to initialize state tracking:
 ```bash
+rm -f .claude/observe-result.json
 cat > .claude/spec-context.json << CTXEOF
 {"skill":"spec","branch":"$(git branch --show-current)","timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","run_id":"spec-$(date -u +%Y-%m-%dT%H:%M:%SZ)","completed_states":[0]}
 CTXEOF

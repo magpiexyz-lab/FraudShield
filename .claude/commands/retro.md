@@ -22,6 +22,7 @@ Read each STATE's file **only when transitioning to that state**. Do NOT read ah
 | 1 | INTERVIEW | Plan | [state-1-interview.md](../patterns/retro/state-1-interview.md) |
 | 2 | GENERATE | Implement | [state-2-generate.md](../patterns/retro/state-2-generate.md) |
 | 3 | FILE_ISSUE | Implement | [state-3-file-issue.md](../patterns/retro/state-3-file-issue.md) |
+| 4 | SKILL_EPILOGUE | Implement | [state-4-skill-epilogue.md](../patterns/retro/state-4-skill-epilogue.md) |
 
 Begin at STATE 0. Read [state-0-read-context.md](../patterns/retro/state-0-read-context.md) now.
 

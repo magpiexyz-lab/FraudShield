@@ -143,4 +143,4 @@ test -f .claude/iterate-manifest.json && echo "OK" || echo "FAIL"
 bash .claude/scripts/advance-state.sh iterate 4
 ```
 
-**NEXT:** TERMINAL -- iterate analysis complete.
+**NEXT:** Read [state-5-skill-epilogue.md](state-5-skill-epilogue.md) to continue.

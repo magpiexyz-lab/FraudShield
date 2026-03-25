@@ -24,6 +24,7 @@ Read each STATE's file **only when transitioning to that state**. Do NOT read ah
 | 2 | DESTROY_RESOURCES | Implement | [state-2-destroy-resources.md](../patterns/teardown/state-2-destroy-resources.md) |
 | 3 | VERIFY_DELETION | Implement | [state-3-verify-deletion.md](../patterns/teardown/state-3-verify-deletion.md) |
 | 4 | CLEANUP | Implement | [state-4-cleanup.md](../patterns/teardown/state-4-cleanup.md) |
+| 5 | SKILL_EPILOGUE | Implement | [state-5-skill-epilogue.md](../patterns/teardown/state-5-skill-epilogue.md) |
 
 Begin at STATE 0. Read [state-0-pre-flight.md](../patterns/teardown/state-0-pre-flight.md) now.
 

@@ -15,8 +15,9 @@ If `$ARGUMENTS` is empty, ask the user to describe the problem.
 - If user includes `--light` or `--quick` in arguments: use `light` mode (~30s, 0 agents)
 - If user includes `--full` in arguments: use `full` mode
 
-Create `.claude/solve-context.json` to initialize state tracking:
+Clean stale epilogue artifacts and create context file to initialize state tracking:
 ```bash
+rm -f .claude/observe-result.json
 cat > .claude/solve-context.json << CTXEOF
 {"skill":"solve","branch":"$(git branch --show-current)","timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","run_id":"solve-$(date -u +%Y-%m-%dT%H:%M:%SZ)","completed_states":[0]}
 CTXEOF

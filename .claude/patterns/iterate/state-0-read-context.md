@@ -27,8 +27,9 @@ Read and validate context files:
 - Read `experiment/EVENTS.yaml` -- understand what's being tracked (this is the canonical list of all events)
 - If `.claude/spec-manifest.json` exists, read it for hypothesis context (used in STATE 2 for per-hypothesis verdicts)
 
-Create `.claude/iterate-context.json` to initialize state tracking:
+Clean stale epilogue artifacts and create context file to initialize state tracking:
 ```bash
+rm -f .claude/observe-result.json
 cat > .claude/iterate-context.json << CTXEOF
 {"skill":"iterate","branch":"$(git branch --show-current)","timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","run_id":"iterate-$(date -u +%Y-%m-%dT%H:%M:%SZ)","completed_states":[0]}
 CTXEOF

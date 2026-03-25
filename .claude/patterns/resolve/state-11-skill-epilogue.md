@@ -28,8 +28,7 @@ or records "clean" if not. The epilogue must complete before the final commit
 
 **VERIFY:**
 ```bash
-# Epilogue complete
-echo "Skill epilogue complete"
+python3 -c "import json; d=json.load(open('.claude/observe-result.json')); assert d['skill']=='resolve'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

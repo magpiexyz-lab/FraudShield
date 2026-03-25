@@ -24,6 +24,7 @@ Read each STATE's file **only when transitioning to that state**. Do NOT read ah
 | 2 | COMPUTE_VERDICTS | Plan | [state-2-compute-verdicts.md](../patterns/iterate/state-2-compute-verdicts.md) |
 | 3 | DECISION | Plan | [state-3-decision.md](../patterns/iterate/state-3-decision.md) |
 | 4 | OUTPUT | Implement | [state-4-output.md](../patterns/iterate/state-4-output.md) |
+| 5 | SKILL_EPILOGUE | Implement | [state-5-skill-epilogue.md](../patterns/iterate/state-5-skill-epilogue.md) |
 
 Begin at STATE 0. Read [state-0-read-context.md](../patterns/iterate/state-0-read-context.md) now.
 

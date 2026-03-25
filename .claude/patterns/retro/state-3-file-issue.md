@@ -60,4 +60,4 @@ echo "Retro issue filed (or skipped) and next steps provided"
 bash .claude/scripts/advance-state.sh retro 3
 ```
 
-**NEXT:** TERMINAL -- retro complete.
+**NEXT:** Read [state-4-skill-epilogue.md](state-4-skill-epilogue.md) to continue.

@@ -68,7 +68,8 @@
     "2f": "true",
     "3": "true",
     "4": "true",
-    "5": "test -f .claude/review-complete.json"
+    "5": "test -f .claude/review-complete.json",
+    "6": "python3 -c \"import json; d=json.load(open('.claude/observe-result.json')); assert d['skill']=='review'\""
   },
   "resolve": {
     "0": "test -f .claude/resolve-context.json",
@@ -85,7 +86,7 @@
     "8b": "true",
     "9": "true",
     "10": "true",
-    "11": "test -f .claude/observe-result.json"
+    "11": "python3 -c \"import json; d=json.load(open('.claude/observe-result.json')); assert d['skill']=='resolve'\""
   },
   "distribute": {
     "0": "test -f .claude/distribute-context.json",
@@ -106,14 +107,16 @@
     "2": "true",
     "3": "true",
     "4": "true",
-    "5": "test -f .claude/deploy-manifest.json"
+    "5": "test -f .claude/deploy-manifest.json",
+    "6": "python3 -c \"import json; d=json.load(open('.claude/observe-result.json')); assert d['skill']=='deploy'\""
   },
   "teardown": {
     "0": "test -f .claude/teardown-context.json",
     "1": "true",
     "2": "true",
     "3": "true",
-    "4": "true"
+    "4": "true",
+    "5": "python3 -c \"import json; d=json.load(open('.claude/observe-result.json')); assert d['skill']=='teardown'\""
   },
   "spec": {
     "0": "test -f .claude/spec-context.json",
@@ -123,36 +126,42 @@
     "4": "true",
     "5": "true",
     "6": "true",
-    "7": "test -f experiment/experiment.yaml"
+    "7": "test -f experiment/experiment.yaml",
+    "8": "python3 -c \"import json; d=json.load(open('.claude/observe-result.json')); assert d['skill']=='spec'\""
   },
   "rollback": {
     "0": "test -f .claude/rollback-context.json",
     "1": "true",
     "2": "true",
-    "3": "true"
+    "3": "true",
+    "4": "python3 -c \"import json; d=json.load(open('.claude/observe-result.json')); assert d['skill']=='rollback'\""
   },
   "iterate": {
     "0": "test -f .claude/iterate-context.json",
     "1": "true",
     "2": "true",
     "3": "true",
-    "4": "test -f .claude/iterate-manifest.json"
+    "4": "test -f .claude/iterate-manifest.json",
+    "5": "python3 -c \"import json; d=json.load(open('.claude/observe-result.json')); assert d['skill']=='iterate'\""
   },
   "retro": {
     "0": "test -f .claude/retro-context.json",
     "1": "true",
     "2": "true",
-    "3": "true"
+    "3": "true",
+    "4": "python3 -c \"import json; d=json.load(open('.claude/observe-result.json')); assert d['skill']=='retro'\""
   },
   "solve": {
     "0": "test -f .claude/solve-context.json",
     "1": "true",
-    "2": "true"
+    "2": "true",
+    "3": "python3 -c \"import json; d=json.load(open('.claude/observe-result.json')); assert d['skill']=='solve'\""
   },
   "audit": {
     "0": "test -f .claude/audit-context.json",
     "1": "true",
-    "2": "true"
+    "2": "true",
+    "3": "python3 -c \"import json; d=json.load(open('.claude/observe-result.json')); assert d['skill']=='audit'\""
   },
 
   "agent_gates": {

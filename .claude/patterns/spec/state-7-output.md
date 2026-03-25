@@ -172,4 +172,4 @@ test -f experiment/experiment.yaml && test -f .claude/spec-manifest.json && echo
 bash .claude/scripts/advance-state.sh spec 7
 ```
 
-**NEXT:** TERMINAL
+**NEXT:** Read [state-8-skill-epilogue.md](state-8-skill-epilogue.md) to continue.

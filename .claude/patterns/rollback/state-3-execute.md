@@ -62,4 +62,4 @@ echo "Rollback executed and result reported"
 bash .claude/scripts/advance-state.sh rollback 3
 ```
 
-**NEXT:** TERMINAL -- rollback complete.
+**NEXT:** Read [state-4-skill-epilogue.md](state-4-skill-epilogue.md) to continue.

@@ -14,8 +14,9 @@ Determine which issues to resolve:
 
 Store the fetched issues as `issue_list`.
 
-Create `.claude/resolve-context.json` to initialize state tracking:
+Clean stale epilogue artifacts and create context file to initialize state tracking:
 ```bash
+rm -f .claude/observe-result.json
 cat > .claude/resolve-context.json << CTXEOF
 {"skill":"resolve","branch":"$(git branch --show-current)","timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","run_id":"resolve-$(date -u +%Y-%m-%dT%H:%M:%SZ)","completed_states":[0],"issue_list":[]}
 CTXEOF

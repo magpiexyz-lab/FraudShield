@@ -27,6 +27,7 @@ Read each STATE's file **only when transitioning to that state**. Do NOT read ah
 | 3 | PROVISION | Implement | [state-3-provision.md](../patterns/deploy/state-3-provision.md) |
 | 4 | HEALTH_CHECK | Implement | [state-4-health-check.md](../patterns/deploy/state-4-health-check.md) |
 | 5 | MANIFEST_WRITE | Implement | [state-5-manifest-write.md](../patterns/deploy/state-5-manifest-write.md) |
+| 6 | SKILL_EPILOGUE | Implement | [state-6-skill-epilogue.md](../patterns/deploy/state-6-skill-epilogue.md) |
 
 Begin at STATE 0. Read [state-0-pre-flight.md](../patterns/deploy/state-0-pre-flight.md) now.
 
