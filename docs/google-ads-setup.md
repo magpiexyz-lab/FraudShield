@@ -58,8 +58,10 @@ This is only needed for Phase 2 (automated campaign creation). Phase 1 works wit
 Do this for each new MVP:
 
 1. In the MCC, click "Create new account"
-2. Name it `{idea.name}-ads`
-3. It inherits billing from the MCC
+2. Select "Create a new Google Ads account" (not "Link an existing account")
+3. Name it `{idea.name}-ads`
+4. It inherits billing from the MCC — do not add a separate payment method to the child account
+5. Note the new account's Customer ID (format: XXX-XXX-XXXX) — you'll need it for conversion setup
 
 ## Step 6: Set Up Offline Conversion Import
 

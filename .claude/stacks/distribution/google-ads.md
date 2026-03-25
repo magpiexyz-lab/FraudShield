@@ -148,12 +148,20 @@ thresholds:
 
 ## Setup Instructions
 
+### One-Time MCC Setup
 1. **Create Google Ads MCC** (Manager Account) — see `docs/google-ads-setup.md` for details
-2. **Create a child account** for this MVP under the MCC
-3. **Set up offline conversion import** in Google Ads → Tools → Conversions → Import
+
+### Per-MVP Setup (do this for each experiment)
+1. **Create a subaccount** — in the MCC, click "+ New Google Ads account" → name it `{idea.name}-ads`. Billing is inherited from the MCC — do not add a separate payment method
+2. **Switch to the subaccount** — click the subaccount name in the MCC account list to enter it
+3. **Create conversion actions** — see `docs/google-ads-setup.md` Step 6 for detailed steps
 4. **Configure analytics destination** — see analytics stack file for provider-specific instructions
-5. **Map events** — `activate` event → Google Ads conversion action
-6. **Verify** — click your own ad, complete the activation flow, confirm the event appears in analytics
+5. **Map events** — `activate` event → the conversion action from step 3
+
+### Manual Campaign Creation (when no API credentials)
+1. **Create a campaign** — in the subaccount, click "+ New campaign" → use targeting, keywords, ad copy, and budget from `experiment/ads.yaml`
+2. **Set UTM parameters** — apply the final URLs and tracking templates from `experiment/ads.yaml`
+3. **Verify** — click your own ad, complete the activation flow, confirm the event appears in analytics
 
 ### Dashboard Filter
 
