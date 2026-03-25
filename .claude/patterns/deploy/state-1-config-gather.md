@@ -23,8 +23,14 @@
      > Set redirect URI to: `https://<ref>.supabase.co/auth/v1/callback`
      > Paste Client ID and Secret here, or type **skip** to configure later.
    - Provider console URLs: google -> console.cloud.google.com/apis/credentials,
-     github -> github.com/settings/developers, apple -> developer.apple.com/account/resources/authkeys,
+     github -> github.com/organizations/<org>/settings/applications (org) or github.com/settings/developers (personal),
+     facebook -> developers.facebook.com/apps,
+     apple -> developer.apple.com/account/resources/authkeys,
      discord -> discord.com/developers/applications, gitlab -> gitlab.com/-/user_settings/applications
+   - Provider-specific notes (include in the prompt for the relevant provider):
+     - **Google (Workspace):** Set the OAuth consent screen to **External** user type. In development mode (up to 100 test users), no Google verification is needed — sufficient for MVP validation.
+     - **Facebook:** Development mode (up to 25 test users) does not require Meta app review — sufficient for MVP validation. Add the **Facebook Login** product to your app.
+     - **GitHub:** Create the OAuth App under your Organization (not personal account) for centralized management. Any Org member can create OAuth Apps unless the Org has restricted this.
    - Store credentials in memory (never in files — secrets go to Management API only)
 6. **External service credentials**: Read `.env.example`, collect env vars not handled by stack categories. For each external service, use CLI status from Step 0.10:
    - **Auto via CLI** — installed + authenticated -> will auto-provision in Step 5b

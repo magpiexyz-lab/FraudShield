@@ -81,6 +81,15 @@ If you have `payment: stripe` in experiment.yaml, add your Stripe keys to Vercel
 **Resend — emails not sending**
 If you have `email: resend` in experiment.yaml, add `RESEND_API_KEY` and `CRON_SECRET` to Vercel environment variables. Get your API key from [resend.com](https://resend.com) > API Keys.
 
+**OAuth — "redirect URI mismatch" error**
+The callback URL must be exactly `https://<ref>.supabase.co/auth/v1/callback` (replace `<ref>` with your Supabase project ref). Check the OAuth App settings in your provider's developer console and ensure the redirect URI matches. A trailing slash or different domain will cause this error.
+
+**OAuth — Google shows "App not verified" warning**
+Your Google OAuth consent screen is in testing mode. This is expected for MVPs. Add test users in Google Cloud Console > APIs & Services > OAuth consent screen > Test users. In development mode, up to 100 test users can sign in without Google verification.
+
+**OAuth — login button does nothing or returns an error**
+Verify that the provider's Client ID and Secret are configured in Supabase: Dashboard > Authentication > Providers > select the provider > check that credentials are filled in and the provider is enabled. If you skipped OAuth during `/deploy`, configure it manually here.
+
 **Branch already exists**
 The branch setup handles this automatically by appending `-2`, `-3`, etc.
 

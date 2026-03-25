@@ -33,6 +33,18 @@ Sign up for these services. Most have free tiers that are more than enough for e
 
 > The defaults in experiment.yaml use Supabase, PostHog, and Vercel. If you change stack values, substitute the corresponding services.
 
+## OAuth provider accounts (optional)
+
+If your `experiment.yaml` declares `stack.auth_providers` (e.g., `[google, github, facebook]`), prepare developer accounts at these providers **before** running `/deploy`:
+
+| Provider | Account needed | Sign up / access |
+|----------|---------------|-----------------|
+| Google | Google Cloud Project in your Workspace | [console.cloud.google.com](https://console.cloud.google.com/) — create a project if you don't have one |
+| GitHub | Owner or Member access to your GitHub Organization | [github.com/organizations](https://github.com/organizations) — check with your Org admin |
+| Facebook | Meta for Developers account | [developers.facebook.com](https://developers.facebook.com/) — sign up with your Facebook account |
+
+> You do **not** need to create the OAuth Apps yet. The actual OAuth App creation (with redirect URIs) happens during `/deploy`, once the Supabase project exists and the callback URL is known. This step just ensures you have the right accounts and permissions.
+
 ## Verify your setup
 
 After installing everything, run this from your project folder:
