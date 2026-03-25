@@ -143,6 +143,12 @@ fi
 verify_extended_checks() {
   case "$SUBAGENT_TYPE" in
     design-critic|ux-journeyer)
+      # Archetype guard: these agents are web-app only
+      local DC_ARCH
+      DC_ARCH=$(read_json_field "$PROJECT_DIR/.claude/verify-context.json" "archetype")
+      if [[ "$DC_ARCH" != "web-app" ]]; then
+        ERRORS+=("$SUBAGENT_TYPE requires archetype=web-app but got archetype=$DC_ARCH — design agents are not valid for service or cli archetypes")
+      fi
       check_postcondition_artifacts 0
       check_build_result
       # Phase 1 traces must exist
