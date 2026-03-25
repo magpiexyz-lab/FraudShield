@@ -251,7 +251,7 @@ else:
       if [[ -f "$PROJECT_DIR/.claude/epilogue-context.json" ]] && \
          [[ ! -f "$PROJECT_DIR/.claude/verify-context.json" ]]; then
         local FIX_COUNT
-        FIX_COUNT=$(grep -c '^\*\*Fix' "$PROJECT_DIR/.claude/fix-log.md" 2>/dev/null || echo "0")
+        FIX_COUNT=$(grep -cE '^\*\*Fix|^Fix \(' "$PROJECT_DIR/.claude/fix-log.md" 2>/dev/null || echo "0")
         if [ "$FIX_COUNT" -gt 0 ] && [ ! -s "$PROJECT_DIR/.claude/observer-diffs.txt" ]; then
           ERRORS+=("observer-diffs.txt missing or empty — collect diffs before spawning observer (epilogue path)")
         fi
@@ -273,7 +273,7 @@ else:
           fi
         fi
         local FIX_COUNT
-        FIX_COUNT=$(grep -c '^\*\*Fix' "$PROJECT_DIR/.claude/fix-log.md" 2>/dev/null || echo "0")
+        FIX_COUNT=$(grep -cE '^\*\*Fix|^Fix \(' "$PROJECT_DIR/.claude/fix-log.md" 2>/dev/null || echo "0")
         if [ "$FIX_COUNT" -gt 0 ] && [ ! -s "$PROJECT_DIR/.claude/observer-diffs.txt" ]; then
           ERRORS+=("observer-diffs.txt missing or empty — run diff collection script before spawning observer")
         fi

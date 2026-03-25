@@ -218,6 +218,18 @@ After ALL per-page agents + Stage 1b + Stage 2 (consistency check) complete:
 6. Extract Fix Summaries from per-page agent return messages. Append each fix to `.claude/fix-log.md` with the prefix `Fix (design-critic):`.
 7. Note `pages` count and `consistency_fixes` count in verify report.
 
+### Lead-applied fixes from Phase 1 findings
+
+After reviewing Phase 1 agent findings (spec-reviewer, accessibility-scanner, behavior-verifier, performance-reporter) and applying any fixes directly (not via a Phase 2 agent), append each fix to `.claude/fix-log.md`:
+
+```
+Fix (lead-<source>): `<file>` — Symptom: <what agent found> — Fix: <what you changed>
+```
+
+Sources: `lead-spec-reviewer`, `lead-a11y`, `lead-behavior-verifier`, `lead-perf`.
+
+> **Why:** Phase 1 agents are read-only. When the lead acts on their findings, those fixes must be logged or STATE 6 (Auto-Observe) cannot evaluate them for template-rooted issues.
+
 ### ux-journeyer (if scope is `full` or `visual`, AND archetype is `web-app`) — SERIAL
 
 Spawn the `ux-journeyer` agent (`subagent_type: ux-journeyer`). Pass PR file boundary. **Wait for completion.**
@@ -252,7 +264,7 @@ After both design-critic and ux-journeyer have completed and their builds pass:
    DUXEOF
    ```
 
-**POSTCONDITIONS:** All scope-required Phase 2 traces exist. Build passes. `design-ux-merge.json` exists (when scope is `full` or `visual` AND archetype is `web-app`).
+**POSTCONDITIONS:** All scope-required Phase 2 traces exist. Build passes. `design-ux-merge.json` exists (when scope is `full` or `visual` AND archetype is `web-app`). fix-log.md has entries for each Phase 2 agent whose trace shows fixes array length > 0.
 
 **VERIFY:**
 ```bash

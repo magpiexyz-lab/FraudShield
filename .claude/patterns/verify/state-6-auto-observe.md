@@ -4,7 +4,37 @@
 
 **ACTIONS:**
 
-Read `.claude/fix-log.md` from disk. If it has only the header line (`# Error Fix Log`) and no entries, skip to STATE 7.
+Read `.claude/fix-log.md` from disk. If it has only the header line (`# Error Fix Log`) and no entries:
+
+**Fallback: check agent traces for unreported fixes.**
+
+```bash
+python3 -c "
+import json, os
+traces = ['.claude/agent-traces/design-critic.json',
+          '.claude/agent-traces/ux-journeyer.json',
+          '.claude/agent-traces/security-fixer.json']
+entries = []
+for t in traces:
+    if not os.path.exists(t): continue
+    d = json.load(open(t))
+    name = os.path.basename(t).replace('.json', '')
+    for fix in d.get('fixes', []):
+        f = fix.get('file', 'unknown')
+        symptom = fix.get('symptom', fix.get('desc', 'no description'))
+        action = fix.get('fix', fix.get('action', 'fixed'))
+        entries.append(f'Fix ({name}): \x60{f}\x60 — Symptom: {symptom} — Fix: {action}')
+if entries:
+    with open('.claude/fix-log.md', 'a') as log:
+        log.write('\n'.join(entries) + '\n')
+    print(f'WARNING: fix-log was empty but traces had {len(entries)} fixes. Synthesized entries.')
+else:
+    print('NO_FIXES')
+"
+```
+
+- If output is `NO_FIXES`: both fix-log and traces confirm no fixes occurred. Skip to STATE 7.
+- If output contains `WARNING`: fixes were recovered from trace data. Proceed with the standard observer spawn flow below.
 
 If the Fix Log has any entries:
 

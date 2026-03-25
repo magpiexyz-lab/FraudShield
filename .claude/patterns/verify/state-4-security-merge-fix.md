@@ -93,6 +93,8 @@ After each fix, append to `.claude/fix-log.md`.
 2. If `verdict` == `"partial"` AND `unresolved_critical` > 0, this is a **hard gate failure** — Critical/High security issues or Defender FAILs remain unfixed after 2 fix cycles. Skip STATEs 5-6 but still write verify-report.md (STATE 7) and execute STATE 8 (Save Patterns). Report failure to user with the unresolved items.
 3. If trace has `"recovery": true` AND `verdict` == `"partial"`, treat as hard gate failure (recovery traces cannot confirm fixes succeeded).
 4. Extract Fix Summaries from the agent's return message. Append each fix to `.claude/fix-log.md` with the prefix `Fix (security-fixer):`.
+5. If the lead directly applies additional security fixes beyond what security-fixer handled (e.g., defender findings the fixer did not address), append to `.claude/fix-log.md`:
+   `Fix (lead-security): \`<file>\` — Symptom: <finding> — Fix: <what changed>`
 
 **POSTCONDITIONS:** `security-merge.json` exists. Security-fixer trace exists (if spawned). If security-fixer verdict is `"partial"` with `unresolved_critical` > 0, pipeline is halted.
 
