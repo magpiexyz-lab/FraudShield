@@ -220,7 +220,7 @@ Standardized subsections referenced by deploy.md and teardown.md. Each subsectio
    Prerequisite: Vercel GitHub App installed on the GitHub org/account.
    - "Login Connection" error → user needs to connect GitHub at https://vercel.com/account/settings/authentication
    - "Failed to connect" → user needs to install Vercel GitHub App on their org
-3. Disable production auto-deploy (keep PR previews only):
+3. Disable auto-deploys (production and preview):
    Extract the Vercel auth token (see "Auth token location" under Environment Variables) and project name, then:
    ```bash
    # Get project ID
@@ -240,7 +240,14 @@ Standardized subsections referenced by deploy.md and teardown.md. Each subsectio
      -H "Content-Type: application/json" \
      -d '{"productionDeploymentBranch": "__manual_deploy_only__"}'
    ```
-   This ensures merges to `main` only create preview deployments (for CI smoke tests), not production deploys. Production deploys are triggered manually via `vercel --prod --yes` when running `/deploy`.
+   Then disable preview builds for branch pushes and PRs:
+   ```bash
+   curl -s -X PATCH "https://api.vercel.com/v9/projects/$PROJECT_ID" \
+     -H "Authorization: Bearer <vercel_token>" \
+     -H "Content-Type: application/json" \
+     -d '{"commandForIgnoringBuildStep": "[ \"$VERCEL_ENV\" != \"production\" ]"}'
+   ```
+   This disables all automatic deployments — both production auto-deploy on merge and preview builds on branch push/PR. Production deploys are triggered manually via `vercel --prod --yes` when running `/deploy`.
 
 ### Domain Setup
 
