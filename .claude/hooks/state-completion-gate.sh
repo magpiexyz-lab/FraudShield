@@ -31,6 +31,22 @@ if [[ ! -f "$REGISTRY" ]]; then
   exit 0  # Fail-open if registry missing
 fi
 
+# --- BLOCK verdict check: deny state advancement if any gate has BLOCK on this branch ---
+VERDICTS_DIR="$PROJECT_DIR/.claude/gate-verdicts"
+if [[ -d "$VERDICTS_DIR" ]]; then
+  BRANCH=$(get_branch)
+  for gf in "$VERDICTS_DIR"/*.json; do
+    [[ -f "$gf" ]] || continue
+    gv=$(read_json_field "$gf" "verdict")
+    [[ "$gv" != "BLOCK" ]] && continue
+    gvb=$(read_json_field "$gf" "branch")
+    if [[ "$gvb" == "$BRANCH" ]]; then
+      gate_id=$(basename "$gf" .json)
+      deny "Gate $gate_id has BLOCK verdict. Fix blocking items and re-run gate-keeper before advancing."
+    fi
+  done
+fi
+
 # Look up VERIFY command for this skill + state (nested lookup — keep inline)
 VERIFY_CMD=$(python3 -c "
 import json
