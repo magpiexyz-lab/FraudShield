@@ -90,6 +90,13 @@
 
 (3-7 items. Focus on states a real user hits in the first week.)
 
+### Acceptance Criteria
+> These criteria will be validated at PR time.
+
+- [ ] AC1: [verifiable behavior extracted from "What I'll Add"]
+- [ ] AC2: [next verifiable behavior]
+- [ ] AC3: [additional behavior if multi-layer]
+
 **Questions:**
 - [any ambiguities, or "None"]
 - [if new library needed: "This feature needs [library]. Should I add it?"]
@@ -146,6 +153,12 @@
 
 (3-7 items. Focus on states a real user hits in the first week.)
 
+### Acceptance Criteria
+> These criteria will be validated at PR time.
+
+- [ ] AC1: [verifiable behavior from integration architecture]
+- [ ] AC2: [error handling behavior]
+
 **Questions:**
 - [any ambiguities, or "None"]
 - [any items flagged by plan-validation.md, prefixed with "[Validation]"]
@@ -174,6 +187,10 @@
 - Tests that cover affected code: [list, or "none"]
 
 **Regression Risk:** [Low/Medium/High] — [1-sentence justification]
+
+### Acceptance Criteria
+- [ ] AC1: [the bug is fixed — specific observable behavior]
+- [ ] AC2: [regression does not occur — related functionality still works]
 ```
 
 ## Polish Plan Template
@@ -183,6 +200,12 @@
 
 1. **[Page/Component]**: [what you'll change] — [why this improves things for target_user]
 2. ...
+
+### Acceptance Criteria
+> These criteria will be validated at PR time.
+
+- [ ] AC1: [observable improvement for change 1]
+- [ ] AC2: [observable improvement for change 2]
 ```
 
 ## Analytics Plan Template
@@ -197,6 +220,10 @@
 
 ### Suggested Events (if any)
 - [event_name] — fires when [trigger] (add to events map with funnel_stage)
+
+### Acceptance Criteria
+- [ ] AC1: [event wiring or fix verified]
+- [ ] AC2: [global properties attached correctly]
 ```
 
 ## Test Plan Template
@@ -219,4 +246,8 @@
 - [list of files]
 
 **Template path:** Full templates (all assumes met) | No-Auth Fallback (assumes unmet: [list unmet category/value pairs])
+
+### Acceptance Criteria
+- [ ] AC1: [smoke test file created and covers funnel step]
+- [ ] AC2: [activation test verifies thesis behavior]
 ```
