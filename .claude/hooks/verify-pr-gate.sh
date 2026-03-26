@@ -137,6 +137,83 @@ if [[ "$BRANCH" =~ ^(change|feat|fix)/ ]] && [[ ! "$BRANCH" =~ ^feat/bootstrap ]
   check_verdict_gates "g4 g5 g6" "$VERDICTS_DIR" "$BRANCH"
 fi  # end branch-prefix guard for Check 6
 
+# ─── Check 7: Acceptance Criteria validation ───
+# Only for change/feat/fix branches with acceptance_criteria in plan.
+# If acceptance_criteria is absent, skip silently (backward compatible).
+if [[ "$BRANCH" =~ ^(change|feat|fix)/ ]] && [[ ! "$BRANCH" =~ ^feat/bootstrap ]] && [[ ! "$BRANCH" =~ ^fix/resolve- ]]; then
+  PLAN="$PROJECT_DIR/.claude/current-plan.md"
+  if [[ -f "$PLAN" ]]; then
+    AC_RESULT=$(python3 -c "
+import sys, os, json, glob
+
+# Parse YAML frontmatter from plan (manual parse to avoid yaml import dependency)
+content = open('$PLAN').read()
+if not content.startswith('---'):
+    print('SKIP'); sys.exit(0)
+parts = content.split('---', 2)
+if len(parts) < 3:
+    print('SKIP'); sys.exit(0)
+
+# Try yaml first, fall back to manual parse
+try:
+    import yaml
+    fm = yaml.safe_load(parts[1])
+except ImportError:
+    # Manual parse: look for acceptance_criteria block
+    import re
+    fm_text = parts[1]
+    if 'acceptance_criteria:' not in fm_text:
+        print('SKIP'); sys.exit(0)
+    # Extract AC entries manually
+    acs = []
+    for m in re.finditer(r'-\s*id:\s*(\S+)\s*\n\s*behavior:.*?\n\s*verify_method:\s*(\S+)(?:\s*\n\s*test_file:\s*(\S+))?', fm_text):
+        ac = {'id': m.group(1), 'verify_method': m.group(2)}
+        if m.group(3): ac['test_file'] = m.group(3)
+        acs.append(ac)
+    fm = {'acceptance_criteria': acs if acs else None}
+except Exception:
+    print('SKIP'); sys.exit(0)
+
+if not fm or not isinstance(fm, dict):
+    print('SKIP'); sys.exit(0)
+
+acs = fm.get('acceptance_criteria', None)
+if not acs:
+    print('SKIP'); sys.exit(0)
+
+traces_dir = os.path.join('$PROJECT_DIR', '.claude/agent-traces')
+errors = []
+for ac in acs:
+    ac_id = ac.get('id', '?')
+    method = ac.get('verify_method', '')
+    if method == 'unit-test':
+        tf = ac.get('test_file', '')
+        if tf and not os.path.exists(os.path.join('$PROJECT_DIR', tf)):
+            errors.append(ac_id + ': test_file ' + tf + ' not found')
+    elif method == 'behavior-verifier':
+        found = False
+        for f in glob.glob(os.path.join(traces_dir, 'behavior-verifier-*.json')):
+            try:
+                d = json.load(open(f))
+                checks = d.get('checks_performed', [])
+                if any(ac_id in str(c) for c in checks):
+                    found = True; break
+            except: pass
+        if not found:
+            errors.append(ac_id + ': no behavior-verifier trace found')
+
+if errors:
+    print('FAIL:' + '; '.join(errors))
+else:
+    print('OK')
+" 2>/dev/null || echo "SKIP")
+
+    if [[ "$AC_RESULT" == FAIL:* ]]; then
+      ERRORS+=("Acceptance criteria not met: ${AC_RESULT#FAIL:}")
+    fi
+  fi
+fi  # end Check 7
+
 # If any check failed, deny the PR creation
 if [[ ${#ERRORS[@]} -gt 0 ]]; then
   deny_errors "PR gate blocked: " "Run /verify to complete verification before creating a PR."

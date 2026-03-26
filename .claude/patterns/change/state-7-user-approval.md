@@ -34,8 +34,23 @@ context_files:
   - experiment/EVENTS.yaml
   - .claude/archetypes/[archetype].md
   - [each .claude/stacks/<category>/<value>.md read in Step 2]
+acceptance_criteria:   # OPTIONAL — omit if no verifiable behaviors
+  - id: AC1
+    behavior: "<verifiable behavior extracted from plan body>"
+    verify_method: behavior-verifier | unit-test
+    test_file: "<relative path, only when verify_method is unit-test>"
+  - id: AC2
+    behavior: "..."
+    verify_method: behavior-verifier
 ---
 ```
+
+**Generating `acceptance_criteria`:** Before saving the plan, extract verifiable behaviors from the plan body:
+- Scan "What I'll Add", "Bug Diagnosis", "Planned Changes", or equivalent sections for concrete, testable behaviors
+- Each behavior becomes one AC entry with `id` format `AC1`, `AC2`, ...
+- Choose `verify_method`: pure logic (sorting, calculations, data transforms) → `unit-test` + specify `test_file`; UI/page rendering, navigation, visual output → `behavior-verifier`
+- Typical count: Feature 3-5 ACs, Fix 1-2, Polish 1-3
+- If no verifiable behaviors can be extracted (rare), omit the `acceptance_criteria` field entirely
 
 Then append the plan body. The frontmatter enables resume-after-clear without re-deriving classification, scope, or stack.
 
