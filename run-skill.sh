@@ -27,13 +27,13 @@ fi
 
 # --- Read config metadata ---
 eval "$(python3 -c "
-import json
-config = json.load(open('$CONFIG'))
+import json, sys
+config = json.load(open(sys.argv[1]))
 phases = config['phases']
-print(f'PHASE_COUNT={len(phases)}')
-single = len(phases) == 1 and phases[0].get('interactive', False)
-print(f'SINGLE_INTERACTIVE={1 if single else 0}')
-")"
+print('PHASE_COUNT=' + str(len(phases)))
+single = 1 if (len(phases) == 1 and phases[0].get('interactive', False)) else 0
+print('SINGLE_INTERACTIVE=' + str(single))
+" "$CONFIG")"
 
 # --- Path B: Single interactive phase → degenerate, direct exec ---
 if [[ "$SINGLE_INTERACTIVE" == "1" ]]; then
@@ -59,16 +59,16 @@ for (( i=0; i<PHASE_COUNT; i++ )); do
 
   # Extract phase config
   eval "$(python3 -c "
-import json
-config = json.load(open('$CONFIG'))
-phase = config['phases'][$i]
-print(f\"PHASE_NAME={phase['name']}\")
-print(f\"PHASE_INTERACTIVE={1 if phase.get('interactive', False) else 0}\")
-print(f\"PHASE_BUDGET={phase.get('max_budget', 50)}\")
+import json, sys
+config = json.load(open(sys.argv[1]))
+phase = config['phases'][int(sys.argv[2])]
+print('PHASE_NAME=' + str(phase['name']))
+print('PHASE_INTERACTIVE=' + str(1 if phase.get('interactive', False) else 0))
+print('PHASE_BUDGET=' + str(phase.get('max_budget', 50)))
 sr = phase['state_range']
-print(f\"STATE_START={sr[0]}\")
-print(f\"STATE_END={sr[1]}\")
-")"
+print('STATE_START=' + str(sr[0]))
+print('STATE_END=' + str(sr[1]))
+" "$CONFIG" "$i")"
 
   echo ""
   echo "================================================================"
@@ -77,19 +77,19 @@ print(f\"STATE_END={sr[1]}\")
 
   # Write pipeline-phase.json signal file
   python3 -c "
-import json, datetime
-config = json.load(open('$CONFIG'))
-phase = config['phases'][$i]
+import json, sys, datetime
+config = json.load(open(sys.argv[1]))
+phase = config['phases'][int(sys.argv[2])]
 signal = {
-    'skill': '$SKILL',
+    'skill': sys.argv[3],
     'phase': phase['name'],
-    'phase_index': $i,
-    'total_phases': $PHASE_COUNT,
+    'phase_index': int(sys.argv[2]),
+    'total_phases': int(sys.argv[4]),
     'state_range': phase['state_range'],
     'started': datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
 }
 json.dump(signal, open('.claude/pipeline-phase.json', 'w'), indent=2)
-"
+" "$CONFIG" "$i" "$SKILL" "$PHASE_COUNT"
 
   # Launch claude
   CLAUDE_EXIT=0
@@ -113,18 +113,18 @@ json.dump(signal, open('.claude/pipeline-phase.json', 'w'), indent=2)
   if [[ $CLAUDE_EXIT -ne 0 ]]; then
     echo "[orchestrator] ERROR: claude exited with code $CLAUDE_EXIT in phase $PHASE_NAME"
     python3 -c "
-import json, datetime
+import json, sys, datetime
 state = {
-    'skill': '$SKILL',
-    'total_phases': $PHASE_COUNT,
-    'last_completed_phase': $LAST_COMPLETED,
+    'skill': sys.argv[1],
+    'total_phases': int(sys.argv[2]),
+    'last_completed_phase': int(sys.argv[3]),
     'status': 'failed',
-    'failed_phase': $i,
-    'failure_reason': 'claude_exit_$CLAUDE_EXIT',
+    'failed_phase': int(sys.argv[4]),
+    'failure_reason': 'claude_exit_' + sys.argv[5],
     'finished': datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
 }
 json.dump(state, open('.claude/pipeline-state.json', 'w'), indent=2)
-"
+" "$SKILL" "$PHASE_COUNT" "$LAST_COMPLETED" "$i" "$CLAUDE_EXIT"
     exit $CLAUDE_EXIT
   fi
 
@@ -133,18 +133,18 @@ json.dump(state, open('.claude/pipeline-state.json', 'w'), indent=2)
   if ! python3 "$PROJECT_DIR/.claude/scripts/phase-gate.py" "$CONFIG" "$i"; then
     echo "[orchestrator] ERROR: Gate check failed for phase $PHASE_NAME"
     python3 -c "
-import json, datetime
+import json, sys, datetime
 state = {
-    'skill': '$SKILL',
-    'total_phases': $PHASE_COUNT,
-    'last_completed_phase': $LAST_COMPLETED,
+    'skill': sys.argv[1],
+    'total_phases': int(sys.argv[2]),
+    'last_completed_phase': int(sys.argv[3]),
     'status': 'failed',
-    'failed_phase': $i,
+    'failed_phase': int(sys.argv[4]),
     'failure_reason': 'gate',
     'finished': datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
 }
 json.dump(state, open('.claude/pipeline-state.json', 'w'), indent=2)
-"
+" "$SKILL" "$PHASE_COUNT" "$LAST_COMPLETED" "$i"
     exit 1
   fi
 
@@ -154,16 +154,16 @@ done
 
 # Write final completion state
 python3 -c "
-import json, datetime
+import json, sys, datetime
 state = {
-    'skill': '$SKILL',
-    'total_phases': $PHASE_COUNT,
-    'last_completed_phase': $LAST_COMPLETED,
+    'skill': sys.argv[1],
+    'total_phases': int(sys.argv[2]),
+    'last_completed_phase': int(sys.argv[3]),
     'status': 'complete',
     'finished': datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
 }
 json.dump(state, open('.claude/pipeline-state.json', 'w'), indent=2)
-"
+" "$SKILL" "$PHASE_COUNT" "$LAST_COMPLETED"
 
 echo ""
 echo "[orchestrator] $SKILL completed successfully ($PHASE_COUNT phases)"
