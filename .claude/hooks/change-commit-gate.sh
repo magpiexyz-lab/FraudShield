@@ -128,6 +128,12 @@ fi
 
 ERRORS=()
 
+# Check 0a: Postcondition re-verification
+rerun_postconditions "change"
+
+# Check 0b: BLOCK verdict check
+check_block_verdicts
+
 # Check 1: G4 verdict file exists with PASS
 VERDICTS_DIR="$PROJECT_DIR/.claude/gate-verdicts"
 check_verdict_gates "g4" "$VERDICTS_DIR" "$BRANCH"

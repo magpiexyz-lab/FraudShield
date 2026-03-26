@@ -118,6 +118,18 @@ else
   fi
 fi  # end branch-aware checks
 
+# Check 5.5a: Postcondition re-verification
+if [[ "$BRANCH" =~ ^(change|feat|fix)/ ]] && [[ ! "$BRANCH" =~ ^feat/bootstrap ]] && [[ ! "$BRANCH" =~ ^fix/resolve- ]]; then
+  rerun_postconditions "change"
+elif [[ "$BRANCH" =~ ^chore/harden ]]; then
+  rerun_postconditions "harden"
+elif [[ "$BRANCH" =~ ^chore/distribute ]]; then
+  rerun_postconditions "distribute"
+fi
+
+# Check 5.5b: BLOCK verdict check
+check_block_verdicts
+
 # Check 6: Gate verdict files (G4, G5, G6) exist with PASS for current branch
 # Only required for /change skill branches — other skills use their own verification.
 if [[ "$BRANCH" =~ ^(change|feat|fix)/ ]] && [[ ! "$BRANCH" =~ ^feat/bootstrap ]] && [[ ! "$BRANCH" =~ ^fix/resolve- ]]; then

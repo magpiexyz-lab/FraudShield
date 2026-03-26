@@ -690,3 +690,63 @@ if os.path.exists(ctx_path):
 print(json.dumps({'errors': errors, 'warnings': warnings}))
 " 2>/dev/null || echo "OK"
 }
+
+# --- rerun_postconditions ---
+# Re-runs all postcondition commands from state-registry.json for a given skill.
+# Skips states whose command is "true" (no artifact to check).
+# Appends failures to global ERRORS array. Does not exit — caller decides.
+# Returns 0 if all pass, 1 if any fail.
+# Usage: rerun_postconditions "change"
+rerun_postconditions() {
+  local skill="$1"
+  local project_dir="${CLAUDE_PROJECT_DIR:-.}"
+  local registry="$project_dir/.claude/patterns/state-registry.json"
+  [[ ! -f "$registry" ]] && return 0
+
+  local state_cmds
+  state_cmds=$(python3 -c "
+import json
+reg = json.load(open('$registry'))
+skill_data = reg.get('$skill', {})
+for state_id, cmd in skill_data.items():
+    if isinstance(cmd, str) and cmd.strip() != 'true':
+        print(state_id + '\t' + cmd)
+" 2>/dev/null || echo "")
+
+  [[ -z "$state_cmds" ]] && return 0
+
+  local had_failure=0
+  while IFS=$'\t' read -r state_id cmd; do
+    if ! (cd "$project_dir" && eval "$cmd") >/dev/null 2>&1; then
+      ERRORS+=("STATE $state_id postcondition failed: $cmd")
+      had_failure=1
+    fi
+  done <<< "$state_cmds"
+
+  return "$had_failure"
+}
+
+# --- check_block_verdicts ---
+# Checks gate-verdicts/ for any BLOCK verdicts on the current branch.
+# Appends blocking gate IDs to global ERRORS array. Does not exit — caller decides.
+# Usage: check_block_verdicts
+check_block_verdicts() {
+  local project_dir="${CLAUDE_PROJECT_DIR:-.}"
+  local verdicts_dir="$project_dir/.claude/gate-verdicts"
+  [[ ! -d "$verdicts_dir" ]] && return 0
+
+  local branch
+  branch=$(get_branch)
+
+  for gf in "$verdicts_dir"/*.json; do
+    [[ -f "$gf" ]] || continue
+    local v; v=$(read_json_field "$gf" "verdict")
+    [[ "$v" != "BLOCK" ]] && continue
+    local vb; vb=$(read_json_field "$gf" "branch")
+    if [[ "$vb" == "$branch" ]]; then
+      local gate_id
+      gate_id=$(basename "$gf" .json)
+      ERRORS+=("Gate ${gate_id^^} has BLOCK verdict on branch $branch")
+    fi
+  done
+}
