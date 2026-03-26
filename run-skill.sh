@@ -96,7 +96,7 @@ json.dump(signal, open('.claude/pipeline-phase.json', 'w'), indent=2)
   if [[ "$PHASE_INTERACTIVE" == "1" && $i -eq $FIRST_NON_SKIPPED ]]; then
     # Interactive mode: user gets terminal control
     echo "[orchestrator] Interactive phase — launching terminal session"
-    claude --effort max -- "/$SKILL $ARGS" || CLAUDE_EXIT=$?
+    claude --effort max --permission-mode bypassPermissions -- "/$SKILL $ARGS" || CLAUDE_EXIT=$?
   else
     # Headless mode: automated execution with budget cap
     SYSTEM_PROMPT="[ORCHESTRATOR] Phase $((i+1))/$PHASE_COUNT ($PHASE_NAME). Read .claude/patterns/checkpoint-resumption.md first. Resume from checkpoint. Execute states $STATE_START-$STATE_END ONLY. Do NOT start from STATE 0. Do NOT re-create context JSON."
