@@ -1,0 +1,136 @@
+#!/usr/bin/env bash
+# phase-boundary-gate.sh — Claude Code PreToolUse hook for Write, Edit, Bash.
+# Enforces phase boundaries during multi-phase skill orchestration.
+# Reads .claude/pipeline-phase.json (written by run-skill.sh) and prevents
+# the LLM from performing operations outside the current phase's scope.
+# When pipeline-phase.json is absent (direct /skill usage), exits 0 — zero impact.
+set -euo pipefail
+
+source "$(dirname "$0")/lib.sh"
+parse_payload
+
+PROJECT_DIR="${CLAUDE_PROJECT_DIR:-.}"
+SIGNAL="$PROJECT_DIR/.claude/pipeline-phase.json"
+
+# --- CRITICAL: no signal file → no enforcement ---
+if [[ ! -f "$SIGNAL" ]]; then
+  exit 0
+fi
+
+# --- Extract signal fields (phase, state_range, skill) ---
+# read_json_field can't read arrays, so use a single python3 call.
+eval "$(python3 -c "
+import json
+try:
+    d = json.load(open('$SIGNAL'))
+    print('PHASE=%s' % d.get('phase', ''))
+    sr = d.get('state_range', [])
+    print('RANGE_MIN=%s' % (sr[0] if len(sr) > 0 else ''))
+    print('RANGE_MAX=%s' % (sr[1] if len(sr) > 1 else ''))
+    print('SIGNAL_SKILL=%s' % d.get('skill', ''))
+except Exception:
+    print('PHASE=')
+    print('RANGE_MIN=')
+    print('RANGE_MAX=')
+    print('SIGNAL_SKILL=')
+" 2>/dev/null)"
+
+# Fail-open if signal file is malformed
+if [[ -z "$PHASE" ]]; then
+  exit 0
+fi
+
+# --- Detect tool type ---
+TOOL_NAME=$(read_payload_field "tool_name")
+
+# ============================================================
+# Write / Edit checks
+# ============================================================
+if [[ "$TOOL_NAME" == "Write" || "$TOOL_NAME" == "Edit" ]]; then
+  FILE_PATH=$(read_payload_field "tool_input.file_path")
+
+  # -- Plan-phase src/ protection --
+  PHASE_LOWER=$(echo "$PHASE" | tr '[:upper:]' '[:lower:]')
+  if [[ "$PHASE_LOWER" == "plan" ]]; then
+    if [[ "$FILE_PATH" == */src/* || "$FILE_PATH" == src/* ]]; then
+      deny "Plan phase: cannot write to src/ — implementation happens in next phase"
+    fi
+  fi
+
+  # -- Context JSON completed_states protection --
+  if [[ "$FILE_PATH" == *-context.json ]]; then
+    extract_write_content
+    if [[ "$CONTENT" == *"completed_states"* ]]; then
+      deny "Cannot directly modify context JSON completed_states — use advance-state.sh"
+    fi
+  fi
+
+  exit 0
+fi
+
+# ============================================================
+# Bash checks
+# ============================================================
+if [[ "$TOOL_NAME" == "Bash" ]]; then
+  COMMAND=$(read_payload_field "tool_input.command")
+
+  # Only fire on advance-state.sh calls
+  if [[ "$COMMAND" != *"advance-state.sh"* ]]; then
+    exit 0
+  fi
+
+  # Extract skill and state ID (same regex pattern as state-completion-gate.sh)
+  SKILL=$(echo "$COMMAND" | grep -oE 'advance-state\.sh[[:space:]]+([a-z-]+)' | awk '{print $NF}' || echo "")
+  STATE_ID=$(echo "$COMMAND" | grep -oE 'advance-state\.sh[[:space:]]+[a-z-]+[[:space:]]+([0-9a-z_]+)' | awk '{print $NF}' || echo "")
+
+  if [[ -z "$SKILL" || -z "$STATE_ID" ]]; then
+    exit 0
+  fi
+
+  # Need state_range values for range check
+  if [[ -z "$RANGE_MIN" || -z "$RANGE_MAX" ]]; then
+    exit 0
+  fi
+
+  # Registry-based range check — state IDs can be strings ("1_5", "2a"),
+  # so we use the registry key order as canonical sequence.
+  REGISTRY="$PROJECT_DIR/.claude/patterns/state-registry.json"
+  if [[ ! -f "$REGISTRY" ]]; then
+    exit 0
+  fi
+
+  RANGE_RESULT=$(python3 -c "
+import json, sys
+try:
+    registry = json.load(open('$REGISTRY'))
+    skill_states = list(registry.get('$SKILL', {}).keys())
+    state = '$STATE_ID'
+    rmin = str($RANGE_MIN) if '$RANGE_MIN'.isdigit() else '$RANGE_MIN'
+    rmax = str($RANGE_MAX) if '$RANGE_MAX'.isdigit() else '$RANGE_MAX'
+    if state not in skill_states or rmin not in skill_states or rmax not in skill_states:
+        print('OK')
+        sys.exit(0)
+    si = skill_states.index(state)
+    lo = skill_states.index(rmin)
+    hi = skill_states.index(rmax)
+    if si < lo:
+        print('BELOW')
+    elif si > hi:
+        print('ABOVE')
+    else:
+        print('OK')
+except Exception:
+    print('OK')
+" 2>/dev/null || echo "OK")
+
+  if [[ "$RANGE_RESULT" == "BELOW" ]]; then
+    deny "Phase boundary: cannot re-run state $STATE_ID — below current phase range [$RANGE_MIN, $RANGE_MAX]"
+  elif [[ "$RANGE_RESULT" == "ABOVE" ]]; then
+    deny "Phase boundary: state $STATE_ID is above current phase range [$RANGE_MIN, $RANGE_MAX] — belongs to a later phase"
+  fi
+
+  exit 0
+fi
+
+# --- Not a relevant tool ---
+exit 0
