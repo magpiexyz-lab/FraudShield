@@ -20,26 +20,26 @@ get_branch() {
 }
 
 # --- deny ---
-# Outputs deny JSON and exits 0. Used for single-message denials.
-# IMPORTANT: This calls exit 0 — it terminates the hook process.
+# Outputs reason to stderr and exits 2 to block the tool call.
+# Claude Code hook protocol: exit 0 = allow, exit non-zero = block.
 # Never call deny() inside a subshell like $(deny "msg").
 # Usage: deny "Your message here"
 deny() {
   local msg="$1"
-  printf '{"permissionDecision": "deny", "message": "%s"}\n' "$msg"
-  exit 0
+  echo "$msg" >&2
+  exit 2
 }
 
 # --- deny_errors ---
-# Joins global ERRORS array with "; ", outputs deny JSON, exits 0.
+# Joins global ERRORS array with "; ", outputs reason to stderr, exits 2.
 # Usage: deny_errors "Prefix: " "Suffix."
 deny_errors() {
   local prefix="$1"
   local suffix="$2"
   local joined
   joined=$(printf '%s; ' "${ERRORS[@]}")
-  printf '{"permissionDecision": "deny", "message": "%s%s%s"}\n' "$prefix" "$joined" "$suffix"
-  exit 0
+  echo "${prefix}${joined}${suffix}" >&2
+  exit 2
 }
 
 # --- read_payload_field ---
