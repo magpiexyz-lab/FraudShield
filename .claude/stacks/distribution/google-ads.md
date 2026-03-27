@@ -151,15 +151,19 @@ thresholds:
 ### One-Time MCC Setup
 1. **Create Google Ads MCC** (Manager Account) — see `docs/google-ads-setup.md` for details
 
-### Per-MVP Setup (do this for each experiment)
-1. **Create a subaccount** — in the MCC, click "+ New Google Ads account" → name it `{idea.name}-ads`. Billing is inherited from the MCC — do not add a separate payment method
-2. **Switch to the subaccount** — click the subaccount name in the MCC account list to enter it
-3. **Create conversion actions** — see `docs/google-ads-setup.md` Step 6 for detailed steps
-4. **Configure analytics destination** — see analytics stack file for provider-specific instructions
-5. **Map events** — `activate` event → the conversion action from step 3
+### Per-Member Setup (one-time per team member)
+1. **Create a subaccount** — in the MCC, click "+ New Google Ads account" → name it `{member-name}-ads`. Billing is inherited from the MCC — do not add a separate payment method
+2. **Complete Advertiser Verification** — Google will prompt verification for the new account. Complete it once — all future MVPs under this account skip verification
+3. **Save Customer ID** — note the account's Customer ID (digits only, no dashes) and save it to `~/.google-ads/customer-id`
+
+### Per-Campaign Setup (do this for each MVP)
+1. **Switch to the member's subaccount** — click the subaccount name in the MCC account list to enter it
+2. **Create conversion actions** — see `docs/google-ads-setup.md` Step 6 for detailed steps
+3. **Configure analytics destination** — see analytics stack file for provider-specific instructions
+4. **Map events** — `activate` event → the conversion action from step 2
 
 ### Manual Campaign Creation (when no API credentials)
-1. **Create a campaign** — in the subaccount, click "+ New campaign" → use targeting, keywords, ad copy, and budget from `experiment/ads.yaml`
+1. **Create a campaign** — in the member's subaccount, click "+ New campaign" → use targeting, keywords, ad copy, and budget from `experiment/ads.yaml`
 2. **Set UTM parameters** — apply the final URLs and tracking templates from `experiment/ads.yaml`
 3. **Verify** — click your own ad, complete the activation flow, confirm the event appears in analytics
 
@@ -180,10 +184,11 @@ Automated campaign creation via the Google Ads API. Used by `/distribute` Step 9
 | `~/.google-ads/client-secret` | OAuth2 client secret |
 | `~/.google-ads/refresh-token` | OAuth2 refresh token |
 | `~/.google-ads/mcc-id` | Manager account ID (digits only, no dashes) |
+| `~/.google-ads/customer-id` | Member's subaccount Customer ID (digits only, no dashes) |
 
 ### Credential Check
 
-Check all 5 files exist with `test -f`. If any are missing, show which are missing and guide the user through the Setup steps below. Do not fall back to manual — credentials are required.
+Check all 6 files exist with `test -f`. If any are missing, show which are missing and guide the user through the Setup steps below. Do not fall back to manual — credentials are required.
 
 ### Setup
 
@@ -205,7 +210,8 @@ Check all 5 files exist with `test -f`. If any are missing, show which are missi
    # Save the refresh_token from the JSON response
    ```
    Save the refresh token to `~/.google-ads/refresh-token`.
-5. **Verify** — all 5 files should exist under `~/.google-ads/`.
+5. **Save member's Customer ID** — if `~/.google-ads/customer-id` doesn't exist yet, go to the MCC, find the member's subaccount, copy its Customer ID (digits only, no dashes), and save it to `~/.google-ads/customer-id`. If no subaccount exists for this member, follow Per-Member Setup (Setup Instructions above) first.
+6. **Verify** — all 6 files should exist under `~/.google-ads/`.
 
 ### API Procedure
 
@@ -228,30 +234,17 @@ curl -s -X POST https://oauth2.googleapis.com/token \
 
 Extract `access_token` from the JSON response.
 
-**Step 2: Get or create customer account under MCC**
+**Step 2: Read member's customer account ID**
 
-Search for existing accounts under the MCC:
-
-```bash
-curl -s "https://googleads.googleapis.com/v17/customers/<mcc_id>/googleAds:searchStream" \
-  -H "Authorization: Bearer <access_token>" \
-  -H "developer-token: <developer_token>" \
-  -H "login-customer-id: <mcc_id>" \
-  -d '{"query": "SELECT customer_client.id, customer_client.descriptive_name FROM customer_client WHERE customer_client.manager = false"}'
-```
-
-If a matching account exists (by `project_name` from ads.yaml), use it. Otherwise, create a new one:
+Read the member's subaccount Customer ID from the credential file:
 
 ```bash
-curl -s -X POST "https://googleads.googleapis.com/v17/customers/<mcc_id>:createCustomerClient" \
-  -H "Authorization: Bearer <access_token>" \
-  -H "developer-token: <developer_token>" \
-  -H "login-customer-id: <mcc_id>" \
-  -H "Content-Type: application/json" \
-  -d '{"customer_id": "<mcc_id>", "customer_client": {"descriptive_name": "<project_name>", "currency_code": "USD", "time_zone": "America/New_York"}}'
+cat ~/.google-ads/customer-id
 ```
 
-Extract the customer ID from the response `resource_name`.
+This is the member's pre-existing subaccount (created once during Per-Member Setup). All MVPs for this member use the same account — campaigns are separated by name (`{idea.name}-search-v{N}`).
+
+If `~/.google-ads/customer-id` does not exist, guide the user through Per-Member Setup (Setup Instructions above) to create their subaccount and save the Customer ID.
 
 **Step 3: Create campaign budget**
 

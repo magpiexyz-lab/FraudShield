@@ -22,6 +22,24 @@ TRACES_DIR="$PROJECT_DIR/.claude/agent-traces"
 ERRORS=()
 BRANCH=$(get_branch)
 
+# --- Skill-context guard ---
+# Only enforce verification when a skill created a context file for this branch.
+# Skills always write *-context.json with a "branch" field in STATE 0.
+# Normal conversations never create these files, so their PRs pass through.
+SKILL_DRIVEN=false
+for ctx in "$PROJECT_DIR"/.claude/*-context.json; do
+  [[ -f "$ctx" ]] || continue
+  CTX_BRANCH=$(read_json_field "$ctx" "branch")
+  if [[ "$CTX_BRANCH" == "$BRANCH" ]]; then
+    SKILL_DRIVEN=true
+    break
+  fi
+done
+
+if [[ "$SKILL_DRIVEN" == "false" ]]; then
+  exit 0
+fi
+
 # Branch-aware checks: skills that don't produce verify-report.md use their own artifacts
 if [[ "$BRANCH" =~ ^chore/review- ]]; then
   # /review uses review-complete.json (produced in Step 4)

@@ -1,21 +1,20 @@
 # Google Ads Setup Guide
 
-One-time setup for the team. After this, each MVP gets a child account under the MCC.
+One-time setup for the team. After this, each team member gets a child account under the MCC, and all their MVPs share that account.
 
 ## Account Structure
 
 ```
 MCC (Manager Account)
-  quickbill-ads (child account)
-  fittrack-ads (child account)
-  mealprep-ads (child account)
-  ... (one per MVP)
+  alice-ads (member account — Alice)
+  bob-ads (member account — Bob)
+  ... (one per team member; each member runs all their MVPs here)
 ```
 
 ### Naming conventions
 
 - MCC: `{team-name} Experiments`
-- Child accounts: `{idea.name}-ads`
+- Child accounts: `{member-name}-ads`
 - Campaigns: `{idea.name}-search-v{N}`
 - Conversion actions: `{idea.name}-activate`, `{idea.name}-signup`
 
@@ -26,7 +25,7 @@ MCC (Manager Account)
 3. Name it `{team-name} Experiments`
 4. Set time zone and currency
 
-The MCC lets you manage billing centrally and create child accounts per MVP.
+The MCC lets you manage billing centrally and create child accounts per team member.
 
 ## Step 2: Add Billing
 
@@ -53,19 +52,22 @@ This is only needed for Phase 2 (automated campaign creation). Phase 1 works wit
 5. Download the credentials JSON
 6. Store securely — never commit to the repo
 
-## Step 5: Create a Child Account for an MVP
+## Step 5: Create a Child Account for a Team Member
 
-Do this for each new MVP:
+Do this once per team member (not per MVP):
 
 1. In the MCC, click "Create new account"
 2. Select "Create a new Google Ads account" (not "Link an existing account")
-3. Name it `{idea.name}-ads`
+3. Name it `{member-name}-ads`
 4. It inherits billing from the MCC — do not add a separate payment method to the child account
-5. Note the new account's Customer ID (format: XXX-XXX-XXXX) — you'll need it for conversion setup
+5. Complete Advertiser Verification when prompted — this is per-account, so it only needs to be done once per member
+6. Note the account's Customer ID (format: XXX-XXX-XXXX) — save it to `~/.google-ads/customer-id` (digits only, no dashes)
+
+All MVPs for this member will use this same account. Separate MVPs by campaigns (naming: `{idea.name}-search-v{N}`).
 
 ## Step 6: Set Up Offline Conversion Import
 
-For each MVP child account:
+In the member's child account, for each MVP:
 
 1. Go to Tools & Settings -> Conversions -> New conversion action
 2. Select "Import" -> "Other data sources or CRMs"
