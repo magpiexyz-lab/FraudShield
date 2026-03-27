@@ -1,4 +1,15 @@
 {
+  "permissions": {
+    "allow": [
+      "Read(.claude)",
+      "Write(.claude)",
+      "Edit(.claude)",
+      "Bash(cat > .claude:*)",
+      "Bash(rm -f .claude:*)",
+      "Bash(rm -rf .claude:*)",
+      "Bash(mkdir -p .claude:*)"
+    ]
+  },
   "env": {
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
   },
