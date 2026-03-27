@@ -825,7 +825,7 @@ curl -s -X PATCH "https://api.supabase.com/v1/projects/<ref>/config/auth" \
 
 > **Note:** The `uri_allow_list` wildcard (`https://<url>/**`) already covers `/auth/callback` — no additional deploy changes are needed when adding OAuth providers.
 
-The `/deploy` skill also configures email subject lines in the same PATCH call, using the app's short title from experiment.yaml (e.g., "Confirm your MyApp account"). This prevents default Supabase confirmation emails from looking like spam. To customize manually: Supabase Dashboard → Authentication → Email Templates.
+The `/deploy` skill also configures email subject lines and professional HTML email templates in the same PATCH call, using the app's short title from experiment.yaml (e.g., "Confirm your MyApp account"). Templates include a branded header, responsive layout, and clear CTA button for confirmation, password reset, and magic link emails. When `stack.email: resend`, deploy also configures Supabase to send auth emails through Resend's SMTP (`smtp.resend.com`), so emails come from your domain (e.g., `noreply@draftlabs.org`) instead of Supabase's default sender. To customize further: Supabase Dashboard → Authentication → Email Templates.
 
 The access token is read from `~/.supabase/access-token` (created by `supabase login`). If unavailable, generate one at supabase.com/dashboard/account/tokens.
 
