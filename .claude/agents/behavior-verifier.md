@@ -46,6 +46,21 @@ A step that passes in isolation but breaks the next step is a **failure**.
 
 **Severity governs ordering:** Report critical findings first, then high, then medium.
 
+### Diagnostic Hints per Category
+
+When reporting a finding, append the corresponding diagnostic hint to guide investigation:
+
+| Category | Diagnostic Hint |
+|---|---|
+| **B1 Dead Transition** | Check server logs for unhandled exceptions, middleware chain for request interception, error boundaries for swallowed errors. See `systematic-debugging.md` Phase 1. |
+| **B2 Wrong Mutation** | Trace the data flow: form input -> API handler -> database write -> response. Verify each stage transforms data correctly. See `systematic-debugging.md` Phase 3. |
+| **B3 Silent Failure** | Verify the side-effect actually fires: check DB rows created, analytics events emitted, external API calls made. A 200 status without state change is the signature. See `systematic-debugging.md` Phase 1. |
+| **B4 Validation Gap** | Check client-side validation rules, server-side schema validation (zod), and error response formatting. Missing validation at any layer causes this. |
+| **B5 State Leak** | Inspect shared state: React context, session storage, URL params, cookies. Look for missing cleanup on navigation or missing dependency arrays in effects. |
+| **B6 Contract Violation** | Compare the API response shape against what the consumer destructures. Check for null vs empty array, missing fields, and wrong HTTP status semantics. |
+
+Include the `DIAGNOSTIC HINT:` line in the Findings output after the `PROBE:` line for each finding.
+
 ## Proof Requirement
 
 Every step — pass or fail — must include evidence. Claims without evidence are worthless.
@@ -167,6 +182,7 @@ EVIDENCE: POST /api/auth/signup → 500, console: "TypeError: Cannot read proper
 EXPECTED: 200 + redirect to /dashboard
 ACTUAL: 500 + blank error page
 PROBE: GET /me → 401 (no session created)
+DIAGNOSTIC HINT: Check server logs for unhandled exceptions, middleware chain for request interception, error boundaries for swallowed errors. See systematic-debugging.md Phase 1.
 
 #2 [high] B4 Validation Gap — /signup empty email
 BEHAVIOR: Empty email field accepted by client, crashes on server

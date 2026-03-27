@@ -11,7 +11,7 @@ Run for ALL /change types. The depth of exploration varies by type:
 |-------------|-------------------|-----------------|
 | Feature     | Full              | All 5 steps     |
 | Upgrade     | Full              | All 5 steps     |
-| Fix         | Targeted          | Steps 1, 5 only |
+| Fix         | Targeted          | Steps 0, 1, 5   |
 | Polish      | Minimal           | Step 1 only     |
 | Analytics   | Minimal           | Step 1 only     |
 | Test        | Minimal           | Step 1 only     |
@@ -27,6 +27,35 @@ Since change type is formally classified in Step 3 (after exploration), do a **p
 If Step 3 later overrides this classification, the exploration results remain valid (Feature depth ⊇ Fix depth ⊇ Minimal depth).
 
 ## Exploration Steps
+
+### Step 0: Bug Triage (Fix type only)
+
+> Only runs when preliminary classification is **Fix**. Applies `systematic-debugging.md` Phases 1-2
+> to collect symptoms and generate hypotheses before exploring the codebase.
+
+**Phase 1 — Observe** (from `systematic-debugging.md`):
+1. Read the full error message, stack trace, and relevant logs available from `$ARGUMENTS`
+2. Identify the exact input or action that triggers the failure (if described)
+3. Note the expected behavior vs. actual behavior
+4. List every observable fact — affected files, error patterns, environment clues
+5. If `.claude/verify-context.json` has a `diagnostic` key from a prior failed build, include that context
+
+**Phase 2 — Hypothesize**:
+1. List up to 3 possible root causes, ranked by probability
+2. Each hypothesis must be testable
+3. Prefer hypotheses that explain ALL observed symptoms
+
+Record findings as:
+```
+Triage:
+  Symptoms: [list from Phase 1]
+  Hypotheses:
+    H1 (most likely): [description] — Confirm: [what to check] — Rule out: [what would disprove]
+    H2: [description] — Confirm: [...] — Rule out: [...]
+  Recommended investigation: [which files/areas to check first]
+```
+
+This output feeds the Fix plan template's "Root Cause Chain" section.
 
 ### Step 1: Affected Area Scan
 

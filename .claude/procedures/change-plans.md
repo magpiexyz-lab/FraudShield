@@ -171,9 +171,13 @@
 
 **Bug:** [description from $ARGUMENTS]
 
+**Triage Summary** (from Step 0 exploration):
+- Symptoms: [observed symptoms from triage, or "not available — user provided root cause directly"]
+- Leading hypothesis: [H1 from triage, or "identified during exploration"]
+
 **Root Cause Chain:**
-1. [surface symptom — what the user sees]
-2. [immediate cause — which code path produces it]
+1. [surface symptom — what the user sees, from triage symptoms]
+2. [immediate cause — which code path produces it, from triage hypothesis confirmation]
 3. [root cause — why that code path is wrong]
 
 **Files affected:**
