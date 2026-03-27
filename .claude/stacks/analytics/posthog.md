@@ -317,10 +317,16 @@ curl -s -X POST "https://us.i.posthog.com/api/projects/$POSTHOG_PROJECT_ID/query
   -d '{
     "query": {
       "kind": "HogQLQuery",
-      "query": "SELECT event, count(DISTINCT distinct_id) AS unique_users FROM events WHERE event IN ('\''visit_landing'\'', '\''signup_start'\'', ...) AND properties.project_name = '\''<name>'\'' AND timestamp >= now() - INTERVAL <N> DAY GROUP BY event ORDER BY unique_users DESC"
+      "query": "SELECT event, count(DISTINCT distinct_id) AS unique_users FROM events WHERE event IN ({events}) AND properties.project_name = {project_name} AND timestamp >= now() - INTERVAL <N> DAY GROUP BY event ORDER BY unique_users DESC",
+      "values": {
+        "project_name": "<name>",
+        "events": ["visit_landing", "signup_start"]
+      }
     }
   }'
 ```
+
+> **Security:** Always use HogQL parameterized `values` for user-supplied inputs (project names, event names). Never use string interpolation — even with regex validation, string interpolation into query languages is an injection anti-pattern.
 
 Key decisions:
 - `count(DISTINCT distinct_id)` — unique users, not raw event fires (matches funnel visualization)

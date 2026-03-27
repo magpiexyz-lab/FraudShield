@@ -50,6 +50,9 @@ function createDemoStripe() {
 }
 
 export function getStripe(): Stripe {
+  if (process.env.DEMO_MODE === "true" && process.env.NODE_ENV === "production") {
+    throw new Error("DEMO_MODE is not allowed in production");
+  }
   if (process.env.DEMO_MODE === "true") return createDemoStripe();
   if (!_stripe) {
     if (!process.env.STRIPE_SECRET_KEY) {

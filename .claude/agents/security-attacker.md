@@ -77,6 +77,10 @@ Each finding **must** include one of the following proof types:
 
 **Guardrail:** If you cannot construct any of the three proof types above, the finding is theoretical — downgrade to **info** severity or omit entirely. A code smell without a demonstrable exploit path is not a finding.
 
+## Known-Safe Patterns (do NOT flag)
+
+- **Next.js middleware `/api/` skip (when `stack.auth: supabase`):** `pathname.startsWith("/api/")` returning `NextResponse.next()` in middleware is intentional when every API route independently verifies auth via `supabase.auth.getUser()`. Middleware and API route handlers create separate Supabase clients from the same request cookies; if both attempt token refresh, the single-use refresh token causes the second call to fail silently. Route-level auth is the primary control for API routes; middleware handles page-route redirects only.
+
 ## Anti-patterns (do NOT report)
 
 - Framework-handled protections (Next.js CSRF, React XSS escaping, Supabase auth defaults)

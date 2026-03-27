@@ -14,6 +14,7 @@ If the Fix Log has entries:
 
 1. Spawn the `pattern-classifier` agent (`subagent_type: pattern-classifier`).
    Pass: fix-log.md content, list of stack files (`find .claude/stacks -type f`), project memory directory path.
+   The pattern-classifier files universal patterns as GitHub issues to the template repo (when `.claude/template-meta.json` or a `template` git remote exists) instead of modifying local stack files. This ensures all projects benefit from universal patterns. When no template repo is available, it falls back to local stack file modification.
 
    **Anti-overfit constraint for pattern saving:**
    - Do NOT save patterns that are reactions to a single Q-score dip (correlation != causation)

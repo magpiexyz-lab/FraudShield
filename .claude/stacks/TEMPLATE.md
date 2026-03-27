@@ -74,8 +74,13 @@ VARIABLE_NAME=description-or-example
 <!-- Add demo mode guards to all client factory functions so pages render
      during visual review (no real credentials at bootstrap time).
 
-     Server-side: check `process.env.DEMO_MODE === "true"` and return a
-     mock/noop client before touching real credentials.
+     Server-side: FIRST check for production misuse, THEN check for demo mode:
+       if (process.env.DEMO_MODE === "true" && process.env.NODE_ENV === "production") {
+         throw new Error("DEMO_MODE is not allowed in production");
+       }
+       if (process.env.DEMO_MODE === "true") return createDemoClient();
+     The production guard prevents silent data bypass if DEMO_MODE is
+     accidentally set in a production deployment.
 
      Client-side: check `process.env.NEXT_PUBLIC_DEMO_MODE === "true"` and
      return a mock client. NEXT_PUBLIC_ is required because Next.js inlines

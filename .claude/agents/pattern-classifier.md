@@ -131,12 +131,20 @@ Do NOT skip an entry just because it seems simple. A "simple" missing import tha
 Process entries in fix-log order:
 
 1. **For each universal pattern:**
-   a. Read the target stack file
-   b. Search for existing "Known Issues" section (or "## Patterns" or similar)
-   c. Search within that section for duplicate content (same root cause already described)
-   d. If duplicate found → skip (do not double-count — classify as "skip" with reason "already documented")
-   e. If not duplicate → append the pattern in When/Then format
-   f. Record `{"path": "<relative-path>", "type": "universal"}` in `saved_to_files`
+   a. Determine the template repo: read `.claude/template-meta.json` if it exists (use `repo` field). If not, try `git remote get-url template 2>/dev/null`. If neither found, fall back to local stack file (step 1f-local).
+   b. Read the target stack file
+   c. Search for existing "Known Issues" section (or "## Patterns" or similar)
+   d. Search within that section for duplicate content (same root cause already described)
+   e. If duplicate found → skip (do not double-count — classify as "skip" with reason "already documented")
+   f. **If template repo is known** → file a GitHub issue instead of modifying local files:
+      ```bash
+      gh issue create --repo <template-repo> --title "[pattern] <stack-file>: <when-condition>" \
+        --label "observation" --body "<structured body: stack file, problem, evidence, suggested fix>"
+      ```
+      Record `{"path": "<issue-url>", "type": "universal-issue"}` in `saved_to_files`.
+      Do NOT modify the local stack file — the template repo is the single source of truth.
+   f-local. **If template repo is unknown** → append the pattern to the local stack file in When/Then format (original behavior). Log a warning: "Universal pattern saved locally — could not determine template repo. Consider adding `.claude/template-meta.json`."
+      Record `{"path": "<relative-path>", "type": "universal"}` in `saved_to_files`
 
 2. **For each project-specific pattern:**
    a. Write a memory file to the auto memory directory

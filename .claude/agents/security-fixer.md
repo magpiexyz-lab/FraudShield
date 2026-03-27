@@ -101,6 +101,12 @@ Re-verify each fixed issue using the method that matches its source:
 
 Status values: **fixed** (resolved), **unfixed** (could not resolve in 2 cycles), **noted** (info-severity, reported only).
 
+## Next.js Middleware Constraint (when `stack.auth: supabase`)
+
+Do NOT add auth checks to middleware for `/api/` routes. API routes handle their own auth via `createServerSupabaseClient()` + `getUser()`. Adding middleware auth for API routes causes Supabase refresh token conflicts: middleware creates a Supabase client from request cookies and calls `getUser()` (which may trigger a token refresh), consuming the single-use refresh token. The API route handler then creates its own client from the original request cookies and attempts to refresh with the now-consumed token, causing silent auth failure (401).
+
+The `/api/` skip in middleware is intentional, not a vulnerability — it is defense-in-depth with route-level auth as the primary control. If the attacker report flags the `/api/` skip as an access control gap, verify that every API route independently calls `getUser()` before processing. If all routes have route-level auth, mark the finding as **noted** (info-severity), not as a fix target.
+
 ## Output Contract
 
 ```

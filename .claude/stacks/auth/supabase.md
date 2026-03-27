@@ -55,6 +55,9 @@ import { createServerSupabaseClient } from "@/lib/supabase-server";
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
+  if (process.env.DEMO_MODE === "true" && process.env.NODE_ENV === "production") {
+    throw new Error("DEMO_MODE is not allowed in production");
+  }
   if (process.env.DEMO_MODE === "true") return NextResponse.redirect(`${origin}/`);
   const code = searchParams.get("code");
   const rawNext = searchParams.get("next") ?? "/";
@@ -591,7 +594,7 @@ export const config = {
 
 Notes:
 - `publicPaths` should be updated by bootstrap to include all non-authenticated pages from experiment.yaml (landing page variants, marketing pages)
-- API routes are excluded — they use server-side auth checks in route handlers instead
+- API routes are excluded — they use server-side auth checks in route handlers instead. **Do not add middleware auth for `/api/` routes.** Middleware and API route handlers create separate Supabase clients from the same request cookies. Supabase refresh tokens are single-use: if the access token expires, middleware consumes the refresh token, and the API route handler's subsequent refresh attempt fails silently (returns 401). API routes must handle auth independently via `createServerSupabaseClient()` + `getUser()`.
 - The `matcher` config excludes static assets for performance
 - Redirects to `/login?next=<path>` so the login page can redirect back after auth
 - Uses `getUser()` (not `getSession()`) for security — `getUser()` validates the JWT with the Supabase Auth server
@@ -656,6 +659,19 @@ For providers added after initial deploy, update `auth_providers` and re-run `/d
 
 **Manual alternative:** Supabase Dashboard → Authentication → Providers → enable +
 paste Client ID/Secret. Set redirect URI to `https://<ref>.supabase.co/auth/v1/callback`.
+
+### Custom OAuth Security (non-Supabase flows)
+
+Supabase's built-in `signInWithOAuth()` handles CSRF protection via PKCE — no additional state management is needed. However, if the project implements custom OAuth flows outside of Supabase (e.g., GitHub App OAuth for API access, third-party service integrations), the `state` parameter must be HMAC-signed to prevent login CSRF:
+
+1. **Generate state:** `state = nonce + "." + hmac_sha256(nonce + payload, OAUTH_STATE_SECRET)`
+2. **Store nonce** in a short-lived httpOnly cookie (TTL: 10 minutes max)
+3. **Verify on callback:** extract nonce from cookie, recompute HMAC, compare with constant-time comparison
+4. **Reject** if nonce is missing, HMAC mismatches, or TTL expired
+
+Store `OAUTH_STATE_SECRET` in server environment variables (generate with `openssl rand -hex 32`). Without signing, an attacker can craft a callback URL with their own authorization code and trick a victim into linking the attacker's account.
+
+This applies only to custom OAuth implementations — Supabase-managed OAuth (via `signInWithOAuth()` and the auth callback route above) is already protected.
 
 ## Shared Client Note
 When `stack.auth` matches `stack.database` (both `supabase`), they share the same client files (`supabase.ts` and `supabase-server.ts`). When `stack.database` is absent or a different provider, auth needs its own library file — see "Standalone Client" below.
@@ -760,6 +776,9 @@ function createDemoClient() {
 }
 
 export async function createServerAuthClient() {
+  if (process.env.DEMO_MODE === "true" && process.env.NODE_ENV === "production") {
+    throw new Error("DEMO_MODE is not allowed in production");
+  }
   if (process.env.DEMO_MODE === "true") return createDemoClient();
   const cookieStore = await cookies();
   return createServerClient(

@@ -67,6 +67,9 @@ function createDemoClient() {
 }
 
 function getClient(): Anthropic {
+  if (process.env.DEMO_MODE === "true" && process.env.NODE_ENV === "production") {
+    throw new Error("DEMO_MODE is not allowed in production");
+  }
   if (process.env.DEMO_MODE === "true") return createDemoClient();
   if (!_client) {
     if (!process.env.ANTHROPIC_API_KEY) {

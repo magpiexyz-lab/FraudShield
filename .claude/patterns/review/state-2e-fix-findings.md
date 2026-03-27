@@ -26,6 +26,7 @@ If no fixes succeeded this iteration -> **exit loop**, proceed to State 3.
 **POSTCONDITIONS:**
 - Each finding in the fix queue has a fate: `fixed`, `reverted`, or `skipped`
 - All kept fixes pass validators (error count same or decreased)
+- If any confirmed finding included a Proposed Check, verify via `git diff --name-only` that the target validator file(s) have been modified. A Proposed Check may require changes across multiple validators (validate-frontmatter.py, validate-semantics.py, consistency-check.sh) — verify all cited targets. If a proposed check was not implemented, return to the finding and implement it before proceeding.
 - Changes accumulated (not committed yet)
 
 **VERIFY:**

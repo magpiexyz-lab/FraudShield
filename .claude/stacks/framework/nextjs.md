@@ -57,7 +57,7 @@ src/
     layout.tsx      # Root layout — <html>, <body>, metadata, globals.css import
     page.tsx        # Landing page (/)
     not-found.tsx   # 404 page with link back to /
-    error.tsx       # Error boundary with "use client", user-friendly message, retry button
+    error.tsx       # Error boundary with "use client", user-friendly message, retry + home link
     api/            # API route handlers (all mutations go here)
       <resource>/
         route.ts    # Route handler
@@ -137,6 +137,47 @@ export async function OPTIONS() {
 - No caching configuration (`revalidate`, `cache`, etc.)
 - No parallel routes or intercepting routes
 - No `@apply` with custom class names in CSS -- Tailwind v4 only supports `@apply` with utility classes. Use inline utility classes or `@theme` for custom values.
+
+### `src/app/error.tsx` — Error boundary (web-app only)
+
+```tsx
+"use client";
+
+import { useEffect } from "react";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+
+export default function ErrorPage({
+  error,
+  reset,
+}: {
+  error: Error & { digest?: string };
+  reset: () => void;
+}) {
+  useEffect(() => {
+    console.error(error);
+  }, [error]);
+
+  return (
+    <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4 text-center">
+      <h2 className="text-2xl font-bold">Something went wrong</h2>
+      <p className="text-muted-foreground max-w-md">
+        An unexpected error occurred. You can try again or go back to the home page.
+      </p>
+      <div className="flex gap-2">
+        <Button onClick={() => reset()}>Try again</Button>
+        <Button variant="outline" asChild>
+          <Link href="/">Back to Home</Link>
+        </Button>
+      </div>
+    </div>
+  );
+}
+```
+
+Notes:
+- Always include both a retry button (`reset()`) and a navigation link — if the error is persistent, the user needs an escape route
+- The `Link` import is from `next/link`; the `Button` import assumes shadcn/ui is present (when `stack.ui: shadcn`, which is the default)
 
 ## retain_return Tracking
 
