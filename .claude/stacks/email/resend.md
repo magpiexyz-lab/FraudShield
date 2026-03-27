@@ -221,6 +221,6 @@ Welcome and nudge email sends fire server-side events via `trackServerEvent()`. 
 | `RESEND_API_KEY` | Server | Resend API key from resend.com → API Keys |
 | `CRON_SECRET` | Server | Vercel Cron secret — auto-sent as Bearer token to cron endpoints |
 
-## No-Auth Fallback
+## Without Auth or Database
 
 Email without auth is not supported — the email stack requires `stack.auth` to know who to send emails to and `stack.database` to track activation status. If either dependency is absent, bootstrap will stop with an error before installing the email stack.

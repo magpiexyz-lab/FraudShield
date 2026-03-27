@@ -21,12 +21,14 @@
   6. File an observation per `.claude/patterns/observe.md` noting the missing stack file, so the template repo can add a reviewed version.
   7. Continue bootstrap using the generated stack file.
 - These files define packages, library files, env vars, and patterns for each technology.
-- For each stack file read, validate its `assumes` entries: every `category/value` in the file's `assumes` list must match a `category: value` pair in experiment.yaml `stack`. If any assumption is unmet, stop and list the incompatibilities (e.g., "analytics/posthog assumes framework/nextjs, but your stack has framework: remix"). The user must either change the mismatched stack value or create a compatible stack file.
+- For each stack file read, validate its `assumes` entries: every `category/value` in the file's `assumes` list must match a `category: value` pair in experiment.yaml `stack`. If any assumption is unmet:
+  - **If the stack file contains a fallback section** (a heading matching `## *Fallback`, e.g., `## No-Auth Fallback`): log which assumes are unmet and continue — the fallback templates will be used in place of the full templates. Include the unmet assumes list in this state's output so STATE 5 can display the fallback path (e.g., "Testing stack: using No-Auth Fallback — assumes unmet: [auth/supabase, database/supabase]").
+  - **If no fallback section exists**: stop and list the incompatibilities (e.g., "analytics/posthog assumes framework/nextjs, but your stack has framework: remix"). The user must either change the mismatched stack value or create a compatible stack file.
 
 **POSTCONDITIONS:**
 - Archetype file read and type recorded
 - All stack files for categories in experiment.yaml `stack` exist and have been read
-- All `assumes` entries validated — no incompatibilities
+- All `assumes` entries validated — either all met, or unmet with a fallback section logged
 
 **VERIFY:**
 ```bash
