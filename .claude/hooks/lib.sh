@@ -146,6 +146,29 @@ print(' '.join(str(s) for s in rs))
 " 2>/dev/null || echo ""
 }
 
+# --- check_skill_completion ---
+# Checks that all _required_states for a skill are in completed_states.
+# Appends missing states to global ERRORS array. Does not exit — caller decides.
+# No-op if _required_states is empty or context file missing (fail-open).
+# Usage: check_skill_completion "change" "$PROJECT_DIR/.claude/change-context.json"
+check_skill_completion() {
+  local skill="$1" ctx_file="$2"
+  [[ ! -f "$ctx_file" ]] && return 0
+  local STATES REQUIRED MISSING
+  STATES=$(normalize_states "$ctx_file")
+  REQUIRED=$(get_required_states "$skill")
+  [[ -z "$REQUIRED" ]] && return 0
+  MISSING=$(python3 -c "
+cs = set('$STATES'.split())
+required = '$REQUIRED'.split()
+missing = [s for s in required if s not in cs]
+print(','.join(missing) if missing else 'NONE')
+" 2>/dev/null || echo "NONE")
+  if [[ "$MISSING" != "NONE" ]]; then
+    ERRORS+=("$skill states [$MISSING] not complete — finish all required states before proceeding")
+  fi
+}
+
 # --- check_verdict_gates ---
 # Loops over gate verdict files, checks existence + PASS verdict + optional branch match.
 # Appends errors to the global ERRORS array. Does not exit — caller decides.

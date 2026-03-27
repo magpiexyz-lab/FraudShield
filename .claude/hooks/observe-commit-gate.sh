@@ -39,5 +39,17 @@ if [[ -f "$PROJECT_DIR/.claude/observe-result.json" ]]; then
   exit 0
 fi
 
+# State completion check — deny with specific feedback before generic observation deny
+ERRORS=()
+if [[ "$BRANCH" =~ ^fix/ ]]; then
+  check_skill_completion "resolve" "$PROJECT_DIR/.claude/resolve-context.json"
+fi
+if [[ "$BRANCH" =~ ^chore/review-fixes ]]; then
+  check_skill_completion "review" "$PROJECT_DIR/.claude/review-context.json"
+fi
+if [[ ${#ERRORS[@]} -gt 0 ]]; then
+  deny_errors "Commit blocked: " "Complete all required states before final commit."
+fi
+
 # No observation evidence found — deny
 deny "Observation not performed. Run the skill epilogue (.claude/patterns/skill-epilogue.md) before the final commit. This ensures template-level issues are detected and filed."

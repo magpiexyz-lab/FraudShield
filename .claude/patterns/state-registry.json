@@ -166,6 +166,7 @@
 
   "agent_gates": {
     "verify": {
+      "_required_states": ["0","1","2","3","4","5","6","7","8"],
       "build-info-collector":       { "required_states": ["0","1"], "artifacts": [".claude/build-result.json"] },
       "security-defender":          { "required_states": ["0","1"], "artifacts": [".claude/build-result.json"] },
       "security-attacker":          { "required_states": ["0","1"], "artifacts": [".claude/build-result.json"] },
@@ -192,6 +193,7 @@
       "scaffold-wire":      { "required_states": ["0","1","2","3","3a","3b","4","5","6","7","8","9","10","11","12","13"], "artifacts": [".claude/gate-verdicts/bg1.json",".claude/gate-verdicts/bg2.json"], "deny_isolation": ["worktree"] }
     },
     "change": {
+      "_required_states": ["0","1","2","3","4","5","6","7","8","9","10","11","12"],
       "gate-keeper":        { "allow_unconditional": true },
       "implementer":        { "required_states": ["0","1","2","3","4","5","6","7","8","9"], "artifacts": [".claude/gate-verdicts/g3.json"] },
       "visual-implementer": { "required_states": ["0","1","2","3","4","5","6","7","8","9"], "artifacts": [".claude/gate-verdicts/g3.json"] }
@@ -203,11 +205,15 @@
     "distribute": {
       "_required_states": ["0","1","1_5","2","3","4","5","6","7","8","9"]
     },
-    "audit":    { "_default": { "required_states": ["0"] } },
-    "review":   { "_default": { "required_states": ["0","1"] } },
-    "resolve":  { "_default": { "required_states": ["0","1","2","3","4","4b"] } },
-    "deploy":   { "_default": { "required_states": ["0","1","2"] } },
-    "teardown": { "_default": { "required_states": ["0","1","2"] } },
-    "solve":    { "_default": { "required_states": ["0"] } }
+    "audit":    { "_required_states": ["0","1","2","3"], "_default": { "required_states": ["0"] } },
+    "review":   { "_required_states": ["0","1","5","6"], "_default": { "required_states": ["0","1"] } },
+    "resolve":  { "_required_states": ["0","1","2","3","11"], "_default": { "required_states": ["0","1","2","3","4","4b"] } },
+    "deploy":   { "_required_states": ["0","1","2","3","4","5","6"], "_default": { "required_states": ["0","1","2"] } },
+    "teardown": { "_required_states": ["0","1","2","3","4","5"], "_default": { "required_states": ["0","1","2"] } },
+    "solve":    { "_required_states": ["0","1","2","3"], "_default": { "required_states": ["0"] } },
+    "spec":     { "_required_states": ["0","1","2","3","4","5","6","7","8"] },
+    "rollback": { "_required_states": ["0","1","2","3","4"] },
+    "iterate":  { "_required_states": ["0","1","2","3","4","5"] },
+    "retro":    { "_required_states": ["0","1","2","3","4"] }
   }
 }
