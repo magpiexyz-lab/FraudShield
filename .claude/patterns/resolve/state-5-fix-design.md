@@ -37,13 +37,13 @@ When `solve_depth = "full"`: call `.claude/patterns/solve-reasoning.md` full mod
   - Agent 1 = divergence investigation (trace the assumption violation, git blame context)
   - Agent 2 = blast radius + prior fix art (grep for the causal pattern broadly, find past fixes for similar patterns)
   - Agent 3 = fix constraints (validator compatibility, archetype universality, backwards compatibility)
-- **Phase 3 questions**: HELD — merged into the diagnosis STOP gate (see Step 5 STOP augmentation below)
+- **Phase 3 gap resolution**: autonomous — AI self-answers research gaps using first-principles reasoning
 - **Phase 5 Critic**: receives domain-specific vectors (see Step 5c below)
 - **Output mapping**:
   - "Recommended Solution" -> `root_cause` + `fix_plan`
   - "Constraint Space" -> hard constraints in diagnosis report
   - "Remaining Risks" TYPE B -> system constraints in diagnosis report
-  - "Remaining Risks" TYPE C -> merged into STOP gate questions
+  - "Remaining Risks" TYPE C -> open questions in diagnosis report
   - "Remaining Risks" Caveats -> caveats in diagnosis report
 
 #### 5c) Domain-specific post-validation

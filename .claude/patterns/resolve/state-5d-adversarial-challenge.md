@@ -78,8 +78,7 @@ Present a diagnosis report for all actionable issues:
 to the diagnosis report before presenting:
 
 ```
-### Deep Analysis Questions
-[Phase 3 User Injection questions — 3-5 specific questions from research gaps]
+### Open Questions
 [Phase 5 TYPE C concerns — assumptions only the user can validate]
 
 ### System Constraints

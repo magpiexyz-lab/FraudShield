@@ -25,8 +25,7 @@ If validation fails, fix the plan before presenting.
 **Full mode STOP augmentation**: If `solve_depth = "full"` in Step 2b, prepend
 to the approval prompt:
 
-> **Questions from deep analysis:**
-> [Phase 3 User Injection questions — specific gaps from research]
+> **Open questions from deep analysis:**
 > [Phase 5 TYPE C concerns — assumptions only the user can validate]
 
 **Plan display requirement**: Display the plan body (all sections from the type-specific
