@@ -46,11 +46,13 @@ if [[ "$BRANCH" =~ ^chore/review- ]]; then
   if [[ ! -f "$PROJECT_DIR/.claude/review-complete.json" ]]; then
     ERRORS+=("review-complete.json not found — /review must write this after final validation")
   fi
+  check_skill_completion "review" "$PROJECT_DIR/.claude/review-context.json"
 elif [[ "$BRANCH" =~ ^fix/resolve- ]]; then
   # /resolve uses observe-result.json (produced by skill-epilogue.md)
   if [[ ! -f "$PROJECT_DIR/.claude/observe-result.json" ]]; then
     ERRORS+=("observe-result.json not found — /resolve must complete observation before PR")
   fi
+  check_skill_completion "resolve" "$PROJECT_DIR/.claude/resolve-context.json"
 elif [[ "$BRANCH" =~ ^chore/harden ]]; then
   # /harden runs /verify — require verify-report.md + completed_states
   if [[ ! -f "$REPORT" ]]; then

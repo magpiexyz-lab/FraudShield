@@ -71,11 +71,17 @@ if [[ "$BRANCH" =~ ^chore/distribute ]]; then
   exit 0
 fi
 
-# Handle chore/review branches — require review-complete.json before final commit
+# Handle chore/review branches — require review-complete.json + state completion before final commit
 if [[ "$BRANCH" =~ ^chore/review ]]; then
   PROJECT_DIR="${CLAUDE_PROJECT_DIR:-.}"
   CTX="$PROJECT_DIR/.claude/review-context.json"
   if [[ -f "$CTX" ]]; then
+    # State completion check
+    ERRORS=()
+    check_skill_completion "review" "$CTX"
+    if [[ ${#ERRORS[@]} -gt 0 ]]; then
+      deny_errors "Review commit blocked: " "Complete all required states first."
+    fi
     STATES=$(normalize_states "$CTX")
     AT_FINAL=$([[ " $STATES " == *" 4 "* ]] && echo "yes" || echo "no")
     if [[ "$AT_FINAL" == "yes" && ! -f "$PROJECT_DIR/.claude/review-complete.json" ]]; then
@@ -133,6 +139,9 @@ rerun_postconditions "change"
 
 # Check 0b: BLOCK verdict check
 check_block_verdicts
+
+# Check 0c: State completion check
+check_skill_completion "change" "$PROJECT_DIR/.claude/change-context.json"
 
 # Check 1: G4 verdict file exists with PASS
 VERDICTS_DIR="$PROJECT_DIR/.claude/gate-verdicts"

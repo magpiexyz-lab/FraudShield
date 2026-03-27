@@ -15,6 +15,21 @@ Two strategies, dispatched by evidence type:
 - `/optimize-prompt` — stateless utility, no state machine
 - `/verify` itself — has its own STATE 6 + STATE 7
 
+## Step 0: Verify state completion (both strategies)
+
+Before proceeding with observation, check that the skill completed all required states.
+
+Read `.claude/<skill>-context.json` and compare `completed_states` against
+`_required_states` from `state-registry.json` `agent_gates[<skill>]`.
+
+If any required state is missing:
+- Record as friction in Step B2/Step 4 evaluation
+- Note the missing state IDs for observe.md Path 2 evaluation
+- Continue with Step 1 regardless (observation is best-effort)
+
+If all required states are present or `_required_states` is not defined for this skill,
+proceed to Step 1 with no friction recorded from this step.
+
 ## Step 1: Collect evidence (artifact-based, not memory-based)
 
 ```bash
