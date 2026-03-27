@@ -53,7 +53,7 @@ Call `.claude/patterns/solve-reasoning.md` full mode (Phases 1-6).
   - Agent 1 = change problem space (what needs to change, for whom, and why)
   - Agent 2 = reuse/prior art (extends plan-exploration — find existing patterns, components, utilities that partially solve this)
   - Agent 3 = hard constraints (archetype restrictions, stack limitations, behavior scope from experiment.yaml)
-- **Phase 3 questions**: HELD — merged into the Phase 1 STOP gate (see below)
+- **Phase 3 gap resolution**: autonomous — AI self-answers research gaps using first-principles reasoning
 - **Phase 5 Critic**: reviews plan mechanism choices (no extra domain vectors)
 - **Output feeds**:
   - "Recommended Solution" + "Implementation Checklist" -> plan "How" sections

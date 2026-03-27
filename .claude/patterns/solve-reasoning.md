@@ -108,19 +108,24 @@ Synthesize research from Phase 1 into a structured constraint space:
 4. **Prior art**: From Agent 2. What exists, what gap remains for each.
 5. **Problem scope**: From Agent 1. Boundaries of what needs solving.
 
-### Phase 3 — User Injection (1 interaction)
+### Phase 3 — Gap Resolution (autonomous)
 
-After research, before synthesis. Present to the user:
+After research, before synthesis. The lead agent identifies and self-answers
+research gaps using first-principles reasoning from Phase 1 data:
 
-- 3-5 specific questions derived from gaps in Phase 1 research
-  (e.g., "Agent 2 found X utility but it doesn't handle Y — should we extend it or build separately?")
-- 1 open-ended question: "Is there anything about this problem I should know that isn't in the codebase?"
+1. Generate 3-5 specific questions from gaps in Phase 1 research
+   (e.g., "Agent 2 found X utility but it doesn't handle Y — should we extend it or build separately?")
+2. For each question, self-answer using Phase 1 evidence:
+   - Review Agent 1 (problem space), Agent 2 (prior art), Agent 3 (constraints)
+   - Apply first-principles reasoning: strongest mechanism, fewest failure modes
+   - Tag each answer with confidence: **HIGH** (grounded in Phase 1 evidence) or **LOW** (assumption without direct evidence)
+3. LOW-confidence answers are flagged for Phase 5 Critic to challenge
 
-Wait for user response. Incorporate answers into the constraint space.
+Incorporate self-answers into the constraint space.
 
 ### Phase 4 — Solution Design (lead)
 
-Using the constraint space from Phase 2 and user input from Phase 3:
+Using the constraint space from Phase 2 and self-answered gaps from Phase 3:
 
 1. For each sub-problem: pick the **strongest available mechanism**
 2. Explain why it's strongest (fewest failure modes, most direct)
@@ -137,11 +142,17 @@ For each alternative: name the tradeoff axis where it wins.
 
 Launch 1 Opus agent as an adversarial critic.
 
-**Critic receives**: the recommended solution + problem statement + constraint space.
+**Critic receives**: the recommended solution + problem statement + constraint space + Phase 3 self-answered gaps.
 **Critic does NOT receive**: the reasoning chain from Phases 1-4.
 
 **Critic instructions**:
 > You are reviewing a proposed solution. Your job is to find flaws.
+>
+> **Self-answered gaps**: The following research gaps were answered by the AI
+> without user input. Challenge each self-answer for circular reasoning or
+> ungrounded assumptions. If a self-answer is tagged LOW confidence, scrutinize
+> it more heavily.
+>
 > For each concern, classify it:
 >
 > - **TYPE A — Fixable design flaw**: The solution has a gap or error that can
@@ -169,6 +180,9 @@ Present the final output:
 1. [step]
 2. [step]
 ...
+
+## Self-Answered Research Gaps
+[Phase 3 gap resolution — question, self-answer, confidence level for each]
 
 ## Constraint Space
 [enumeration from Phase 2 — executor, mechanisms, hard constraints]
@@ -220,6 +234,6 @@ default, full when complexity warrants it.
 ### Caller conventions
 
 - **Output ownership**: return output to the caller — do not present directly to the user (the caller handles presentation and next steps)
-- **Phase 3 merging**: when called from another pattern, Phase 3 (User Injection) questions are HELD and merged into the caller's existing STOP gate — do not prompt the user separately
+- **Phase 3 autonomy**: Phase 3 is fully autonomous — the lead agent self-answers research gaps using first-principles reasoning. No user interaction occurs in Phase 3. Callers do not need to merge Phase 3 questions into STOP gates
 - **Domain-specific critics**: callers may inject additional critic vectors into Phase 5 (see `/resolve` Step 5b vectors)
 - **Post-validation iteration**: callers may apply their own domain validation after solve-reasoning completes and iterate once if rejected
