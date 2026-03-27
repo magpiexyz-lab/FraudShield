@@ -138,8 +138,8 @@ Launch all applicable agents **simultaneously** using parallel Agent tool calls.
 #### Agent A — Database Auth config
 
 **Spawn condition:** `stack.auth: supabase` AND `stack.database: supabase`
-**Receives:** `canonical_url`, database refs/keys (from Step 3), experiment.yaml `name`, database stack file path, `oauth_credentials` from Step 1/3.5, `stack.auth_providers`
-**Returns:** `{status: "ok"|"failed"|"skipped", message: "<details>", env_vars_added: [], oauth_configured: ["google", ...], oauth_skipped: ["github", ...]}`
+**Receives:** `canonical_url`, database refs/keys (from Step 3), experiment.yaml `name`, database stack file path, `oauth_credentials` from Step 1/3.5, `stack.auth_providers`, `stack.email` value (from experiment.yaml), `RESEND_API_KEY` (from Step 4.4, when `stack.email: resend`)
+**Returns:** `{status: "ok"|"failed"|"skipped", message: "<details>", env_vars_added: [], oauth_configured: ["google", ...], oauth_skipped: ["github", ...], smtp_configured: true|false, templates_configured: true|false}`
 
 Instructions for Agent A:
 

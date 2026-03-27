@@ -405,12 +405,160 @@ Standardized subsections referenced by deploy.md and teardown.md. Each subsectio
    - macOS Keychain: `security find-generic-password -s "Supabase CLI" -w 2>/dev/null` — strip `go-keyring-base64:` prefix, base64-decode remainder
    - If neither found: ask user for token (generate at supabase.com/dashboard/account/tokens) or skip
 2. **Extract short title:** experiment.yaml `title` up to first ` — `, ` - `, or ` | ` delimiter; fallback to capitalized `name`
-3. **Configure auth:**
+3. **Configure auth, email templates, and SMTP:**
+
+   Build a single JSON body with the following fields. Replace `<short-title>` with the value from step 2.
+
+   **Base fields (always include):**
+   ```json
+   {
+     "site_url": "https://<canonical_url>",
+     "uri_allow_list": "https://<canonical_url>/**",
+     "mailer_subjects_confirmation": "Confirm your <short-title> account",
+     "mailer_subjects_recovery": "Reset your <short-title> password",
+     "mailer_subjects_magic_link": "Your <short-title> login link"
+   }
+   ```
+
+   **Email template fields (always include):**
+
+   Add these three fields to the same JSON. Each value is an HTML string — collapse to a single line, escape all double quotes (`\"`) for JSON embedding, and replace `<short-title>` with the extracted value.
+
+   `mailer_templates_confirmation_content` — Confirmation email:
+   ```html
+   <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="margin:0;padding:0;background-color:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
+     <tr>
+       <td align="center" style="padding:40px 16px">
+         <table width="560" cellpadding="0" cellspacing="0" role="presentation" style="max-width:560px;width:100%;background-color:#ffffff;border-radius:8px;border:1px solid #e4e4e7;overflow:hidden">
+           <tr><td style="height:4px;background-color:#2563eb;font-size:0;line-height:0">&nbsp;</td></tr>
+           <tr>
+             <td style="padding:40px 40px 0 40px">
+               <p style="margin:0 0 4px;font-size:14px;font-weight:600;color:#2563eb;letter-spacing:0.5px;text-transform:uppercase"><short-title></p>
+               <h1 style="margin:0 0 24px;font-size:24px;font-weight:700;color:#18181b;line-height:1.3">Confirm your email address</h1>
+               <p style="margin:0 0 24px;font-size:16px;color:#3f3f46;line-height:1.6">Thanks for signing up. Please confirm your email address to activate your account and get started.</p>
+             </td>
+           </tr>
+           <tr>
+             <td align="center" style="padding:8px 40px 32px">
+               <a href="{{ .ConfirmationURL }}" target="_blank" style="display:inline-block;padding:14px 32px;background-color:#2563eb;color:#ffffff;font-size:16px;font-weight:600;text-decoration:none;border-radius:6px;line-height:1">Confirm Email</a>
+             </td>
+           </tr>
+           <tr>
+             <td style="padding:0 40px 32px">
+               <p style="margin:0;font-size:13px;color:#71717a;line-height:1.6">If the button doesn't work, copy and paste this URL into your browser:</p>
+               <p style="margin:8px 0 0;font-size:13px;color:#2563eb;word-break:break-all;line-height:1.6">{{ .ConfirmationURL }}</p>
+             </td>
+           </tr>
+           <tr><td style="height:1px;background-color:#e4e4e7;font-size:0;line-height:0">&nbsp;</td></tr>
+           <tr>
+             <td style="padding:24px 40px">
+               <p style="margin:0;font-size:12px;color:#a1a1aa;line-height:1.6">This email was sent to {{ .Email }} because an account was created at <a href="{{ .SiteURL }}" style="color:#a1a1aa"><short-title></a>. If you did not sign up, you can safely ignore this email.</p>
+             </td>
+           </tr>
+         </table>
+       </td>
+     </tr>
+   </table>
+   ```
+
+   `mailer_templates_recovery_content` — Password reset email:
+   ```html
+   <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="margin:0;padding:0;background-color:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
+     <tr>
+       <td align="center" style="padding:40px 16px">
+         <table width="560" cellpadding="0" cellspacing="0" role="presentation" style="max-width:560px;width:100%;background-color:#ffffff;border-radius:8px;border:1px solid #e4e4e7;overflow:hidden">
+           <tr><td style="height:4px;background-color:#2563eb;font-size:0;line-height:0">&nbsp;</td></tr>
+           <tr>
+             <td style="padding:40px 40px 0 40px">
+               <p style="margin:0 0 4px;font-size:14px;font-weight:600;color:#2563eb;letter-spacing:0.5px;text-transform:uppercase"><short-title></p>
+               <h1 style="margin:0 0 24px;font-size:24px;font-weight:700;color:#18181b;line-height:1.3">Reset your password</h1>
+               <p style="margin:0 0 24px;font-size:16px;color:#3f3f46;line-height:1.6">We received a request to reset the password for your account. Click the button below to choose a new password.</p>
+             </td>
+           </tr>
+           <tr>
+             <td align="center" style="padding:8px 40px 32px">
+               <a href="{{ .ConfirmationURL }}" target="_blank" style="display:inline-block;padding:14px 32px;background-color:#2563eb;color:#ffffff;font-size:16px;font-weight:600;text-decoration:none;border-radius:6px;line-height:1">Reset Password</a>
+             </td>
+           </tr>
+           <tr>
+             <td style="padding:0 40px 32px">
+               <p style="margin:0;font-size:13px;color:#71717a;line-height:1.6">If the button doesn't work, copy and paste this URL into your browser:</p>
+               <p style="margin:8px 0 0;font-size:13px;color:#2563eb;word-break:break-all;line-height:1.6">{{ .ConfirmationURL }}</p>
+             </td>
+           </tr>
+           <tr><td style="height:1px;background-color:#e4e4e7;font-size:0;line-height:0">&nbsp;</td></tr>
+           <tr>
+             <td style="padding:24px 40px">
+               <p style="margin:0;font-size:12px;color:#a1a1aa;line-height:1.6">This email was sent to {{ .Email }} for your <a href="{{ .SiteURL }}" style="color:#a1a1aa"><short-title></a> account. If you did not request a password reset, you can safely ignore this email.</p>
+             </td>
+           </tr>
+         </table>
+       </td>
+     </tr>
+   </table>
+   ```
+
+   `mailer_templates_magic_link_content` — Magic link email:
+   ```html
+   <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="margin:0;padding:0;background-color:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
+     <tr>
+       <td align="center" style="padding:40px 16px">
+         <table width="560" cellpadding="0" cellspacing="0" role="presentation" style="max-width:560px;width:100%;background-color:#ffffff;border-radius:8px;border:1px solid #e4e4e7;overflow:hidden">
+           <tr><td style="height:4px;background-color:#2563eb;font-size:0;line-height:0">&nbsp;</td></tr>
+           <tr>
+             <td style="padding:40px 40px 0 40px">
+               <p style="margin:0 0 4px;font-size:14px;font-weight:600;color:#2563eb;letter-spacing:0.5px;text-transform:uppercase"><short-title></p>
+               <h1 style="margin:0 0 24px;font-size:24px;font-weight:700;color:#18181b;line-height:1.3">Your login link</h1>
+               <p style="margin:0 0 24px;font-size:16px;color:#3f3f46;line-height:1.6">Click the button below to log in to your account. This link will expire in 24 hours.</p>
+             </td>
+           </tr>
+           <tr>
+             <td align="center" style="padding:8px 40px 32px">
+               <a href="{{ .ConfirmationURL }}" target="_blank" style="display:inline-block;padding:14px 32px;background-color:#2563eb;color:#ffffff;font-size:16px;font-weight:600;text-decoration:none;border-radius:6px;line-height:1">Log In</a>
+             </td>
+           </tr>
+           <tr>
+             <td style="padding:0 40px 32px">
+               <p style="margin:0;font-size:13px;color:#71717a;line-height:1.6">If the button doesn't work, copy and paste this URL into your browser:</p>
+               <p style="margin:8px 0 0;font-size:13px;color:#2563eb;word-break:break-all;line-height:1.6">{{ .ConfirmationURL }}</p>
+             </td>
+           </tr>
+           <tr><td style="height:1px;background-color:#e4e4e7;font-size:0;line-height:0">&nbsp;</td></tr>
+           <tr>
+             <td style="padding:24px 40px">
+               <p style="margin:0;font-size:12px;color:#a1a1aa;line-height:1.6">This email was sent to {{ .Email }} for your <a href="{{ .SiteURL }}" style="color:#a1a1aa"><short-title></a> account. If you did not request this link, you can safely ignore this email.</p>
+             </td>
+           </tr>
+         </table>
+       </td>
+     </tr>
+   </table>
+   ```
+
+   **SMTP fields (include only when `stack.email: resend` AND `RESEND_API_KEY` is available):**
+
+   Add these fields to the same JSON object. If `stack.email` is not `resend` or `RESEND_API_KEY` was not provided, omit them entirely.
+   ```json
+   {
+     "smtp_host": "smtp.resend.com",
+     "smtp_port": "465",
+     "smtp_user": "resend",
+     "smtp_pass": "<RESEND_API_KEY>",
+     "smtp_admin_email": "noreply@<domain>",
+     "smtp_sender_name": "<short-title>"
+   }
+   ```
+   Where `<domain>` is `deploy.domain` from experiment.yaml; fallback to `draftlabs.org`.
+   Note: `smtp_port` must be a **string** (`"465"`), not an integer — per the Supabase API spec.
+
+   **Send the PATCH request:**
+
+   Merge all applicable fields into a single JSON object and send:
    ```bash
    curl -s -X PATCH "https://api.supabase.com/v1/projects/<ref>/config/auth" \
      -H "Authorization: Bearer <token>" \
      -H "Content-Type: application/json" \
-     -d '{"site_url": "https://<canonical_url>", "uri_allow_list": "https://<canonical_url>/**", "mailer_subjects_confirmation": "Confirm your <short-title> account", "mailer_subjects_recovery": "Reset your <short-title> password", "mailer_subjects_magic_link": "Your <short-title> login link"}'
+     -d '<merged-json>'
    ```
 
 4. **Configure OAuth providers** (if `stack.auth_providers` present and credentials provided):

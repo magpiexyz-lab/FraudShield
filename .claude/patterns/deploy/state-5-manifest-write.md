@@ -26,7 +26,9 @@ Print a deployment summary:
 [If domain add failed] **Custom domain (manual):** See hosting stack file's `## Deploy Interface > Domain Setup` for the add-domain command and DNS requirements.
 
 [If auth] **Auth redirect URLs:** Configured — site_url set to https://<canonical_url>
-[If auth] **Email subjects:** Configured — confirmation, recovery, and magic link emails use app name
+[If auth] **Email templates:** Configured — professional HTML templates with app branding for confirmation, recovery, and magic link emails
+[If auth AND smtp_configured] **Custom SMTP:** Configured — auth emails sent via Resend (smtp.resend.com) from noreply@<domain>
+[If auth AND NOT smtp_configured] **Email sender:** Default Supabase sender — add `stack.email: resend` and verify your domain for custom sender address
 [If auth_providers] **OAuth providers:**
 [For each configured provider] - <Provider>: Enabled
 [For each skipped provider] - <Provider>: Skipped — configure at Supabase Dashboard -> Authentication -> Providers
