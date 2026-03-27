@@ -40,6 +40,15 @@ For each attempt:
 > - Attempt 2: [what failed and what I changed]
 > - Attempt 3: [what still fails]
 >
+> **Diagnosis:**
+> - **Category:** [template bug | stack incompatibility | env/config issue | code logic error]
+>   - *template bug:* error references generated files from /bootstrap or template patterns
+>   - *stack incompatibility:* error involves version conflicts, missing peer dependencies, or framework API changes
+>   - *env/config issue:* error references missing env vars, wrong paths, or config files
+>   - *code logic error:* error is in user-written code from /change implementation
+> - **Evidence:** [which specific errors point to this category]
+> - **Suggested next:** [/change "fix: ..." | /resolve #issue | check env vars | update stack version | ...]
+>
 > The remaining errors are: [paste current errors]
 >
 > **Your options:**
@@ -47,6 +56,28 @@ For each attempt:
 > 2. **Save and investigate later** — run `git add -A && git commit -m "WIP: build not passing yet"`, then `git checkout main`. Your WIP is safe on the feature branch. Resume later with `git checkout <branch>` and tell me the remaining errors.
 > 3. **Start fresh** — run `git add -A && git commit -m "WIP: discarding"`, then `git checkout main`, then `make clean`, then `/bootstrap`. **Warning:** `make clean` deletes all generated code — only committed code is preserved in git history.
 > 4. **Debug on this branch later** — switch to this branch (`git checkout <branch>`) and describe the remaining build errors directly. Do not re-run `/bootstrap` or `/change` — those create new branches. Just tell Claude what errors remain and it will fix them here.
+
+**Persist diagnostic context** for downstream skill handoff:
+```bash
+python3 -c "
+import json, os
+ctx_path = '.claude/verify-context.json'
+if os.path.exists(ctx_path):
+    ctx = json.load(open(ctx_path))
+    ctx['diagnostic'] = {
+        'category': '<template|stack|env|code>',
+        'last_errors': '<summary of remaining errors>',
+        'attempts': [
+            {'error': '<attempt 1 error>', 'fix_tried': '<attempt 1 fix>'},
+            {'error': '<attempt 2 error>', 'fix_tried': '<attempt 2 fix>'},
+            {'error': '<attempt 3 error>', 'fix_tried': '<attempt 3 fix>'}
+        ],
+        'suggested_skill': '<change|resolve|manual>'
+    }
+    json.dump(ctx, open(ctx_path, 'w'))
+"
+```
+This enables `/change "fix: ..."` to read diagnostic context from a prior failed verification run.
 
 Do NOT commit code that fails build or lint. Do NOT skip this procedure.
 

@@ -18,6 +18,12 @@ Follow archetype behavior check per `patterns/archetype-behavior-check.md`.
   - Reference: "This change addresses the [bottleneck.stage] bottleneck identified by /iterate ([bottleneck.diagnosis])"
   - This provides continuity between analysis and implementation
 
+- If `.claude/verify-context.json` exists and contains a `diagnostic` key, read it for prior failure context. This occurs when a previous `/verify` or `/bootstrap` run exhausted its BUILD_LINT_LOOP and the user is now running `/change "fix: ..."` to address it. Include in working memory:
+  - Prior error category: `diagnostic.category`
+  - Remaining errors: `diagnostic.last_errors`
+  - What was already tried: `diagnostic.attempts`
+  - This provides continuity: "Picking up from a prior failed build. Category: [category]. Previous attempts tried: [summary]. Remaining errors: [last_errors]."
+
 - **Persist exploration results** to `change-context.json`:
   ```bash
   python3 -c "
@@ -38,6 +44,7 @@ Follow archetype behavior check per `patterns/archetype-behavior-check.md`.
 - Exploration results stored in working memory
 - Preliminary classification determined from `$ARGUMENTS` keywords
 - `preliminary_type` and `affected_areas` persisted to `.claude/change-context.json`
+- Diagnostic context from prior verify run read (if available)
 
 **VERIFY:**
 ```bash
