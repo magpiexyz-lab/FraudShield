@@ -55,6 +55,8 @@ page still works as a marketing page, just without visit tracking.
 
 **CSS:** Inline `<style>` — no build step, no framework dependency.
 
+**Favicon:** Include `<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,...">` in the `<head>` -- an inline SVG monogram (first letter of product name, primary color fill, white text) so the browser tab shows a branded icon.
+
 ## Quality bar
 
 The surface is the first thing a potential user sees. It must be

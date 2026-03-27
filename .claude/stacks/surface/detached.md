@@ -25,6 +25,8 @@ separate from the product. Used when the product has no server hosting
 `site/index.html` — a self-contained HTML page. No external CSS/JS files
 needed beyond Google Fonts and the analytics provider CDN (see analytics stack file).
 
+Include an inline SVG favicon via `<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,...">` -- a monogram of the product name initial in the primary color.
+
 ## Design
 
 The surface is the first thing a potential user sees. It must be

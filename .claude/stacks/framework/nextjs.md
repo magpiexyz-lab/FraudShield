@@ -11,6 +11,8 @@ files:
   - src/app/route.ts              # conditional: service with co-located surface
   - src/app/not-found.tsx         # conditional: web-app
   - src/app/error.tsx             # conditional: web-app
+  - src/app/icon.tsx              # conditional: web-app
+  - src/app/opengraph-image.tsx   # conditional: web-app
   - src/components/RetainTracker.tsx  # conditional: web-app
 env:
   server: []
@@ -58,6 +60,8 @@ src/
     page.tsx        # Landing page (/)
     not-found.tsx   # 404 page with link back to /
     error.tsx       # Error boundary with "use client", user-friendly message, retry + home link
+    icon.tsx        # Dynamic favicon -- monogram in primary color (Next.js Metadata File API)
+    opengraph-image.tsx  # Dynamic OG image -- branded card (Next.js Metadata File API)
     api/            # API route handlers (all mutations go here)
       <resource>/
         route.ts    # Route handler

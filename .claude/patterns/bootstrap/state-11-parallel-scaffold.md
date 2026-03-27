@@ -15,6 +15,8 @@ The lead (not a subagent) creates:
 - Root layout (`src/app/layout.tsx`) with font imports and globals.css
 - 404 page (`src/app/not-found.tsx`)
 - Error boundary (`src/app/error.tsx`)
+- Favicon (`src/app/icon.tsx`) -- monogram of project name initial in primary color, 128x128, using `ImageResponse` from `next/og`. Uses a system font (sans-serif) -- do NOT fetch Google Fonts in Satori context. Read primary color from `globals.css` `--primary` token or hardcode the derived value.
+- OG image (`src/app/opengraph-image.tsx`) -- 1200x630 branded card with project name centered on primary-color gradient background. Uses `ImageResponse` from `next/og` with system font.
 - Variant routing files (if `variants` in experiment.yaml): `src/lib/variants.ts`, `src/app/page.tsx`, `src/app/v/[variant]/page.tsx`
 
 Phase A runs AFTER scaffold-init completes (STATE 10) to ensure design tokens exist.
@@ -23,7 +25,7 @@ After creating all Phase A files, write the Phase A sentinel:
 ```bash
 mkdir -p .claude/gate-verdicts
 cat > .claude/gate-verdicts/phase-a-sentinel.json << 'PAEOF'
-{"phase_a_complete": true, "timestamp": "<ISO 8601>", "files": ["src/app/layout.tsx", "src/app/not-found.tsx", "src/app/error.tsx"]}
+{"phase_a_complete": true, "timestamp": "<ISO 8601>", "files": ["src/app/layout.tsx", "src/app/not-found.tsx", "src/app/error.tsx", "src/app/icon.tsx", "src/app/opengraph-image.tsx"]}
 PAEOF
 ```
 
@@ -31,6 +33,8 @@ VERIFY Phase A before proceeding to Phase B:
 - `test -f src/app/layout.tsx`
 - `test -f src/app/not-found.tsx`
 - `test -f src/app/error.tsx`
+- `test -f src/app/icon.tsx`
+- `test -f src/app/opengraph-image.tsx`
 - `test -f .claude/gate-verdicts/phase-a-sentinel.json`
 
 **DO NOT proceed to Phase B until all VERIFY checks pass.**

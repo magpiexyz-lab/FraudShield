@@ -26,26 +26,29 @@ Run combined verification after all parallel subagents complete -- these checks 
      description under a "Known gaps" section. Do not block the pipeline for these.
 4. **Design tokens** (if archetype is `web-app`): verify `src/app/globals.css`
    contains a non-empty `--primary` custom property
-5. **Fake door integration** (if `externals-decisions.json` has non-empty `fake_doors`):
+5. **Favicon & OG image** (if archetype is `web-app`): verify `src/app/icon.tsx`
+   and `src/app/opengraph-image.tsx` exist and export a default function returning
+   `ImageResponse`. Fix directly if missing.
+6. **Fake door integration** (if `externals-decisions.json` has non-empty `fake_doors`):
    for each fake door entry, verify the parent page.tsx contains both an import
    statement with `component_export_name` and a JSX render tag `<ComponentExportName`.
    Fix directly if missing.
-6. **Content quality floor** (web-app only): discover all pages via filesystem scan
+7. **Content quality floor** (web-app only): discover all pages via filesystem scan
    (`find src/app -name 'page.tsx' | grep -v '/api/'`). For each discovered page, read page.tsx and check:
    - File has >=30 lines of JSX content (not just imports and boilerplate)
    - No `>TODO` or `"TODO:` patterns in rendered JSX strings
    - No sections consisting of only placeholder text or empty containers
    If any check fails: fix directly (budget: 1 attempt). WARN if unfixed.
-7. **CTA presence** (web-app, landing only): verify landing page source (`src/app/page.tsx`
+8. **CTA presence** (web-app, landing only): verify landing page source (`src/app/page.tsx`
    or `src/components/landing-content.tsx`) contains at least one `<Button` or `<Link`
    element with non-empty text content. If missing: add a primary CTA to the hero section.
    Budget: 1 fix attempt.
-8. **Internal href audit** (web-app only): extract all `href="/..."` values from all
+9. **Internal href audit** (web-app only): extract all `href="/..."` values from all
    page files (`grep -roh 'href="/[^"]*"' src/app/*/page.tsx`). For each internal path,
    verify the target route has a corresponding page directory under `src/app/` or is a
    defined API route under `src/app/api/`. Exclude external URLs (`href="http`).
    If broken links found: fix the href to point to the correct route. Budget: 1 fix attempt.
-9. **Cross-page token consistency** (web-app only): grep all page.tsx files for
+10. **Cross-page token consistency** (web-app only): grep all page.tsx files for
    Tailwind arbitrary color values (`text-\[#`, `bg-\[#`, `border-\[#`). If any page uses
    arbitrary hex color values not traceable to the visual brief, replace with theme token
    classes (`text-primary`, `bg-secondary`, etc.). Budget: 1 fix attempt.
@@ -82,7 +85,7 @@ if not missing and not incomplete: print('  All scaffold agents completed with t
 "
 ```
 
-**BG2 Orchestration Gate**: Spawn the `gate-keeper` agent (`subagent_type: gate-keeper`). Pass: "Execute BG2 Orchestration Gate. Verify: (1) npm run build passes; (2) scaffold output files exist (src/lib/*.ts, .claude/current-visual-brief.md, archetype-specific pages/routes/commands from experiment.yaml); (3) landing page exists if surface!=none; (4) checkpoint is phase2-scaffold or later; (5) if stack.analytics present: for each event in experiment/EVENTS.yaml events map (filtered by requires and archetypes for current stack and archetype), grep for the event name in src/ -- BLOCK if any event is missing; (6) if stack.analytics present: grep src/lib/analytics*.ts for PROJECT_NAME and PROJECT_OWNER -- BLOCK if either is 'TODO'." If gate-keeper returns BLOCK, fix missing outputs before STATE 14.
+**BG2 Orchestration Gate**: Spawn the `gate-keeper` agent (`subagent_type: gate-keeper`). Pass: "Execute BG2 Orchestration Gate. Verify: (1) npm run build passes; (2) scaffold output files exist (src/lib/*.ts, .claude/current-visual-brief.md, src/app/icon.tsx and src/app/opengraph-image.tsx (web-app only), archetype-specific pages/routes/commands from experiment.yaml); (3) landing page exists if surface!=none; (4) checkpoint is phase2-scaffold or later; (5) if stack.analytics present: for each event in experiment/EVENTS.yaml events map (filtered by requires and archetypes for current stack and archetype), grep for the event name in src/ -- BLOCK if any event is missing; (6) if stack.analytics present: grep src/lib/analytics*.ts for PROJECT_NAME and PROJECT_OWNER -- BLOCK if either is 'TODO'." If gate-keeper returns BLOCK, fix missing outputs before STATE 14.
 
 Check off in `.claude/current-plan.md`: `- [x] BG2 Orchestration Gate passed`
 
