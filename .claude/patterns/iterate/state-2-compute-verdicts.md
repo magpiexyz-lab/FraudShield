@@ -126,9 +126,22 @@ If the user provided per-variant metrics in STATE 1, present a comparison:
 - Variant analysis completed (if applicable)
 - Ads performance assessed (if applicable)
 
+- **Write verdicts artifact** (`.claude/iterate-verdicts.json`):
+  ```bash
+  python3 -c "
+  import json
+  verdicts = {
+      'dimension_scores': {},
+      'bottleneck': '<dimension>',
+      'hypothesis_verdicts': []
+  }
+  json.dump(verdicts, open('.claude/iterate-verdicts.json', 'w'), indent=2)
+  "
+  ```
+
 **VERIFY:**
 ```bash
-echo "Verdicts and scores computed"
+test -f .claude/iterate-verdicts.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

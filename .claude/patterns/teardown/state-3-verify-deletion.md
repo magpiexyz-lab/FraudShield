@@ -23,9 +23,22 @@ Wait for the agent to complete. Include the scanner's output table in the Step 5
 - Deletion verification results recorded
 - Any remaining resources identified with manual-deletion URLs
 
+- **Write verification artifact** (`.claude/teardown-verification.json`):
+  ```bash
+  python3 -c "
+  import json
+  verification = {
+      'scan_completed': True,
+      'remaining_resources': [],
+      'fully_deleted': True
+  }
+  json.dump(verification, open('.claude/teardown-verification.json', 'w'), indent=2)
+  "
+  ```
+
 **VERIFY:**
 ```bash
-echo "Provision scan complete — deletion verified"
+test -f .claude/teardown-verification.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

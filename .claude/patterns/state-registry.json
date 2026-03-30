@@ -130,9 +130,9 @@
   },
   "teardown": {
     "0": "test -f .claude/teardown-context.json",
-    "1": "true",
-    "2": "true",
-    "3": "true",
+    "1": "python3 -c \"import json; assert json.load(open('.claude/teardown-context.json')).get('confirmed') == True, 'confirmed not set'\"",
+    "2": "test -f .claude/teardown-result.json",
+    "3": "test -f .claude/teardown-verification.json",
     "4": "true",
     "5": "python3 -c \"import json; d=json.load(open('.claude/observe-result.json')); assert d['skill']=='teardown'\""
   },
@@ -149,35 +149,35 @@
   },
   "rollback": {
     "0": "test -f .claude/rollback-context.json",
-    "1": "true",
-    "2": "true",
-    "3": "true",
+    "1": "test -f .claude/rollback-plan.json",
+    "2": "python3 -c \"import json; assert json.load(open('.claude/rollback-context.json')).get('approved') == True, 'approved not set'\"",
+    "3": "test -f .claude/rollback-result.json",
     "4": "python3 -c \"import json; d=json.load(open('.claude/observe-result.json')); assert d['skill']=='rollback'\""
   },
   "iterate": {
     "0": "test -f .claude/iterate-context.json",
-    "1": "true",
-    "2": "true",
-    "3": "true",
+    "1": "test -f .claude/iterate-data.json",
+    "2": "test -f .claude/iterate-verdicts.json",
+    "3": "python3 -c \"import json; d=json.load(open('.claude/iterate-manifest.json')); assert 'decision' in d or 'verdict' in d, 'decision/verdict missing'\"",
     "4": "test -f .claude/iterate-manifest.json",
     "5": "python3 -c \"import json; d=json.load(open('.claude/observe-result.json')); assert d['skill']=='iterate'\""
   },
   "retro": {
     "0": "test -f .claude/retro-context.json",
-    "1": "true",
-    "2": "true",
+    "1": "test -f .claude/retro-interview.json",
+    "2": "test -f .claude/retro-interview.json && test -f .claude/retro-context.json",
     "3": "true",
     "4": "python3 -c \"import json; d=json.load(open('.claude/observe-result.json')); assert d['skill']=='retro'\""
   },
   "solve": {
     "0": "test -f .claude/solve-context.json",
-    "1": "true",
-    "2": "true",
+    "1": "test -f .claude/solve-trace.json",
+    "2": "test -f .claude/solve-trace.json && test -f .claude/solve-context.json",
     "3": "python3 -c \"import json; d=json.load(open('.claude/observe-result.json')); assert d['skill']=='solve'\""
   },
   "audit": {
     "0": "test -f .claude/audit-context.json",
-    "1": "true",
+    "1": "test -f .claude/audit-analysis.json",
     "2": "true",
     "3": "python3 -c \"import json; d=json.load(open('.claude/observe-result.json')); assert d['skill']=='audit'\""
   },

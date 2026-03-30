@@ -31,9 +31,21 @@ Follow-up: "What was the actual result vs the target in your thesis: [thesis]?"
 - All four questions answered by the user
 - Answers recorded for STATE 2
 
+- **Write interview artifact** (`.claude/retro-interview.json`):
+  ```bash
+  python3 -c "
+  import json
+  interview = {
+      'questions_answered': 4,
+      'answers': {}
+  }
+  json.dump(interview, open('.claude/retro-interview.json', 'w'), indent=2)
+  "
+  ```
+
 **VERIFY:**
 ```bash
-echo "All four retro questions answered"
+test -f .claude/retro-interview.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

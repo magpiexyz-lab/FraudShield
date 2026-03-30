@@ -25,9 +25,22 @@ Proceed with rollback?
 **POSTCONDITIONS:**
 - Rollback plan has been presented to the user with provider, target URL, and action
 
+- **Write plan artifact** (`.claude/rollback-plan.json`):
+  ```bash
+  python3 -c "
+  import json
+  plan = {
+      'provider': '<hosting provider>',
+      'target_url': '<canonical url>',
+      'action': '<rollback command or manual steps>'
+  }
+  json.dump(plan, open('.claude/rollback-plan.json', 'w'), indent=2)
+  "
+  ```
+
 **VERIFY:**
 ```bash
-echo "Plan presented to user"
+test -f .claude/rollback-plan.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

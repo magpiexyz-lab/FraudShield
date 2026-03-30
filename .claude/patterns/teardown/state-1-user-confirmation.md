@@ -32,10 +32,19 @@ To confirm, type the project name: **<name>**
 **POSTCONDITIONS:**
 - User has typed the exact project name to confirm teardown
 
+- **Record confirmation** in `teardown-context.json`:
+  ```bash
+  python3 -c "
+  import json
+  ctx = json.load(open('.claude/teardown-context.json'))
+  ctx['confirmed'] = True
+  json.dump(ctx, open('.claude/teardown-context.json', 'w'), indent=2)
+  "
+  ```
+
 **VERIFY:**
 ```bash
-# User message contains the exact project name
-echo "User confirmation received"
+python3 -c "import json; assert json.load(open('.claude/teardown-context.json')).get('confirmed') == True, 'confirmed not set'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

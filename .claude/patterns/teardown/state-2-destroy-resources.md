@@ -106,9 +106,22 @@ For each service in `external_services`:
 - External services listed for manual cleanup
 - Results (success/failure) recorded for each resource
 
+- **Write result artifact** (`.claude/teardown-result.json`):
+  ```bash
+  python3 -c "
+  import json
+  result = {
+      'resources_attempted': [],
+      'successes': 0,
+      'failures': 0
+  }
+  json.dump(result, open('.claude/teardown-result.json', 'w'), indent=2)
+  "
+  ```
+
 **VERIFY:**
 ```bash
-echo "Resource deletion attempted for all manifest entries"
+test -f .claude/teardown-result.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

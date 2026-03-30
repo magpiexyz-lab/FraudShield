@@ -30,10 +30,11 @@ The user decides next steps:
 **POSTCONDITIONS:**
 - Solution output presented to user
 - No code changes made
+- Q-score written to verify-history.jsonl
 
 **VERIFY:**
 ```bash
-echo "Solution presented, awaiting user decision"
+test -f .claude/solve-trace.json && test -f .claude/solve-context.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

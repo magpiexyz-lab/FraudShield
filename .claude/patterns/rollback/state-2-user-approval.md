@@ -10,13 +10,23 @@
 DO NOT proceed to STATE 3 until the user explicitly replies with approval.
 If the user requests changes or asks questions, address their concerns and present the plan again (return to STATE 1). Repeat until approved.
 
+- **Record approval** in `rollback-context.json`:
+  ```bash
+  python3 -c "
+  import json
+  ctx = json.load(open('.claude/rollback-context.json'))
+  ctx['approved'] = True
+  json.dump(ctx, open('.claude/rollback-context.json', 'w'), indent=2)
+  "
+  ```
+
 **POSTCONDITIONS:**
 - User has explicitly approved the rollback
+- `approved` field set to `true` in `rollback-context.json`
 
 **VERIFY:**
 ```bash
-# User message contains approval (e.g., "yes", "proceed", "do it", "approve")
-echo "User approval received"
+python3 -c "import json; assert json.load(open('.claude/rollback-context.json')).get('approved') == True, 'approved not set'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

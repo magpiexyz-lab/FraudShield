@@ -27,7 +27,7 @@ Show the full retro to the user before filing.
 
 **VERIFY:**
 ```bash
-echo "Retro document generated and shown to user"
+test -f .claude/retro-interview.json && test -f .claude/retro-context.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

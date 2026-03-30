@@ -52,9 +52,22 @@ python3 .claude/scripts/write-q-score.py \
 - Health check attempted and result reported
 - Rollback result summary presented to user
 
+- **Write result artifact** (`.claude/rollback-result.json`):
+  ```bash
+  python3 -c "
+  import json
+  result = {
+      'rollback_executed': True,
+      'health_check_passed': True,
+      'method': '<cli|manual>'
+  }
+  json.dump(result, open('.claude/rollback-result.json', 'w'), indent=2)
+  "
+  ```
+
 **VERIFY:**
 ```bash
-echo "Rollback executed and result reported"
+test -f .claude/rollback-result.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

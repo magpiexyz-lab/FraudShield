@@ -75,9 +75,22 @@ Whether funnel numbers came from auto-query (1a) or manual input (1b), also ask 
 - User has confirmed the funnel data
 - Qualitative data collected (whatever was available)
 
+- **Write data artifact** (`.claude/iterate-data.json`):
+  ```bash
+  python3 -c "
+  import json
+  data = {
+      'funnel_data': {},
+      'qualitative_data': [],
+      'data_source': '<auto-query|manual>'
+  }
+  json.dump(data, open('.claude/iterate-data.json', 'w'), indent=2)
+  "
+  ```
+
 **VERIFY:**
 ```bash
-echo "Funnel data gathered from user"
+test -f .claude/iterate-data.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
