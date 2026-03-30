@@ -21,10 +21,17 @@ which handles observation inline without calling this procedure directly.
 
 ## Prerequisites
 
-1. Get the template repo from the current repo: `gh repo view --json nameWithOwner -q .nameWithOwner`.
-   If experiment.yaml does not exist or the command fails → skip silently.
+1. Resolve the template repo (where observations should be filed):
+   ```bash
+   TEMPLATE_REPO=$(git remote get-url template 2>/dev/null | sed 's|.*github.com[:/]||;s|\.git$||')
+   if [ -z "$TEMPLATE_REPO" ]; then
+     TEMPLATE_REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
+   fi
+   ```
+   If experiment.yaml does not exist or both commands fail → skip silently.
+   If no `template` remote exists, observations are filed to the current repo as a fallback.
 2. `gh auth status` — if fails → skip silently.
-3. `gh repo view $(gh repo view --json nameWithOwner -q .nameWithOwner) --json name` — if fails → skip silently.
+3. `gh repo view $TEMPLATE_REPO --json name` — if fails → skip silently.
 
 Observation filing is best-effort. Never stop the skill, never ask the user for
 input, never block on filing.
@@ -156,7 +163,7 @@ Before composing the issue, strip all project-specific information:
 Search for existing open observations about the same template file:
 
 ```bash
-gh issue list --repo $(gh repo view --json nameWithOwner -q .nameWithOwner) --label observation \
+gh issue list --repo $TEMPLATE_REPO --label observation \
   --search "[observe] <template-file-basename>:" --state open --limit 20
 ```
 
@@ -165,7 +172,7 @@ underlying problem (same template file, same root cause — even if worded
 differently), add a comment instead of creating a new issue:
 
 ```bash
-gh issue comment <issue-number> --repo $(gh repo view --json nameWithOwner -q .nameWithOwner) --body "<comment>"
+gh issue comment <issue-number> --repo $TEMPLATE_REPO --body "<comment>"
 ```
 
 Comment body:
@@ -224,7 +231,7 @@ template-level fix.>
 
 **Filing command:**
 ```bash
-gh issue create --repo $(gh repo view --json nameWithOwner -q .nameWithOwner) \
+gh issue create --repo $TEMPLATE_REPO \
   --title "<title>" \
   --label "observation" \
   --body "<body>"

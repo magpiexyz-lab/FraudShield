@@ -1,9 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Read(.claude/**)",
-      "Write(.claude/**)",
-      "Edit(.claude/**)",
+      "Read(/.claude/**)",
+      "Write(/.claude/**)",
+      "Edit(/.claude/**)",
       "Bash(cat > .claude:*)",
       "Bash(rm -f .claude:*)",
       "Bash(rm -rf .claude:*)",

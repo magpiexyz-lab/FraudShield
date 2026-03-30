@@ -45,6 +45,7 @@ classification. Include them here for reference so the lead knows what to do.
    - Read `.claude/stacks/TEMPLATE.md` for the required frontmatter schema
    - Read existing stack files as structural reference
    - Generate `.claude/stacks/external/<service-slug>.md` with: OAuth/API flow documentation, required env vars, code templates for client library and route handlers, rate limits and quotas, sandbox/test mode details, and a `## CLI Provisioning` section
+   - **Env var naming:** If the framework is Next.js, client-accessible env vars must use the `NEXT_PUBLIC_` prefix (Next.js inlines them at build time). Declare server-only vars in `env.server` and client-accessible vars in `env.client`. Example: an OAuth client ID used in browser-side redirect URLs needs `NEXT_PUBLIC_<SERVICE>_CLIENT_ID` in `env.client`, while the secret stays in `env.server`.
    - Set `ci_placeholders: {}` — external service env vars are runtime-only
      (guarded by 503 when missing) and must not appear in CI
    - Run `python3 scripts/validate-frontmatter.py` to verify (max 2 attempts)

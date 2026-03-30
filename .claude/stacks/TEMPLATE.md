@@ -88,11 +88,16 @@ VARIABLE_NAME=description-or-example
 
      For Supabase-style chainable APIs (e.g., `from()`), use a Proxy-based mock:
        const chainable = (terminal) => new Proxy(() => terminal, {
-         get: (_, prop) => prop === "then" ? undefined : chainable(terminal),
+         get: (_, prop) => {
+           if (prop === "then") return (resolve) => resolve(terminal);
+           if (prop === "single") return () => chainable({ data: null, error: null });
+           return chainable(terminal);
+         },
          apply: () => chainable(terminal),
        });
-     The `then` trap returning `undefined` prevents `await` from treating
-     the Proxy as a thenable (which causes infinite loops).
+     The `then` trap returns a proper thenable so `await` resolves to the
+     terminal value. The `single()` handler returns `{ data: null }` instead
+     of the default array shape.
 
      For auth-like namespaces with many methods (e.g., `auth`), use a Proxy
      fallback so unknown methods return a safe default instead of crashing:

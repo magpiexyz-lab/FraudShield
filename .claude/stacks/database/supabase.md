@@ -38,10 +38,22 @@ function createDemoClient() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const chainable = (terminal: unknown): any =>
     new Proxy(() => terminal, {
-      get: (_, prop) => (prop === "then" ? undefined : chainable(terminal)),
+      get: (_, prop) => {
+        if (prop === "then") return (resolve: (v: unknown) => void) => resolve(terminal);
+        if (prop === "single") return () => chainable({ data: null, error: null });
+        return chainable(terminal);
+      },
       apply: () => chainable(terminal),
     });
   const query = () => chainable({ data: [], error: null });
+  const demoUser = {
+    id: "demo-user-id",
+    email: "demo@example.com",
+    app_metadata: {},
+    user_metadata: {},
+    aud: "authenticated",
+    created_at: new Date().toISOString(),
+  };
   return {
     from: () => ({
       select: query,
@@ -53,21 +65,17 @@ function createDemoClient() {
     auth: new Proxy(
       {
         getUser: () =>
+          Promise.resolve({ data: { user: demoUser }, error: null }),
+        getSession: () =>
           Promise.resolve({
-            data: {
-              user: {
-                id: "demo-user-id",
-                email: "demo@example.com",
-                app_metadata: {},
-                user_metadata: {},
-                aud: "authenticated",
-                created_at: new Date().toISOString(),
-              },
-            },
+            data: { session: { user: demoUser, access_token: "demo-token", refresh_token: "demo-refresh", expires_at: Date.now() + 3600 } },
             error: null,
           }),
-        getSession: () =>
-          Promise.resolve({ data: { session: null }, error: null }),
+        signUp: () =>
+          Promise.resolve({
+            data: { user: demoUser, session: { access_token: "demo-token", refresh_token: "demo-refresh" } },
+            error: null,
+          }),
         onAuthStateChange: () => ({
           data: { subscription: { unsubscribe: () => {} } },
         }),
@@ -84,7 +92,7 @@ function createDemoClient() {
 }
 
 export function createClient() {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "true") return createDemoClient();
+  if (process.env.NEXT_PUBLIC_DEMO_MODE === "true" && process.env.NODE_ENV !== "production") return createDemoClient();
   return createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL ?? "https://placeholder.supabase.co",
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "placeholder-anon-key"
@@ -101,10 +109,22 @@ function createDemoClient() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const chainable = (terminal: unknown): any =>
     new Proxy(() => terminal, {
-      get: (_, prop) => (prop === "then" ? undefined : chainable(terminal)),
+      get: (_, prop) => {
+        if (prop === "then") return (resolve: (v: unknown) => void) => resolve(terminal);
+        if (prop === "single") return () => chainable({ data: null, error: null });
+        return chainable(terminal);
+      },
       apply: () => chainable(terminal),
     });
   const query = () => chainable({ data: [], error: null });
+  const demoUser = {
+    id: "demo-user-id",
+    email: "demo@example.com",
+    app_metadata: {},
+    user_metadata: {},
+    aud: "authenticated",
+    created_at: new Date().toISOString(),
+  };
   return {
     from: () => ({
       select: query,
@@ -116,21 +136,17 @@ function createDemoClient() {
     auth: new Proxy(
       {
         getUser: () =>
+          Promise.resolve({ data: { user: demoUser }, error: null }),
+        getSession: () =>
           Promise.resolve({
-            data: {
-              user: {
-                id: "demo-user-id",
-                email: "demo@example.com",
-                app_metadata: {},
-                user_metadata: {},
-                aud: "authenticated",
-                created_at: new Date().toISOString(),
-              },
-            },
+            data: { session: { user: demoUser, access_token: "demo-token", refresh_token: "demo-refresh", expires_at: Date.now() + 3600 } },
             error: null,
           }),
-        getSession: () =>
-          Promise.resolve({ data: { session: null }, error: null }),
+        signUp: () =>
+          Promise.resolve({
+            data: { user: demoUser, session: { access_token: "demo-token", refresh_token: "demo-refresh" } },
+            error: null,
+          }),
       },
       {
         get: (target, prop) =>

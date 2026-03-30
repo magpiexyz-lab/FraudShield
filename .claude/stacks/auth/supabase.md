@@ -561,6 +561,11 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // Bypass auth in demo mode (no Supabase credentials available)
+  if (process.env.DEMO_MODE === "true") {
+    return NextResponse.next();
+  }
+
   const response = NextResponse.next();
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -666,7 +671,7 @@ Supabase's built-in `signInWithOAuth()` handles CSRF protection via PKCE — no 
 
 1. **Generate state:** `state = nonce + "." + hmac_sha256(nonce + payload, OAUTH_STATE_SECRET)`
 2. **Store nonce** in a short-lived httpOnly cookie (TTL: 10 minutes max)
-3. **Verify on callback:** extract nonce from cookie, recompute HMAC, compare with constant-time comparison
+3. **Verify on callback:** extract nonce from cookie, recompute HMAC, compare using `crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(received))` — do NOT use `===` or `!==` string comparison, which is vulnerable to timing side-channel attacks
 4. **Reject** if nonce is missing, HMAC mismatches, or TTL expired
 
 Store `OAUTH_STATE_SECRET` in server environment variables (generate with `openssl rand -hex 32`). Without signing, an attacker can craft a callback URL with their own authorization code and trick a victim into linking the attacker's account.
@@ -688,28 +693,36 @@ function createDemoClient() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const chainable = (terminal: unknown): any =>
     new Proxy(() => terminal, {
-      get: (_, prop) => (prop === "then" ? undefined : chainable(terminal)),
+      get: (_, prop) => {
+        if (prop === "then") return (resolve: (v: unknown) => void) => resolve(terminal);
+        if (prop === "single") return () => chainable({ data: null, error: null });
+        return chainable(terminal);
+      },
       apply: () => chainable(terminal),
     });
+  const demoUser = {
+    id: "demo-user-id",
+    email: "demo@example.com",
+    app_metadata: {},
+    user_metadata: {},
+    aud: "authenticated",
+    created_at: new Date().toISOString(),
+  };
   return {
     auth: new Proxy(
       {
         getUser: () =>
+          Promise.resolve({ data: { user: demoUser }, error: null }),
+        getSession: () =>
           Promise.resolve({
-            data: {
-              user: {
-                id: "demo-user-id",
-                email: "demo@example.com",
-                app_metadata: {},
-                user_metadata: {},
-                aud: "authenticated",
-                created_at: new Date().toISOString(),
-              },
-            },
+            data: { session: { user: demoUser, access_token: "demo-token", refresh_token: "demo-refresh", expires_at: Date.now() + 3600 } },
             error: null,
           }),
-        getSession: () =>
-          Promise.resolve({ data: { session: null }, error: null }),
+        signUp: () =>
+          Promise.resolve({
+            data: { user: demoUser, session: { access_token: "demo-token", refresh_token: "demo-refresh" } },
+            error: null,
+          }),
         onAuthStateChange: () => ({
           data: { subscription: { unsubscribe: () => {} } },
         }),
@@ -725,7 +738,7 @@ function createDemoClient() {
 }
 
 export function createAuthClient() {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "true") return createDemoClient();
+  if (process.env.NEXT_PUBLIC_DEMO_MODE === "true" && process.env.NODE_ENV !== "production") return createDemoClient();
   return createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL ?? "https://placeholder.supabase.co",
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "placeholder-anon-key"
@@ -742,28 +755,36 @@ function createDemoClient() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const chainable = (terminal: unknown): any =>
     new Proxy(() => terminal, {
-      get: (_, prop) => (prop === "then" ? undefined : chainable(terminal)),
+      get: (_, prop) => {
+        if (prop === "then") return (resolve: (v: unknown) => void) => resolve(terminal);
+        if (prop === "single") return () => chainable({ data: null, error: null });
+        return chainable(terminal);
+      },
       apply: () => chainable(terminal),
     });
+  const demoUser = {
+    id: "demo-user-id",
+    email: "demo@example.com",
+    app_metadata: {},
+    user_metadata: {},
+    aud: "authenticated",
+    created_at: new Date().toISOString(),
+  };
   return {
     auth: new Proxy(
       {
         getUser: () =>
+          Promise.resolve({ data: { user: demoUser }, error: null }),
+        getSession: () =>
           Promise.resolve({
-            data: {
-              user: {
-                id: "demo-user-id",
-                email: "demo@example.com",
-                app_metadata: {},
-                user_metadata: {},
-                aud: "authenticated",
-                created_at: new Date().toISOString(),
-              },
-            },
+            data: { session: { user: demoUser, access_token: "demo-token", refresh_token: "demo-refresh", expires_at: Date.now() + 3600 } },
             error: null,
           }),
-        getSession: () =>
-          Promise.resolve({ data: { session: null }, error: null }),
+        signUp: () =>
+          Promise.resolve({
+            data: { user: demoUser, session: { access_token: "demo-token", refresh_token: "demo-refresh" } },
+            error: null,
+          }),
       },
       {
         get: (target, prop) =>
