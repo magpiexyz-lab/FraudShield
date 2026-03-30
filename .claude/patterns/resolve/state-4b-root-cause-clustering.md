@@ -25,14 +25,28 @@ Present in diagnosis report:
 - Uncorrelated: #C
 ```
 
+- **Write clustering artifact** (`.claude/resolve-clusters.json`):
+  ```bash
+  python3 -c "
+  import json
+  clusters = {
+      'clusters': [
+          {'primary_issue': 0, 'related_issues': [], 'root_cause': '<shared root cause>'}
+      ],
+      'uncorrelated': []
+  }
+  json.dump(clusters, open('.claude/resolve-clusters.json', 'w'), indent=2)
+  "
+  ```
+
 **POSTCONDITIONS:**
 - Issues grouped into clusters (or marked uncorrelated)
 - Each cluster has a designated primary issue
+- `.claude/resolve-clusters.json` exists
 
 **VERIFY:**
 ```bash
-# Root-cause clustering complete
-echo "Clustering complete"
+test -f .claude/resolve-clusters.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

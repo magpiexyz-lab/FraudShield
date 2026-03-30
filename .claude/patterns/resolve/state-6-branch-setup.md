@@ -19,7 +19,7 @@ If resolving multiple issues: use the lowest issue number and a general slug
 
 **VERIFY:**
 ```bash
-git branch --show-current | grep -q 'fix/resolve' && echo "OK" || echo "FAIL"
+git branch --show-current | grep -q 'fix/resolve'
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

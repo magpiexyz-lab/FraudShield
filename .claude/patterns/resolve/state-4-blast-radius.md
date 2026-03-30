@@ -18,14 +18,26 @@ The bug pattern found in Step 3 may exist in other template files:
    `blast_radius` entries with file:line and whether they are confirmed
    (same bug) or potential (similar pattern, different context)
 
+- **Record blast radius** in `resolve-context.json`:
+  ```bash
+  python3 -c "
+  import json
+  ctx = json.load(open('.claude/resolve-context.json'))
+  ctx['blast_radius'] = [
+      {'issue': 0, 'affected': [{'file': '<path>', 'line': 0, 'classification': 'confirmed'}]}
+  ]
+  json.dump(ctx, open('.claude/resolve-context.json', 'w'), indent=2)
+  "
+  ```
+
 **POSTCONDITIONS:**
 - Each actionable issue has a `blast_radius` list
 - Each entry has file:line and classification (confirmed or potential)
+- `blast_radius` field persisted to `resolve-context.json`
 
 **VERIFY:**
 ```bash
-# Blast radius analysis complete for all actionable issues
-echo "Blast radius recorded"
+python3 -c "import json; ctx=json.load(open('.claude/resolve-context.json')); assert isinstance(ctx.get('blast_radius'), list), 'blast_radius missing'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

@@ -54,13 +54,23 @@ Reply **approve** to proceed, or tell me what to change.
 
 If the user requests changes, revise the plan and present it again. Repeat until approved.
 
+- **Record approval** in `deploy-context.json`:
+  ```bash
+  python3 -c "
+  import json
+  ctx = json.load(open('.claude/deploy-context.json'))
+  ctx['approved'] = True
+  json.dump(ctx, open('.claude/deploy-context.json', 'w'), indent=2)
+  "
+  ```
+
 **POSTCONDITIONS:**
 - User has explicitly approved the deployment plan
+- `approved` field set to `true` in `deploy-context.json`
 
 **VERIFY:**
 ```bash
-# User message contains approval (e.g., "approve", "looks good", "proceed")
-echo "User approval received"
+python3 -c "import json; assert json.load(open('.claude/deploy-context.json')).get('approved') == True, 'approved not set'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

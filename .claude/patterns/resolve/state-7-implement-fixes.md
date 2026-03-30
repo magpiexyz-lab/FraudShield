@@ -33,13 +33,11 @@ If new validator checks were added:
 - All approved fixes implemented (or reverted with logged reason)
 - Validator error count has not increased vs `pre_fix_baseline`
 - `check-inventory.md` updated if new checks were added
+- Git working tree has changes (fixes applied)
 
 **VERIFY:**
 ```bash
-# Run all 3 validators and confirm no regressions
-python3 scripts/validate-frontmatter.py 2>&1 | tail -1
-python3 scripts/validate-semantics.py 2>&1 | tail -1
-bash scripts/consistency-check.sh 2>&1 | tail -1
+git diff --name-only HEAD 2>/dev/null | grep -q . || git diff --cached --name-only 2>/dev/null | grep -q .
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

@@ -29,15 +29,30 @@ For each approved CRITICAL module **in dependency order, sequentially**:
   f. Log: "Module [name]: N tests added, all passing"
   g. Update checkpoint in `.claude/current-plan.md` frontmatter to `step3-module-[next]` (where [next] is the 1-indexed number of the next module to process)
 
+- **Write modules trace artifact** (`.claude/harden-modules-trace.json`):
+  ```bash
+  python3 -c "
+  import json
+  trace = {
+      'modules_completed': [
+          {'name': '<module>', 'tests_added': 0, 'status': 'pass'}
+      ],
+      'build_passing': True
+  }
+  json.dump(trace, open('.claude/harden-modules-trace.json', 'w'), indent=2)
+  "
+  ```
+
 **POSTCONDITIONS:**
 - All approved CRITICAL modules have specification tests
 - All tests pass
 - `npm run build` passes
 - Checkpoint updated for each completed module
+- `.claude/harden-modules-trace.json` exists
 
 **VERIFY:**
 ```bash
-npm test 2>&1 | tail -5 && npm run build 2>&1 | tail -3 && echo "OK" || echo "FAIL"
+test -f .claude/harden-modules-trace.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

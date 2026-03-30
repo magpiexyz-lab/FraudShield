@@ -55,7 +55,7 @@ If none: "No new checks — pattern is unlikely to recur."
 
 **VERIFY:**
 ```bash
-gh pr view --json number,title,state 2>&1 | head -5
+gh pr view --json number 2>/dev/null
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

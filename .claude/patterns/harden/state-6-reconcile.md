@@ -20,10 +20,11 @@ Update checkpoint to `step3-reconcile`.
 - No duplicate utilities (3+ copies)
 - Import style normalized
 - Checkpoint updated to `step3-reconcile`
+- `on-touch.yaml` exists
 
 **VERIFY:**
 ```bash
-npm run build 2>&1 | tail -3 && echo "OK" || echo "FAIL"
+test -f experiment/on-touch.yaml && npm run build 2>/dev/null
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

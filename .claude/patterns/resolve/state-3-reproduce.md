@@ -36,15 +36,29 @@ no longer occurs. [explain what was checked]. Reopen if the issue persists."
 Close the issue and remove it from the actionable list. Continue with remaining
 issues.
 
+- **Write reproduction artifact** (`.claude/resolve-reproduction.json`):
+  ```bash
+  python3 -c "
+  import json
+  repro = {
+      'reproductions': [
+          {'issue': 0, 'divergence_point': '<file:line>', 'expected': '<...>', 'actual': '<...>', 'reproduced': True}
+      ],
+      'pre_fix_baseline': {'frontmatter': 0, 'semantics': 0, 'consistency': 0}
+  }
+  json.dump(repro, open('.claude/resolve-reproduction.json', 'w'), indent=2)
+  "
+  ```
+
 **POSTCONDITIONS:**
 - Each actionable issue has: `divergence_point`, `expected`, `actual`, `reproduction`
 - `pre_fix_baseline` captured from all 3 validators
 - Issues that cannot be reproduced are closed and removed from actionable list
+- `.claude/resolve-reproduction.json` exists
 
 **VERIFY:**
 ```bash
-# Validator baseline captured
-echo "Reproduction complete for all actionable issues"
+test -f .claude/resolve-reproduction.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

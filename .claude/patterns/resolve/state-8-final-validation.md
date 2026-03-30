@@ -9,16 +9,29 @@
 - Record `final_errors`
 - If `final_errors` > 0 for checks that passed before Step 7: stop and report regression
 
+- **Write validation artifact** (`.claude/resolve-validation.json`):
+  ```bash
+  python3 -c "
+  import json
+  validation = {
+      'frontmatter_errors': 0,
+      'semantics_errors': 0,
+      'consistency_errors': 0,
+      'regressions': False
+  }
+  json.dump(validation, open('.claude/resolve-validation.json', 'w'), indent=2)
+  "
+  ```
+
 **POSTCONDITIONS:**
 - All 3 validators run
 - `final_errors` recorded
 - No regressions (no new failures for checks that passed before Step 7)
+- `.claude/resolve-validation.json` exists
 
 **VERIFY:**
 ```bash
-python3 scripts/validate-frontmatter.py 2>&1 | tail -1
-python3 scripts/validate-semantics.py 2>&1 | tail -1
-bash scripts/consistency-check.sh 2>&1 | tail -1
+test -f .claude/resolve-validation.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

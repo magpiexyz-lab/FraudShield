@@ -20,13 +20,25 @@ For each resolved issue, evaluate:
 
 Skip if: trivial fix (typo) unlikely to recur.
 
+- **Write patterns-saved artifact** (`.claude/patterns-saved.json`):
+  ```bash
+  python3 -c "
+  import json
+  saved = {
+      'patterns_saved': [],  # list of pattern descriptions saved to memory
+      'skipped_reason': ''   # if skipped: rationale
+  }
+  json.dump(saved, open('.claude/patterns-saved.json', 'w'), indent=2)
+  "
+  ```
+
 **POSTCONDITIONS:**
 - Resolution patterns saved to auto memory (or skipped with rationale)
+- `.claude/patterns-saved.json` exists
 
 **VERIFY:**
 ```bash
-# Patterns saved or skip rationale recorded
-echo "Patterns saved"
+test -f .claude/patterns-saved.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

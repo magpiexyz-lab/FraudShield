@@ -48,6 +48,21 @@ When `deploy_mode == "update"`:
 2. **Added services** — gather full config using the same steps as initial mode, but only for the newly added stack categories. For example, if `stack.payment: stripe` was added since last deploy, collect Stripe keys.
 3. **Removed services** — skip entirely. These will be marked as `"orphaned"` in the manifest (STATE 5).
 
+- **Write config artifact** (`.claude/deploy-config.json`):
+  ```bash
+  python3 -c "
+  import json
+  config = {
+      'hosting_gathered': True,
+      'database_gathered': True,  # or False if skipped
+      'stripe_gathered': False,   # True if stack.payment present
+      'oauth_gathered': False,    # True if auth_providers present
+      'external_services': []     # list of {name, method: auto|manual}
+  }
+  json.dump(config, open('.claude/deploy-config.json', 'w'), indent=2)
+  "
+  ```
+
 **POSTCONDITIONS:**
 - Hosting config gathered (team/org/account) or skipped for surface-only
 - Database config gathered (org/region) or skipped
@@ -55,10 +70,11 @@ When `deploy_mode == "update"`:
 - Stripe keys collected (if applicable)
 - OAuth credentials collected or deferred to Step 3.5
 - External service credentials categorized (auto/manual)
+- `.claude/deploy-config.json` exists
 
 **VERIFY:**
 ```bash
-echo "Config gathering complete — verify in context"
+test -f .claude/deploy-config.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

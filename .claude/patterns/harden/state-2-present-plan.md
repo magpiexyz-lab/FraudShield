@@ -58,12 +58,11 @@ Wait for user choice. If "proceed": skip STATE 5 module loop (no modules to hard
 **POSTCONDITIONS:**
 - Hardening plan presented to user with all required sections
 - K (untested-critical count) determined
+- `.claude/current-plan.md` exists
 
 **VERIFY:**
 ```bash
-# Plan output contains all required sections: Current State, Dependency Order,
-# Will Harden (or K=0 message), On-Touch, Skip, Changes
-echo "Plan presented to user"
+test -f .claude/current-plan.md
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

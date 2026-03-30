@@ -56,8 +56,7 @@ Production quality mode is now active.
 
 **VERIFY:**
 ```bash
-# PR exists for current branch
-gh pr view --json url 2>/dev/null && echo "OK" || echo "FAIL"
+gh pr view --json number 2>/dev/null
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
