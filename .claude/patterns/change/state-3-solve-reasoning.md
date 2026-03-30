@@ -40,14 +40,14 @@ areas appear independent (no shared state, no shared imports), suggest to the us
 
 ### Light mode path
 
-Call `.claude/patterns/solve-reasoning.md` light mode (Steps 1-5).
+CALL: `.claude/patterns/solve-reasoning.md` — execute light mode (Steps 1-5).
 
 - **Inputs**: `$ARGUMENTS` as problem, exploration results from Step 2 as constraints
 - **Output**: stored in working memory, feeds into plan "How" sections in Phase 1
 
 ### Full mode path
 
-Call `.claude/patterns/solve-reasoning.md` full mode (Phases 1-6).
+CALL: `.claude/patterns/solve-reasoning.md` — execute full mode (Phases 1-6).
 
 - **Phase 1 agent customization**:
   - Agent 1 = change problem space (what needs to change, for whom, and why)
@@ -61,11 +61,30 @@ Call `.claude/patterns/solve-reasoning.md` full mode (Phases 1-6).
   - "Alternatives" -> Approaches table (if multi-layer Feature)
   - "Constraint Space" -> informs Step 3 classification and Step 4 prerequisite checks
 
+### Write solve trace artifact
+
+After completing the solve-reasoning pass (light or full), write `.claude/solve-trace.json`:
+```bash
+python3 -c "
+import json
+trace = {
+    'mode': '<light|full>',
+    'problem_decomposition': '<What/Why/Constraints summary>',
+    'constraint_enumeration': '<executor/mechanisms/hard/soft constraints>',
+    'solution_design': '<chosen mechanisms and rationale>',
+    'self_check': '<revision pass results>',
+    'output': '<recommended solution summary>'
+}
+json.dump(trace, open('.claude/solve-trace.json', 'w'), indent=2)
+"
+```
+
 **POSTCONDITIONS:**
 - `solve_depth` determined and stated with rationale
 - `solve_depth` persisted to `.claude/change-context.json` and matches formula
 - Solve-reasoning pass completed (light or full)
 - Output stored in working memory for plan generation
+- `.claude/solve-trace.json` exists with 5 required fields (`mode`, `problem_decomposition`, `constraint_enumeration`, `solution_design`, `self_check`, `output`)
 
 **VERIFY:**
 ```bash
@@ -78,6 +97,10 @@ pt = ctx.get('preliminary_type', '')
 aa = ctx.get('affected_areas', 0)
 if pt in ('Feature', 'Upgrade') and isinstance(aa, int) and aa >= 3:
     assert sd == 'full', 'Formula requires full (type=%s, areas=%s) but got %s' % (pt, aa, sd)
+st = json.load(open('.claude/solve-trace.json'))
+required = ['mode', 'problem_decomposition', 'constraint_enumeration', 'solution_design', 'self_check', 'output']
+missing = [k for k in required if k not in st]
+assert not missing, 'solve-trace.json missing keys: %s' % missing
 " && echo "OK" || echo "FAIL"
 ```
 

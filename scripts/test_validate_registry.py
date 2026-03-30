@@ -106,23 +106,50 @@ class TestStateEntryFormats:
 
 
 # ---------------------------------------------------------------------------
-# Current registry baseline (all entries are strings today)
+# Current registry baseline
 # ---------------------------------------------------------------------------
 
+# Object-format entries that have been intentionally upgraded
+KNOWN_OBJECT_ENTRIES = {
+    ("change", "2"),
+    ("change", "3"),
+    ("change", "6"),
+}
 
-class TestCurrentRegistryIsAllStrings:
-    def test_all_entries_are_strings(self):
+
+class TestRegistryBaseline:
+    def test_entry_count(self):
+        """Confirm total entry count hasn't changed unexpectedly."""
         reg = load_registry()
         count = 0
         for skill, states in reg.items():
             if skill == "agent_gates":
                 continue
-            for state_id, entry in states.items():
-                assert isinstance(entry, str), (
-                    f"{skill}.{state_id}: expected string in current registry"
-                )
-                count += 1
+            count += len(states)
         assert count >= 100, f"Expected ~147 state entries, found {count}"
+
+    def test_known_object_entries_are_objects(self):
+        """Entries listed in KNOWN_OBJECT_ENTRIES must be object format."""
+        reg = load_registry()
+        for skill, state_id in KNOWN_OBJECT_ENTRIES:
+            entry = reg[skill][state_id]
+            assert isinstance(entry, dict), (
+                f"{skill}.{state_id}: expected object format"
+            )
+
+    def test_non_listed_entries_are_strings(self):
+        """Entries NOT in KNOWN_OBJECT_ENTRIES must still be strings."""
+        reg = load_registry()
+        for skill, states in reg.items():
+            if skill == "agent_gates":
+                continue
+            for state_id, entry in states.items():
+                if (skill, state_id) in KNOWN_OBJECT_ENTRIES:
+                    continue
+                assert isinstance(entry, str), (
+                    f"{skill}.{state_id}: unexpected object entry — "
+                    f"add to KNOWN_OBJECT_ENTRIES if intentional"
+                )
 
 
 # ---------------------------------------------------------------------------

@@ -7,11 +7,24 @@
 
 **ACTIONS:**
 
-DO NOT write any code, create any files, or run any install commands during this phase.
+DO NOT write any code, create any files, or run any install commands during this phase (except validation artifacts below).
 
-Present the plan using the template for the classified type from `.claude/procedures/change-plans.md`. Populate "How" sections using exploration results from Step 2.
+Present the plan using the template for the classified type (REF: `.claude/procedures/change-plans.md`). Populate "How" sections using exploration results from Step 2.
 
-**Validate the plan against the codebase**: Before presenting the plan to the user, follow `.claude/procedures/plan-validation.md`. If validation flags conflicts, adjust the plan or add items to the Questions section prefixed with "[Validation]".
+CALL: `.claude/procedures/plan-validation.md` — **validate the plan against the codebase**. Execute all 5 checks before presenting the plan to the user. If validation flags conflicts, adjust the plan or add items to the Questions section prefixed with "[Validation]". Write the validation result artifact:
+```bash
+python3 -c "
+import json
+validation = {
+    'route_conflict': {'checked': True, 'result': '<pass|fail|skip>', 'details': '<explanation>'},
+    'schema_conflict': {'checked': True, 'result': '<pass|fail|skip>', 'details': '<explanation>'},
+    'import_availability': {'checked': True, 'result': '<pass|fail|skip>', 'details': '<explanation>'},
+    'component_reuse': {'checked': True, 'result': '<pass|fail|skip>', 'details': '<explanation>'},
+    'analytics_naming': {'checked': True, 'result': '<pass|fail|skip>', 'details': '<explanation>'}
+}
+json.dump(validation, open('.claude/plan-validation.json', 'w'), indent=2)
+"
+```
 
 **Plan structure validation** (before presenting for approval):
 - Feature plans classified as Multi-layer: verify `## Approaches` section exists
@@ -38,13 +51,22 @@ contents at the top.
 **POSTCONDITIONS:**
 - Plan generated from type-specific template
 - Plan validated against codebase (plan-validation.md)
+- `.claude/plan-validation.json` exists with all 5 checks having `checked` field
 - Plan structure validation passed
 - G2 Plan Gate passed
 - Plan displayed to user in response text
 
 **VERIFY:**
 ```bash
-echo "Plan presented to user — awaiting approval"
+python3 -c "
+import json
+d = json.load(open('.claude/plan-validation.json'))
+checks = ['route_conflict', 'schema_conflict', 'import_availability', 'component_reuse', 'analytics_naming']
+missing = [c for c in checks if c not in d]
+assert not missing, 'plan-validation.json missing checks: %s' % missing
+no_checked = [c for c in checks if d[c].get('checked') is None]
+assert not no_checked, 'plan-validation.json checks without checked field: %s' % no_checked
+"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

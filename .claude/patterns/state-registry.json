@@ -33,11 +33,27 @@
   "change": {
     "0": "test -f .claude/change-context.json && test -f package.json && test -f experiment/EVENTS.yaml",
     "1": "git branch --show-current | grep -q 'change/'",
-    "2": "python3 -c \"import json; d=json.load(open('.claude/change-context.json')); assert d.get('preliminary_type') is not None, 'preliminary_type missing'; assert isinstance(d.get('affected_areas'), int), 'affected_areas not int'\"",
-    "3": "python3 -c \"import json; ctx=json.load(open('.claude/change-context.json')); sd=ctx.get('solve_depth'); assert sd in ('light','full'), 'solve_depth=%s' % sd; pt=ctx.get('preliminary_type',''); aa=ctx.get('affected_areas',0); assert not (pt in ('Feature','Upgrade') and isinstance(aa,int) and aa>=3 and sd!='full'), 'Formula requires full (type=%s,areas=%s) but got %s' % (pt,aa,sd)\"",
+    "2": {
+      "verify": "python3 -c \"import json,os; d=json.load(open('.claude/exploration-trace.json')); required=['archetype','archetype_constraints','stacks_read','affected_files','affected_imports','exploration_steps_completed']; missing=[k for k in required if k not in d]; assert not missing,'exploration-trace.json missing: %s'%missing; bad=[f for f in d['affected_files'] if f and not os.path.exists(f)]; assert not bad,'affected_files not on disk: %s'%bad; ctx=json.load(open('.claude/change-context.json')); assert ctx.get('preliminary_type') is not None; assert isinstance(ctx.get('affected_areas'),int)\"",
+      "calls": [
+        {"path": "procedures/plan-exploration.md", "artifact": ".claude/exploration-trace.json"},
+        {"path": "archetypes/<type>.md", "artifact": ".claude/exploration-trace.json"}
+      ]
+    },
+    "3": {
+      "verify": "python3 -c \"import json; ctx=json.load(open('.claude/change-context.json')); sd=ctx.get('solve_depth'); assert sd in ('light','full'), 'solve_depth=%s' % sd; pt=ctx.get('preliminary_type',''); aa=ctx.get('affected_areas',0); assert not (pt in ('Feature','Upgrade') and isinstance(aa,int) and aa>=3 and sd!='full'), 'Formula requires full (type=%s,areas=%s) but got %s' % (pt,aa,sd); st=json.load(open('.claude/solve-trace.json')); required=['mode','problem_decomposition','constraint_enumeration','solution_design','self_check','output']; missing=[k for k in required if k not in st]; assert not missing,'solve-trace.json missing: %s'%missing\"",
+      "calls": [
+        {"path": "patterns/solve-reasoning.md", "artifact": ".claude/solve-trace.json"}
+      ]
+    },
     "4": "true",
     "5": "true",
-    "6": "true",
+    "6": {
+      "verify": "python3 -c \"import json; d=json.load(open('.claude/plan-validation.json')); checks=['route_conflict','schema_conflict','import_availability','component_reuse','analytics_naming']; missing=[c for c in checks if c not in d]; assert not missing,'plan-validation.json missing: %s'%missing; no_checked=[c for c in checks if d[c].get('checked') is None]; assert not no_checked,'checks without checked field: %s'%no_checked\"",
+      "calls": [
+        {"path": "procedures/plan-validation.md", "artifact": ".claude/plan-validation.json"}
+      ]
+    },
     "7": "test -f .claude/current-plan.md && grep -q 'checkpoint:' .claude/current-plan.md",
     "8": "grep -q 'Process Checklist' .claude/current-plan.md",
     "9": "grep -q 'checkpoint: phase2-step6' .claude/current-plan.md && python3 -c \"import json; pt=json.load(open('.claude/change-context.json')).get('preliminary_type',''); assert pt!='Feature' or '  - id:' in open('experiment/experiment.yaml').read(), 'Feature requires behaviors'\"",
