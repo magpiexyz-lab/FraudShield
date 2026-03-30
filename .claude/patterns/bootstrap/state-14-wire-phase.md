@@ -27,18 +27,28 @@ Check off in `.claude/current-plan.md`: `- [x] scaffold-wire completed`
 
 Verify scaffold-wire trace: `test -f .claude/agent-traces/scaffold-wire.json && python3 -c "import json;d=json.load(open('.claude/agent-traces/scaffold-wire.json'));assert d.get('status')=='complete';print('scaffold-wire trace: OK')"`. If trace missing: log "WARN: scaffold-wire did not write trace -- continuing with file-based verification".
 
+- **Write wire trace artifact** (`.claude/bootstrap-wire-trace.json`):
+  ```bash
+  python3 -c "
+  import json, glob, os
+  trace = {
+      'pages_wired': [os.path.dirname(f).split('/')[-1] for f in glob.glob('src/app/*/page.tsx')],
+      'api_routes_wired': [os.path.dirname(f).split('/')[-1] for f in glob.glob('src/app/api/*/route.ts')],
+      'checkpoint': 'awaiting-verify'
+  }
+  json.dump(trace, open('.claude/bootstrap-wire-trace.json', 'w'), indent=2)
+  "
+  ```
+
 **POSTCONDITIONS:**
 - API routes created (if mutation behaviors exist)
 - Wire integration complete
 - Checkpoint updated to `awaiting-verify`
+- `.claude/bootstrap-wire-trace.json` exists with wiring details
 
 **VERIFY:**
 ```bash
-# Archetype-specific:
-# web-app with mutations: ls src/app/api/ shows route files
-# service: ls src/app/api/ shows route files
-# cli: commands wired
-echo "Wire phase complete"
+python3 -c "import json; d=json.load(open('.claude/bootstrap-wire-trace.json')); assert 'checkpoint' in d, 'checkpoint missing'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

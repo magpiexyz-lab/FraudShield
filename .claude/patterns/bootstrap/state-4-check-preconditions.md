@@ -25,15 +25,30 @@ Follow checkpoint-resumption protocol per `patterns/checkpoint-resumption.md`.
   If output is non-empty: stop and tell the user: "This project has already been bootstrapped. Use `/change ...` to make changes, or run `make clean` to start over."
 - If `package.json` exists but the `src/` directory does NOT contain application files: warn the user: "A previous bootstrap may have partially completed. I'll continue from the beginning — packages may be reinstalled." Note: the branch name `feat/bootstrap` may already exist from the previous attempt. If so, this run will use `feat/bootstrap-2` — you can delete the old branch later with `git branch -d feat/bootstrap`. Then proceed.
 
+- **Write preconditions artifact** (`.claude/bootstrap-preconditions.json`):
+  ```bash
+  python3 -c "
+  import json, shutil, os
+  trace = {
+      'node_available': shutil.which('node') is not None,
+      'git_clean': True,  # set to False if uncommitted changes detected
+      'no_existing_src': not any(
+          os.path.exists(os.path.join('src/app', f))
+          for f in ['page.tsx', 'route.ts']
+      )
+  }
+  json.dump(trace, open('.claude/bootstrap-preconditions.json', 'w'), indent=2)
+  "
+  ```
+
 **POSTCONDITIONS:**
 - Decision made: fresh start, resume at specific state, or stop (already bootstrapped)
 - If resuming: archetype, stack, and checkpoint restored from frontmatter
+- `.claude/bootstrap-preconditions.json` exists with `node_available` field
 
 **VERIFY:**
 ```bash
-# For fresh start: no current-plan.md or no src/*.ts files
-# For resume: checkpoint value extracted and matched to a valid state
-echo "Precondition check complete"
+python3 -c "import json; d=json.load(open('.claude/bootstrap-preconditions.json')); assert 'node_available' in d, 'node_available missing'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

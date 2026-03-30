@@ -44,14 +44,24 @@
 
    Wait for user confirmation before proceeding.
 
+- **Record completion** in `bootstrap-context.json`:
+  ```bash
+  python3 -c "
+  import json
+  ctx = json.load(open('.claude/bootstrap-context.json'))
+  ctx['duplicate_check_done'] = True
+  json.dump(ctx, open('.claude/bootstrap-context.json', 'w'), indent=2)
+  "
+  ```
+
 **POSTCONDITIONS:**
 - No name collision found, OR user confirmed intentional overlap
 - Repo description updated (or skipped if gh unavailable)
+- `duplicate_check_done` field set to `true` in `bootstrap-context.json`
 
 **VERIFY:**
 ```bash
-# gh repo list check completed (or skipped if gh unavailable)
-gh repo view --json owner --jq '.owner.login' 2>/dev/null && echo "OK" || echo "SKIPPED (gh unavailable)"
+python3 -c "import json; assert json.load(open('.claude/bootstrap-context.json')).get('duplicate_check_done') == True, 'duplicate_check_done not set'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

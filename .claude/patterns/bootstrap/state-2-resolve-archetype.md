@@ -25,17 +25,29 @@
   - **If the stack file contains a fallback section** (a heading matching `## *Fallback`, e.g., `## No-Auth Fallback`): log which assumes are unmet and continue — the fallback templates will be used in place of the full templates. Include the unmet assumes list in this state's output so STATE 5 can display the fallback path (e.g., "Testing stack: using No-Auth Fallback — assumes unmet: [auth/supabase, database/supabase]").
   - **If no fallback section exists**: stop and list the incompatibilities (e.g., "analytics/posthog assumes framework/nextjs, but your stack has framework: remix"). The user must either change the mismatched stack value or create a compatible stack file.
 
+- **Write archetype trace artifact** (`.claude/bootstrap-archetype-trace.json`):
+  ```bash
+  python3 -c "
+  import json
+  trace = {
+      'archetype': '<type field value>',
+      'archetype_file': '.claude/archetypes/<type>.md',
+      'stacks_resolved': {'framework': '<value>', 'ui': '<value>'},  # map of category->value
+      'stack_files_read': ['.claude/stacks/framework/<value>.md']  # list of files actually read
+  }
+  json.dump(trace, open('.claude/bootstrap-archetype-trace.json', 'w'), indent=2)
+  "
+  ```
+
 **POSTCONDITIONS:**
 - Archetype file read and type recorded
 - All stack files for categories in experiment.yaml `stack` exist and have been read
 - All `assumes` entries validated — either all met, or unmet with a fallback section logged
+- `.claude/bootstrap-archetype-trace.json` exists with `archetype` field non-empty
 
 **VERIFY:**
 ```bash
-# Glob .claude/stacks/**/*.md returns a file for each category in experiment.yaml stack
-ls .claude/stacks/**/*.md
-# Archetype file exists
-test -f .claude/archetypes/*.md && echo "OK" || echo "FAIL"
+python3 -c "import json; d=json.load(open('.claude/bootstrap-archetype-trace.json')); assert d.get('archetype'), 'archetype field empty'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

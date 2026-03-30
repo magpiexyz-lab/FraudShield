@@ -99,12 +99,11 @@ If no behaviors have `actor: system` or `actor: cron`: "None defined — all beh
 
 **POSTCONDITIONS:**
 - Plan displayed to user with all required sections
+- `.claude/current-plan.md` exists (plan is the artifact)
 
 **VERIFY:**
 ```bash
-# Plan output contains all required sections: Pages/Endpoints/Commands (per archetype),
-# Behaviors, Analytics Events, Golden Path/API Flow/Command Flow (per archetype), Technical Decisions
-echo "Plan presented to user"
+test -f .claude/current-plan.md
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

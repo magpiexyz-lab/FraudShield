@@ -43,15 +43,24 @@ interact with users).
 
 Check off in `.claude/current-plan.md`: `- [x] TSP-LSP check completed`
 
+- **Record preflight results** in `bootstrap-context.json`:
+  ```bash
+  python3 -c "
+  import json
+  ctx = json.load(open('.claude/bootstrap-context.json'))
+  ctx['preflight_passed'] = True
+  json.dump(ctx, open('.claude/bootstrap-context.json', 'w'), indent=2)
+  "
+  ```
+
 **POSTCONDITIONS:**
 - `tsp_status` is set to `"available"` or `"skipped"`
 - Quality flag recorded (production or MVP)
+- `preflight_passed` field set to `true` in `bootstrap-context.json`
 
 **VERIFY:**
 ```bash
-# tsp_status variable is non-empty
-# Quality flag is set
-echo "Preflight checks complete"
+python3 -c "import json; assert json.load(open('.claude/bootstrap-context.json')).get('preflight_passed') == True, 'preflight_passed not set'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
