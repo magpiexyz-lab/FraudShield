@@ -155,7 +155,7 @@ verify_extended_checks() {
       if [[ ! -f "$TRACES_DIR/build-info-collector.json" ]]; then
         ERRORS+=("build-info-collector.json trace missing — Phase 1 has not completed")
       fi
-      require_trace_verdict"$TRACES_DIR/build-info-collector.json" "agent may still be running or exhausted turns"
+      require_trace_verdict "$TRACES_DIR/build-info-collector.json" "agent may still be running or exhausted turns"
       check_trace_run_id "$TRACES_DIR/build-info-collector.json"
 
       local SCOPE
@@ -165,7 +165,7 @@ verify_extended_checks() {
           if [[ ! -f "$TRACES_DIR/$AGENT.json" ]]; then
             ERRORS+=("$AGENT.json trace missing — Phase 1 agent incomplete (scope=$SCOPE)")
           else
-            require_trace_verdict"$TRACES_DIR/$AGENT.json" "agent may still be running or exhausted turns"
+            require_trace_verdict "$TRACES_DIR/$AGENT.json" "agent may still be running or exhausted turns"
             check_trace_run_id "$TRACES_DIR/$AGENT.json"
           fi
         done
@@ -197,7 +197,7 @@ else:
           if [ ! -f "$TRACES_DIR/design-consistency-checker.json" ]; then
             ERRORS+=("design-consistency-checker.json trace missing — spawn consistency checker before ux-journeyer")
           else
-            require_trace_verdict"$TRACES_DIR/design-consistency-checker.json" "consistency checker may still be running or exhausted turns"
+            require_trace_verdict "$TRACES_DIR/design-consistency-checker.json" "consistency checker may still be running or exhausted turns"
           fi
         fi
       fi
@@ -209,7 +209,7 @@ else:
       if [[ ! -f "$TRACES_DIR/build-info-collector.json" ]]; then
         ERRORS+=("build-info-collector.json trace missing — Phase 1 has not completed")
       fi
-      require_trace_verdict"$TRACES_DIR/build-info-collector.json" "agent may still be running or exhausted turns"
+      require_trace_verdict "$TRACES_DIR/build-info-collector.json" "agent may still be running or exhausted turns"
       check_trace_run_id "$TRACES_DIR/build-info-collector.json"
 
       local SF_SCOPE SF_ARCH
@@ -220,7 +220,7 @@ else:
           if [[ ! -f "$TRACES_DIR/$AGENT.json" ]]; then
             ERRORS+=("$AGENT.json trace missing — Phase 2 agent incomplete (scope=$SF_SCOPE, archetype=$SF_ARCH)")
           else
-            require_trace_verdict"$TRACES_DIR/$AGENT.json" "agent may still be running or exhausted turns"
+            require_trace_verdict "$TRACES_DIR/$AGENT.json" "agent may still be running or exhausted turns"
             check_trace_run_id "$TRACES_DIR/$AGENT.json"
           fi
         done
@@ -240,7 +240,7 @@ else:
         if [[ ! -f "$TRACES_DIR/behavior-verifier.json" ]]; then
           ERRORS+=("behavior-verifier.json trace missing — Phase 1 agent incomplete (scope=$SF_SCOPE)")
         fi
-        require_trace_verdict"$TRACES_DIR/behavior-verifier.json" "agent may still be running or exhausted turns"
+        require_trace_verdict "$TRACES_DIR/behavior-verifier.json" "agent may still be running or exhausted turns"
         check_trace_run_id "$TRACES_DIR/behavior-verifier.json"
       fi
       check_efficiency_directives
@@ -306,7 +306,7 @@ else: print('no')
         if [[ ! -f "$TRACES_DIR/design-critic-shared.json" ]]; then
           ERRORS+=("design-critic-shared.json missing — per-page agents reported shared-component issues")
         else
-          require_trace_verdict"$TRACES_DIR/design-critic-shared.json" "shared-component agent may still be running"
+          require_trace_verdict "$TRACES_DIR/design-critic-shared.json" "shared-component agent may still be running"
         fi
       fi
       check_efficiency_directives

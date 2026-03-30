@@ -1,0 +1,185 @@
+diff --git a/.claude/hooks/agent-state-gate.sh b/.claude/hooks/agent-state-gate.sh
+index 8aefa33..3d1bc36 100755
+--- a/.claude/hooks/agent-state-gate.sh
++++ b/.claude/hooks/agent-state-gate.sh
+@@ -155,7 +155,7 @@ verify_extended_checks() {
+       if [[ ! -f "$TRACES_DIR/build-info-collector.json" ]]; then
+         ERRORS+=("build-info-collector.json trace missing — Phase 1 has not completed")
+       fi
+-      require_trace_verdict"$TRACES_DIR/build-info-collector.json" "agent may still be running or exhausted turns"
++      require_trace_verdict "$TRACES_DIR/build-info-collector.json" "agent may still be running or exhausted turns"
+       check_trace_run_id "$TRACES_DIR/build-info-collector.json"
+ 
+       local SCOPE
+@@ -165,7 +165,7 @@ verify_extended_checks() {
+           if [[ ! -f "$TRACES_DIR/$AGENT.json" ]]; then
+             ERRORS+=("$AGENT.json trace missing — Phase 1 agent incomplete (scope=$SCOPE)")
+           else
+-            require_trace_verdict"$TRACES_DIR/$AGENT.json" "agent may still be running or exhausted turns"
++            require_trace_verdict "$TRACES_DIR/$AGENT.json" "agent may still be running or exhausted turns"
+             check_trace_run_id "$TRACES_DIR/$AGENT.json"
+           fi
+         done
+@@ -197,7 +197,7 @@ else:
+           if [ ! -f "$TRACES_DIR/design-consistency-checker.json" ]; then
+             ERRORS+=("design-consistency-checker.json trace missing — spawn consistency checker before ux-journeyer")
+           else
+-            require_trace_verdict"$TRACES_DIR/design-consistency-checker.json" "consistency checker may still be running or exhausted turns"
++            require_trace_verdict "$TRACES_DIR/design-consistency-checker.json" "consistency checker may still be running or exhausted turns"
+           fi
+         fi
+       fi
+@@ -209,7 +209,7 @@ else:
+       if [[ ! -f "$TRACES_DIR/build-info-collector.json" ]]; then
+         ERRORS+=("build-info-collector.json trace missing — Phase 1 has not completed")
+       fi
+-      require_trace_verdict"$TRACES_DIR/build-info-collector.json" "agent may still be running or exhausted turns"
++      require_trace_verdict "$TRACES_DIR/build-info-collector.json" "agent may still be running or exhausted turns"
+       check_trace_run_id "$TRACES_DIR/build-info-collector.json"
+ 
+       local SF_SCOPE SF_ARCH
+@@ -220,7 +220,7 @@ else:
+           if [[ ! -f "$TRACES_DIR/$AGENT.json" ]]; then
+             ERRORS+=("$AGENT.json trace missing — Phase 2 agent incomplete (scope=$SF_SCOPE, archetype=$SF_ARCH)")
+           else
+-            require_trace_verdict"$TRACES_DIR/$AGENT.json" "agent may still be running or exhausted turns"
++            require_trace_verdict "$TRACES_DIR/$AGENT.json" "agent may still be running or exhausted turns"
+             check_trace_run_id "$TRACES_DIR/$AGENT.json"
+           fi
+         done
+@@ -240,7 +240,7 @@ else:
+         if [[ ! -f "$TRACES_DIR/behavior-verifier.json" ]]; then
+           ERRORS+=("behavior-verifier.json trace missing — Phase 1 agent incomplete (scope=$SF_SCOPE)")
+         fi
+-        require_trace_verdict"$TRACES_DIR/behavior-verifier.json" "agent may still be running or exhausted turns"
++        require_trace_verdict "$TRACES_DIR/behavior-verifier.json" "agent may still be running or exhausted turns"
+         check_trace_run_id "$TRACES_DIR/behavior-verifier.json"
+       fi
+       check_efficiency_directives
+@@ -306,7 +306,7 @@ else: print('no')
+         if [[ ! -f "$TRACES_DIR/design-critic-shared.json" ]]; then
+           ERRORS+=("design-critic-shared.json missing — per-page agents reported shared-component issues")
+         else
+-          require_trace_verdict"$TRACES_DIR/design-critic-shared.json" "shared-component agent may still be running"
++          require_trace_verdict "$TRACES_DIR/design-critic-shared.json" "shared-component agent may still be running"
+         fi
+       fi
+       check_efficiency_directives
+diff --git a/.claude/hooks/state-completion-gate.sh b/.claude/hooks/state-completion-gate.sh
+index 7dbf751..86763b0 100755
+--- a/.claude/hooks/state-completion-gate.sh
++++ b/.claude/hooks/state-completion-gate.sh
+@@ -18,7 +18,7 @@ fi
+ 
+ # Extract skill name and state identifier from: advance-state.sh <skill> <state>
+ SKILL=$(echo "$COMMAND" | grep -oE 'advance-state\.sh[[:space:]]+([a-z-]+)' | awk '{print $NF}' || echo "")
+-STATE_ID=$(echo "$COMMAND" | grep -oE 'advance-state\.sh[[:space:]]+[a-z-]+[[:space:]]+([0-9a-z]+)' | awk '{print $NF}' || echo "")
++STATE_ID=$(echo "$COMMAND" | grep -oE 'advance-state\.sh[[:space:]]+[a-z-]+[[:space:]]+([0-9a-z_]+)' | awk '{print $NF}' || echo "")
+ 
+ if [[ -z "$SKILL" || -z "$STATE_ID" ]]; then
+   exit 0
+diff --git a/.claude/review-complete.json b/.claude/review-complete.json
+index 076257c..c148103 100644
+--- a/.claude/review-complete.json
++++ b/.claude/review-complete.json
+@@ -1,10 +1,10 @@
+ {
+   "branch": "chore/review-fixes-9",
+-  "timestamp": "2026-03-27T12:16:42Z",
+-  "iterations": 3,
+-  "yield": 0.6,
++  "timestamp": "2026-03-28T04:53:00Z",
++  "iterations": 2,
++  "yield": 1.0,
+   "baseline_errors": 0,
+   "final_errors": 0,
+-  "findings_fixed": 3,
+-  "findings_disputed": 4
++  "findings_fixed": 2,
++  "findings_disputed": 0
+ }
+diff --git a/.claude/review-context.json b/.claude/review-context.json
+index b961643..8d66dec 100644
+--- a/.claude/review-context.json
++++ b/.claude/review-context.json
+@@ -1 +1 @@
+-{"skill": "review", "branch": "main", "timestamp": "2026-03-27T08:32:35Z", "run_id": "review-2026-03-27T08:32:35Z", "completed_states": [0, 1, "2a", "2b", "2c", "2d", "2e", "2f", 3, 4], "observation_backlog": [444], "prior_precision": {"A": 100, "B": 67, "C": 0, "disputed_rate": 44, "skipped_rate": 22, "reverted_rate": 0}}
+\ No newline at end of file
++{"skill": "review", "branch": "main", "timestamp": "2026-03-27T16:14:58Z", "run_id": "review-2026-03-27T16:14:58Z", "completed_states": [0, 1, "2a", "2b", "2c", "2d", "2e", "2f", 3, 4]}
+\ No newline at end of file
+diff --git a/scripts/check-inventory.md b/scripts/check-inventory.md
+index 1e71c9a..c90fe92 100644
+--- a/scripts/check-inventory.md
++++ b/scripts/check-inventory.md
+@@ -1,7 +1,7 @@
+ # Check Inventory
+ 
+ Scannable reference listing all automated checks by name, grouped by validator.
+-78 active checks consolidated into 74 inventory rows.
++80 active checks consolidated into 76 inventory rows.
+ Checks 3 and 7 are archetype-aware — they read `required_experiment_fields` and `excluded_stacks` from archetype frontmatter.
+ 
+ Last updated: 2026-03-23
+@@ -93,7 +93,7 @@ better enforced by the scoped LLM review (`scripts/scoped-review-prompt.md`).
+ 
+ ## consistency-check.sh
+ 
+-14 active checks consolidated into 6 rows. Three checks removed (scripts #8, #11, #12). Checks #3 and #13 scan commands, agents, and procedures.
++16 active checks consolidated into 8 rows. Three checks removed (scripts #8, #11, #12). Checks #3 and #13 scan commands, agents, and procedures.
+ 
+ | Name | Description | Scripts |
+ |------|-------------|---------|
+@@ -103,6 +103,8 @@ better enforced by the scoped LLM review (`scripts/scoped-review-prompt.md`).
+ | Forbid hardcoded framework paths in change skill | change.md must not hardcode API or types paths | #7 |
+ | Require verify.md references in code-writing skill content | Code-writing skill content (not just frontmatter) must reference verify.md | #10 |
+ | Forbid hardcoded analytics provider names in skill section headings | Skill, agent, and procedure files must not contain `PostHog` (case-insensitive) in `###` section headings — provider names belong in the analytics stack file | #13 |
++| Verify lib.sh function calls have space before arguments | Hook scripts (excluding lib.sh) must not call lib.sh functions with the argument concatenated to the function name (e.g., `func"$arg"` instead of `func "$arg"`) | #14 |
++| Verify STATE_ID regex character class matches across hooks | state-completion-gate.sh and phase-boundary-gate.sh must use the same character class for STATE_ID extraction from advance-state.sh commands | #15 |
+ 
+ ## Cross-validator overlaps
+ 
+diff --git a/scripts/consistency-check.sh b/scripts/consistency-check.sh
+index 3b34209..32238b0 100755
+--- a/scripts/consistency-check.sh
++++ b/scripts/consistency-check.sh
+@@ -100,6 +100,8 @@ done
+ # 12. (removed)
+ 
+ # 13. Hardcoded analytics provider names in skill, agent, and procedure section headings
++# (Check numbers 14-15 added below)
++
+ for f in .claude/commands/*.md .claude/agents/*.md .claude/procedures/*.md; do
+   [ -f "$f" ] || continue
+   if grep -qiE '^###.*PostHog' "$f"; then
+@@ -110,6 +112,31 @@ for f in .claude/commands/*.md .claude/agents/*.md .claude/procedures/*.md; do
+   fi
+ done
+ 
++# 14. Verify lib.sh function calls have space before arguments in hook scripts
++LIB_FUNCS="require_trace_verdict|check_trace_run_id|check_trace_verdict|check_postcondition_artifacts|check_tier1_retry_complete|check_efficiency_directives|check_build_result|check_file_boundary|check_verdict_gates|check_skill_completion|check_block_verdicts|rerun_postconditions|require_trace_verdict|handle_validation|deny_errors"
++for f in .claude/hooks/*.sh; do
++  [ -f "$f" ] || continue
++  [ "$(basename "$f")" = "lib.sh" ] && continue
++  if grep -qE "($LIB_FUNCS)\"" "$f"; then
++    echo "FAIL: $f — function call missing space before argument (concatenates function name with argument)"
++    grep -nE "($LIB_FUNCS)\"" "$f" | head -5
++    echo ""
++    ERRORS=$((ERRORS + 1))
++  fi
++done
++
++# 15. Verify STATE_ID regex character class matches between state-completion-gate and phase-boundary-gate
++SCG=".claude/hooks/state-completion-gate.sh"
++PBG=".claude/hooks/phase-boundary-gate.sh"
++if [ -f "$SCG" ] && [ -f "$PBG" ]; then
++  SCG_CLASS=$(grep -oE 'advance-state.*\[0-9a-z[_]*\]' "$SCG" | head -1 | grep -oE '\[0-9a-z[_]*\]' || echo "")
++  PBG_CLASS=$(grep -oE 'advance-state.*\[0-9a-z[_]*\]' "$PBG" | head -1 | grep -oE '\[0-9a-z[_]*\]' || echo "")
++  if [ -n "$SCG_CLASS" ] && [ -n "$PBG_CLASS" ] && [ "$SCG_CLASS" != "$PBG_CLASS" ]; then
++    echo "FAIL: STATE_ID regex mismatch — state-completion-gate.sh uses $SCG_CLASS, phase-boundary-gate.sh uses $PBG_CLASS"
++    ERRORS=$((ERRORS + 1))
++  fi
++fi
++
+ echo ""
+ if [ "$ERRORS" -gt 0 ]; then
+   echo "FAILED: $ERRORS violation(s). Move facts to canonical sources (experiment/EVENTS.yaml, stack files)."
