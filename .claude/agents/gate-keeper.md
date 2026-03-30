@@ -99,6 +99,9 @@ cat > .claude/gate-verdicts/<gate-id>.json << 'VEOF'
   "timestamp": "<ISO 8601>",
   "checks": [
     {"name": "<check>", "status": "<PASS|BLOCK>", "observed": "<value>"}
+  ],
+  "quality_checks": [
+    {"name": "<quality check name>", "result": "<pass|fail|skip>", "details": "<observed value or skip reason>"}
   ]
 }
 VEOF
@@ -109,6 +112,7 @@ Rules:
 - The `branch` field records the branch at verdict time — hooks use this for freshness validation.
 - This write is mandatory for every gate invocation. If the Bash write fails, report BLOCK.
 - `severity` defaults to `"critical"` for BLOCK verdicts. Set to `"warning"` only for informational checks that don't affect process compliance. Hooks treat both as blocking (non-overridable).
+- `quality_checks` records the results of quality dimension checks (checks 5+ in G1, 8+ in G2, 5+ in G3, 9+ in BG1, 19 in BG2). This field is additive — hooks only read `verdict` and `branch`, so `quality_checks` does not affect gate pass/fail decisions in hooks. It provides observability into artifact quality for Q-score computation and debugging.
 
 ---
 
@@ -122,6 +126,8 @@ Verify before any changes begin:
 2. `experiment/EVENTS.yaml` exists
 3. The change description ($ARGUMENTS, from the invocation prompt) is non-empty
 4. `npm run build` passes (skip if change type is Fix)
+5. **Quality: exploration trace** — if `.claude/exploration-trace.json` exists: (a) `affected_files` contains at least 1 entry that exists on disk — run `python3 -c "import json,os; d=json.load(open('.claude/exploration-trace.json')); af=d.get('affected_files',[]); print('PASS: %d files' % len([f for f in af if os.path.exists(f)]) if any(os.path.exists(f) for f in af) else 'BLOCK: no affected_files exist on disk')"` (b) `stacks_read` is non-empty — BLOCK if empty list
+6. **Quality: stacks match** — if `.claude/exploration-trace.json` exists: read `stacks_read` list and verify at least one entry's category matches a key in experiment.yaml `stack` — run `python3 -c "import json,yaml; t=json.load(open('.claude/exploration-trace.json')); stk=yaml.safe_load(open('experiment/experiment.yaml')).get('stack',{}); cats=[s.split('/')[0] for s in t.get('stacks_read',[]) if '/' in s]; print('PASS' if any(c in str(stk) for c in cats) else 'BLOCK: stacks_read does not match experiment.yaml stack')"` (skip if exploration-trace.json does not exist)
 
 ### G2 Plan Gate
 
@@ -134,6 +140,9 @@ Verify after Phase 1 plan creation:
 5. Frontmatter `scope` matches type-scope mapping: Feature/Upgrade→full, Fix→security, Polish→visual, Analytics/Test→build
 6. No source code modified yet — `git diff --name-only main...HEAD` shows only `.claude/` and `experiment/` paths
 7. `.claude/current-plan.md` contains `## Exploration Summary` section — grep for the heading
+8. **Quality: plan validation complete** — if `.claude/plan-validation.json` exists: all 5 checks (`route_conflict`, `schema_conflict`, `import_availability`, `component_reuse`, `analytics_naming`) have `checked: true` — run `python3 -c "import json; d=json.load(open('.claude/plan-validation.json')); checks=['route_conflict','schema_conflict','import_availability','component_reuse','analytics_naming']; missing=[c for c in checks if not d.get(c,{}).get('checked')]; print('PASS: all 5 checks complete' if not missing else 'BLOCK: unchecked: '+','.join(missing))"` (skip if plan-validation.json does not exist)
+9. **Quality: plan validation failures flagged** — if `.claude/plan-validation.json` exists and any check has `result: "fail"`: note in Observed column "WARN: plan-validation has failures: [list]" — this is informational (PASS status), but the verdict file `quality_checks` array must include this finding
+10. **Quality: plan references constraints** — if `.claude/exploration-trace.json` exists: grep `.claude/current-plan.md` for at least one term from `archetype_constraints` — run `python3 -c "import json; t=json.load(open('.claude/exploration-trace.json')); cs=t.get('archetype_constraints',[]); plan=open('.claude/current-plan.md').read().lower(); found=[c for c in cs if c.lower() in plan]; print('PASS: %d constraints referenced' % len(found) if found else 'BLOCK: plan does not reference any archetype constraints')"` (skip if exploration-trace.json does not exist)
 
 ### G3 Spec Gate
 
@@ -147,6 +156,7 @@ Verify after specs are updated:
    - **Fix/Polish/Analytics**: no experiment.yaml behavior changes required
    - **Test**: `stack.testing` present in experiment.yaml if adding tests for first time
 4. If `quality: production` in experiment.yaml: `stack.testing` must be present
+5. **Quality: solve trace complete** — if `.claude/solve-trace.json` exists: all 5 required fields (`mode`, `problem_decomposition`, `constraint_enumeration`, `solution_design`, `self_check`, `output`) are non-empty — run `python3 -c "import json; d=json.load(open('.claude/solve-trace.json')); required=['mode','problem_decomposition','constraint_enumeration','solution_design','self_check','output']; empty=[k for k in required if not d.get(k)]; print('PASS: all fields populated' if not empty else 'BLOCK: empty fields: '+','.join(empty))"` (skip if solve-trace.json does not exist)
 
 ### G4 Implementation Gate
 
@@ -200,6 +210,9 @@ Verify experiment.yaml validation was thorough:
 7. If `quality: production` → `stack.testing` must be present
 8. If `variants` present → ≥2 entries, each has slug/headline/subheadline/cta/pain_points, all slugs unique
 
+9. **Quality: archetype trace matches** — `.claude/bootstrap-archetype-trace.json` exists and `archetype` field matches `type` in `experiment/experiment.yaml` — run `python3 -c "import json,yaml; t=json.load(open('.claude/bootstrap-archetype-trace.json')); e=yaml.safe_load(open('experiment/experiment.yaml')); print('PASS' if t.get('archetype')==e.get('type','web-app') else 'BLOCK: trace=%s, yaml=%s' % (t.get('archetype'),e.get('type')))"` (skip if bootstrap-archetype-trace.json does not exist)
+10. **Quality: validation trace valid** — `.claude/bootstrap-validation-trace.json` exists and `experiment_valid` is `true` — run `python3 -c "import json; d=json.load(open('.claude/bootstrap-validation-trace.json')); print('PASS' if d.get('experiment_valid')==True else 'BLOCK: experiment_valid=%s' % d.get('experiment_valid'))"` (skip if bootstrap-validation-trace.json does not exist)
+
 ### BG2 Orchestration Gate
 
 Verify scaffold subagents produced expected outputs. File checks first, build last:
@@ -223,6 +236,8 @@ Verify scaffold subagents produced expected outputs. File checks first, build la
 16. (web-app only) **Content quality floor** — for each golden_path page (excluding `auth/*` routes), `src/app/<page>/page.tsx` has ≥15 lines (`wc -l`) and does not contain `TODO` or `PLACEHOLDER` case-insensitive markers (`grep -i`). BLOCK if violated, listing the offending pages.
 17. (web-app only) **CTA presence** — `src/app/page.tsx` OR `src/components/landing-content.tsx` contains at least one `<Button` or `<Link` component (`grep`). BLOCK if neither file contains a CTA.
 18. (web-app only) **No asChild** — grep entire `src/` directory for `asChild`. BLOCK if any match found, listing file:line for each.
+
+19. **Quality: wire trace present** — if `.claude/bootstrap-wire-trace.json` exists: `pages_wired` or `api_routes_wired` is non-empty — run `python3 -c "import json; d=json.load(open('.claude/bootstrap-wire-trace.json')); print('PASS: %d pages, %d routes' % (len(d.get('pages_wired',[])),len(d.get('api_routes_wired',[]))) if d.get('pages_wired') or d.get('api_routes_wired') else 'BLOCK: wire trace has no wired components')"` (skip if bootstrap-wire-trace.json does not exist)
 
 ### BG2.5 Externals Gate
 
