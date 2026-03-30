@@ -114,6 +114,7 @@ KNOWN_OBJECT_ENTRIES = {
     ("change", "2"),
     ("change", "3"),
     ("change", "6"),
+    ("verify", "7"),
 }
 
 

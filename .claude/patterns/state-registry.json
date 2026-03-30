@@ -7,7 +7,9 @@
     "4": "test -f .claude/security-merge.json",
     "5": "test -f .claude/e2e-result.json",
     "6": "true",
-    "7": "head -1 .claude/verify-report.md | grep -q '^---$' && tail -1 .claude/verify-history.jsonl | python3 -c 'import json,sys;json.loads(sys.stdin.read())'",
+    "7": {
+      "verify": "head -1 .claude/verify-report.md | grep -q '^---$' && tail -1 .claude/verify-history.jsonl | python3 -c 'import json,sys,os; e=json.loads(sys.stdin.read()); ds=e.get(\"dimension_scores\",{}); assert not(ds.get(\"Q_build\",0)>0) or (os.path.exists(\".claude/build-result.json\") and json.load(open(\".claude/build-result.json\")).get(\"exit_code\")==0), \"Q_build>0 but build failed\"'"
+    },
     "8": "test -f .claude/patterns-saved.json"
   },
   "bootstrap": {
@@ -183,13 +185,13 @@
   "agent_gates": {
     "verify": {
       "_required_states": ["0","1","2","3","4","5","6","7","8"],
-      "build-info-collector":       { "required_states": ["0","1"], "artifacts": [".claude/build-result.json"] },
-      "security-defender":          { "required_states": ["0","1"], "artifacts": [".claude/build-result.json"] },
-      "security-attacker":          { "required_states": ["0","1"], "artifacts": [".claude/build-result.json"] },
-      "behavior-verifier":          { "required_states": ["0","1"], "artifacts": [".claude/build-result.json"] },
-      "performance-reporter":       { "required_states": ["0","1"], "artifacts": [".claude/build-result.json"] },
-      "accessibility-scanner":      { "required_states": ["0","1"], "artifacts": [".claude/build-result.json"] },
-      "spec-reviewer":              { "required_states": ["0","1"], "artifacts": [".claude/build-result.json"] },
+      "build-info-collector":       { "required_states": ["0","1"], "artifacts": [".claude/build-result.json"], "deny_background": true },
+      "security-defender":          { "required_states": ["0","1"], "artifacts": [".claude/build-result.json"], "deny_background": true },
+      "security-attacker":          { "required_states": ["0","1"], "artifacts": [".claude/build-result.json"], "deny_background": true },
+      "behavior-verifier":          { "required_states": ["0","1"], "artifacts": [".claude/build-result.json"], "deny_background": true },
+      "performance-reporter":       { "required_states": ["0","1"], "artifacts": [".claude/build-result.json"], "deny_background": true },
+      "accessibility-scanner":      { "required_states": ["0","1"], "artifacts": [".claude/build-result.json"], "deny_background": true },
+      "spec-reviewer":              { "required_states": ["0","1"], "artifacts": [".claude/build-result.json"], "deny_background": true },
       "design-critic":              { "required_states": ["0","1"], "artifacts": [".claude/build-result.json"] },
       "design-consistency-checker": { "required_states": ["0","1"], "artifacts": [".claude/build-result.json"] },
       "ux-journeyer":               { "required_states": ["0","1"], "artifacts": [".claude/build-result.json"] },

@@ -91,6 +91,12 @@ else:
         if isolation == denied:
             errors.append(f'{agent_type} cannot use isolation={denied} — agents for {best_skill} must share the main filesystem')
 
+    # Check deny_background
+    run_in_bg = payload.get('tool_input', {}).get('run_in_background', False)
+    deny_bg = gate.get('deny_background', False)
+    if deny_bg and run_in_bg:
+        errors.append(f"Agent type '{agent_type}' requires foreground execution (deny_background=true) but run_in_background=true")
+
     # Check required_states (using registry key order for proper ordering)
     required = gate.get('required_states', [])
     if required:

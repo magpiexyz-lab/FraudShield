@@ -225,11 +225,24 @@ Only include agents that were spawned (per scope). Mark others as "skipped — o
 
    This is a direct evaluation (like Path 2), not a callback to STATE 6. Do NOT spawn the observer agent.
 
-**POSTCONDITIONS:** `verify-report.md` exists with valid frontmatter. `verify-history.jsonl` has a new entry appended.
+**POSTCONDITIONS:**
+- `verify-report.md` exists with valid frontmatter
+- `verify-history.jsonl` has a new entry appended (via CALL: `.claude/scripts/write-q-score.py`)
+- Cross-validation: `verify-history.jsonl` last entry's `dimension_scores` consistent with disk artifacts:
+  - If `Q_build > 0` → `.claude/build-result.json` exists and `exit_code == 0`
+  - If `Q_security > 0` → `.claude/agent-traces/security-*.json` exists
+  - If `Q_design > 0` → `.claude/agent-traces/design-critic.json` exists
 
 **VERIFY:**
 ```bash
-head -1 .claude/verify-report.md | grep -q '^---$' && tail -1 .claude/verify-history.jsonl | python3 -c "import json,sys;json.loads(sys.stdin.read());print('ok')"
+head -1 .claude/verify-report.md | grep -q '^---$' && tail -1 .claude/verify-history.jsonl | python3 -c "
+import json, sys, os, glob
+e = json.loads(sys.stdin.read())
+ds = e.get('dimension_scores', {})
+assert not(ds.get('Q_build', 0) > 0) or (os.path.exists('.claude/build-result.json') and json.load(open('.claude/build-result.json')).get('exit_code') == 0), 'Q_build>0 but build failed'
+assert not(ds.get('Q_security', 0) > 0) or glob.glob('.claude/agent-traces/security-*.json'), 'Q_security>0 but no security traces'
+assert not(ds.get('Q_design', 0) > 0) or os.path.exists('.claude/agent-traces/design-critic.json'), 'Q_design>0 but no design-critic trace'
+"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
