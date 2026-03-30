@@ -100,6 +100,8 @@ done
 # 12. (removed)
 
 # 13. Hardcoded analytics provider names in skill, agent, and procedure section headings
+# (Check numbers 14-15 added below)
+
 for f in .claude/commands/*.md .claude/agents/*.md .claude/procedures/*.md; do
   [ -f "$f" ] || continue
   if grep -qiE '^###.*PostHog' "$f"; then
@@ -109,6 +111,31 @@ for f in .claude/commands/*.md .claude/agents/*.md .claude/procedures/*.md; do
     ERRORS=$((ERRORS + 1))
   fi
 done
+
+# 14. Verify lib.sh function calls have space before arguments in hook scripts
+LIB_FUNCS="require_trace_verdict|check_trace_run_id|check_trace_verdict|check_postcondition_artifacts|check_tier1_retry_complete|check_efficiency_directives|check_build_result|check_file_boundary|check_verdict_gates|check_skill_completion|check_block_verdicts|rerun_postconditions|require_trace_verdict|handle_validation|deny_errors"
+for f in .claude/hooks/*.sh; do
+  [ -f "$f" ] || continue
+  [ "$(basename "$f")" = "lib.sh" ] && continue
+  if grep -qE "($LIB_FUNCS)\"" "$f"; then
+    echo "FAIL: $f — function call missing space before argument (concatenates function name with argument)"
+    grep -nE "($LIB_FUNCS)\"" "$f" | head -5
+    echo ""
+    ERRORS=$((ERRORS + 1))
+  fi
+done
+
+# 15. Verify STATE_ID regex character class matches between state-completion-gate and phase-boundary-gate
+SCG=".claude/hooks/state-completion-gate.sh"
+PBG=".claude/hooks/phase-boundary-gate.sh"
+if [ -f "$SCG" ] && [ -f "$PBG" ]; then
+  SCG_CLASS=$(grep -oE 'advance-state.*\[0-9a-z[_]*\]' "$SCG" | head -1 | grep -oE '\[0-9a-z[_]*\]' || echo "")
+  PBG_CLASS=$(grep -oE 'advance-state.*\[0-9a-z[_]*\]' "$PBG" | head -1 | grep -oE '\[0-9a-z[_]*\]' || echo "")
+  if [ -n "$SCG_CLASS" ] && [ -n "$PBG_CLASS" ] && [ "$SCG_CLASS" != "$PBG_CLASS" ]; then
+    echo "FAIL: STATE_ID regex mismatch — state-completion-gate.sh uses $SCG_CLASS, phase-boundary-gate.sh uses $PBG_CLASS"
+    ERRORS=$((ERRORS + 1))
+  fi
+fi
 
 echo ""
 if [ "$ERRORS" -gt 0 ]; then
