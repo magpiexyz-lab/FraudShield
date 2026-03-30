@@ -4,7 +4,7 @@ Scannable reference listing all automated checks by name, grouped by validator.
 80 active checks consolidated into 76 inventory rows.
 Checks 3 and 7 are archetype-aware — they read `required_experiment_fields` and `excluded_stacks` from archetype frontmatter.
 
-Last updated: 2026-03-23
+Last updated: 2026-03-30
 
 ## Validation philosophy
 
@@ -45,7 +45,7 @@ better enforced by the scoped LLM review (`scripts/scoped-review-prompt.md`).
 | Verify tool and prereq validity | Tool names referenced in skill prose are in the known tools list |
 | Verify env loading outside Next.js runtime | Non-`src/` templates using `process.env` load env config |
 | Validate warning differentiation | Makefile validate target differentiates clean pass from pass with warnings |
-| Verify hardcoded provider names match assumes | Code blocks using provider-specific identifiers must have matching `assumes` declaration |
+| Verify hardcoded provider names match assumes | Code blocks using provider-specific or framework-specific identifiers (e.g., `@next/`) must have matching `assumes` declaration |
 | Verify prose file references in reads frontmatter | Spec files (CLAUDE.md, experiment/EVENTS.yaml) referenced in skill prose must appear in `reads` frontmatter |
 | Verify fixture coverage for stack file branching | Conditional stack paths (`when stack.X is NOT Y`) must have fixture coverage for the alternate branch |
 | Verify stack fallback when assumes not met | Stack files with optional-category `assumes` must have a fallback section for absent dependencies |

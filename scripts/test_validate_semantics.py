@@ -231,6 +231,47 @@ import Stripe from 'stripe'
         })
         assert errors == []
 
+    def test_fails_when_next_env_without_framework_assumes(self):
+        content = """---
+assumes: [database/supabase]
+packages: {}
+files: []
+env: {}
+ci_placeholders: {}
+clean: {}
+gitignore: []
+---
+
+```ts
+import { loadEnvConfig } from "@next/env";
+```
+"""
+        errors = vs.check_11_hardcoded_provider_names({
+            ".claude/stacks/testing/playwright.md": content
+        })
+        assert len(errors) == 1
+        assert "@next/" in errors[0]
+
+    def test_passes_when_next_env_with_framework_assumes(self):
+        content = """---
+assumes: [framework/nextjs, database/supabase]
+packages: {}
+files: []
+env: {}
+ci_placeholders: {}
+clean: {}
+gitignore: []
+---
+
+```ts
+import { loadEnvConfig } from "@next/env";
+```
+"""
+        errors = vs.check_11_hardcoded_provider_names({
+            ".claude/stacks/testing/playwright.md": content
+        })
+        assert errors == []
+
 
 # ---------------------------------------------------------------------------
 # Check 16: Change Payment-Auth Dependency

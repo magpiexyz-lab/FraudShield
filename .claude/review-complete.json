@@ -1,10 +1,10 @@
 {
   "branch": "chore/review-fixes-9",
-  "timestamp": "2026-03-28T04:53:00Z",
+  "timestamp": "2026-03-30T11:57:37Z",
   "iterations": 2,
-  "yield": 1.0,
+  "yield": 0.75,
   "baseline_errors": 0,
   "final_errors": 0,
-  "findings_fixed": 2,
-  "findings_disputed": 0
+  "findings_fixed": 3,
+  "findings_disputed": 3
 }

@@ -1,8 +1,8 @@
 {
   "skill": "review",
-  "timestamp": "2026-03-30T02:29:51Z",
+  "timestamp": "2026-03-30T00:00:00Z",
   "strategy": "code-observation",
-  "friction_detected": false,
-  "observations_filed": 0,
-  "verdict": "no-template-issues"
+  "friction_detected": true,
+  "observations_filed": 1,
+  "verdict": "filed"
 }

@@ -1,6 +1,6 @@
 {
   "skill": "review",
   "mode": "epilogue",
-  "timestamp": "2026-03-30T02:29:39Z",
+  "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "branch": "chore/review-fixes-9"
 }

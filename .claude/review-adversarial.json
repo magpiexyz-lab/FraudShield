@@ -1,0 +1,24 @@
+{
+  "confirmed": [
+    "Playwright hardcodes @next/env without framework/nextjs in assumes",
+    "Missing assumes validation for payment stack in change.md",
+    "/harden re-run detection unclear vs /change"
+  ],
+  "disputed": [
+    {
+      "title": "/deploy health check lacks CLI surface-only recovery path",
+      "rationale": "Lines 10-22 already handle CLI surface-only with dedicated recovery"
+    },
+    {
+      "title": "/iterate KILL verdict lacks next-step guidance",
+      "rationale": "state-4-output.md lines 142-151 has explicit KILL guidance with 5 actions"
+    },
+    {
+      "title": "/distribute state 9 missing error handling fallback",
+      "rationale": "Step 9f provides unconditional manual fallback independent of Error Handling subsection"
+    }
+  ],
+  "needs_evidence": [
+    "/rollback lacks scope clarification in deploy health check"
+  ]
+}

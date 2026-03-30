@@ -1,0 +1,6 @@
+{
+  "baseline_errors": 0,
+  "health_clean": false,
+  "max_iterations": 5,
+  "max_findings_per_dimension": 5
+}

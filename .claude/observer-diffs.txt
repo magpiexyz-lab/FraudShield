@@ -1,185 +1,447 @@
-diff --git a/.claude/hooks/agent-state-gate.sh b/.claude/hooks/agent-state-gate.sh
-index 8aefa33..3d1bc36 100755
---- a/.claude/hooks/agent-state-gate.sh
-+++ b/.claude/hooks/agent-state-gate.sh
-@@ -155,7 +155,7 @@ verify_extended_checks() {
-       if [[ ! -f "$TRACES_DIR/build-info-collector.json" ]]; then
-         ERRORS+=("build-info-collector.json trace missing — Phase 1 has not completed")
-       fi
--      require_trace_verdict"$TRACES_DIR/build-info-collector.json" "agent may still be running or exhausted turns"
-+      require_trace_verdict "$TRACES_DIR/build-info-collector.json" "agent may still be running or exhausted turns"
-       check_trace_run_id "$TRACES_DIR/build-info-collector.json"
+diff --git a/.claude/epilogue-context.json b/.claude/epilogue-context.json
+index 9742b42..66a5cf2 100644
+--- a/.claude/epilogue-context.json
++++ b/.claude/epilogue-context.json
+@@ -1,6 +1,6 @@
+ {
+   "skill": "review",
+   "mode": "epilogue",
+-  "timestamp": "2026-03-30T02:29:39Z",
++  "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+   "branch": "chore/review-fixes-9"
+ }
+diff --git a/.claude/observer-diffs.txt b/.claude/observer-diffs.txt
+index 9c4c7f9..e69de29 100644
+--- a/.claude/observer-diffs.txt
++++ b/.claude/observer-diffs.txt
+@@ -1,185 +0,0 @@
+-diff --git a/.claude/hooks/agent-state-gate.sh b/.claude/hooks/agent-state-gate.sh
+-index 8aefa33..3d1bc36 100755
+---- a/.claude/hooks/agent-state-gate.sh
+-+++ b/.claude/hooks/agent-state-gate.sh
+-@@ -155,7 +155,7 @@ verify_extended_checks() {
+-       if [[ ! -f "$TRACES_DIR/build-info-collector.json" ]]; then
+-         ERRORS+=("build-info-collector.json trace missing — Phase 1 has not completed")
+-       fi
+--      require_trace_verdict"$TRACES_DIR/build-info-collector.json" "agent may still be running or exhausted turns"
+-+      require_trace_verdict "$TRACES_DIR/build-info-collector.json" "agent may still be running or exhausted turns"
+-       check_trace_run_id "$TRACES_DIR/build-info-collector.json"
+- 
+-       local SCOPE
+-@@ -165,7 +165,7 @@ verify_extended_checks() {
+-           if [[ ! -f "$TRACES_DIR/$AGENT.json" ]]; then
+-             ERRORS+=("$AGENT.json trace missing — Phase 1 agent incomplete (scope=$SCOPE)")
+-           else
+--            require_trace_verdict"$TRACES_DIR/$AGENT.json" "agent may still be running or exhausted turns"
+-+            require_trace_verdict "$TRACES_DIR/$AGENT.json" "agent may still be running or exhausted turns"
+-             check_trace_run_id "$TRACES_DIR/$AGENT.json"
+-           fi
+-         done
+-@@ -197,7 +197,7 @@ else:
+-           if [ ! -f "$TRACES_DIR/design-consistency-checker.json" ]; then
+-             ERRORS+=("design-consistency-checker.json trace missing — spawn consistency checker before ux-journeyer")
+-           else
+--            require_trace_verdict"$TRACES_DIR/design-consistency-checker.json" "consistency checker may still be running or exhausted turns"
+-+            require_trace_verdict "$TRACES_DIR/design-consistency-checker.json" "consistency checker may still be running or exhausted turns"
+-           fi
+-         fi
+-       fi
+-@@ -209,7 +209,7 @@ else:
+-       if [[ ! -f "$TRACES_DIR/build-info-collector.json" ]]; then
+-         ERRORS+=("build-info-collector.json trace missing — Phase 1 has not completed")
+-       fi
+--      require_trace_verdict"$TRACES_DIR/build-info-collector.json" "agent may still be running or exhausted turns"
+-+      require_trace_verdict "$TRACES_DIR/build-info-collector.json" "agent may still be running or exhausted turns"
+-       check_trace_run_id "$TRACES_DIR/build-info-collector.json"
+- 
+-       local SF_SCOPE SF_ARCH
+-@@ -220,7 +220,7 @@ else:
+-           if [[ ! -f "$TRACES_DIR/$AGENT.json" ]]; then
+-             ERRORS+=("$AGENT.json trace missing — Phase 2 agent incomplete (scope=$SF_SCOPE, archetype=$SF_ARCH)")
+-           else
+--            require_trace_verdict"$TRACES_DIR/$AGENT.json" "agent may still be running or exhausted turns"
+-+            require_trace_verdict "$TRACES_DIR/$AGENT.json" "agent may still be running or exhausted turns"
+-             check_trace_run_id "$TRACES_DIR/$AGENT.json"
+-           fi
+-         done
+-@@ -240,7 +240,7 @@ else:
+-         if [[ ! -f "$TRACES_DIR/behavior-verifier.json" ]]; then
+-           ERRORS+=("behavior-verifier.json trace missing — Phase 1 agent incomplete (scope=$SF_SCOPE)")
+-         fi
+--        require_trace_verdict"$TRACES_DIR/behavior-verifier.json" "agent may still be running or exhausted turns"
+-+        require_trace_verdict "$TRACES_DIR/behavior-verifier.json" "agent may still be running or exhausted turns"
+-         check_trace_run_id "$TRACES_DIR/behavior-verifier.json"
+-       fi
+-       check_efficiency_directives
+-@@ -306,7 +306,7 @@ else: print('no')
+-         if [[ ! -f "$TRACES_DIR/design-critic-shared.json" ]]; then
+-           ERRORS+=("design-critic-shared.json missing — per-page agents reported shared-component issues")
+-         else
+--          require_trace_verdict"$TRACES_DIR/design-critic-shared.json" "shared-component agent may still be running"
+-+          require_trace_verdict "$TRACES_DIR/design-critic-shared.json" "shared-component agent may still be running"
+-         fi
+-       fi
+-       check_efficiency_directives
+-diff --git a/.claude/hooks/state-completion-gate.sh b/.claude/hooks/state-completion-gate.sh
+-index 7dbf751..86763b0 100755
+---- a/.claude/hooks/state-completion-gate.sh
+-+++ b/.claude/hooks/state-completion-gate.sh
+-@@ -18,7 +18,7 @@ fi
+- 
+- # Extract skill name and state identifier from: advance-state.sh <skill> <state>
+- SKILL=$(echo "$COMMAND" | grep -oE 'advance-state\.sh[[:space:]]+([a-z-]+)' | awk '{print $NF}' || echo "")
+--STATE_ID=$(echo "$COMMAND" | grep -oE 'advance-state\.sh[[:space:]]+[a-z-]+[[:space:]]+([0-9a-z]+)' | awk '{print $NF}' || echo "")
+-+STATE_ID=$(echo "$COMMAND" | grep -oE 'advance-state\.sh[[:space:]]+[a-z-]+[[:space:]]+([0-9a-z_]+)' | awk '{print $NF}' || echo "")
+- 
+- if [[ -z "$SKILL" || -z "$STATE_ID" ]]; then
+-   exit 0
+-diff --git a/.claude/review-complete.json b/.claude/review-complete.json
+-index 076257c..c148103 100644
+---- a/.claude/review-complete.json
+-+++ b/.claude/review-complete.json
+-@@ -1,10 +1,10 @@
+- {
+-   "branch": "chore/review-fixes-9",
+--  "timestamp": "2026-03-27T12:16:42Z",
+--  "iterations": 3,
+--  "yield": 0.6,
+-+  "timestamp": "2026-03-28T04:53:00Z",
+-+  "iterations": 2,
+-+  "yield": 1.0,
+-   "baseline_errors": 0,
+-   "final_errors": 0,
+--  "findings_fixed": 3,
+--  "findings_disputed": 4
+-+  "findings_fixed": 2,
+-+  "findings_disputed": 0
+- }
+-diff --git a/.claude/review-context.json b/.claude/review-context.json
+-index b961643..8d66dec 100644
+---- a/.claude/review-context.json
+-+++ b/.claude/review-context.json
+-@@ -1 +1 @@
+--{"skill": "review", "branch": "main", "timestamp": "2026-03-27T08:32:35Z", "run_id": "review-2026-03-27T08:32:35Z", "completed_states": [0, 1, "2a", "2b", "2c", "2d", "2e", "2f", 3, 4], "observation_backlog": [444], "prior_precision": {"A": 100, "B": 67, "C": 0, "disputed_rate": 44, "skipped_rate": 22, "reverted_rate": 0}}
+-\ No newline at end of file
+-+{"skill": "review", "branch": "main", "timestamp": "2026-03-27T16:14:58Z", "run_id": "review-2026-03-27T16:14:58Z", "completed_states": [0, 1, "2a", "2b", "2c", "2d", "2e", "2f", 3, 4]}
+-\ No newline at end of file
+-diff --git a/scripts/check-inventory.md b/scripts/check-inventory.md
+-index 1e71c9a..c90fe92 100644
+---- a/scripts/check-inventory.md
+-+++ b/scripts/check-inventory.md
+-@@ -1,7 +1,7 @@
+- # Check Inventory
+- 
+- Scannable reference listing all automated checks by name, grouped by validator.
+--78 active checks consolidated into 74 inventory rows.
+-+80 active checks consolidated into 76 inventory rows.
+- Checks 3 and 7 are archetype-aware — they read `required_experiment_fields` and `excluded_stacks` from archetype frontmatter.
+- 
+- Last updated: 2026-03-23
+-@@ -93,7 +93,7 @@ better enforced by the scoped LLM review (`scripts/scoped-review-prompt.md`).
+- 
+- ## consistency-check.sh
+- 
+--14 active checks consolidated into 6 rows. Three checks removed (scripts #8, #11, #12). Checks #3 and #13 scan commands, agents, and procedures.
+-+16 active checks consolidated into 8 rows. Three checks removed (scripts #8, #11, #12). Checks #3 and #13 scan commands, agents, and procedures.
+- 
+- | Name | Description | Scripts |
+- |------|-------------|---------|
+-@@ -103,6 +103,8 @@ better enforced by the scoped LLM review (`scripts/scoped-review-prompt.md`).
+- | Forbid hardcoded framework paths in change skill | change.md must not hardcode API or types paths | #7 |
+- | Require verify.md references in code-writing skill content | Code-writing skill content (not just frontmatter) must reference verify.md | #10 |
+- | Forbid hardcoded analytics provider names in skill section headings | Skill, agent, and procedure files must not contain `PostHog` (case-insensitive) in `###` section headings — provider names belong in the analytics stack file | #13 |
+-+| Verify lib.sh function calls have space before arguments | Hook scripts (excluding lib.sh) must not call lib.sh functions with the argument concatenated to the function name (e.g., `func"$arg"` instead of `func "$arg"`) | #14 |
+-+| Verify STATE_ID regex character class matches across hooks | state-completion-gate.sh and phase-boundary-gate.sh must use the same character class for STATE_ID extraction from advance-state.sh commands | #15 |
+- 
+- ## Cross-validator overlaps
+- 
+-diff --git a/scripts/consistency-check.sh b/scripts/consistency-check.sh
+-index 3b34209..32238b0 100755
+---- a/scripts/consistency-check.sh
+-+++ b/scripts/consistency-check.sh
+-@@ -100,6 +100,8 @@ done
+- # 12. (removed)
+- 
+- # 13. Hardcoded analytics provider names in skill, agent, and procedure section headings
+-+# (Check numbers 14-15 added below)
+-+
+- for f in .claude/commands/*.md .claude/agents/*.md .claude/procedures/*.md; do
+-   [ -f "$f" ] || continue
+-   if grep -qiE '^###.*PostHog' "$f"; then
+-@@ -110,6 +112,31 @@ for f in .claude/commands/*.md .claude/agents/*.md .claude/procedures/*.md; do
+-   fi
+- done
+- 
+-+# 14. Verify lib.sh function calls have space before arguments in hook scripts
+-+LIB_FUNCS="require_trace_verdict|check_trace_run_id|check_trace_verdict|check_postcondition_artifacts|check_tier1_retry_complete|check_efficiency_directives|check_build_result|check_file_boundary|check_verdict_gates|check_skill_completion|check_block_verdicts|rerun_postconditions|require_trace_verdict|handle_validation|deny_errors"
+-+for f in .claude/hooks/*.sh; do
+-+  [ -f "$f" ] || continue
+-+  [ "$(basename "$f")" = "lib.sh" ] && continue
+-+  if grep -qE "($LIB_FUNCS)\"" "$f"; then
+-+    echo "FAIL: $f — function call missing space before argument (concatenates function name with argument)"
+-+    grep -nE "($LIB_FUNCS)\"" "$f" | head -5
+-+    echo ""
+-+    ERRORS=$((ERRORS + 1))
+-+  fi
+-+done
+-+
+-+# 15. Verify STATE_ID regex character class matches between state-completion-gate and phase-boundary-gate
+-+SCG=".claude/hooks/state-completion-gate.sh"
+-+PBG=".claude/hooks/phase-boundary-gate.sh"
+-+if [ -f "$SCG" ] && [ -f "$PBG" ]; then
+-+  SCG_CLASS=$(grep -oE 'advance-state.*\[0-9a-z[_]*\]' "$SCG" | head -1 | grep -oE '\[0-9a-z[_]*\]' || echo "")
+-+  PBG_CLASS=$(grep -oE 'advance-state.*\[0-9a-z[_]*\]' "$PBG" | head -1 | grep -oE '\[0-9a-z[_]*\]' || echo "")
+-+  if [ -n "$SCG_CLASS" ] && [ -n "$PBG_CLASS" ] && [ "$SCG_CLASS" != "$PBG_CLASS" ]; then
+-+    echo "FAIL: STATE_ID regex mismatch — state-completion-gate.sh uses $SCG_CLASS, phase-boundary-gate.sh uses $PBG_CLASS"
+-+    ERRORS=$((ERRORS + 1))
+-+  fi
+-+fi
+-+
+- echo ""
+- if [ "$ERRORS" -gt 0 ]; then
+-   echo "FAILED: $ERRORS violation(s). Move facts to canonical sources (experiment/EVENTS.yaml, stack files)."
+diff --git a/.claude/review-context.json b/.claude/review-context.json
+index 9ffda7a..af2eef9 100644
+--- a/.claude/review-context.json
++++ b/.claude/review-context.json
+@@ -1 +1 @@
+-{"skill": "review", "branch": "main", "timestamp": "2026-03-30T11:41:01Z", "run_id": "review-2026-03-30T11:41:01Z", "completed_states": [0, 1, "2a", "2b", "2c", "2d", "2e", "2f", 3, 4]}
+\ No newline at end of file
++{"skill": "review", "branch": "main", "timestamp": "2026-03-30T11:41:01Z", "run_id": "review-2026-03-30T11:41:01Z", "completed_states": [0, 1, "2a", "2b", "2c", "2d", "2e", "2f", 3, 4, 5]}
+\ No newline at end of file
+diff --git a/.claude/commands/harden.md b/.claude/commands/harden.md
+index 698dbfa..a4e46de 100644
+--- a/.claude/commands/harden.md
++++ b/.claude/commands/harden.md
+@@ -43,7 +43,7 @@ Begin at STATE 0. Read [state-0-validate-preconditions.md](../patterns/harden/st
+ - Implementer agents use `isolation: "worktree"` per Agent tool pattern
+ - Implementers receive the "Specifications to test" list from the plan — no re-derivation needed
+ - Spec-reviewer included in verify step (conditional 6th agent)
+-- Re-run detection: `quality: production` already set + no $ARGUMENTS → stop
++- Re-run detection: `quality: production` already set + no $ARGUMENTS → stop. To add more specification tests to an already-hardened project, pass a scope argument (e.g., `/harden auth module`)
+ - Checkpoint-based resume: `.claude/current-plan.md` with YAML frontmatter enables exact resume after /clear or context overflow
  
-       local SCOPE
-@@ -165,7 +165,7 @@ verify_extended_checks() {
-           if [[ ! -f "$TRACES_DIR/$AGENT.json" ]]; then
-             ERRORS+=("$AGENT.json trace missing — Phase 1 agent incomplete (scope=$SCOPE)")
-           else
--            require_trace_verdict"$TRACES_DIR/$AGENT.json" "agent may still be running or exhausted turns"
-+            require_trace_verdict "$TRACES_DIR/$AGENT.json" "agent may still be running or exhausted turns"
-             check_trace_run_id "$TRACES_DIR/$AGENT.json"
-           fi
-         done
-@@ -197,7 +197,7 @@ else:
-           if [ ! -f "$TRACES_DIR/design-consistency-checker.json" ]; then
-             ERRORS+=("design-consistency-checker.json trace missing — spawn consistency checker before ux-journeyer")
-           else
--            require_trace_verdict"$TRACES_DIR/design-consistency-checker.json" "consistency checker may still be running or exhausted turns"
-+            require_trace_verdict "$TRACES_DIR/design-consistency-checker.json" "consistency checker may still be running or exhausted turns"
-           fi
-         fi
-       fi
-@@ -209,7 +209,7 @@ else:
-       if [[ ! -f "$TRACES_DIR/build-info-collector.json" ]]; then
-         ERRORS+=("build-info-collector.json trace missing — Phase 1 has not completed")
-       fi
--      require_trace_verdict"$TRACES_DIR/build-info-collector.json" "agent may still be running or exhausted turns"
-+      require_trace_verdict "$TRACES_DIR/build-info-collector.json" "agent may still be running or exhausted turns"
-       check_trace_run_id "$TRACES_DIR/build-info-collector.json"
- 
-       local SF_SCOPE SF_ARCH
-@@ -220,7 +220,7 @@ else:
-           if [[ ! -f "$TRACES_DIR/$AGENT.json" ]]; then
-             ERRORS+=("$AGENT.json trace missing — Phase 2 agent incomplete (scope=$SF_SCOPE, archetype=$SF_ARCH)")
-           else
--            require_trace_verdict"$TRACES_DIR/$AGENT.json" "agent may still be running or exhausted turns"
-+            require_trace_verdict "$TRACES_DIR/$AGENT.json" "agent may still be running or exhausted turns"
-             check_trace_run_id "$TRACES_DIR/$AGENT.json"
-           fi
-         done
-@@ -240,7 +240,7 @@ else:
-         if [[ ! -f "$TRACES_DIR/behavior-verifier.json" ]]; then
-           ERRORS+=("behavior-verifier.json trace missing — Phase 1 agent incomplete (scope=$SF_SCOPE)")
-         fi
--        require_trace_verdict"$TRACES_DIR/behavior-verifier.json" "agent may still be running or exhausted turns"
-+        require_trace_verdict "$TRACES_DIR/behavior-verifier.json" "agent may still be running or exhausted turns"
-         check_trace_run_id "$TRACES_DIR/behavior-verifier.json"
-       fi
-       check_efficiency_directives
-@@ -306,7 +306,7 @@ else: print('no')
-         if [[ ! -f "$TRACES_DIR/design-critic-shared.json" ]]; then
-           ERRORS+=("design-critic-shared.json missing — per-page agents reported shared-component issues")
-         else
--          require_trace_verdict"$TRACES_DIR/design-critic-shared.json" "shared-component agent may still be running"
-+          require_trace_verdict "$TRACES_DIR/design-critic-shared.json" "shared-component agent may still be running"
-         fi
-       fi
-       check_efficiency_directives
-diff --git a/.claude/hooks/state-completion-gate.sh b/.claude/hooks/state-completion-gate.sh
-index 7dbf751..86763b0 100755
---- a/.claude/hooks/state-completion-gate.sh
-+++ b/.claude/hooks/state-completion-gate.sh
-@@ -18,7 +18,7 @@ fi
- 
- # Extract skill name and state identifier from: advance-state.sh <skill> <state>
- SKILL=$(echo "$COMMAND" | grep -oE 'advance-state\.sh[[:space:]]+([a-z-]+)' | awk '{print $NF}' || echo "")
--STATE_ID=$(echo "$COMMAND" | grep -oE 'advance-state\.sh[[:space:]]+[a-z-]+[[:space:]]+([0-9a-z]+)' | awk '{print $NF}' || echo "")
-+STATE_ID=$(echo "$COMMAND" | grep -oE 'advance-state\.sh[[:space:]]+[a-z-]+[[:space:]]+([0-9a-z_]+)' | awk '{print $NF}' || echo "")
- 
- if [[ -z "$SKILL" || -z "$STATE_ID" ]]; then
-   exit 0
+ ## Do NOT
+diff --git a/.claude/observe-result.json b/.claude/observe-result.json
+deleted file mode 100644
+index 88063fd..0000000
+--- a/.claude/observe-result.json
++++ /dev/null
+@@ -1,8 +0,0 @@
+-{
+-  "skill": "review",
+-  "timestamp": "2026-03-30T02:29:51Z",
+-  "strategy": "code-observation",
+-  "friction_detected": false,
+-  "observations_filed": 0,
+-  "verdict": "no-template-issues"
+-}
+diff --git a/.claude/patterns/change/state-5-check-preconditions.md b/.claude/patterns/change/state-5-check-preconditions.md
+index 112c63e..36c2944 100644
+--- a/.claude/patterns/change/state-5-check-preconditions.md
++++ b/.claude/patterns/change/state-5-check-preconditions.md
+@@ -30,7 +30,7 @@
+ - If the change will add any new category to experiment.yaml `stack`: read the archetype file's `excluded_stacks` list. If the new category appears in `excluded_stacks`, stop: "The `<archetype>` archetype excludes the `<category>` stack. You cannot add `<category>: <value>` to this project."
+ - For analytics changes: verify the analytics library file exists (see analytics stack file for expected path). If it doesn't, stop and tell the user: "Analytics library not found. Run `/bootstrap` first."
+ - Validate stack dependencies per `patterns/stack-dependency-validation.md`. (Key: payment/email→require auth+database; playwright→incompatible with service/cli; production→requires testing)
+-- If `$ARGUMENTS` mentions payment or the change will add `payment` to the stack: verify `stack.auth` and `stack.database` are present in experiment.yaml. If `stack.auth` is missing, stop: "Payment requires authentication. Add `auth: supabase` (or another auth provider) to experiment.yaml `stack` first." If `stack.database` is missing, stop: "Payment requires a database. Add `database: supabase` (or another database provider) to experiment.yaml `stack` first."
++- If `$ARGUMENTS` mentions payment or the change will add `payment` to the stack: verify `stack.auth` and `stack.database` are present in experiment.yaml. If `stack.auth` is missing, stop: "Payment requires authentication. Add `auth: supabase` (or another auth provider) to experiment.yaml `stack` first." If `stack.database` is missing, stop: "Payment requires a database. Add `database: supabase` (or another database provider) to experiment.yaml `stack` first." Then read the payment stack file's `assumes` list and verify each `category/value` pair against experiment.yaml `stack` (the value must match exactly, not just the category — e.g., `framework/nextjs` requires `stack.services[].runtime: nextjs`). If any assumption is unmet, stop: "Payment stack requires [unmet dependencies]. Current stack has [actual values]. Update experiment.yaml `stack` to match, or choose a different payment provider."
+ - If `$ARGUMENTS` mentions email or the change will add `email` to the stack: verify `stack.auth` and `stack.database` are present in experiment.yaml. If `stack.auth` is missing, stop: "Email requires authentication to know who to send emails to. Add `auth: supabase` (or another auth provider) to experiment.yaml `stack` first." If `stack.database` is missing, stop: "Email requires a database to track user activation status. Add `database: supabase` (or another database provider) to experiment.yaml `stack` first." Then read the email stack file's `assumes` list and verify each `category/value` pair against experiment.yaml `stack` (the value must match exactly, not just the category — e.g., `framework/nextjs` requires `stack.services[].runtime: nextjs`). If any assumption is unmet, stop: "Email stack requires [unmet dependencies]. Current stack has [actual values]. Update experiment.yaml `stack` to match, or choose a different email provider."
+ - If `testing` is present in experiment.yaml `stack` and the classified type is NOT Test: read the testing stack file's `assumes` list and verify each `category/value` pair against experiment.yaml `stack` (the value must match exactly, not just the category — e.g., `database/supabase` requires `stack.database: supabase`, not just any database provider). If any assumption is unmet, stop: "Your testing setup assumes [unmet dependencies]. Tests will break. Run '/change fix test configuration' first, or remove 'testing' from experiment.yaml 'stack'." Then check archetype compatibility: if archetype is `service` or `cli` and `stack.testing` is `playwright`, stop: "Playwright requires a browser and is not compatible with the `<archetype>` archetype. Use `testing: vitest` instead."
+ - Validate framework-archetype compatibility: if archetype is `web-app` and framework is not `nextjs`, stop — "The `web-app` archetype requires `nextjs` as the framework. Change `stack.services[].runtime` to `nextjs`." If archetype is `cli` and framework is not `commander`, stop — "The `cli` archetype requires `commander` as the framework. Change `stack.services[].runtime` to `commander`."
+diff --git a/.claude/review-adversarial.json b/.claude/review-adversarial.json
+new file mode 100644
+index 0000000..c8ca74f
+--- /dev/null
++++ b/.claude/review-adversarial.json
+@@ -0,0 +1,24 @@
++{
++  "confirmed": [
++    "Playwright hardcodes @next/env without framework/nextjs in assumes",
++    "Missing assumes validation for payment stack in change.md",
++    "/harden re-run detection unclear vs /change"
++  ],
++  "disputed": [
++    {
++      "title": "/deploy health check lacks CLI surface-only recovery path",
++      "rationale": "Lines 10-22 already handle CLI surface-only with dedicated recovery"
++    },
++    {
++      "title": "/iterate KILL verdict lacks next-step guidance",
++      "rationale": "state-4-output.md lines 142-151 has explicit KILL guidance with 5 actions"
++    },
++    {
++      "title": "/distribute state 9 missing error handling fallback",
++      "rationale": "Step 9f provides unconditional manual fallback independent of Error Handling subsection"
++    }
++  ],
++  "needs_evidence": [
++    "/rollback lacks scope clarification in deploy health check"
++  ]
++}
+\ No newline at end of file
+diff --git a/.claude/review-baseline.json b/.claude/review-baseline.json
+new file mode 100644
+index 0000000..6cc0265
+--- /dev/null
++++ b/.claude/review-baseline.json
+@@ -0,0 +1,6 @@
++{
++  "baseline_errors": 0,
++  "health_clean": false,
++  "max_iterations": 5,
++  "max_findings_per_dimension": 5
++}
+\ No newline at end of file
 diff --git a/.claude/review-complete.json b/.claude/review-complete.json
-index 076257c..c148103 100644
+index c148103..5ca5e26 100644
 --- a/.claude/review-complete.json
 +++ b/.claude/review-complete.json
 @@ -1,10 +1,10 @@
  {
    "branch": "chore/review-fixes-9",
--  "timestamp": "2026-03-27T12:16:42Z",
--  "iterations": 3,
--  "yield": 0.6,
-+  "timestamp": "2026-03-28T04:53:00Z",
-+  "iterations": 2,
-+  "yield": 1.0,
+-  "timestamp": "2026-03-28T04:53:00Z",
++  "timestamp": "2026-03-30T11:57:37Z",
+   "iterations": 2,
+-  "yield": 1.0,
++  "yield": 0.75,
    "baseline_errors": 0,
    "final_errors": 0,
--  "findings_fixed": 3,
--  "findings_disputed": 4
-+  "findings_fixed": 2,
-+  "findings_disputed": 0
+-  "findings_fixed": 2,
+-  "findings_disputed": 0
++  "findings_fixed": 3,
++  "findings_disputed": 3
  }
 diff --git a/.claude/review-context.json b/.claude/review-context.json
-index b961643..8d66dec 100644
+index 90b1d8e..9ffda7a 100644
 --- a/.claude/review-context.json
 +++ b/.claude/review-context.json
 @@ -1 +1 @@
--{"skill": "review", "branch": "main", "timestamp": "2026-03-27T08:32:35Z", "run_id": "review-2026-03-27T08:32:35Z", "completed_states": [0, 1, "2a", "2b", "2c", "2d", "2e", "2f", 3, 4], "observation_backlog": [444], "prior_precision": {"A": 100, "B": 67, "C": 0, "disputed_rate": 44, "skipped_rate": 22, "reverted_rate": 0}}
+-{"skill": "review", "branch": "main", "timestamp": "2026-03-27T16:14:58Z", "run_id": "review-2026-03-27T16:14:58Z", "completed_states": [0, 1, "2a", "2b", "2c", "2d", "2e", "2f", 3, 4, 5, 6]}
 \ No newline at end of file
-+{"skill": "review", "branch": "main", "timestamp": "2026-03-27T16:14:58Z", "run_id": "review-2026-03-27T16:14:58Z", "completed_states": [0, 1, "2a", "2b", "2c", "2d", "2e", "2f", 3, 4]}
++{"skill": "review", "branch": "main", "timestamp": "2026-03-30T11:41:01Z", "run_id": "review-2026-03-30T11:41:01Z", "completed_states": [0, 1, "2a", "2b", "2c", "2d", "2e", "2f", 3, 4]}
 \ No newline at end of file
+diff --git a/.claude/review-findings.json b/.claude/review-findings.json
+new file mode 100644
+index 0000000..d56b357
+--- /dev/null
++++ b/.claude/review-findings.json
+@@ -0,0 +1,7 @@
++{
++  "findings": [],
++  "total_count": 0,
++  "filtered": true,
++  "iteration": 2,
++  "note": "All findings filtered: A1/A2 dropped (LOW confidence), B1 disputed (bootstrap state-2 already validates assumes)"
++}
+\ No newline at end of file
+diff --git a/.claude/review-loop-decision.json b/.claude/review-loop-decision.json
+new file mode 100644
+index 0000000..5ca03a3
+--- /dev/null
++++ b/.claude/review-loop-decision.json
+@@ -0,0 +1,6 @@
++{
++  "iteration": 1,
++  "yield_rate": 0.75,
++  "termination_condition": "minimum_floor",
++  "continue": true
++}
+\ No newline at end of file
+diff --git a/.claude/stacks/testing/playwright.md b/.claude/stacks/testing/playwright.md
+index 90ab1bf..28dc065 100644
+--- a/.claude/stacks/testing/playwright.md
++++ b/.claude/stacks/testing/playwright.md
+@@ -1,5 +1,5 @@
+ ---
+-assumes: [database/supabase, auth/supabase, analytics/posthog]
++assumes: [framework/nextjs, database/supabase, auth/supabase, analytics/posthog]
+ packages:
+   runtime: []
+   dev: ["@playwright/test", "@axe-core/playwright", "pixelmatch", "pngjs"]
 diff --git a/scripts/check-inventory.md b/scripts/check-inventory.md
-index 1e71c9a..c90fe92 100644
+index c90fe92..851aaf3 100644
 --- a/scripts/check-inventory.md
 +++ b/scripts/check-inventory.md
-@@ -1,7 +1,7 @@
- # Check Inventory
- 
- Scannable reference listing all automated checks by name, grouped by validator.
--78 active checks consolidated into 74 inventory rows.
-+80 active checks consolidated into 76 inventory rows.
+@@ -4,7 +4,7 @@ Scannable reference listing all automated checks by name, grouped by validator.
+ 80 active checks consolidated into 76 inventory rows.
  Checks 3 and 7 are archetype-aware — they read `required_experiment_fields` and `excluded_stacks` from archetype frontmatter.
  
- Last updated: 2026-03-23
-@@ -93,7 +93,7 @@ better enforced by the scoped LLM review (`scripts/scoped-review-prompt.md`).
+-Last updated: 2026-03-23
++Last updated: 2026-03-30
  
- ## consistency-check.sh
+ ## Validation philosophy
  
--14 active checks consolidated into 6 rows. Three checks removed (scripts #8, #11, #12). Checks #3 and #13 scan commands, agents, and procedures.
-+16 active checks consolidated into 8 rows. Three checks removed (scripts #8, #11, #12). Checks #3 and #13 scan commands, agents, and procedures.
+@@ -45,7 +45,7 @@ better enforced by the scoped LLM review (`scripts/scoped-review-prompt.md`).
+ | Verify tool and prereq validity | Tool names referenced in skill prose are in the known tools list |
+ | Verify env loading outside Next.js runtime | Non-`src/` templates using `process.env` load env config |
+ | Validate warning differentiation | Makefile validate target differentiates clean pass from pass with warnings |
+-| Verify hardcoded provider names match assumes | Code blocks using provider-specific identifiers must have matching `assumes` declaration |
++| Verify hardcoded provider names match assumes | Code blocks using provider-specific or framework-specific identifiers (e.g., `@next/`) must have matching `assumes` declaration |
+ | Verify prose file references in reads frontmatter | Spec files (CLAUDE.md, experiment/EVENTS.yaml) referenced in skill prose must appear in `reads` frontmatter |
+ | Verify fixture coverage for stack file branching | Conditional stack paths (`when stack.X is NOT Y`) must have fixture coverage for the alternate branch |
+ | Verify stack fallback when assumes not met | Stack files with optional-category `assumes` must have a fallback section for absent dependencies |
+diff --git a/scripts/test_validate_semantics.py b/scripts/test_validate_semantics.py
+index 9acae96..edb032a 100644
+--- a/scripts/test_validate_semantics.py
++++ b/scripts/test_validate_semantics.py
+@@ -231,6 +231,47 @@ import Stripe from 'stripe'
+         })
+         assert errors == []
  
- | Name | Description | Scripts |
- |------|-------------|---------|
-@@ -103,6 +103,8 @@ better enforced by the scoped LLM review (`scripts/scoped-review-prompt.md`).
- | Forbid hardcoded framework paths in change skill | change.md must not hardcode API or types paths | #7 |
- | Require verify.md references in code-writing skill content | Code-writing skill content (not just frontmatter) must reference verify.md | #10 |
- | Forbid hardcoded analytics provider names in skill section headings | Skill, agent, and procedure files must not contain `PostHog` (case-insensitive) in `###` section headings — provider names belong in the analytics stack file | #13 |
-+| Verify lib.sh function calls have space before arguments | Hook scripts (excluding lib.sh) must not call lib.sh functions with the argument concatenated to the function name (e.g., `func"$arg"` instead of `func "$arg"`) | #14 |
-+| Verify STATE_ID regex character class matches across hooks | state-completion-gate.sh and phase-boundary-gate.sh must use the same character class for STATE_ID extraction from advance-state.sh commands | #15 |
- 
- ## Cross-validator overlaps
- 
-diff --git a/scripts/consistency-check.sh b/scripts/consistency-check.sh
-index 3b34209..32238b0 100755
---- a/scripts/consistency-check.sh
-+++ b/scripts/consistency-check.sh
-@@ -100,6 +100,8 @@ done
- # 12. (removed)
- 
- # 13. Hardcoded analytics provider names in skill, agent, and procedure section headings
-+# (Check numbers 14-15 added below)
++    def test_fails_when_next_env_without_framework_assumes(self):
++        content = """---
++assumes: [database/supabase]
++packages: {}
++files: []
++env: {}
++ci_placeholders: {}
++clean: {}
++gitignore: []
++---
 +
- for f in .claude/commands/*.md .claude/agents/*.md .claude/procedures/*.md; do
-   [ -f "$f" ] || continue
-   if grep -qiE '^###.*PostHog' "$f"; then
-@@ -110,6 +112,31 @@ for f in .claude/commands/*.md .claude/agents/*.md .claude/procedures/*.md; do
-   fi
- done
++```ts
++import { loadEnvConfig } from "@next/env";
++```
++"""
++        errors = vs.check_11_hardcoded_provider_names({
++            ".claude/stacks/testing/playwright.md": content
++        })
++        assert len(errors) == 1
++        assert "@next/" in errors[0]
++
++    def test_passes_when_next_env_with_framework_assumes(self):
++        content = """---
++assumes: [framework/nextjs, database/supabase]
++packages: {}
++files: []
++env: {}
++ci_placeholders: {}
++clean: {}
++gitignore: []
++---
++
++```ts
++import { loadEnvConfig } from "@next/env";
++```
++"""
++        errors = vs.check_11_hardcoded_provider_names({
++            ".claude/stacks/testing/playwright.md": content
++        })
++        assert errors == []
++
  
-+# 14. Verify lib.sh function calls have space before arguments in hook scripts
-+LIB_FUNCS="require_trace_verdict|check_trace_run_id|check_trace_verdict|check_postcondition_artifacts|check_tier1_retry_complete|check_efficiency_directives|check_build_result|check_file_boundary|check_verdict_gates|check_skill_completion|check_block_verdicts|rerun_postconditions|require_trace_verdict|handle_validation|deny_errors"
-+for f in .claude/hooks/*.sh; do
-+  [ -f "$f" ] || continue
-+  [ "$(basename "$f")" = "lib.sh" ] && continue
-+  if grep -qE "($LIB_FUNCS)\"" "$f"; then
-+    echo "FAIL: $f — function call missing space before argument (concatenates function name with argument)"
-+    grep -nE "($LIB_FUNCS)\"" "$f" | head -5
-+    echo ""
-+    ERRORS=$((ERRORS + 1))
-+  fi
-+done
-+
-+# 15. Verify STATE_ID regex character class matches between state-completion-gate and phase-boundary-gate
-+SCG=".claude/hooks/state-completion-gate.sh"
-+PBG=".claude/hooks/phase-boundary-gate.sh"
-+if [ -f "$SCG" ] && [ -f "$PBG" ]; then
-+  SCG_CLASS=$(grep -oE 'advance-state.*\[0-9a-z[_]*\]' "$SCG" | head -1 | grep -oE '\[0-9a-z[_]*\]' || echo "")
-+  PBG_CLASS=$(grep -oE 'advance-state.*\[0-9a-z[_]*\]' "$PBG" | head -1 | grep -oE '\[0-9a-z[_]*\]' || echo "")
-+  if [ -n "$SCG_CLASS" ] && [ -n "$PBG_CLASS" ] && [ "$SCG_CLASS" != "$PBG_CLASS" ]; then
-+    echo "FAIL: STATE_ID regex mismatch — state-completion-gate.sh uses $SCG_CLASS, phase-boundary-gate.sh uses $PBG_CLASS"
-+    ERRORS=$((ERRORS + 1))
-+  fi
-+fi
-+
- echo ""
- if [ "$ERRORS" -gt 0 ]; then
-   echo "FAILED: $ERRORS violation(s). Move facts to canonical sources (experiment/EVENTS.yaml, stack files)."
+ # ---------------------------------------------------------------------------
+ # Check 16: Change Payment-Auth Dependency
+diff --git a/scripts/validate-semantics.py b/scripts/validate-semantics.py
+index 44d4d1c..0651d38 100644
+--- a/scripts/validate-semantics.py
++++ b/scripts/validate-semantics.py
+@@ -569,6 +569,7 @@ def check_11_hardcoded_provider_names(stack_contents: dict[str, str]) -> list[st
+         "amplitude": "analytics/amplitude",
+         "segment": "analytics/segment",
+         "stripe": "payment/stripe",
++        "@next/": "framework/nextjs",
+     }
+     for sf, content in stack_contents.items():
+         fm = parse_frontmatter_from_content(content)

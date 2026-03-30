@@ -1,0 +1,7 @@
+{
+  "findings": [],
+  "total_count": 0,
+  "filtered": true,
+  "iteration": 2,
+  "note": "All findings filtered: A1/A2 dropped (LOW confidence), B1 disputed (bootstrap state-2 already validates assumes)"
+}

@@ -1,5 +1,5 @@
 ---
-assumes: [database/supabase, auth/supabase, analytics/posthog]
+assumes: [framework/nextjs, database/supabase, auth/supabase, analytics/posthog]
 packages:
   runtime: []
   dev: ["@playwright/test", "@axe-core/playwright", "pixelmatch", "pngjs"]

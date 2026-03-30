@@ -43,7 +43,7 @@ Begin at STATE 0. Read [state-0-validate-preconditions.md](../patterns/harden/st
 - Implementer agents use `isolation: "worktree"` per Agent tool pattern
 - Implementers receive the "Specifications to test" list from the plan — no re-derivation needed
 - Spec-reviewer included in verify step (conditional 6th agent)
-- Re-run detection: `quality: production` already set + no $ARGUMENTS → stop
+- Re-run detection: `quality: production` already set + no $ARGUMENTS → stop. To add more specification tests to an already-hardened project, pass a scope argument (e.g., `/harden auth module`)
 - Checkpoint-based resume: `.claude/current-plan.md` with YAML frontmatter enables exact resume after /clear or context overflow
 
 ## Do NOT

@@ -569,6 +569,7 @@ def check_11_hardcoded_provider_names(stack_contents: dict[str, str]) -> list[st
         "amplitude": "analytics/amplitude",
         "segment": "analytics/segment",
         "stripe": "payment/stripe",
+        "@next/": "framework/nextjs",
     }
     for sf, content in stack_contents.items():
         fm = parse_frontmatter_from_content(content)
