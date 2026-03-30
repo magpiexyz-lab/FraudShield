@@ -48,12 +48,19 @@ if [[ -d "$VERDICTS_DIR" ]]; then
 fi
 
 # Look up VERIFY command for this skill + state (nested lookup — keep inline)
-VERIFY_CMD=$(python3 -c "
+# Supports both string format ("test -f ...") and object format ({"verify": "...", "calls": [...]})
+ENTRY_DATA=$(python3 -c "
 import json
 reg = json.load(open('$REGISTRY'))
-skill_reg = reg.get('$SKILL', {})
-print(skill_reg.get('$STATE_ID', ''))
+entry = reg.get('$SKILL', {}).get('$STATE_ID', '')
+if isinstance(entry, dict):
+    print(entry.get('verify', '') + '\t' + json.dumps(entry.get('calls', [])))
+else:
+    print(str(entry) + '\t')
 " 2>/dev/null || echo "")
+
+VERIFY_CMD=$(printf '%s' "$ENTRY_DATA" | cut -f1)
+CALLS_JSON=$(printf '%s' "$ENTRY_DATA" | cut -f2)
 
 # --- Chain check: verify all prior states are in completed_states ---
 # This prevents skipping states (e.g., jumping from STATE 0 to STATE 3).
@@ -93,6 +100,25 @@ fi
 cd "$PROJECT_DIR"
 if ! eval "$VERIFY_CMD" >/dev/null 2>&1; then
   deny "State completion gate: $SKILL STATE $STATE_ID postconditions not met. VERIFY failed: $VERIFY_CMD — complete this state's actions before marking it done."
+fi
+
+# --- Calls artifact check: verify each call's artifact exists ---
+if [[ -n "$CALLS_JSON" && "$CALLS_JSON" != "[]" ]]; then
+  MISSING_ARTIFACTS=$(printf '%s' "$CALLS_JSON" | python3 -c "
+import json, os, sys
+calls = json.load(sys.stdin)
+missing = []
+for c in calls:
+    art = c.get('artifact', '')
+    if art and not os.path.isfile(art):
+        missing.append(art + ' (required by ' + c.get('path', '?') + ')')
+if missing:
+    print('; '.join(missing))
+" 2>/dev/null || echo "")
+
+  if [[ -n "$MISSING_ARTIFACTS" ]]; then
+    deny "State completion gate: $SKILL STATE $STATE_ID postconditions not met. Missing call artifacts: $MISSING_ARTIFACTS"
+  fi
 fi
 
 # Postconditions verified — allow

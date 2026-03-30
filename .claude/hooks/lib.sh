@@ -731,8 +731,14 @@ rerun_postconditions() {
 import json
 reg = json.load(open('$registry'))
 skill_data = reg.get('$skill', {})
-for state_id, cmd in skill_data.items():
-    if isinstance(cmd, str) and cmd.strip() != 'true':
+for state_id, entry in skill_data.items():
+    if isinstance(entry, str):
+        cmd = entry
+    elif isinstance(entry, dict):
+        cmd = entry.get('verify', '')
+    else:
+        continue
+    if cmd.strip() and cmd.strip() != 'true':
         print(state_id + '\t' + cmd)
 " 2>/dev/null || echo "")
 

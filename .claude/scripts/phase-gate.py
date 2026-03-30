@@ -53,7 +53,8 @@ def check_postconditions(skill, state_range, errors):
         if state_id == start:
             in_range = True
         if in_range:
-            cmd = skill_states[state_id]
+            raw = skill_states[state_id]
+            cmd = raw.get('verify', '') if isinstance(raw, dict) else raw
             if cmd and cmd != 'true':
                 try:
                     result = subprocess.run(cmd, shell=True, capture_output=True, timeout=30)
