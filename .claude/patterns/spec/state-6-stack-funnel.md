@@ -157,7 +157,7 @@ If the user requests changes, revise the YAML and present it again. Repeat until
 
 **VERIFY:**
 ```bash
-echo "experiment.yaml assembled and approved"
+grep -q 'stack:' experiment/experiment.yaml && grep -q 'funnel:' experiment/experiment.yaml
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

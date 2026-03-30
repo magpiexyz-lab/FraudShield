@@ -102,7 +102,7 @@ python3 .claude/scripts/write-q-score.py \
 
 **VERIFY:**
 ```bash
-grep -q 'campaign_id' experiment/ads.yaml 2>/dev/null && echo "Campaign ID present" || echo "No campaign ID (manual creation needed)"
+grep -q 'campaign_id' experiment/ads.yaml 2>/dev/null || grep -q 'manual_creation' experiment/ads.yaml 2>/dev/null || test -f experiment/ads.yaml
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

@@ -57,12 +57,29 @@ Termination decision (evaluate in order — first match wins):
 
 State which condition triggered your decision before proceeding.
 
+- **Write loop decision artifact** (`.claude/review-loop-decision.json`):
+  ```bash
+  python3 -c "
+  import json
+  decision = {
+      'iteration': 0,
+      'yield_rate': 0.0,
+      'termination_condition': '<condition that triggered>',
+      'continue': False
+  }
+  json.dump(decision, open('.claude/review-loop-decision.json', 'w'), indent=2)
+  "
+  ```
+
 **POSTCONDITIONS:**
 - Compact state summary emitted
 - Termination decision made and stated with triggering condition
+- `.claude/review-loop-decision.json` exists
 
 **VERIFY:**
-Yield rate computed and termination condition identified.
+```bash
+test -f .claude/review-loop-decision.json
+```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
 ```bash

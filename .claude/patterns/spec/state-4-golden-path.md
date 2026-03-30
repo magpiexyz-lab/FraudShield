@@ -61,7 +61,7 @@ golden_path:
 
 **VERIFY:**
 ```bash
-echo "Golden path derived"
+grep -q 'golden_path:' experiment/experiment.yaml 2>/dev/null || grep -q 'endpoints:' experiment/experiment.yaml 2>/dev/null || grep -q 'commands:' experiment/experiment.yaml 2>/dev/null
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

@@ -54,7 +54,7 @@ No-go signal: 0 activations after $[half-budget] spend, or <1% CTR after 500 imp
 
 **VERIFY:**
 ```bash
-echo "Thresholds generated — verify reasoning chain, go/no-go signals, and schema compliance"
+grep -q 'thresholds:' experiment/ads.yaml 2>/dev/null || grep -q 'budget:' experiment/ads.yaml 2>/dev/null
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

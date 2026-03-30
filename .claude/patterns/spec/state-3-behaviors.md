@@ -54,7 +54,7 @@ For system or scheduled behaviors, add `actor` and `trigger`:
 
 **VERIFY:**
 ```bash
-echo "Behaviors derived from hypotheses"
+grep -q 'behaviors:' experiment/experiment.yaml 2>/dev/null || grep -q 'hypothesis_id:' experiment/experiment.yaml 2>/dev/null
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

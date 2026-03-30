@@ -18,7 +18,7 @@ If new validator checks were implemented in State 2e:
 
 **VERIFY:**
 ```bash
-test -f scripts/check-inventory.md && echo "OK" || echo "FAIL"
+test -f .claude/review-complete.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

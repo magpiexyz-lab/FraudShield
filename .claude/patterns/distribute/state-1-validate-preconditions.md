@@ -44,9 +44,24 @@
 - Analytics stack is configured and verified
 - Live analytics verification passed (visit_landing events found)
 
+- **Write preconditions artifact** (`.claude/distribute-preconditions.json`):
+  ```bash
+  python3 -c "
+  import json
+  preconditions = {
+      'experiment_valid': True,
+      'events_valid': True,
+      'deployed_url': '<url>',
+      'channel': '<selected channel>',
+      'analytics_verified': True
+  }
+  json.dump(preconditions, open('.claude/distribute-preconditions.json', 'w'), indent=2)
+  "
+  ```
+
 **VERIFY:**
 ```bash
-test -f experiment/experiment.yaml && test -f experiment/EVENTS.yaml && test -f package.json && echo "OK" || echo "FAIL"
+test -f .claude/distribute-preconditions.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

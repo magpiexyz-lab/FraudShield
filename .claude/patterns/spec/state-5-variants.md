@@ -64,7 +64,7 @@ Variants:
 
 **VERIFY:**
 ```bash
-echo "Variants generated and approved"
+grep -q 'variants:' experiment/experiment.yaml 2>/dev/null || grep -q 'slug:' experiment/experiment.yaml 2>/dev/null
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

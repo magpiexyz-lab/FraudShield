@@ -31,8 +31,7 @@
 
 **VERIFY:**
 ```bash
-test -f .claude/review-complete.json && echo "OK" || echo "FAIL"
-python3 scripts/validate-frontmatter.py 2>&1; python3 scripts/validate-semantics.py 2>&1; bash scripts/consistency-check.sh 2>&1
+test -f .claude/review-complete.json && python3 scripts/validate-frontmatter.py > /dev/null 2>&1 && python3 scripts/validate-semantics.py > /dev/null 2>&1 && bash scripts/consistency-check.sh > /dev/null 2>&1
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

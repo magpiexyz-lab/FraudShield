@@ -11,13 +11,26 @@
 - If 0 remaining findings -> **exit loop**, proceed to State 3
 - Add new signatures to `seen_findings`
 
+- **Update findings artifact** — add `filtered: true` to `.claude/review-findings.json`:
+  ```bash
+  python3 -c "
+  import json
+  d = json.load(open('.claude/review-findings.json'))
+  d['filtered'] = True
+  json.dump(d, open('.claude/review-findings.json', 'w'), indent=2)
+  "
+  ```
+
 **POSTCONDITIONS:**
 - Findings filtered against `seen_findings`
 - New signatures added to `seen_findings`
 - If 0 remaining: loop exit triggered
+- `.claude/review-findings.json` has `filtered` field
 
 **VERIFY:**
-Each remaining finding has a unique signature not in the prior `seen_findings` set.
+```bash
+python3 -c "import json; d=json.load(open('.claude/review-findings.json')); assert d.get('filtered') is not None, 'filtered field missing'"
+```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
 ```bash

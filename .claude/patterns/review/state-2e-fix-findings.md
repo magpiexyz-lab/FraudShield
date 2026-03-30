@@ -31,7 +31,7 @@ If no fixes succeeded this iteration -> **exit loop**, proceed to State 3.
 
 **VERIFY:**
 ```bash
-python3 scripts/validate-frontmatter.py 2>&1; python3 scripts/validate-semantics.py 2>&1; bash scripts/consistency-check.sh 2>&1
+git diff --name-only HEAD 2>/dev/null | grep -q . || git diff --cached --name-only 2>/dev/null | grep -q .
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

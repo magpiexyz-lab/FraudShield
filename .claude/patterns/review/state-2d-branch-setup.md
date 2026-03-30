@@ -17,7 +17,7 @@ If branch already exists from prior iteration, continue on it.
 
 **VERIFY:**
 ```bash
-git branch --show-current | grep -q 'chore/review-fixes' && echo "OK" || echo "FAIL"
+git branch --show-current | grep -q 'chore/review-fixes'
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

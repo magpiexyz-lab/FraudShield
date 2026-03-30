@@ -64,9 +64,22 @@ Keyword rules (google-ads):
 - Targeting research generated appropriate to the selected channel type
 - Research includes all required sections per channel type (keywords, audiences, or communities)
 
+- **Write targeting artifact** (`.claude/distribute-targeting.json`):
+  ```bash
+  python3 -c "
+  import json
+  targeting = {
+      'channel': '<selected channel>',
+      'research_sections': [],  # list of section names completed
+      'targeting_ready': True
+  }
+  json.dump(targeting, open('.claude/distribute-targeting.json', 'w'), indent=2)
+  "
+  ```
+
 **VERIFY:**
 ```bash
-echo "Targeting research generated for selected channel — verify content covers required sections"
+test -f .claude/distribute-targeting.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

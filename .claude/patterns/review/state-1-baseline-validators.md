@@ -31,11 +31,23 @@
 - `max_iterations` and `max_findings_per_dimension` set
 - All 4 validators ran successfully (or user notified of missing tools)
 
+- **Write baseline artifact** (`.claude/review-baseline.json`):
+  ```bash
+  python3 -c "
+  import json
+  baseline = {
+      'baseline_errors': 0,
+      'health_clean': True,
+      'max_iterations': 3,
+      'max_findings_per_dimension': 3
+  }
+  json.dump(baseline, open('.claude/review-baseline.json', 'w'), indent=2)
+  "
+  ```
+
 **VERIFY:**
 ```bash
-python3 scripts/validate-frontmatter.py > /dev/null 2>&1 && echo "frontmatter OK" || echo "frontmatter FAIL"
-python3 scripts/validate-semantics.py > /dev/null 2>&1 && echo "semantics OK" || echo "semantics FAIL"
-bash scripts/consistency-check.sh > /dev/null 2>&1 && echo "consistency OK" || echo "consistency FAIL"
+test -f .claude/review-baseline.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

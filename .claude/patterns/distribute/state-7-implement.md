@@ -89,8 +89,7 @@ Also include analytics dashboard setup instructions (read the analytics stack fi
 
 **VERIFY:**
 ```bash
-grep -q 'utm_source' src/app/page.tsx 2>/dev/null || grep -q 'utm_source' site/index.html 2>/dev/null && echo "UTM OK" || echo "UTM FAIL"
-grep -q 'feedback_submitted' experiment/EVENTS.yaml && echo "Event OK" || echo "Event FAIL"
+(grep -q 'utm_source' src/app/page.tsx 2>/dev/null || grep -q 'utm_source' site/index.html 2>/dev/null) && grep -q 'feedback_submitted' experiment/EVENTS.yaml
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

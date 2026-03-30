@@ -102,7 +102,7 @@ Hypotheses:
 
 **VERIFY:**
 ```bash
-echo "Hypotheses generated and approved"
+grep -q 'hypotheses:' experiment/experiment.yaml 2>/dev/null || grep -q 'category:' experiment/experiment.yaml 2>/dev/null
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

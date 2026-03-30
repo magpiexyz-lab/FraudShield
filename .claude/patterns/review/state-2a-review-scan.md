@@ -160,12 +160,27 @@ Include these in each subagent prompt:
 
 After all 3 return: collect up to 15 findings, deduplicate.
 
+- **Write findings artifact** (`.claude/review-findings.json`):
+  ```bash
+  python3 -c "
+  import json
+  findings = {
+      'findings': [],  # list of {title, severity, dimension, files}
+      'total_count': 0
+  }
+  json.dump(findings, open('.claude/review-findings.json', 'w'), indent=2)
+  "
+  ```
+
 **POSTCONDITIONS:**
 - 3 dimension subagents have returned
 - Findings collected (up to 15), deduplicated
+- `.claude/review-findings.json` exists
 
 **VERIFY:**
-Findings are formatted per the Finding Format above.
+```bash
+test -f .claude/review-findings.json
+```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
 ```bash

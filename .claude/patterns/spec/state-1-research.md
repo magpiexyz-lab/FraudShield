@@ -53,9 +53,26 @@ Wait for the user to revise, override, or abandon.
 - Results displayed to user
 - If 2+ failures: user chose to revise, override, or abandon
 
+- **Write research artifact** (`.claude/spec-research.json`):
+  ```bash
+  python3 -c "
+  import json
+  research = {
+      'dimensions': [
+          {'name': 'market_exists', 'verdict': '<pass|caution|fail>', 'confidence': '<high|medium|low>'},
+          {'name': 'problem_validated', 'verdict': '<pass|caution|fail>', 'confidence': '<high|medium|low>'},
+          {'name': 'competitive_landscape', 'verdict': '<pass|caution|fail>', 'confidence': '<high|medium|low>'},
+          {'name': 'icp_identified', 'verdict': '<pass|caution|fail>', 'confidence': '<high|medium|low>'}
+      ],
+      'passed_count': 0
+  }
+  json.dump(research, open('.claude/spec-research.json', 'w'), indent=2)
+  "
+  ```
+
 **VERIFY:**
 ```bash
-echo "Research complete — 4 dimensions assessed"
+test -f .claude/spec-research.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
