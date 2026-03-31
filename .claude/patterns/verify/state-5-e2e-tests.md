@@ -21,6 +21,11 @@
   **Determine test runner** from `stack.services[].testing` in experiment.yaml:
   - `playwright` → list command: `npx playwright test --list`, run command: `npx playwright test`
   - `vitest` → list command: `npx vitest list`, run command: `npx vitest run`
+  - If the value is absent or not one of {playwright, vitest} → write `.claude/runs/e2e-result.json`:
+    ```bash
+    echo '{"skipped":true,"reason":"unrecognized test runner"}' > .claude/runs/e2e-result.json
+    ```
+    Skip to STATE 6.
 
   **Phase A: Config validation (max 2 attempts, NOT counted against test budget)**
 

@@ -275,6 +275,8 @@ else:
             E2E_REASON=$(read_json_field "$PROJECT_DIR/.claude/runs/e2e-result.json" "reason")
             if [[ "$E2E_REASON" == "no testing stack" ]]; then
               ERRORS+=("e2e-result.json says 'no testing stack' but experiment.yaml has stack.testing — STATE 5 was not executed correctly")
+            elif [[ "$E2E_REASON" == "unrecognized test runner" ]]; then
+              ERRORS+=("e2e-result.json says 'unrecognized test runner' but experiment.yaml has stack.testing — check stack.services[].testing value is one of {playwright, vitest}")
             fi
           fi
         fi
@@ -324,6 +326,9 @@ else: print('no')
           ERRORS+=("fix-log.md missing — cannot run pattern-classifier outside verify context")
         fi
       fi
+      ;;
+    *)
+      echo "WARN: agent-state-gate: unknown agent type '$SUBAGENT_TYPE' for verify — skipping extended checks" >&2
       ;;
   esac
 }

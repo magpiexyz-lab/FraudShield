@@ -114,7 +114,7 @@ Assemble the shared context block (read-only inputs for all agents):
 
 Determine which agents to launch based on experiment.yaml stack (all use
 `subagent_type: general-purpose`):
-- **Agent A** (Supabase Auth): spawn if `stack.auth: supabase` AND `stack.database: supabase`
+- **Agent A** (Supabase Auth): spawn if `stack.auth: supabase` (regardless of database provider — Step 4.4 collects Supabase credentials when database is not supabase)
 - **Agent B** (Stripe Webhook): spawn if `stack.payment: stripe` AND Stripe CLI is available
 - **Agent C** (Analytics Dashboard): spawn if `stack.analytics: posthog`
 - **Agent D** (External Services): spawn if any external stack files exist (Step 0.10 found services)
@@ -130,22 +130,22 @@ Launch all applicable agents **simultaneously** using parallel Agent tool calls.
 
 **Partial failure policy:** After all agents complete (or timeout):
 - If ALL succeeded: proceed normally
-- If ANY failed/timed out: list failures in Step 6 summary with manual setup instructions
+- If ANY failed/timed out: list failures in Step 6 summary. Each agent's `message` field must contain actionable manual setup instructions (dashboard URLs, CLI commands, or stack file references) so the user can complete configuration without re-running `/deploy`.
 - Do NOT retry automatically — the user can re-run `/deploy` to retry failed agents
 
 ---
 
 #### Agent A — Database Auth config
 
-**Spawn condition:** `stack.auth: supabase` AND `stack.database: supabase`
-**Receives:** `canonical_url`, database refs/keys (from Step 3), experiment.yaml `name`, database stack file path, `oauth_credentials` from Step 1/3.5, `stack.auth_providers`, `stack.email` value (from experiment.yaml), `RESEND_API_KEY` (from Step 4.4, when `stack.email: resend`)
+**Spawn condition:** `stack.auth: supabase`
+**Receives:** `canonical_url`, database refs/keys (from Step 3, if supabase) OR user-provided Supabase URL/anon key (from Step 4.4, if database is not supabase), experiment.yaml `name`, database stack file path, `oauth_credentials` from Step 1/3.5, `stack.auth_providers`, `stack.email` value (from experiment.yaml), `RESEND_API_KEY` (from Step 4.4, when `stack.email: resend`)
 **Returns:** `{status: "ok"|"failed"|"skipped", message: "<details>", env_vars_added: [], oauth_configured: ["google", ...], oauth_skipped: ["github", ...], smtp_configured: true|false, templates_configured: true|false}`
 
 Instructions for Agent A:
 
 Read the database stack file's `## Deploy Interface > Auth Config`. If the section is absent (database provider has no auth config), return `{status: "skipped", message: "Database provider has no auth config section.", env_vars_added: []}`.
 
-If `stack.database` does not match `stack.auth`'s expected database (e.g., auth is supabase but no supabase project was created in Step 3), return `{status: "skipped", message: "Auth redirect URLs must be configured manually since no matching database project was created during deploy.", env_vars_added: []}`.
+If `stack.database` does not match `stack.auth`'s expected database (e.g., auth is supabase but no supabase project was created in Step 3): use the user-provided Supabase URL and anon key from Step 4.4 to derive the project ref (extract from URL: `https://<ref>.supabase.co`). Discover the access token and proceed with auth config using the same API calls as the matching-database path. If the user-provided credentials are missing or invalid, return `{status: "failed", message: "Supabase auth config failed — provide valid Supabase URL/anon key or configure auth manually in the Supabase dashboard.", env_vars_added: []}`.
 
 Follow the Auth Config section's instructions step by step — it specifies how to discover the access token, what API call to make, and what fields to set using `canonical_url`.
 
@@ -179,7 +179,7 @@ stripe webhook_endpoints create \
 Extract the webhook signing secret (`whsec_...`) from the output. Set it using the hosting stack file's `## Deploy Interface > Environment Variables` method (primary method with fallback).
 
 Return `{status: "ok", message: "Stripe webhook created and secret set.", env_vars_added: ["STRIPE_WEBHOOK_SECRET"]}`.
-If webhook creation fails, return `{status: "failed", message: "<error details>", env_vars_added: []}`.
+If webhook creation fails, return `{status: "failed", message: "<error details>. To configure manually: go to Stripe Dashboard → Developers → Webhooks → Add endpoint. URL: https://<canonical_url>/api/webhooks/stripe, events: checkout.session.completed. Copy the signing secret and set STRIPE_WEBHOOK_SECRET via the hosting provider's env var method.", env_vars_added: []}`.
 
 ---
 
@@ -221,7 +221,7 @@ curl -s -X POST "https://us.i.posthog.com/api/projects/$POSTHOG_PROJECT_ID/dashb
   -d '{"name": "<project-name> Experiment", "description": "Auto-created by /deploy for <project-name>"}'
 ```
 
-Extract the dashboard `id` from the response. Then create funnel insight. Build the funnel series from experiment/EVENTS.yaml `events` map: filter by `requires` (match experiment stack) and `archetypes` (match experiment type), order by funnel_stage (reach -> demand -> activate -> monetize -> retain). For web-app this typically yields `visit_landing -> signup_start -> signup_complete -> activate` (plus `pay_start` and `pay_success` if `stack.payment` is present). For service/cli, this yields the events defined in the fixture (typically `activate -> retain_return`).
+Extract the dashboard `id` from the response. Then create funnel insight. Build the funnel series from experiment/EVENTS.yaml `events` map: filter by `requires` (match experiment stack) and `archetypes` (match experiment type), order by funnel_stage (reach -> demand -> activate -> monetize -> retain). If the filtered events cover fewer than 2 funnel stages, log a warning ("Funnel insight skipped — filtered events cover fewer than 2 stages for this archetype/stack combination") and skip funnel creation (dashboard is still useful for individual event trends). For web-app this typically yields `visit_landing -> signup_start -> signup_complete -> activate` (plus `pay_start` and `pay_success` if `stack.payment` is present). For service/cli, this yields the events defined in the fixture (typically `activate -> retain_return`).
 
 ```bash
 # Create funnel insight and add to dashboard
@@ -240,7 +240,7 @@ curl -s -X POST "https://us.i.posthog.com/api/projects/$POSTHOG_PROJECT_ID/insig
 ```
 Include `pay_start` and `pay_success` in the series if `stack.payment` is present. This lets the user compare conversion rates between variant landing pages — the core purpose of the variants feature.
 
-If any API call fails, return `{status: "failed", message: "<error details>", dashboard_url: null, env_vars_added: []}`. Include manual instructions in Step 6.
+If any API call fails, return `{status: "failed", message: "<error details>. To set up manually: go to PostHog → Dashboards → New dashboard → name it '<project-name> Experiment'. Add a funnel insight with the events from experiment/EVENTS.yaml filtered by project_name.", dashboard_url: null, env_vars_added: []}`.
 If all API calls succeed, return `{status: "ok", message: "Dashboard and funnel insights created.", dashboard_url: "<PostHog dashboard URL>", env_vars_added: []}`.
 
 ---

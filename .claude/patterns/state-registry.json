@@ -70,7 +70,7 @@
     "3": "test -f .claude/runs/current-plan.md && grep -q 'skill: harden' .claude/runs/current-plan.md",
     "4": "git branch --show-current | grep -q 'chore/harden' && grep -q 'quality: production' experiment/experiment.yaml",
     "5": "test -f .claude/runs/harden-modules-trace.json",
-    "6": "test -f experiment/on-touch.yaml && npm run build 2>/dev/null",
+    "6": "npm run build 2>/dev/null",
     "7": "test -f experiment/on-touch.yaml",
     "8": "test -f .claude/runs/verify-report.md",
     "9": "gh pr view --json number 2>/dev/null"
@@ -206,8 +206,8 @@
       "scaffold-setup":     { "required_states": ["0","1","2","3","3a","3b","4","5","6","7","8"], "artifacts": [".claude/runs/gate-verdicts/bg1.json"], "deny_isolation": ["worktree"] },
       "scaffold-init":      { "required_states": ["0","1","2","3","3a","3b","4","5","6","7","8","9"], "artifacts": [".claude/runs/gate-verdicts/bg1.json"], "deny_isolation": ["worktree"] },
       "scaffold-libs":      { "required_states": ["0","1","2","3","3a","3b","4","5","6","7","8","9","10"], "artifacts": [".claude/runs/gate-verdicts/bg1.json"], "deny_isolation": ["worktree"] },
-      "scaffold-pages":     { "required_states": ["0","1","2","3","3a","3b","4","5","6","7","8","9","10","11"], "artifacts": [".claude/runs/gate-verdicts/bg1.json"], "deny_isolation": ["worktree"] },
-      "scaffold-landing":   { "required_states": ["0","1","2","3","3a","3b","4","5","6","7","8","9","10","11"], "artifacts": [".claude/runs/gate-verdicts/bg1.json"], "deny_isolation": ["worktree"] },
+      "scaffold-pages":     { "required_states": ["0","1","2","3","3a","3b","4","5","6","7","8","9","10","11"], "artifacts": [".claude/runs/gate-verdicts/bg1.json",".claude/runs/agent-traces/scaffold-libs.json"], "deny_isolation": ["worktree"] },
+      "scaffold-landing":   { "required_states": ["0","1","2","3","3a","3b","4","5","6","7","8","9","10","11"], "artifacts": [".claude/runs/gate-verdicts/bg1.json",".claude/runs/agent-traces/scaffold-libs.json"], "deny_isolation": ["worktree"] },
       "scaffold-wire":      { "required_states": ["0","1","2","3","3a","3b","4","5","6","7","8","9","10","11","12","13"], "artifacts": [".claude/runs/gate-verdicts/bg1.json",".claude/runs/gate-verdicts/bg2.json"], "deny_isolation": ["worktree"] }
     },
     "change": {

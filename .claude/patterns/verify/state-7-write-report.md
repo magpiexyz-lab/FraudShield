@@ -46,9 +46,9 @@ overall_verdict: pass | fail
 - Last output: [last 3-5 lines of build output]
 
 ## Quality Delta
-> Populated when `.claude/runs/verify-history.jsonl` has a previous entry **matching the current skill**. Otherwise omit this section.
+> Populated when `.claude/runs/verify-history.jsonl` has a previous entry **matching the current skill**. Otherwise omit this section — except when `quality: production` is set in experiment.yaml, in which case emit a note: "Quality Delta: no prior baseline for this skill. This run establishes baseline; subsequent runs will show delta."
 >
-> Read `.claude/runs/verify-history.jsonl` and find the last entry where `skill` matches the current skill (from verify-context.json). If no matching entry exists, omit this section.
+> Read `.claude/runs/verify-history.jsonl` and find the last entry where `skill` matches the current skill (from verify-context.json). If no matching entry exists, omit this section (or emit the production-mode note above).
 
 | Metric | Previous | Current | Delta |
 |--------|----------|---------|-------|
@@ -129,7 +129,7 @@ Only include agents that were spawned (per scope). Mark others as "skipped — o
    dims = {}
 
    # Q_build (deterministic — from build attempts)
-   dims['build'] = round(1 - (int(fm.get('build_attempts', '1')) - 1) / 2, 3)
+   dims['Q_build'] = round(1 - (int(fm.get('build_attempts', '1')) - 1) / 2, 3)
 
    # Extract per-agent dimension scores from traces
    for f in glob.glob('.claude/runs/agent-traces/*.json'):
@@ -148,21 +148,21 @@ Only include agents that were spawned (per scope). Mark others as "skipped — o
                weighted = sum(1.0 if i.get('severity','')=='Critical' else 0.5 if i.get('severity','')=='High' else 0.1 for i in findings)
            else:
                weighted = merged.get('merged_issues', 0)
-           dims['security'] = round(1 - min(weighted / 5, 1), 3)
+           dims['Q_security'] = round(1 - min(weighted / 5, 1), 3)
 
        elif name == 'design-critic' and scope in ('full', 'visual'):
-           dims['design'] = round(d.get('min_score', 10) / 10, 3)
+           dims['Q_design'] = round(d.get('min_score', 10) / 10, 3)
 
        elif name == 'ux-journeyer' and scope in ('full', 'visual'):
-           dims['ux'] = round(1 - min(d.get('unresolved_dead_ends', 0) / 3, 1), 3)
+           dims['Q_ux'] = round(1 - min(d.get('unresolved_dead_ends', 0) / 3, 1), 3)
 
        elif name == 'behavior-verifier' and scope in ('full', 'security'):
            tp = d.get('tests_passed', 0)
            tf = d.get('tests_failed', 0)
-           dims['behavior'] = round(tp / max(tp + tf, 1), 3)
+           dims['Q_behavior'] = round(tp / max(tp + tf, 1), 3)
 
        elif name == 'spec-reviewer' and scope in ('full', 'security'):
-           dims['spec'] = 1.0 if d.get('verdict', '') == 'PASS' else 0.0
+           dims['Q_spec'] = 1.0 if d.get('verdict', '') == 'PASS' else 0.0
 
    # Gate: binary — build passes AND no hard gate failure
    gate = 0.0 if fm.get('hard_gate_failure', 'false') == 'true' else 1.0
