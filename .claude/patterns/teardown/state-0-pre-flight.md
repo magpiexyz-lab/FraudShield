@@ -5,18 +5,18 @@
 
 **ACTIONS:**
 
-1. Read `.claude/runs/deploy-manifest.json`. If missing, stop: "No deploy manifest found.
-   Run `/deploy` first, or delete resources manually via each provider's dashboard."
-2. Read `experiment/experiment.yaml` — extract `name`, `type`, and `stack.surface` for validation.
+1. Read `experiment/experiment.yaml` — extract `name`, `type`, and `stack.surface` for validation.
    Read the archetype file at `.claude/archetypes/<type>.md` (default `web-app`).
    If archetype is `cli` and surface is `none` (only from explicit `stack.surface: none` —
    CLI defaults to `detached` since `hosting` is in `excluded_stacks`):
-   - If the manifest has no `surface_url` (or `surface_url` is null): stop: "No cloud resources
-     to tear down. CLI tools with no surface are distributed via `npm publish` — no `/deploy`
-     infrastructure was created."
-   - If the manifest has a non-null `surface_url`: warn: "experiment.yaml says `surface: none`
-     but the deploy manifest shows surface infrastructure exists. Proceeding with teardown of
-     deployed resources."
+   - If `.claude/runs/deploy-manifest.json` does not exist or has no `surface_url` (or
+     `surface_url` is null): stop: "No cloud resources to tear down. CLI tools with no
+     surface are distributed via `npm publish` — no `/deploy` infrastructure was created."
+   - If the manifest exists and has a non-null `surface_url`: warn: "experiment.yaml says
+     `surface: none` but the deploy manifest shows surface infrastructure exists. Proceeding
+     with teardown of deployed resources."
+2. Read `.claude/runs/deploy-manifest.json`. If missing, stop: "No deploy manifest found.
+   Run `/deploy` first, or delete resources manually via each provider's dashboard."
 3. If `hosting` is in the manifest: read `hosting.provider` and load the hosting stack file at
    `.claude/stacks/hosting/<provider>.md`.
    If `database` is in the manifest: read `database.provider` and load the database stack file at

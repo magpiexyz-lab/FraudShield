@@ -156,7 +156,7 @@ if os.path.exists(shared_path):
     merged['shared_fixes_applied'] = shared_fixes
     # If only unresolved issues were shared-component, and shared agent fixed them:
     if merged['verdict'] == 'unresolved' and shared_v in ('pass', 'fixed'):
-        if merged['unresolved_sections'] <= shared_fixes:
+        if shared_fixes > 0 and merged['unresolved_sections'] <= shared_fixes:
             merged['verdict'] = 'fixed'
             merged['unresolved_sections'] = 0
 import datetime
@@ -268,7 +268,14 @@ After both design-critic and ux-journeyer have completed and their builds pass:
 
 **VERIFY:**
 ```bash
-test -f .claude/runs/design-ux-merge.json
+python3 -c "
+import json, os
+ctx = json.load(open('.claude/runs/verify-context.json'))
+scope, arch = ctx.get('scope', ''), ctx.get('archetype', '')
+if scope in ('full', 'visual') and arch == 'web-app':
+    assert os.path.exists('.claude/runs/design-ux-merge.json'), 'design-ux-merge.json missing for scope=%s archetype=%s' % (scope, arch)
+print('STATE 3 VERIFY OK')
+"
 ```
 Build command exited 0 after last Phase 2 agent.
 

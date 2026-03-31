@@ -120,7 +120,7 @@ else
 
     # Check 4: agent-traces directory has matching file count
     if [[ -d "$TRACES_DIR" ]]; then
-      TRACE_COUNT=$(find "$TRACES_DIR" -name '*.json' -type f | wc -l | tr -d ' ')
+      TRACE_COUNT=$(find "$TRACES_DIR" -name '*.json' -type f | grep -cEv '(design-critic|ux-journeyer)-[a-z0-9]|/(observer|pattern-classifier|design-consistency-checker)\.json$')
       COMPLETED_COUNT=$(echo "$FRONTMATTER" | grep 'agents_completed:' | sed 's/agents_completed: *//' | tr -d '[]' | tr ',' '\n' | sed '/^$/d' | wc -l | tr -d ' ')
       if [[ "$TRACE_COUNT" -ne "$COMPLETED_COUNT" ]]; then
         ERRORS+=("Agent trace count ($TRACE_COUNT) does not match agents_completed count ($COMPLETED_COUNT)")

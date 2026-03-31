@@ -162,10 +162,21 @@ If the diagnosis reveals a need to change direction:
 - Funnel analysis presented with bottleneck identified
 - 1-3 specific action recommendations provided
 - Direction change guidance provided (if applicable)
+- Verdict saved to iterate-context.json
+
+Save the verdict to context before VERIFY:
+```bash
+python3 -c "
+import json
+ctx = json.load(open('.claude/runs/iterate-context.json'))
+ctx['verdict'] = '<VERDICT>'  # Replace with actual verdict from analysis
+json.dump(ctx, open('.claude/runs/iterate-context.json', 'w'), indent=2)
+"
+```
 
 **VERIFY:**
 ```bash
-python3 -c "import json; d=json.load(open('.claude/runs/iterate-manifest.json')); assert 'decision' in d or 'verdict' in d, 'decision/verdict missing'"
+python3 -c "import json; ctx=json.load(open('.claude/runs/iterate-context.json')); assert ctx.get('verdict'), 'verdict missing from iterate-context.json'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

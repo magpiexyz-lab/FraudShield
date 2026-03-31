@@ -122,7 +122,10 @@ Based on the measurement window and current progress, provide a concrete schedul
 
 - Calculate dates from the experiment timeline and the elapsed days reported in STATE 3
 - If verdict is TOO EARLY: check deployment and traffic state to provide actionable next steps:
-  - If `.claude/runs/deploy-manifest.json` does not exist: "Your app isn't deployed yet. Run `/deploy` to go live, then return to `/iterate` after a few days of traffic."
+  - If `.claude/runs/deploy-manifest.json` does not exist:
+    - If archetype is `web-app` or `service`: "Your app isn't deployed yet. Run `/deploy` to go live, then return to `/iterate` after a few days of traffic."
+    - If archetype is `cli` with `surface: detached`: "Your CLI surface isn't deployed yet. Run `/deploy` for the marketing surface, then `npm publish` to publish the CLI package."
+    - If archetype is `cli` with `surface: none`: "Your CLI hasn't been published yet. Run `npm publish` or create a GitHub Release, then collect usage data before re-running `/iterate`."
   - If deployed but analytics shows 0 events: "Your app is deployed but receiving no traffic. Run `/distribute` to drive traffic, or manually visit the app to verify it's accessible."
   - If deployed and some events exist: "Traffic is building -- check back in 3 days or when 30+ visits are logged, whichever comes first."
 - If verdict is KILL, the next check-in is NOW -- recommend immediate decision

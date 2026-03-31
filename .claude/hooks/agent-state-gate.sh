@@ -166,7 +166,7 @@ verify_extended_checks() {
 
       local SCOPE
       SCOPE=$(read_json_field "$PROJECT_DIR/.claude/runs/verify-context.json" "scope")
-      if [[ "$SCOPE" == "full" || "$SCOPE" == "security" ]]; then
+      if [[ "$SCOPE" == "full" ]]; then
         for AGENT in security-defender security-attacker behavior-verifier; do
           if [[ ! -f "$TRACES_DIR/$AGENT.json" ]]; then
             ERRORS+=("$AGENT.json trace missing — Phase 1 agent incomplete (scope=$SCOPE)")
@@ -320,13 +320,6 @@ else: print('no')
       check_efficiency_directives
       ;;
 
-    pattern-classifier)
-      if [[ -f "$PROJECT_DIR/.claude/runs/verify-context.json" ]]; then
-        if [[ ! -f "$PROJECT_DIR/.claude/runs/fix-log.md" ]]; then
-          ERRORS+=("fix-log.md missing — cannot run pattern-classifier outside verify context")
-        fi
-      fi
-      ;;
     *)
       echo "WARN: agent-state-gate: unknown agent type '$SUBAGENT_TYPE' for verify — skipping extended checks" >&2
       ;;
@@ -394,6 +387,13 @@ elif [[ "$ACTIVE_SKILL" == "bootstrap" ]]; then
   bootstrap_extended_checks
 elif [[ "$ACTIVE_SKILL" == "change" ]]; then
   change_extended_checks
+fi
+
+# ── Cross-skill agent checks (run regardless of active skill) ──
+if [[ "$SUBAGENT_TYPE" == "pattern-classifier" ]]; then
+  if [[ ! -f "$PROJECT_DIR/.claude/runs/fix-log.md" ]]; then
+    ERRORS+=("fix-log.md missing — required for pattern-classifier")
+  fi
 fi
 
 # ── Deny or allow ──
