@@ -44,7 +44,7 @@ Then append the plan body. The `modules` list preserves the dependency-ordered s
 
 If the user replied **"approve and clear"** or **"2"**:
   1. Save the plan with frontmatter (same as above)
-  2. Tell the user: "Plan saved. Run `/clear`, then re-run `/harden`. I'll resume at the checkpoint."
+  2. Tell the user: "Plan saved. Run `/clear`, then re-run `/harden` with the exact same command (including any arguments). Checkpoint resumption requires matching the original invocation."
   3. **STOP** -- do NOT proceed to STATE 4. This is a TERMINAL path.
 
 If the user requests changes instead of approving, revise the plan to address their feedback and present it again (return to STATE 2). Repeat until approved.

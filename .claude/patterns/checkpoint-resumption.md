@@ -45,14 +45,22 @@ exact checkpoint without re-deriving classification, scope, or stack.
 
 | Checkpoint | Resumes at |
 |-----------|------------|
+| `phase2-setup` | STATE 9 (setup phase) |
+| `phase2-design` | STATE 10 (design phase) |
+| `phase2-scaffold` | STATE 11 (parallel scaffold) |
+| `phase2-wire` | STATE 14 (wire phase) |
 | `awaiting-verify` | Terminal — run `/verify`, not `/bootstrap` |
 
 ### /harden
 
 | Checkpoint | Resumes at |
 |-----------|------------|
-| `step3-verify` | STATE 8 (verify) |
-| `step3-reconcile` | STATE 6 (reconcile) |
+| `step2-approval` | STATE 2 (plan approval) |
+| `step3-setup` | STATE 4 (branch + config) |
+| `step3-module-N` | STATE 5 at module N (skip completed) |
+| `step3-reconcile` | STATE 6 (reconciliation) |
+| `step3-verify` | STATE 8 (run /verify) |
+| `step3-pr` | STATE 9 (commit/PR) |
 
 ## When to Save
 

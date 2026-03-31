@@ -37,10 +37,10 @@
    fi
    ```
 
-5. Write `.claude/runs/verify-context.json` (includes `skill` for Q-score attribution, `run_id` for trace freshness validation, and `baseline_available` for delta reporting):
+5. Write `.claude/runs/verify-context.json` (includes `skill` for Q-score attribution, `run_id` for trace freshness validation, `mode` for PR gate behavior, and `baseline_available` for delta reporting):
    ```bash
    cat > .claude/runs/verify-context.json << CTXEOF
-   {"scope":"<scope>","archetype":"<type>","quality":"<quality|mvp>","skill":"<skill from step 3>","branch":"$(git branch --show-current)","timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","run_id":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","baseline_available":$BASELINE_AVAILABLE,"completed_states":[0]}
+   {"scope":"<scope>","archetype":"<type>","quality":"<quality|mvp>","skill":"<skill from step 3>","mode":"<standalone if skill is verify, otherwise the skill name + -verify e.g. bootstrap-verify, change-verify>","branch":"$(git branch --show-current)","timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","run_id":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","baseline_available":$BASELINE_AVAILABLE,"completed_states":[0]}
    CTXEOF
    ```
 

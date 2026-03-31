@@ -47,7 +47,7 @@ Campaign metadata (`campaign_id`, `campaign_url`) is committed to the feature br
 >
 > This will use real ad platform credentials. Reply **approve** to create the campaign, or tell me what to change.
 
-**Do not proceed until the user approves.** This is a second approval gate — Step 6 approves the config, Step 9d approves actual campaign creation with real credentials.
+**Do not proceed until the user approves.** This is a second approval gate — Step 6 approves the config, Step 9d approves actual campaign creation with real credentials. If the user requests changes instead of approving, revise the campaign preview to address their feedback (adjust budget, targeting, ad count, etc. in `experiment/ads.yaml`) and present the preview again. Repeat until approved.
 
 ### 9e: Create campaign via API
 

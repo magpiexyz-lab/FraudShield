@@ -63,7 +63,7 @@ Follow the procedure in `.claude/procedures/change-test.md`.
 >
 > **Critical assertions (Verification):**
 > - If scope is `full` or `security` — security-defender + security-attacker MUST be spawned.
-> - If `quality: production` — spec-reviewer MUST be spawned.
+> - If `quality: production` AND scope is `full` or `security` — spec-reviewer MUST be spawned.
 > - `.claude/runs/verify-report.md` MUST be written before Step 8.
 
 - **Implementer trace audit** (informational — does not block G4):

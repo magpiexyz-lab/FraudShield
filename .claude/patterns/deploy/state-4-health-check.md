@@ -37,7 +37,7 @@ If any health check fails, diagnose and attempt to fix:
 |-------|-----------|----------|
 | `database` | Re-extract keys using database stack file's Provisioning steps. Compare with hosting stack file's `## Deploy Interface > Auto-Fix` verify command. | If mismatch: re-set env vars using hosting stack file's env var method, then redeploy |
 | `auth` | Re-check auth config via database stack file's `## Deploy Interface > Auth Config` | Re-run the auth config step |
-| `analytics` | Code integration issue — cannot fix via CLI | Report: "Analytics health check failed. This is likely a code issue — merge the current PR to `main`, pull (`git checkout main && git pull`), then run `/change fix analytics integration`." |
+| `analytics` | Code integration issue — cannot fix via CLI | Report: "Analytics health check failed. This is likely a code issue — merge the current PR to `main`, pull (`git checkout main && git pull`), then run `/change fix analytics integration`. To roll back this deployment immediately, run `/rollback`." |
 | `payment` | Verify webhook: `stripe webhook_endpoints list`. Check env var using hosting stack file's Auto-Fix verify command. | Re-set env vars if missing/wrong, redeploy |
 
 After all fixable issues are addressed:
