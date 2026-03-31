@@ -51,11 +51,11 @@ export async function GET() {
 
 **When `stack.auth` is present:** bootstrap adds an auth service check — call `supabase.auth.getUser()` with no session (expects an auth error, not a network error), and set `checks.auth = "ok"` or `"error"`. Log the actual error server-side with `console.error("Health check auth error:", e.message)` — never expose raw error messages in the response.
 
-**When `stack.analytics` is present:** bootstrap adds an analytics reachability check — fetch the analytics provider's lightweight API endpoint from the server to verify the service is reachable and the integration code loads without errors. For PostHog: `fetch(POSTHOG_HOST + "/decide?v=3", { method: "POST", body: JSON.stringify({ api_key: POSTHOG_KEY, distinct_id: "healthcheck" }) })`. Import constants from the analytics server library. Set `checks.analytics = "ok"` or `"error"`. Log the actual error server-side — never expose raw error messages in the response. The `/decide` endpoint is lightweight and does not create events.
+**When `stack.analytics` is present:** bootstrap adds an analytics reachability check. Import constants from the analytics server library (e.g., `import { POSTHOG_KEY, POSTHOG_HOST } from "@/lib/analytics-server"`). Do NOT hardcode the API key — always use the imported constant. If the env var is not set (e.g., `!POSTHOG_KEY`), skip the check and set `checks.analytics = "degraded"`. Otherwise, fetch the analytics provider's lightweight API endpoint from the server to verify the service is reachable. For PostHog: `fetch(POSTHOG_HOST + "/decide?v=3", { method: "POST", body: JSON.stringify({ api_key: POSTHOG_KEY, distinct_id: "healthcheck" }) })`. Set `checks.analytics = "ok"`, `"degraded"`, or `"error"`. Log the actual error server-side — never expose raw error messages in the response. The `/decide` endpoint is lightweight and does not create events. Analytics is a **non-critical** check (see Response below).
 
 **When `stack.payment` is present:** bootstrap adds a payment configuration check — verify the payment provider's secret key env var exists and has the correct format. For Stripe: check `process.env.STRIPE_SECRET_KEY` starts with `sk_`. Set `checks.payment = "ok"` or `"error"`. Log the actual error server-side — never expose raw error messages in the response.
 
-**Response:** Returns 200 with JSON `{ status: "ok", ... }` if all checks pass. Returns 503 if any check fails, with individual check results so failures are diagnosable.
+**Response:** Checks are classified as **critical** (database, auth) or **non-critical** (analytics, payment config). Returns 200 with JSON `{ status: "ok", ... }` if all critical checks pass — non-critical checks may report `"degraded"` or `"error"` without affecting the HTTP status code. Returns 503 only if a critical check fails, with individual check results so failures are diagnosable.
 
 ## Preview Smoke Test
 
@@ -240,14 +240,7 @@ Standardized subsections referenced by deploy.md and teardown.md. Each subsectio
      -H "Content-Type: application/json" \
      -d '{"productionDeploymentBranch": "__manual_deploy_only__"}'
    ```
-   Then disable preview builds for branch pushes and PRs:
-   ```bash
-   curl -s -X PATCH "https://api.vercel.com/v9/projects/$PROJECT_ID" \
-     -H "Authorization: Bearer <vercel_token>" \
-     -H "Content-Type: application/json" \
-     -d '{"commandForIgnoringBuildStep": "[ \"$VERCEL_ENV\" != \"production\" ]"}'
-   ```
-   This disables all automatic deployments — both production auto-deploy on merge and preview builds on branch push/PR. Production deploys are triggered manually via `vercel --prod --yes` when running `/deploy`.
+   This disables production auto-deploy on merge to main. Preview deployments on PRs remain active via the GitHub integration (used by the `preview-smoke` CI job). Production deploys are triggered manually via `vercel --prod --yes` when running `/deploy`.
 
 ### Domain Setup
 
