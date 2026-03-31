@@ -57,6 +57,9 @@ Thumbs.db
 .claude/patterns-saved.json
 externals-decisions.json
 
+# Skill run artifacts (ephemeral execution state)
+.claude/runs/
+
 # TypeScript
 *.tsbuildinfo
 
