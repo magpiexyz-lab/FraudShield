@@ -165,7 +165,7 @@ If the diagnosis reveals a need to change direction:
 
 **VERIFY:**
 ```bash
-python3 -c "import json; d=json.load(open('.claude/iterate-manifest.json')); assert 'decision' in d or 'verdict' in d, 'decision/verdict missing'"
+python3 -c "import json; d=json.load(open('.claude/runs/iterate-manifest.json')); assert 'decision' in d or 'verdict' in d, 'decision/verdict missing'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

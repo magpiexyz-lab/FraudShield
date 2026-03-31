@@ -5,7 +5,7 @@
 
 **ACTIONS:**
 
-If `.claude/spec-manifest.json` exists, read it and extract:
+If `.claude/runs/spec-manifest.json` exists, read it and extract:
 - All hypotheses where `category` is `"demand"` or `"reach"` (the categories relevant to distribution)
 - For each: `statement`, `metric.formula`, `metric.threshold`
 
@@ -15,20 +15,20 @@ Store as hypothesis context for Step 3. If the file does not exist, skip — all
   ```bash
   python3 -c "
   import json, os
-  ctx = json.load(open('.claude/distribute-context.json'))
-  ctx['hypothesis_loaded'] = os.path.exists('.claude/spec-manifest.json')
-  json.dump(ctx, open('.claude/distribute-context.json', 'w'), indent=2)
+  ctx = json.load(open('.claude/runs/distribute-context.json'))
+  ctx['hypothesis_loaded'] = os.path.exists('.claude/runs/spec-manifest.json')
+  json.dump(ctx, open('.claude/runs/distribute-context.json', 'w'), indent=2)
   "
   ```
 
 **POSTCONDITIONS:**
-- If `.claude/spec-manifest.json` exists: demand/reach hypotheses extracted and stored in context
-- If `.claude/spec-manifest.json` does not exist: skipped, no hypothesis context
+- If `.claude/runs/spec-manifest.json` exists: demand/reach hypotheses extracted and stored in context
+- If `.claude/runs/spec-manifest.json` does not exist: skipped, no hypothesis context
 - `hypothesis_loaded` field persisted to `distribute-context.json`
 
 **VERIFY:**
 ```bash
-python3 -c "import json; ctx=json.load(open('.claude/distribute-context.json')); assert 'hypothesis_loaded' in ctx, 'hypothesis_loaded missing'"
+python3 -c "import json; ctx=json.load(open('.claude/runs/distribute-context.json')); assert 'hypothesis_loaded' in ctx, 'hypothesis_loaded missing'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

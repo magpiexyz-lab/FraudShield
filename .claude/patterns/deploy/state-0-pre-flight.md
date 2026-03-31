@@ -10,7 +10,7 @@
 2. Verify on `main` branch with clean working tree (`git status --porcelain` is empty). If not, stop: "Switch to main with a clean working tree before deploying."
 3. Run `npm run build` to verify the app builds locally. If it fails, stop: "Fix build errors before deploying."
 3a. If `quality: production` is set in experiment.yaml and `stack.testing` is present: run the test command from the testing stack file (e.g., `npm test`). If tests fail, stop: "Specification tests are failing. Run `/verify` to fix test failures before deploying."
-3b. **Update mode detection:** If `.claude/deploy-manifest.json` exists, read it and enter **update mode**:
+3b. **Update mode detection:** If `.claude/runs/deploy-manifest.json` exists, read it and enter **update mode**:
     1. Set `deploy_mode = "update"` (stored in deploy-context.json).
     2. Diff `experiment.yaml` stack against manifest to compute:
        - `added_services`: stack categories present in experiment.yaml but absent from manifest (e.g., added `stack.payment: stripe` since last deploy)
@@ -26,7 +26,7 @@
        - Unchanged services: [list — health check only]
        Reply **continue** to proceed, or run `/teardown` first to start fresh."
     4. Wait for user confirmation.
-    If `.claude/deploy-manifest.json` does NOT exist: set `deploy_mode = "initial"`.
+    If `.claude/runs/deploy-manifest.json` does NOT exist: set `deploy_mode = "initial"`.
 3c. **Dependency audit:** Run `npm audit --audit-level=critical`. If critical vulnerabilities are found:
     "Critical npm vulnerabilities detected:
     <npm audit output>
@@ -60,8 +60,8 @@
 
 Clean stale epilogue artifacts and create context file to initialize state tracking:
 ```bash
-rm -f .claude/observe-result.json
-cat > .claude/deploy-context.json << CTXEOF
+rm -f .claude/runs/observe-result.json
+cat > .claude/runs/deploy-context.json << CTXEOF
 {"skill":"deploy","branch":"$(git branch --show-current)","timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","run_id":"deploy-$(date -u +%Y-%m-%dT%H:%M:%SZ)","deploy_mode":"<initial|update>","added_services":[<list>],"removed_services":[<list>],"unchanged_services":[<list>],"completed_states":[0]}
 CTXEOF
 ```
@@ -75,11 +75,11 @@ CTXEOF
 - experiment.yaml read and parsed
 - Archetype file read and surface type resolved
 - All prerequisite checks passed (or appropriate stops issued)
-- `.claude/deploy-context.json` exists
+- `.claude/runs/deploy-context.json` exists
 
 **VERIFY:**
 ```bash
-test -f package.json && test -f experiment/experiment.yaml && test -f .claude/deploy-context.json && echo "OK" || echo "FAIL"
+test -f package.json && test -f experiment/experiment.yaml && test -f .claude/runs/deploy-context.json && echo "OK" || echo "FAIL"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

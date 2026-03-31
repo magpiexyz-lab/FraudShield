@@ -2,7 +2,7 @@
 
 ## Prerequisites
 - Branch already created (by bootstrap Step 0)
-- Plan approved and saved to `.claude/current-plan.md`
+- Plan approved and saved to `.claude/runs/current-plan.md`
 - Read all context files listed in your task assignment before starting
 
 ## Steps

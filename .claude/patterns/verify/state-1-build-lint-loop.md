@@ -15,7 +15,7 @@ For each attempt:
 
 1. Run `npm run build`
 2. If build fails: note the errors (mentally log: "Attempt N — build: [error summary]").
-   Fix the errors. Append each fix to `.claude/fix-log.md`:
+   Fix the errors. Append each fix to `.claude/runs/fix-log.md`:
    ```
    **Fix N:** `<file>` — Symptom: `<what broke>` — Cause: `<why>` — Fix: `<what you changed>`
    ```
@@ -23,13 +23,13 @@ For each attempt:
 3. If build passes: run `npm run lint` (skip if no lint script exists).
    Warnings are OK; errors are not.
 4. If lint fails: note the errors (mentally log: "Attempt N — lint: [error summary]").
-   Fix the errors. Append each fix to `.claude/fix-log.md`. Then start the next attempt.
+   Fix the errors. Append each fix to `.claude/runs/fix-log.md`. Then start the next attempt.
 5. If both pass: build and lint verification passed. Continue to STATE 2 — do NOT skip the remaining verification steps.
 6. **Prove it.** Quote the last 3–5 lines of the build output **verbatim in a code block**. State facts: "Build completed with 0 errors. Lint passed with 0 warnings." Never say "should work", "probably passes", or "seems fine." The verify-report-gate hook checks for this.
-7. **Record the result.** Write `.claude/build-result.json` to persist the build outcome for hook validation:
+7. **Record the result.** Write `.claude/runs/build-result.json` to persist the build outcome for hook validation:
    ```bash
-   RUN_ID=$(python3 -c "import json;print(json.load(open('.claude/verify-context.json')).get('run_id',''))" 2>/dev/null || echo "")
-   echo '{"exit_code":0,"timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","run_id":"'"$RUN_ID"'"}' > .claude/build-result.json
+   RUN_ID=$(python3 -c "import json;print(json.load(open('.claude/runs/verify-context.json')).get('run_id',''))" 2>/dev/null || echo "")
+   echo '{"exit_code":0,"timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","run_id":"'"$RUN_ID"'"}' > .claude/runs/build-result.json
    ```
 
 **If all 3 attempts fail**, stop and report to the user:
@@ -61,7 +61,7 @@ For each attempt:
 ```bash
 python3 -c "
 import json, os
-ctx_path = '.claude/verify-context.json'
+ctx_path = '.claude/runs/verify-context.json'
 if os.path.exists(ctx_path):
     ctx = json.load(open(ctx_path))
     ctx['diagnostic'] = {
@@ -85,7 +85,7 @@ Do NOT commit code that fails build or lint. Do NOT skip this procedure.
 
 **VERIFY:**
 ```bash
-test -f .claude/build-result.json && python3 -c "import json; assert json.load(open('.claude/build-result.json'))['exit_code'] == 0"
+test -f .claude/runs/build-result.json && python3 -c "import json; assert json.load(open('.claude/runs/build-result.json'))['exit_code'] == 0"
 ```
 
 > **Hook-enforced:** `agent-state-gate.sh` validates `build-result.json` before allowing Phase 1 agents to spawn.

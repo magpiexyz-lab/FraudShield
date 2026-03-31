@@ -1,220 +1,220 @@
 {
   "verify": {
-    "0": "test -f .claude/verify-context.json && test -f .claude/fix-log.md && test -d .claude/agent-traces",
-    "1": "test -f .claude/build-result.json && python3 -c \"import json; assert json.load(open('.claude/build-result.json'))['exit_code'] == 0\"",
-    "2": "ls .claude/agent-traces/*.json >/dev/null 2>&1",
-    "3": "python3 -c \"import json,os; fl=open('.claude/fix-log.md').read() if os.path.exists('.claude/fix-log.md') else ''; checks=[('design-critic','.claude/agent-traces/design-critic.json'),('ux-journeyer','.claude/agent-traces/ux-journeyer.json'),('security-fixer','.claude/agent-traces/security-fixer.json')]; errs=[n+': trace has fixes but fix-log missing Fix ('+n+')' for n,p in checks if os.path.exists(p) and len(json.load(open(p)).get('fixes',[]))>0 and 'Fix ('+n not in fl]; assert not errs, '; '.join(errs)\"",
-    "4": "test -f .claude/security-merge.json",
-    "5": "test -f .claude/e2e-result.json",
+    "0": "test -f .claude/runs/verify-context.json && test -f .claude/runs/fix-log.md && test -d .claude/runs/agent-traces",
+    "1": "test -f .claude/runs/build-result.json && python3 -c \"import json; assert json.load(open('.claude/runs/build-result.json'))['exit_code'] == 0\"",
+    "2": "ls .claude/runs/agent-traces/*.json >/dev/null 2>&1",
+    "3": "python3 -c \"import json,os; fl=open('.claude/runs/fix-log.md').read() if os.path.exists('.claude/runs/fix-log.md') else ''; checks=[('design-critic','.claude/runs/agent-traces/design-critic.json'),('ux-journeyer','.claude/runs/agent-traces/ux-journeyer.json'),('security-fixer','.claude/runs/agent-traces/security-fixer.json')]; errs=[n+': trace has fixes but fix-log missing Fix ('+n+')' for n,p in checks if os.path.exists(p) and len(json.load(open(p)).get('fixes',[]))>0 and 'Fix ('+n not in fl]; assert not errs, '; '.join(errs)\"",
+    "4": "test -f .claude/runs/security-merge.json",
+    "5": "test -f .claude/runs/e2e-result.json",
     "6": "true",
     "7": {
-      "verify": "head -1 .claude/verify-report.md | grep -q '^---$' && tail -1 .claude/verify-history.jsonl | python3 -c 'import json,sys,os; e=json.loads(sys.stdin.read()); ds=e.get(\"dimension_scores\",{}); assert not(ds.get(\"Q_build\",0)>0) or (os.path.exists(\".claude/build-result.json\") and json.load(open(\".claude/build-result.json\")).get(\"exit_code\")==0), \"Q_build>0 but build failed\"'"
+      "verify": "head -1 .claude/runs/verify-report.md | grep -q '^---$' && tail -1 .claude/runs/verify-history.jsonl | python3 -c 'import json,sys,os; e=json.loads(sys.stdin.read()); ds=e.get(\"dimension_scores\",{}); assert not(ds.get(\"Q_build\",0)>0) or (os.path.exists(\".claude/runs/build-result.json\") and json.load(open(\".claude/runs/build-result.json\")).get(\"exit_code\")==0), \"Q_build>0 but build failed\"'"
     },
-    "8": "test -f .claude/patterns-saved.json"
+    "8": "test -f .claude/runs/patterns-saved.json"
   },
   "bootstrap": {
-    "0": "test -f .claude/bootstrap-context.json && git branch --show-current | grep -q 'feat/bootstrap'",
+    "0": "test -f .claude/runs/bootstrap-context.json && git branch --show-current | grep -q 'feat/bootstrap'",
     "1": "test -f experiment/experiment.yaml && test -f experiment/EVENTS.yaml",
     "2": "python3 -c \"import json; d=json.load(open('.claude/bootstrap-archetype-trace.json')); assert d.get('archetype'), 'archetype field empty'\"",
     "3": "python3 -c \"import json; d=json.load(open('.claude/bootstrap-validation-trace.json')); assert d.get('experiment_valid') is not None, 'experiment_valid missing'\"",
-    "3a": "test -f .claude/gate-verdicts/bg1.json",
-    "3b": "python3 -c \"import json; assert json.load(open('.claude/bootstrap-context.json')).get('duplicate_check_done') == True, 'duplicate_check_done not set'\"",
+    "3a": "test -f .claude/runs/gate-verdicts/bg1.json",
+    "3b": "python3 -c \"import json; assert json.load(open('.claude/runs/bootstrap-context.json')).get('duplicate_check_done') == True, 'duplicate_check_done not set'\"",
     "4": "python3 -c \"import json; d=json.load(open('.claude/bootstrap-preconditions.json')); assert 'node_available' in d, 'node_available missing'\"",
-    "5": "test -f .claude/current-plan.md",
+    "5": "test -f .claude/runs/current-plan.md",
     "6": "true",
-    "7": "test -f .claude/current-plan.md && grep -q 'Process Checklist' .claude/current-plan.md",
-    "8": "python3 -c \"import json; assert json.load(open('.claude/bootstrap-context.json')).get('preflight_passed') == True, 'preflight_passed not set'\"",
+    "7": "test -f .claude/runs/current-plan.md && grep -q 'Process Checklist' .claude/runs/current-plan.md",
+    "8": "python3 -c \"import json; assert json.load(open('.claude/runs/bootstrap-context.json')).get('preflight_passed') == True, 'preflight_passed not set'\"",
     "9": "test -f package.json && test -d node_modules",
-    "10": "test -f .claude/current-visual-brief.md",
+    "10": "test -f .claude/runs/current-visual-brief.md",
     "11": "ls src/lib/*.ts >/dev/null 2>&1",
-    "12": "test -f .claude/gate-verdicts/bg2.5.json",
-    "13": "test -f .claude/gate-verdicts/bg2.json",
-    "14": "python3 -c \"import json; d=json.load(open('.claude/bootstrap-wire-trace.json')); assert 'checkpoint' in d, 'checkpoint missing'\"",
-    "15": "test -f .claude/gate-verdicts/bg4.json"
+    "12": "test -f .claude/runs/gate-verdicts/bg2.5.json",
+    "13": "test -f .claude/runs/gate-verdicts/bg2.json",
+    "14": "python3 -c \"import json; d=json.load(open('.claude/runs/bootstrap-wire-trace.json')); assert 'checkpoint' in d, 'checkpoint missing'\"",
+    "15": "test -f .claude/runs/gate-verdicts/bg4.json"
   },
   "change": {
-    "0": "test -f .claude/change-context.json && test -f package.json && test -f experiment/EVENTS.yaml",
+    "0": "test -f .claude/runs/change-context.json && test -f package.json && test -f experiment/EVENTS.yaml",
     "1": "git branch --show-current | grep -q 'change/'",
     "2": {
-      "verify": "python3 -c \"import json,os; d=json.load(open('.claude/exploration-trace.json')); required=['archetype','archetype_constraints','stacks_read','affected_files','affected_imports','exploration_steps_completed']; missing=[k for k in required if k not in d]; assert not missing,'exploration-trace.json missing: %s'%missing; bad=[f for f in d['affected_files'] if f and not os.path.exists(f)]; assert not bad,'affected_files not on disk: %s'%bad; ctx=json.load(open('.claude/change-context.json')); assert ctx.get('preliminary_type') is not None; assert isinstance(ctx.get('affected_areas'),int)\"",
+      "verify": "python3 -c \"import json,os; d=json.load(open('.claude/runs/exploration-trace.json')); required=['archetype','archetype_constraints','stacks_read','affected_files','affected_imports','exploration_steps_completed']; missing=[k for k in required if k not in d]; assert not missing,'exploration-trace.json missing: %s'%missing; bad=[f for f in d['affected_files'] if f and not os.path.exists(f)]; assert not bad,'affected_files not on disk: %s'%bad; ctx=json.load(open('.claude/runs/change-context.json')); assert ctx.get('preliminary_type') is not None; assert isinstance(ctx.get('affected_areas'),int)\"",
       "calls": [
-        {"path": "procedures/plan-exploration.md", "artifact": ".claude/exploration-trace.json"},
-        {"path": "archetypes/<type>.md", "artifact": ".claude/exploration-trace.json"}
+        {"path": "procedures/plan-exploration.md", "artifact": ".claude/runs/exploration-trace.json"},
+        {"path": "archetypes/<type>.md", "artifact": ".claude/runs/exploration-trace.json"}
       ]
     },
     "3": {
-      "verify": "python3 -c \"import json; ctx=json.load(open('.claude/change-context.json')); sd=ctx.get('solve_depth'); assert sd in ('light','full'), 'solve_depth=%s' % sd; pt=ctx.get('preliminary_type',''); aa=ctx.get('affected_areas',0); assert not (pt in ('Feature','Upgrade') and isinstance(aa,int) and aa>=3 and sd!='full'), 'Formula requires full (type=%s,areas=%s) but got %s' % (pt,aa,sd); st=json.load(open('.claude/solve-trace.json')); required=['mode','problem_decomposition','constraint_enumeration','solution_design','self_check','output']; missing=[k for k in required if k not in st]; assert not missing,'solve-trace.json missing: %s'%missing\"",
+      "verify": "python3 -c \"import json; ctx=json.load(open('.claude/runs/change-context.json')); sd=ctx.get('solve_depth'); assert sd in ('light','full'), 'solve_depth=%s' % sd; pt=ctx.get('preliminary_type',''); aa=ctx.get('affected_areas',0); assert not (pt in ('Feature','Upgrade') and isinstance(aa,int) and aa>=3 and sd!='full'), 'Formula requires full (type=%s,areas=%s) but got %s' % (pt,aa,sd); st=json.load(open('.claude/runs/solve-trace.json')); required=['mode','problem_decomposition','constraint_enumeration','solution_design','self_check','output']; missing=[k for k in required if k not in st]; assert not missing,'solve-trace.json missing: %s'%missing\"",
       "calls": [
-        {"path": "patterns/solve-reasoning.md", "artifact": ".claude/solve-trace.json"}
+        {"path": "patterns/solve-reasoning.md", "artifact": ".claude/runs/solve-trace.json"}
       ]
     },
     "4": "true",
     "5": "true",
     "6": {
-      "verify": "python3 -c \"import json; d=json.load(open('.claude/plan-validation.json')); checks=['route_conflict','schema_conflict','import_availability','component_reuse','analytics_naming']; missing=[c for c in checks if c not in d]; assert not missing,'plan-validation.json missing: %s'%missing; no_checked=[c for c in checks if d[c].get('checked') is None]; assert not no_checked,'checks without checked field: %s'%no_checked\"",
+      "verify": "python3 -c \"import json; d=json.load(open('.claude/runs/plan-validation.json')); checks=['route_conflict','schema_conflict','import_availability','component_reuse','analytics_naming']; missing=[c for c in checks if c not in d]; assert not missing,'plan-validation.json missing: %s'%missing; no_checked=[c for c in checks if d[c].get('checked') is None]; assert not no_checked,'checks without checked field: %s'%no_checked\"",
       "calls": [
-        {"path": "procedures/plan-validation.md", "artifact": ".claude/plan-validation.json"}
+        {"path": "procedures/plan-validation.md", "artifact": ".claude/runs/plan-validation.json"}
       ]
     },
-    "7": "test -f .claude/current-plan.md && grep -q 'checkpoint:' .claude/current-plan.md",
-    "8": "grep -q 'Process Checklist' .claude/current-plan.md",
-    "9": "grep -q 'checkpoint: phase2-step6' .claude/current-plan.md && python3 -c \"import json; pt=json.load(open('.claude/change-context.json')).get('preliminary_type',''); assert pt!='Feature' or '  - id:' in open('experiment/experiment.yaml').read(), 'Feature requires behaviors'\"",
-    "10": "grep -q 'checkpoint: phase2-step7' .claude/current-plan.md && python3 -c \"import json,glob,os; q='production' if 'quality: production' in open('experiment/experiment.yaml').read() else 'mvp'; ts=glob.glob('.claude/agent-traces/implementer-*.json')+glob.glob('.claude/agent-traces/visual-implementer-*.json') if q=='production' else []; bad=[t for t in ts if json.load(open(t)).get('status')=='complete' and not json.load(open(t)).get('worktree_merged')]; assert not bad,'Unmerged: '+','.join(bad); assert not(len(ts)>=2 and not os.path.exists('.claude/consistency-scan-result.json')),'2+ implementers but no consistency-scan-result.json'\"",
-    "11": "test -f .claude/verify-report.md",
+    "7": "test -f .claude/runs/current-plan.md && grep -q 'checkpoint:' .claude/runs/current-plan.md",
+    "8": "grep -q 'Process Checklist' .claude/runs/current-plan.md",
+    "9": "grep -q 'checkpoint: phase2-step6' .claude/runs/current-plan.md && python3 -c \"import json; pt=json.load(open('.claude/runs/change-context.json')).get('preliminary_type',''); assert pt!='Feature' or '  - id:' in open('experiment/experiment.yaml').read(), 'Feature requires behaviors'\"",
+    "10": "grep -q 'checkpoint: phase2-step7' .claude/runs/current-plan.md && python3 -c \"import json,glob,os; q='production' if 'quality: production' in open('experiment/experiment.yaml').read() else 'mvp'; ts=glob.glob('.claude/runs/agent-traces/implementer-*.json')+glob.glob('.claude/runs/agent-traces/visual-implementer-*.json') if q=='production' else []; bad=[t for t in ts if json.load(open(t)).get('status')=='complete' and not json.load(open(t)).get('worktree_merged')]; assert not bad,'Unmerged: '+','.join(bad); assert not(len(ts)>=2 and not os.path.exists('.claude/runs/consistency-scan-result.json')),'2+ implementers but no consistency-scan-result.json'\"",
+    "11": "test -f .claude/runs/verify-report.md",
     "12": "true"
   },
   "harden": {
-    "0": "test -f .claude/harden-context.json && test -f package.json",
-    "1": "test -f .claude/harden-scan.json",
-    "2": "test -f .claude/current-plan.md",
-    "3": "test -f .claude/current-plan.md && grep -q 'skill: harden' .claude/current-plan.md",
+    "0": "test -f .claude/runs/harden-context.json && test -f package.json",
+    "1": "test -f .claude/runs/harden-scan.json",
+    "2": "test -f .claude/runs/current-plan.md",
+    "3": "test -f .claude/runs/current-plan.md && grep -q 'skill: harden' .claude/runs/current-plan.md",
     "4": "git branch --show-current | grep -q 'chore/harden' && grep -q 'quality: production' experiment/experiment.yaml",
-    "5": "test -f .claude/harden-modules-trace.json",
+    "5": "test -f .claude/runs/harden-modules-trace.json",
     "6": "test -f experiment/on-touch.yaml && npm run build 2>/dev/null",
     "7": "test -f experiment/on-touch.yaml",
-    "8": "test -f .claude/verify-report.md",
+    "8": "test -f .claude/runs/verify-report.md",
     "9": "gh pr view --json number 2>/dev/null"
   },
   "review": {
-    "0": "test -f .claude/review-context.json",
-    "1": "test -f .claude/review-baseline.json",
-    "2a": "test -f .claude/review-findings.json",
-    "2b": "python3 -c \"import json; d=json.load(open('.claude/review-findings.json')); assert d.get('filtered') is not None, 'filtered field missing'\"",
-    "2c": "test -f .claude/review-adversarial.json",
+    "0": "test -f .claude/runs/review-context.json",
+    "1": "test -f .claude/runs/review-baseline.json",
+    "2a": "test -f .claude/runs/review-findings.json",
+    "2b": "python3 -c \"import json; d=json.load(open('.claude/runs/review-findings.json')); assert d.get('filtered') is not None, 'filtered field missing'\"",
+    "2c": "test -f .claude/runs/review-adversarial.json",
     "2d": "git branch --show-current | grep -q 'chore/review-fixes'",
     "2e": "git diff --name-only HEAD 2>/dev/null | grep -q . || git diff --cached --name-only 2>/dev/null | grep -q .",
-    "2f": "test -f .claude/review-loop-decision.json",
-    "3": "test -f .claude/review-complete.json",
-    "4": "test -f .claude/review-complete.json && python3 scripts/validate-frontmatter.py > /dev/null 2>&1 && python3 scripts/validate-semantics.py > /dev/null 2>&1 && bash scripts/consistency-check.sh > /dev/null 2>&1",
-    "5": "test -f .claude/review-complete.json",
-    "6": "python3 -c \"import json; d=json.load(open('.claude/observe-result.json')); assert d['skill']=='review'\""
+    "2f": "test -f .claude/runs/review-loop-decision.json",
+    "3": "test -f .claude/runs/review-complete.json",
+    "4": "test -f .claude/runs/review-complete.json && python3 scripts/validate-frontmatter.py > /dev/null 2>&1 && python3 scripts/validate-semantics.py > /dev/null 2>&1 && bash scripts/consistency-check.sh > /dev/null 2>&1",
+    "5": "test -f .claude/runs/review-complete.json",
+    "6": "python3 -c \"import json; d=json.load(open('.claude/runs/observe-result.json')); assert d['skill']=='review'\""
   },
   "resolve": {
-    "0": "test -f .claude/resolve-context.json",
-    "1": "python3 -c \"import json; ctx=json.load(open('.claude/resolve-context.json')); assert isinstance(ctx.get('files_read'), list) and len(ctx['files_read']) > 0, 'files_read missing or empty'\"",
-    "2": "python3 -c \"import json; d=json.load(open('.claude/resolve-triage.json')); assert isinstance(d.get('issues'), list), 'issues missing'\"",
-    "3": "test -f .claude/resolve-reproduction.json",
-    "4": "python3 -c \"import json; ctx=json.load(open('.claude/resolve-context.json')); assert isinstance(ctx.get('blast_radius'), list), 'blast_radius missing'\"",
-    "4b": "test -f .claude/resolve-clusters.json",
-    "5": "test -f .claude/solve-trace.json",
-    "5d": "test -f .claude/resolve-challenge.json",
+    "0": "test -f .claude/runs/resolve-context.json",
+    "1": "python3 -c \"import json; ctx=json.load(open('.claude/runs/resolve-context.json')); assert isinstance(ctx.get('files_read'), list) and len(ctx['files_read']) > 0, 'files_read missing or empty'\"",
+    "2": "python3 -c \"import json; d=json.load(open('.claude/runs/resolve-triage.json')); assert isinstance(d.get('issues'), list), 'issues missing'\"",
+    "3": "test -f .claude/runs/resolve-reproduction.json",
+    "4": "python3 -c \"import json; ctx=json.load(open('.claude/runs/resolve-context.json')); assert isinstance(ctx.get('blast_radius'), list), 'blast_radius missing'\"",
+    "4b": "test -f .claude/runs/resolve-clusters.json",
+    "5": "test -f .claude/runs/solve-trace.json",
+    "5d": "test -f .claude/runs/resolve-challenge.json",
     "6": "git branch --show-current | grep -q 'fix/resolve'",
     "7": "git diff --name-only HEAD 2>/dev/null | grep -q . || git diff --cached --name-only 2>/dev/null | grep -q .",
-    "8": "test -f .claude/resolve-validation.json",
-    "8b": "test -f .claude/resolve-side-effects.json",
+    "8": "test -f .claude/runs/resolve-validation.json",
+    "8b": "test -f .claude/runs/resolve-side-effects.json",
     "9": "gh pr view --json number 2>/dev/null",
-    "10": "test -f .claude/patterns-saved.json",
-    "11": "python3 -c \"import json; d=json.load(open('.claude/observe-result.json')); assert d['skill']=='resolve'\""
+    "10": "test -f .claude/runs/patterns-saved.json",
+    "11": "python3 -c \"import json; d=json.load(open('.claude/runs/observe-result.json')); assert d['skill']=='resolve'\""
   },
   "distribute": {
-    "0": "test -f .claude/distribute-context.json",
-    "1": "test -f .claude/distribute-preconditions.json",
-    "1_5": "python3 -c \"import json; ctx=json.load(open('.claude/distribute-context.json')); assert 'hypothesis_loaded' in ctx, 'hypothesis_loaded missing'\"",
-    "2": "test -f .claude/distribute-targeting.json",
-    "3": "test -f .claude/distribute-creative.json",
+    "0": "test -f .claude/runs/distribute-context.json",
+    "1": "test -f .claude/runs/distribute-preconditions.json",
+    "1_5": "python3 -c \"import json; ctx=json.load(open('.claude/runs/distribute-context.json')); assert 'hypothesis_loaded' in ctx, 'hypothesis_loaded missing'\"",
+    "2": "test -f .claude/runs/distribute-targeting.json",
+    "3": "test -f .claude/runs/distribute-creative.json",
     "4": "grep -q 'thresholds:' experiment/ads.yaml 2>/dev/null || grep -q 'budget:' experiment/ads.yaml 2>/dev/null",
     "5": "test -f experiment/ads.yaml",
-    "6": "python3 -c \"import json; assert json.load(open('.claude/distribute-context.json')).get('approved') == True, 'approved not set'\"",
+    "6": "python3 -c \"import json; assert json.load(open('.claude/runs/distribute-context.json')).get('approved') == True, 'approved not set'\"",
     "7": "(grep -q 'utm_source' src/app/page.tsx 2>/dev/null || grep -q 'utm_source' site/index.html 2>/dev/null) && grep -q 'feedback_submitted' experiment/EVENTS.yaml",
-    "8": "test -f .claude/verify-report.md",
+    "8": "test -f .claude/runs/verify-report.md",
     "9": "grep -q 'campaign_id' experiment/ads.yaml 2>/dev/null || grep -q 'manual_creation' experiment/ads.yaml 2>/dev/null || test -f experiment/ads.yaml"
   },
   "deploy": {
-    "0": "test -f .claude/deploy-context.json",
-    "1": "test -f .claude/deploy-config.json",
-    "2": "python3 -c \"import json; assert json.load(open('.claude/deploy-context.json')).get('approved') == True, 'approved not set'\"",
-    "3": "test -f .claude/deploy-provision.json",
-    "4": "test -f .claude/deploy-health.json",
-    "5": "test -f .claude/deploy-manifest.json",
-    "6": "python3 -c \"import json; d=json.load(open('.claude/observe-result.json')); assert d['skill']=='deploy'\""
+    "0": "test -f .claude/runs/deploy-context.json",
+    "1": "test -f .claude/runs/deploy-config.json",
+    "2": "python3 -c \"import json; assert json.load(open('.claude/runs/deploy-context.json')).get('approved') == True, 'approved not set'\"",
+    "3": "test -f .claude/runs/deploy-provision.json",
+    "4": "test -f .claude/runs/deploy-health.json",
+    "5": "test -f .claude/runs/deploy-manifest.json",
+    "6": "python3 -c \"import json; d=json.load(open('.claude/runs/observe-result.json')); assert d['skill']=='deploy'\""
   },
   "teardown": {
-    "0": "test -f .claude/teardown-context.json",
-    "1": "python3 -c \"import json; assert json.load(open('.claude/teardown-context.json')).get('confirmed') == True, 'confirmed not set'\"",
-    "2": "test -f .claude/teardown-result.json",
-    "3": "test -f .claude/teardown-verification.json",
+    "0": "test -f .claude/runs/teardown-context.json",
+    "1": "python3 -c \"import json; assert json.load(open('.claude/runs/teardown-context.json')).get('confirmed') == True, 'confirmed not set'\"",
+    "2": "test -f .claude/runs/teardown-result.json",
+    "3": "test -f .claude/runs/teardown-verification.json",
     "4": "true",
-    "5": "python3 -c \"import json; d=json.load(open('.claude/observe-result.json')); assert d['skill']=='teardown'\""
+    "5": "python3 -c \"import json; d=json.load(open('.claude/runs/observe-result.json')); assert d['skill']=='teardown'\""
   },
   "spec": {
-    "0": "test -f .claude/spec-context.json",
-    "1": "test -f .claude/spec-research.json",
+    "0": "test -f .claude/runs/spec-context.json",
+    "1": "test -f .claude/runs/spec-research.json",
     "2": "grep -q 'hypotheses:' experiment/experiment.yaml 2>/dev/null || grep -q 'category:' experiment/experiment.yaml 2>/dev/null",
     "3": "grep -q 'behaviors:' experiment/experiment.yaml 2>/dev/null || grep -q 'hypothesis_id:' experiment/experiment.yaml 2>/dev/null",
     "4": "grep -q 'golden_path:' experiment/experiment.yaml 2>/dev/null || grep -q 'endpoints:' experiment/experiment.yaml 2>/dev/null || grep -q 'commands:' experiment/experiment.yaml 2>/dev/null",
     "5": "grep -q 'variants:' experiment/experiment.yaml 2>/dev/null || grep -q 'slug:' experiment/experiment.yaml 2>/dev/null",
     "6": "grep -q 'stack:' experiment/experiment.yaml && grep -q 'funnel:' experiment/experiment.yaml",
     "7": "test -f experiment/experiment.yaml",
-    "8": "python3 -c \"import json; d=json.load(open('.claude/observe-result.json')); assert d['skill']=='spec'\""
+    "8": "python3 -c \"import json; d=json.load(open('.claude/runs/observe-result.json')); assert d['skill']=='spec'\""
   },
   "rollback": {
-    "0": "test -f .claude/rollback-context.json",
-    "1": "test -f .claude/rollback-plan.json",
-    "2": "python3 -c \"import json; assert json.load(open('.claude/rollback-context.json')).get('approved') == True, 'approved not set'\"",
-    "3": "test -f .claude/rollback-result.json",
-    "4": "python3 -c \"import json; d=json.load(open('.claude/observe-result.json')); assert d['skill']=='rollback'\""
+    "0": "test -f .claude/runs/rollback-context.json",
+    "1": "test -f .claude/runs/rollback-plan.json",
+    "2": "python3 -c \"import json; assert json.load(open('.claude/runs/rollback-context.json')).get('approved') == True, 'approved not set'\"",
+    "3": "test -f .claude/runs/rollback-result.json",
+    "4": "python3 -c \"import json; d=json.load(open('.claude/runs/observe-result.json')); assert d['skill']=='rollback'\""
   },
   "iterate": {
-    "0": "test -f .claude/iterate-context.json",
-    "1": "test -f .claude/iterate-data.json",
-    "2": "test -f .claude/iterate-verdicts.json",
-    "3": "python3 -c \"import json; d=json.load(open('.claude/iterate-manifest.json')); assert 'decision' in d or 'verdict' in d, 'decision/verdict missing'\"",
-    "4": "test -f .claude/iterate-manifest.json",
-    "5": "python3 -c \"import json; d=json.load(open('.claude/observe-result.json')); assert d['skill']=='iterate'\""
+    "0": "test -f .claude/runs/iterate-context.json",
+    "1": "test -f .claude/runs/iterate-data.json",
+    "2": "test -f .claude/runs/iterate-verdicts.json",
+    "3": "python3 -c \"import json; d=json.load(open('.claude/runs/iterate-manifest.json')); assert 'decision' in d or 'verdict' in d, 'decision/verdict missing'\"",
+    "4": "test -f .claude/runs/iterate-manifest.json",
+    "5": "python3 -c \"import json; d=json.load(open('.claude/runs/observe-result.json')); assert d['skill']=='iterate'\""
   },
   "retro": {
-    "0": "test -f .claude/retro-context.json",
-    "1": "test -f .claude/retro-interview.json",
-    "2": "test -f .claude/retro-interview.json && test -f .claude/retro-context.json",
+    "0": "test -f .claude/runs/retro-context.json",
+    "1": "test -f .claude/runs/retro-interview.json",
+    "2": "test -f .claude/runs/retro-interview.json && test -f .claude/runs/retro-context.json",
     "3": "true",
-    "4": "python3 -c \"import json; d=json.load(open('.claude/observe-result.json')); assert d['skill']=='retro'\""
+    "4": "python3 -c \"import json; d=json.load(open('.claude/runs/observe-result.json')); assert d['skill']=='retro'\""
   },
   "solve": {
-    "0": "test -f .claude/solve-context.json",
-    "1": "test -f .claude/solve-trace.json",
-    "2": "test -f .claude/solve-trace.json && test -f .claude/solve-context.json",
-    "3": "python3 -c \"import json; d=json.load(open('.claude/observe-result.json')); assert d['skill']=='solve'\""
+    "0": "test -f .claude/runs/solve-context.json",
+    "1": "test -f .claude/runs/solve-trace.json",
+    "2": "test -f .claude/runs/solve-trace.json && test -f .claude/runs/solve-context.json",
+    "3": "python3 -c \"import json; d=json.load(open('.claude/runs/observe-result.json')); assert d['skill']=='solve'\""
   },
   "audit": {
-    "0": "test -f .claude/audit-context.json",
-    "1": "test -f .claude/audit-analysis.json",
+    "0": "test -f .claude/runs/audit-context.json",
+    "1": "test -f .claude/runs/audit-analysis.json",
     "2": "true",
-    "3": "python3 -c \"import json; d=json.load(open('.claude/observe-result.json')); assert d['skill']=='audit'\""
+    "3": "python3 -c \"import json; d=json.load(open('.claude/runs/observe-result.json')); assert d['skill']=='audit'\""
   },
 
   "agent_gates": {
     "verify": {
       "_required_states": ["0","1","2","3","4","5","6","7","8"],
-      "build-info-collector":       { "required_states": ["0","1"], "artifacts": [".claude/build-result.json"], "deny_background": true },
-      "security-defender":          { "required_states": ["0","1"], "artifacts": [".claude/build-result.json"], "deny_background": true },
-      "security-attacker":          { "required_states": ["0","1"], "artifacts": [".claude/build-result.json"], "deny_background": true },
-      "behavior-verifier":          { "required_states": ["0","1"], "artifacts": [".claude/build-result.json"], "deny_background": true },
-      "performance-reporter":       { "required_states": ["0","1"], "artifacts": [".claude/build-result.json"], "deny_background": true },
-      "accessibility-scanner":      { "required_states": ["0","1"], "artifacts": [".claude/build-result.json"], "deny_background": true },
-      "spec-reviewer":              { "required_states": ["0","1"], "artifacts": [".claude/build-result.json"], "deny_background": true },
-      "design-critic":              { "required_states": ["0","1"], "artifacts": [".claude/build-result.json"] },
-      "design-consistency-checker": { "required_states": ["0","1"], "artifacts": [".claude/build-result.json"] },
-      "ux-journeyer":               { "required_states": ["0","1"], "artifacts": [".claude/build-result.json"] },
-      "security-fixer":             { "required_states": ["0","1","2","3"], "artifacts": [".claude/build-result.json"] },
-      "observer":                   { "required_states": ["0","1","2","3","4"], "artifacts": [".claude/e2e-result.json"] },
+      "build-info-collector":       { "required_states": ["0","1"], "artifacts": [".claude/runs/build-result.json"], "deny_background": true },
+      "security-defender":          { "required_states": ["0","1"], "artifacts": [".claude/runs/build-result.json"], "deny_background": true },
+      "security-attacker":          { "required_states": ["0","1"], "artifacts": [".claude/runs/build-result.json"], "deny_background": true },
+      "behavior-verifier":          { "required_states": ["0","1"], "artifacts": [".claude/runs/build-result.json"], "deny_background": true },
+      "performance-reporter":       { "required_states": ["0","1"], "artifacts": [".claude/runs/build-result.json"], "deny_background": true },
+      "accessibility-scanner":      { "required_states": ["0","1"], "artifacts": [".claude/runs/build-result.json"], "deny_background": true },
+      "spec-reviewer":              { "required_states": ["0","1"], "artifacts": [".claude/runs/build-result.json"], "deny_background": true },
+      "design-critic":              { "required_states": ["0","1"], "artifacts": [".claude/runs/build-result.json"] },
+      "design-consistency-checker": { "required_states": ["0","1"], "artifacts": [".claude/runs/build-result.json"] },
+      "ux-journeyer":               { "required_states": ["0","1"], "artifacts": [".claude/runs/build-result.json"] },
+      "security-fixer":             { "required_states": ["0","1","2","3"], "artifacts": [".claude/runs/build-result.json"] },
+      "observer":                   { "required_states": ["0","1","2","3","4"], "artifacts": [".claude/runs/e2e-result.json"] },
       "pattern-classifier":         { "required_states": ["0","1","2","3","4","5","6"] }
     },
     "bootstrap": {
       "_required_states": ["0","1","2","3","3a","3b","4","5","6","7","8","9","10","11","12","13","14","15"],
       "gate-keeper":        { "allow_unconditional": true },
       "scaffold-externals": { "allow_unconditional": true },
-      "scaffold-setup":     { "required_states": ["0","1","2","3","3a","3b","4","5","6","7","8"], "artifacts": [".claude/gate-verdicts/bg1.json"], "deny_isolation": ["worktree"] },
-      "scaffold-init":      { "required_states": ["0","1","2","3","3a","3b","4","5","6","7","8","9"], "artifacts": [".claude/gate-verdicts/bg1.json"], "deny_isolation": ["worktree"] },
-      "scaffold-libs":      { "required_states": ["0","1","2","3","3a","3b","4","5","6","7","8","9","10"], "artifacts": [".claude/gate-verdicts/bg1.json"], "deny_isolation": ["worktree"] },
-      "scaffold-pages":     { "required_states": ["0","1","2","3","3a","3b","4","5","6","7","8","9","10","11"], "artifacts": [".claude/gate-verdicts/bg1.json"], "deny_isolation": ["worktree"] },
-      "scaffold-landing":   { "required_states": ["0","1","2","3","3a","3b","4","5","6","7","8","9","10","11"], "artifacts": [".claude/gate-verdicts/bg1.json"], "deny_isolation": ["worktree"] },
-      "scaffold-wire":      { "required_states": ["0","1","2","3","3a","3b","4","5","6","7","8","9","10","11","12","13"], "artifacts": [".claude/gate-verdicts/bg1.json",".claude/gate-verdicts/bg2.json"], "deny_isolation": ["worktree"] }
+      "scaffold-setup":     { "required_states": ["0","1","2","3","3a","3b","4","5","6","7","8"], "artifacts": [".claude/runs/gate-verdicts/bg1.json"], "deny_isolation": ["worktree"] },
+      "scaffold-init":      { "required_states": ["0","1","2","3","3a","3b","4","5","6","7","8","9"], "artifacts": [".claude/runs/gate-verdicts/bg1.json"], "deny_isolation": ["worktree"] },
+      "scaffold-libs":      { "required_states": ["0","1","2","3","3a","3b","4","5","6","7","8","9","10"], "artifacts": [".claude/runs/gate-verdicts/bg1.json"], "deny_isolation": ["worktree"] },
+      "scaffold-pages":     { "required_states": ["0","1","2","3","3a","3b","4","5","6","7","8","9","10","11"], "artifacts": [".claude/runs/gate-verdicts/bg1.json"], "deny_isolation": ["worktree"] },
+      "scaffold-landing":   { "required_states": ["0","1","2","3","3a","3b","4","5","6","7","8","9","10","11"], "artifacts": [".claude/runs/gate-verdicts/bg1.json"], "deny_isolation": ["worktree"] },
+      "scaffold-wire":      { "required_states": ["0","1","2","3","3a","3b","4","5","6","7","8","9","10","11","12","13"], "artifacts": [".claude/runs/gate-verdicts/bg1.json",".claude/runs/gate-verdicts/bg2.json"], "deny_isolation": ["worktree"] }
     },
     "change": {
       "_required_states": ["0","1","2","3","4","5","6","7","8","9","10","11","12"],
       "gate-keeper":        { "allow_unconditional": true },
-      "implementer":        { "required_states": ["0","1","2","3","4","5","6","7","8","9"], "artifacts": [".claude/gate-verdicts/g3.json"] },
-      "visual-implementer": { "required_states": ["0","1","2","3","4","5","6","7","8","9"], "artifacts": [".claude/gate-verdicts/g3.json"] }
+      "implementer":        { "required_states": ["0","1","2","3","4","5","6","7","8","9"], "artifacts": [".claude/runs/gate-verdicts/g3.json"] },
+      "visual-implementer": { "required_states": ["0","1","2","3","4","5","6","7","8","9"], "artifacts": [".claude/runs/gate-verdicts/g3.json"] }
     },
     "harden": {
       "_required_states": ["0","1","2","3","4","5","6","7","8","9"],

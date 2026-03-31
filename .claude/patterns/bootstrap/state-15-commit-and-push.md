@@ -8,7 +8,7 @@
 
 Follow gate execution procedure per `procedures/gate-execution.md`.
 
-- Stage files: `git add -A` (safe -- `.gitignore` excludes `.env.local`, `.claude/gate-verdicts/`, and sensitive patterns). Verify: `git diff --cached --name-only | grep -iE '\.env\.local|\.key$|\.pem$|credentials|\.secret$|\.token$|service-account' && echo "STOP: secrets staged" || echo "OK"`.
+- Stage files: `git add -A` (safe -- `.gitignore` excludes `.env.local`, `.claude/runs/gate-verdicts/`, and sensitive patterns). Verify: `git diff --cached --name-only | grep -iE '\.env\.local|\.key$|\.pem$|credentials|\.secret$|\.token$|service-account' && echo "STOP: secrets staged" || echo "OK"`.
 - Commit: "Bootstrap MVP scaffold from experiment.yaml"
 - **BG4 PR Gate**: Spawn the `gate-keeper` agent (`subagent_type: gate-keeper`). Pass: "Execute BG4 PR Gate. Verify: on feature branch (not main), git status shows no uncommitted changes to tracked files, commit message follows imperative mood." If gate-keeper returns BLOCK, fix blocking items before pushing.
 - Push to the remote branch
@@ -17,8 +17,8 @@ Follow gate execution procedure per `procedures/gate-execution.md`.
 Compute bootstrap execution quality (see `.claude/patterns/skill-scoring.md`):
 
 ```bash
-RUN_ID=$(python3 -c "import json; print(json.load(open('.claude/bootstrap-context.json')).get('run_id', ''))" 2>/dev/null || echo "")
-GATES_PASSED=$(ls .claude/gate-verdicts/bg*.json 2>/dev/null | wc -l | tr -d ' ')
+RUN_ID=$(python3 -c "import json; print(json.load(open('.claude/runs/bootstrap-context.json')).get('run_id', ''))" 2>/dev/null || echo "")
+GATES_PASSED=$(ls .claude/runs/gate-verdicts/bg*.json 2>/dev/null | wc -l | tr -d ' ')
 Q_GATES=$(python3 -c "print(round(int('${GATES_PASSED}') / max(4, 1), 3))")
 python3 .claude/scripts/write-q-score.py \
   --skill bootstrap --scope bootstrap \
@@ -27,19 +27,19 @@ python3 .claude/scripts/write-q-score.py \
   --run-id "$RUN_ID" || true
 ```
 
-- Delete `.claude/current-visual-brief.md` (keep `.claude/current-plan.md` -- `/verify` needs it)
+- Delete `.claude/runs/current-visual-brief.md` (keep `.claude/runs/current-plan.md` -- `/verify` needs it)
 - Tell the user: "Bootstrap pushed. Run `/verify` to run verification and create the PR." If archetype is `cli` and surface is not `none`, add: "After merging, run `/deploy` for the marketing surface, then `npm publish` for the CLI binary." If archetype is `cli` and surface is `none`, add: "After merging, run `npm publish` for the CLI binary (no surface to deploy)."
 
 If `quality: production` is set in experiment.yaml, add to the user message:
 > "Bootstrap complete with production quality mode. After `/verify`, run `/harden` to add TDD coverage to critical paths (auth, payment, data persistence)."
 
-Check off in `.claude/current-plan.md`: `- [x] BG4 PR Gate passed`
+Check off in `.claude/runs/current-plan.md`: `- [x] BG4 PR Gate passed`
 
 **POSTCONDITIONS:**
 - All files committed (no uncommitted tracked changes)
 - BG4 PR Gate verdict is PASS
 - Branch pushed to remote
-- `.claude/current-visual-brief.md` deleted
+- `.claude/runs/current-visual-brief.md` deleted
 
 **VERIFY:**
 ```bash

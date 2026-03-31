@@ -7,7 +7,7 @@
 
 ### Step 4: Cleanup
 
-1. Delete `.claude/deploy-manifest.json`
+1. Delete `.claude/runs/deploy-manifest.json`
 2. Remove `.env.local` if it exists (contains deployed credentials that are now invalid).
    Ask user first: "`.env.local` contains credentials for the deleted infrastructure.
    Delete it? (y/n)"
@@ -17,8 +17,8 @@
 Compute teardown quality (see `.claude/patterns/skill-scoring.md`):
 
 ```bash
-RUN_ID=$(python3 -c "import json; print(json.load(open('.claude/teardown-context.json')).get('run_id', ''))" 2>/dev/null || echo "")
-Q_DELETION=$(test ! -f .claude/deploy-manifest.json && echo "1.0" || echo "0.0")
+RUN_ID=$(python3 -c "import json; print(json.load(open('.claude/runs/teardown-context.json')).get('run_id', ''))" 2>/dev/null || echo "")
+Q_DELETION=$(test ! -f .claude/runs/deploy-manifest.json && echo "1.0" || echo "0.0")
 python3 .claude/scripts/write-q-score.py \
   --skill teardown --scope teardown \
   --archetype "$(python3 -c "import yaml; print(yaml.safe_load(open('experiment/experiment.yaml')).get('type','web-app'))" 2>/dev/null || echo web-app)" \
@@ -45,7 +45,7 @@ python3 .claude/scripts/write-q-score.py \
 [Include provision scanner output table from STATE 3]
 
 **Local cleanup:**
-- .claude/deploy-manifest.json deleted
+- .claude/runs/deploy-manifest.json deleted
 - [.env.local deleted / .env.local kept]
 
 **What's preserved:**
@@ -58,13 +58,13 @@ To archive this experiment: `gh release create v1.0 --notes "Experiment <name> c
 ```
 
 **POSTCONDITIONS:**
-- `.claude/deploy-manifest.json` deleted
+- `.claude/runs/deploy-manifest.json` deleted
 - `.env.local` deleted (if user approved) or kept
 - Summary printed to user
 
 **VERIFY:**
 ```bash
-test ! -f .claude/deploy-manifest.json && echo "OK" || echo "FAIL"
+test ! -f .claude/runs/deploy-manifest.json && echo "OK" || echo "FAIL"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

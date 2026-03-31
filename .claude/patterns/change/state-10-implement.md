@@ -57,20 +57,20 @@ Follow the procedure in `.claude/procedures/change-test.md`.
 > Implementation is complete. You MUST now execute Step 7 in full.
 > Re-read `.claude/patterns/verify.md` and follow every section applicable to the verification scope from Step 3:
 > build loop, scoped parallel review, security fix cycle (if applicable), auto-observe.
-> Re-read `.claude/current-plan.md` `## Process Checklist`. Every listed agent MUST be spawned per the scope table. Do NOT skip agents based on which files changed — scope determines spawning.
+> Re-read `.claude/runs/current-plan.md` `## Process Checklist`. Every listed agent MUST be spawned per the scope table. Do NOT skip agents based on which files changed — scope determines spawning.
 > **Step 8 is BLOCKED until Step 7 completes.**
 > Do NOT commit, push, or open a PR before verification finishes.
 >
 > **Critical assertions (Verification):**
 > - If scope is `full` or `security` — security-defender + security-attacker MUST be spawned.
 > - If `quality: production` — spec-reviewer MUST be spawned.
-> - `.claude/verify-report.md` MUST be written before Step 8.
+> - `.claude/runs/verify-report.md` MUST be written before Step 8.
 
 - **Implementer trace audit** (informational — does not block G4):
   ```bash
   python3 -c "
   import json, glob
-  traces = glob.glob('.claude/agent-traces/implementer-*.json')
+  traces = glob.glob('.claude/runs/agent-traces/implementer-*.json')
   if not traces:
       print('No implementer traces (MVP mode or no production tasks)')
   else:
@@ -90,7 +90,7 @@ Follow the procedure in `.claude/procedures/change-test.md`.
 
 - **G4 Implementation Gate**: Spawn the `gate-keeper` agent (`subagent_type: gate-keeper`). Pass: "Execute G4 Implementation Gate for quality [quality]. Verify: `npm run build` passes. If quality: production — check git log for worktree merge commits (evidence implementer agents were spawned, not direct implementation). Check no `// TODO: implement` or `throw new Error('not implemented')` markers in new code." If gate-keeper returns BLOCK, fix blocking items before Step 7.
 
-Update checkpoint in `.claude/current-plan.md` frontmatter to `phase2-step7`.
+Update checkpoint in `.claude/runs/current-plan.md` frontmatter to `phase2-step7`.
 
 **POSTCONDITIONS:**
 - Implementation complete per type-specific constraints
@@ -98,17 +98,17 @@ Update checkpoint in `.claude/current-plan.md` frontmatter to `phase2-step7`.
 - G4 Implementation Gate passed
 - Checkpoint updated to `phase2-step7`
 - If `quality: production`: all complete implementer traces have `worktree_merged: true`
-- If 2+ implementer traces exist: `.claude/consistency-scan-result.json` exists
+- If 2+ implementer traces exist: `.claude/runs/consistency-scan-result.json` exists
 
 **VERIFY:**
 ```bash
-grep -q 'checkpoint: phase2-step7' .claude/current-plan.md && python3 -c "
+grep -q 'checkpoint: phase2-step7' .claude/runs/current-plan.md && python3 -c "
 import json, glob, os
 q = 'production' if 'quality: production' in open('experiment/experiment.yaml').read() else 'mvp'
-ts = glob.glob('.claude/agent-traces/implementer-*.json') + glob.glob('.claude/agent-traces/visual-implementer-*.json') if q == 'production' else []
+ts = glob.glob('.claude/runs/agent-traces/implementer-*.json') + glob.glob('.claude/runs/agent-traces/visual-implementer-*.json') if q == 'production' else []
 bad = [t for t in ts if json.load(open(t)).get('status') == 'complete' and not json.load(open(t)).get('worktree_merged')]
 assert not bad, 'Unmerged: ' + ','.join(bad)
-assert not (len(ts) >= 2 and not os.path.exists('.claude/consistency-scan-result.json')), '2+ implementers but no consistency-scan-result.json'
+assert not (len(ts) >= 2 and not os.path.exists('.claude/runs/consistency-scan-result.json')), '2+ implementers but no consistency-scan-result.json'
 " && echo "OK" || echo "FAIL"
 ```
 

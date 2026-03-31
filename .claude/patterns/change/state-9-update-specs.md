@@ -2,14 +2,14 @@
 
 **PRECONDITIONS:**
 - Phase 2 pre-flight complete (STATE 8 POSTCONDITIONS met)
-- `## Process Checklist` exists in `.claude/current-plan.md`
+- `## Process Checklist` exists in `.claude/runs/current-plan.md`
 - Checkpoint is `phase2-step5`
 
 **ACTIONS:**
 
 Follow archetype behavior check per `patterns/archetype-behavior-check.md`.
 
-> **Gate check:** Read `.claude/current-plan.md` and look for `## Process Checklist`.
+> **Gate check:** Read `.claude/runs/current-plan.md` and look for `## Process Checklist`.
 > If missing, STOP — execute the Phase 2 Pre-flight above first.
 
 - **Feature**: add the new behavior to experiment.yaml `behaviors` list. If the new behavior changes the user journey, update the archetype-specific journey field per `patterns/archetype-behavior-check.md`. (Key: web-app=`golden_path`, service=`endpoints`, cli=`commands`) Do NOT remove or modify existing behaviors.
@@ -18,7 +18,7 @@ Follow archetype behavior check per `patterns/archetype-behavior-check.md`.
 - **Fix / Polish**: do NOT modify experiment.yaml or experiment/EVENTS.yaml.
 - **Test**: do NOT modify experiment/EVENTS.yaml. If adding tests for the first time (no `stack.testing` in experiment.yaml and no `playwright.config.ts` on disk), add `testing: <value>` to experiment.yaml `stack` section. Do not modify other parts of experiment.yaml.
 
-Update checkpoint in `.claude/current-plan.md` frontmatter to `phase2-step6`.
+Update checkpoint in `.claude/runs/current-plan.md` frontmatter to `phase2-step6`.
 
 > **Checkpoint update:** Edit only the `checkpoint:` line in the frontmatter — single-line edit, not a full file rewrite.
 
@@ -29,9 +29,9 @@ Update checkpoint in `.claude/current-plan.md` frontmatter to `phase2-step6`.
 
 **VERIFY:**
 ```bash
-grep -q 'checkpoint: phase2-step6' .claude/current-plan.md && python3 -c "
+grep -q 'checkpoint: phase2-step6' .claude/runs/current-plan.md && python3 -c "
 import json
-pt = json.load(open('.claude/change-context.json')).get('preliminary_type', '')
+pt = json.load(open('.claude/runs/change-context.json')).get('preliminary_type', '')
 assert pt != 'Feature' or '  - id:' in open('experiment/experiment.yaml').read(), 'Feature requires behaviors in experiment.yaml'
 " && echo "OK" || echo "FAIL"
 ```

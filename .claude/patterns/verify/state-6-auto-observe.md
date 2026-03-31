@@ -4,16 +4,16 @@
 
 **ACTIONS:**
 
-Read `.claude/fix-log.md` from disk. If it has only the header line (`# Error Fix Log`) and no entries:
+Read `.claude/runs/fix-log.md` from disk. If it has only the header line (`# Error Fix Log`) and no entries:
 
 **Fallback: check agent traces for unreported fixes.**
 
 ```bash
 python3 -c "
 import json, os
-traces = ['.claude/agent-traces/design-critic.json',
-          '.claude/agent-traces/ux-journeyer.json',
-          '.claude/agent-traces/security-fixer.json']
+traces = ['.claude/runs/agent-traces/design-critic.json',
+          '.claude/runs/agent-traces/ux-journeyer.json',
+          '.claude/runs/agent-traces/security-fixer.json']
 entries = []
 for t in traces:
     if not os.path.exists(t): continue
@@ -25,7 +25,7 @@ for t in traces:
         action = fix.get('fix', fix.get('action', 'fixed'))
         entries.append(f'Fix ({name}): \x60{f}\x60 — Symptom: {symptom} — Fix: {action}')
 if entries:
-    with open('.claude/fix-log.md', 'a') as log:
+    with open('.claude/runs/fix-log.md', 'a') as log:
         log.write('\n'.join(entries) + '\n')
     print(f'WARNING: fix-log was empty but traces had {len(entries)} fixes. Synthesized entries.')
 else:
@@ -43,7 +43,7 @@ If the Fix Log has any entries:
 ```bash
 python3 -c "
 import re, subprocess, os, json
-fixes = open('.claude/fix-log.md').read()
+fixes = open('.claude/runs/fix-log.md').read()
 files = sorted(set(re.findall(r'\x60([^\x60]+\.(?:ts|tsx|js|jsx|json|css))\x60', fixes)))
 diffs = []
 for f in files:
@@ -54,20 +54,20 @@ for f in files:
         r2 = subprocess.run(['git', 'diff', '--no-index', '/dev/null', f], capture_output=True, text=True)
         if r2.stdout.strip():
             diffs.append(f'=== {f} (new file) ===\n{r2.stdout}')
-with open('.claude/observer-diffs.txt', 'w') as out:
+with open('.claude/runs/observer-diffs.txt', 'w') as out:
     out.write('\n'.join(diffs) if diffs else '(no diffs captured)')
-print(f'Collected diffs for {len(diffs)} files -> .claude/observer-diffs.txt')
+print(f'Collected diffs for {len(diffs)} files -> .claude/runs/observer-diffs.txt')
 "
 ```
 
 2. Spawn the `observer` agent (`subagent_type: observer`).
-   Pass ONLY: content of `.claude/observer-diffs.txt` + Fix Log summaries + template file list.
+   Pass ONLY: content of `.claude/runs/observer-diffs.txt` + Fix Log summaries + template file list.
    Do NOT include experiment.yaml content, project name, or feature descriptions.
    Get template file list (from build-info-collector, or generate now:
    run `find .claude/stacks .claude/commands .claude/patterns scripts -type f 2>/dev/null`
    and add `Makefile` and `CLAUDE.md`).
 3. Report the observer's result.
-4. Verify `.claude/agent-traces/observer.json` exists; if agent returned output but trace is missing, write a recovery trace with `"recovery":true`.
+4. Verify `.claude/runs/agent-traces/observer.json` exists; if agent returned output but trace is missing, write a recovery trace with `"recovery":true`.
 
 **POSTCONDITIONS:** Observer ran (if fixes exist) or was correctly skipped.
 

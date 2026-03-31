@@ -2,7 +2,7 @@
 
 **PRECONDITIONS:** STATE 3 complete.
 
-**Always write** `.claude/security-merge.json` — this is a metadata artifact, not an operational step:
+**Always write** `.claude/runs/security-merge.json` — this is a metadata artifact, not an operational step:
 
 - If security agents ran: merge Defender FAILs + Attacker findings (see below)
 - If security agents did NOT run (scope `visual` or `build`): write `{"findings":[],"source":"no-security-agents","run_id":"<run_id>"}`
@@ -19,8 +19,8 @@ Run the automated security merge script:
 ```bash
 python3 -c "
 import json, os
-traces = '.claude/agent-traces'
-ctx = json.load(open('.claude/verify-context.json'))
+traces = '.claude/runs/agent-traces'
+ctx = json.load(open('.claude/runs/verify-context.json'))
 run_id = ctx.get('run_id', '')
 
 defender = json.load(open(os.path.join(traces, 'security-defender.json')))
@@ -62,7 +62,7 @@ result = {
     'issues': merged,
     'run_id': run_id
 }
-with open('.claude/security-merge.json', 'w') as f:
+with open('.claude/runs/security-merge.json', 'w') as f:
     json.dump(result, f)
 print(f'Security merge: {result[\"defender_fails\"]} defender FAILs + {result[\"attacker_findings\"]} attacker findings -> {result[\"merged_issues\"]} merged issues')
 "
@@ -83,24 +83,24 @@ Pass: merged Defender table + Attacker findings.
 
 If agent returns with Trace State 2 (exhausted), execute the [Atomic Execution Protocol](../verify.md#atomic-execution-protocol) revert before retrying (see [Exhaustion Protocol](../verify.md#exhaustion-protocol) Tier 1).
 
-After security-fixer completes: verify `.claude/agent-traces/security-fixer.json` exists; if agent returned output but trace is missing, write a recovery trace with `"recovery":true`.
+After security-fixer completes: verify `.claude/runs/agent-traces/security-fixer.json` exists; if agent returned output but trace is missing, write a recovery trace with `"recovery":true`.
 
-After each fix, append to `.claude/fix-log.md`.
+After each fix, append to `.claude/runs/fix-log.md`.
 
 #### Lead-side validation (security-fixer)
 
-1. Read `.claude/agent-traces/security-fixer.json` trace.
+1. Read `.claude/runs/agent-traces/security-fixer.json` trace.
 2. If `verdict` == `"partial"` AND `unresolved_critical` > 0, this is a **hard gate failure** — Critical/High security issues or Defender FAILs remain unfixed after 2 fix cycles. Skip STATEs 5-6 but still write verify-report.md (STATE 7) and execute STATE 8 (Save Patterns). Report failure to user with the unresolved items.
 3. If trace has `"recovery": true` AND `verdict` == `"partial"`, treat as hard gate failure (recovery traces cannot confirm fixes succeeded).
-4. Extract Fix Summaries from the agent's return message. Append each fix to `.claude/fix-log.md` with the prefix `Fix (security-fixer):`.
-5. If the lead directly applies additional security fixes beyond what security-fixer handled (e.g., defender findings the fixer did not address), append to `.claude/fix-log.md`:
+4. Extract Fix Summaries from the agent's return message. Append each fix to `.claude/runs/fix-log.md` with the prefix `Fix (security-fixer):`.
+5. If the lead directly applies additional security fixes beyond what security-fixer handled (e.g., defender findings the fixer did not address), append to `.claude/runs/fix-log.md`:
    `Fix (lead-security): \`<file>\` — Symptom: <finding> — Fix: <what changed>`
 
 **POSTCONDITIONS:** `security-merge.json` exists. Security-fixer trace exists (if spawned). If security-fixer verdict is `"partial"` with `unresolved_critical` > 0, pipeline is halted.
 
 **VERIFY:**
 ```bash
-test -f .claude/security-merge.json
+test -f .claude/runs/security-merge.json
 ```
 
 > **Hook-enforced:** `agent-state-gate.sh` validates STATE 4 postconditions before allowing observer to spawn.

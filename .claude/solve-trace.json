@@ -1,0 +1,8 @@
+{
+  "mode": "full",
+  "problem_decomposition": "Ephemeral skill artifacts (~68 files) scattered in .claude/ root alongside permanent template infrastructure. Causes: cluttered directory, 15+ individual .gitignore entries with 57 artifacts missing, mixed ephemeral/permanent files.",
+  "constraint_enumeration": "Hard: all path references must be internally consistent (hooks, registry, patterns, agents must agree); dynamic path construction in 4 locations; glob-based discovery in 3 locations; cross-skill artifact dependencies (deploy-manifest read by teardown/rollback/iterate); persistent vs ephemeral distinction (deploy-manifest, verify-history). Soft: minimize PR count, keep changes reviewable.",
+  "solution_design": "2-PR approach: PR1 creates directory + updates gitignore (safe, backward-compatible); PR2 atomically migrates ALL path references. Flat structure under .claude/runs/. Allowlist-based replacement (never blanket sed). Manual handling for dynamic paths, globs, makedirs calls.",
+  "self_check": "Revised from 3-PR to 2-PR after critic identified TYPE B constraint: system silently broken between PRs. Revised artifact handling: deploy-manifest and verify-history flagged as TYPE C for user decision. Added comprehensive artifact list from all sources (not just state-registry).",
+  "output": "Recommended: 2 PRs. PR1 (prep, ~3 files), PR2 (atomic migration, ~170 files). PR2 uses targeted allowlist sed + manual edits for 7 edge cases. Directory: .claude/runs/ with flat structure."
+}

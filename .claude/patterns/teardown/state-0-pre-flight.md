@@ -5,7 +5,7 @@
 
 **ACTIONS:**
 
-1. Read `.claude/deploy-manifest.json`. If missing, stop: "No deploy manifest found.
+1. Read `.claude/runs/deploy-manifest.json`. If missing, stop: "No deploy manifest found.
    Run `/deploy` first, or delete resources manually via each provider's dashboard."
 2. Read `experiment/experiment.yaml` — extract `name`, `type`, and `stack.surface` for validation.
    Read the archetype file at `.claude/archetypes/<type>.md` (default `web-app`).
@@ -31,23 +31,23 @@
 
 Clean stale epilogue artifacts and create context file to initialize state tracking:
 ```bash
-rm -f .claude/observe-result.json
-cat > .claude/teardown-context.json << CTXEOF
+rm -f .claude/runs/observe-result.json
+cat > .claude/runs/teardown-context.json << CTXEOF
 {"skill":"teardown","branch":"$(git branch --show-current)","timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","run_id":"teardown-$(date -u +%Y-%m-%dT%H:%M:%SZ)","completed_states":[0]}
 CTXEOF
 ```
 
 **POSTCONDITIONS:**
-- `.claude/deploy-manifest.json` exists and has been read
+- `.claude/runs/deploy-manifest.json` exists and has been read
 - experiment.yaml read and validated
 - Archetype file read and surface type resolved
 - Stack files loaded for services present in manifest
 - CLI prerequisites checked
-- `.claude/teardown-context.json` exists
+- `.claude/runs/teardown-context.json` exists
 
 **VERIFY:**
 ```bash
-test -f .claude/deploy-manifest.json && test -f .claude/teardown-context.json && echo "OK" || echo "FAIL"
+test -f .claude/runs/deploy-manifest.json && test -f .claude/runs/teardown-context.json && echo "OK" || echo "FAIL"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

@@ -60,7 +60,7 @@ feature would naturally appear (e.g., `src/app/dashboard/sms-fake-door.tsx`):
 - Confirm the parent page imports and renders the component
 - If either check fails, move/fix the component immediately
 
-Check off in `.claude/current-plan.md`:
+Check off in `.claude/runs/current-plan.md`:
 - `- [x] Externals user decisions collected`
 
 Write the externals decisions to disk as a durable artifact:
@@ -79,7 +79,7 @@ If no external dependencies: `has_externals` is `false`, arrays are `[]`.
 
 **BG2.5 Externals Gate**: Spawn the `gate-keeper` agent (`subagent_type: gate-keeper`). Pass: "Execute BG2.5 Externals Gate."
 
-Check off in `.claude/current-plan.md`: `- [x] BG2.5 Externals Gate passed`
+Check off in `.claude/runs/current-plan.md`: `- [x] BG2.5 Externals Gate passed`
 
 **POSTCONDITIONS:**
 - BG2.5 Externals Gate verdict is PASS

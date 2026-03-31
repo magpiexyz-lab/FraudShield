@@ -1,0 +1,53 @@
+{
+  "challenges": [
+    {
+      "issue": 483,
+      "label": "sound",
+      "challenge": "single() handling already in fix plan via proxy get trap",
+      "evidence": "Fix plan line: if (prop === \"single\") return () => chainable({data: null, error: null})",
+      "revision": "none"
+    },
+    {
+      "issue": 482,
+      "label": "sound",
+      "challenge": "Auth-only demo client already in blast radius",
+      "evidence": "Blast radius includes auth/supabase.md:691,745",
+      "revision": "none"
+    },
+    {
+      "issue": 484,
+      "label": "sound",
+      "challenge": "template remote set by gh repo create --template",
+      "evidence": "Issue body states: template git remote set up during gh repo create --template",
+      "revision": "none - fallback to project repo is correct degradation"
+    },
+    {
+      "issue": 485,
+      "label": "sound",
+      "challenge": "Validator checks hook paths not permission patterns",
+      "evidence": "check-inventory.md line 91 checks hook command paths, not Read/Write/Edit allow patterns",
+      "revision": "none"
+    },
+    {
+      "issue": 487,
+      "label": "needs-revision",
+      "challenge": "Empty key silently disables analytics",
+      "evidence": "posthog.init with empty key does nothing",
+      "revision": "Add early return with console.warn when key is empty; update frontmatter env.client and ci_placeholders"
+    },
+    {
+      "issue": 488,
+      "label": "sound",
+      "challenge": "Additive guidance, no regression",
+      "evidence": "n/a",
+      "revision": "none"
+    },
+    {
+      "issue": 475,
+      "label": "sound",
+      "challenge": "Precision fix, well-scoped",
+      "evidence": "n/a",
+      "revision": "none"
+    }
+  ]
+}

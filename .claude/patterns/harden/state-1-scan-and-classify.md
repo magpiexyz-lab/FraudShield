@@ -23,7 +23,7 @@
 
   **ALREADY COVERED**: Modules with existing test files (list them)
 
-- **Write scan artifact** (`.claude/harden-scan.json`):
+- **Write scan artifact** (`.claude/runs/harden-scan.json`):
   ```bash
   python3 -c "
   import json
@@ -33,18 +33,18 @@
       'skip': [],          # list of {module, reason}
       'already_covered': []  # list of {module, test_file}
   }
-  json.dump(scan, open('.claude/harden-scan.json', 'w'), indent=2)
+  json.dump(scan, open('.claude/runs/harden-scan.json', 'w'), indent=2)
   "
   ```
 
 **POSTCONDITIONS:**
 - All modules scanned and classified into CRITICAL, ON-TOUCH, SKIP, or ALREADY COVERED
 - Classification results available for plan presentation
-- `.claude/harden-scan.json` exists
+- `.claude/runs/harden-scan.json` exists
 
 **VERIFY:**
 ```bash
-test -f .claude/harden-scan.json
+test -f .claude/runs/harden-scan.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

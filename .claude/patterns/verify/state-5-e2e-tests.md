@@ -4,15 +4,15 @@
 
 **ACTIONS:**
 
-- If `stack.testing` is NOT present in experiment.yaml → write `.claude/e2e-result.json`:
+- If `stack.testing` is NOT present in experiment.yaml → write `.claude/runs/e2e-result.json`:
   ```bash
-  echo '{"skipped":true,"reason":"no testing stack"}' > .claude/e2e-result.json
+  echo '{"skipped":true,"reason":"no testing stack"}' > .claude/runs/e2e-result.json
   ```
   Skip to STATE 6.
 
-- If `stack.testing` is present but no test configuration file exists → write `.claude/e2e-result.json`:
+- If `stack.testing` is present but no test configuration file exists → write `.claude/runs/e2e-result.json`:
   ```bash
-  echo '{"skipped":true,"reason":"no test configuration"}' > .claude/e2e-result.json
+  echo '{"skipped":true,"reason":"no test configuration"}' > .claude/runs/e2e-result.json
   ```
   Skip to STATE 6.
 
@@ -29,12 +29,12 @@
   3. If config error (output contains `Cannot find module`, `config`, `Error`, or runner-specific errors like `browserType`/`chromium` for playwright):
      - These are infrastructure issues, not test failures.
      - Fix the config error (e.g., install missing browser for playwright, fix config path).
-     - Append fix to `.claude/fix-log.md`: `Fix (e2e-config): <file> — <description>`
+     - Append fix to `.claude/runs/fix-log.md`: `Fix (e2e-config): <file> — <description>`
      - Re-run list command (max 2 config-fix attempts total).
   4. If test file error (syntax errors in test files, missing imports in tests): proceed to Phase B — these count against the test budget.
-  5. If config errors persist after 2 attempts, write `.claude/e2e-result.json`:
+  5. If config errors persist after 2 attempts, write `.claude/runs/e2e-result.json`:
      ```bash
-     echo '{"passed":false,"attempts":0,"config_error":true,"reason":"test config broken after 2 fix attempts"}' > .claude/e2e-result.json
+     echo '{"passed":false,"attempts":0,"config_error":true,"reason":"test config broken after 2 fix attempts"}' > .claude/runs/e2e-result.json
      ```
      Skip to STATE 6.
 
@@ -43,12 +43,12 @@
   For each failed attempt:
   1. Read test output, identify failures
   2. Fix issues (test code or app code)
-  3. Append each fix to `.claude/fix-log.md`: `Fix (e2e): <file> — <description>`
+  3. Append each fix to `.claude/runs/fix-log.md`: `Fix (e2e): <file> — <description>`
   4. Re-run tests using the run command determined above
 
-  After tests pass (or 3-attempt budget exhausted), write `.claude/e2e-result.json`:
+  After tests pass (or 3-attempt budget exhausted), write `.claude/runs/e2e-result.json`:
   ```bash
-  cat > .claude/e2e-result.json << 'E2EEOF'
+  cat > .claude/runs/e2e-result.json << 'E2EEOF'
   {"passed":<true|false>,"attempts":<N>,"fixes":<N>,"config_attempts":<CA>}
   E2EEOF
   ```
@@ -57,7 +57,7 @@
 
 **VERIFY:**
 ```bash
-test -f .claude/e2e-result.json
+test -f .claude/runs/e2e-result.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

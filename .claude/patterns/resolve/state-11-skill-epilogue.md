@@ -10,7 +10,7 @@
 Compute resolve execution quality (see `.claude/patterns/skill-scoring.md`):
 
 ```bash
-RUN_ID=$(python3 -c "import json; print(json.load(open('.claude/resolve-context.json')).get('run_id', ''))" 2>/dev/null || echo "")
+RUN_ID=$(python3 -c "import json; print(json.load(open('.claude/runs/resolve-context.json')).get('run_id', ''))" 2>/dev/null || echo "")
 python3 .claude/scripts/write-q-score.py \
   --skill resolve --scope resolve --archetype N/A \
   --gate 1.0 --dims "{\"completion\": 1.0}" \
@@ -18,7 +18,7 @@ python3 .claude/scripts/write-q-score.py \
 ```
 
 Follow `.claude/patterns/skill-epilogue.md` to evaluate template observation.
-This runs the observer agent if fixes were logged in `.claude/fix-log.md`,
+This runs the observer agent if fixes were logged in `.claude/runs/fix-log.md`,
 or records "clean" if not. The epilogue must complete before the final commit
 (`observe-commit-gate.sh` enforces this).
 
@@ -28,7 +28,7 @@ or records "clean" if not. The epilogue must complete before the final commit
 
 **VERIFY:**
 ```bash
-python3 -c "import json; d=json.load(open('.claude/observe-result.json')); assert d['skill']=='resolve'"
+python3 -c "import json; d=json.load(open('.claude/runs/observe-result.json')); assert d['skill']=='resolve'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

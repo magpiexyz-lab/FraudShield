@@ -2,7 +2,7 @@
 
 ## Prerequisites
 - Scaffold phase completed (project structure exists, Merged Checkpoint passed)
-- `.claude/current-plan.md` exists
+- `.claude/runs/current-plan.md` exists
 - Scaffold subagent's completion report (external dep decisions) provided in your prompt
 - Read all context files listed in your task assignment before starting
 
@@ -164,7 +164,7 @@ If `stack.testing` is NOT present in experiment.yaml: skip this step entirely.
 
 ### Step 8b: Spec compliance check
 
-Re-read `.claude/current-plan.md` and `experiment/experiment.yaml` now. Verify each of these before proceeding to the PR:
+Re-read `.claude/runs/current-plan.md` and `experiment/experiment.yaml` now. Verify each of these before proceeding to the PR:
 
 **Archetype-specific structure checks:**
 - If archetype requires `pages` (web-app): for each page in `pages`, confirm `src/app/<page-name>/page.tsx` exists (or root page for `landing`)
@@ -206,6 +206,6 @@ Re-read `.claude/current-plan.md` and `experiment/experiment.yaml` now. Verify e
 - If provision-at-deploy routes exist: add a "## Provision at Deploy" section listing each service, its env vars, and that `/deploy` will prompt for credentials
 - Fill in **every** section of the PR template. Empty sections are not acceptable. If a section does not apply, write "N/A" with a one-line reason.
 - If `git push` or `gh pr create` fails: show the error and tell the user to check their GitHub authentication (`gh auth status`) and remote configuration (`git remote -v`), then retry the push and PR creation.
-- Delete `.claude/current-plan.md` — the plan is now captured in the PR description.
+- Delete `.claude/runs/current-plan.md` — the plan is now captured in the PR description.
 - Tell the user: "Bootstrap PR created and ready to merge. Next: review the PR, merge to `main`, then run `/verify` to validate locally, and `/deploy` to set up cloud infrastructure and launch your app."
 

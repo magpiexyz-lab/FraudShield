@@ -2,13 +2,13 @@
 
 **PRECONDITIONS:** STATE 7 complete.
 
-If `.claude/fix-log.md` has only the header line and no entries, this state is a no-op — write `.claude/patterns-saved.json` with `{"saved":0,"skipped":0,"total":0,"saved_to_files":[],"saved_to_memory":0}` and return.
+If `.claude/runs/fix-log.md` has only the header line and no entries, this state is a no-op — write `.claude/runs/patterns-saved.json` with `{"saved":0,"skipped":0,"total":0,"saved_to_files":[],"saved_to_memory":0}` and return.
 
 **ACTIONS:**
 
-Read `.claude/fix-log.md` from disk. If it has only the header line and no entries, write
+Read `.claude/runs/fix-log.md` from disk. If it has only the header line and no entries, write
 `{"saved":0,"skipped":0,"total":0,"saved_to_files":[],"saved_to_memory":0}` to
-`.claude/patterns-saved.json` and skip to Done.
+`.claude/runs/patterns-saved.json` and skip to Done.
 
 If the Fix Log has entries:
 
@@ -23,13 +23,13 @@ If the Fix Log has entries:
    - Only save patterns that would apply to multiple projects using the same stack combination
    - When in doubt, save to project auto-memory (not stack files)
 2. Wait for completion.
-3. Verify `.claude/patterns-saved.json` exists (the hook validates invariants automatically).
+3. Verify `.claude/runs/patterns-saved.json` exists (the hook validates invariants automatically).
 
 **POSTCONDITIONS:** `patterns-saved.json` exists. Pattern count matches fix log entry count.
 
 **VERIFY:**
 ```bash
-test -f .claude/patterns-saved.json
+test -f .claude/runs/patterns-saved.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
@@ -41,7 +41,7 @@ bash .claude/scripts/advance-state.sh verify 8
 - If mode is **change-verify**: Done — return to /change for PR creation.
 - If mode is **standalone**: Done.
 - If mode is **bootstrap-verify**: Create the bootstrap PR:
-  1. Read `.claude/verify-report.md` frontmatter `overall_verdict`
+  1. Read `.claude/runs/verify-report.md` frontmatter `overall_verdict`
   2. If `fail`: tell the user "Verification failed — fix issues and re-run `/verify`." Done.
   3. If `pass`: Create the PR using `gh pr create`. Fill in the PR template (`.github/PULL_REQUEST_TEMPLATE.md`):
      - **Summary**: "Bootstrap MVP scaffold from experiment.yaml, verified by /verify."

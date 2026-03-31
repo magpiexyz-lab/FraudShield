@@ -7,7 +7,7 @@
 
 ### Per-Hypothesis Verdicts (if spec-manifest.json exists)
 
-Read `.claude/spec-manifest.json`. If the file does not exist, skip this subsection entirely (backward compatible -- experiments created before /spec won't have it).
+Read `.claude/runs/spec-manifest.json`. If the file does not exist, skip this subsection entirely (backward compatible -- experiments created before /spec won't have it).
 
 For each hypothesis in `spec-manifest.json` where `status` is `"testing"` (not `"resolved"`):
 
@@ -126,7 +126,7 @@ If the user provided per-variant metrics in STATE 1, present a comparison:
 - Variant analysis completed (if applicable)
 - Ads performance assessed (if applicable)
 
-- **Write verdicts artifact** (`.claude/iterate-verdicts.json`):
+- **Write verdicts artifact** (`.claude/runs/iterate-verdicts.json`):
   ```bash
   python3 -c "
   import json
@@ -135,13 +135,13 @@ If the user provided per-variant metrics in STATE 1, present a comparison:
       'bottleneck': '<dimension>',
       'hypothesis_verdicts': []
   }
-  json.dump(verdicts, open('.claude/iterate-verdicts.json', 'w'), indent=2)
+  json.dump(verdicts, open('.claude/runs/iterate-verdicts.json', 'w'), indent=2)
   "
   ```
 
 **VERIFY:**
 ```bash
-test -f .claude/iterate-verdicts.json
+test -f .claude/runs/iterate-verdicts.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

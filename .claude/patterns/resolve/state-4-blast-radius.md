@@ -22,11 +22,11 @@ The bug pattern found in Step 3 may exist in other template files:
   ```bash
   python3 -c "
   import json
-  ctx = json.load(open('.claude/resolve-context.json'))
+  ctx = json.load(open('.claude/runs/resolve-context.json'))
   ctx['blast_radius'] = [
       {'issue': 0, 'affected': [{'file': '<path>', 'line': 0, 'classification': 'confirmed'}]}
   ]
-  json.dump(ctx, open('.claude/resolve-context.json', 'w'), indent=2)
+  json.dump(ctx, open('.claude/runs/resolve-context.json', 'w'), indent=2)
   "
   ```
 
@@ -37,7 +37,7 @@ The bug pattern found in Step 3 may exist in other template files:
 
 **VERIFY:**
 ```bash
-python3 -c "import json; ctx=json.load(open('.claude/resolve-context.json')); assert isinstance(ctx.get('blast_radius'), list), 'blast_radius missing'"
+python3 -c "import json; ctx=json.load(open('.claude/runs/resolve-context.json')); assert isinstance(ctx.get('blast_radius'), list), 'blast_radius missing'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

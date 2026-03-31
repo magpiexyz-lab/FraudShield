@@ -63,7 +63,7 @@ Prior audit: <date> (<N> findings) | none
 
 ### Manifest (if --save)
 
-If `save_manifest` is true, write `.claude/audit-manifest.json`:
+If `save_manifest` is true, write `.claude/runs/audit-manifest.json`:
 ```json
 {
   "timestamp": "<ISO 8601>",
@@ -97,12 +97,12 @@ If `save_manifest` is true, write `.claude/audit-manifest.json`:
 Compute audit quality (see `.claude/patterns/skill-scoring.md`):
 
 ```bash
-RUN_ID=$(python3 -c "import json; print(json.load(open('.claude/audit-context.json')).get('run_id', ''))" 2>/dev/null || echo "")
+RUN_ID=$(python3 -c "import json; print(json.load(open('.claude/runs/audit-context.json')).get('run_id', ''))" 2>/dev/null || echo "")
 AUDIT_DIMS=$(python3 -c "
 import json, os
 q_findings = 0.5
-if os.path.exists('.claude/audit-manifest.json'):
-    m = json.load(open('.claude/audit-manifest.json'))
+if os.path.exists('.claude/runs/audit-manifest.json'):
+    m = json.load(open('.claude/runs/audit-manifest.json'))
     q_findings = 1.0 if int(m.get('total_findings', 0)) > 0 else 0.5
 print(json.dumps({'coverage': 1.0, 'findings': q_findings}))
 " 2>/dev/null || echo '{"coverage": 1.0, "findings": 0.5}')
@@ -126,7 +126,7 @@ and run `/resolve` or manual refactoring for specific items.
 
 **VERIFY:**
 ```bash
-if [ -f .claude/audit-context.json ]; then echo "OK"; else echo "FAIL"; fi
+if [ -f .claude/runs/audit-context.json ]; then echo "OK"; else echo "FAIL"; fi
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

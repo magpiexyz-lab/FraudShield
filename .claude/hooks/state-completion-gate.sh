@@ -32,7 +32,7 @@ if [[ ! -f "$REGISTRY" ]]; then
 fi
 
 # --- BLOCK verdict check: deny state advancement if any gate has BLOCK on this branch ---
-VERDICTS_DIR="$PROJECT_DIR/.claude/gate-verdicts"
+VERDICTS_DIR="$PROJECT_DIR/.claude/runs/gate-verdicts"
 if [[ -d "$VERDICTS_DIR" ]]; then
   BRANCH=$(get_branch)
   for gf in "$VERDICTS_DIR"/*.json; do
@@ -66,9 +66,9 @@ CALLS_JSON=$(printf '%s' "$ENTRY_DATA" | cut -f2)
 # This prevents skipping states (e.g., jumping from STATE 0 to STATE 3).
 # Uses registry key order as the canonical state sequence.
 if [[ "$SKILL" == "verify" ]]; then
-  CTX_FILE="$PROJECT_DIR/.claude/verify-context.json"
+  CTX_FILE="$PROJECT_DIR/.claude/runs/verify-context.json"
 else
-  CTX_FILE="$PROJECT_DIR/.claude/${SKILL}-context.json"
+  CTX_FILE="$PROJECT_DIR/.claude/runs/${SKILL}-context.json"
 fi
 
 if [[ -f "$CTX_FILE" ]]; then

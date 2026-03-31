@@ -15,4 +15,4 @@ Assayer's visual identity is the "Crucible" design system, derived from the meta
 - Depth via noise overlay + radial gradient mesh + glassmorphism
 - Verdict colors are semantic: viridian (SCALE), amber (REFINE), copper (PIVOT), cinnabar (KILL)
 - Custom Tailwind tokens: gold, ember, copper, mineral, obsidian, charcoal, ash, parchment, verdict-*
-- All design tokens live in `src/app/globals.css`, visual brief at `.claude/current-visual-brief.md`
+- All design tokens live in `src/app/globals.css`, visual brief at `.claude/runs/current-visual-brief.md`

@@ -13,9 +13,9 @@
   ```bash
   python3 -c "
   import json
-  ctx = json.load(open('.claude/resolve-context.json'))
+  ctx = json.load(open('.claude/runs/resolve-context.json'))
   ctx['files_read'] = ['CLAUDE.md', 'scripts/check-inventory.md']  # add all template files read
-  json.dump(ctx, open('.claude/resolve-context.json', 'w'), indent=2)
+  json.dump(ctx, open('.claude/runs/resolve-context.json', 'w'), indent=2)
   "
   ```
 
@@ -27,7 +27,7 @@
 
 **VERIFY:**
 ```bash
-python3 -c "import json; ctx=json.load(open('.claude/resolve-context.json')); assert isinstance(ctx.get('files_read'), list) and len(ctx['files_read']) > 0, 'files_read missing or empty'"
+python3 -c "import json; ctx=json.load(open('.claude/runs/resolve-context.json')); assert isinstance(ctx.get('files_read'), list) and len(ctx['files_read']) > 0, 'files_read missing or empty'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

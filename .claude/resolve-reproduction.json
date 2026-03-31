@@ -1,0 +1,65 @@
+{
+  "reproductions": [
+    {
+      "issue": 484,
+      "divergence_point": ".claude/patterns/observe.md:24,159,227",
+      "expected": "Resolve template repo from git remote",
+      "actual": "Resolves project repo via gh repo view",
+      "reproduced": true,
+      "reproduction": "simulation-only"
+    },
+    {
+      "issue": 483,
+      "divergence_point": ".claude/stacks/database/supabase.md:42",
+      "expected": "Proxy then resolves to terminal value; single() returns {data:null}; signUp returns shaped response",
+      "actual": "then returns undefined (non-thenable); single() returns array shape; signUp falls through to generic proxy",
+      "reproduced": true,
+      "reproduction": "simulation-only"
+    },
+    {
+      "issue": 482,
+      "divergence_point": ".claude/stacks/auth/supabase.md:564",
+      "expected": "Middleware bypasses in DEMO_MODE; NavBar falls back to getUser; browser client has production guard",
+      "actual": "Middleware throws on undefined env vars; NavBar only uses getSession; no production guard on browser client",
+      "reproduced": true,
+      "reproduction": "simulation-only"
+    },
+    {
+      "issue": 485,
+      "divergence_point": ".claude/settings.json:4-6",
+      "expected": "Read(/.claude/**) anchored to project root",
+      "actual": "Read(.claude/**) relative to cwd",
+      "reproduced": true,
+      "reproduction": "simulation-only"
+    },
+    {
+      "issue": 487,
+      "divergence_point": ".claude/stacks/analytics/posthog.md:35,84",
+      "expected": "PostHog key read from env var",
+      "actual": "Key hardcoded as string literal, caught by security review D1",
+      "reproduced": true,
+      "reproduction": "simulation-only"
+    },
+    {
+      "issue": 488,
+      "divergence_point": ".claude/procedures/scaffold-externals.md:47",
+      "expected": "Guidance includes NEXT_PUBLIC_ prefix for client-side env vars",
+      "actual": "No mention of client-side env var naming convention",
+      "reproduced": true,
+      "reproduction": "simulation-only"
+    },
+    {
+      "issue": 475,
+      "divergence_point": ".claude/stacks/auth/supabase.md:669",
+      "expected": "Specifies crypto.timingSafeEqual() for HMAC comparison",
+      "actual": "Says constant-time comparison without specifying API",
+      "reproduced": true,
+      "reproduction": "simulation-only"
+    }
+  ],
+  "pre_fix_baseline": {
+    "frontmatter": 0,
+    "semantics": 0,
+    "consistency": 0
+  }
+}

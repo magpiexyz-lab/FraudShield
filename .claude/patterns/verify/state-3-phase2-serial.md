@@ -6,7 +6,7 @@
 
 Spawn edit-capable agents ONE AT A TIME. Each must complete and pass `npm run build` before the next is spawned. This prevents write conflicts.
 
-After each edit-capable agent completes, read its completion report and append its fixes to `.claude/fix-log.md`.
+After each edit-capable agent completes, read its completion report and append its fixes to `.claude/runs/fix-log.md`.
 
 > **Shared algorithms:** Before each edit-capable agent spawn, execute [Atomic Execution Protocol](../verify.md#atomic-execution-protocol) snapshot. After each agent returns, use [Trace State Detection](../verify.md#trace-state-detection) and [Exhaustion Protocol](../verify.md#exhaustion-protocol) to handle the result.
 
@@ -62,7 +62,7 @@ After all per-page agents complete AND before Stage 2 (consistency check):
 
 1. Read each per-page trace. If any trace output mentions shared-component issues without fixing them (shared paths were excluded from boundary), the orchestrator applies those fixes serially, one file at a time.
 2. Run `npm run build` after shared-component fixes. If build fails, fix (max 2 attempts).
-3. Append each fix to `.claude/fix-log.md`: `Fix (design-critic-shared): <file> — <desc>`
+3. Append each fix to `.claude/runs/fix-log.md`: `Fix (design-critic-shared): <file> — <desc>`
 4. If no shared-component issues reported: this step is a no-op.
 
 #### Stage 1c: Shared-component design-critic agent (serial, conditional)
@@ -76,7 +76,7 @@ because they were outside the per-page file boundary).
    python3 -c "
    import json, glob
    issues = []
-   for f in sorted(glob.glob('.claude/agent-traces/design-critic-*.json')):
+   for f in sorted(glob.glob('.claude/runs/agent-traces/design-critic-*.json')):
        if 'design-critic-shared' in f: continue
        d = json.load(open(f))
        for si in d.get('shared_issues', []):
@@ -100,7 +100,7 @@ because they were outside the per-page file boundary).
    - Include `run_id`, context digest, and agent-prompt-footer content
 3. After completion: use [Trace State Detection](../verify.md#trace-state-detection) on `design-critic-shared.json`. If State 2 (exhausted), follow [Exhaustion Protocol](../verify.md#exhaustion-protocol) Tier 1 with reduced scope: "Fix only the highest-impact shared issue."
 4. Run `npm run build`. If build fails, fix (max 2 attempts).
-5. Append fixes to `.claude/fix-log.md`: `Fix (design-critic-shared): <file> — <desc>`
+5. Append fixes to `.claude/runs/fix-log.md`: `Fix (design-critic-shared): <file> — <desc>`
 
 > **Hook-enforced:** `agent-state-gate.sh` blocks `design-consistency-checker` spawn if per-page traces report shared-component issues but `design-critic-shared.json` does not exist.
 
@@ -113,12 +113,12 @@ Before spawning the consistency checker, the lead merges per-page traces into `d
 ```bash
 python3 -c "
 import json, glob, os
-batches = sorted(glob.glob('.claude/agent-traces/design-critic-*.json'))
+batches = sorted(glob.glob('.claude/runs/agent-traces/design-critic-*.json'))
 if not batches:
     exit(1)
 run_id = ''
 try:
-    run_id = json.load(open('.claude/verify-context.json')).get('run_id', '')
+    run_id = json.load(open('.claude/runs/verify-context.json')).get('run_id', '')
 except:
     pass
 merged = {'agent': 'design-critic', 'pages_reviewed': 0, 'min_score': 10, 'verdict': 'pass',
@@ -148,7 +148,7 @@ for b in batches:
     if d.get('retry_attempted'):
         merged['retry_attempted'] = True
 # Stage 1c shared-component verdict upgrade
-shared_path = '.claude/agent-traces/design-critic-shared.json'
+shared_path = '.claude/runs/agent-traces/design-critic-shared.json'
 if os.path.exists(shared_path):
     shared = json.load(open(shared_path))
     shared_v = shared.get('verdict', '')
@@ -161,7 +161,7 @@ if os.path.exists(shared_path):
             merged['unresolved_sections'] = 0
 import datetime
 merged['timestamp'] = datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
-with open('.claude/agent-traces/design-critic.json', 'w') as f:
+with open('.claude/runs/agent-traces/design-critic.json', 'w') as f:
     json.dump(merged, f)
 "
 ```
@@ -170,9 +170,9 @@ After writing the merged trace, validate merge correctness:
 ```bash
 python3 -c "
 import json, glob
-merged = json.load(open('.claude/agent-traces/design-critic.json'))
-pages = sorted(glob.glob('.claude/agent-traces/design-critic-*.json'))
-pages = [p for p in pages if 'shared' not in p and p != '.claude/agent-traces/design-critic.json']
+merged = json.load(open('.claude/runs/agent-traces/design-critic.json'))
+pages = sorted(glob.glob('.claude/runs/agent-traces/design-critic-*.json'))
+pages = [p for p in pages if 'shared' not in p and p != '.claude/runs/agent-traces/design-critic.json']
 total_checks = sum(len(json.load(open(p)).get('checks_performed', [])) for p in pages)
 merged_checks = len(merged.get('checks_performed', []))
 if merged_checks != total_checks:
@@ -202,7 +202,7 @@ After ALL per-page agents + Stage 1b + Stage 2 (consistency check) complete:
 1. Run: `npm run build && npm run lint`
 2. If lint errors (not warnings):
    - Fix unused imports (max 2 attempts) — this is the most common issue after multi-agent edits
-   - Append each fix to `.claude/fix-log.md`: `Fix (lint-gate): <file> — removed unused import`
+   - Append each fix to `.claude/runs/fix-log.md`: `Fix (lint-gate): <file> — removed unused import`
 3. If build errors: fix (max 2 attempts), append to fix-log
 4. Re-run `npm run build && npm run lint` to confirm clean.
 
@@ -210,17 +210,17 @@ After ALL per-page agents + Stage 1b + Stage 2 (consistency check) complete:
 
 #### Lead-side validation (design-critic)
 
-1. Read `.claude/agent-traces/design-critic.json` trace (merged by lead in Step A).
+1. Read `.claude/runs/agent-traces/design-critic.json` trace (merged by lead in Step A).
 2. Verify `pages_reviewed` >= number of discovered pages (filesystem + golden_path union).
 3. If `verdict` == `"unresolved"`, this is a **hard gate failure** — design quality threshold (8/10) was not met after 2 fix attempts. Skip STATEs 4-6 but still write verify-report.md (STATE 7) and execute STATE 8 (Save Patterns). Report failure to user with the `unresolved_sections` count.
 4. If `min_score` < 8 and `verdict` == `"fixed"`, note in verify report that threshold was met after fixes.
 5. If `pre_existing_debt` is non-empty, note pre-existing quality debt in verify report (informational, does not block).
-6. Extract Fix Summaries from per-page agent return messages. Append each fix to `.claude/fix-log.md` with the prefix `Fix (design-critic):`.
+6. Extract Fix Summaries from per-page agent return messages. Append each fix to `.claude/runs/fix-log.md` with the prefix `Fix (design-critic):`.
 7. Note `pages` count and `consistency_fixes` count in verify report.
 
 ### Lead-applied fixes from Phase 1 findings
 
-After reviewing Phase 1 agent findings (spec-reviewer, accessibility-scanner, behavior-verifier, performance-reporter) and applying any fixes directly (not via a Phase 2 agent), append each fix to `.claude/fix-log.md`:
+After reviewing Phase 1 agent findings (spec-reviewer, accessibility-scanner, behavior-verifier, performance-reporter) and applying any fixes directly (not via a Phase 2 agent), append each fix to `.claude/runs/fix-log.md`:
 
 ```
 Fix (lead-<source>): `<file>` — Symptom: <what agent found> — Fix: <what you changed>
@@ -233,33 +233,33 @@ Sources: `lead-spec-reviewer`, `lead-a11y`, `lead-behavior-verifier`, `lead-perf
 ### ux-journeyer (if scope is `full` or `visual`, AND archetype is `web-app`) — SERIAL
 
 Spawn the `ux-journeyer` agent (`subagent_type: ux-journeyer`). Pass PR file boundary. **Wait for completion.**
-After completion: verify `.claude/agent-traces/ux-journeyer.json` exists; if agent returned output but trace is missing, write a recovery trace with `"recovery":true`.
+After completion: verify `.claude/runs/agent-traces/ux-journeyer.json` exists; if agent returned output but trace is missing, write a recovery trace with `"recovery":true`.
 Run `npm run build`. If build fails, fix (max 2 attempts) before next agent.
 
 #### Lead-side validation (ux-journeyer)
 
-1. Read `.claude/agent-traces/ux-journeyer.json` trace.
+1. Read `.claude/runs/agent-traces/ux-journeyer.json` trace.
 2. If `verdict` == `"blocked"`, this is a **hard gate failure** — the golden path cannot be completed. Stop and report the blocked location to the user. Do NOT proceed to STATE 4.
 3. If `unresolved_dead_ends` > 0, this is a **hard gate failure** — real dead ends remain after fixes. Skip STATEs 4-6 but still write verify-report.md (STATE 7) and execute STATE 8 (Save Patterns).
 4. If `dead_ends` > 0 AND `unresolved_dead_ends` == 0, all dead ends are intentional fake-door pages. Note in verify report (informational, does not block).
-5. Extract Fix Summaries from the agent's return message. Append each fix to `.claude/fix-log.md` with the prefix `Fix (ux-journeyer):`.
+5. Extract Fix Summaries from the agent's return message. Append each fix to `.claude/runs/fix-log.md` with the prefix `Fix (ux-journeyer):`.
 
 ### Design-UX Merge (if scope is `full` or `visual`, AND archetype is `web-app`)
 
 After both design-critic and ux-journeyer have completed and their builds pass:
 
 1. Read both traces:
-   - `.claude/agent-traces/design-critic.json`
-   - `.claude/agent-traces/ux-journeyer.json`
+   - `.claude/runs/agent-traces/design-critic.json`
+   - `.claude/runs/agent-traces/ux-journeyer.json`
 
 2. Compute the quality gate verdict:
    - **fail**: design-critic verdict is `"unresolved"` OR ux-journeyer verdict is `"blocked"`
    - **warn**: ux-journeyer `dead_ends` > 0 (but design-critic passed)
    - **pass**: neither condition triggered
 
-3. Write `.claude/design-ux-merge.json`:
+3. Write `.claude/runs/design-ux-merge.json`:
    ```bash
-   cat > .claude/design-ux-merge.json << 'DUXEOF'
+   cat > .claude/runs/design-ux-merge.json << 'DUXEOF'
    {"timestamp":"<ISO 8601>","verdict":"<pass|warn|fail>","design_critic":{"verdict":"<verdict>","min_score":<S>,"weakest_page":"<page>","sections_below_8":<B>,"fixes_applied":<F>,"unresolved_sections":<U>,"pre_existing_debt":<DEBT>},"ux_journeyer":{"verdict":"<verdict>","clicks_to_value":<C>,"dead_ends":<D>,"coverage_pct":<P>,"fixes_applied":<F>}}
    DUXEOF
    ```
@@ -268,7 +268,7 @@ After both design-critic and ux-journeyer have completed and their builds pass:
 
 **VERIFY:**
 ```bash
-test -f .claude/design-ux-merge.json
+test -f .claude/runs/design-ux-merge.json
 ```
 Build command exited 0 after last Phase 2 agent.
 

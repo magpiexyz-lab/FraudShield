@@ -76,8 +76,8 @@ Wait for user confirmation.
 
 Clean stale epilogue artifacts and create context file to initialize state tracking:
 ```bash
-rm -f .claude/observe-result.json
-cat > .claude/spec-context.json << CTXEOF
+rm -f .claude/runs/observe-result.json
+cat > .claude/runs/spec-context.json << CTXEOF
 {"skill":"spec","branch":"$(git branch --show-current)","timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","run_id":"spec-$(date -u +%Y-%m-%dT%H:%M:%SZ)","completed_states":[0]}
 CTXEOF
 ```
@@ -87,11 +87,11 @@ CTXEOF
 - Level parsed (1, 2, or 3)
 - Input sufficiency assessed (all 3 dimensions present/inferable, or follow-up completed)
 - User confirmed input
-- `.claude/spec-context.json` exists
+- `.claude/runs/spec-context.json` exists
 
 **VERIFY:**
 ```bash
-test -f .claude/spec-context.json && echo "OK" || echo "FAIL"
+test -f .claude/runs/spec-context.json && echo "OK" || echo "FAIL"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

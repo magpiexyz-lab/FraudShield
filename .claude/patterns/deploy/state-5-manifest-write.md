@@ -93,7 +93,7 @@ Print a deployment summary:
 
 ### Write deploy manifest
 
-Write `.claude/deploy-manifest.json` with the resources created during this deploy:
+Write `.claude/runs/deploy-manifest.json` with the resources created during this deploy:
 
 ```json
 {
@@ -139,7 +139,7 @@ If the write fails, warn but continue — the manifest is for convenience, not c
 
 ### Q-score
 
-After writing the deploy manifest, compute deploy Q and append to `.claude/verify-history.jsonl` (see `.claude/patterns/q-score.md` for the Write Procedure).
+After writing the deploy manifest, compute deploy Q and append to `.claude/runs/verify-history.jsonl` (see `.claude/patterns/q-score.md` for the Write Procedure).
 
 Parse the health check results from Step 5c:
 - `services_ok`: count of services that returned `"ok"` in the health check JSON
@@ -180,7 +180,7 @@ DIMS_JSON=$(echo "$DEPLOY_Q" | head -1)
 GATE=$(echo "$DEPLOY_Q" | sed -n '2p')
 R_HUMAN=$(echo "$DEPLOY_Q" | sed -n '3p')
 VERDICT=$(echo "$DEPLOY_Q" | tail -1)
-RUN_ID=$(python3 -c "import json; print(json.load(open('.claude/deploy-context.json')).get('run_id', ''))" 2>/dev/null || echo "")
+RUN_ID=$(python3 -c "import json; print(json.load(open('.claude/runs/deploy-context.json')).get('run_id', ''))" 2>/dev/null || echo "")
 
 python3 .claude/scripts/write-q-score.py \
   --skill deploy --scope deploy --archetype "<archetype>" \
@@ -191,12 +191,12 @@ python3 .claude/scripts/write-q-score.py \
 
 **POSTCONDITIONS:**
 - Deployment summary printed to user
-- `.claude/deploy-manifest.json` written with all resource details
-- Q-score computed and appended to `.claude/verify-history.jsonl`
+- `.claude/runs/deploy-manifest.json` written with all resource details
+- Q-score computed and appended to `.claude/runs/verify-history.jsonl`
 
 **VERIFY:**
 ```bash
-test -f .claude/deploy-manifest.json && echo "OK" || echo "FAIL"
+test -f .claude/runs/deploy-manifest.json && echo "OK" || echo "FAIL"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

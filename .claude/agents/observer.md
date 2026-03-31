@@ -118,8 +118,8 @@ Return one of:
 After completing all work, write a trace file:
 
 ```bash
-RUN_ID=$(python3 -c "import json;print(json.load(open('.claude/verify-context.json')).get('run_id',''))" 2>/dev/null || echo "")
-mkdir -p .claude/agent-traces && echo '{"agent":"observer","timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","verdict":"<verdict>","checks_performed":["prerequisites","fix_evaluation","redaction","dedup","issue_filing"],"fixes_evaluated":<N>,"run_id":"'"$RUN_ID"'"}' > .claude/agent-traces/observer.json
+RUN_ID=$(python3 -c "import json;print(json.load(open('.claude/runs/verify-context.json')).get('run_id',''))" 2>/dev/null || echo "")
+mkdir -p .claude/runs/agent-traces && echo '{"agent":"observer","timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","verdict":"<verdict>","checks_performed":["prerequisites","fix_evaluation","redaction","dedup","issue_filing"],"fixes_evaluated":<N>,"run_id":"'"$RUN_ID"'"}' > .claude/runs/agent-traces/observer.json
 ```
 
 Replace `<verdict>` with `"filed"`, `"commented"`, `"no observations"`, or `"prerequisite-unavailable"`.

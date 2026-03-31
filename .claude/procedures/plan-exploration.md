@@ -38,7 +38,7 @@ If Step 3 later overrides this classification, the exploration results remain va
 2. Identify the exact input or action that triggers the failure (if described)
 3. Note the expected behavior vs. actual behavior
 4. List every observable fact — affected files, error patterns, environment clues
-5. If `.claude/verify-context.json` has a `diagnostic` key from a prior failed build, include that context
+5. If `.claude/runs/verify-context.json` has a `diagnostic` key from a prior failed build, include that context
 
 **Phase 2 — Hypothesize**:
 1. List up to 3 possible root causes, ranked by probability

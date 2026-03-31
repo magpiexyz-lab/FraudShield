@@ -178,7 +178,7 @@ After all 3 agents return, collect findings and deduplicate:
 - Each finding follows the Finding Format
 - Rules enforced (max 7 per dimension, no overlap, confidence filter)
 
-- **Write analysis artifact** (`.claude/audit-analysis.json`):
+- **Write analysis artifact** (`.claude/runs/audit-analysis.json`):
   ```bash
   python3 -c "
   import json
@@ -188,13 +188,13 @@ After all 3 agents return, collect findings and deduplicate:
       'abstractability': {'findings': [], 'count': 0},
       'total_findings': 0
   }
-  json.dump(analysis, open('.claude/audit-analysis.json', 'w'), indent=2)
+  json.dump(analysis, open('.claude/runs/audit-analysis.json', 'w'), indent=2)
   "
   ```
 
 **VERIFY:**
 ```bash
-test -f .claude/audit-analysis.json
+test -f .claude/runs/audit-analysis.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

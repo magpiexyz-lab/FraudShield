@@ -7,7 +7,7 @@
 
 Follow checkpoint-resumption protocol per `patterns/checkpoint-resumption.md`.
 
-- If `.claude/current-plan.md` exists and the current branch starts with `feat/bootstrap`:
+- If `.claude/runs/current-plan.md` exists and the current branch starts with `feat/bootstrap`:
   1. Read frontmatter. Use values directly — do NOT re-resolve archetype or stack. Read context_files to restore context.
   2. Resume per /bootstrap checkpoint mapping:
 

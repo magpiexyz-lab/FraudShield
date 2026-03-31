@@ -12,9 +12,9 @@ For each category in experiment.yaml `stack`:
 - Read `.claude/stacks/<category>/<value>.md`
 
 ## Optional Context (read if file exists)
-- `.claude/current-plan.md` — persisted plan from previous session
-- `.claude/iterate-manifest.json` — analysis from last /iterate run
-- `.claude/deploy-manifest.json` — resources from last /deploy run
+- `.claude/runs/current-plan.md` — persisted plan from previous session
+- `.claude/runs/iterate-manifest.json` — analysis from last /iterate run
+- `.claude/runs/deploy-manifest.json` — resources from last /deploy run
 - `experiment/on-touch.yaml` — modules deferred for hardening
 
 ## How to Reference

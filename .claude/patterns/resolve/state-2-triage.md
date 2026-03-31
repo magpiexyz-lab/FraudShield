@@ -47,7 +47,7 @@ resolved as non-actionable — no Phase 2 diagnosis needed." Stop here.
 **STOP. Present the triage table to the user and wait for approval before
 proceeding to Phase 2.** The user may reclassify issues or remove them from scope.
 
-- **Write triage artifact** (`.claude/resolve-triage.json`):
+- **Write triage artifact** (`.claude/runs/resolve-triage.json`):
   ```bash
   python3 -c "
   import json
@@ -58,7 +58,7 @@ proceeding to Phase 2.** The user may reclassify issues or remove them from scop
       'actionable_count': 0,
       'closed_count': 0
   }
-  json.dump(triage, open('.claude/resolve-triage.json', 'w'), indent=2)
+  json.dump(triage, open('.claude/runs/resolve-triage.json', 'w'), indent=2)
   "
   ```
 
@@ -67,11 +67,11 @@ proceeding to Phase 2.** The user may reclassify issues or remove them from scop
 - Non-actionable issues closed with comments
 - Triage table presented to user
 - User has approved the triage before proceeding
-- `.claude/resolve-triage.json` exists with `issues` array
+- `.claude/runs/resolve-triage.json` exists with `issues` array
 
 **VERIFY:**
 ```bash
-python3 -c "import json; d=json.load(open('.claude/resolve-triage.json')); assert isinstance(d.get('issues'), list), 'issues missing'"
+python3 -c "import json; d=json.load(open('.claude/runs/resolve-triage.json')); assert isinstance(d.get('issues'), list), 'issues missing'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

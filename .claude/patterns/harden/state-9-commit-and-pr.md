@@ -5,14 +5,14 @@
 
 **ACTIONS:**
 
-**Gate check:** Read `.claude/verify-report.md`. If it does not exist, STOP -- go back and run STATE 8 above. Do NOT commit without a verification report.
+**Gate check:** Read `.claude/runs/verify-report.md`. If it does not exist, STOP -- go back and run STATE 8 above. Do NOT commit without a verification report.
 
 ### Q-score
 
 Compute harden execution quality (see `.claude/patterns/skill-scoring.md`):
 
 ```bash
-RUN_ID=$(python3 -c "import json; print(json.load(open('.claude/harden-context.json')).get('run_id', ''))" 2>/dev/null || echo "")
+RUN_ID=$(python3 -c "import json; print(json.load(open('.claude/runs/harden-context.json')).get('run_id', ''))" 2>/dev/null || echo "")
 python3 .claude/scripts/write-q-score.py \
   --skill harden --scope harden \
   --archetype "$(python3 -c "import yaml; print(yaml.safe_load(open('experiment/experiment.yaml')).get('type','web-app'))" 2>/dev/null || echo web-app)" \
@@ -26,10 +26,10 @@ python3 .claude/scripts/write-q-score.py \
   - **Summary**: what modules were hardened and why (quality: production)
   - **What Changed**: list every file created/modified (spec files, on-touch.yaml, etc.)
   - **Checklist — Build**: confirm build passes, no hardcoded secrets
-  - **Checklist — Verification**: populate from `.claude/verify-report.md` contents
+  - **Checklist — Verification**: populate from `.claude/runs/verify-report.md` contents
 - Fill in **every** section of the PR template. Empty sections are not acceptable. If a section does not apply, write "N/A" with a one-line reason.
 - If `git push` or `gh pr create` fails: show the error and tell the user to check their GitHub authentication (`gh auth status`) and remote configuration (`git remote -v`), then retry.
-- After PR is created, delete `.claude/current-plan.md` and `.claude/verify-report.md`.
+- After PR is created, delete `.claude/runs/current-plan.md` and `.claude/runs/verify-report.md`.
 
 Key design decisions:
 - Dependency-ordered sequential execution -- fail-fast prevents cascading breakage, dependencies satisfied before dependents
@@ -37,7 +37,7 @@ Key design decisions:
 - Implementers receive the "Specifications to test" list from the plan -- no re-derivation needed
 - Spec-reviewer included in verify step (conditional 6th agent)
 - Re-run detection: `quality: production` already set + no $ARGUMENTS -> stop
-- Checkpoint-based resume: `.claude/current-plan.md` with YAML frontmatter enables exact resume after /clear or context overflow
+- Checkpoint-based resume: `.claude/runs/current-plan.md` with YAML frontmatter enables exact resume after /clear or context overflow
 
 **Post-merge guidance.** After PR is created, tell the user:
 
@@ -50,8 +50,8 @@ Production quality mode is now active.
 
 **POSTCONDITIONS:**
 - PR created with verification checklist populated
-- `.claude/current-plan.md` deleted
-- `.claude/verify-report.md` deleted
+- `.claude/runs/current-plan.md` deleted
+- `.claude/runs/verify-report.md` deleted
 - Post-merge guidance displayed to user
 
 **VERIFY:**

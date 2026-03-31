@@ -55,7 +55,7 @@ After the agent returns, partition findings:
 - **disputed**: removed from fix queue; record finding signature + one-line rationale for the PR body
 - If 0 findings remain after removing disputed -> continue to 2d (the existing 2b exit handles the zero-findings case)
 
-- **Write adversarial artifact** (`.claude/review-adversarial.json`):
+- **Write adversarial artifact** (`.claude/runs/review-adversarial.json`):
   ```bash
   python3 -c "
   import json
@@ -64,7 +64,7 @@ After the agent returns, partition findings:
       'disputed': [],     # list of {title, rationale}
       'needs_evidence': []
   }
-  json.dump(adversarial, open('.claude/review-adversarial.json', 'w'), indent=2)
+  json.dump(adversarial, open('.claude/runs/review-adversarial.json', 'w'), indent=2)
   "
   ```
 
@@ -72,11 +72,11 @@ After the agent returns, partition findings:
 - Each finding labeled: confirmed, disputed, or needs-evidence
 - Fix queue ordered: confirmed (by severity), then needs-evidence (by severity)
 - Disputed findings recorded with rationale
-- `.claude/review-adversarial.json` exists
+- `.claude/runs/review-adversarial.json` exists
 
 **VERIFY:**
 ```bash
-test -f .claude/review-adversarial.json
+test -f .claude/runs/review-adversarial.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

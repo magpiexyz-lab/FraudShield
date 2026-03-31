@@ -11,12 +11,12 @@ Update checkpoint to `step3-pr`.
 
 **POSTCONDITIONS:**
 - `/verify` completed successfully
-- `.claude/verify-report.md` exists
+- `.claude/runs/verify-report.md` exists
 - Checkpoint updated to `step3-pr`
 
 **VERIFY:**
 ```bash
-test -f .claude/verify-report.md && echo "OK" || echo "FAIL"
+test -f .claude/runs/verify-report.md && echo "OK" || echo "FAIL"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

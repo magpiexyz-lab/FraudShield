@@ -1,0 +1,9 @@
+{
+  "patterns_saved": [
+    "Demo client proxy API surface gaps (then, single, signUp, getSession)",
+    "Observation filing to wrong repo (template remote vs project repo)",
+    "Hardcoded analytics keys vs security review D1",
+    "Client env var naming in Next.js (NEXT_PUBLIC_ prefix)"
+  ],
+  "skipped_reason": ""
+}
