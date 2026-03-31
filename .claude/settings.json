@@ -4,10 +4,15 @@
       "Read(/.claude/**)",
       "Write(/.claude/**)",
       "Edit(/.claude/**)",
-      "Bash(cat > .claude:*)",
-      "Bash(rm -f .claude:*)",
-      "Bash(rm -rf .claude:*)",
-      "Bash(mkdir -p .claude:*)"
+      "Bash(*.claude/*)",
+      "Bash(git *)",
+      "Bash(gh *)",
+      "Bash(npm *)",
+      "Bash(npx *)",
+      "Bash(make *)",
+      "Bash(python3 scripts/*)",
+      "Bash(bash scripts/*)",
+      "Bash(shellcheck *)"
     ]
   },
   "env": {
