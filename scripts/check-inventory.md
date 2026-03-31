@@ -1,7 +1,7 @@
 # Check Inventory
 
 Scannable reference listing all automated checks by name, grouped by validator.
-80 active checks consolidated into 76 inventory rows.
+81 active checks consolidated into 77 inventory rows.
 Checks 3 and 7 are archetype-aware — they read `required_experiment_fields` and `excluded_stacks` from archetype frontmatter.
 
 Last updated: 2026-03-30
@@ -93,7 +93,7 @@ better enforced by the scoped LLM review (`scripts/scoped-review-prompt.md`).
 
 ## consistency-check.sh
 
-16 active checks consolidated into 8 rows. Three checks removed (scripts #8, #11, #12). Checks #3 and #13 scan commands, agents, and procedures.
+17 active checks consolidated into 9 rows. Three checks removed (scripts #8, #11, #12). Checks #3 and #13 scan commands, agents, and procedures.
 
 | Name | Description | Scripts |
 |------|-------------|---------|
@@ -105,6 +105,7 @@ better enforced by the scoped LLM review (`scripts/scoped-review-prompt.md`).
 | Forbid hardcoded analytics provider names in skill section headings | Skill, agent, and procedure files must not contain `PostHog` (case-insensitive) in `###` section headings — provider names belong in the analytics stack file | #13 |
 | Verify lib.sh function calls have space before arguments | Hook scripts (excluding lib.sh) must not call lib.sh functions with the argument concatenated to the function name (e.g., `func"$arg"` instead of `func "$arg"`) | #14 |
 | Verify STATE_ID regex character class matches across hooks | state-completion-gate.sh and phase-boundary-gate.sh must use the same character class for STATE_ID extraction from advance-state.sh commands | #15 |
+| Verify verify.md STATE 5 branches on testing framework type | state-5-e2e-tests.md must reference both playwright and vitest test runners, not hardcode a single framework | #16 |
 
 ## Cross-validator overlaps
 

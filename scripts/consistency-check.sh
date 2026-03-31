@@ -137,6 +137,19 @@ if [ -f "$SCG" ] && [ -f "$PBG" ]; then
   fi
 fi
 
+# 16. Verify verify.md STATE 5 branches on testing framework type
+STATE5=".claude/patterns/verify/state-5-e2e-tests.md"
+if [ -f "$STATE5" ]; then
+  if grep -q 'playwright' "$STATE5" && ! grep -q 'vitest' "$STATE5"; then
+    echo "FAIL: $STATE5 — hardcodes playwright without vitest branch (must handle all testing frameworks)"
+    ERRORS=$((ERRORS + 1))
+  fi
+  if grep -q 'vitest' "$STATE5" && ! grep -q 'playwright' "$STATE5"; then
+    echo "FAIL: $STATE5 — hardcodes vitest without playwright branch (must handle all testing frameworks)"
+    ERRORS=$((ERRORS + 1))
+  fi
+fi
+
 echo ""
 if [ "$ERRORS" -gt 0 ]; then
   echo "FAILED: $ERRORS violation(s). Move facts to canonical sources (experiment/EVENTS.yaml, stack files)."
