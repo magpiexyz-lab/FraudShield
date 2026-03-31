@@ -142,7 +142,7 @@ The script implements the full Write Procedure:
 
 1. Compute the Q entry as a JSON object per the schema above
 2. Check the `SKILL_HISTORY_BACKEND` environment variable:
-   - `local` (default): append JSON line to `.claude/verify-history.jsonl`
+   - `local` (default): append JSON line to `.claude/runs/verify-history.jsonl`
    - `api`: POST JSON to `$SKILL_HISTORY_ENDPOINT` (with `Content-Type: application/json`).
      On failure (timeout, error), fall back to `local`.
    - Any other value: skip writing (tracking disabled)

@@ -41,15 +41,15 @@ prompt tells them WHICH files to read and WHAT to do.
 This value is passed to subagents in their prompts (subagents cannot
 interact with users).
 
-Check off in `.claude/current-plan.md`: `- [x] TSP-LSP check completed`
+Check off in `.claude/runs/current-plan.md`: `- [x] TSP-LSP check completed`
 
 - **Record preflight results** in `bootstrap-context.json`:
   ```bash
   python3 -c "
   import json
-  ctx = json.load(open('.claude/bootstrap-context.json'))
+  ctx = json.load(open('.claude/runs/bootstrap-context.json'))
   ctx['preflight_passed'] = True
-  json.dump(ctx, open('.claude/bootstrap-context.json', 'w'), indent=2)
+  json.dump(ctx, open('.claude/runs/bootstrap-context.json', 'w'), indent=2)
   "
   ```
 
@@ -60,7 +60,7 @@ Check off in `.claude/current-plan.md`: `- [x] TSP-LSP check completed`
 
 **VERIFY:**
 ```bash
-python3 -c "import json; assert json.load(open('.claude/bootstrap-context.json')).get('preflight_passed') == True, 'preflight_passed not set'"
+python3 -c "import json; assert json.load(open('.claude/runs/bootstrap-context.json')).get('preflight_passed') == True, 'preflight_passed not set'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

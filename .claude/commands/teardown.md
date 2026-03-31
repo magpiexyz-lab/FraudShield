@@ -3,7 +3,7 @@ description: "Tear down cloud infrastructure created by /deploy. Use when ending
 type: analysis-only
 reads:
   - experiment/experiment.yaml
-  - .claude/deploy-manifest.json
+  - .claude/runs/deploy-manifest.json
   - CLAUDE.md
 stack_categories: [hosting, database, analytics, payment]
 requires_approval: true

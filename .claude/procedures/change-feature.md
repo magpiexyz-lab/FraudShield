@@ -38,12 +38,12 @@
      ```bash
      python3 -c "
      import json, datetime, os
-     os.makedirs('.claude/agent-traces', exist_ok=True)
+     os.makedirs('.claude/runs/agent-traces', exist_ok=True)
      agent_type = '<implementer|visual-implementer>'  # match the agent that was spawned
      trace = {'agent': f'{agent_type}-<task-slug>', 'status': '<complete|blocked>', 'timestamp': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'), 'task': '<task description from Output Contract>', 'files_changed': [<Files Changed list from Output Contract>], 'tdd_cycle': '<red-green-refactor|skipped from Output Contract>', 'worktree_merged': False}
      if agent_type == 'visual-implementer':
          trace['design'] = '<DESIGN field from visual-implementer Output Contract>'
-     json.dump(trace, open(f'.claude/agent-traces/{agent_type}-<task-slug>.json', 'w'))
+     json.dump(trace, open(f'.claude/runs/agent-traces/{agent_type}-<task-slug>.json', 'w'))
      "
      ```
      After merge, update the trace: set `worktree_merged: true`.
@@ -63,7 +63,7 @@
      python3 -c "
      import json, datetime
      result = {'timestamp': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'), 'implementer_count': <N>, 'issues_found': <N>, 'issues_fixed': <N>, 'status': 'pass'}
-     json.dump(result, open('.claude/consistency-scan-result.json', 'w'))
+     json.dump(result, open('.claude/runs/consistency-scan-result.json', 'w'))
      "
      ```
   8. Continue to Step 7
@@ -90,7 +90,7 @@
      - Add tracking calls per experiment/EVENTS.yaml
      - Checkpoint: `npm run build` — final verification
 
-  Update `.claude/current-plan.md` after each completed step:
+  Update `.claude/runs/current-plan.md` after each completed step:
   - Mark the step done in the plan body (prefix with `[x]`)
   - Keep `checkpoint: phase2-step6` in YAML frontmatter throughout Step 6 (resumption re-reads the plan body to determine which layers are done)
   - After all layers complete (including Analytics wiring): update checkpoint to `phase2-step7`
@@ -114,6 +114,6 @@
 - If database tables are needed: create a migration following the database stack file (next sequential number, `IF NOT EXISTS`), add TypeScript types, add post-merge instructions to PR body (CI auto-applies migrations on merge; otherwise `make migrate` or Supabase Dashboard). Note: concurrent branches may create conflicting migration numbers — resolve by renumbering the later-merged migration at merge time.
 - **If Multi-layer** (fallback — only if the MVP Task Breakdown above was skipped, e.g., for Simple features that grew during implementation): implement in two sub-steps with an intermediate build check:
   - Sub-step 6a — Data and server layer (migrations, types, API routes)
-  - Re-read `.claude/current-plan.md` to confirm sub-step 6a output aligns with the approved plan.
+  - Re-read `.claude/runs/current-plan.md` to confirm sub-step 6a output aligns with the approved plan.
   - Checkpoint: run `npm run build`. Fix errors before proceeding. If still broken after 2 attempts, proceed to Sub-step 6b without retrying — Step 7 (verification) has its own 3-attempt retry budget.
   - Sub-step 6b — Client/output layer (pages/endpoints/commands, components if applicable, analytics wiring)

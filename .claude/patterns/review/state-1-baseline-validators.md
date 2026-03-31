@@ -31,7 +31,7 @@
 - `max_iterations` and `max_findings_per_dimension` set
 - All 4 validators ran successfully (or user notified of missing tools)
 
-- **Write baseline artifact** (`.claude/review-baseline.json`):
+- **Write baseline artifact** (`.claude/runs/review-baseline.json`):
   ```bash
   python3 -c "
   import json
@@ -41,13 +41,13 @@
       'max_iterations': 3,
       'max_findings_per_dimension': 3
   }
-  json.dump(baseline, open('.claude/review-baseline.json', 'w'), indent=2)
+  json.dump(baseline, open('.claude/runs/review-baseline.json', 'w'), indent=2)
   "
   ```
 
 **VERIFY:**
 ```bash
-test -f .claude/review-baseline.json
+test -f .claude/runs/review-baseline.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

@@ -11,7 +11,7 @@
 Write the approved YAML to `experiment/experiment.yaml`.
 
 ### 7b: Write spec-manifest.json
-Write `.claude/spec-manifest.json` with the full research and hypothesis details:
+Write `.claude/runs/spec-manifest.json` with the full research and hypothesis details:
 ```json
 {
   "spec_version": "1.0",
@@ -51,7 +51,7 @@ Write `.claude/spec-manifest.json` with the full research and hypothesis details
    ```
 2. Verify spec-manifest.json is valid JSON:
    ```bash
-   python3 -c "import json; json.load(open('.claude/spec-manifest.json'))"
+   python3 -c "import json; json.load(open('.claude/runs/spec-manifest.json'))"
    ```
 3. Spot-check:
    - Every hypothesis has a `metric` object with numeric `threshold`, `formula`, and `operator`
@@ -74,7 +74,7 @@ Compute spec Q dimensions and write via shared script (see `.claude/patterns/ski
 SPEC_Q=$(VALIDATE_EXIT=$VALIDATE_EXIT python3 -c "
 import json, os
 
-manifest = json.load(open('.claude/spec-manifest.json'))
+manifest = json.load(open('.claude/runs/spec-manifest.json'))
 level = manifest.get('level', 2)
 level_mins = {1: 2, 2: 4, 3: 5}
 min_required = level_mins.get(level, 4)
@@ -106,7 +106,7 @@ print(verdict)
 DIMS_JSON=$(echo "$SPEC_Q" | head -1)
 GATE=$(echo "$SPEC_Q" | sed -n '2p')
 VERDICT=$(echo "$SPEC_Q" | tail -1)
-RUN_ID=$(python3 -c "import json; print(json.load(open('.claude/spec-context.json')).get('run_id', ''))" 2>/dev/null || echo "")
+RUN_ID=$(python3 -c "import json; print(json.load(open('.claude/runs/spec-context.json')).get('run_id', ''))" 2>/dev/null || echo "")
 
 python3 .claude/scripts/write-q-score.py \
   --skill spec --scope spec --archetype N/A \
@@ -126,7 +126,7 @@ If `make validate` required fixes (did not pass on first attempt in Step 7c):
    - Not a user-specific experiment.yaml issue?
 3. If any qualify -> follow observe.md's Redaction, Dedup, and Issue Creation
    procedures (best-effort, never block)
-4. Write `.claude/observe-result.json`:
+4. Write `.claude/runs/observe-result.json`:
    ```json
    {
      "skill": "spec",
@@ -157,14 +157,14 @@ Next: Run /bootstrap to scaffold the app, or edit experiment/experiment.yaml to 
 
 **POSTCONDITIONS:**
 - `experiment/experiment.yaml` written and valid YAML
-- `.claude/spec-manifest.json` written and valid JSON
-- Q-score computed and appended to `.claude/verify-history.jsonl`
+- `.claude/runs/spec-manifest.json` written and valid JSON
+- Q-score computed and appended to `.claude/runs/verify-history.jsonl`
 - Observation check completed (if applicable)
 - Summary printed to user
 
 **VERIFY:**
 ```bash
-test -f experiment/experiment.yaml && test -f .claude/spec-manifest.json && echo "OK" || echo "FAIL"
+test -f experiment/experiment.yaml && test -f .claude/runs/spec-manifest.json && echo "OK" || echo "FAIL"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

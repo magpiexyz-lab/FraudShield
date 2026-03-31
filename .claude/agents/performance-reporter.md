@@ -158,8 +158,8 @@ If any pages exceed 200KB, add a note:
 After completing all work, write a trace file:
 
 ```bash
-RUN_ID=$(python3 -c "import json;print(json.load(open('.claude/verify-context.json')).get('run_id',''))" 2>/dev/null || echo "")
-mkdir -p .claude/agent-traces && echo '{"agent":"performance-reporter","timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","verdict":"<verdict>","checks_performed":["P1_build","P2_routes","P3_large_pages","P4_deps","P5_lighthouse","P6_api"],"metrics_checked":<N>,"run_id":"'"$RUN_ID"'"}' > .claude/agent-traces/performance-reporter.json
+RUN_ID=$(python3 -c "import json;print(json.load(open('.claude/runs/verify-context.json')).get('run_id',''))" 2>/dev/null || echo "")
+mkdir -p .claude/runs/agent-traces && echo '{"agent":"performance-reporter","timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","verdict":"<verdict>","checks_performed":["P1_build","P2_routes","P3_large_pages","P4_deps","P5_lighthouse","P6_api"],"metrics_checked":<N>,"run_id":"'"$RUN_ID"'"}' > .claude/runs/agent-traces/performance-reporter.json
 ```
 
 Replace `<verdict>` with `"pass"` if no warnings, or `"N warnings"` with the count.

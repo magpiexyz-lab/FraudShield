@@ -16,7 +16,7 @@ If gate-keeper returns BLOCK, stop and report — do NOT proceed until validatio
 
 **VERIFY:**
 ```bash
-test -f .claude/gate-verdicts/bg1.json && echo "BG1 verdict file exists" || echo "BG1 verdict file missing"
+test -f .claude/runs/gate-verdicts/bg1.json && echo "BG1 verdict file exists" || echo "BG1 verdict file missing"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

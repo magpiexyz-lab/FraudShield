@@ -2,7 +2,7 @@
 
 **PRECONDITIONS:**
 - STATE 4 POSTCONDITIONS met (branch created, config set, testing installed)
-- `.claude/current-plan.md` exists with approved module list
+- `.claude/runs/current-plan.md` exists with approved module list
 
 **ACTIONS:**
 
@@ -27,9 +27,9 @@ For each approved CRITICAL module **in dependency order, sequentially**:
      - Verify merge: `git log --oneline -1` must show merge commit
   e. Run `npm run build` -- if broken, fix before next module
   f. Log: "Module [name]: N tests added, all passing"
-  g. Update checkpoint in `.claude/current-plan.md` frontmatter to `step3-module-[next]` (where [next] is the 1-indexed number of the next module to process)
+  g. Update checkpoint in `.claude/runs/current-plan.md` frontmatter to `step3-module-[next]` (where [next] is the 1-indexed number of the next module to process)
 
-- **Write modules trace artifact** (`.claude/harden-modules-trace.json`):
+- **Write modules trace artifact** (`.claude/runs/harden-modules-trace.json`):
   ```bash
   python3 -c "
   import json
@@ -39,7 +39,7 @@ For each approved CRITICAL module **in dependency order, sequentially**:
       ],
       'build_passing': True
   }
-  json.dump(trace, open('.claude/harden-modules-trace.json', 'w'), indent=2)
+  json.dump(trace, open('.claude/runs/harden-modules-trace.json', 'w'), indent=2)
   "
   ```
 
@@ -48,11 +48,11 @@ For each approved CRITICAL module **in dependency order, sequentially**:
 - All tests pass
 - `npm run build` passes
 - Checkpoint updated for each completed module
-- `.claude/harden-modules-trace.json` exists
+- `.claude/runs/harden-modules-trace.json` exists
 
 **VERIFY:**
 ```bash
-test -f .claude/harden-modules-trace.json
+test -f .claude/runs/harden-modules-trace.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

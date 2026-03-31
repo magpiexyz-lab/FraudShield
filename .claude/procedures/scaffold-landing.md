@@ -2,8 +2,8 @@
 
 ## Prerequisites
 - Branch already created (by bootstrap Step 0)
-- Step 1 complete (theme tokens in `src/app/globals.css`, visual brief at `.claude/current-visual-brief.md`)
-- `.claude/current-plan.md` exists
+- Step 1 complete (theme tokens in `src/app/globals.css`, visual brief at `.claude/runs/current-visual-brief.md`)
+- `.claude/runs/current-plan.md` exists
 
 ## Instructions
 
@@ -17,7 +17,7 @@ Read the surface stack file at `.claude/stacks/surface/<value>.md`.
 
 ### 1. Design decisions
 
-Read the visual language brief from `.claude/current-visual-brief.md`. Do NOT
+Read the visual language brief from `.claude/runs/current-visual-brief.md`. Do NOT
 re-derive constraints — the brief contains the canonical design decisions
 (color direction, philosophy, optimization target, palette, typography,
 animation, spacing, component style, and texture). Also read the theme tokens
@@ -84,14 +84,14 @@ If `stack.analytics` is present and not already included:
 
 ## Trace Output
 
-After all landing page tasks complete, write trace to `.claude/agent-traces/scaffold-landing.json`:
+After all landing page tasks complete, write trace to `.claude/runs/agent-traces/scaffold-landing.json`:
 
 ```bash
 python3 -c "
 import json, datetime, os
-os.makedirs('.claude/agent-traces', exist_ok=True)
+os.makedirs('.claude/runs/agent-traces', exist_ok=True)
 trace = {'agent': 'scaffold-landing', 'status': 'complete', 'timestamp': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'), 'files_created': ['<list all files created or modified>']}
-json.dump(trace, open('.claude/agent-traces/scaffold-landing.json', 'w'))
+json.dump(trace, open('.claude/runs/agent-traces/scaffold-landing.json', 'w'))
 "
 ```
 

@@ -47,19 +47,19 @@
 - `observation_backlog` is set (possibly empty)
 - `prior_precision` is set (possibly empty)
 - Observation hot spots computed (possibly none)
-- `.claude/review-context.json` exists with state tracking initialized
+- `.claude/runs/review-context.json` exists with state tracking initialized
 
 Clean stale epilogue artifacts and create the context file to initialize state tracking:
 ```bash
-rm -f .claude/observe-result.json
-cat > .claude/review-context.json << CTXEOF
+rm -f .claude/runs/observe-result.json
+cat > .claude/runs/review-context.json << CTXEOF
 {"skill":"review","branch":"$(git branch --show-current)","timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","run_id":"review-$(date -u +%Y-%m-%dT%H:%M:%SZ)","completed_states":[0]}
 CTXEOF
 ```
 
 **VERIFY:**
 ```bash
-test -f .claude/review-context.json && test -f CLAUDE.md && test -f experiment/EVENTS.yaml && test -f scripts/check-inventory.md && test -f experiment/experiment.example.yaml && echo "OK" || echo "FAIL"
+test -f .claude/runs/review-context.json && test -f CLAUDE.md && test -f experiment/EVENTS.yaml && test -f scripts/check-inventory.md && test -f experiment/experiment.example.yaml && echo "OK" || echo "FAIL"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

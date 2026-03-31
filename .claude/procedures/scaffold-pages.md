@@ -3,9 +3,9 @@
 ## Prerequisites
 - Packages installed and UI setup complete (Step 1 finished)
 - Stack files and archetype file on disk
-- `.claude/current-plan.md` exists
+- `.claude/runs/current-plan.md` exists
 - `design.md` choices recorded in globals.css and tailwind config
-- `.claude/current-visual-brief.md` exists (visual language brief from init)
+- `.claude/runs/current-visual-brief.md` exists (visual language brief from init)
 
 ## Dependency note
 
@@ -57,7 +57,7 @@ For each entry in experiment.yaml `pages`:
   preloaded `frontend-design` guidelines (injected via skills) with:
   - The existing theme tokens (from `src/app/globals.css` and tailwind config)
   - The page's `purpose` from experiment.yaml
-  - The visual language brief from `.claude/current-visual-brief.md` (palette,
+  - The visual language brief from `.claude/runs/current-visual-brief.md` (palette,
     typography, animation, spacing, component style, and texture decisions)
   - Instruction: "Design a top-tier SaaS product screen (think Linear, Vercel,
     Raycast). Follow the visual language brief for palette, typography,

@@ -1,6 +1,0 @@
-{
-  "skill": "review",
-  "mode": "epilogue",
-  "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-  "branch": "chore/review-fixes-9"
-}

@@ -39,7 +39,7 @@ Warning: Database is NOT rolled back. If the incident involves data changes,
 Compute rollback quality (see `.claude/patterns/skill-scoring.md`):
 
 ```bash
-RUN_ID=$(python3 -c "import json; print(json.load(open('.claude/rollback-context.json')).get('run_id', ''))" 2>/dev/null || echo "")
+RUN_ID=$(python3 -c "import json; print(json.load(open('.claude/runs/rollback-context.json')).get('run_id', ''))" 2>/dev/null || echo "")
 python3 .claude/scripts/write-q-score.py \
   --skill rollback --scope rollback \
   --archetype "$(python3 -c "import yaml; print(yaml.safe_load(open('experiment/experiment.yaml')).get('type','web-app'))" 2>/dev/null || echo web-app)" \
@@ -52,7 +52,7 @@ python3 .claude/scripts/write-q-score.py \
 - Health check attempted and result reported
 - Rollback result summary presented to user
 
-- **Write result artifact** (`.claude/rollback-result.json`):
+- **Write result artifact** (`.claude/runs/rollback-result.json`):
   ```bash
   python3 -c "
   import json
@@ -61,13 +61,13 @@ python3 .claude/scripts/write-q-score.py \
       'health_check_passed': True,
       'method': '<cli|manual>'
   }
-  json.dump(result, open('.claude/rollback-result.json', 'w'), indent=2)
+  json.dump(result, open('.claude/runs/rollback-result.json', 'w'), indent=2)
   "
   ```
 
 **VERIFY:**
 ```bash
-test -f .claude/rollback-result.json
+test -f .claude/runs/rollback-result.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

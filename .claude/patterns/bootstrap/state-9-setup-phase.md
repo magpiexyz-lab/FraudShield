@@ -21,7 +21,7 @@ Run `npm audit --audit-level=critical`. If critical vulnerabilities are found, w
 > "Critical npm vulnerabilities detected. Run `npm audit fix` after bootstrap completes."
 Continue regardless — this is non-blocking during bootstrap.
 
-Update checkpoint in `.claude/current-plan.md` frontmatter to `phase2-design`.
+Update checkpoint in `.claude/runs/current-plan.md` frontmatter to `phase2-design`.
 
 **Resolve surface type** (used by Design Phase and Landing subagent). Evaluate in order — first match wins:
 1. If `stack.surface` is set in experiment.yaml, use it.
@@ -29,9 +29,9 @@ Update checkpoint in `.claude/current-plan.md` frontmatter to `phase2-design`.
 3. If the archetype's `excluded_stacks` includes `hosting` and `stack.surface` is not set: `detached`.
 4. Otherwise infer from hosting: `stack.services[0].hosting` present -> `co-located`; absent -> `detached`.
 
-Check off in `.claude/current-plan.md`: `- [x] scaffold-setup completed`
+Check off in `.claude/runs/current-plan.md`: `- [x] scaffold-setup completed`
 
-Verify scaffold-setup trace: `test -f .claude/agent-traces/scaffold-setup.json && python3 -c "import json;d=json.load(open('.claude/agent-traces/scaffold-setup.json'));assert d.get('status')=='complete',f'unexpected status: {d.get(\"status\")}';print('scaffold-setup trace: OK')"`. If trace missing: log "WARN: scaffold-setup did not write trace -- continuing with file-based verification".
+Verify scaffold-setup trace: `test -f .claude/runs/agent-traces/scaffold-setup.json && python3 -c "import json;d=json.load(open('.claude/runs/agent-traces/scaffold-setup.json'));assert d.get('status')=='complete',f'unexpected status: {d.get(\"status\")}';print('scaffold-setup trace: OK')"`. If trace missing: log "WARN: scaffold-setup did not write trace -- continuing with file-based verification".
 
 **POSTCONDITIONS:**
 - `package.json` exists with `dependencies`

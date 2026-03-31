@@ -17,7 +17,7 @@ Before running verify.md, set skill attribution for Q-score tracking: when execu
 
 Run the verification procedure per `.claude/patterns/verify.md`.
 
-> **Gate check:** Read `.claude/verify-report.md`. If it does not exist,
+> **Gate check:** Read `.claude/runs/verify-report.md`. If it does not exist,
 > STOP — go back and run verify.md above. Do NOT commit without a verification report.
 
 - You are already on a `chore/distribute-*` branch. Do not create another branch.
@@ -34,13 +34,13 @@ Run the verification procedure per `.claude/patterns/verify.md`.
 - `experiment/ads.yaml` exists
 - UTM capture verified (or warning noted)
 - Feedback widget verified (or warning noted)
-- verify.md completed and `.claude/verify-report.md` exists
+- verify.md completed and `.claude/runs/verify-report.md` exists
 - All changes committed and pushed
 - PR opened with summary, distribution setup instructions, and full ads.yaml content
 
 **VERIFY:**
 ```bash
-test -f .claude/verify-report.md && echo "Verify report OK" || echo "FAIL: no verify report"
+test -f .claude/runs/verify-report.md && echo "Verify report OK" || echo "FAIL: no verify report"
 git log -1 --oneline && echo "Commit OK"
 ```
 

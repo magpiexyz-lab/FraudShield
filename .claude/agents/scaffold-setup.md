@@ -37,14 +37,14 @@ Read `.claude/procedures/scaffold-setup.md` for full step-by-step instructions. 
 
 ## Trace Output
 
-After all setup tasks complete, write trace to `.claude/agent-traces/scaffold-setup.json`:
+After all setup tasks complete, write trace to `.claude/runs/agent-traces/scaffold-setup.json`:
 
 ```bash
 python3 -c "
 import json, datetime, os
-os.makedirs('.claude/agent-traces', exist_ok=True)
+os.makedirs('.claude/runs/agent-traces', exist_ok=True)
 trace = {'agent': 'scaffold-setup', 'status': 'complete', 'timestamp': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'), 'files_created': ['<list all files created or modified>']}
-json.dump(trace, open('.claude/agent-traces/scaffold-setup.json', 'w'))
+json.dump(trace, open('.claude/runs/agent-traces/scaffold-setup.json', 'w'))
 "
 ```
 

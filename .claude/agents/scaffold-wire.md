@@ -44,14 +44,14 @@ Read `.claude/procedures/wire.md` for full step-by-step instructions. Execute St
 
 ## Trace Output
 
-After all wire tasks complete, write trace to `.claude/agent-traces/scaffold-wire.json`:
+After all wire tasks complete, write trace to `.claude/runs/agent-traces/scaffold-wire.json`:
 
 ```bash
 python3 -c "
 import json, datetime, os
-os.makedirs('.claude/agent-traces', exist_ok=True)
+os.makedirs('.claude/runs/agent-traces', exist_ok=True)
 trace = {'agent': 'scaffold-wire', 'status': 'complete', 'timestamp': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'), 'files_created': ['<list all files created or modified>']}
-json.dump(trace, open('.claude/agent-traces/scaffold-wire.json', 'w'))
+json.dump(trace, open('.claude/runs/agent-traces/scaffold-wire.json', 'w'))
 "
 ```
 

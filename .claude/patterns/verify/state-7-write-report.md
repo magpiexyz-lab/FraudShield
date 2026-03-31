@@ -14,7 +14,7 @@ Before writing the report, extract agent verdicts from traces:
 AGENT_VERDICTS=$(python3 -c "
 import json, glob
 verdicts = {}
-for f in glob.glob('.claude/agent-traces/*.json'):
+for f in glob.glob('.claude/runs/agent-traces/*.json'):
     name = f.split('/')[-1].replace('.json','')
     d = json.load(open(f))
     verdicts[name] = d.get('verdict', 'missing')
@@ -22,7 +22,7 @@ print(json.dumps(verdicts))
 " 2>/dev/null || echo "{}")
 ```
 
-Write `.claude/verify-report.md`:
+Write `.claude/runs/verify-report.md`:
 
 ```markdown
 ---
@@ -46,9 +46,9 @@ overall_verdict: pass | fail
 - Last output: [last 3-5 lines of build output]
 
 ## Quality Delta
-> Populated when `.claude/verify-history.jsonl` has a previous entry **matching the current skill**. Otherwise omit this section.
+> Populated when `.claude/runs/verify-history.jsonl` has a previous entry **matching the current skill**. Otherwise omit this section.
 >
-> Read `.claude/verify-history.jsonl` and find the last entry where `skill` matches the current skill (from verify-context.json). If no matching entry exists, omit this section.
+> Read `.claude/runs/verify-history.jsonl` and find the last entry where `skill` matches the current skill (from verify-context.json). If no matching entry exists, omit this section.
 
 | Metric | Previous | Current | Delta |
 |--------|----------|---------|-------|
@@ -93,7 +93,7 @@ Only include agents that were spawned (per scope). Mark others as "skipped — o
 > - Set `process_violation: true` in verify-report.md frontmatter
 > - BG3 gate will BLOCK on process violations
 >
-> **Trace audit.** Count `.json` files in `.claude/agent-traces/`. If the count
+> **Trace audit.** Count `.json` files in `.claude/runs/agent-traces/`. If the count
 > does not match the number of entries in `agents_completed`:
 > - List missing traces as `"MISSING TRACE — PROCESS VIOLATION"`
 > - Set `process_violation: true` in verify-report.md frontmatter
@@ -110,8 +110,8 @@ Only include agents that were spawned (per scope). Mark others as "skipped — o
    python3 -c "
    import json, glob, os, datetime
 
-   ctx = json.load(open('.claude/verify-context.json'))
-   report = open('.claude/verify-report.md').read()
+   ctx = json.load(open('.claude/runs/verify-context.json'))
+   report = open('.claude/runs/verify-report.md').read()
    lines = report.split('\n')
    fm = {}
    in_fm = False
@@ -132,7 +132,7 @@ Only include agents that were spawned (per scope). Mark others as "skipped — o
    dims['build'] = round(1 - (int(fm.get('build_attempts', '1')) - 1) / 2, 3)
 
    # Extract per-agent dimension scores from traces
-   for f in glob.glob('.claude/agent-traces/*.json'):
+   for f in glob.glob('.claude/runs/agent-traces/*.json'):
        name = os.path.basename(f).replace('.json', '')
        try:
            d = json.load(open(f))
@@ -141,7 +141,7 @@ Only include agents that were spawned (per scope). Mark others as "skipped — o
 
        if name == 'security-fixer' and scope in ('full', 'security'):
            merged = {}
-           try: merged = json.load(open('.claude/security-merge.json'))
+           try: merged = json.load(open('.claude/runs/security-merge.json'))
            except: pass
            findings = merged.get('issues', [])
            if findings:
@@ -173,7 +173,7 @@ Only include agents that were spawned (per scope). Mark others as "skipped — o
 
    # R_human: (hard gate failures + exhaustions) / agents_expected — measures user intervention
    exhaustions = 0
-   for f in glob.glob('.claude/agent-traces/*.json'):
+   for f in glob.glob('.claude/runs/agent-traces/*.json'):
        try:
            if json.load(open(f)).get('recovery', False): exhaustions += 1
        except: pass
@@ -229,19 +229,19 @@ Only include agents that were spawned (per scope). Mark others as "skipped — o
 - `verify-report.md` exists with valid frontmatter
 - `verify-history.jsonl` has a new entry appended (via CALL: `.claude/scripts/write-q-score.py`)
 - Cross-validation: `verify-history.jsonl` last entry's `dimension_scores` consistent with disk artifacts:
-  - If `Q_build > 0` → `.claude/build-result.json` exists and `exit_code == 0`
-  - If `Q_security > 0` → `.claude/agent-traces/security-*.json` exists
-  - If `Q_design > 0` → `.claude/agent-traces/design-critic.json` exists
+  - If `Q_build > 0` → `.claude/runs/build-result.json` exists and `exit_code == 0`
+  - If `Q_security > 0` → `.claude/runs/agent-traces/security-*.json` exists
+  - If `Q_design > 0` → `.claude/runs/agent-traces/design-critic.json` exists
 
 **VERIFY:**
 ```bash
-head -1 .claude/verify-report.md | grep -q '^---$' && tail -1 .claude/verify-history.jsonl | python3 -c "
+head -1 .claude/runs/verify-report.md | grep -q '^---$' && tail -1 .claude/runs/verify-history.jsonl | python3 -c "
 import json, sys, os, glob
 e = json.loads(sys.stdin.read())
 ds = e.get('dimension_scores', {})
-assert not(ds.get('Q_build', 0) > 0) or (os.path.exists('.claude/build-result.json') and json.load(open('.claude/build-result.json')).get('exit_code') == 0), 'Q_build>0 but build failed'
-assert not(ds.get('Q_security', 0) > 0) or glob.glob('.claude/agent-traces/security-*.json'), 'Q_security>0 but no security traces'
-assert not(ds.get('Q_design', 0) > 0) or os.path.exists('.claude/agent-traces/design-critic.json'), 'Q_design>0 but no design-critic trace'
+assert not(ds.get('Q_build', 0) > 0) or (os.path.exists('.claude/runs/build-result.json') and json.load(open('.claude/runs/build-result.json')).get('exit_code') == 0), 'Q_build>0 but build failed'
+assert not(ds.get('Q_security', 0) > 0) or glob.glob('.claude/runs/agent-traces/security-*.json'), 'Q_security>0 but no security traces'
+assert not(ds.get('Q_design', 0) > 0) or os.path.exists('.claude/runs/agent-traces/design-critic.json'), 'Q_design>0 but no design-critic trace'
 "
 ```
 

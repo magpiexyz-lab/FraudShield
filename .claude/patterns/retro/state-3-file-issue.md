@@ -30,7 +30,7 @@ gh issue create \
 Compute retro quality (see `.claude/patterns/skill-scoring.md`):
 
 ```bash
-RUN_ID=$(python3 -c "import json; print(json.load(open('.claude/retro-context.json')).get('run_id', ''))" 2>/dev/null || echo "")
+RUN_ID=$(python3 -c "import json; print(json.load(open('.claude/runs/retro-context.json')).get('run_id', ''))" 2>/dev/null || echo "")
 python3 .claude/scripts/write-q-score.py \
   --skill retro --scope retro --archetype N/A \
   --gate 1.0 --dims '{"sections": 1.0, "completion": 1.0}' \

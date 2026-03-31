@@ -16,7 +16,7 @@ If K > 0, present the standard prompt:
 
 DO NOT proceed until the user explicitly replies with approval.
 
-**Save the approved plan.** Write the plan to `.claude/current-plan.md` with YAML frontmatter:
+**Save the approved plan.** Write the plan to `.claude/runs/current-plan.md` with YAML frontmatter:
 
 ```yaml
 ---
@@ -51,11 +51,11 @@ If the user requests changes instead of approving, revise the plan to address th
 
 **POSTCONDITIONS:**
 - User has explicitly approved the plan (option 1 or 2)
-- `.claude/current-plan.md` written with YAML frontmatter and plan body
+- `.claude/runs/current-plan.md` written with YAML frontmatter and plan body
 
 **VERIFY:**
 ```bash
-test -f .claude/current-plan.md && echo "OK" || echo "FAIL"
+test -f .claude/runs/current-plan.md && echo "OK" || echo "FAIL"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

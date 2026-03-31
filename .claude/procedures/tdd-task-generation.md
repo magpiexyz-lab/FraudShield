@@ -55,6 +55,6 @@ Each implementer follows the RED-GREEN-REFACTOR cycle:
 2. **GREEN**: Write minimal implementation → verify test passes
 3. **REFACTOR**: Clean up without changing behavior
 
-The implementer writes a trace to `.claude/agent-traces/{agent-type}-{task-slug}.json`
+The implementer writes a trace to `.claude/runs/agent-traces/{agent-type}-{task-slug}.json`
 with fields: `agent`, `status`, `timestamp`, `task`, `files_changed`, `tdd_cycle`,
 `worktree_merged`.

@@ -89,8 +89,8 @@ Rules:
 After outputting the markdown verdict table, persist the verdict to disk:
 
 ```bash
-mkdir -p .claude/gate-verdicts
-cat > .claude/gate-verdicts/<gate-id>.json << 'VEOF'
+mkdir -p .claude/runs/gate-verdicts
+cat > .claude/runs/gate-verdicts/<gate-id>.json << 'VEOF'
 {
   "gate": "<ID>",
   "verdict": "<PASS|BLOCK>",
@@ -126,37 +126,37 @@ Verify before any changes begin:
 2. `experiment/EVENTS.yaml` exists
 3. The change description ($ARGUMENTS, from the invocation prompt) is non-empty
 4. `npm run build` passes (skip if change type is Fix)
-5. **Quality: exploration trace** — if `.claude/exploration-trace.json` exists: (a) `affected_files` contains at least 1 entry that exists on disk — run `python3 -c "import json,os; d=json.load(open('.claude/exploration-trace.json')); af=d.get('affected_files',[]); print('PASS: %d files' % len([f for f in af if os.path.exists(f)]) if any(os.path.exists(f) for f in af) else 'BLOCK: no affected_files exist on disk')"` (b) `stacks_read` is non-empty — BLOCK if empty list
-6. **Quality: stacks match** — if `.claude/exploration-trace.json` exists: read `stacks_read` list and verify at least one entry's category matches a key in experiment.yaml `stack` — run `python3 -c "import json,yaml; t=json.load(open('.claude/exploration-trace.json')); stk=yaml.safe_load(open('experiment/experiment.yaml')).get('stack',{}); cats=[s.split('/')[0] for s in t.get('stacks_read',[]) if '/' in s]; print('PASS' if any(c in str(stk) for c in cats) else 'BLOCK: stacks_read does not match experiment.yaml stack')"` (skip if exploration-trace.json does not exist)
+5. **Quality: exploration trace** — if `.claude/runs/exploration-trace.json` exists: (a) `affected_files` contains at least 1 entry that exists on disk — run `python3 -c "import json,os; d=json.load(open('.claude/runs/exploration-trace.json')); af=d.get('affected_files',[]); print('PASS: %d files' % len([f for f in af if os.path.exists(f)]) if any(os.path.exists(f) for f in af) else 'BLOCK: no affected_files exist on disk')"` (b) `stacks_read` is non-empty — BLOCK if empty list
+6. **Quality: stacks match** — if `.claude/runs/exploration-trace.json` exists: read `stacks_read` list and verify at least one entry's category matches a key in experiment.yaml `stack` — run `python3 -c "import json,yaml; t=json.load(open('.claude/runs/exploration-trace.json')); stk=yaml.safe_load(open('experiment/experiment.yaml')).get('stack',{}); cats=[s.split('/')[0] for s in t.get('stacks_read',[]) if '/' in s]; print('PASS' if any(c in str(stk) for c in cats) else 'BLOCK: stacks_read does not match experiment.yaml stack')"` (skip if exploration-trace.json does not exist)
 
 ### G2 Plan Gate
 
 Verify after Phase 1 plan creation:
 
 1. Current branch is NOT `main` — run `git branch --show-current`
-2. `.claude/current-plan.md` exists
-3. `.claude/current-plan.md` starts with `---` (YAML frontmatter present)
+2. `.claude/runs/current-plan.md` exists
+3. `.claude/runs/current-plan.md` starts with `---` (YAML frontmatter present)
 4. Frontmatter `type` is one of: Feature, Upgrade, Fix, Polish, Analytics, Test
 5. Frontmatter `scope` matches type-scope mapping: Feature/Upgrade→full, Fix→security, Polish→visual, Analytics/Test→build
 6. No source code modified yet — `git diff --name-only main...HEAD` shows only `.claude/` and `experiment/` paths
-7. `.claude/current-plan.md` contains `## Exploration Summary` section — grep for the heading
-8. **Quality: plan validation complete** — if `.claude/plan-validation.json` exists: all 5 checks (`route_conflict`, `schema_conflict`, `import_availability`, `component_reuse`, `analytics_naming`) have `checked: true` — run `python3 -c "import json; d=json.load(open('.claude/plan-validation.json')); checks=['route_conflict','schema_conflict','import_availability','component_reuse','analytics_naming']; missing=[c for c in checks if not d.get(c,{}).get('checked')]; print('PASS: all 5 checks complete' if not missing else 'BLOCK: unchecked: '+','.join(missing))"` (skip if plan-validation.json does not exist)
-9. **Quality: plan validation failures flagged** — if `.claude/plan-validation.json` exists and any check has `result: "fail"`: note in Observed column "WARN: plan-validation has failures: [list]" — this is informational (PASS status), but the verdict file `quality_checks` array must include this finding
-10. **Quality: plan references constraints** — if `.claude/exploration-trace.json` exists: grep `.claude/current-plan.md` for at least one term from `archetype_constraints` — run `python3 -c "import json; t=json.load(open('.claude/exploration-trace.json')); cs=t.get('archetype_constraints',[]); plan=open('.claude/current-plan.md').read().lower(); found=[c for c in cs if c.lower() in plan]; print('PASS: %d constraints referenced' % len(found) if found else 'BLOCK: plan does not reference any archetype constraints')"` (skip if exploration-trace.json does not exist)
+7. `.claude/runs/current-plan.md` contains `## Exploration Summary` section — grep for the heading
+8. **Quality: plan validation complete** — if `.claude/runs/plan-validation.json` exists: all 5 checks (`route_conflict`, `schema_conflict`, `import_availability`, `component_reuse`, `analytics_naming`) have `checked: true` — run `python3 -c "import json; d=json.load(open('.claude/runs/plan-validation.json')); checks=['route_conflict','schema_conflict','import_availability','component_reuse','analytics_naming']; missing=[c for c in checks if not d.get(c,{}).get('checked')]; print('PASS: all 5 checks complete' if not missing else 'BLOCK: unchecked: '+','.join(missing))"` (skip if plan-validation.json does not exist)
+9. **Quality: plan validation failures flagged** — if `.claude/runs/plan-validation.json` exists and any check has `result: "fail"`: note in Observed column "WARN: plan-validation has failures: [list]" — this is informational (PASS status), but the verdict file `quality_checks` array must include this finding
+10. **Quality: plan references constraints** — if `.claude/runs/exploration-trace.json` exists: grep `.claude/runs/current-plan.md` for at least one term from `archetype_constraints` — run `python3 -c "import json; t=json.load(open('.claude/runs/exploration-trace.json')); cs=t.get('archetype_constraints',[]); plan=open('.claude/runs/current-plan.md').read().lower(); found=[c for c in cs if c.lower() in plan]; print('PASS: %d constraints referenced' % len(found) if found else 'BLOCK: plan does not reference any archetype constraints')"` (skip if exploration-trace.json does not exist)
 
 ### G3 Spec Gate
 
 Verify after specs are updated:
 
-1. `.claude/current-plan.md` contains `## Process Checklist` section
+1. `.claude/runs/current-plan.md` contains `## Process Checklist` section
 2. Frontmatter `checkpoint` is `phase2-step5` or later
 3. Type-specific:
-   - **Feature**: `.claude/current-plan.md` contains behavior specification (grep for `behavior` or `- id: b-`)
+   - **Feature**: `.claude/runs/current-plan.md` contains behavior specification (grep for `behavior` or `- id: b-`)
    - **Upgrade**: `.env.example` updated if plan mentions new env vars
    - **Fix/Polish/Analytics**: no experiment.yaml behavior changes required
    - **Test**: `stack.testing` present in experiment.yaml if adding tests for first time
 4. If `quality: production` in experiment.yaml: `stack.testing` must be present
-5. **Quality: solve trace complete** — if `.claude/solve-trace.json` exists: all 5 required fields (`mode`, `problem_decomposition`, `constraint_enumeration`, `solution_design`, `self_check`, `output`) are non-empty — run `python3 -c "import json; d=json.load(open('.claude/solve-trace.json')); required=['mode','problem_decomposition','constraint_enumeration','solution_design','self_check','output']; empty=[k for k in required if not d.get(k)]; print('PASS: all fields populated' if not empty else 'BLOCK: empty fields: '+','.join(empty))"` (skip if solve-trace.json does not exist)
+5. **Quality: solve trace complete** — if `.claude/runs/solve-trace.json` exists: all 5 required fields (`mode`, `problem_decomposition`, `constraint_enumeration`, `solution_design`, `self_check`, `output`) are non-empty — run `python3 -c "import json; d=json.load(open('.claude/runs/solve-trace.json')); required=['mode','problem_decomposition','constraint_enumeration','solution_design','self_check','output']; empty=[k for k in required if not d.get(k)]; print('PASS: all fields populated' if not empty else 'BLOCK: empty fields: '+','.join(empty))"` (skip if solve-trace.json does not exist)
 
 ### G4 Implementation Gate
 
@@ -165,7 +165,7 @@ Verify after implementation:
 1. `npm run build` passes
 2. If `quality: production`:
    - `git log --oneline main..HEAD` contains worktree merge commits (implementer agent evidence). No merge evidence → BLOCK
-   - Count worktree merge commits in `git log --oneline main..HEAD`. Read `.claude/current-plan.md` and count planned implementation tasks (distinct task items under the plan's implementation section). If merge count < task count by 2 or more → BLOCK: "Fewer worktree merges (N) than planned tasks (M) — some tasks may have been implemented directly instead of via implementer agents."
+   - Count worktree merge commits in `git log --oneline main..HEAD`. Read `.claude/runs/current-plan.md` and count planned implementation tasks (distinct task items under the plan's implementation section). If merge count < task count by 2 or more → BLOCK: "Fewer worktree merges (N) than planned tasks (M) — some tasks may have been implemented directly instead of via implementer agents."
    - Grep new/modified source files for `// TODO: implement` or `throw new Error('not implemented')` — BLOCK if found
 3. If `stack.analytics` in experiment.yaml: spot-check new pages/routes for analytics imports
 
@@ -173,15 +173,15 @@ Verify after implementation:
 
 Verify after Step 7 verification:
 
-1. `.claude/verify-report.md` exists
+1. `.claude/runs/verify-report.md` exists
 2. `build_attempts` present, Result is `pass`
 3. `agents_expected` matches `agents_completed` (all agents finished)
 4. If 2+ implementer agents (check git log): `consistency_scan` is NOT `skipped`
 5. If fix cycles ran (security-fixer or design-critic "fixed" in report): `auto_observe` is NOT `skipped-no-fixes`
-6. If `quality: production` in experiment.yaml AND spec-reviewer in `agents_completed`: read spec-reviewer verdict from `.claude/verify-report.md` or `.claude/agent-traces/spec-reviewer.json` — BLOCK if verdict is `FAIL`
-7. `.claude/e2e-result.json` exists — BLOCK if missing: "E2E tests (STATE 5) were not executed"
-8. `.claude/patterns-saved.json` exists — BLOCK if missing: "Save Patterns (STATE 8) was not executed"
-9. If `.claude/verify-context.json` has `completed_states` field: verify it contains all states [0,1,2,3,4,5,6,7,8]. If any state is missing, BLOCK: "States [missing] were skipped during verification."
+6. If `quality: production` in experiment.yaml AND spec-reviewer in `agents_completed`: read spec-reviewer verdict from `.claude/runs/verify-report.md` or `.claude/runs/agent-traces/spec-reviewer.json` — BLOCK if verdict is `FAIL`
+7. `.claude/runs/e2e-result.json` exists — BLOCK if missing: "E2E tests (STATE 5) were not executed"
+8. `.claude/runs/patterns-saved.json` exists — BLOCK if missing: "Save Patterns (STATE 8) was not executed"
+9. If `.claude/runs/verify-context.json` has `completed_states` field: verify it contains all states [0,1,2,3,4,5,6,7,8]. If any state is missing, BLOCK: "States [missing] were skipped during verification."
 
 ### G6 PR Gate
 
@@ -218,16 +218,16 @@ Verify experiment.yaml validation was thorough:
 Verify scaffold subagents produced expected outputs. File checks first, build last:
 
 1. `src/lib/` contains ≥1 `.ts` file (scaffold-libs ran)
-2. `.claude/current-visual-brief.md` exists (scaffold-init ran)
+2. `.claude/runs/current-visual-brief.md` exists (scaffold-init ran)
 3. Archetype-specific: web-app → `src/app/layout.tsx` + each golden_path page; service → `src/app/api/` with route files; cli → `src/index.ts` + `src/commands/`
 3b. Page count scope guard (web-app only): count directories matching `src/app/*/page.tsx` — run `find src/app -mindepth 2 -name page.tsx | wc -l`. Read `experiment/experiment.yaml` `golden_path` and count unique pages (excluding landing). Add 1 if surface ≠ `none` (landing page adjustment). BLOCK if actual count > expected count — list the extra page directories: `find src/app -mindepth 2 -name page.tsx` and diff against golden_path list. Skip for service/cli archetypes.
 4. If `stack.analytics`: (a) grep `src/lib/analytics` for `PROJECT_NAME` and `PROJECT_OWNER` — neither must equal `"TODO"`; (b) read `experiment/EVENTS.yaml`, for each event filtered by `requires` (match stack) and `archetypes` (match type), grep event name in `src/` — BLOCK if any missing; (c) grep `src/app/*/page.tsx` for raw `track(` calls not from typed wrappers — BLOCK if found (pages must use typed wrappers from `@/lib/events`, not raw `track()`)
 5. If surface ≠ `none`: landing page file exists
-6. `.claude/current-plan.md` frontmatter `checkpoint` is `phase2-scaffold` or later
+6. `.claude/runs/current-plan.md` frontmatter `checkpoint` is `phase2-scaffold` or later
 7. scaffold-setup contract: `package.json` has `dependencies` key, `node_modules/` non-empty — run `test -d node_modules && ls node_modules | head -1`
 8. scaffold-landing contract: if `variants` in experiment.yaml, landing file contains at least one variant slug (grep for slug); otherwise landing file > 20 lines (`wc -l`). Skip if surface = `none`.
 9. scaffold-wire contract: if mutation behaviors exist in experiment.yaml (behaviors with `actor: user` that imply writes), `src/app/api/` has route files — run `ls src/app/api/`
-10. Process Checklist: `.claude/current-plan.md` contains `## Process Checklist` with ≥ 10 checklist items — run `grep -c '^\- \[' .claude/current-plan.md`
+10. Process Checklist: `.claude/runs/current-plan.md` contains `## Process Checklist` with ≥ 10 checklist items — run `grep -c '^\- \[' .claude/runs/current-plan.md`
 11. `npm run build` passes
 12. (web-app only) Component usage: each golden_path `page.tsx` has at least one import from `@/components/ui/` — run `grep -l '@/components/ui/' src/app/*/page.tsx` and compare count against golden_path page count. BLOCK if any page has zero shadcn/ui component imports.
 13. (web-app only) Theme token usage: each golden_path `page.tsx` contains at least one Tailwind theme class (`primary`, `secondary`, `background`, `foreground`, `muted`, `accent`, `destructive`, `card`, `border`) in className — run `grep -lE '(primary|secondary|background|foreground|muted|accent|destructive|card|border)' src/app/*/page.tsx` and compare count against golden_path page count. BLOCK if any page has zero theme token references.
@@ -237,18 +237,18 @@ Verify scaffold subagents produced expected outputs. File checks first, build la
 17. (web-app only) **CTA presence** — `src/app/page.tsx` OR `src/components/landing-content.tsx` contains at least one `<Button` or `<Link` component (`grep`). BLOCK if neither file contains a CTA.
 18. (web-app only) **No asChild** — grep entire `src/` directory for `asChild`. BLOCK if any match found, listing file:line for each.
 
-19. **Quality: wire trace present** — if `.claude/bootstrap-wire-trace.json` exists: `pages_wired` or `api_routes_wired` is non-empty — run `python3 -c "import json; d=json.load(open('.claude/bootstrap-wire-trace.json')); print('PASS: %d pages, %d routes' % (len(d.get('pages_wired',[])),len(d.get('api_routes_wired',[]))) if d.get('pages_wired') or d.get('api_routes_wired') else 'BLOCK: wire trace has no wired components')"` (skip if bootstrap-wire-trace.json does not exist)
+19. **Quality: wire trace present** — if `.claude/runs/bootstrap-wire-trace.json` exists: `pages_wired` or `api_routes_wired` is non-empty — run `python3 -c "import json; d=json.load(open('.claude/runs/bootstrap-wire-trace.json')); print('PASS: %d pages, %d routes' % (len(d.get('pages_wired',[])),len(d.get('api_routes_wired',[]))) if d.get('pages_wired') or d.get('api_routes_wired') else 'BLOCK: wire trace has no wired components')"` (skip if bootstrap-wire-trace.json does not exist)
 
 ### BG2.5 Externals Gate
 
 Verify external dependency decisions were collected with user buy-in:
 
-1. `.claude/gate-verdicts/bg1.json` exists with verdict PASS (prior gate passed)
+1. `.claude/runs/gate-verdicts/bg1.json` exists with verdict PASS (prior gate passed)
 2. `externals-decisions.json` exists in project root — run `test -f externals-decisions.json`
 3. If `externals-decisions.json` has `"has_externals": false`: verify `"user_confirmed"` is `true`
 4. If `externals-decisions.json` has `"has_externals": true`: verify `"decisions"` array is non-empty and each entry has `"service"`, `"classification"`, and `"user_choice"` fields
 5. `externals-decisions.json` `"timestamp"` is non-empty
-6. `.claude/current-plan.md` contains `[x] Externals user decisions collected`
+6. `.claude/runs/current-plan.md` contains `[x] Externals user decisions collected`
 7. Fake Door integration: read `externals-decisions.json`. For each entry in `"fake_doors"` array (if non-empty): (a) `test -f src/app/<target_page>/<component_name>` — BLOCK if missing; (b) `grep "import.*<component_export_name>" src/app/<target_page>/page.tsx` — BLOCK if not imported; (c) `grep "<component_export_name>" src/app/<target_page>/page.tsx | grep -v "import"` — BLOCK if not rendered in JSX. Skip if `"fake_doors"` empty or absent.
 8. External stack file completeness: read `externals-decisions.json`. For each entry in `"decisions"` array where `"user_choice"` is one of `"Provide now"`, `"Provision at deploy"`, or `"Full Integration"`: run `test -f .claude/stacks/external/<service-slug>.md` where `<service-slug>` is the kebab-case `"service"` field. BLOCK if any expected stack file is missing — list missing files. Skip if `"has_externals"` is `false` or `"decisions"` is empty.
 
@@ -256,26 +256,26 @@ Verify external dependency decisions were collected with user buy-in:
 
 Verify verify.md ran completely:
 
-1. `.claude/verify-report.md` exists and starts with `---` (YAML frontmatter)
+1. `.claude/runs/verify-report.md` exists and starts with `---` (YAML frontmatter)
 2. `build_attempts` present, Result is `pass`
 3. `agents_expected` is non-empty
 4. `agents_completed` matches `agents_expected` (same set)
 5. `scope` is `full`
 6. If `build_attempts` > 1: `auto_observe` is NOT `skipped-no-fixes`
 7. `process_violation` in frontmatter is absent or `false`
-8. `.claude/agent-traces/` contains `.json` files whose count matches the number of entries in `agents_completed`
-9. Each trace in `.claude/agent-traces/` has a `checks_performed` array (non-empty list; recovery traces with `"recovery":true` are exempt from the non-empty requirement) — run `python3 -c "import json,glob; traces=glob.glob('.claude/agent-traces/*.json'); bad=[t for t in traces if not json.load(open(t)).get('recovery',False) and (not isinstance(json.load(open(t)).get('checks_performed'),list) or len(json.load(open(t)).get('checks_performed',[]))==0)]; print('PASS' if not bad else 'BLOCK: '+','.join(bad))"`
-10. security-attacker trace has `findings_count` field — run `python3 -c "import json; d=json.load(open('.claude/agent-traces/security-attacker.json')); print('PASS' if 'findings_count' in d else 'BLOCK')"`  (skip if security-attacker not in agents_completed)
-11. Any trace with `"recovery":true` → check agent name: hard-gate agents (design-critic, ux-journeyer, security-fixer) with `recovery: true` → **BLOCK**; other agents with `recovery: true` → WARN (PASS status with WARN in Observed column) — run `python3 -c "import json,glob; hard_gate={'design-critic','ux-journeyer','security-fixer'}; traces=glob.glob('.claude/agent-traces/*.json'); recovery=[t for t in traces if json.load(open(t)).get('recovery')]; blocks=[t for t in recovery if json.load(open(t)).get('agent','') in hard_gate]; warns=[t for t in recovery if t not in blocks]; print('BLOCK: recovery on hard-gate agents '+','.join(blocks) if blocks else ('WARN: '+','.join(warns) if warns else 'PASS'))"`
-12. `.claude/verify-context.json` exists — run `test -f .claude/verify-context.json`
-13. `.claude/fix-log.md` exists — run `test -f .claude/fix-log.md`
-14. If scope is `full` or `security`: `.claude/security-merge.json` exists — extract scope from verify-context.json, check `test -f .claude/security-merge.json` (skip if scope is `visual` or `build`)
-15. Any trace with `"status":"started"` but no `"verdict"` field → BLOCK — agent exhausted turns (only started trace present) — run `python3 -c "import json,glob; traces=glob.glob('.claude/agent-traces/*.json'); exhausted=[t for t in traces if json.load(open(t)).get('status')=='started' and 'verdict' not in json.load(open(t))]; print('BLOCK: exhausted agents '+','.join(exhausted) if exhausted else 'PASS')"`
-16. design-critic trace has `min_score` field — run `python3 -c "import json; d=json.load(open('.claude/agent-traces/design-critic.json')); print('PASS' if 'min_score' in d else 'BLOCK')"` (skip if design-critic not in agents_completed)
-17. ux-journeyer trace has `dead_ends` field — run `python3 -c "import json; d=json.load(open('.claude/agent-traces/ux-journeyer.json')); print('PASS' if 'dead_ends' in d else 'BLOCK')"` (skip if ux-journeyer not in agents_completed)
-18. design-critic trace has `unresolved_sections` field with value 0 — run `python3 -c "import json; d=json.load(open('.claude/agent-traces/design-critic.json')); print('PASS' if d.get('unresolved_sections', 0) == 0 else 'BLOCK: %d unresolved sections' % d.get('unresolved_sections', 0))"` (skip if design-critic not in agents_completed)
-19. security-fixer trace has `unresolved_critical` field with value 0 — run `python3 -c "import json; d=json.load(open('.claude/agent-traces/security-fixer.json')); uc=d.get('unresolved_critical',0); rec=d.get('recovery',False); v=d.get('verdict',''); print('BLOCK: recovery trace with partial verdict' if rec and v=='partial' else ('PASS' if uc==0 else 'BLOCK: %d unresolved critical issues' % uc))"` (skip if security-fixer not in agents_completed)
-20. ux-journeyer trace has `unresolved_dead_ends` field with value 0 — run `python3 -c "import json; d=json.load(open('.claude/agent-traces/ux-journeyer.json')); print('PASS' if d.get('unresolved_dead_ends', 0) == 0 else 'BLOCK: %d unresolved dead ends' % d.get('unresolved_dead_ends', 0))"` (skip if ux-journeyer not in agents_completed)
+8. `.claude/runs/agent-traces/` contains `.json` files whose count matches the number of entries in `agents_completed`
+9. Each trace in `.claude/runs/agent-traces/` has a `checks_performed` array (non-empty list; recovery traces with `"recovery":true` are exempt from the non-empty requirement) — run `python3 -c "import json,glob; traces=glob.glob('.claude/runs/agent-traces/*.json'); bad=[t for t in traces if not json.load(open(t)).get('recovery',False) and (not isinstance(json.load(open(t)).get('checks_performed'),list) or len(json.load(open(t)).get('checks_performed',[]))==0)]; print('PASS' if not bad else 'BLOCK: '+','.join(bad))"`
+10. security-attacker trace has `findings_count` field — run `python3 -c "import json; d=json.load(open('.claude/runs/agent-traces/security-attacker.json')); print('PASS' if 'findings_count' in d else 'BLOCK')"`  (skip if security-attacker not in agents_completed)
+11. Any trace with `"recovery":true` → check agent name: hard-gate agents (design-critic, ux-journeyer, security-fixer) with `recovery: true` → **BLOCK**; other agents with `recovery: true` → WARN (PASS status with WARN in Observed column) — run `python3 -c "import json,glob; hard_gate={'design-critic','ux-journeyer','security-fixer'}; traces=glob.glob('.claude/runs/agent-traces/*.json'); recovery=[t for t in traces if json.load(open(t)).get('recovery')]; blocks=[t for t in recovery if json.load(open(t)).get('agent','') in hard_gate]; warns=[t for t in recovery if t not in blocks]; print('BLOCK: recovery on hard-gate agents '+','.join(blocks) if blocks else ('WARN: '+','.join(warns) if warns else 'PASS'))"`
+12. `.claude/runs/verify-context.json` exists — run `test -f .claude/runs/verify-context.json`
+13. `.claude/runs/fix-log.md` exists — run `test -f .claude/runs/fix-log.md`
+14. If scope is `full` or `security`: `.claude/runs/security-merge.json` exists — extract scope from verify-context.json, check `test -f .claude/runs/security-merge.json` (skip if scope is `visual` or `build`)
+15. Any trace with `"status":"started"` but no `"verdict"` field → BLOCK — agent exhausted turns (only started trace present) — run `python3 -c "import json,glob; traces=glob.glob('.claude/runs/agent-traces/*.json'); exhausted=[t for t in traces if json.load(open(t)).get('status')=='started' and 'verdict' not in json.load(open(t))]; print('BLOCK: exhausted agents '+','.join(exhausted) if exhausted else 'PASS')"`
+16. design-critic trace has `min_score` field — run `python3 -c "import json; d=json.load(open('.claude/runs/agent-traces/design-critic.json')); print('PASS' if 'min_score' in d else 'BLOCK')"` (skip if design-critic not in agents_completed)
+17. ux-journeyer trace has `dead_ends` field — run `python3 -c "import json; d=json.load(open('.claude/runs/agent-traces/ux-journeyer.json')); print('PASS' if 'dead_ends' in d else 'BLOCK')"` (skip if ux-journeyer not in agents_completed)
+18. design-critic trace has `unresolved_sections` field with value 0 — run `python3 -c "import json; d=json.load(open('.claude/runs/agent-traces/design-critic.json')); print('PASS' if d.get('unresolved_sections', 0) == 0 else 'BLOCK: %d unresolved sections' % d.get('unresolved_sections', 0))"` (skip if design-critic not in agents_completed)
+19. security-fixer trace has `unresolved_critical` field with value 0 — run `python3 -c "import json; d=json.load(open('.claude/runs/agent-traces/security-fixer.json')); uc=d.get('unresolved_critical',0); rec=d.get('recovery',False); v=d.get('verdict',''); print('BLOCK: recovery trace with partial verdict' if rec and v=='partial' else ('PASS' if uc==0 else 'BLOCK: %d unresolved critical issues' % uc))"` (skip if security-fixer not in agents_completed)
+20. ux-journeyer trace has `unresolved_dead_ends` field with value 0 — run `python3 -c "import json; d=json.load(open('.claude/runs/agent-traces/ux-journeyer.json')); print('PASS' if d.get('unresolved_dead_ends', 0) == 0 else 'BLOCK: %d unresolved dead ends' % d.get('unresolved_dead_ends', 0))"` (skip if ux-journeyer not in agents_completed)
 
 ### BG4 PR Gate
 

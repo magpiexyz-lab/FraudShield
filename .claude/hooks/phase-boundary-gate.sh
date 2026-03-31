@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # phase-boundary-gate.sh — Claude Code PreToolUse hook for Write, Edit, Bash.
 # Enforces phase boundaries during multi-phase skill orchestration.
-# Reads .claude/pipeline-phase.json (written by run-skill.sh) and prevents
+# Reads .claude/runs/pipeline-phase.json (written by run-skill.sh) and prevents
 # the LLM from performing operations outside the current phase's scope.
 # When pipeline-phase.json is absent (direct /skill usage), exits 0 — zero impact.
 set -euo pipefail
@@ -10,7 +10,7 @@ source "$(dirname "$0")/lib.sh"
 parse_payload
 
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-.}"
-SIGNAL="$PROJECT_DIR/.claude/pipeline-phase.json"
+SIGNAL="$PROJECT_DIR/.claude/runs/pipeline-phase.json"
 
 # --- CRITICAL: no signal file → no enforcement ---
 if [[ ! -f "$SIGNAL" ]]; then

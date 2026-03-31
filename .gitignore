@@ -37,28 +37,9 @@ Thumbs.db
 # Vercel (update if you change stack.hosting)
 .vercel/
 
-# Deploy manifest (infrastructure state — not app code)
-.claude/deploy-manifest.json
-
-# Q-score history (local measurement artifact — not product code)
-.claude/verify-history.jsonl
-
-# Ephemeral skill artifacts (consumed and deleted during PR creation)
-.claude/current-plan.md
-.claude/current-visual-brief.md
-.claude/verify-report.md
-.claude/agent-traces/
-.claude/gate-verdicts/
-.claude/verify-context.json
-.claude/fix-log.md
-.claude/security-merge.json
-.claude/design-ux-merge.json
-.claude/e2e-result.json
-.claude/patterns-saved.json
-externals-decisions.json
-
 # Skill run artifacts (ephemeral execution state)
 .claude/runs/
+externals-decisions.json
 
 # TypeScript
 *.tsbuildinfo

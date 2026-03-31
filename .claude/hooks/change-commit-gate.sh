@@ -29,7 +29,7 @@ fi
 # Handle chore/harden branches — only enforce at final step, require verify-report.md
 if [[ "$BRANCH" =~ ^chore/harden ]]; then
   PROJECT_DIR="${CLAUDE_PROJECT_DIR:-.}"
-  PLAN="$PROJECT_DIR/.claude/current-plan.md"
+  PLAN="$PROJECT_DIR/.claude/runs/current-plan.md"
   if [[ -f "$PLAN" ]]; then
     HARDEN_CP=$(python3 -c "
 import re
@@ -45,7 +45,7 @@ print(m.group(1) if m else '')
     exit 0  # No plan file = not at final step
   fi
   # Final harden commit — require verify-report.md
-  REPORT="$PROJECT_DIR/.claude/verify-report.md"
+  REPORT="$PROJECT_DIR/.claude/runs/verify-report.md"
   if [[ ! -f "$REPORT" ]]; then
     deny "Harden commit blocked: verify-report.md missing — run /verify before final commit."
   fi
@@ -55,12 +55,12 @@ fi
 # Handle chore/distribute branches — require verify-report.md before final commit
 if [[ "$BRANCH" =~ ^chore/distribute ]]; then
   PROJECT_DIR="${CLAUDE_PROJECT_DIR:-.}"
-  REPORT="$PROJECT_DIR/.claude/verify-report.md"
+  REPORT="$PROJECT_DIR/.claude/runs/verify-report.md"
   if [[ -f "$REPORT" ]]; then
     exit 0  # verify-report exists, allow
   fi
   # Only block at final state (state 7+ completed = ready for verify+commit)
-  CTX="$PROJECT_DIR/.claude/distribute-context.json"
+  CTX="$PROJECT_DIR/.claude/runs/distribute-context.json"
   if [[ -f "$CTX" ]]; then
     STATES=$(normalize_states "$CTX")
     AT_FINAL=$([[ " $STATES " == *" 7 "* ]] && echo "yes" || echo "no")
@@ -74,7 +74,7 @@ fi
 # Handle chore/review branches — require review-complete.json + state completion before final commit
 if [[ "$BRANCH" =~ ^chore/review ]]; then
   PROJECT_DIR="${CLAUDE_PROJECT_DIR:-.}"
-  CTX="$PROJECT_DIR/.claude/review-context.json"
+  CTX="$PROJECT_DIR/.claude/runs/review-context.json"
   if [[ -f "$CTX" ]]; then
     # State completion check
     ERRORS=()
@@ -84,7 +84,7 @@ if [[ "$BRANCH" =~ ^chore/review ]]; then
     fi
     STATES=$(normalize_states "$CTX")
     AT_FINAL=$([[ " $STATES " == *" 4 "* ]] && echo "yes" || echo "no")
-    if [[ "$AT_FINAL" == "yes" && ! -f "$PROJECT_DIR/.claude/review-complete.json" ]]; then
+    if [[ "$AT_FINAL" == "yes" && ! -f "$PROJECT_DIR/.claude/runs/review-complete.json" ]]; then
       deny "Review commit blocked: review-complete.json missing — complete review validation first."
     fi
   fi
@@ -102,11 +102,11 @@ PROJECT_DIR="${CLAUDE_PROJECT_DIR:-.}"
 # /resolve epilogue bypass: fix/ branches with observe-result.json skip G4/verify checks.
 # /resolve does not produce G4 verdicts or verify-report.md — its observation is handled
 # by skill-epilogue.md which writes observe-result.json.
-if [[ "$BRANCH" =~ ^fix/ ]] && [[ -f "$PROJECT_DIR/.claude/observe-result.json" ]]; then
+if [[ "$BRANCH" =~ ^fix/ ]] && [[ -f "$PROJECT_DIR/.claude/runs/observe-result.json" ]]; then
   exit 0
 fi
 
-PLAN="$PROJECT_DIR/.claude/current-plan.md"
+PLAN="$PROJECT_DIR/.claude/runs/current-plan.md"
 
 if [[ -f "$PLAN" ]]; then
   CHECKPOINT=$(python3 -c "
@@ -141,14 +141,14 @@ rerun_postconditions "change"
 check_block_verdicts
 
 # Check 0c: State completion check
-check_skill_completion "change" "$PROJECT_DIR/.claude/change-context.json"
+check_skill_completion "change" "$PROJECT_DIR/.claude/runs/change-context.json"
 
 # Check 1: G4 verdict file exists with PASS
-VERDICTS_DIR="$PROJECT_DIR/.claude/gate-verdicts"
+VERDICTS_DIR="$PROJECT_DIR/.claude/runs/gate-verdicts"
 check_verdict_gates "g4" "$VERDICTS_DIR" "$BRANCH"
 
 # Check 2: verify-report.md exists with passing build
-REPORT="$PROJECT_DIR/.claude/verify-report.md"
+REPORT="$PROJECT_DIR/.claude/runs/verify-report.md"
 if [[ ! -f "$REPORT" ]]; then
   ERRORS+=("verify-report.md missing — run /verify before committing")
 else

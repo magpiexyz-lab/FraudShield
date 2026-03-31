@@ -1,6 +1,0 @@
-{
-  "iteration": 1,
-  "yield_rate": 0.75,
-  "termination_condition": "minimum_floor",
-  "continue": true
-}

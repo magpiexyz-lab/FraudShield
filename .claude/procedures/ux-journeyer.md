@@ -11,7 +11,7 @@ Run `npx playwright --version`. If it fails, return:
 
 - Read `experiment/experiment.yaml` — golden_path, behaviors, thesis, target_user
 - Read `experiment/EVENTS.yaml` — events map (these define the expected journey steps)
-- Read `.claude/current-plan.md` if it exists — check for an explicit Golden Path field
+- Read `.claude/runs/current-plan.md` if it exists — check for an explicit Golden Path field
 
 ### 3. Read or Derive Golden Path
 
@@ -20,7 +20,7 @@ If experiment.yaml has a `golden_path` field: use it directly. Record the steps 
 If experiment.yaml has no `golden_path` field: derive from behaviors + experiment/EVENTS.yaml `events` map:
 Landing -> [signup if auth] -> [core page] -> [activation].
 
-If `.claude/current-plan.md` exists and has a Golden Path section that differs from experiment.yaml,
+If `.claude/runs/current-plan.md` exists and has a Golden Path section that differs from experiment.yaml,
 prefer experiment.yaml (it's the persistent source of truth).
 
 Record the expected path as an ordered list of steps with expected routes.

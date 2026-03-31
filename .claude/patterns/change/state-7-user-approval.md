@@ -18,7 +18,7 @@ DO NOT proceed to Phase 2 until the user explicitly replies with approval.
 If the user selects "skip": run `git checkout main && git branch -D <branch-name>`, tell the user "Change cancelled. Branch deleted. Run `/change` again when ready." and stop.
 If the user requests changes instead of approving, revise the plan to address their feedback and present it again. Repeat until approved.
 
-Save the approved plan to `.claude/current-plan.md` with YAML frontmatter:
+Save the approved plan to `.claude/runs/current-plan.md` with YAML frontmatter:
 
 ```yaml
 ---
@@ -61,11 +61,11 @@ If the user replied **"approve and clear"** or **"2"**:
 
 **POSTCONDITIONS:**
 - User has explicitly approved the plan (option 1 or 2)
-- Plan saved to `.claude/current-plan.md` with YAML frontmatter
+- Plan saved to `.claude/runs/current-plan.md` with YAML frontmatter
 
 **VERIFY:**
 ```bash
-test -f .claude/current-plan.md && head -1 .claude/current-plan.md | grep -q '^\-\-\-' && echo "OK" || echo "FAIL"
+test -f .claude/runs/current-plan.md && head -1 .claude/runs/current-plan.md | grep -q '^\-\-\-' && echo "OK" || echo "FAIL"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

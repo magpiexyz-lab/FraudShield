@@ -2,7 +2,7 @@
 
 **PRECONDITIONS:**
 - User approved the plan (STATE 7 POSTCONDITIONS met)
-- `.claude/current-plan.md` exists with YAML frontmatter
+- `.claude/runs/current-plan.md` exists with YAML frontmatter
 
 **ACTIONS:**
 
@@ -27,7 +27,7 @@ Before proceeding to Step 5, execute the process gate:
 
 3. **Always read** `.claude/patterns/verify.md` — extract the scope table and agent list for the verification scope from Step 3.
 
-4. **Append a `## Process Checklist` section** to `.claude/current-plan.md`:
+4. **Append a `## Process Checklist` section** to `.claude/runs/current-plan.md`:
 
    ```markdown
    ## Process Checklist
@@ -36,7 +36,7 @@ Before proceeding to Step 5, execute the process gate:
    - Verification scope: [scope]
    - [ ] Spawn agents: [enumerate each agent from verify.md scope table for this scope+archetype]
    - [ ] Auto-Observe (after fix cycles — verify.md § Auto-Observe)
-   - [ ] Write .claude/verify-report.md (verify.md § Write Verification Report)
+   - [ ] Write .claude/runs/verify-report.md (verify.md § Write Verification Report)
    - [ ] Save planning patterns to auto memory (change.md Step 8)
    - Type-specific constraints:
      - [3-5 key rules extracted from the procedure file]
@@ -47,22 +47,22 @@ Before proceeding to Step 5, execute the process gate:
    - Feature/Upgrade: `- TDD cycle: RED (failing test) before GREEN (implementation)`
    - Fix: `- Regression test must FAIL on current code before writing fix`
 
-5. **Update checkpoint** in `.claude/current-plan.md` frontmatter to `phase2-step5`.
+5. **Update checkpoint** in `.claude/runs/current-plan.md` frontmatter to `phase2-step5`.
 
-> **Skip condition:** If `.claude/current-plan.md` already contains `## Process Checklist`, skip to Step 5.
+> **Skip condition:** If `.claude/runs/current-plan.md` already contains `## Process Checklist`, skip to Step 5.
 
 - **G3 Spec Gate**: Spawn the `gate-keeper` agent (`subagent_type: gate-keeper`). Pass: "Execute G3 Spec Gate for type [classification]. Verify: current-plan.md has `## Process Checklist`, checkpoint is at phase2-step5 or later. For Feature that adds NEW behaviors (behavior IDs not previously in experiment.yaml): experiment.yaml behaviors updated. For Feature that refines EXISTING behavior implementations without adding new behaviors: current-plan.md notes which existing behaviors are being refined (experiment.yaml update not required). For Upgrade: .env.example updated if needed. For Production quality: stack.testing present." If gate-keeper returns BLOCK, fix blocking items.
 
 **POSTCONDITIONS:**
 - Procedure file read (if applicable for type)
 - `verify.md` read — scope table and agent list extracted
-- `## Process Checklist` appended to `.claude/current-plan.md`
+- `## Process Checklist` appended to `.claude/runs/current-plan.md`
 - Checkpoint updated to `phase2-step5`
 - G3 Spec Gate passed
 
 **VERIFY:**
 ```bash
-grep -q '## Process Checklist' .claude/current-plan.md && echo "OK" || echo "FAIL"
+grep -q '## Process Checklist' .claude/runs/current-plan.md && echo "OK" || echo "FAIL"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

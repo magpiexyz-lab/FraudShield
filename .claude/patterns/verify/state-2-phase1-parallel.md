@@ -47,7 +47,7 @@ Spawn the `accessibility-scanner` agent (`subagent_type: accessibility-scanner`)
 #### spec-reviewer (if scope is `full` or `security`, AND `quality: production` in experiment.yaml)
 
 Read `experiment/experiment.yaml`. If `quality` field is set to `production`:
-Spawn the `spec-reviewer` agent (`subagent_type: spec-reviewer`). Pass: "Read `.claude/agents/spec-reviewer.md` and execute all checks. Read `experiment/experiment.yaml` and `.claude/current-plan.md` (if it exists) as input. Return the output contract table and verdict."
+Spawn the `spec-reviewer` agent (`subagent_type: spec-reviewer`). Pass: "Read `.claude/agents/spec-reviewer.md` and execute all checks. Read `experiment/experiment.yaml` and `.claude/runs/current-plan.md` (if it exists) as input. Return the output contract table and verdict."
 
 If `quality` is absent or not `production`, skip this agent.
 
@@ -58,11 +58,11 @@ After each agent returns, use [Trace State Detection](../verify.md#trace-state-d
 > **Template enforcement:** Read `.claude/agent-prompt-footer.md` and append its full content
 > to every agent spawn prompt. The agent-state-gate hook checks for the directive marker.
 
-**POSTCONDITIONS:** All scope-required Phase 1 traces exist in `.claude/agent-traces/`.
+**POSTCONDITIONS:** All scope-required Phase 1 traces exist in `.claude/runs/agent-traces/`.
 
 **VERIFY:**
 ```bash
-ls .claude/agent-traces/*.json
+ls .claude/runs/agent-traces/*.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

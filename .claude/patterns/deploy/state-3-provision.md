@@ -285,7 +285,7 @@ Read the hosting stack file's `## Deploy Interface > Deploy` and execute the dep
 
 Note: projects with Stripe require two production deploys during first-time setup (one to get the URL, one after webhook secret is configured). Subsequent deploys via git push need only one.
 
-- **Write provision artifact** (`.claude/deploy-provision.json`):
+- **Write provision artifact** (`.claude/runs/deploy-provision.json`):
   ```bash
   python3 -c "
   import json
@@ -296,7 +296,7 @@ Note: projects with Stripe require two production deploys during first-time setu
       'canonical_url': '<deployment url>',
       'agents_completed': []          # list of {agent, status}
   }
-  json.dump(provision, open('.claude/deploy-provision.json', 'w'), indent=2)
+  json.dump(provision, open('.claude/runs/deploy-provision.json', 'w'), indent=2)
   "
   ```
 
@@ -307,11 +307,11 @@ Note: projects with Stripe require two production deploys during first-time setu
 - Initial deploy complete with deployment URL extracted
 - Post-deploy agents completed (auth, stripe, analytics, external services)
 - Redeploy triggered if any agents added env vars
-- `.claude/deploy-provision.json` exists
+- `.claude/runs/deploy-provision.json` exists
 
 **VERIFY:**
 ```bash
-test -f .claude/deploy-provision.json
+test -f .claude/runs/deploy-provision.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

@@ -11,13 +11,13 @@ Verify `experiment/EVENTS.yaml` exists. If not, stop and tell the user: "experim
 
 If `package.json` does not exist, warn: "No app found -- this retro will be based on your qualitative feedback only. If you want to include analytics data, run `/bootstrap` and `/deploy` first."
 
-If `.claude/iterate-manifest.json` exists, read it and extract the `verdict`, `bottleneck`, and `recommendations` fields. Include in the summary: "Last `/iterate` analysis: verdict **[verdict]**, bottleneck: [bottleneck.diagnosis]." This context will inform Q1 follow-up.
+If `.claude/runs/iterate-manifest.json` exists, read it and extract the `verdict`, `bottleneck`, and `recommendations` fields. Include in the summary: "Last `/iterate` analysis: verdict **[verdict]**, bottleneck: [bottleneck.diagnosis]." This context will inform Q1 follow-up.
 
-If `.claude/verify-history.jsonl` exists, read it and compute per-skill Q summary:
+If `.claude/runs/verify-history.jsonl` exists, read it and compute per-skill Q summary:
 ```bash
 python3 -c "
 import json
-entries = [json.loads(l) for l in open('.claude/verify-history.jsonl') if l.strip()]
+entries = [json.loads(l) for l in open('.claude/runs/verify-history.jsonl') if l.strip()]
 if not entries:
     print('No Q-score data available.')
 else:
@@ -56,8 +56,8 @@ Present the summary and then proceed to STATE 1.
 
 Clean stale epilogue artifacts and create context file to initialize state tracking:
 ```bash
-rm -f .claude/observe-result.json
-cat > .claude/retro-context.json << CTXEOF
+rm -f .claude/runs/observe-result.json
+cat > .claude/runs/retro-context.json << CTXEOF
 {"skill":"retro","branch":"$(git branch --show-current)","timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","run_id":"retro-$(date -u +%Y-%m-%dT%H:%M:%SZ)","completed_states":[0]}
 CTXEOF
 ```
@@ -68,11 +68,11 @@ CTXEOF
 - Git activity and app scope data collected
 - Iterate manifest and Q-score history read (if available)
 - Summary presented to user
-- `.claude/retro-context.json` exists
+- `.claude/runs/retro-context.json` exists
 
 **VERIFY:**
 ```bash
-test -f .claude/retro-context.json && echo "OK" || echo "FAIL"
+test -f .claude/runs/retro-context.json && echo "OK" || echo "FAIL"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
