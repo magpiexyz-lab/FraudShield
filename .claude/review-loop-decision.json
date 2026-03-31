@@ -1,6 +1,0 @@
-{
-  "iteration": 2,
-  "yield_rate": 0.0,
-  "termination_condition": "zero_yield \u2014 0 findings fixed, all disputed",
-  "continue": false
-}
