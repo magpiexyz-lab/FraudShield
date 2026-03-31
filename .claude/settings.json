@@ -4,6 +4,7 @@
       "Read(/.claude/**)",
       "Write(/.claude/**)",
       "Edit(/.claude/**)",
+      "Edit(/.gitignore)",
       "Bash(*.claude/*)",
       "Bash(git *)",
       "Bash(gh *)",
