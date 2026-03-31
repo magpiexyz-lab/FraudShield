@@ -84,20 +84,20 @@ Collect all env vars and set them using the hosting provider's method:
 
 ### Step 5a: Initial deploy
 
-If archetype is `cli` and surface is `detached`: **skip this step** — proceed directly to Step 5a.1 (surface-only deployment). CLI with detached surface has no hosting infrastructure.
+If surface is `detached` and the archetype's `excluded_stacks` includes `hosting` (e.g., CLI), OR if the archetype is `service` and surface is `detached`: **skip this step** — proceed directly to Step 5a.1 (surface-only deployment). Archetypes with detached surfaces have no hosting infrastructure to deploy to.
 
 1. Read the hosting stack file's `## Deploy Interface > Deploy`. Execute the deploy command.
 2. Extract the deployment URL per the stack file's instructions.
 3. If `canonical_url` is null (domain add failed or no `deploy.domain`): set `canonical_url` = the deployment URL.
 
-### Step 5a.1: Surface deployment (if archetype is `cli` and surface is `detached`)
+### Step 5a.1: Surface deployment (if surface is `detached`)
 
 1. Verify `site/index.html` exists. If not, stop: "Surface page not found. Run `/bootstrap` to generate it."
 2. Read the surface stack file at `.claude/stacks/surface/detached.md` -> `## Deployment`. Deploy the surface using the command specified there (e.g., `vercel site/ --prod`).
 3. Extract the deployment URL from the command output.
 4. If `deploy.domain` is set in experiment.yaml: bind custom domain (`<name>.<domain>`) to the deployed surface.
 5. Set `surface_url` = custom domain URL or deployment URL.
-6. For CLI archetype: `canonical_url` = `surface_url` (the surface IS the canonical web presence).
+6. For archetypes with detached surface (CLI, service): `canonical_url` = `surface_url` (the surface IS the canonical web presence).
 
 ### Step 5b: Post-deploy service configuration (parallel)
 

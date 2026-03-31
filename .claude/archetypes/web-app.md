@@ -39,7 +39,7 @@ Payment events (`pay_start`, `pay_success`) have `requires: [payment]` in experi
 
 ## Conventions
 
-- Every page fires analytics events per experiment/EVENTS.yaml
+- When `stack.analytics` is configured, every page fires analytics events per experiment/EVENTS.yaml
 - Landing page is required — `validate-experiment.py` enforces this
 - UI components come from the configured UI stack (e.g., shadcn/ui)
 - API routes live under `src/app/api/` for mutations and server-side logic

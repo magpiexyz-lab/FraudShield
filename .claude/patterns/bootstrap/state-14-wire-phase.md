@@ -30,12 +30,19 @@ Verify scaffold-wire trace: `test -f .claude/runs/agent-traces/scaffold-wire.jso
 - **Write wire trace artifact** (`.claude/runs/bootstrap-wire-trace.json`):
   ```bash
   python3 -c "
-  import json, glob, os
-  trace = {
-      'pages_wired': [os.path.dirname(f).split('/')[-1] for f in glob.glob('src/app/*/page.tsx')],
-      'api_routes_wired': [os.path.dirname(f).split('/')[-1] for f in glob.glob('src/app/api/*/route.ts')],
-      'checkpoint': 'awaiting-verify'
-  }
+  import json, glob, os, yaml
+  arch = yaml.safe_load(open('experiment/experiment.yaml')).get('type', 'web-app')
+  trace = {'checkpoint': 'awaiting-verify'}
+  if arch == 'web-app':
+      trace['pages_wired'] = [os.path.dirname(f).split('/')[-1] for f in glob.glob('src/app/*/page.tsx')]
+      trace['api_routes_wired'] = [os.path.dirname(f).split('/')[-1] for f in glob.glob('src/app/api/*/route.ts')]
+  elif arch == 'service':
+      trace['pages_wired'] = []
+      trace['api_routes_wired'] = [os.path.dirname(f).split('/')[-1] for f in glob.glob('src/app/api/*/route.ts')]
+  elif arch == 'cli':
+      trace['pages_wired'] = []
+      trace['api_routes_wired'] = []
+      trace['commands_wired'] = [os.path.splitext(os.path.basename(f))[0] for f in glob.glob('src/commands/*.ts')]
   json.dump(trace, open('.claude/runs/bootstrap-wire-trace.json', 'w'), indent=2)
   "
   ```

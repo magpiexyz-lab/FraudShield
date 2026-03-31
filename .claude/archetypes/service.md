@@ -71,7 +71,7 @@ or API marketplace listings.
 
 ## Conventions
 
-- Every endpoint fires analytics events per experiment/EVENTS.yaml (server-side)
+- When `stack.analytics` is configured, every endpoint fires analytics events per experiment/EVENTS.yaml (server-side)
 - No landing page requirement — `validate-experiment.py` skips landing checks
 - No UI components — the `ui` stack category is excluded
 - Database access uses RLS (Row-Level Security) when auth is configured
