@@ -36,7 +36,7 @@
   - `pain_points` must have exactly 3 items per variant
   - If any validation fails: stop and list the specific errors
 
-- **Write validation trace artifact** (`.claude/bootstrap-validation-trace.json`):
+- **Write validation trace artifact** (`.claude/runs/bootstrap-validation-trace.json`):
   ```bash
   python3 -c "
   import json
@@ -45,7 +45,7 @@
       'checks_passed': ['name', 'hypothesis', 'behaviors', 'golden_path', 'stack'],
       'warnings': []  # any non-blocking warnings
   }
-  json.dump(trace, open('.claude/bootstrap-validation-trace.json', 'w'), indent=2)
+  json.dump(trace, open('.claude/runs/bootstrap-validation-trace.json', 'w'), indent=2)
   "
   ```
 
@@ -57,11 +57,11 @@
 - Stack dependency rules satisfied (payment->auth+db, email->auth+db)
 - Quality/testing dependency satisfied if applicable
 - Variant structure valid if applicable
-- `.claude/bootstrap-validation-trace.json` exists with `experiment_valid` field
+- `.claude/runs/bootstrap-validation-trace.json` exists with `experiment_valid` field
 
 **VERIFY:**
 ```bash
-python3 -c "import json; d=json.load(open('.claude/bootstrap-validation-trace.json')); assert d.get('experiment_valid') is not None, 'experiment_valid missing'"
+python3 -c "import json; d=json.load(open('.claude/runs/bootstrap-validation-trace.json')); assert d.get('experiment_valid') is not None, 'experiment_valid missing'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

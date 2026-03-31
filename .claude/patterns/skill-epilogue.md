@@ -19,7 +19,7 @@ Two strategies, dispatched by evidence type:
 
 Before proceeding with observation, check that the skill completed all required states.
 
-Read `.claude/<skill>-context.json` and compare `completed_states` against
+Read `.claude/runs/<skill>-context.json` and compare `completed_states` against
 `_required_states` from `state-registry.json` `agent_gates[<skill>]`.
 
 If any required state is missing:
@@ -117,7 +117,7 @@ These skills have no diffs to observe, so the observer agent is never spawned.
 
 ### Step B1: Verify execution completeness
 
-Read `.claude/<skill>-context.json` and verify that `completed_states` includes
+Read `.claude/runs/<skill>-context.json` and verify that `completed_states` includes
 all expected states from `state-registry.json` for this skill (excluding the
 epilogue state itself). If any expected state is missing, record it as friction.
 

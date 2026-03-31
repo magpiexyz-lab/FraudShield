@@ -210,8 +210,8 @@ Verify experiment.yaml validation was thorough:
 7. If `quality: production` → `stack.testing` must be present
 8. If `variants` present → ≥2 entries, each has slug/headline/subheadline/cta/pain_points, all slugs unique
 
-9. **Quality: archetype trace matches** — `.claude/bootstrap-archetype-trace.json` exists and `archetype` field matches `type` in `experiment/experiment.yaml` — run `python3 -c "import json,yaml; t=json.load(open('.claude/bootstrap-archetype-trace.json')); e=yaml.safe_load(open('experiment/experiment.yaml')); print('PASS' if t.get('archetype')==e.get('type','web-app') else 'BLOCK: trace=%s, yaml=%s' % (t.get('archetype'),e.get('type')))"` (skip if bootstrap-archetype-trace.json does not exist)
-10. **Quality: validation trace valid** — `.claude/bootstrap-validation-trace.json` exists and `experiment_valid` is `true` — run `python3 -c "import json; d=json.load(open('.claude/bootstrap-validation-trace.json')); print('PASS' if d.get('experiment_valid')==True else 'BLOCK: experiment_valid=%s' % d.get('experiment_valid'))"` (skip if bootstrap-validation-trace.json does not exist)
+9. **Quality: archetype trace matches** — `.claude/runs/bootstrap-archetype-trace.json` exists and `archetype` field matches `type` in `experiment/experiment.yaml` — run `python3 -c "import json,yaml; t=json.load(open('.claude/runs/bootstrap-archetype-trace.json')); e=yaml.safe_load(open('experiment/experiment.yaml')); print('PASS' if t.get('archetype')==e.get('type','web-app') else 'BLOCK: trace=%s, yaml=%s' % (t.get('archetype'),e.get('type')))"` (skip if bootstrap-archetype-trace.json does not exist)
+10. **Quality: validation trace valid** — `.claude/runs/bootstrap-validation-trace.json` exists and `experiment_valid` is `true` — run `python3 -c "import json; d=json.load(open('.claude/runs/bootstrap-validation-trace.json')); print('PASS' if d.get('experiment_valid')==True else 'BLOCK: experiment_valid=%s' % d.get('experiment_valid'))"` (skip if bootstrap-validation-trace.json does not exist)
 
 ### BG2 Orchestration Gate
 
