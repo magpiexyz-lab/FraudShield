@@ -19,6 +19,7 @@ Emit a compact state summary and discard prior detail:
 - finding_fates: [{signature, dimension, adversarial_label, fate}]
 - yield_rate: <fixed_count / (confirmed + needs-evidence count)>
 - yield_by_dimension: { A: <fixed/actionable>, B: <fixed/actionable>, C: <fixed/actionable> }
+- confirmed_findings_this_iteration: <count of confirmed findings in this iteration>
 - error_delta: <current error_count - prior iteration error_count>
 ```
 
@@ -47,8 +48,9 @@ Termination decision (evaluate in order — first match wins):
    iterations -> proceed to State 3.
    (Error count rising across iterations signals cascading fix regressions.)
 
-4. **Diminishing returns**: `iteration` >= 3 and yield < 0.25 -> proceed to State 3.
-   (Fewer than 1 in 4 reported findings actually got fixed — mostly noise.)
+4. **Diminishing returns**: `iteration` >= 3 and `confirmed_findings_this_iteration` <= 1
+   -> proceed to State 3.
+   (Template converging — agents finding at most 1 new confirmed issue per scan.)
 
 5. **Hard cap**: `iteration` >= `max_iterations` -> proceed to State 3.
 

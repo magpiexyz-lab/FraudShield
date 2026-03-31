@@ -25,6 +25,14 @@
   - Set `max_iterations = 5`, `max_findings_per_dimension = 5`
   - Log: "Template health: needs attention — using full review parameters"
 
+- **Cross-run convergence check** (only when `health_clean == true` AND `prior_precision` is available from STATE 0):
+  Extract `findings_fixed` and `disputed_rate` from `prior_precision`.
+  If `findings_fixed <= 3 AND disputed_rate >= 40%`:
+  - STOP and present to user:
+    > "Template appears converged — prior review fixed only N findings with M% dispute rate. Run /review again? (y/n)"
+  - If user says **no** -> set `max_iterations = 0` (skip loop entirely, proceed through states 3-6 to exit cleanly). Log: "Template health: converged — skipping review loop per user decision"
+  - If user says **yes** -> set `max_iterations = 2`, `max_findings_per_dimension = 2`. Log: "Template health: converged — using minimal review parameters (2 iterations, 2 findings/dimension)"
+
 **POSTCONDITIONS:**
 - `baseline_errors` captured
 - `health_clean` computed
@@ -38,6 +46,7 @@
   baseline = {
       'baseline_errors': 0,
       'health_clean': True,
+      'converged': False,
       'max_iterations': 3,
       'max_findings_per_dimension': 3
   }
