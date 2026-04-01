@@ -39,6 +39,7 @@ Thumbs.db
 
 # Skill run artifacts (ephemeral execution state)
 .claude/runs/
+.runs/
 externals-decisions.json
 
 # TypeScript

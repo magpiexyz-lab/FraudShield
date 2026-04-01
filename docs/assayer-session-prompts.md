@@ -2844,7 +2844,7 @@ docker/skill-runner.js  → exists, passes node --check
 a. 读取 env vars（EXPERIMENT_ID, SKILL_NAME, etc.）
 b. Clone experiment repo（existing）或 copy mvp-template（new）
 c. Generate experiment.yaml from Supabase data
-c2. Generate `.claude/spec-manifest.json` from Supabase experiment data（hypotheses, variants, metrics, round history）。/iterate skill 读取此 manifest 作为输入。
+c2. Generate `.claude/runs/spec-manifest.json` from Supabase experiment data（hypotheses, variants, metrics, round history）。/iterate skill 读取此 manifest 作为输入。
 d. Inject env vars
 e. 初始化 Supabase Realtime channel
 f. Agent SDK runs skill
