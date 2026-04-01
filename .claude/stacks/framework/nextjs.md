@@ -13,6 +13,8 @@ files:
   - src/app/error.tsx             # conditional: web-app
   - src/app/icon.tsx              # conditional: web-app
   - src/app/opengraph-image.tsx   # conditional: web-app
+  - src/app/sitemap.ts            # conditional: web-app
+  - src/app/robots.ts             # conditional: web-app
   - src/components/RetainTracker.tsx  # conditional: web-app
 env:
   server: []
@@ -95,6 +97,13 @@ The root `route.ts` is created only when surface is `co-located` (the default fo
   - `page.tsx` — server component, exports `generateStaticParams`, imports and renders the client component with props
   - `<name>-client.tsx` — `"use client"`, receives props, handles interactivity and analytics
   Next.js does not allow `generateStaticParams` in `"use client"` components.
+
+### SEO Metadata Conventions
+- `layout.tsx` MUST export a `metadata` object (Next.js Metadata API) with `title`, `description`, and `openGraph` fields — derived per messaging.md Section E
+- Variant pages export `generateMetadata()` to override layout defaults with variant-specific title/description
+- JSON-LD structured data: include a `<script type="application/ld+json">` tag in layout.tsx body with Schema.org type per archetype: `WebApplication` (web-app), `WebAPI` (service), `SoftwareApplication` (cli)
+- `src/app/sitemap.ts`: export a default function returning `MetadataRoute.Sitemap` — URLs derived from golden_path pages
+- `src/app/robots.ts`: export a default function returning `MetadataRoute.Robots` — allow all crawlers for MVP (`{ rules: { userAgent: '*', allow: '/' } }`)
 
 ## React 19 Patterns
 - Use ref as a regular prop -- do NOT use `React.forwardRef`. React 19 passes ref as a standard prop.

@@ -86,3 +86,47 @@ When experiment.yaml has a `variants` field, these rules extend Sections A–C:
 ### Message Match for Variants
 - Section C rules apply **per variant**: each variant's ad group must match its landing page headline.
 - Ad headlines for a variant are shortened from that variant's `headline` field, not from the shared `description`.
+
+## Section E: SEO/AEO Metadata Derivation Rules
+
+Derive SEO metadata from experiment.yaml fields. These rules feed `layout.tsx` metadata exports, `llms.txt`, and JSON-LD structured data.
+
+### Display Name
+
+Title-case the experiment.yaml `name` slug, replacing hyphens with spaces.
+
+Example: `quick-bill` → `Quick Bill`, `page-forge` → `Page Forge`.
+
+### Meta Title
+
+Formula: **`{headline} | {display name}`** — must be 60 characters or fewer. If it exceeds 60 chars, shorten the headline portion (keep the display name intact).
+
+### Meta Description
+
+Benefit-focused rewrite of the subheadline (from Section A). Must be 160 characters or fewer. Focus on what the user gains, not how the product works.
+
+### OG Title / OG Description
+
+Same values as meta title and meta description respectively.
+
+### llms.txt Content
+
+Plain text file summarizing the product for AI search engines. Format:
+
+```
+# {display name}
+
+> {meta description}
+
+## Features
+
+- {behavior 1 `then` field}
+- {behavior 2 `then` field}
+- ...
+```
+
+Derive all content from experiment.yaml fields (`name`, `description`, `behaviors`).
+
+### Variant Override
+
+When experiment.yaml has `variants`, the root layout metadata uses the **default variant's** headline and subheadline (or Section A derivation if no variants). Each variant page exports `generateMetadata()` using that variant's `headline` and `subheadline` to override layout defaults.

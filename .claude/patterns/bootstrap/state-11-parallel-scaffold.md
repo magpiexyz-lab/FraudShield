@@ -17,6 +17,9 @@ The lead (not a subagent) creates:
 - Error boundary (`src/app/error.tsx`)
 - Favicon (`src/app/icon.tsx`) -- monogram of project name initial in primary color, 128x128, using `ImageResponse` from `next/og`. Uses a system font (sans-serif) -- do NOT fetch Google Fonts in Satori context. Read primary color from `globals.css` `--primary` token or hardcode the derived value.
 - OG image (`src/app/opengraph-image.tsx`) -- 1200x630 branded card with project name centered on primary-color gradient background. Uses `ImageResponse` from `next/og` with system font.
+- Sitemap (`src/app/sitemap.ts`) -- Next.js built-in sitemap generation from golden_path pages
+- Robots (`src/app/robots.ts`) -- Next.js built-in robots.txt, allow all crawlers for MVP
+- llms.txt (`public/llms.txt`) -- static AI-readable product summary per messaging.md Section E
 - Variant routing files (if `variants` in experiment.yaml): `src/lib/variants.ts`, `src/app/page.tsx`, `src/app/v/[variant]/page.tsx`
 
 Phase A runs AFTER scaffold-init completes (STATE 10) to ensure design tokens exist.
@@ -25,7 +28,7 @@ After creating all Phase A files, write the Phase A sentinel:
 ```bash
 mkdir -p .claude/runs/gate-verdicts
 cat > .claude/runs/gate-verdicts/phase-a-sentinel.json << 'PAEOF'
-{"phase_a_complete": true, "timestamp": "<ISO 8601>", "files": ["src/app/layout.tsx", "src/app/not-found.tsx", "src/app/error.tsx", "src/app/icon.tsx", "src/app/opengraph-image.tsx"]}
+{"phase_a_complete": true, "timestamp": "<ISO 8601>", "files": ["src/app/layout.tsx", "src/app/not-found.tsx", "src/app/error.tsx", "src/app/icon.tsx", "src/app/opengraph-image.tsx", "src/app/sitemap.ts", "src/app/robots.ts", "public/llms.txt"]}
 PAEOF
 ```
 
@@ -35,6 +38,9 @@ VERIFY Phase A before proceeding to Phase B:
 - `test -f src/app/error.tsx`
 - `test -f src/app/icon.tsx`
 - `test -f src/app/opengraph-image.tsx`
+- `test -f src/app/sitemap.ts`
+- `test -f src/app/robots.ts`
+- `test -f public/llms.txt`
 - `test -f .claude/runs/gate-verdicts/phase-a-sentinel.json`
 
 **DO NOT proceed to Phase B until all VERIFY checks pass.**

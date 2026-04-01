@@ -23,6 +23,12 @@ The `src/lib/events.ts` file exists when this agent runs — import typed wrappe
 - **404 page**: simple not-found page with link back to `/`
 - **Error boundary**: user-friendly message and retry button
 
+#### SEO baseline (Step 3b, web-app only)
+- Generate `src/app/sitemap.ts` — export a default function returning `MetadataRoute.Sitemap` with URLs derived from golden_path pages (each page entry maps to a URL path)
+- Generate `src/app/robots.ts` — export a default function returning `MetadataRoute.Robots` allowing all crawlers (`{ rules: { userAgent: '*', allow: '/' } }`)
+- Generate `public/llms.txt` — content per messaging.md Section E (display name, meta description, behaviors list)
+- Ensure layout.tsx `metadata` export uses messaging.md Section E derivation: `title` = meta title, `description` = meta description, `openGraph` = `{ title, description }`
+
 #### Pages (Step 4)
 For each entry in experiment.yaml `pages`:
 - If `name` is `landing` → create the root page

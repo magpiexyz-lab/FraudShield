@@ -55,6 +55,7 @@ Rules are in priority order. When two rules conflict, the lower-numbered rule wi
 | /deploy | ✅ | ✅ | surface only |
 | Analytics (client-side) | ✅ | ❌ | ❌ |
 | Analytics (server-side) | ✅ | ✅ | ✅ |
+| SEO/AEO (meta, sitemap, llms.txt) | ✅ | surface only | surface only |
 
 ## Rule 4: Keep It Minimal
 - Prefer well-known libraries over custom code

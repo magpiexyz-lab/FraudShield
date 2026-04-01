@@ -52,6 +52,13 @@ Run combined verification after all parallel subagents complete -- these checks 
    Tailwind arbitrary color values (`text-\[#`, `bg-\[#`, `border-\[#`). If any page uses
    arbitrary hex color values not traceable to the visual brief, replace with theme token
    classes (`text-primary`, `bg-secondary`, etc.). Budget: 1 fix attempt.
+11. **SEO baseline** (web-app only):
+   - Verify `src/app/layout.tsx` exports `metadata` with non-empty `title` and `description` (`grep -q 'export const metadata' src/app/layout.tsx`)
+   - Verify `src/app/sitemap.ts` exists (`test -f src/app/sitemap.ts`)
+   - Verify `src/app/robots.ts` exists (`test -f src/app/robots.ts`)
+   - Verify `public/llms.txt` exists (`test -f public/llms.txt`)
+   - Verify JSON-LD present in landing page or layout (`grep -rl 'application/ld+json' src/app/layout.tsx src/app/page.tsx src/components/landing-content.tsx 2>/dev/null`)
+   Budget: 1 fix attempt.
 
 If any check fails: the bootstrap lead fixes directly (it has full file access
 as coordinator). Re-run `npm run build` after fixes. Budget: 2 fix attempts.

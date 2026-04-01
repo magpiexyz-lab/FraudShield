@@ -44,3 +44,7 @@ Payment events (`pay_start`, `pay_success`) have `requires: [payment]` in experi
 - UI components come from the configured UI stack (e.g., shadcn/ui)
 - API routes live under `src/app/api/` for mutations and server-side logic
 - Database access uses RLS (Row-Level Security) when auth is configured
+- layout.tsx exports `metadata` (title, description, OG tags) — derived per messaging.md Section E
+- `src/app/sitemap.ts`, `src/app/robots.ts`, and `public/llms.txt` generated at bootstrap
+- JSON-LD `WebApplication` schema embedded in layout.tsx
+- Variant pages export per-page `generateMetadata()` with variant-specific title/description

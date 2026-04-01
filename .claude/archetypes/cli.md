@@ -56,6 +56,12 @@ When a surface is configured (default: `detached`), it is deployed to Vercel
 and available at the custom domain. `/distribute` generates ad campaigns
 pointing to this URL.
 
+### SEO/AEO (surface only)
+- `site/index.html` must include `<meta>` tags: title, description, `og:title`, `og:description` — derived per messaging.md Section E
+- JSON-LD with `SoftwareApplication` type in `<head>`
+- `site/llms.txt` generated alongside `site/index.html` — content per messaging.md Section E
+- `surface: none` = skip all SEO artifacts
+
 CLIs are also distributed via package registries:
 - `npm publish` — primary distribution for Node.js CLIs
 - GitHub Releases — binary artifacts for non-Node users

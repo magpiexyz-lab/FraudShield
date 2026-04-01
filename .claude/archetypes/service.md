@@ -33,6 +33,11 @@ When surface is `co-located` (the most common default), the root URL (`/`) serve
 an HTML marketing page — see `.claude/stacks/surface/co-located.md`. API endpoints
 live under `/api/*`.
 
+### SEO/AEO (surface only)
+- Root route handler's inline HTML must include `<meta>` tags: title, description, `og:title`, `og:description` — derived per messaging.md Section E
+- JSON-LD with `WebAPI` type in inline HTML `<head>`
+- `llms.txt` served via route handler (`src/app/llms.txt/route.ts`) returning `text/plain` — content per messaging.md Section E
+
 ## Funnel
 
 Events are defined in experiment/EVENTS.yaml with `funnel_stage` tags. Filter by `requires` and `archetypes` fields based on experiment stack. The `api_call` event has `archetypes: [service]` — include it for service experiments.

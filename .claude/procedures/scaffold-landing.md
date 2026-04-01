@@ -68,6 +68,13 @@ varies by archetype:
 - Include: surface stack file content (file path, CSS approach)
 - Write `site/index.html` as a complete self-contained HTML page
 
+### 3b. Structured data
+
+Generate a JSON-LD `<script type="application/ld+json">` block for the landing page:
+- Schema.org type per archetype: `WebApplication` (web-app), `WebAPI` (service), `SoftwareApplication` (cli)
+- Properties: `name` (display name per messaging.md Section E), `description` (meta description per Section E), `url` (from deploy manifest `canonical_url`, or `/` if not yet deployed)
+- For web-app: embed in layout.tsx body. For service/cli: embed in the inline HTML `<head>`
+
 ### 4. Wire analytics
 
 If `stack.analytics` is present and not already included:
