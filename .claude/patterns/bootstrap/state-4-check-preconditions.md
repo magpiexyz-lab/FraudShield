@@ -7,7 +7,7 @@
 
 Follow checkpoint-resumption protocol per `patterns/checkpoint-resumption.md`.
 
-- If `.claude/runs/current-plan.md` exists and the current branch starts with `feat/bootstrap`:
+- If `.runs/current-plan.md` exists and the current branch starts with `feat/bootstrap`:
   1. Read frontmatter. Use values directly — do NOT re-resolve archetype or stack. Read context_files to restore context.
   2. Resume per /bootstrap checkpoint mapping:
 
@@ -25,7 +25,7 @@ Follow checkpoint-resumption protocol per `patterns/checkpoint-resumption.md`.
   If output is non-empty: stop and tell the user: "This project has already been bootstrapped. Use `/change ...` to make changes, or run `make clean` to start over."
 - If `package.json` exists but the `src/` directory does NOT contain application files: warn the user: "A previous bootstrap may have partially completed. I'll continue from the beginning — packages may be reinstalled." Note: the branch name `feat/bootstrap` may already exist from the previous attempt. If so, this run will use `feat/bootstrap-2` — you can delete the old branch later with `git branch -d feat/bootstrap`. Then proceed.
 
-- **Write preconditions artifact** (`.claude/runs/bootstrap-preconditions.json`):
+- **Write preconditions artifact** (`.runs/bootstrap-preconditions.json`):
   ```bash
   python3 -c "
   import json, shutil, os
@@ -37,18 +37,18 @@ Follow checkpoint-resumption protocol per `patterns/checkpoint-resumption.md`.
           for f in ['page.tsx', 'route.ts']
       )
   }
-  json.dump(trace, open('.claude/runs/bootstrap-preconditions.json', 'w'), indent=2)
+  json.dump(trace, open('.runs/bootstrap-preconditions.json', 'w'), indent=2)
   "
   ```
 
 **POSTCONDITIONS:**
 - Decision made: fresh start, resume at specific state, or stop (already bootstrapped)
 - If resuming: archetype, stack, and checkpoint restored from frontmatter
-- `.claude/runs/bootstrap-preconditions.json` exists with `node_available` field
+- `.runs/bootstrap-preconditions.json` exists with `node_available` field
 
 **VERIFY:**
 ```bash
-python3 -c "import json; d=json.load(open('.claude/runs/bootstrap-preconditions.json')); assert 'node_available' in d, 'node_available missing'"
+python3 -c "import json; d=json.load(open('.runs/bootstrap-preconditions.json')); assert 'node_available' in d, 'node_available missing'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

@@ -30,22 +30,22 @@ fi
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-.}"
 
 # If verify-report.md exists, verify's STATE 6 handled observation — allow
-if [[ -f "$PROJECT_DIR/.claude/runs/verify-report.md" ]]; then
+if [[ -f "$PROJECT_DIR/.runs/verify-report.md" ]]; then
   exit 0
 fi
 
 # If observe-result.json exists, the skill epilogue ran — allow
-if [[ -f "$PROJECT_DIR/.claude/runs/observe-result.json" ]]; then
+if [[ -f "$PROJECT_DIR/.runs/observe-result.json" ]]; then
   exit 0
 fi
 
 # State completion check — deny with specific feedback before generic observation deny
 ERRORS=()
 if [[ "$BRANCH" =~ ^fix/ ]]; then
-  check_skill_completion "resolve" "$PROJECT_DIR/.claude/runs/resolve-context.json"
+  check_skill_completion "resolve" "$PROJECT_DIR/.runs/resolve-context.json"
 fi
 if [[ "$BRANCH" =~ ^chore/review-fixes ]]; then
-  check_skill_completion "review" "$PROJECT_DIR/.claude/runs/review-context.json"
+  check_skill_completion "review" "$PROJECT_DIR/.runs/review-context.json"
 fi
 if [[ ${#ERRORS[@]} -gt 0 ]]; then
   deny_errors "Commit blocked: " "Complete all required states before final commit."

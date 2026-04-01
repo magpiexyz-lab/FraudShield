@@ -79,7 +79,7 @@ Your FIRST Bash command — before any other work — MUST be:
 
 ```bash
 python3 scripts/init-trace.py design-critic "design-critic-<page_name>.json"
-python3 -c "import json;f='.claude/runs/agent-traces/design-critic-<page_name>.json';d=json.load(open(f));d['page']='<page_name>';json.dump(d,open(f,'w'),indent=2)"
+python3 -c "import json;f='.runs/agent-traces/design-critic-<page_name>.json';d=json.load(open(f));d['page']='<page_name>';json.dump(d,open(f,'w'),indent=2)"
 ```
 
 This registers your presence. If you exhaust turns before writing the final trace, the started-only trace signals incomplete work to the orchestrator.
@@ -136,10 +136,10 @@ import json, os
 from datetime import datetime, timezone
 run_id = ""
 try:
-    with open(".claude/runs/verify-context.json") as f:
+    with open(".runs/verify-context.json") as f:
         run_id = json.load(f).get("run_id", "")
 except: pass
-os.makedirs(".claude/runs/agent-traces", exist_ok=True)
+os.makedirs(".runs/agent-traces", exist_ok=True)
 trace = {
     "agent": "design-critic",
     "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -160,7 +160,7 @@ trace = {
         # {"file": "src/app/landing/page.tsx", "symptom": "low contrast ratio", "fix": "changed bg-gray-100 to bg-slate-900"}
     ]
 }
-with open(".claude/runs/agent-traces/design-critic-<page_name>.json", "w") as f:
+with open(".runs/agent-traces/design-critic-<page_name>.json", "w") as f:
     json.dump(trace, f, indent=2)
 TRACE_EOF
 ```

@@ -7,7 +7,7 @@
 
 ## Frontmatter-Based Resume
 
-When `.claude/runs/current-plan.md` has YAML frontmatter, skills resume at the exact
+When `.runs/current-plan.md` has YAML frontmatter, skills resume at the exact
 checkpoint without re-deriving classification or stack.
 
 | Field | Purpose |
@@ -27,13 +27,13 @@ checkpoint without re-deriving classification or stack.
 ## Per-Skill Recovery Matrix
 
 ### /bootstrap failure
-- **State saved:** `.claude/runs/current-plan.md` with frontmatter (archetype, stack, checkpoint), `package.json` (installed packages)
+- **State saved:** `.runs/current-plan.md` with frontmatter (archetype, stack, checkpoint), `package.json` (installed packages)
 - **Recovery:** Re-run `/bootstrap` — Step 4 reads frontmatter checkpoint and resumes at exact phase
 - **If checkpoint is `awaiting-verify`:** Bootstrap completed successfully. Run `/verify` (not `/bootstrap`) to validate and create the PR.
 - **Manual cleanup:** If you want to start fresh: `git checkout main && make clean`
 
 ### /deploy failure (most common)
-- **State saved:** `.claude/runs/deploy-manifest.json` (resources created so far)
+- **State saved:** `.runs/deploy-manifest.json` (resources created so far)
 - **Partial state scenarios:**
   | Failed at | Resources exist | Recovery |
   |-----------|----------------|----------|
@@ -47,14 +47,14 @@ checkpoint without re-deriving classification or stack.
 - **Nuclear option:** Run `/teardown` (reads manifest, deletes everything in reverse)
 
 ### /change failure
-- **State saved:** `.claude/runs/current-plan.md` with frontmatter (type, scope, archetype, stack, checkpoint) on feature branch
+- **State saved:** `.runs/current-plan.md` with frontmatter (type, scope, archetype, stack, checkpoint) on feature branch
 - **Recovery:** Re-run `/change` on the same branch — Step 4 reads frontmatter checkpoint and resumes at exact step
 - **Manual cleanup:** `git checkout main && git branch -d <branch-name>`
 
 ### /verify failure
-- **State saved:** Fix attempts on current branch, `.claude/runs/agent-traces/` (partial trace artifacts)
+- **State saved:** Fix attempts on current branch, `.runs/agent-traces/` (partial trace artifacts)
 - **Recovery:** Re-run `/verify` — starts fresh test run. If resuming after bootstrap (`current-plan.md` has `checkpoint: awaiting-verify`), `/verify` detects bootstrap-verify mode and runs full verification + PR creation.
-- **Manual cleanup:** Trace cleanup is now automatic in STATE 0 (`rm -rf .claude/runs/agent-traces && mkdir -p .claude/runs/agent-traces`). No manual cleanup needed. Verify itself does not modify infrastructure.
+- **Manual cleanup:** Trace cleanup is now automatic in STATE 0 (`rm -rf .runs/agent-traces && mkdir -p .runs/agent-traces`). No manual cleanup needed. Verify itself does not modify infrastructure.
 
 ### /distribute failure
 - **State saved:** `experiment/ads.yaml` (campaign config)
@@ -62,7 +62,7 @@ checkpoint without re-deriving classification or stack.
 - **Manual cleanup:** Delete `experiment/ads.yaml` to regenerate
 
 ### /harden failure
-- **State saved:** `.claude/runs/current-plan.md` with frontmatter (archetype, stack, checkpoint, modules), `experiment/on-touch.yaml`, specification tests on feature branch
+- **State saved:** `.runs/current-plan.md` with frontmatter (archetype, stack, checkpoint, modules), `experiment/on-touch.yaml`, specification tests on feature branch
 - **Recovery:** Re-run `/harden` on the same branch — Step 0 reads frontmatter checkpoint and resumes at exact module. Completed modules already have tests.
 - **Manual cleanup:** `git checkout main && git branch -d <branch-name>`
 

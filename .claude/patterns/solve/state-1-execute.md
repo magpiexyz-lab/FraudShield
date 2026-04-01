@@ -12,7 +12,7 @@ Pass the problem statement verbatim -- do not reinterpret or narrow it.
 - **Light mode**: Execute Steps 1-5 of solve-reasoning.md Light Mode directly in the lead agent. No subagents.
 - **Full mode**: Execute Phases 1-6 of solve-reasoning.md Full Mode. Uses 4 Opus subagents across 6 phases (parallel research, constraint enumeration, user injection, solution design, critic loop, output).
 
-- **Write solve trace artifact** (`.claude/runs/solve-trace.json`) using the contract from solve-reasoning.md:
+- **Write solve trace artifact** (`.runs/solve-trace.json`) using the contract from solve-reasoning.md:
   ```bash
   python3 -c "
   import json
@@ -24,18 +24,18 @@ Pass the problem statement verbatim -- do not reinterpret or narrow it.
       'self_check': '<revision pass results>',
       'output': '<recommended solution summary>'
   }
-  json.dump(trace, open('.claude/runs/solve-trace.json', 'w'), indent=2)
+  json.dump(trace, open('.runs/solve-trace.json', 'w'), indent=2)
   "
   ```
 
 **POSTCONDITIONS:**
 - Solution analysis completed per solve-reasoning.md
 - Output formatted per solve-reasoning.md Phase 6 (full mode) or Step 5 (light mode)
-- `.claude/runs/solve-trace.json` exists with required fields
+- `.runs/solve-trace.json` exists with required fields
 
 **VERIFY:**
 ```bash
-test -f .claude/runs/solve-trace.json
+test -f .runs/solve-trace.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

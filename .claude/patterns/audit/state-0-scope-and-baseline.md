@@ -61,11 +61,11 @@ bash scripts/consistency-check.sh 2>&1 | tail -1
 
 ### Prior audit (delta tracking)
 
-If `.claude/runs/audit-manifest.json` exists from a prior run:
+If `.runs/audit-manifest.json` exists from a prior run:
 ```bash
 python3 -c "
 import json
-d = json.load(open('.claude/runs/audit-manifest.json'))
+d = json.load(open('.runs/audit-manifest.json'))
 print(f\"Prior audit: {d.get('timestamp','')} — {d.get('total_findings',0)} findings\")
 for f in d.get('findings', []):
     print(f\"  [{f.get('dimension','')}] {f.get('title','')}\")
@@ -76,8 +76,8 @@ Store prior findings as `prior_findings` for delta comparison in Step 2.
 
 Clean stale epilogue artifacts and create context file to initialize state tracking:
 ```bash
-rm -f .claude/runs/observe-result.json
-cat > .claude/runs/audit-context.json << CTXEOF
+rm -f .runs/observe-result.json
+cat > .runs/audit-context.json << CTXEOF
 {"skill":"audit","branch":"$(git branch --show-current)","timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","run_id":"audit-$(date -u +%Y-%m-%dT%H:%M:%SZ)","completed_states":[0]}
 CTXEOF
 ```
@@ -88,11 +88,11 @@ CTXEOF
 - Baseline metrics collected (file inventory, largest files, duplication signals, references, functions)
 - Validator health baseline collected
 - Prior audit findings loaded (if any)
-- `.claude/runs/audit-context.json` exists
+- `.runs/audit-context.json` exists
 
 **VERIFY:**
 ```bash
-test -f .claude/runs/audit-context.json && echo "OK" || echo "FAIL"
+test -f .runs/audit-context.json && echo "OK" || echo "FAIL"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

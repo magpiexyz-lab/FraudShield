@@ -83,10 +83,10 @@ import json, os
 from datetime import datetime, timezone
 run_id = ""
 try:
-    with open(".claude/runs/verify-context.json") as f:
+    with open(".runs/verify-context.json") as f:
         run_id = json.load(f).get("run_id", "")
 except: pass
-os.makedirs(".claude/runs/agent-traces", exist_ok=True)
+os.makedirs(".runs/agent-traces", exist_ok=True)
 trace = {
     "agent": "design-consistency-checker",
     "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -103,7 +103,7 @@ trace = {
     ],
     "run_id": run_id
 }
-with open(".claude/runs/agent-traces/design-consistency-checker.json", "w") as f:
+with open(".runs/agent-traces/design-consistency-checker.json", "w") as f:
     json.dump(trace, f, indent=2)
 TRACE_EOF
 ```

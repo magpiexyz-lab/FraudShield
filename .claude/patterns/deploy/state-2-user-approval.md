@@ -58,9 +58,9 @@ If the user requests changes, revise the plan and present it again. Repeat until
   ```bash
   python3 -c "
   import json
-  ctx = json.load(open('.claude/runs/deploy-context.json'))
+  ctx = json.load(open('.runs/deploy-context.json'))
   ctx['approved'] = True
-  json.dump(ctx, open('.claude/runs/deploy-context.json', 'w'), indent=2)
+  json.dump(ctx, open('.runs/deploy-context.json', 'w'), indent=2)
   "
   ```
 
@@ -70,7 +70,7 @@ If the user requests changes, revise the plan and present it again. Repeat until
 
 **VERIFY:**
 ```bash
-python3 -c "import json; assert json.load(open('.claude/runs/deploy-context.json')).get('approved') == True, 'approved not set'"
+python3 -c "import json; assert json.load(open('.runs/deploy-context.json')).get('approved') == True, 'approved not set'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

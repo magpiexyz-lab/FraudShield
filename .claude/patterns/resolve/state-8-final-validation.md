@@ -9,7 +9,7 @@
 - Record `final_errors`
 - If `final_errors` > 0 for checks that passed before Step 7: stop and report regression
 
-- **Write validation artifact** (`.claude/runs/resolve-validation.json`):
+- **Write validation artifact** (`.runs/resolve-validation.json`):
   ```bash
   python3 -c "
   import json
@@ -19,7 +19,7 @@
       'consistency_errors': 0,
       'regressions': False
   }
-  json.dump(validation, open('.claude/runs/resolve-validation.json', 'w'), indent=2)
+  json.dump(validation, open('.runs/resolve-validation.json', 'w'), indent=2)
   "
   ```
 
@@ -27,11 +27,11 @@
 - All 3 validators run
 - `final_errors` recorded
 - No regressions (no new failures for checks that passed before Step 7)
-- `.claude/runs/resolve-validation.json` exists
+- `.runs/resolve-validation.json` exists
 
 **VERIFY:**
 ```bash
-test -f .claude/runs/resolve-validation.json
+test -f .runs/resolve-validation.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

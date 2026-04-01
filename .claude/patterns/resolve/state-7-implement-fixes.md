@@ -8,7 +8,7 @@
 For each issue in severity order (HIGH first):
 
 1. Implement the fix per the approved fix plan from Step 5
-1b. After each fix, log it in `.claude/runs/fix-log.md` (create with header `# Error Fix Log` if absent):
+1b. After each fix, log it in `.runs/fix-log.md` (create with header `# Error Fix Log` if absent):
     `**Fix N** — <file>: <one-line description of what was fixed and why>`
     This enables the skill epilogue's observation detection in Step 11.
 2. If a validator check was proposed: implement it in the target script

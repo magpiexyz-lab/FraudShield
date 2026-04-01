@@ -88,7 +88,7 @@ to the diagnosis report before presenting:
 **STOP. Present the diagnosis report to the user and wait for approval before
 proceeding to Phase 3.** The user may adjust fix plans or scope.
 
-- **Write challenge artifact** (`.claude/runs/resolve-challenge.json`):
+- **Write challenge artifact** (`.runs/resolve-challenge.json`):
   ```bash
   python3 -c "
   import json
@@ -97,7 +97,7 @@ proceeding to Phase 3.** The user may adjust fix plans or scope.
           {'issue': 0, 'label': '<sound|challenged|needs-revision>', 'challenge': '<what was tried>', 'evidence': '<file:line or fixture>', 'revision': '<if not sound>'}
       ]
   }
-  json.dump(challenge, open('.claude/runs/resolve-challenge.json', 'w'), indent=2)
+  json.dump(challenge, open('.runs/resolve-challenge.json', 'w'), indent=2)
   "
   ```
 
@@ -105,11 +105,11 @@ proceeding to Phase 3.** The user may adjust fix plans or scope.
 - Diagnosis report presented to user for all actionable issues
 - Adversarial challenge completed for each fix
 - User has approved the diagnosis before proceeding
-- `.claude/runs/resolve-challenge.json` exists
+- `.runs/resolve-challenge.json` exists
 
 **VERIFY:**
 ```bash
-test -f .claude/runs/resolve-challenge.json
+test -f .runs/resolve-challenge.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

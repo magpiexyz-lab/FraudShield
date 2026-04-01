@@ -116,7 +116,7 @@ Include these directives in every agent spawn prompt (Phase 1 and Phase 2):
 
 ### Trace State Detection
 
-After each agent returns, check `.claude/runs/agent-traces/<name>.json`:
+After each agent returns, check `.runs/agent-traces/<name>.json`:
 
 | State | Condition | Meaning |
 |-------|-----------|---------|
@@ -129,8 +129,8 @@ Detection command:
 ```bash
 verdict=$(python3 -c "
 import json, os
-f = '.claude/runs/agent-traces/<name>.json'
-ctx_f = '.claude/runs/verify-context.json'
+f = '.runs/agent-traces/<name>.json'
+ctx_f = '.runs/verify-context.json'
 if not os.path.exists(f):
     print('NO_FILE')
 else:
@@ -158,12 +158,12 @@ Use this algorithm for all trace checks in per-STATE files and in the Exhaustion
 
 ### Recovery Traces
 
-After all Phase 1 agents return, use Trace State Detection to check each spawned agent's trace in `.claude/runs/agent-traces/<name>.json`.
+After all Phase 1 agents return, use Trace State Detection to check each spawned agent's trace in `.runs/agent-traces/<name>.json`.
 
 If an agent returned output but crashed before writing its trace, write a recovery trace:
 
 ```bash
-echo '{"agent":"<name>","timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","verdict":"<agent-verdict>","checks_performed":<agent-checks-array>,"recovery":true}' > .claude/runs/agent-traces/<name>.json
+echo '{"agent":"<name>","timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","verdict":"<agent-verdict>","checks_performed":<agent-checks-array>,"recovery":true}' > .runs/agent-traces/<name>.json
 ```
 
 The `checks_performed` array must match the agent's specification (see each agent's Trace Output section). The `"recovery":true` flag marks this as a lead-written trace — gate-keeper will WARN on recovery traces.
@@ -192,7 +192,7 @@ Then mark the retry in the trace:
 ```bash
 python3 -c "
 import json
-f = '.claude/runs/agent-traces/<name>.json'
+f = '.runs/agent-traces/<name>.json'
 d = json.load(open(f))
 d['retry_attempted'] = True
 json.dump(d, open(f, 'w'))
@@ -201,8 +201,8 @@ json.dump(d, open(f, 'w'))
 
 **If trace does NOT exist (State 1 — NO_FILE or STALE):**
 ```bash
-RUN_ID=$(python3 -c "import json;print(json.load(open('.claude/runs/verify-context.json')).get('run_id',''))" 2>/dev/null || echo "")
-echo '{"agent":"<name>","status":"exhausted","retry_attempted":true,"original_state":"NO_FILE","checks_performed":["exhaustion-recovery"],"timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","run_id":"'"$RUN_ID"'"}' > .claude/runs/agent-traces/<name>.json
+RUN_ID=$(python3 -c "import json;print(json.load(open('.runs/verify-context.json')).get('run_id',''))" 2>/dev/null || echo "")
+echo '{"agent":"<name>","status":"exhausted","retry_attempted":true,"original_state":"NO_FILE","checks_performed":["exhaustion-recovery"],"timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","run_id":"'"$RUN_ID"'"}' > .runs/agent-traces/<name>.json
 ```
 
 Re-spawn the agent with a reduced scope prompt:
@@ -233,7 +233,7 @@ Re-spawn the agent with a reduced scope prompt:
 
 **Action**: No retry. Write a recovery trace immediately:
 ```bash
-echo '{"agent":"<name>","status":"exhausted","verdict":"incomplete","recovery":true,"checks_performed":["exhaustion-recovery"],"timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}' > .claude/runs/agent-traces/<name>.json
+echo '{"agent":"<name>","status":"exhausted","verdict":"incomplete","recovery":true,"checks_performed":["exhaustion-recovery"],"timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}' > .runs/agent-traces/<name>.json
 ```
 
 Continue to next STATE. Note in verify report: "Agent <name> exhausted turns — skipped."

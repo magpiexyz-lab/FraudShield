@@ -504,7 +504,7 @@ Step 8: 找到 SCALE 判决的 MVP
 
 ### 8.2 iterate-manifest.json 中的关键字段
 
-`/iterate` 自动生成 `.claude/runs/iterate-manifest.json`：
+`/iterate` 自动生成 `.runs/iterate-manifest.json`：
 
 ```json
 {

@@ -12,7 +12,7 @@ Compile all data into a structured document with these sections:
 3. **Stack Used** -- from experiment.yaml `stack`
 4. **Team Assessment** -- answers to Q2-Q4
 5. **Template Improvement Suggestions** -- specific, actionable changes mapped to template components (e.g., "Add X to the bootstrap skill", "Change Y in CLAUDE.md Rule Z")
-6. **Skill Quality Summary** -- per-skill Q-score table from `.claude/runs/verify-history.jsonl` (if available):
+6. **Skill Quality Summary** -- per-skill Q-score table from `.runs/verify-history.jsonl` (if available):
 
    | Skill | Runs | Avg Q | Min Q | Top Rework Source |
    |-------|------|-------|-------|-------------------|
@@ -27,7 +27,7 @@ Show the full retro to the user before filing.
 
 **VERIFY:**
 ```bash
-test -f .claude/runs/retro-interview.json && test -f .claude/runs/retro-context.json
+test -f .runs/retro-interview.json && test -f .runs/retro-context.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

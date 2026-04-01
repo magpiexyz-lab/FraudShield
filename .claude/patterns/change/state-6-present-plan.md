@@ -22,13 +22,13 @@ validation = {
     'component_reuse': {'checked': True, 'result': '<pass|fail|skip>', 'details': '<explanation>'},
     'analytics_naming': {'checked': True, 'result': '<pass|fail|skip>', 'details': '<explanation>'}
 }
-json.dump(validation, open('.claude/runs/plan-validation.json', 'w'), indent=2)
+json.dump(validation, open('.runs/plan-validation.json', 'w'), indent=2)
 "
 ```
 
 **Plan structure validation** (before presenting for approval):
 - Feature plans classified as Multi-layer: verify `## Approaches` section exists
-- All plans: if `.claude/runs/iterate-manifest.json` exists, verify the plan's Why section references the iterate bottleneck
+- All plans: if `.runs/iterate-manifest.json` exists, verify the plan's Why section references the iterate bottleneck
 - Production plans: verify each task with business logic has a specification test in its description
 - All plans: verify `## Exploration Summary` section exists (shows files scanned, patterns found, conflicts detected)
 If validation fails, fix the plan before presenting.
@@ -51,7 +51,7 @@ contents at the top.
 **POSTCONDITIONS:**
 - Plan generated from type-specific template
 - Plan validated against codebase (plan-validation.md)
-- `.claude/runs/plan-validation.json` exists with all 5 checks having `checked` field
+- `.runs/plan-validation.json` exists with all 5 checks having `checked` field
 - Plan structure validation passed
 - G2 Plan Gate passed
 - Plan displayed to user in response text
@@ -60,7 +60,7 @@ contents at the top.
 ```bash
 python3 -c "
 import json
-d = json.load(open('.claude/runs/plan-validation.json'))
+d = json.load(open('.runs/plan-validation.json'))
 checks = ['route_conflict', 'schema_conflict', 'import_availability', 'component_reuse', 'analytics_naming']
 missing = [c for c in checks if c not in d]
 assert not missing, 'plan-validation.json missing checks: %s' % missing

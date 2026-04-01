@@ -20,7 +20,7 @@ For each resolved issue, evaluate:
 
 Skip if: trivial fix (typo) unlikely to recur.
 
-- **Write patterns-saved artifact** (`.claude/runs/patterns-saved.json`):
+- **Write patterns-saved artifact** (`.runs/patterns-saved.json`):
   ```bash
   python3 -c "
   import json
@@ -28,17 +28,17 @@ Skip if: trivial fix (typo) unlikely to recur.
       'patterns_saved': [],  # list of pattern descriptions saved to memory
       'skipped_reason': ''   # if skipped: rationale
   }
-  json.dump(saved, open('.claude/runs/patterns-saved.json', 'w'), indent=2)
+  json.dump(saved, open('.runs/patterns-saved.json', 'w'), indent=2)
   "
   ```
 
 **POSTCONDITIONS:**
 - Resolution patterns saved to auto memory (or skipped with rationale)
-- `.claude/runs/patterns-saved.json` exists
+- `.runs/patterns-saved.json` exists
 
 **VERIFY:**
 ```bash
-test -f .claude/runs/patterns-saved.json
+test -f .runs/patterns-saved.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

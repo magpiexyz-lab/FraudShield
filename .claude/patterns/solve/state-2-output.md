@@ -12,7 +12,7 @@ Present the output exactly as specified in solve-reasoning.md Phase 6 (full mode
 Compute solve quality (see `.claude/patterns/skill-scoring.md`):
 
 ```bash
-RUN_ID=$(python3 -c "import json; print(json.load(open('.claude/runs/solve-context.json')).get('run_id', ''))" 2>/dev/null || echo "")
+RUN_ID=$(python3 -c "import json; print(json.load(open('.runs/solve-context.json')).get('run_id', ''))" 2>/dev/null || echo "")
 python3 .claude/scripts/write-q-score.py \
   --skill solve --scope solve --archetype N/A \
   --gate 1.0 --dims '{"depth": 1.0, "output": 1.0}' \
@@ -34,7 +34,7 @@ The user decides next steps:
 
 **VERIFY:**
 ```bash
-test -f .claude/runs/solve-trace.json && test -f .claude/runs/solve-context.json
+test -f .runs/solve-trace.json && test -f .runs/solve-context.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

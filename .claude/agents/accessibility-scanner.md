@@ -73,8 +73,8 @@ If no issues found:
 After completing all work, write a trace file:
 
 ```bash
-RUN_ID=$(python3 -c "import json;print(json.load(open('.claude/runs/verify-context.json')).get('run_id',''))" 2>/dev/null || echo "")
-mkdir -p .claude/runs/agent-traces && echo '{"agent":"accessibility-scanner","timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","verdict":"<verdict>","checks_performed":["axe_scan","tab_order"],"pages_scanned":<N>,"run_id":"'"$RUN_ID"'"}' > .claude/runs/agent-traces/accessibility-scanner.json
+RUN_ID=$(python3 -c "import json;print(json.load(open('.runs/verify-context.json')).get('run_id',''))" 2>/dev/null || echo "")
+mkdir -p .runs/agent-traces && echo '{"agent":"accessibility-scanner","timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","verdict":"<verdict>","checks_performed":["axe_scan","tab_order"],"pages_scanned":<N>,"run_id":"'"$RUN_ID"'"}' > .runs/agent-traces/accessibility-scanner.json
 ```
 
 Replace `<verdict>` with `"pass"` if no issues, or `"N issues"` with the count.

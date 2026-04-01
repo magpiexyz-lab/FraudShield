@@ -13,7 +13,7 @@ import sys
 
 def check_completed_states(skill, required_states, errors):
     """Check that specific state IDs are present in completed_states."""
-    ctx_file = '.claude/runs/verify-context.json' if skill == 'verify' else f'.claude/runs/{skill}-context.json'
+    ctx_file = '.runs/verify-context.json' if skill == 'verify' else f'.runs/{skill}-context.json'
 
     if not os.path.isfile(ctx_file):
         errors.append(f'{ctx_file} not found')
@@ -69,7 +69,7 @@ def check_postconditions(skill, state_range, errors):
 
 def check_plan_fields(fields, errors):
     """Check that current-plan.md YAML frontmatter contains specified fields."""
-    plan_path = '.claude/runs/current-plan.md'
+    plan_path = '.runs/current-plan.md'
     if not os.path.isfile(plan_path):
         errors.append('current-plan.md not found')
         return
@@ -92,13 +92,13 @@ def check_plan_fields(fields, errors):
 
 def check_q_score(skill, min_score, errors):
     """Check verify-history.jsonl for Q-score at or above threshold."""
-    history_path = '.claude/runs/verify-history.jsonl'
+    history_path = '.runs/verify-history.jsonl'
     if not os.path.isfile(history_path):
         errors.append('verify-history.jsonl not found')
         return
 
     # Read run_id from context
-    ctx_file = '.claude/runs/verify-context.json' if skill == 'verify' else f'.claude/runs/{skill}-context.json'
+    ctx_file = '.runs/verify-context.json' if skill == 'verify' else f'.runs/{skill}-context.json'
     run_id = None
     if os.path.isfile(ctx_file):
         ctx = json.load(open(ctx_file))

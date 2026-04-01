@@ -152,7 +152,7 @@ template file and follow `.claude/patterns/observe.md` if so.
 All 15 skills use state machines with JIT (Just-In-Time) dispatch. Each skill's command file (`.claude/commands/<skill>.md`) contains a dispatch table pointing to state files at `.claude/patterns/<skill>/state-*.md`. Read only one state file at a time — never read ahead.
 - Each state file has 6 required sections: PRECONDITIONS, ACTIONS, POSTCONDITIONS, VERIFY, STATE TRACKING, NEXT
 - `.claude/patterns/state-registry.json` maps every skill's states to postcondition checks, enforced at runtime by `.claude/hooks/state-completion-gate.sh`
-- Context files (`.claude/runs/<skill>-context.json`) track execution state with base schema: `{skill, branch, timestamp, completed_states}`
+- Context files (`.runs/<skill>-context.json`) track execution state with base schema: `{skill, branch, timestamp, completed_states}`
 - To modify a skill's behavior, edit the corresponding state files (`.claude/patterns/<skill>/state-*.md`) — don't modify the orchestrator (`.claude/commands/<skill>.md`) without also updating state files and `state-registry.json`
 - To add or remove states, update both the state file on disk and the registry entry — they must stay in sync
 - Never remove the VERIFY or STATE TRACKING sections from a state file

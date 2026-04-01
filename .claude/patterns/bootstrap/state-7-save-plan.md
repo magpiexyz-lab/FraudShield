@@ -7,7 +7,7 @@
 
 Follow checkpoint-resumption protocol per `patterns/checkpoint-resumption.md`.
 
-Write the plan to `.claude/runs/current-plan.md` with YAML frontmatter:
+Write the plan to `.runs/current-plan.md` with YAML frontmatter:
 
 ```yaml
 ---
@@ -61,14 +61,14 @@ If the user replied **"approve and clear"** or **"2"**:
   3. STOP — do NOT proceed to STATE 8.
 
 **POSTCONDITIONS:**
-- `.claude/runs/current-plan.md` exists with YAML frontmatter
+- `.runs/current-plan.md` exists with YAML frontmatter
 - Plan body is appended
 - `## Process Checklist` section present with all 16 checklist items
 - Items completed so far are checked off
 
 **VERIFY:**
 ```bash
-test -f .claude/runs/current-plan.md && grep -q '## Process Checklist' .claude/runs/current-plan.md && echo "OK" || echo "FAIL"
+test -f .runs/current-plan.md && grep -q '## Process Checklist' .runs/current-plan.md && echo "OK" || echo "FAIL"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

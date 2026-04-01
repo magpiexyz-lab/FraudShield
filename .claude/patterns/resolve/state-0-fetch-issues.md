@@ -16,19 +16,19 @@ Store the fetched issues as `issue_list`.
 
 Clean stale epilogue artifacts and create context file to initialize state tracking:
 ```bash
-rm -f .claude/runs/observe-result.json
-cat > .claude/runs/resolve-context.json << CTXEOF
+rm -f .runs/observe-result.json
+cat > .runs/resolve-context.json << CTXEOF
 {"skill":"resolve","branch":"$(git branch --show-current)","timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","run_id":"resolve-$(date -u +%Y-%m-%dT%H:%M:%SZ)","completed_states":[0],"issue_list":[]}
 CTXEOF
 ```
 
 **POSTCONDITIONS:**
 - `issue_list` is populated with at least one issue
-- `.claude/runs/resolve-context.json` exists
+- `.runs/resolve-context.json` exists
 
 **VERIFY:**
 ```bash
-test -f .claude/runs/resolve-context.json && echo "OK" || echo "FAIL"
+test -f .runs/resolve-context.json && echo "OK" || echo "FAIL"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

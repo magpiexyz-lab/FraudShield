@@ -36,15 +36,15 @@ To confirm, type the project name: **<name>**
   ```bash
   python3 -c "
   import json
-  ctx = json.load(open('.claude/runs/teardown-context.json'))
+  ctx = json.load(open('.runs/teardown-context.json'))
   ctx['confirmed'] = True
-  json.dump(ctx, open('.claude/runs/teardown-context.json', 'w'), indent=2)
+  json.dump(ctx, open('.runs/teardown-context.json', 'w'), indent=2)
   "
   ```
 
 **VERIFY:**
 ```bash
-python3 -c "import json; assert json.load(open('.claude/runs/teardown-context.json')).get('confirmed') == True, 'confirmed not set'"
+python3 -c "import json; assert json.load(open('.runs/teardown-context.json')).get('confirmed') == True, 'confirmed not set'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

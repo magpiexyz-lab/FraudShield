@@ -40,15 +40,15 @@ _parse_check_result "$ARTIFACT_RESULT"
 # === Section B: Agent Trace Verdicts (Checks 8-11, 13) ===
 # ═══════════════════════════════════════════════════════════════════
 
-TRACE_DIR="$PROJECT_DIR/.claude/runs/agent-traces"
+TRACE_DIR="$PROJECT_DIR/.runs/agent-traces"
 
-if [[ -f "$PROJECT_DIR/.claude/runs/verify-context.json" ]]; then
-  SCOPE=$(read_json_field "$PROJECT_DIR/.claude/runs/verify-context.json" "scope")
-  ARCH=$(read_json_field "$PROJECT_DIR/.claude/runs/verify-context.json" "archetype")
+if [[ -f "$PROJECT_DIR/.runs/verify-context.json" ]]; then
+  SCOPE=$(read_json_field "$PROJECT_DIR/.runs/verify-context.json" "scope")
+  ARCH=$(read_json_field "$PROJECT_DIR/.runs/verify-context.json" "archetype")
 
   # Check 8: design-ux-merge.json required for full/visual + web-app
   if [[ ("$SCOPE" == "full" || "$SCOPE" == "visual") && "$ARCH" == "web-app" ]]; then
-    if [[ ! -f "$PROJECT_DIR/.claude/runs/design-ux-merge.json" ]]; then
+    if [[ ! -f "$PROJECT_DIR/.runs/design-ux-merge.json" ]]; then
       ERRORS+=("design-ux-merge.json not found — Design-UX merge step was skipped (scope=$SCOPE, archetype=$ARCH)")
     fi
   fi

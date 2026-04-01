@@ -9,13 +9,13 @@
    Read the archetype file at `.claude/archetypes/<type>.md` (default `web-app`).
    If archetype is `cli` and surface is `none` (only from explicit `stack.surface: none` —
    CLI defaults to `detached` since `hosting` is in `excluded_stacks`):
-   - If `.claude/runs/deploy-manifest.json` does not exist or has no `surface_url` (or
+   - If `.runs/deploy-manifest.json` does not exist or has no `surface_url` (or
      `surface_url` is null): stop: "No cloud resources to tear down. CLI tools with no
      surface are distributed via `npm publish` — no `/deploy` infrastructure was created."
    - If the manifest exists and has a non-null `surface_url`: warn: "experiment.yaml says
      `surface: none` but the deploy manifest shows surface infrastructure exists. Proceeding
      with teardown of deployed resources."
-2. Read `.claude/runs/deploy-manifest.json`. If missing, stop: "No deploy manifest found.
+2. Read `.runs/deploy-manifest.json`. If missing, stop: "No deploy manifest found.
    Run `/deploy` first, or delete resources manually via each provider's dashboard."
 3. If `hosting` is in the manifest: read `hosting.provider` and load the hosting stack file at
    `.claude/stacks/hosting/<provider>.md`.
@@ -31,23 +31,23 @@
 
 Clean stale epilogue artifacts and create context file to initialize state tracking:
 ```bash
-rm -f .claude/runs/observe-result.json
-cat > .claude/runs/teardown-context.json << CTXEOF
+rm -f .runs/observe-result.json
+cat > .runs/teardown-context.json << CTXEOF
 {"skill":"teardown","branch":"$(git branch --show-current)","timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","run_id":"teardown-$(date -u +%Y-%m-%dT%H:%M:%SZ)","completed_states":[0]}
 CTXEOF
 ```
 
 **POSTCONDITIONS:**
-- `.claude/runs/deploy-manifest.json` exists and has been read
+- `.runs/deploy-manifest.json` exists and has been read
 - experiment.yaml read and validated
 - Archetype file read and surface type resolved
 - Stack files loaded for services present in manifest
 - CLI prerequisites checked
-- `.claude/runs/teardown-context.json` exists
+- `.runs/teardown-context.json` exists
 
 **VERIFY:**
 ```bash
-test -f .claude/runs/deploy-manifest.json && test -f .claude/runs/teardown-context.json && echo "OK" || echo "FAIL"
+test -f .runs/deploy-manifest.json && test -f .runs/teardown-context.json && echo "OK" || echo "FAIL"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

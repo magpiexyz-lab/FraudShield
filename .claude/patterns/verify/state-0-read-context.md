@@ -6,7 +6,7 @@
 
 1. Clean trace directory (removes stale traces from prior runs):
    ```bash
-   rm -rf .claude/runs/agent-traces && mkdir -p .claude/runs/agent-traces
+   rm -rf .runs/agent-traces && mkdir -p .runs/agent-traces
    ```
 
 2. Read context files:
@@ -17,17 +17,17 @@
    - If `stack.testing` is present in experiment.yaml, read `.claude/stacks/testing/<value>.md`
 
 3. Determine skill name:
-   - If `.claude/runs/current-plan.md` exists with a `skill:` field in its frontmatter → use that value (e.g., `"bootstrap"`, `"change"`, `"harden"`)
+   - If `.runs/current-plan.md` exists with a `skill:` field in its frontmatter → use that value (e.g., `"bootstrap"`, `"change"`, `"harden"`)
    - Otherwise → use `"verify"` (standalone mode)
 
 4. Read previous verify baseline (if available), filtered by current skill:
    ```bash
    BASELINE_AVAILABLE=false
-   if [[ -f .claude/runs/verify-history.jsonl ]]; then
+   if [[ -f .runs/verify-history.jsonl ]]; then
      PREV_RUN=$(python3 -c "
    import json
    skill='<skill from step 3>'
-   entries=[json.loads(l) for l in open('.claude/runs/verify-history.jsonl') if l.strip()]
+   entries=[json.loads(l) for l in open('.runs/verify-history.jsonl') if l.strip()]
    matching=[e for e in entries if e.get('skill','')==skill]
    print(json.dumps(matching[-1]) if matching else '')
    " 2>/dev/null || echo "")
@@ -37,16 +37,16 @@
    fi
    ```
 
-5. Write `.claude/runs/verify-context.json` (includes `skill` for Q-score attribution, `run_id` for trace freshness validation, `mode` for PR gate behavior, and `baseline_available` for delta reporting):
+5. Write `.runs/verify-context.json` (includes `skill` for Q-score attribution, `run_id` for trace freshness validation, `mode` for PR gate behavior, and `baseline_available` for delta reporting):
    ```bash
-   cat > .claude/runs/verify-context.json << CTXEOF
+   cat > .runs/verify-context.json << CTXEOF
    {"scope":"<scope>","archetype":"<type>","quality":"<quality|mvp>","skill":"<skill from step 3>","mode":"<standalone if skill is verify, otherwise the skill name + -verify e.g. bootstrap-verify, change-verify>","branch":"$(git branch --show-current)","timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","run_id":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","baseline_available":$BASELINE_AVAILABLE,"completed_states":[0]}
    CTXEOF
    ```
 
-6. Create `.claude/runs/fix-log.md` on disk:
+6. Create `.runs/fix-log.md` on disk:
    ```bash
-   echo '# Error Fix Log' > .claude/runs/fix-log.md
+   echo '# Error Fix Log' > .runs/fix-log.md
    ```
 
 7. Extract context digest (in-memory, passed to agents in STATE 2/3):
@@ -61,7 +61,7 @@
 
 **VERIFY:**
 ```bash
-test -f .claude/runs/verify-context.json && test -f .claude/runs/fix-log.md && test -d .claude/runs/agent-traces
+test -f .runs/verify-context.json && test -f .runs/fix-log.md && test -d .runs/agent-traces
 ```
 
 > **Hook-enforced:** `agent-state-gate.sh` validates these postconditions before allowing the next state's agents to spawn.

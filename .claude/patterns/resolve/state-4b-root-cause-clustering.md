@@ -25,7 +25,7 @@ Present in diagnosis report:
 - Uncorrelated: #C
 ```
 
-- **Write clustering artifact** (`.claude/runs/resolve-clusters.json`):
+- **Write clustering artifact** (`.runs/resolve-clusters.json`):
   ```bash
   python3 -c "
   import json
@@ -35,18 +35,18 @@ Present in diagnosis report:
       ],
       'uncorrelated': []
   }
-  json.dump(clusters, open('.claude/runs/resolve-clusters.json', 'w'), indent=2)
+  json.dump(clusters, open('.runs/resolve-clusters.json', 'w'), indent=2)
   "
   ```
 
 **POSTCONDITIONS:**
 - Issues grouped into clusters (or marked uncorrelated)
 - Each cluster has a designated primary issue
-- `.claude/runs/resolve-clusters.json` exists
+- `.runs/resolve-clusters.json` exists
 
 **VERIFY:**
 ```bash
-test -f .claude/runs/resolve-clusters.json
+test -f .runs/resolve-clusters.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

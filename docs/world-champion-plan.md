@@ -92,7 +92,7 @@ All PRs can be developed in parallel on separate branches.
 **Key design decisions:**
 - Read-only for database (no automatic DB rollback — too dangerous)
 - Hosting rollback only (revert to previous deployment)
-- Reads `.claude/runs/deploy-manifest.json` for hosting provider
+- Reads `.runs/deploy-manifest.json` for hosting provider
 - Reads hosting stack file's `## Deploy Interface` for rollback command
 - No branch/PR needed — this is an emergency operation
 
@@ -103,7 +103,7 @@ All PRs can be developed in parallel on separate branches.
 description: "Roll back to the previous production deployment. Emergency use — no branch or PR."
 type: analysis-only
 reads:
-  - .claude/runs/deploy-manifest.json
+  - .runs/deploy-manifest.json
   - experiment/experiment.yaml
 stack_categories: [hosting]
 requires_approval: true
@@ -204,7 +204,7 @@ modifies_specs: false
 - **Manual cleanup:** If you want to start fresh: `git checkout main && make clean`
 
 ### /deploy failure (most common)
-- **State saved:** `.claude/runs/deploy-manifest.json` (resources created so far)
+- **State saved:** `.runs/deploy-manifest.json` (resources created so far)
 - **Partial state scenarios:**
   | Failed at | Resources exist | Recovery |
   |-----------|----------------|----------|
@@ -258,7 +258,7 @@ modifies_specs: false
 
 1. Add to **Step 0** (after line 26, build check):
    ```
-   11. **Recovery check:** If `.claude/runs/deploy-manifest.json` exists, read it and report:
+   11. **Recovery check:** If `.runs/deploy-manifest.json` exists, read it and report:
        "Previous deploy detected (deployed_at: <timestamp>). Resources may already exist.
        `/deploy` is idempotent — re-running will reuse existing resources and update configuration.
        Reply **continue** to proceed, or run `/teardown` first to start fresh."
@@ -462,7 +462,7 @@ modifies_specs: false
    ```markdown
    ### Save analysis for /change context
 
-   Write `.claude/runs/iterate-manifest.json`:
+   Write `.runs/iterate-manifest.json`:
    ```json
    {
      "verdict": "<GO|NO-GO|PIVOT|MONITOR|TOO_EARLY>",
@@ -488,7 +488,7 @@ modifies_specs: false
 
 2. **`.claude/commands/change.md`** — In Step 2 (Read context, after line 36), add:
    ```markdown
-   - If `.claude/runs/iterate-manifest.json` exists, read it for context:
+   - If `.runs/iterate-manifest.json` exists, read it for context:
      - Include the verdict, bottleneck, and recommendations in the plan (Phase 1)
      - Reference: "This change addresses the [bottleneck.stage] bottleneck identified by /iterate ([bottleneck.diagnosis])"
      - This provides continuity between analysis and implementation
@@ -599,8 +599,8 @@ For each category in experiment.yaml `stack`:
 
 ## Optional Context (read if file exists)
 - `.claude/current-plan.md` — persisted plan from previous session
-- `.claude/runs/iterate-manifest.json` — analysis from last /iterate run
-- `.claude/runs/deploy-manifest.json` — resources from last /deploy run
+- `.runs/iterate-manifest.json` — analysis from last /iterate run
+- `.runs/deploy-manifest.json` — resources from last /deploy run
 - `experiment/on-touch.yaml` — modules deferred for hardening
 
 ## How to Reference

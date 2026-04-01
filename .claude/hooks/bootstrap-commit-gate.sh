@@ -29,7 +29,7 @@ fi
 # --- Final bootstrap commit detected — run gate checks ---
 
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-.}"
-PLAN="$PROJECT_DIR/.claude/runs/current-plan.md"
+PLAN="$PROJECT_DIR/.runs/current-plan.md"
 ERRORS=()
 
 # Check 1: current-plan.md exists
@@ -39,7 +39,7 @@ fi
 
 if [[ -f "$PLAN" ]]; then
   # Primary: verdict files
-  VERDICTS_DIR="$PROJECT_DIR/.claude/runs/gate-verdicts"
+  VERDICTS_DIR="$PROJECT_DIR/.runs/gate-verdicts"
   check_verdict_gates "bg1 bg2 bg2.5 bg4" "$VERDICTS_DIR"
 
   # Freshness: BG1 timestamp > branch creation
@@ -70,7 +70,7 @@ if [[ -f "$PLAN" ]]; then
 fi
 
 # Check 5: completed_states in bootstrap-context.json (defense-in-depth)
-BOOTSTRAP_CTX="$PROJECT_DIR/.claude/runs/bootstrap-context.json"
+BOOTSTRAP_CTX="$PROJECT_DIR/.runs/bootstrap-context.json"
 if [[ -f "$BOOTSTRAP_CTX" ]]; then
   STATES=$(normalize_states "$BOOTSTRAP_CTX")
   REQUIRED=$(get_required_states "bootstrap")

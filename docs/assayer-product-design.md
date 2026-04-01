@@ -1231,7 +1231,7 @@ deploy:
 6. **Variants** — 3-5 angles, >30% headline word difference. L3 + monetize: add `pricing_amount`, `pricing_model`.
 7. **Stack/funnel** — Stack from level (Section 1 table). Hosting from type + behavior analysis. Funnel thresholds from highest-priority hypothesis per dimension.
 
-**Manifest:** `.claude/runs/spec-manifest.json` with research, hypotheses. For `/iterate`. Not user-facing.
+**Manifest:** `.runs/spec-manifest.json` with research, hypotheses. For `/iterate`. Not user-facing.
 
 ### `/iterate` — Scorecard + Per-Hypothesis Verdicts
 
@@ -2089,9 +2089,9 @@ Alerts persist in `experiment_alerts` until resolved. Channel-specific failures 
 ### Skill-to-Skill Data Flow
 
 ```
-/spec        → writes experiment/experiment.yaml + .claude/runs/spec-manifest.json
+/spec        → writes experiment/experiment.yaml + .runs/spec-manifest.json
 /bootstrap   → reads experiment/experiment.yaml
-/iterate     → reads .claude/runs/spec-manifest.json → writes .claude/runs/iterate-manifest.json
+/iterate     → reads .runs/spec-manifest.json → writes .runs/iterate-manifest.json
 ```
 
 Manifests are workspace artifacts committed to experiment repos. Supabase is the persistent layer — manifests are regenerated from Supabase data when containers start.

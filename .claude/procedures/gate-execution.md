@@ -8,7 +8,7 @@
    and a checklist of items to verify.
 
 2. **Gate-keeper writes verdict.** The agent evaluates each check item and writes
-   a verdict file to `.claude/runs/gate-verdicts/<gate-id>.json`.
+   a verdict file to `.runs/gate-verdicts/<gate-id>.json`.
 
 3. **Hooks read and enforce.** Pre-tool-use hooks (`bootstrap-commit-gate.sh`,
    `agent-state-gate.sh`, `verify-pr-gate.sh`) read verdict files and block
@@ -58,6 +58,6 @@ Hooks enforce two freshness constraints:
 
 ## Directory
 
-All verdict files live in `.claude/runs/gate-verdicts/`. This directory is cleaned
+All verdict files live in `.runs/gate-verdicts/`. This directory is cleaned
 at the start of each skill run (e.g., bootstrap STATE 0 runs
-`rm -rf .claude/runs/gate-verdicts`).
+`rm -rf .runs/gate-verdicts`).

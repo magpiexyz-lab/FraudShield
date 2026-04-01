@@ -99,11 +99,11 @@ If no behaviors have `actor: system` or `actor: cron`: "None defined — all beh
 
 **POSTCONDITIONS:**
 - Plan displayed to user with all required sections
-- `.claude/runs/current-plan.md` exists (plan is the artifact)
+- `.runs/current-plan.md` exists (plan is the artifact)
 
 **VERIFY:**
 ```bash
-test -f .claude/runs/current-plan.md
+test -f .runs/current-plan.md
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

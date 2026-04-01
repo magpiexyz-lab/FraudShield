@@ -11,7 +11,7 @@
 2. Verify `experiment/EVENTS.yaml` exists. If not, stop: "experiment/EVENTS.yaml not found. This file defines all analytics events and is required."
 3. Verify `experiment/EVENTS.yaml` contains an `events` key that is a dict (flat map). If not, stop: "experiment/EVENTS.yaml is malformed — the `events` key is missing or not a dict. Run `make validate` to diagnose, or restore the file from the template."
 4. Verify `package.json` exists. If not, stop: "No app found. Run `/bootstrap` first to create the app, deploy it, then run `/distribute`."
-5. Verify the app is deployed: check `landing_url` in existing `experiment/ads.yaml`, or check `surface_url` (then `canonical_url`) in `.claude/runs/deploy-manifest.json`, or ask the user for the deployed URL. For CLI archetype, the surface URL IS the target URL. If the user does not have a deployed URL, stop: "The app must be deployed before running `/distribute` — ad campaigns need a live surface page. Run `/deploy` first, then re-run `/distribute`."
+5. Verify the app is deployed: check `landing_url` in existing `experiment/ads.yaml`, or check `surface_url` (then `canonical_url`) in `.runs/deploy-manifest.json`, or ask the user for the deployed URL. For CLI archetype, the surface URL IS the target URL. If the user does not have a deployed URL, stop: "The app must be deployed before running `/distribute` — ad campaigns need a live surface page. Run `/deploy` first, then re-run `/distribute`."
 6. **Channel selection:**
    1. List available channels by scanning `.claude/stacks/distribution/*.md` (strip the `.md` extension to get channel names)
    2. Ask: "Which distribution channel? Available: [channels]. Enter channel name:"
@@ -25,7 +25,7 @@
    5. Non-blocking — the user can confirm to proceed or switch channel
 8. Verify `stack.analytics` is present in experiment.yaml. If not, stop: "Analytics is required for distribution tracking. Add `analytics: posthog` (or another provider) to experiment.yaml `stack` and run `/change add analytics` to scaffold analytics support, then re-run `/distribute`."
 9. Verify the analytics stack is configured: read the analytics stack file's `env` frontmatter. If `env.client` lists a client env var, check that it appears in `.env.example`. If the env var is not found in `.env.example`, stop: "Analytics is not configured. Verify `.env.example` contains the analytics client key, or run `/bootstrap` first to scaffold the app with analytics." If `env.client` is empty, the stack uses hardcoded keys (e.g., PostHog's shared publishable key) — skip this check.
-10. **Live analytics verification:** Read `name` from experiment.yaml and `deployed_at` from `.claude/runs/deploy-manifest.json`. Read `stack.analytics` value from experiment.yaml and read the analytics stack file at `.claude/stacks/analytics/<value>.md`. Find the **Auto Query** section — it contains provider-specific credential setup, project discovery, and query syntax. Follow the Auto Query instructions to verify live events:
+10. **Live analytics verification:** Read `name` from experiment.yaml and `deployed_at` from `.runs/deploy-manifest.json`. Read `stack.analytics` value from experiment.yaml and read the analytics stack file at `.claude/stacks/analytics/<value>.md`. Find the **Auto Query** section — it contains provider-specific credential setup, project discovery, and query syntax. Follow the Auto Query instructions to verify live events:
     - Query for `visit_landing` events filtered by `project_name = '<name>'` since `<deployed_at>`.
     - If count > 0, log "✓ Analytics verified: visit_landing events found" and continue.
     - If count = 0, run a secondary diagnostic query for ALL events matching the project name since deployment.
@@ -44,7 +44,7 @@
 - Analytics stack is configured and verified
 - Live analytics verification passed (visit_landing events found)
 
-- **Write preconditions artifact** (`.claude/runs/distribute-preconditions.json`):
+- **Write preconditions artifact** (`.runs/distribute-preconditions.json`):
   ```bash
   python3 -c "
   import json
@@ -55,13 +55,13 @@
       'channel': '<selected channel>',
       'analytics_verified': True
   }
-  json.dump(preconditions, open('.claude/runs/distribute-preconditions.json', 'w'), indent=2)
+  json.dump(preconditions, open('.runs/distribute-preconditions.json', 'w'), indent=2)
   "
   ```
 
 **VERIFY:**
 ```bash
-test -f .claude/runs/distribute-preconditions.json
+test -f .runs/distribute-preconditions.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

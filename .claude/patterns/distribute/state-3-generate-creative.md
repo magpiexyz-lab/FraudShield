@@ -45,7 +45,7 @@ When experiment.yaml has a `variants` field, generate per-variant creative:
 - Message match verified against landing page headline
 - If variants exist: per-variant ad groups generated with utm_content and /v/{slug} URLs
 
-- **Write creative artifact** (`.claude/runs/distribute-creative.json`):
+- **Write creative artifact** (`.runs/distribute-creative.json`):
   ```bash
   python3 -c "
   import json
@@ -55,13 +55,13 @@ When experiment.yaml has a `variants` field, generate per-variant creative:
       'utm_params_verified': True,
       'message_match_verified': True
   }
-  json.dump(creative, open('.claude/runs/distribute-creative.json', 'w'), indent=2)
+  json.dump(creative, open('.runs/distribute-creative.json', 'w'), indent=2)
   "
   ```
 
 **VERIFY:**
 ```bash
-test -f .claude/runs/distribute-creative.json
+test -f .runs/distribute-creative.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
