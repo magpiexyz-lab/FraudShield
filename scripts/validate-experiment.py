@@ -292,11 +292,11 @@ if behaviors is not None:
             if not isinstance(b_trigger, str) or not b_trigger.strip():
                 print(f"Error: behaviors[{i}].trigger must be a non-empty string (or remove it)"); sys.exit(1)
 
-        # Optional tests field: must be list of 1-3 strings
+        # Optional tests field: must be list of 1-5 strings
         b_tests = b.get("tests")
         if b_tests is not None:
-            if not isinstance(b_tests, list) or not (1 <= len(b_tests) <= 3):
-                print(f"Error: behaviors[{i}].tests must be a list of 1-3 strings"); sys.exit(1)
+            if not isinstance(b_tests, list) or not (1 <= len(b_tests) <= 5):
+                print(f"Error: behaviors[{i}].tests must be a list of 1-5 strings"); sys.exit(1)
             for j, t in enumerate(b_tests):
                 if not isinstance(t, str) or not t.strip():
                     print(f"Error: behaviors[{i}].tests[{j}] must be a non-empty string"); sys.exit(1)

@@ -18,7 +18,7 @@ For each hypothesis, derive 1-3 behaviors that, if observed, would validate or i
   given: "A visitor lands on the landing page"
   when: "They read the headline and see the CTA"
   then: "They click the CTA button"
-  tests:                         # 1-3 verifiable assertions
+  tests:                         # 1-5 verifiable assertions
     - "Landing page renders CTA button"
     - "Clicking CTA navigates to signup"
   level: 1                       # Matches the hypothesis level
