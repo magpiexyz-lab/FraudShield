@@ -42,7 +42,7 @@ python3 .claude/scripts/write-q-score.py \
 After filing the retro, guide the user:
 - If the archetype is `web-app` or `service` and cloud infrastructure was deployed: "If you're done with this experiment, run `/teardown` to remove cloud resources (Vercel, Supabase, etc.)."
 - If the archetype is `cli` and `surface` is `none` (or no surface was deployed): "CLI tools with no surface have no cloud infrastructure to tear down. If you want to unpublish the npm package, run `npm unpublish <name>` (within 72 hours of publish) or deprecate it with `npm deprecate <name> \"Experiment concluded\"`."
-- If the archetype is `cli` and `surface` is `detached` or `co-located` (default for CLI is `detached`): "Your marketing surface is deployed to cloud infrastructure. Run `/teardown` to remove it. For the npm package, run `npm unpublish <name>` (within 72 hours of publish) or deprecate it with `npm deprecate <name> \"Experiment concluded\"`."
+- If the archetype is `cli` and `surface` is `detached` (default for CLI): "Your marketing surface is deployed to cloud infrastructure. Run `/teardown` to remove it. For the npm package, run `npm unpublish <name>` (within 72 hours of publish) or deprecate it with `npm deprecate <name> \"Experiment concluded\"`."
 - For all archetypes: "Your source code, experiment.yaml, and experiment history are preserved on the main branch."
 
 **POSTCONDITIONS:**

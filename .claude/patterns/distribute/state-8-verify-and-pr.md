@@ -9,7 +9,7 @@ Before running verify.md, validate that distribute artifacts were created:
 
 1. **ads.yaml**: verify `experiment/ads.yaml` exists (Glob). If missing, stop — "ads.yaml was not generated. Re-run Step 5."
 2. **UTM capture**: Grep for `utm_source` in the landing page file. If no match, warn — "UTM capture may not be wired on the landing page (Step 7a)."
-3. **Feedback widget**: if archetype is `web-app`, verify feedback widget component exists (Glob `src/components/*feedback*`). If archetype is `service` or `cli`, verify feedback form exists in the surface file (Grep for `feedback` in the surface file — `site/index.html` for detached, root route handler for co-located). If missing, warn — "Feedback widget not found (Step 7c)."
+3. **Feedback widget**: if archetype is `web-app`, verify feedback widget component exists (Glob `src/components/*feedback*`). If archetype is `service`, verify feedback form exists in the surface file (Grep for `feedback` in the surface file — `site/index.html` for detached, root route handler for co-located). If archetype is `cli` (surface is always detached), verify feedback form in `site/index.html`. If missing, warn — "Feedback widget not found (Step 7c)."
 
 If any check returns "stop", halt before verify.md. Warnings are non-blocking — proceed and include in PR body.
 

@@ -58,6 +58,15 @@
   E2EEOF
   ```
 
+  **Phase C: Specification tests (quality:production with co-installed vitest)**
+
+  If `quality: production` is set in experiment.yaml AND the primary test runner is NOT vitest (e.g., `playwright`) AND a `vitest.config.ts` file exists on disk:
+
+  1. Run: `npx vitest run`
+  2. If vitest passes: update `.runs/e2e-result.json` to include `"spec_passed": true`
+  3. If vitest fails: apply the same 3-attempt fix budget as Phase B (independent budget). After each fix, append to `.runs/fix-log.md`: `Fix (spec): <file> — <description>`. Update `.runs/e2e-result.json` to include `"spec_passed": <true|false>, "spec_attempts": <N>`
+  4. If no `vitest.config.ts` exists, skip Phase C (vitest was not co-installed)
+
 **POSTCONDITIONS:** `e2e-result.json` exists.
 
 **VERIFY:**
