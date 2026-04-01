@@ -123,14 +123,18 @@ Called by Vercel Cron daily. Queries the database for users who signed up > 24h 
 
 ```ts
 import { NextRequest, NextResponse } from "next/server";
+import { timingSafeEqual } from "crypto";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { sendActivationNudge } from "@/lib/email";
 import { trackServerEvent } from "@/lib/analytics-server";
 
 export async function GET(req: NextRequest) {
-  // Validate cron secret
-  const authHeader = req.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  // Validate cron secret (timing-safe to prevent side-channel attacks)
+  const authHeader = req.headers.get("authorization") ?? "";
+  const expected = `Bearer ${process.env.CRON_SECRET}`;
+  const a = Buffer.from(authHeader);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !timingSafeEqual(a, b)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

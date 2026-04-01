@@ -242,5 +242,20 @@ import { NavBar } from "@/components/nav-bar";
 - Validate all API route inputs with zod before processing
 - Return generic error messages to the client — do not leak stack traces or internal details
 
+## Known Issues
+
+### When verifying shared secrets in API routes (cron triggers, webhooks)
+Use `crypto.timingSafeEqual` instead of `===` or `!==`. String equality is vulnerable to timing side-channels — an attacker can infer secret characters by measuring response-time differences.
+
+```typescript
+import { timingSafeEqual } from "crypto";
+
+function verifySecret(provided: string, expected: string): boolean {
+  const a = Buffer.from(provided);
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+```
+
 ## PR Instructions
 - No additional framework setup needed after merging — `npm install && npm run dev` is sufficient
