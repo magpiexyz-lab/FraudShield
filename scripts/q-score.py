@@ -14,7 +14,7 @@ from collections import defaultdict
 from statistics import median
 
 
-HISTORY_FILE = ".claude/runs/verify-history.jsonl"
+HISTORY_FILE = ".runs/verify-history.jsonl"
 WINDOW_SIZE = 5  # sliding window for median
 
 

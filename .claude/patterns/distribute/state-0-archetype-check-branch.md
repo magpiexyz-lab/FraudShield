@@ -10,9 +10,9 @@ Read the archetype file at `.claude/archetypes/<type>.md` (type from experiment.
 
 If surface ≠ none, proceed regardless of archetype. Follow `.claude/patterns/branch.md`. Branch: `chore/distribute`.
 
-Create `.claude/runs/distribute-context.json` to initialize state tracking:
+Create `.runs/distribute-context.json` to initialize state tracking:
 ```bash
-cat > .claude/runs/distribute-context.json << CTXEOF
+cat > .runs/distribute-context.json << CTXEOF
 {"skill":"distribute","branch":"$(git branch --show-current)","timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","run_id":"distribute-$(date -u +%Y-%m-%dT%H:%M:%SZ)","completed_states":[0]}
 CTXEOF
 ```
@@ -20,7 +20,7 @@ CTXEOF
 **POSTCONDITIONS:**
 - Current branch is `chore/distribute` (or `chore/distribute-N` if prior branch exists)
 - Branch is not `main`
-- `.claude/runs/distribute-context.json` exists
+- `.runs/distribute-context.json` exists
 
 **VERIFY:**
 ```bash

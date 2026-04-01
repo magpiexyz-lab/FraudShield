@@ -5,13 +5,13 @@ hard gate — all other skills use `|| true` to ensure scoring failure is silent
 
 ## Protocol
 
-1. Read `.claude/runs/<skill>-context.json` for `skill` and `run_id`
+1. Read `.runs/<skill>-context.json` for `skill` and `run_id`
 2. Compute skill-specific dimensions per the dimension registry in `q-score.md`
 3. Pre-compute gate (skill-specific logic, passed as `--gate`)
 4. Call the shared writer:
 
 ```bash
-RUN_ID=$(python3 -c "import json; print(json.load(open('.claude/runs/<skill>-context.json')).get('run_id', ''))" 2>/dev/null || echo "")
+RUN_ID=$(python3 -c "import json; print(json.load(open('.runs/<skill>-context.json')).get('run_id', ''))" 2>/dev/null || echo "")
 
 python3 .claude/scripts/write-q-score.py \
   --skill "<skill>" --scope "<scope>" --archetype "<archetype>" \

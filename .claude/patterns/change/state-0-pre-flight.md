@@ -14,9 +14,9 @@
 - Run `npm run build` to confirm the project compiles before making changes (unless `$ARGUMENTS` describes a fix). If the build fails and the change is not a build fix: stop and tell the user: "The app has build errors that need to be fixed first. Run `/change fix build errors` to address them."
 - **G1 Pre-flight Gate**: Spawn the `gate-keeper` agent (`subagent_type: gate-keeper`). Pass: "Execute G1 Pre-flight Gate. Verify: package.json exists, experiment/EVENTS.yaml exists, build passes (unless fix type), $ARGUMENTS is non-empty." If gate-keeper returns BLOCK, stop and report blocking items to user.
 
-Create `.claude/runs/change-context.json` to initialize state tracking:
+Create `.runs/change-context.json` to initialize state tracking:
 ```bash
-cat > .claude/runs/change-context.json << CTXEOF
+cat > .runs/change-context.json << CTXEOF
 {"skill":"change","branch":"$(git branch --show-current)","timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","run_id":"change-$(date -u +%Y-%m-%dT%H:%M:%SZ)","completed_states":[0],"preliminary_type":null,"affected_areas":null,"solve_depth":null}
 CTXEOF
 ```
@@ -27,11 +27,11 @@ CTXEOF
 - `experiment/EVENTS.yaml` exists
 - Build passes (unless change is a fix)
 - G1 Pre-flight Gate passed
-- `.claude/runs/change-context.json` exists
+- `.runs/change-context.json` exists
 
 **VERIFY:**
 ```bash
-test -f package.json && test -f experiment/EVENTS.yaml && test -f .claude/runs/change-context.json && echo "OK" || echo "FAIL"
+test -f package.json && test -f experiment/EVENTS.yaml && test -f .runs/change-context.json && echo "OK" || echo "FAIL"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

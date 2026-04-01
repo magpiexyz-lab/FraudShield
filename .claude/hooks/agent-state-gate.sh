@@ -11,12 +11,12 @@ parse_payload
 SUBAGENT_TYPE=$(read_payload_field "tool_input.subagent_type")
 
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-.}"
-TRACES_DIR="$PROJECT_DIR/.claude/runs/agent-traces"
+TRACES_DIR="$PROJECT_DIR/.runs/agent-traces"
 ERRORS=()
 
 # ── Fast-path: no context files → no skill active → allow ──
 shopt -s nullglob
-CTX_FILES=("$PROJECT_DIR"/.claude/runs/*-context.json)
+CTX_FILES=("$PROJECT_DIR"/.runs/*-context.json)
 shopt -u nullglob
 if [[ ${#CTX_FILES[@]} -eq 0 ]]; then
   exit 0
@@ -43,7 +43,7 @@ except:
 isolation = payload.get('tool_input', {}).get('isolation', '')
 
 # 1. Detect active skill — scan *-context.json, pick most recent timestamp
-ctx_files = glob.glob(os.path.join(project, '.claude/runs', '*-context.json'))
+ctx_files = glob.glob(os.path.join(project, '.runs', '*-context.json'))
 # Filter out epilogue-context.json for active skill detection
 ctx_files = [f for f in ctx_files if 'epilogue-context' not in f]
 
@@ -100,7 +100,7 @@ else:
     # Check required_states (using registry key order for proper ordering)
     required = gate.get('required_states', [])
     if required:
-        ctx_file = os.path.join(project, '.claude/runs',
+        ctx_file = os.path.join(project, '.runs',
             'verify-context.json' if best_skill == 'verify'
             else f'{best_skill}-context.json')
         if os.path.isfile(ctx_file):
@@ -151,7 +151,7 @@ verify_extended_checks() {
     design-critic|ux-journeyer)
       # Archetype guard: these agents are web-app only
       local DC_ARCH
-      DC_ARCH=$(read_json_field "$PROJECT_DIR/.claude/runs/verify-context.json" "archetype")
+      DC_ARCH=$(read_json_field "$PROJECT_DIR/.runs/verify-context.json" "archetype")
       if [[ "$DC_ARCH" != "web-app" ]]; then
         ERRORS+=("$SUBAGENT_TYPE requires archetype=web-app but got archetype=$DC_ARCH — design agents are not valid for service or cli archetypes")
       fi
@@ -165,7 +165,7 @@ verify_extended_checks() {
       check_trace_run_id "$TRACES_DIR/build-info-collector.json"
 
       local SCOPE
-      SCOPE=$(read_json_field "$PROJECT_DIR/.claude/runs/verify-context.json" "scope")
+      SCOPE=$(read_json_field "$PROJECT_DIR/.runs/verify-context.json" "scope")
       if [[ "$SCOPE" == "full" ]]; then
         for AGENT in security-defender security-attacker behavior-verifier; do
           if [[ ! -f "$TRACES_DIR/$AGENT.json" ]]; then
@@ -197,8 +197,8 @@ else:
         check_tier1_retry_complete "design-critic-*" "$TRACES_DIR"
         check_tier1_retry_complete "design-critic" "$TRACES_DIR"
         local SCOPE_V1 ARCH_V1
-        SCOPE_V1=$(read_json_field "$PROJECT_DIR/.claude/runs/verify-context.json" "scope")
-        ARCH_V1=$(read_json_field "$PROJECT_DIR/.claude/runs/verify-context.json" "archetype")
+        SCOPE_V1=$(read_json_field "$PROJECT_DIR/.runs/verify-context.json" "scope")
+        ARCH_V1=$(read_json_field "$PROJECT_DIR/.runs/verify-context.json" "archetype")
         if [[ "$SCOPE_V1" =~ ^(full|visual)$ ]] && [[ "$ARCH_V1" == "web-app" ]]; then
           if [ ! -f "$TRACES_DIR/design-consistency-checker.json" ]; then
             ERRORS+=("design-consistency-checker.json trace missing — spawn consistency checker before ux-journeyer")
@@ -219,8 +219,8 @@ else:
       check_trace_run_id "$TRACES_DIR/build-info-collector.json"
 
       local SF_SCOPE SF_ARCH
-      SF_SCOPE=$(read_json_field "$PROJECT_DIR/.claude/runs/verify-context.json" "scope")
-      SF_ARCH=$(read_json_field "$PROJECT_DIR/.claude/runs/verify-context.json" "archetype")
+      SF_SCOPE=$(read_json_field "$PROJECT_DIR/.runs/verify-context.json" "scope")
+      SF_ARCH=$(read_json_field "$PROJECT_DIR/.runs/verify-context.json" "archetype")
       if [[ "$SF_ARCH" == "web-app" && ( "$SF_SCOPE" == "full" || "$SF_SCOPE" == "visual" ) ]]; then
         for AGENT in design-critic ux-journeyer; do
           if [[ ! -f "$TRACES_DIR/$AGENT.json" ]]; then
@@ -234,9 +234,9 @@ else:
       check_tier1_retry_complete "ux-journeyer" "$TRACES_DIR"
       # Hard gate: design-ux-merge.json verdict must not be "fail"
       if [[ "$SF_ARCH" == "web-app" && ( "$SF_SCOPE" == "full" || "$SF_SCOPE" == "visual" ) ]]; then
-        if [[ -f "$PROJECT_DIR/.claude/runs/design-ux-merge.json" ]]; then
+        if [[ -f "$PROJECT_DIR/.runs/design-ux-merge.json" ]]; then
           local MERGE_VERDICT
-          MERGE_VERDICT=$(read_json_field "$PROJECT_DIR/.claude/runs/design-ux-merge.json" "verdict")
+          MERGE_VERDICT=$(read_json_field "$PROJECT_DIR/.runs/design-ux-merge.json" "verdict")
           if [[ "$MERGE_VERDICT" == "fail" ]]; then
             ERRORS+=("design-ux-merge.json verdict=fail — hard gate failure, skip to STATE 7")
           fi
@@ -254,25 +254,25 @@ else:
 
     observer)
       # Epilogue path: relaxed requirements for skill-epilogue.md observers
-      if [[ -f "$PROJECT_DIR/.claude/runs/epilogue-context.json" ]] && \
-         [[ ! -f "$PROJECT_DIR/.claude/runs/verify-context.json" ]]; then
+      if [[ -f "$PROJECT_DIR/.runs/epilogue-context.json" ]] && \
+         [[ ! -f "$PROJECT_DIR/.runs/verify-context.json" ]]; then
         local FIX_COUNT
-        FIX_COUNT=$(grep -cE '^\*\*Fix|^Fix \(' "$PROJECT_DIR/.claude/runs/fix-log.md" 2>/dev/null || echo "0")
-        if [ "$FIX_COUNT" -gt 0 ] && [ ! -s "$PROJECT_DIR/.claude/runs/observer-diffs.txt" ]; then
+        FIX_COUNT=$(grep -cE '^\*\*Fix|^Fix \(' "$PROJECT_DIR/.runs/fix-log.md" 2>/dev/null || echo "0")
+        if [ "$FIX_COUNT" -gt 0 ] && [ ! -s "$PROJECT_DIR/.runs/observer-diffs.txt" ]; then
           ERRORS+=("observer-diffs.txt missing or empty — collect diffs before spawning observer (epilogue path)")
         fi
       else
         # Verify path: full prerequisites
         check_postcondition_artifacts 4
-        if [[ ! -f "$PROJECT_DIR/.claude/runs/e2e-result.json" ]]; then
+        if [[ ! -f "$PROJECT_DIR/.runs/e2e-result.json" ]]; then
           ERRORS+=("e2e-result.json not found — E2E tests (STATE 5) must complete before observer")
         fi
-        if [[ -f "$PROJECT_DIR/.claude/runs/e2e-result.json" ]]; then
+        if [[ -f "$PROJECT_DIR/.runs/e2e-result.json" ]]; then
           local HAS_TESTING
           HAS_TESTING=$(grep -c "testing:" "$PROJECT_DIR/experiment/experiment.yaml" 2>/dev/null || echo "0")
           if [[ "$HAS_TESTING" -gt 0 ]]; then
             local E2E_REASON
-            E2E_REASON=$(read_json_field "$PROJECT_DIR/.claude/runs/e2e-result.json" "reason")
+            E2E_REASON=$(read_json_field "$PROJECT_DIR/.runs/e2e-result.json" "reason")
             if [[ "$E2E_REASON" == "no testing stack" ]]; then
               ERRORS+=("e2e-result.json says 'no testing stack' but experiment.yaml has stack.testing — STATE 5 was not executed correctly")
             elif [[ "$E2E_REASON" == "unrecognized test runner" ]]; then
@@ -281,8 +281,8 @@ else:
           fi
         fi
         local FIX_COUNT
-        FIX_COUNT=$(grep -cE '^\*\*Fix|^Fix \(' "$PROJECT_DIR/.claude/runs/fix-log.md" 2>/dev/null || echo "0")
-        if [ "$FIX_COUNT" -gt 0 ] && [ ! -s "$PROJECT_DIR/.claude/runs/observer-diffs.txt" ]; then
+        FIX_COUNT=$(grep -cE '^\*\*Fix|^Fix \(' "$PROJECT_DIR/.runs/fix-log.md" 2>/dev/null || echo "0")
+        if [ "$FIX_COUNT" -gt 0 ] && [ ! -s "$PROJECT_DIR/.runs/observer-diffs.txt" ]; then
           ERRORS+=("observer-diffs.txt missing or empty — run diff collection script before spawning observer")
         fi
         check_efficiency_directives
@@ -334,7 +334,7 @@ else: print('no')
 bootstrap_extended_checks() {
   case "$SUBAGENT_TYPE" in
     scaffold-*)
-      local VERDICTS_DIR="$PROJECT_DIR/.claude/runs/gate-verdicts"
+      local VERDICTS_DIR="$PROJECT_DIR/.runs/gate-verdicts"
       local BRANCH
       BRANCH=$(get_branch)
 
@@ -349,7 +349,7 @@ bootstrap_extended_checks() {
           fi
         done
 
-        local LIBS_MANIFEST="$PROJECT_DIR/.claude/runs/agent-traces/scaffold-libs.json"
+        local LIBS_MANIFEST="$PROJECT_DIR/.runs/agent-traces/scaffold-libs.json"
         if [[ ! -f "$LIBS_MANIFEST" ]]; then
           ERRORS+=("scaffold-libs manifest missing — scaffold-libs must complete before page/landing agents")
         else
@@ -375,7 +375,7 @@ bootstrap_extended_checks() {
 
 change_extended_checks() {
   if [[ "$SUBAGENT_TYPE" == "implementer" || "$SUBAGENT_TYPE" == "visual-implementer" ]]; then
-    local VERDICTS_DIR="$PROJECT_DIR/.claude/runs/gate-verdicts"
+    local VERDICTS_DIR="$PROJECT_DIR/.runs/gate-verdicts"
     check_verdict_gates "g3" "$VERDICTS_DIR" "$(get_branch)"
   fi
 }
@@ -391,7 +391,7 @@ fi
 
 # ── Cross-skill agent checks (run regardless of active skill) ──
 if [[ "$SUBAGENT_TYPE" == "pattern-classifier" ]]; then
-  if [[ ! -f "$PROJECT_DIR/.claude/runs/fix-log.md" ]]; then
+  if [[ ! -f "$PROJECT_DIR/.runs/fix-log.md" ]]; then
     ERRORS+=("fix-log.md missing — required for pattern-classifier")
   fi
 fi

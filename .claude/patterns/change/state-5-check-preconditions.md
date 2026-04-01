@@ -10,9 +10,9 @@
 > **Branch cleanup on failure:** Any "stop" in this step leaves you on a feature branch (created in Step 1). Include in the stop message: "To abort: `git checkout main && git branch -D <branch-name>`. To fix and retry: make the required changes to experiment.yaml, then re-run `/change`."
 
 - Follow checkpoint resumption protocol per `patterns/checkpoint-resumption.md`. (Key: read frontmatter, validate archetype match, restore context, jump to target state)
-- If `.claude/runs/current-plan.md` exists and the current branch starts with `change/`:
-  1. Read frontmatter. If parsing fails: stop — "Plan file has corrupted frontmatter. Delete `.claude/runs/current-plan.md` and re-run `/change` to start fresh."
-  2. Compare frontmatter `archetype` to current experiment.yaml `type`. If they differ: stop — "Saved plan was for archetype `<saved>`, but experiment.yaml now specifies `<current>`. Delete `.claude/runs/current-plan.md` and re-run `/change` for a new plan."
+- If `.runs/current-plan.md` exists and the current branch starts with `change/`:
+  1. Read frontmatter. If parsing fails: stop — "Plan file has corrupted frontmatter. Delete `.runs/current-plan.md` and re-run `/change` to start fresh."
+  2. Compare frontmatter `archetype` to current experiment.yaml `type`. If they differ: stop — "Saved plan was for archetype `<saved>`, but experiment.yaml now specifies `<current>`. Delete `.runs/current-plan.md` and re-run `/change` for a new plan."
   3. Use frontmatter values directly — do NOT re-classify or re-resolve stack. Read context_files to restore context.
   4. Resume per /change checkpoint mapping:
 
@@ -25,7 +25,7 @@
      | `phase2-step8` | STATE 12 (commit/PR) |
 
   5. If no frontmatter (old format): warn user, read experiment.yaml type, skip Phase 1, jump to Step 5.
-- Else if `.claude/runs/current-plan.md` exists but NOT on a `change/` branch: offer resume or fresh start, then stop.
+- Else if `.runs/current-plan.md` exists but NOT on a `change/` branch: offer resume or fresh start, then stop.
 > **If resuming from a failed /change:** see `.claude/patterns/recovery.md`. The plan persists across sessions.
 - If the change will add any new category to experiment.yaml `stack`: read the archetype file's `excluded_stacks` list. If the new category appears in `excluded_stacks`, stop: "The `<archetype>` archetype excludes the `<category>` stack. You cannot add `<category>: <value>` to this project."
 - For analytics changes: verify the analytics library file exists (see analytics stack file for expected path). If it doesn't, stop and tell the user: "Analytics library not found. Run `/bootstrap` first."

@@ -19,7 +19,7 @@ Two strategies, dispatched by evidence type:
 
 Before proceeding with observation, check that the skill completed all required states.
 
-Read `.claude/runs/<skill>-context.json` and compare `completed_states` against
+Read `.runs/<skill>-context.json` and compare `completed_states` against
 `_required_states` from `state-registry.json` `agent_gates[<skill>]`.
 
 If any required state is missing:
@@ -34,10 +34,10 @@ proceed to Step 1 with no friction recorded from this step.
 
 ```bash
 # a. Collect all branch changes
-git diff $(git merge-base main HEAD)...HEAD > .claude/runs/observer-diffs.txt
+git diff $(git merge-base main HEAD)...HEAD > .runs/observer-diffs.txt
 
 # b. Read fix-log (if exists)
-# .claude/runs/fix-log.md — created during skill execution when retries/failures occur
+# .runs/fix-log.md — created during skill execution when retries/failures occur
 
 # c. Generate template file list
 find .claude/stacks .claude/commands .claude/patterns scripts -type f 2>/dev/null | sort
@@ -46,7 +46,7 @@ find .claude/stacks .claude/commands .claude/patterns scripts -type f 2>/dev/nul
 
 ## Step 2: Write epilogue context
 
-Write `.claude/runs/epilogue-context.json`:
+Write `.runs/epilogue-context.json`:
 ```json
 {
   "skill": "<skill-name>",
@@ -62,10 +62,10 @@ prerequisite path.
 
 ## Step 3: Fast-path evaluation
 
-If `.claude/runs/observer-diffs.txt` is empty AND `.claude/runs/fix-log.md` has no entries
+If `.runs/observer-diffs.txt` is empty AND `.runs/fix-log.md` has no entries
 (or does not exist):
 
-Write `.claude/runs/observe-result.json`:
+Write `.runs/observe-result.json`:
 ```json
 {
   "skill": "<skill-name>",
@@ -84,8 +84,8 @@ Write `.claude/runs/observe-result.json`:
 If evidence exists (non-empty diff or fix-log entries):
 
 1. Prepare observer inputs:
-   - Content of `.claude/runs/observer-diffs.txt`
-   - Content of `.claude/runs/fix-log.md` (or "no fix-log entries")
+   - Content of `.runs/observer-diffs.txt`
+   - Content of `.runs/fix-log.md` (or "no fix-log entries")
    - Template file list from Step 1c
    - Skill name
 
@@ -94,7 +94,7 @@ If evidence exists (non-empty diff or fix-log entries):
    project name, or feature descriptions.
    The observer follows `.claude/patterns/observe.md` Path 1 criteria.
 
-3. After observer returns, write `.claude/runs/observe-result.json`:
+3. After observer returns, write `.runs/observe-result.json`:
    ```json
    {
      "skill": "<skill-name>",
@@ -117,7 +117,7 @@ These skills have no diffs to observe, so the observer agent is never spawned.
 
 ### Step B1: Verify execution completeness
 
-Read `.claude/runs/<skill>-context.json` and verify that `completed_states` includes
+Read `.runs/<skill>-context.json` and verify that `completed_states` includes
 all expected states from `state-registry.json` for this skill (excluding the
 epilogue state itself). If any expected state is missing, record it as friction.
 
@@ -144,7 +144,7 @@ sections directly. Do NOT spawn a separate agent — evaluate inline.
 
 ### Step B4: Write result
 
-Write `.claude/runs/observe-result.json`:
+Write `.runs/observe-result.json`:
 ```json
 {
   "skill": "<skill-name>",

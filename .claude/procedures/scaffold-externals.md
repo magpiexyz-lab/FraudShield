@@ -3,7 +3,7 @@
 ## Prerequisites
 - Packages installed (Step 1 finished)
 - Stack files and `.claude/stacks/TEMPLATE.md` on disk
-- `.claude/runs/current-plan.md` exists
+- `.runs/current-plan.md` exists
 
 ## Instructions
 

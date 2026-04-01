@@ -45,7 +45,7 @@ This registers your presence. If you exhaust turns before writing the final trac
 ## Input
 
 - `experiment/experiment.yaml` — the specification
-- `.claude/runs/current-plan.md` — the current change plan (if exists)
+- `.runs/current-plan.md` — the current change plan (if exists)
 - Source code in `src/`
 
 ## Archetype Scope
@@ -80,13 +80,13 @@ For each `golden_path` step: the page exists, the CTA or action element exists, 
 Each behavior with `actor: system/cron` is implemented and has a test. Missing implementation or test is a FAIL.
 
 **S6. Plan completion**
-> Skip if no `.claude/runs/current-plan.md` exists.
+> Skip if no `.runs/current-plan.md` exists.
 
 Every plan item is addressed in source code. Unaddressed item is a FAIL.
 
 **S7. TDD compliance**
 > Skip if `quality` is absent or not `production` in experiment.yaml.
-> Skip if no `.claude/runs/current-plan.md` exists.
+> Skip if no `.runs/current-plan.md` exists.
 
 For each task in the plan: a specification test file (`*.test.*` or `*.spec.*`)
 MUST exist covering that task's target module. A task with production code but
@@ -101,7 +101,7 @@ is a FAIL — report the missing entry and behavior ID.
 **S8. Process compliance**
 > This check produces WARNINGs, not FAILs — reported but does not block verdict.
 
-1. Read `.claude/runs/current-plan.md`. If `## Process Checklist` section exists, report pass. If missing, report WARNING: "Process gate was not executed."
+1. Read `.runs/current-plan.md`. If `## Process Checklist` section exists, report pass. If missing, report WARNING: "Process gate was not executed."
 2. If `quality: production` and change type is Feature, Fix, or Upgrade: scan git log on current branch (`git log --oneline --name-only main..HEAD`). For each test file (`*.test.*`, `*.spec.*`), check whether its first appearance in a commit precedes or equals the first appearance of the corresponding source file. If source committed before test, report WARNING: "TDD order violation — [source file] committed before [test file]."
 3. Report results as `pass` or `WARN` (never FAIL).
 
@@ -133,8 +133,8 @@ is a FAIL — report the missing entry and behavior ID.
 After completing all work, write a trace file:
 
 ```bash
-RUN_ID=$(python3 -c "import json;print(json.load(open('.claude/runs/verify-context.json')).get('run_id',''))" 2>/dev/null || echo "")
-mkdir -p .claude/runs/agent-traces && echo '{"agent":"spec-reviewer","timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","verdict":"<verdict>","checks_performed":["S1_features","S2_pages","S3_analytics","S4_golden_path","S5_system","S6_plan","S7_tdd","S8_process"],"run_id":"'"$RUN_ID"'"}' > .claude/runs/agent-traces/spec-reviewer.json
+RUN_ID=$(python3 -c "import json;print(json.load(open('.runs/verify-context.json')).get('run_id',''))" 2>/dev/null || echo "")
+mkdir -p .runs/agent-traces && echo '{"agent":"spec-reviewer","timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","verdict":"<verdict>","checks_performed":["S1_features","S2_pages","S3_analytics","S4_golden_path","S5_system","S6_plan","S7_tdd","S8_process"],"run_id":"'"$RUN_ID"'"}' > .runs/agent-traces/spec-reviewer.json
 ```
 
 Replace `<verdict>` with your final verdict: `"PASS"` or `"FAIL"`.

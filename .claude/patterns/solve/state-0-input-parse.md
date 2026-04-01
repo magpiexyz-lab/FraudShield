@@ -17,8 +17,8 @@ If `$ARGUMENTS` is empty, ask the user to describe the problem.
 
 Clean stale epilogue artifacts and create context file to initialize state tracking:
 ```bash
-rm -f .claude/runs/observe-result.json
-cat > .claude/runs/solve-context.json << CTXEOF
+rm -f .runs/observe-result.json
+cat > .runs/solve-context.json << CTXEOF
 {"skill":"solve","branch":"$(git branch --show-current)","timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","run_id":"solve-$(date -u +%Y-%m-%dT%H:%M:%SZ)","completed_states":[0]}
 CTXEOF
 ```
@@ -26,11 +26,11 @@ CTXEOF
 **POSTCONDITIONS:**
 - Problem statement captured (from arguments or user input)
 - Depth mode selected (`full` or `light`)
-- `.claude/runs/solve-context.json` exists
+- `.runs/solve-context.json` exists
 
 **VERIFY:**
 ```bash
-test -f .claude/runs/solve-context.json && echo "OK" || echo "FAIL"
+test -f .runs/solve-context.json && echo "OK" || echo "FAIL"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

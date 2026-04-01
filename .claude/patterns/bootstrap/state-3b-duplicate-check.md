@@ -48,9 +48,9 @@
   ```bash
   python3 -c "
   import json
-  ctx = json.load(open('.claude/runs/bootstrap-context.json'))
+  ctx = json.load(open('.runs/bootstrap-context.json'))
   ctx['duplicate_check_done'] = True
-  json.dump(ctx, open('.claude/runs/bootstrap-context.json', 'w'), indent=2)
+  json.dump(ctx, open('.runs/bootstrap-context.json', 'w'), indent=2)
   "
   ```
 
@@ -61,7 +61,7 @@
 
 **VERIFY:**
 ```bash
-python3 -c "import json; assert json.load(open('.claude/runs/bootstrap-context.json')).get('duplicate_check_done') == True, 'duplicate_check_done not set'"
+python3 -c "import json; assert json.load(open('.runs/bootstrap-context.json')).get('duplicate_check_done') == True, 'duplicate_check_done not set'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

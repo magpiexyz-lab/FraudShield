@@ -5,10 +5,10 @@
 
 ## Step 0: Read Context
 
-Read all `design-critic-*.json` traces from `.claude/runs/agent-traces/`:
+Read all `design-critic-*.json` traces from `.runs/agent-traces/`:
 
 ```bash
-ls .claude/runs/agent-traces/design-critic-*.json
+ls .runs/agent-traces/design-critic-*.json
 ```
 
 Parse each trace for: page name, verdict, min_score, fixes_applied.

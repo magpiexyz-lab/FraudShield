@@ -27,9 +27,9 @@ if $ARGUMENTS contains "--full":
 ```bash
 python3 -c "
 import json
-ctx = json.load(open('.claude/runs/change-context.json'))
+ctx = json.load(open('.runs/change-context.json'))
 ctx['solve_depth'] = '<light|full>'  # result of the formula above
-json.dump(ctx, open('.claude/runs/change-context.json', 'w'))
+json.dump(ctx, open('.runs/change-context.json', 'w'))
 "
 ```
 
@@ -63,7 +63,7 @@ CALL: `.claude/patterns/solve-reasoning.md` — execute full mode (Phases 1-6).
 
 ### Write solve trace artifact
 
-After completing the solve-reasoning pass (light or full), write `.claude/runs/solve-trace.json`:
+After completing the solve-reasoning pass (light or full), write `.runs/solve-trace.json`:
 ```bash
 python3 -c "
 import json
@@ -75,29 +75,29 @@ trace = {
     'self_check': '<revision pass results>',
     'output': '<recommended solution summary>'
 }
-json.dump(trace, open('.claude/runs/solve-trace.json', 'w'), indent=2)
+json.dump(trace, open('.runs/solve-trace.json', 'w'), indent=2)
 "
 ```
 
 **POSTCONDITIONS:**
 - `solve_depth` determined and stated with rationale
-- `solve_depth` persisted to `.claude/runs/change-context.json` and matches formula
+- `solve_depth` persisted to `.runs/change-context.json` and matches formula
 - Solve-reasoning pass completed (light or full)
 - Output stored in working memory for plan generation
-- `.claude/runs/solve-trace.json` exists with 5 required fields (`mode`, `problem_decomposition`, `constraint_enumeration`, `solution_design`, `self_check`, `output`)
+- `.runs/solve-trace.json` exists with 5 required fields (`mode`, `problem_decomposition`, `constraint_enumeration`, `solution_design`, `self_check`, `output`)
 
 **VERIFY:**
 ```bash
 python3 -c "
 import json
-ctx = json.load(open('.claude/runs/change-context.json'))
+ctx = json.load(open('.runs/change-context.json'))
 sd = ctx.get('solve_depth')
 assert sd in ('light', 'full'), 'solve_depth=%s' % sd
 pt = ctx.get('preliminary_type', '')
 aa = ctx.get('affected_areas', 0)
 if pt in ('Feature', 'Upgrade') and isinstance(aa, int) and aa >= 3:
     assert sd == 'full', 'Formula requires full (type=%s, areas=%s) but got %s' % (pt, aa, sd)
-st = json.load(open('.claude/runs/solve-trace.json'))
+st = json.load(open('.runs/solve-trace.json'))
 required = ['mode', 'problem_decomposition', 'constraint_enumeration', 'solution_design', 'self_check', 'output']
 missing = [k for k in required if k not in st]
 assert not missing, 'solve-trace.json missing keys: %s' % missing

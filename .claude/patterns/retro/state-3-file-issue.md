@@ -30,7 +30,7 @@ gh issue create \
 Compute retro quality (see `.claude/patterns/skill-scoring.md`):
 
 ```bash
-RUN_ID=$(python3 -c "import json; print(json.load(open('.claude/runs/retro-context.json')).get('run_id', ''))" 2>/dev/null || echo "")
+RUN_ID=$(python3 -c "import json; print(json.load(open('.runs/retro-context.json')).get('run_id', ''))" 2>/dev/null || echo "")
 python3 .claude/scripts/write-q-score.py \
   --skill retro --scope retro --archetype N/A \
   --gate 1.0 --dims '{"sections": 1.0, "completion": 1.0}' \
@@ -54,7 +54,7 @@ After filing the retro, guide the user:
 ```bash
 python3 -c "
 import json, os
-ctx = json.load(open('.claude/runs/retro-context.json'))
+ctx = json.load(open('.runs/retro-context.json'))
 # STATE 3 is valid if the issue was filed or user explicitly skipped
 assert ctx.get('issue_filed') or ctx.get('issue_skipped'), 'retro issue not filed and not skipped — check gh issue create output'
 print('STATE 3 VERIFY OK')

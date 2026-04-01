@@ -12,9 +12,9 @@ PROJECT_DIR="${CLAUDE_PROJECT_DIR:-.}"
 
 # Determine context file — verify uses verify-context.json, others use <skill>-context.json
 if [[ "$SKILL" == "verify" ]]; then
-  CTX="$PROJECT_DIR/.claude/runs/verify-context.json"
+  CTX="$PROJECT_DIR/.runs/verify-context.json"
 else
-  CTX="$PROJECT_DIR/.claude/runs/${SKILL}-context.json"
+  CTX="$PROJECT_DIR/.runs/${SKILL}-context.json"
 fi
 
 python3 -c "

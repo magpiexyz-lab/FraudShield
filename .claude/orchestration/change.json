@@ -7,7 +7,7 @@
       "interactive": true,
       "gate": {
         "completed_states": [7],
-        "files_exist": [".claude/runs/current-plan.md"],
+        "files_exist": [".runs/current-plan.md"],
         "plan_fields": ["checkpoint"]
       }
     },

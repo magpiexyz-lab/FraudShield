@@ -9,13 +9,13 @@
 Follow the branch setup procedure in `.claude/patterns/branch.md`. Use branch prefix `feat` and branch name `feat/bootstrap`.
 
 Clean up stale artifacts from prior runs:
-- `rm -rf .claude/runs/gate-verdicts/ externals-decisions.json`
+- `rm -rf .runs/gate-verdicts/ externals-decisions.json`
 
 > **If resuming from a failed bootstrap:** see `.claude/patterns/recovery.md` for recovery options.
 
-Create `.claude/runs/bootstrap-context.json` to initialize state tracking:
+Create `.runs/bootstrap-context.json` to initialize state tracking:
 ```bash
-cat > .claude/runs/bootstrap-context.json << CTXEOF
+cat > .runs/bootstrap-context.json << CTXEOF
 {"skill":"bootstrap","branch":"$(git branch --show-current)","timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","run_id":"bootstrap-$(date -u +%Y-%m-%dT%H:%M:%SZ)","completed_states":[0]}
 CTXEOF
 ```
@@ -23,7 +23,7 @@ CTXEOF
 **POSTCONDITIONS:**
 - Current branch is `feat/bootstrap` (or `feat/bootstrap-N` if prior branch exists)
 - Branch is not `main`
-- `.claude/runs/bootstrap-context.json` exists
+- `.runs/bootstrap-context.json` exists
 
 **VERIFY:**
 ```bash

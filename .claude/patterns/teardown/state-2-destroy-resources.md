@@ -106,7 +106,7 @@ For each service in `external_services`:
 - External services listed for manual cleanup
 - Results (success/failure) recorded for each resource
 
-- **Write result artifact** (`.claude/runs/teardown-result.json`):
+- **Write result artifact** (`.runs/teardown-result.json`):
   ```bash
   python3 -c "
   import json
@@ -115,13 +115,13 @@ For each service in `external_services`:
       'successes': 0,
       'failures': 0
   }
-  json.dump(result, open('.claude/runs/teardown-result.json', 'w'), indent=2)
+  json.dump(result, open('.runs/teardown-result.json', 'w'), indent=2)
   "
   ```
 
 **VERIFY:**
 ```bash
-test -f .claude/runs/teardown-result.json
+test -f .runs/teardown-result.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

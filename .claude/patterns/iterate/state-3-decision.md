@@ -168,15 +168,15 @@ Save the verdict to context before VERIFY:
 ```bash
 python3 -c "
 import json
-ctx = json.load(open('.claude/runs/iterate-context.json'))
+ctx = json.load(open('.runs/iterate-context.json'))
 ctx['verdict'] = '<VERDICT>'  # Replace with actual verdict from analysis
-json.dump(ctx, open('.claude/runs/iterate-context.json', 'w'), indent=2)
+json.dump(ctx, open('.runs/iterate-context.json', 'w'), indent=2)
 "
 ```
 
 **VERIFY:**
 ```bash
-python3 -c "import json; ctx=json.load(open('.claude/runs/iterate-context.json')); assert ctx.get('verdict'), 'verdict missing from iterate-context.json'"
+python3 -c "import json; ctx=json.load(open('.runs/iterate-context.json')); assert ctx.get('verdict'), 'verdict missing from iterate-context.json'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

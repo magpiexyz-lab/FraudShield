@@ -4,7 +4,7 @@ type: analysis-only
 requires_approval: true
 branch_prefix: ""
 reads:
-  - .claude/runs/deploy-manifest.json
+  - .runs/deploy-manifest.json
   - experiment/experiment.yaml
 stack_categories:
   - hosting

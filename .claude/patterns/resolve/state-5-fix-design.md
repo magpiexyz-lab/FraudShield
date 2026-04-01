@@ -73,7 +73,7 @@ If validation rejects the solution:
 Record: `root_cause`, `fix_plan` (per-file changes), `proposed_checks` (if any),
 `anti_pattern_review` (confirm none apply).
 
-- **Write solve trace artifact** (`.claude/runs/solve-trace.json`) using the contract from solve-reasoning.md:
+- **Write solve trace artifact** (`.runs/solve-trace.json`) using the contract from solve-reasoning.md:
   ```bash
   python3 -c "
   import json
@@ -85,18 +85,18 @@ Record: `root_cause`, `fix_plan` (per-file changes), `proposed_checks` (if any),
       'self_check': '<anti_pattern_review results>',
       'output': '<recommended fix summary>'
   }
-  json.dump(trace, open('.claude/runs/solve-trace.json', 'w'), indent=2)
+  json.dump(trace, open('.runs/solve-trace.json', 'w'), indent=2)
   "
   ```
 
 **POSTCONDITIONS:**
 - Each actionable issue (or cluster) has: `root_cause`, `fix_plan`, `proposed_checks`, `anti_pattern_review`
 - Domain-specific post-validation passed for all fixes
-- `.claude/runs/solve-trace.json` exists with required fields
+- `.runs/solve-trace.json` exists with required fields
 
 **VERIFY:**
 ```bash
-test -f .claude/runs/solve-trace.json
+test -f .runs/solve-trace.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

@@ -10,7 +10,7 @@
 2. Set `quality: production` in experiment.yaml
 3. Add `stack.testing` if absent (playwright for web-app, vitest for service/cli). Install testing packages per testing stack file.
 
-Update checkpoint in `.claude/runs/current-plan.md` frontmatter to `step3-module-1`.
+Update checkpoint in `.runs/current-plan.md` frontmatter to `step3-module-1`.
 
 > **Checkpoint update:** Edit only the `checkpoint:` line in the frontmatter -- single-line edit, not a full file rewrite.
 

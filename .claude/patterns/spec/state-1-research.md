@@ -53,7 +53,7 @@ Wait for the user to revise, override, or abandon.
 - Results displayed to user
 - If 2+ failures: user chose to revise, override, or abandon
 
-- **Write research artifact** (`.claude/runs/spec-research.json`):
+- **Write research artifact** (`.runs/spec-research.json`):
   ```bash
   python3 -c "
   import json
@@ -66,13 +66,13 @@ Wait for the user to revise, override, or abandon.
       ],
       'passed_count': 0
   }
-  json.dump(research, open('.claude/runs/spec-research.json', 'w'), indent=2)
+  json.dump(research, open('.runs/spec-research.json', 'w'), indent=2)
   "
   ```
 
 **VERIFY:**
 ```bash
-test -f .claude/runs/spec-research.json
+test -f .runs/spec-research.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

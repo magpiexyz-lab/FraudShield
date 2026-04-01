@@ -124,7 +124,7 @@ sufficient direction.
 
 ### Visual language brief
 
-The visual language brief (`.claude/runs/current-visual-brief.md`) is a structured
+The visual language brief (`.runs/current-visual-brief.md`) is a structured
 artifact produced by the Init subagent during bootstrap. It extends the theme
 contract with non-CSS decisions that affect visual coherence across pages:
 animation philosophy, spacing density, component styling, visual texture, etc.

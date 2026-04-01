@@ -36,8 +36,8 @@ def write_entry(entry):
     backend = os.environ.get('SKILL_HISTORY_BACKEND', 'local')
 
     if backend == 'local':
-        os.makedirs('.claude/runs', exist_ok=True)
-        with open('.claude/runs/verify-history.jsonl', 'a') as f:
+        os.makedirs('.runs', exist_ok=True)
+        with open('.runs/verify-history.jsonl', 'a') as f:
             f.write(json.dumps(entry) + '\n')
         print(f"Q-score: {entry['q_skill']} (Gate={entry['gate']}, R={entry.get('r_system', 0)}) "
               f"— appended to verify-history.jsonl")
@@ -57,14 +57,14 @@ def write_entry(entry):
                 print(f"Q-score: {entry['q_skill']} — sent to {endpoint}")
             except Exception as e:
                 # Fallback to local on API failure
-                os.makedirs('.claude/runs', exist_ok=True)
-                with open('.claude/runs/verify-history.jsonl', 'a') as f:
+                os.makedirs('.runs', exist_ok=True)
+                with open('.runs/verify-history.jsonl', 'a') as f:
                     f.write(json.dumps(entry) + '\n')
                 print(f"Q-score: {entry['q_skill']} — API failed ({e}), fell back to local")
         else:
             # No endpoint configured, fall back to local
-            os.makedirs('.claude/runs', exist_ok=True)
-            with open('.claude/runs/verify-history.jsonl', 'a') as f:
+            os.makedirs('.runs', exist_ok=True)
+            with open('.runs/verify-history.jsonl', 'a') as f:
                 f.write(json.dumps(entry) + '\n')
             print(f"Q-score: {entry['q_skill']} — no API endpoint, fell back to local")
 

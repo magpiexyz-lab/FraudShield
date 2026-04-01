@@ -18,7 +18,7 @@ If any reference files modified in this PR: note under a
 "### Potentially Resolved" section in the PR body (do NOT close —
 the fix was not designed for them).
 
-- **Write side-effects artifact** (`.claude/runs/resolve-side-effects.json`):
+- **Write side-effects artifact** (`.runs/resolve-side-effects.json`):
   ```bash
   python3 -c "
   import json
@@ -26,18 +26,18 @@ the fix was not designed for them).
       'comments_posted': [],
       'potentially_resolved': []
   }
-  json.dump(side_effects, open('.claude/runs/resolve-side-effects.json', 'w'), indent=2)
+  json.dump(side_effects, open('.runs/resolve-side-effects.json', 'w'), indent=2)
   "
   ```
 
 **POSTCONDITIONS:**
 - Side-effect comments posted on relevant closed issues
 - Open issues referencing modified files identified for PR body
-- `.claude/runs/resolve-side-effects.json` exists
+- `.runs/resolve-side-effects.json` exists
 
 **VERIFY:**
 ```bash
-test -f .claude/runs/resolve-side-effects.json
+test -f .runs/resolve-side-effects.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

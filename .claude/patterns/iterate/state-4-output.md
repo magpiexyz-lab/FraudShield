@@ -7,7 +7,7 @@
 
 ### Save analysis for /change context
 
-Write `.claude/runs/iterate-manifest.json`:
+Write `.runs/iterate-manifest.json`:
 ```json
 {
   "experiment_id": "<experiment.yaml name>",
@@ -54,7 +54,7 @@ Write `.claude/runs/iterate-manifest.json`:
 ```
 
 - `experiment_id`: populated from experiment.yaml `name` field. Identifies which experiment this analysis belongs to.
-- `round`: auto-incremented iteration counter. On first `/iterate` run, set to `1`. On subsequent runs, read existing `.claude/runs/iterate-manifest.json` and set `round` to previous value + 1. This tracks how many iteration cycles the experiment has gone through.
+- `round`: auto-incremented iteration counter. On first `/iterate` run, set to `1`. On subsequent runs, read existing `.runs/iterate-manifest.json` and set `round` to previous value + 1. This tracks how many iteration cycles the experiment has gone through.
 - `hypothesis_verdicts` and `funnel_scores` are only populated when spec-manifest.json exists. Omit both fields for experiments without /spec.
 - `bottleneck.dimension`, `bottleneck.ratio`, and `bottleneck.recommendation` are populated from the Validation Scorecard. For experiments without spec-manifest, populate from funnel analysis only (`dimension` and `ratio` may be null).
 
@@ -65,11 +65,11 @@ This file is read by `/change` to provide context for the next iteration.
 Compute iterate analysis quality (see `.claude/patterns/skill-scoring.md`):
 
 ```bash
-RUN_ID=$(python3 -c "import json; print(json.load(open('.claude/runs/iterate-context.json')).get('run_id', ''))" 2>/dev/null || echo "")
+RUN_ID=$(python3 -c "import json; print(json.load(open('.runs/iterate-context.json')).get('run_id', ''))" 2>/dev/null || echo "")
 ITERATE_DIMS=$(python3 -c "
 import json
 try:
-    m = json.load(open('.claude/runs/iterate-manifest.json'))
+    m = json.load(open('.runs/iterate-manifest.json'))
     verdict = m.get('verdict', 'TOO_EARLY')
     q_verdict = 1.0 if verdict != 'TOO_EARLY' else 0.5
     hvs = m.get('hypothesis_verdicts', [])
@@ -122,7 +122,7 @@ Based on the measurement window and current progress, provide a concrete schedul
 
 - Calculate dates from the experiment timeline and the elapsed days reported in STATE 3
 - If verdict is TOO EARLY: check deployment and traffic state to provide actionable next steps:
-  - If `.claude/runs/deploy-manifest.json` does not exist:
+  - If `.runs/deploy-manifest.json` does not exist:
     - If archetype is `web-app` or `service`: "Your app isn't deployed yet. Run `/deploy` to go live, then return to `/iterate` after a few days of traffic."
     - If archetype is `cli` with `surface: detached`: "Your CLI surface isn't deployed yet. Run `/deploy` for the marketing surface, then `npm publish` to publish the CLI package."
     - If archetype is `cli` with `surface: none`: "Your CLI hasn't been published yet. Run `npm publish` or create a GitHub Release, then collect usage data before re-running `/iterate`."
@@ -132,13 +132,13 @@ Based on the measurement window and current progress, provide a concrete schedul
 - Tell the user: "Set a calendar reminder for [next check-in date] to run `/iterate` again."
 
 **POSTCONDITIONS:**
-- `.claude/runs/iterate-manifest.json` written with verdict, bottleneck, recommendations, and scores
+- `.runs/iterate-manifest.json` written with verdict, bottleneck, recommendations, and scores
 - Next steps summary presented to user
 - Next check-in schedule provided
 
 **VERIFY:**
 ```bash
-test -f .claude/runs/iterate-manifest.json && echo "OK" || echo "FAIL"
+test -f .runs/iterate-manifest.json && echo "OK" || echo "FAIL"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

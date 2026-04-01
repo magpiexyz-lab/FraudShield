@@ -53,13 +53,13 @@ Read `.claude/procedures/scaffold-externals.md` for full step-by-step instructio
 
 ## Trace Output
 
-After analysis completes, write trace to `.claude/runs/agent-traces/scaffold-externals.json`:
+After analysis completes, write trace to `.runs/agent-traces/scaffold-externals.json`:
 
 ```bash
 python3 -c "
 import json, datetime, os
-os.makedirs('.claude/runs/agent-traces', exist_ok=True)
+os.makedirs('.runs/agent-traces', exist_ok=True)
 trace = {'agent': 'scaffold-externals', 'status': 'complete', 'timestamp': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'), 'classifications': [{'service': '<name>', 'classification': '<core/non-core>'}]}
-json.dump(trace, open('.claude/runs/agent-traces/scaffold-externals.json', 'w'))
+json.dump(trace, open('.runs/agent-traces/scaffold-externals.json', 'w'))
 "
 ```

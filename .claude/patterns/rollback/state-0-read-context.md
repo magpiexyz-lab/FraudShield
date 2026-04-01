@@ -6,7 +6,7 @@
 **ACTIONS:**
 
 Read these context files:
-- Read `.claude/runs/deploy-manifest.json` and extract:
+- Read `.runs/deploy-manifest.json` and extract:
   - `hosting.provider` -- the hosting provider
   - `canonical_url` -- the production URL
 - If the file is missing or `hosting` is absent, STOP: "No deploy manifest found. Has this project been deployed with `/deploy`?"
@@ -19,21 +19,21 @@ Read `experiment/experiment.yaml` to determine the archetype (`type` field, defa
 
 Clean stale epilogue artifacts and create context file to initialize state tracking:
 ```bash
-rm -f .claude/runs/observe-result.json
-cat > .claude/runs/rollback-context.json << CTXEOF
+rm -f .runs/observe-result.json
+cat > .runs/rollback-context.json << CTXEOF
 {"skill":"rollback","branch":"$(git branch --show-current)","timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","run_id":"rollback-$(date -u +%Y-%m-%dT%H:%M:%SZ)","completed_states":[0]}
 CTXEOF
 ```
 
 **POSTCONDITIONS:**
-- `.claude/runs/deploy-manifest.json` has been read and `hosting.provider` and `canonical_url` extracted
+- `.runs/deploy-manifest.json` has been read and `hosting.provider` and `canonical_url` extracted
 - Hosting stack file has been read and rollback procedure identified
 - `experiment/experiment.yaml` has been read for archetype
-- `.claude/runs/rollback-context.json` exists
+- `.runs/rollback-context.json` exists
 
 **VERIFY:**
 ```bash
-test -f .claude/runs/rollback-context.json && echo "OK" || echo "FAIL"
+test -f .runs/rollback-context.json && echo "OK" || echo "FAIL"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

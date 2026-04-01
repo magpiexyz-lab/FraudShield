@@ -1,11 +1,11 @@
 # Checkpoint Resumption Protocol
 
-When `.claude/runs/current-plan.md` exists with YAML frontmatter, skills resume at the
+When `.runs/current-plan.md` exists with YAML frontmatter, skills resume at the
 exact checkpoint without re-deriving classification, scope, or stack.
 
 ## Protocol
 
-1. Check if `.claude/runs/current-plan.md` exists
+1. Check if `.runs/current-plan.md` exists
 2. Parse YAML frontmatter (between `---` delimiters)
 3. Extract fields per the canonical schema below
 4. Validate `archetype` matches current `experiment/experiment.yaml` `type` field

@@ -64,9 +64,9 @@ If any check fails: the bootstrap lead fixes directly (it has full file access
 as coordinator). Re-run `npm run build` after fixes. Budget: 2 fix attempts.
 If still failing after 2 attempts: list all remaining errors and their file locations. Ask the user whether to (a) continue to wire phase and fix later, or (b) stop and investigate now.
 
-Update checkpoint in `.claude/runs/current-plan.md` frontmatter to `phase2-wire`.
+Update checkpoint in `.runs/current-plan.md` frontmatter to `phase2-wire`.
 
-Check off in `.claude/runs/current-plan.md`: `- [x] Merged checkpoint validation passed`
+Check off in `.runs/current-plan.md`: `- [x] Merged checkpoint validation passed`
 
 **Scaffold trace audit** (informational -- does not block BG2):
 ```bash
@@ -74,7 +74,7 @@ python3 -c "
 import json, glob
 expected = ['scaffold-setup','scaffold-init','scaffold-libs','scaffold-landing','scaffold-wire']
 traces = {}
-for f in glob.glob('.claude/runs/agent-traces/scaffold-*.json'):
+for f in glob.glob('.runs/agent-traces/scaffold-*.json'):
     name = f.split('/')[-1].replace('.json','')
     if '-' in name and name.startswith('scaffold-pages'):
         continue
@@ -92,9 +92,9 @@ if not missing and not incomplete: print('  All scaffold agents completed with t
 "
 ```
 
-**BG2 Orchestration Gate**: Spawn the `gate-keeper` agent (`subagent_type: gate-keeper`). Pass: "Execute BG2 Orchestration Gate. Verify: (1) npm run build passes; (2) scaffold output files exist (src/lib/*.ts, .claude/runs/current-visual-brief.md, src/app/icon.tsx and src/app/opengraph-image.tsx (web-app only), archetype-specific pages/routes/commands from experiment.yaml); (3) landing page exists if surface!=none; (4) checkpoint is phase2-scaffold or later; (5) if stack.analytics present: for each event in experiment/EVENTS.yaml events map (filtered by requires and archetypes for current stack and archetype), grep for the event name in src/ -- BLOCK if any event is missing; (6) if stack.analytics present: grep src/lib/analytics*.ts for PROJECT_NAME and PROJECT_OWNER -- BLOCK if either is 'TODO'." If gate-keeper returns BLOCK, fix missing outputs before STATE 14.
+**BG2 Orchestration Gate**: Spawn the `gate-keeper` agent (`subagent_type: gate-keeper`). Pass: "Execute BG2 Orchestration Gate. Verify: (1) npm run build passes; (2) scaffold output files exist (src/lib/*.ts, .runs/current-visual-brief.md, src/app/icon.tsx and src/app/opengraph-image.tsx (web-app only), archetype-specific pages/routes/commands from experiment.yaml); (3) landing page exists if surface!=none; (4) checkpoint is phase2-scaffold or later; (5) if stack.analytics present: for each event in experiment/EVENTS.yaml events map (filtered by requires and archetypes for current stack and archetype), grep for the event name in src/ -- BLOCK if any event is missing; (6) if stack.analytics present: grep src/lib/analytics*.ts for PROJECT_NAME and PROJECT_OWNER -- BLOCK if either is 'TODO'." If gate-keeper returns BLOCK, fix missing outputs before STATE 14.
 
-Check off in `.claude/runs/current-plan.md`: `- [x] BG2 Orchestration Gate passed`
+Check off in `.runs/current-plan.md`: `- [x] BG2 Orchestration Gate passed`
 
 **POSTCONDITIONS:**
 - `npm run build` passes (exit code 0)

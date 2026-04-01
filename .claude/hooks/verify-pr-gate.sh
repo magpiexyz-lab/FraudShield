@@ -17,8 +17,8 @@ fi
 # --- PR creation detected — run verification checks ---
 
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-.}"
-REPORT="$PROJECT_DIR/.claude/runs/verify-report.md"
-TRACES_DIR="$PROJECT_DIR/.claude/runs/agent-traces"
+REPORT="$PROJECT_DIR/.runs/verify-report.md"
+TRACES_DIR="$PROJECT_DIR/.runs/agent-traces"
 ERRORS=()
 BRANCH=$(get_branch)
 
@@ -27,7 +27,7 @@ BRANCH=$(get_branch)
 # Skills always write *-context.json with a "branch" field in STATE 0.
 # Normal conversations never create these files, so their PRs pass through.
 SKILL_DRIVEN=false
-for ctx in "$PROJECT_DIR"/.claude/runs/*-context.json; do
+for ctx in "$PROJECT_DIR"/.runs/*-context.json; do
   [[ -f "$ctx" ]] || continue
   CTX_BRANCH=$(read_json_field "$ctx" "branch")
   if [[ "$CTX_BRANCH" == "$BRANCH" ]]; then
@@ -43,22 +43,22 @@ fi
 # Branch-aware checks: skills that don't produce verify-report.md use their own artifacts
 if [[ "$BRANCH" =~ ^chore/review- ]]; then
   # /review uses review-complete.json (produced in Step 4)
-  if [[ ! -f "$PROJECT_DIR/.claude/runs/review-complete.json" ]]; then
+  if [[ ! -f "$PROJECT_DIR/.runs/review-complete.json" ]]; then
     ERRORS+=("review-complete.json not found — /review must write this after final validation")
   fi
-  check_skill_completion "review" "$PROJECT_DIR/.claude/runs/review-context.json"
+  check_skill_completion "review" "$PROJECT_DIR/.runs/review-context.json"
 elif [[ "$BRANCH" =~ ^fix/resolve- ]]; then
   # /resolve uses observe-result.json (produced by skill-epilogue.md)
-  if [[ ! -f "$PROJECT_DIR/.claude/runs/observe-result.json" ]]; then
+  if [[ ! -f "$PROJECT_DIR/.runs/observe-result.json" ]]; then
     ERRORS+=("observe-result.json not found — /resolve must complete observation before PR")
   fi
-  check_skill_completion "resolve" "$PROJECT_DIR/.claude/runs/resolve-context.json"
+  check_skill_completion "resolve" "$PROJECT_DIR/.runs/resolve-context.json"
 elif [[ "$BRANCH" =~ ^chore/harden ]]; then
   # /harden runs /verify — require verify-report.md + completed_states
   if [[ ! -f "$REPORT" ]]; then
     ERRORS+=("verify-report.md not found — /harden must run /verify before PR")
   fi
-  CTX="$PROJECT_DIR/.claude/runs/harden-context.json"
+  CTX="$PROJECT_DIR/.runs/harden-context.json"
   if [[ -f "$CTX" ]]; then
     STATES=$(normalize_states "$CTX")
     REQUIRED=$(get_required_states "harden")
@@ -77,7 +77,7 @@ elif [[ "$BRANCH" =~ ^chore/distribute ]]; then
   if [[ ! -f "$REPORT" ]]; then
     ERRORS+=("verify-report.md not found — /distribute must run /verify before PR")
   fi
-  CTX="$PROJECT_DIR/.claude/runs/distribute-context.json"
+  CTX="$PROJECT_DIR/.runs/distribute-context.json"
   if [[ -f "$CTX" ]]; then
     STATES=$(normalize_states "$CTX")
     REQUIRED=$(get_required_states "distribute")
@@ -131,7 +131,7 @@ else
 
     # Check 5: hard_gate_failure blocks PR (except standalone mode)
     HARD_GATE=$(echo "$FRONTMATTER" | grep 'hard_gate_failure: *true' || true)
-    MODE=$(read_json_field "$PROJECT_DIR/.claude/runs/verify-context.json" "mode")
+    MODE=$(read_json_field "$PROJECT_DIR/.runs/verify-context.json" "mode")
     if [[ -n "$HARD_GATE" && "$MODE" != "standalone" ]]; then
       ERRORS+=("hard_gate_failure is true — verification hard gate(s) failed; PR blocked in non-standalone mode")
     fi
@@ -153,7 +153,7 @@ check_block_verdicts
 # Check 6: Gate verdict files (G4, G5, G6) exist with PASS for current branch
 # Only required for /change skill branches — other skills use their own verification.
 if [[ "$BRANCH" =~ ^(change|feat|fix)/ ]] && [[ ! "$BRANCH" =~ ^feat/bootstrap ]] && [[ ! "$BRANCH" =~ ^fix/resolve- ]]; then
-  VERDICTS_DIR="$PROJECT_DIR/.claude/runs/gate-verdicts"
+  VERDICTS_DIR="$PROJECT_DIR/.runs/gate-verdicts"
   check_verdict_gates "g4 g5 g6" "$VERDICTS_DIR" "$BRANCH"
 fi  # end branch-prefix guard for Check 6
 
@@ -161,7 +161,7 @@ fi  # end branch-prefix guard for Check 6
 # Only for change/feat/fix branches with acceptance_criteria in plan.
 # If acceptance_criteria is absent, skip silently (backward compatible).
 if [[ "$BRANCH" =~ ^(change|feat|fix)/ ]] && [[ ! "$BRANCH" =~ ^feat/bootstrap ]] && [[ ! "$BRANCH" =~ ^fix/resolve- ]]; then
-  PLAN="$PROJECT_DIR/.claude/runs/current-plan.md"
+  PLAN="$PROJECT_DIR/.runs/current-plan.md"
   if [[ -f "$PLAN" ]]; then
     AC_RESULT=$(python3 -c "
 import sys, os, json, glob
@@ -201,7 +201,7 @@ acs = fm.get('acceptance_criteria', None)
 if not acs:
     print('SKIP'); sys.exit(0)
 
-traces_dir = os.path.join('$PROJECT_DIR', '.claude/runs/agent-traces')
+traces_dir = os.path.join('$PROJECT_DIR', '.runs/agent-traces')
 errors = []
 for ac in acs:
     ac_id = ac.get('id', '?')

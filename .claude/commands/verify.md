@@ -17,7 +17,7 @@ Unified verification: build, agent review, E2E tests, and (in bootstrap-verify m
 
 ## Mode Detection
 
-Before entering the state machine, detect the operating mode by checking `.claude/runs/current-plan.md`:
+Before entering the state machine, detect the operating mode by checking `.runs/current-plan.md`:
 
 - If it exists with frontmatter `skill: bootstrap` and `checkpoint: awaiting-verify` → **bootstrap-verify** mode
 - If it exists with frontmatter `skill: change` → **change-verify** mode

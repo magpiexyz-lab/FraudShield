@@ -2,7 +2,7 @@
 
 **PRECONDITIONS:**
 - Final validation passed (STATE 4 POSTCONDITIONS met)
-- `.claude/runs/review-complete.json` exists
+- `.runs/review-complete.json` exists
 
 **ACTIONS:**
 
@@ -11,11 +11,11 @@
 Compute review execution quality (see `.claude/patterns/skill-scoring.md`):
 
 ```bash
-RUN_ID=$(python3 -c "import json; print(json.load(open('.claude/runs/review-context.json')).get('run_id', ''))" 2>/dev/null || echo "")
+RUN_ID=$(python3 -c "import json; print(json.load(open('.runs/review-context.json')).get('run_id', ''))" 2>/dev/null || echo "")
 REVIEW_DIMS=$(python3 -c "
 import json
 try:
-    r = json.load(open('.claude/runs/review-complete.json'))
+    r = json.load(open('.runs/review-complete.json'))
     fixed = r.get('findings_fixed', 0)
     disputed = r.get('findings_disputed', 0)
     q_yield = round(fixed / max(fixed + disputed, 1), 3)

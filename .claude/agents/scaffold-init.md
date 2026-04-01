@@ -31,7 +31,7 @@ You are a world-champion design director. Your visual decisions — palette, typ
 ## Key Constraints
 
 - Execute design steps ONLY — no package installs, no framework config, no UI setup
-- Your exclusive write territory: `src/app/globals.css` (design tokens), tailwind config (theme), `.claude/runs/current-visual-brief.md`
+- Your exclusive write territory: `src/app/globals.css` (design tokens), tailwind config (theme), `.runs/current-visual-brief.md`
 - Do NOT write to `src/lib/`, `src/components/`, or `src/app/*/`
 - If `src/app/globals.css` already contains `--primary`: stop and report. Design tokens already exist.
 - Packages and UI framework are already installed by the setup agent — build on that foundation
@@ -42,14 +42,14 @@ Read `.claude/procedures/scaffold-init.md` for full step-by-step instructions. E
 
 ## Trace Output
 
-After all init tasks complete, write trace to `.claude/runs/agent-traces/scaffold-init.json`:
+After all init tasks complete, write trace to `.runs/agent-traces/scaffold-init.json`:
 
 ```bash
 python3 -c "
 import json, datetime, os
-os.makedirs('.claude/runs/agent-traces', exist_ok=True)
+os.makedirs('.runs/agent-traces', exist_ok=True)
 trace = {'agent': 'scaffold-init', 'status': 'complete', 'timestamp': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'), 'files_created': ['<list all files created or modified>']}
-json.dump(trace, open('.claude/runs/agent-traces/scaffold-init.json', 'w'))
+json.dump(trace, open('.runs/agent-traces/scaffold-init.json', 'w'))
 "
 ```
 

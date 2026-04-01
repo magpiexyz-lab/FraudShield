@@ -2,7 +2,7 @@
 
 ## Prerequisites
 - Branch already created (by bootstrap Step 0)
-- Plan approved and saved to `.claude/runs/current-plan.md`
+- Plan approved and saved to `.runs/current-plan.md`
 - Packages installed and UI framework configured (by scaffold-setup agent)
 - Read all context files listed in your task assignment before starting
 
@@ -14,7 +14,7 @@
    for visual direction within the derived constraints. If not available,
    use your own judgment — match the product's personality, not framework defaults.
 3. Record choices in globals.css custom properties and tailwind config per the theme contract in design.md. Font setup applies when layout.tsx is created by the pages subagent.
-4. Write `.claude/runs/current-visual-brief.md` — a structured brief that all page-generating subagents will read for visual coherence. Sections:
+4. Write `.runs/current-visual-brief.md` — a structured brief that all page-generating subagents will read for visual coherence. Sections:
    - **Design Constraints**: the 3 constraints derived above (color direction, design philosophy, optimization target)
    - **Color Palette**: primary, accent, background treatment, dark mode approach
    - **Typography**: display font, body font, scale

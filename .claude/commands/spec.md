@@ -37,7 +37,7 @@ Begin at STATE 0. Read [state-0-input-parse.md](../patterns/spec/state-0-input-p
 - Add stack components not required by the selected level
 - Generate fewer than 3 variants or fewer pending hypotheses than the level minimum (L1: 2, L2: 4, L3: 5)
 - Produce hypotheses without a `metric` object containing `formula`, numeric `threshold`, and `operator`
-- Modify any file other than `experiment/experiment.yaml`, `.claude/runs/spec-manifest.json`, and `.claude/runs/verify-history.jsonl`
+- Modify any file other than `experiment/experiment.yaml`, `.runs/spec-manifest.json`, and `.runs/verify-history.jsonl`
 - Skip the user approval checkpoint in Step 6
 - Proceed past any STOP point without explicit user confirmation
 - Add `monetize` category hypotheses at Level 1

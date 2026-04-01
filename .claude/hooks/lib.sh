@@ -150,7 +150,7 @@ print(' '.join(str(s) for s in rs))
 # Checks that all _required_states for a skill are in completed_states.
 # Appends missing states to global ERRORS array. Does not exit — caller decides.
 # No-op if _required_states is empty or context file missing (fail-open).
-# Usage: check_skill_completion "change" "$PROJECT_DIR/.claude/runs/change-context.json"
+# Usage: check_skill_completion "change" "$PROJECT_DIR/.runs/change-context.json"
 check_skill_completion() {
   local skill="$1" ctx_file="$2"
   [[ ! -f "$ctx_file" ]] && return 0
@@ -214,7 +214,7 @@ except json.JSONDecodeError:
     print('PARSE_ERROR')
     sys.exit(0)
 
-traces_dir = os.environ.get('CLAUDE_PROJECT_DIR', '.') + '/.claude/runs/agent-traces'
+traces_dir = os.environ.get('CLAUDE_PROJECT_DIR', '.') + '/.runs/agent-traces'
 checks = json.loads('''$check_defs''')
 
 for trace_def in checks.get('traces', []):
@@ -313,13 +313,13 @@ require_trace_verdict() {
 check_trace_run_id() {
   local TRACE_FILE="$1"
   # shellcheck disable=SC2153
-  if [[ ! -f "$TRACE_FILE" ]] || [[ ! -f "$PROJECT_DIR/.claude/runs/verify-context.json" ]]; then
+  if [[ ! -f "$TRACE_FILE" ]] || [[ ! -f "$PROJECT_DIR/.runs/verify-context.json" ]]; then
     return 0
   fi
   local RESULT
   RESULT=$(python3 -c "
 import json
-ctx = json.load(open('$PROJECT_DIR/.claude/runs/verify-context.json'))
+ctx = json.load(open('$PROJECT_DIR/.runs/verify-context.json'))
 trace = json.load(open('$TRACE_FILE'))
 ctx_run_id = ctx.get('run_id', '')
 trace_run_id = trace.get('run_id', '')
@@ -348,21 +348,21 @@ check_postcondition_artifacts() {
   local V_SCOPE V_ARCH
   case "$PREV_STATE" in
     0)
-      [[ -f "$PROJECT_DIR/.claude/runs/verify-context.json" ]] || ERRORS+=("verify-context.json missing — STATE 0 incomplete")
-      [[ -f "$PROJECT_DIR/.claude/runs/fix-log.md" ]] || ERRORS+=("fix-log.md missing — STATE 0 incomplete")
+      [[ -f "$PROJECT_DIR/.runs/verify-context.json" ]] || ERRORS+=("verify-context.json missing — STATE 0 incomplete")
+      [[ -f "$PROJECT_DIR/.runs/fix-log.md" ]] || ERRORS+=("fix-log.md missing — STATE 0 incomplete")
       [[ -d "$TRACES_DIR" ]] || ERRORS+=("agent-traces/ directory missing — STATE 0 incomplete")
       ;;
     3)
-      V_SCOPE=$(read_json_field "$PROJECT_DIR/.claude/runs/verify-context.json" "scope")
-      V_ARCH=$(read_json_field "$PROJECT_DIR/.claude/runs/verify-context.json" "archetype")
+      V_SCOPE=$(read_json_field "$PROJECT_DIR/.runs/verify-context.json" "scope")
+      V_ARCH=$(read_json_field "$PROJECT_DIR/.runs/verify-context.json" "archetype")
       if [[ ("$V_SCOPE" == "full" || "$V_SCOPE" == "visual") && "$V_ARCH" == "web-app" ]]; then
-        [[ -f "$PROJECT_DIR/.claude/runs/design-ux-merge.json" ]] || ERRORS+=("design-ux-merge.json missing — STATE 3 incomplete")
+        [[ -f "$PROJECT_DIR/.runs/design-ux-merge.json" ]] || ERRORS+=("design-ux-merge.json missing — STATE 3 incomplete")
       fi
       ;;
     4)
-      V_SCOPE=$(read_json_field "$PROJECT_DIR/.claude/runs/verify-context.json" "scope")
+      V_SCOPE=$(read_json_field "$PROJECT_DIR/.runs/verify-context.json" "scope")
       if [[ "$V_SCOPE" == "full" || "$V_SCOPE" == "security" ]]; then
-        [[ -f "$PROJECT_DIR/.claude/runs/security-merge.json" ]] || ERRORS+=("security-merge.json missing — STATE 4 incomplete")
+        [[ -f "$PROJECT_DIR/.runs/security-merge.json" ]] || ERRORS+=("security-merge.json missing — STATE 4 incomplete")
       fi
       ;;
   esac
@@ -400,7 +400,7 @@ else: print('OK')
 # Requires global PAYLOAD (raw hook payload) and PROJECT_DIR.
 # Usage: check_efficiency_directives
 check_efficiency_directives() {
-  if [ -f "$PROJECT_DIR/.claude/runs/verify-context.json" ]; then
+  if [ -f "$PROJECT_DIR/.runs/verify-context.json" ]; then
     local PROMPT
     PROMPT=$(python3 -c "
 import json,sys
@@ -418,7 +418,7 @@ print(d.get('tool_input',{}).get('prompt',''))
 # Appends to global ERRORS if missing or non-zero.
 # Usage: check_build_result
 check_build_result() {
-  local BR_FILE="$PROJECT_DIR/.claude/runs/build-result.json"
+  local BR_FILE="$PROJECT_DIR/.runs/build-result.json"
   if [[ ! -f "$BR_FILE" ]]; then
     ERRORS+=("build-result.json missing — STATE 1 (Build & Lint Loop) did not record its result")
     return
@@ -501,7 +501,7 @@ errors = []
 warnings = []
 
 # --- Check 1: verify-context.json exists + field validation ---
-ctx_path = os.path.join(project, '.claude/runs/verify-context.json')
+ctx_path = os.path.join(project, '.runs/verify-context.json')
 ctx = {}
 if not os.path.exists(ctx_path):
     errors.append('verify-context.json not found — STATE 0 (Read Context) did not run')
@@ -518,12 +518,12 @@ scope = ctx.get('scope', '')
 arch = ctx.get('archetype', '')
 
 # --- Check 2: fix-log.md exists ---
-fix_log_path = os.path.join(project, '.claude/runs/fix-log.md')
+fix_log_path = os.path.join(project, '.runs/fix-log.md')
 if not os.path.exists(fix_log_path):
     errors.append('fix-log.md not found — STATE 0 (Read Context) did not run')
 
 # --- Check 3: agent-traces/ has >= 1 trace ---
-traces_dir = os.path.join(project, '.claude/runs/agent-traces')
+traces_dir = os.path.join(project, '.runs/agent-traces')
 traces = []
 if not os.path.isdir(traces_dir):
     errors.append('agent-traces/ directory not found — no agents were spawned')
@@ -546,7 +546,7 @@ for t in traces:
 
 # --- Check 5: security-merge.json (skip on hard gate) ---
 if not hard_gate and scope in ('full', 'security'):
-    if not os.path.exists(os.path.join(project, '.claude/runs/security-merge.json')):
+    if not os.path.exists(os.path.join(project, '.runs/security-merge.json')):
         errors.append('security-merge.json not found — security merge step was skipped (scope=' + scope + ')')
 
 # --- Check 6: fix-log vs auto_observe (skip on hard gate) ---
@@ -560,7 +560,7 @@ if not hard_gate and os.path.exists(fix_log_path):
 
 # --- Check 7: e2e-result.json (skip on hard gate) ---
 if not hard_gate:
-    e2e_path = os.path.join(project, '.claude/runs/e2e-result.json')
+    e2e_path = os.path.join(project, '.runs/e2e-result.json')
     if not os.path.exists(e2e_path):
         errors.append('e2e-result.json not found — E2E tests (STATE 5) did not run')
     else:
@@ -585,18 +585,18 @@ if scope in ('full', 'visual') and arch == 'web-app':
 
 # --- Check 15: Postcondition artifact backstop ---
 for f in ['verify-context.json', 'fix-log.md']:
-    if not os.path.exists(os.path.join(project, '.claude/runs', f)):
+    if not os.path.exists(os.path.join(project, '.runs', f)):
         errors.append(f + ' missing (STATE 0)')
-if not os.path.exists(os.path.join(project, '.claude/runs/build-result.json')):
+if not os.path.exists(os.path.join(project, '.runs/build-result.json')):
     errors.append('build-result.json missing (STATE 1)')
 if scope in ('full', 'visual') and arch == 'web-app':
-    if not os.path.exists(os.path.join(project, '.claude/runs/design-ux-merge.json')):
+    if not os.path.exists(os.path.join(project, '.runs/design-ux-merge.json')):
         errors.append('design-ux-merge.json missing (STATE 3)')
 if not hard_gate:
     if scope in ('full', 'security'):
-        if not os.path.exists(os.path.join(project, '.claude/runs/security-merge.json')):
+        if not os.path.exists(os.path.join(project, '.runs/security-merge.json')):
             errors.append('security-merge.json missing (STATE 4)')
-    if not os.path.exists(os.path.join(project, '.claude/runs/e2e-result.json')):
+    if not os.path.exists(os.path.join(project, '.runs/e2e-result.json')):
         errors.append('e2e-result.json missing (STATE 5)')
 
 print(json.dumps({'errors': errors, 'warnings': warnings}))
@@ -615,7 +615,7 @@ import json, os, glob, re, sys
 
 project = os.environ.get('CLAUDE_PROJECT_DIR', '.')
 content = sys.stdin.read()
-traces_dir = os.path.join(project, '.claude/runs/agent-traces')
+traces_dir = os.path.join(project, '.runs/agent-traces')
 errors = []
 warnings = []
 
@@ -636,7 +636,7 @@ if match and os.path.isdir(traces_dir):
         pass
 
 # --- Check 14: Fix count cross-reference (WARN only) ---
-fix_log_path = os.path.join(project, '.claude/runs/fix-log.md')
+fix_log_path = os.path.join(project, '.runs/fix-log.md')
 if os.path.isdir(traces_dir) and os.path.exists(fix_log_path):
     try:
         fix_log = open(fix_log_path).read()
@@ -693,11 +693,11 @@ if os.path.exists(sf_path):
     except: pass
 
 # --- Check 19: Q-score in verify-history.jsonl ---
-ctx_path = os.path.join(project, '.claude/runs/verify-context.json')
+ctx_path = os.path.join(project, '.runs/verify-context.json')
 if os.path.exists(ctx_path):
     try:
         run_id = json.load(open(ctx_path)).get('run_id', '')
-        hist_path = os.path.join(project, '.claude/runs/verify-history.jsonl')
+        hist_path = os.path.join(project, '.runs/verify-history.jsonl')
         if not os.path.exists(hist_path):
             errors.append('verify-history.jsonl missing — Q-score not calculated')
         else:
@@ -761,7 +761,7 @@ for state_id, entry in skill_data.items():
 # Usage: check_block_verdicts
 check_block_verdicts() {
   local project_dir="${CLAUDE_PROJECT_DIR:-.}"
-  local verdicts_dir="$project_dir/.claude/runs/gate-verdicts"
+  local verdicts_dir="$project_dir/.runs/gate-verdicts"
   [[ ! -d "$verdicts_dir" ]] && return 0
 
   local branch

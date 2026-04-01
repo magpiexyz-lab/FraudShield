@@ -118,4 +118,4 @@ Blocked reasons:
 
 ## Trace Output
 
-After returning the Output Contract to the lead, the **lead** (not the implementer) writes a trace to `.claude/runs/agent-traces/` based on the Output Contract fields above. The implementer runs in a worktree and cannot write to the main working tree's trace directory. See `change-feature.md` for the lead-side trace writing procedure.
+After returning the Output Contract to the lead, the **lead** (not the implementer) writes a trace to `.runs/agent-traces/` based on the Output Contract fields above. The implementer runs in a worktree and cannot write to the main working tree's trace directory. See `change-feature.md` for the lead-side trace writing procedure.

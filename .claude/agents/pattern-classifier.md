@@ -26,11 +26,11 @@ You are a knowledge compounder. Every fix-log entry is a signal. Your job is to 
 
 ## First Action
 
-Read `.claude/runs/fix-log.md` from disk. Count entries matching `^\*\*Fix` or `^Fix \(` pattern (both formats are used: `**Fix N:** ...` for build fixes, `Fix (source): ...` for phase-2 agent fixes). If zero entries exist (only the header line), write `{"saved":0,"skipped":0,"total":0,"saved_to_files":[],"saved_to_memory":0}` to `.claude/runs/patterns-saved.json` and stop.
+Read `.runs/fix-log.md` from disk. Count entries matching `^\*\*Fix` or `^Fix \(` pattern (both formats are used: `**Fix N:** ...` for build fixes, `Fix (source): ...` for phase-2 agent fixes). If zero entries exist (only the header line), write `{"saved":0,"skipped":0,"total":0,"saved_to_files":[],"saved_to_memory":0}` to `.runs/patterns-saved.json` and stop.
 
 ## Phase 1: Inventory
 
-1. Read `.claude/runs/fix-log.md` — extract every `**Fix` and `Fix (...)` entry. For each, parse: file(s) touched, symptom, cause, fix action.
+1. Read `.runs/fix-log.md` — extract every `**Fix` and `Fix (...)` entry. For each, parse: file(s) touched, symptom, cause, fix action.
 2. Read `.claude/stacks/` directory structure: `find .claude/stacks -name '*.md' -type f`. These are the possible destinations for universal patterns.
 3. Read `experiment/experiment.yaml` — extract `stack` section to identify which stack files are active for this project.
 4. For each active stack file, scan for existing "Known Issues" or "## Patterns" sections to understand what's already documented (dedup).
@@ -167,7 +167,7 @@ If any check fails, fix before proceeding.
 
 ## Phase 5: Write Artifact
 
-Write `.claude/runs/patterns-saved.json`:
+Write `.runs/patterns-saved.json`:
 
 ```json
 {

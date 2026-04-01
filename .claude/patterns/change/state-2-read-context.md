@@ -13,12 +13,12 @@ REF: `patterns/archetype-behavior-check.md` — archetype behavior rules (no art
 - Resolve the stack: read experiment.yaml `stack`. For each category, read `.claude/stacks/<category>/<value>.md`. If a stack file doesn't exist for a given value, generate it: read `.claude/stacks/TEMPLATE.md` for the schema, read existing files in the same category as reference, and create `.claude/stacks/<category>/<value>.md` with complete frontmatter and code templates. Run `python3 scripts/validate-frontmatter.py` to verify (max 2 fix attempts). If validation fails, stop: "Could not generate a valid stack file for `<category>/<value>`. Create it manually using TEMPLATE.md as a guide." File an observation (REF: `.claude/patterns/observe.md`) for the missing stack file.
 - Scan the codebase structure per archetype (path per framework stack file). Understand the current structure and codebase state.
 - CALL: `.claude/procedures/plan-exploration.md` — **explore codebase for planning context**. Exploration depth depends on the change type — do a preliminary classification from $ARGUMENTS keywords (adds/creates/new → Feature depth, replaces/upgrades/integrate → Upgrade depth, fixes/broken/bug → Fix depth, polish/improve/visual → Polish depth, analytics/tracking → Analytics depth, test/spec/e2e → Test depth). Store results in working memory for Phase 1. If auto memory has a "Planning Patterns" section, read it and incorporate relevant patterns into the exploration.
-- If `.claude/runs/iterate-manifest.json` exists, read it for context. Validate it is valid JSON with keys `verdict`, `bottleneck`, `recommendations` before using. If malformed or missing required keys, warn: "iterate-manifest.json is incomplete — proceeding without iterate context." Otherwise:
+- If `.runs/iterate-manifest.json` exists, read it for context. Validate it is valid JSON with keys `verdict`, `bottleneck`, `recommendations` before using. If malformed or missing required keys, warn: "iterate-manifest.json is incomplete — proceeding without iterate context." Otherwise:
   - Include the verdict, bottleneck, and recommendations in the plan (Phase 1)
   - Reference: "This change addresses the [bottleneck.stage] bottleneck identified by /iterate ([bottleneck.diagnosis])"
   - This provides continuity between analysis and implementation
 
-- If `.claude/runs/verify-context.json` exists and contains a `diagnostic` key, read it for prior failure context. This occurs when a previous `/verify` or `/bootstrap` run exhausted its BUILD_LINT_LOOP and the user is now running `/change "fix: ..."` to address it. Include in working memory:
+- If `.runs/verify-context.json` exists and contains a `diagnostic` key, read it for prior failure context. This occurs when a previous `/verify` or `/bootstrap` run exhausted its BUILD_LINT_LOOP and the user is now running `/change "fix: ..."` to address it. Include in working memory:
   - Prior error category: `diagnostic.category`
   - Remaining errors: `diagnostic.last_errors`
   - What was already tried: `diagnostic.attempts`
@@ -28,14 +28,14 @@ REF: `patterns/archetype-behavior-check.md` — archetype behavior rules (no art
   ```bash
   python3 -c "
   import json
-  ctx = json.load(open('.claude/runs/change-context.json'))
+  ctx = json.load(open('.runs/change-context.json'))
   ctx['preliminary_type'] = '<preliminary_type>'  # Feature|Upgrade|Fix|Polish|Analytics|Test
   ctx['affected_areas'] = <N>  # integer count of affected areas from exploration
-  json.dump(ctx, open('.claude/runs/change-context.json', 'w'))
+  json.dump(ctx, open('.runs/change-context.json', 'w'))
   "
   ```
 
-- **Write exploration trace artifact** (`.claude/runs/exploration-trace.json`):
+- **Write exploration trace artifact** (`.runs/exploration-trace.json`):
   ```bash
   python3 -c "
   import json
@@ -47,7 +47,7 @@ REF: `patterns/archetype-behavior-check.md` — archetype behavior rules (no art
       'affected_imports': ['<imports affected by the change>'],
       'exploration_steps_completed': [1, 5]  # which plan-exploration steps were executed
   }
-  json.dump(trace, open('.claude/runs/exploration-trace.json', 'w'), indent=2)
+  json.dump(trace, open('.runs/exploration-trace.json', 'w'), indent=2)
   "
   ```
 
@@ -59,16 +59,16 @@ REF: `patterns/archetype-behavior-check.md` — archetype behavior rules (no art
 - Codebase structure scanned
 - Exploration results stored in working memory
 - Preliminary classification determined from `$ARGUMENTS` keywords
-- `preliminary_type` and `affected_areas` persisted to `.claude/runs/change-context.json`
+- `preliminary_type` and `affected_areas` persisted to `.runs/change-context.json`
 - Diagnostic context from prior verify run read (if available)
-- `.claude/runs/exploration-trace.json` exists with required fields (`archetype`, `archetype_constraints`, `stacks_read`, `affected_files`, `affected_imports`, `exploration_steps_completed`)
+- `.runs/exploration-trace.json` exists with required fields (`archetype`, `archetype_constraints`, `stacks_read`, `affected_files`, `affected_imports`, `exploration_steps_completed`)
 - Files listed in `affected_files` exist on disk
 
 **VERIFY:**
 ```bash
 python3 -c "
 import json, os
-d = json.load(open('.claude/runs/exploration-trace.json'))
+d = json.load(open('.runs/exploration-trace.json'))
 required = ['archetype', 'archetype_constraints', 'stacks_read', 'affected_files', 'affected_imports', 'exploration_steps_completed']
 missing = [k for k in required if k not in d]
 assert not missing, 'exploration-trace.json missing keys: %s' % missing

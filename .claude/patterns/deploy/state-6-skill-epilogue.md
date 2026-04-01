@@ -8,7 +8,7 @@
 ### Cleanup stale artifacts
 
 ```bash
-rm -f .claude/runs/observe-result.json .claude/runs/epilogue-context.json .claude/runs/observer-diffs.txt
+rm -f .runs/observe-result.json .runs/epilogue-context.json .runs/observer-diffs.txt
 ```
 
 Follow `.claude/patterns/skill-epilogue.md` **Strategy A** (Code Observation)
@@ -39,11 +39,11 @@ provision fixes).
 ```
 
 **POSTCONDITIONS:**
-- `.claude/runs/observe-result.json` exists with `"skill": "deploy"`
+- `.runs/observe-result.json` exists with `"skill": "deploy"`
 
 **VERIFY:**
 ```bash
-python3 -c "import json; d=json.load(open('.claude/runs/observe-result.json')); assert d['skill']=='deploy'"
+python3 -c "import json; d=json.load(open('.runs/observe-result.json')); assert d['skill']=='deploy'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

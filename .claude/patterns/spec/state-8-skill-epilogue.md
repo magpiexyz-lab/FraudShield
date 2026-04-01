@@ -8,7 +8,7 @@
 Follow `.claude/patterns/skill-epilogue.md` **Strategy A** (Code Observation)
 to ensure observation result is recorded.
 
-**If STATE 7 step 7c.2 already wrote `.claude/runs/observe-result.json`** (validation
+**If STATE 7 step 7c.2 already wrote `.runs/observe-result.json`** (validation
 required fixes that triggered inline observation):
 - Verify the file exists and contains `"skill": "spec"` — no additional work needed
 
@@ -31,11 +31,11 @@ This state ensures observe-result.json always exists after `/spec`, regardless
 of whether inline observation fired in STATE 7.
 
 **POSTCONDITIONS:**
-- `.claude/runs/observe-result.json` exists with `"skill": "spec"`
+- `.runs/observe-result.json` exists with `"skill": "spec"`
 
 **VERIFY:**
 ```bash
-python3 -c "import json; d=json.load(open('.claude/runs/observe-result.json')); assert d['skill']=='spec'"
+python3 -c "import json; d=json.load(open('.runs/observe-result.json')); assert d['skill']=='spec'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

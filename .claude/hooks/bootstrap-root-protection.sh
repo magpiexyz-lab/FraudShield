@@ -26,7 +26,7 @@ if [[ "$BRANCH" != "feat/bootstrap" ]] && [[ ! "$BRANCH" =~ ^feat/bootstrap-[0-9
 fi
 
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-.}"
-VERDICTS_DIR="$PROJECT_DIR/.claude/runs/gate-verdicts"
+VERDICTS_DIR="$PROJECT_DIR/.runs/gate-verdicts"
 
 # Condition: BG1 passed AND BG2 has NOT passed AND Phase A sentinel exists
 # This means we are in Phase B — root files are protected

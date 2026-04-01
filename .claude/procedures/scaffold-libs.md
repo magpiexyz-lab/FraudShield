@@ -3,7 +3,7 @@
 ## Prerequisites
 - Packages installed and UI setup complete (Step 1 finished)
 - Stack files on disk for all categories in experiment.yaml `stack`
-- `.claude/runs/current-plan.md` exists
+- `.runs/current-plan.md` exists
 
 ## Instructions
 
@@ -33,9 +33,9 @@ Create the library files specified in each stack file's "Files to Create" sectio
 
 10. **Write completion manifest**
    ```bash
-   mkdir -p .claude/runs/agent-traces
+   mkdir -p .runs/agent-traces
    ```
-   Write `.claude/runs/agent-traces/scaffold-libs.json`:
+   Write `.runs/agent-traces/scaffold-libs.json`:
    ```json
    {"agent": "scaffold-libs", "files_created": ["<list all files created>"], "status": "complete", "timestamp": "<ISO 8601>"}
    ```

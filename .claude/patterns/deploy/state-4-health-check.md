@@ -52,7 +52,7 @@ Spawn the `provision-scanner` agent (`subagent_type: provision-scanner`).
 Pass context:
 
 > Mode: deploy
-> Manifest path: .claude/runs/deploy-manifest.json
+> Manifest path: .runs/deploy-manifest.json
 
 Wait for the agent to complete. Include the scanner's output table in the Step 6 summary under a **Provision Scan** heading. If any check FAILs, list them as action items — the health check + auto-fix (5c-5d) already attempted remediation, so these are residual issues for the user to address.
 
@@ -68,7 +68,7 @@ Do NOT file observations for environmental issues (missing/mistyped env
 vars, temporary network outages, uninitialized CLIs, or authentication
 failures) — observe.md's trigger evaluation excludes these.
 
-- **Write health check artifact** (`.claude/runs/deploy-health.json`):
+- **Write health check artifact** (`.runs/deploy-health.json`):
   ```bash
   python3 -c "
   import json
@@ -78,7 +78,7 @@ failures) — observe.md's trigger evaluation excludes these.
       'provision_scan_completed': True,
       'observations_filed': 0
   }
-  json.dump(health, open('.claude/runs/deploy-health.json', 'w'), indent=2)
+  json.dump(health, open('.runs/deploy-health.json', 'w'), indent=2)
   "
   ```
 
@@ -87,11 +87,11 @@ failures) — observe.md's trigger evaluation excludes these.
 - Auto-fix attempted if health check failed (max 2 rounds)
 - Provision scan completed
 - Template observations filed (if applicable)
-- `.claude/runs/deploy-health.json` exists
+- `.runs/deploy-health.json` exists
 
 **VERIFY:**
 ```bash
-test -f .claude/runs/deploy-health.json
+test -f .runs/deploy-health.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
