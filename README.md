@@ -67,9 +67,9 @@ Every command that writes code shows a plan and waits for your approval before c
 
 - **3 archetypes** — web-app, service, cli — each with tailored build, deploy, and test pipelines
 - **3 experiment levels** — L1 landing test, L2 interactive MVP, L3 full MVP — match effort to conviction
-- **12 slash commands** — from `/spec` through `/teardown`, the full experiment lifecycle
-- **22 pluggable stack files** — swap frameworks, databases, hosting, and more without changing skills
-- **19 specialized agents** — design critic, security attacker/defender, UX journeyer, accessibility scanner, and more run across the lifecycle
+- **16 slash commands** — from `/spec` through `/teardown`, the full experiment lifecycle
+- **26 pluggable stack files** — swap frameworks, databases, hosting, and more without changing skills
+- **24 specialized agents** — design critic, security attacker/defender, UX journeyer, accessibility scanner, and more run across the lifecycle
 - **Production mode** — set `quality: production` for TDD, per-task implementer agents, and spec review
 - **Full deploy + teardown** — one command to go live, one command to clean up
 
@@ -106,6 +106,7 @@ Every command that writes code shows a plan and waits for your approval before c
 | `/change [desc]` | Add a feature, fix a bug, polish UI, fix analytics | Yes |
 | `/verify` | Run agents and auto-fix failures | No |
 | `/harden` | Add specification tests to critical paths | Yes |
+| `/resolve` | Resolve GitHub issues filed against the template | Yes |
 
 **Ship**
 
@@ -116,13 +117,21 @@ Every command that writes code shows a plan and waits for your approval before c
 | `/rollback` | Roll back to previous deployment (emergency) | Yes |
 | `/teardown` | Remove all cloud resources | Yes |
 
-**Learn**
+**Analyze**
 
 | Skill | What it does | Waits for approval? |
 |-------|-------------|---------------------|
 | `/iterate` | Analyze metrics, recommend next steps | No |
 | `/retro` | Run retrospective, file feedback as GitHub issue | No |
 | `/review` | Automated review-fix loop *(maintainers only)* | Yes |
+| `/audit` | Analyze template structural quality | No |
+| `/solve` | First-principles analysis for complex decisions | No |
+
+**Utility**
+
+| Skill | What it does | Waits for approval? |
+|-------|-------------|---------------------|
+| `/optimize-prompt` | Optimize a prompt using Claude best practices | No |
 
 ## Supported stacks
 
@@ -136,7 +145,7 @@ Every command that writes code shows a plan and waits for your approval before c
 | Analytics | posthog | posthog |
 | Testing | playwright, vitest | — |
 | Payment | stripe | — |
-| Distribution | google-ads, reddit, twitter | — |
+| Distribution | google-ads, meta-ads, reddit, reddit-organic, twitter, twitter-organic, email-campaign | — |
 | Email | resend | — |
 | AI | anthropic | — |
 | Surface | co-located, detached, none | — |
@@ -152,22 +161,22 @@ Every `/verify` triggers up to 10 specialized agents in parallel:
 **Production** — spec-reviewer *(when `quality: production`)*
 **Build** — build-info-collector, observer
 
-`/bootstrap` adds 7 more scaffold agents (setup, init, libs, pages, externals, landing, wire) that build the app in parallel. 19 agents total across the system.
+`/bootstrap` adds 7 scaffold agents (setup, init, libs, pages, externals, landing, wire) that build the app in parallel. Additional agents handle gate-keeping, pattern classification, behavior verification, design consistency, provisioning scans, and visual/task implementation. 24 agents total across the system.
 
 ## Project structure
 
 ```
 .claude/
-  commands/          # 12 slash command definitions
-  agents/            # 19 agent specifications
-  stacks/            # 22 pluggable stack files (12 categories)
+  commands/          # 16 slash command definitions
+  agents/            # 24 agent specifications
+  stacks/            # 26 pluggable stack files (13 categories)
   archetypes/        # 3 product archetypes (web-app, service, cli)
   patterns/          # Reusable patterns (verify, security, TDD, design)
+  runs/              # Skill execution artifacts and context files
 experiment/
   experiment.yaml    # Single source of truth for what to build
   experiment.example.yaml  # QuickBill reference example
 scripts/             # Validators and CI checks
-tests/fixtures/      # 25 test fixtures for CI
 docs/                # Prerequisites, troubleshooting, technical reference
 ```
 
@@ -180,7 +189,7 @@ docs/                # Prerequisites, troubleshooting, technical reference
 5. **`/deploy` fails** — run `vercel login` and `npx supabase login` first
 6. **Deployment broken?** — run `/rollback` for instant recovery to the previous deployment
 
-For more issues, see [docs/troubleshooting.md](docs/troubleshooting.md) (25 items total).
+For more issues, see [docs/troubleshooting.md](docs/troubleshooting.md) (28 items total).
 
 ## Documentation
 
@@ -191,7 +200,7 @@ For more issues, see [docs/troubleshooting.md](docs/troubleshooting.md) (25 item
 
 ## Contributing
 
-All changes go through pull requests — never commit directly to `main`. CI runs validation across 25 test fixtures on every PR. See [CLAUDE.md](CLAUDE.md) for the full rule set.
+All changes go through pull requests — never commit directly to `main`. CI runs validation on every PR. See [CLAUDE.md](CLAUDE.md) for the full rule set.
 
 ## License
 
