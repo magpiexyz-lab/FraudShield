@@ -5,7 +5,7 @@
       "Write(/.claude/**)",
       "Edit(/.claude/**)",
       "Edit(/.gitignore)",
-      "Bash(*.claude/*)",
+      "Bash(*.claude/**)",
       "Bash(git *)",
       "Bash(gh *)",
       "Bash(npm *)",
