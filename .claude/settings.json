@@ -13,7 +13,10 @@
       "Bash(make *)",
       "Bash(python3 scripts/*)",
       "Bash(bash scripts/*)",
-      "Bash(shellcheck *)"
+      "Bash(shellcheck *)",
+      "Write(/.runs/**)",
+      "Edit(/.runs/**)",
+      "Bash(*.runs/**)"
     ]
   },
   "env": {

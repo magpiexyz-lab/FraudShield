@@ -10,7 +10,7 @@ Args:
     trace-filename: Optional. Defaults to "<agent-name>.json".
                     Use for per-page traces: "design-critic-landing.json"
 
-Writes: .claude/agent-traces/<trace-filename>
+Writes: .claude/runs/agent-traces/<trace-filename>
 Schema: {"agent": str, "status": "started", "timestamp": str, "run_id": str}
 """
 import json
@@ -27,12 +27,12 @@ trace_file = sys.argv[2] if len(sys.argv) > 2 else f"{agent}.json"
 
 run_id = ""
 try:
-    with open(".claude/verify-context.json") as f:
+    with open(".claude/runs/verify-context.json") as f:
         run_id = json.load(f).get("run_id", "")
 except Exception:
     pass
 
-os.makedirs(".claude/agent-traces", exist_ok=True)
+os.makedirs(".claude/runs/agent-traces", exist_ok=True)
 
 trace = {
     "agent": agent,
@@ -41,6 +41,6 @@ trace = {
     "run_id": run_id,
 }
 
-with open(f".claude/agent-traces/{trace_file}", "w") as f:
+with open(f".claude/runs/agent-traces/{trace_file}", "w") as f:
     json.dump(trace, f, indent=2)
     f.write("\n")
