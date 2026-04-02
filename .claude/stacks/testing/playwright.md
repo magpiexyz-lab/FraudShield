@@ -429,15 +429,21 @@ test.describe("b-01: <when clause summary>", () => {
   });
 
   // Each entry in behavior.tests becomes one test()
+  // Every test() must assert beyond toBeVisible() — verify the `then` clause outcome
   test("<tests[0] verbatim from experiment.yaml>", async ({ page }) => {
     await page.goto("/<page from behavior context>");
-    // Real selectors extracted from actual page source
-    await expect(page.getByRole("heading", { name: /actual h1 text/i })).toBeVisible();
+    // Interact: trigger the action described in `when` clause (real selectors from page source)
+    await page.getByRole("button", { name: /create invoice/i }).click();
+    // Assert outcome from `then` clause — not just element presence
+    await expect(page.getByText(/invoice #/i)).toBeVisible();
+    await expect(page.getByText(/send link/i)).toHaveAttribute("href", /./);
   });
 
   test("<tests[1] verbatim from experiment.yaml>", async ({ page }) => {
     await page.goto("/<page>");
-    await expect(page.getByText(/actual text from page source/i)).toBeVisible();
+    // Assert actual data values, not just that an element exists
+    await expect(page.getByRole("heading", { name: /actual h1 text/i })).toHaveText(/./);
+    await expect(page.getByText(/actual text from page source/i)).toContainText(/expected value/i);
   });
 });
 
@@ -451,6 +457,7 @@ test.describe("b-05: <when clause summary>", () => {
     await blockAnalytics(page);
   });
 
+  // Every test() must assert beyond toBeVisible() — verify the `then` clause outcome
   test("<tests[0] verbatim>", async ({ page }) => {
     await page.goto("/<page>");
     // Navigate, interact, assert — all with real selectors from page source
@@ -478,9 +485,15 @@ test.describe("b-01: <when clause summary>", () => {
     await blockAnalytics(page);
   });
 
+  // Every test() must assert beyond toBeVisible() — verify the `then` clause outcome
   test("<tests[0] verbatim>", async ({ page }) => {
     await page.goto("/<page>");
-    await expect(page.getByRole("heading", { name: /actual text/i })).toBeVisible();
+    // Interact with the page per the `when` clause
+    await page.getByPlaceholder(/email/i).fill(`test-${Date.now()}@test.example`);
+    await page.getByPlaceholder(/email/i).press("Enter");
+    // Assert the `then` clause outcome — content, not just presence
+    await expect(page.getByText(/thanks|success|confirmed/i)).toBeVisible();
+    await expect(page).toHaveURL(/./); // URL did not error-redirect
   });
 });
 
@@ -500,6 +513,32 @@ Notes:
 - **Triple duty**: This file runs in CI (auto-discovered by `npx playwright test`), during local `/verify` (STATE 5 auto-discovers), and in production `/deploy` (STATE 4 step 5d.6 with `E2E_BASE_URL`)
 - **Staleness protection**: verify.md STATE 5 has a 3-attempt fix budget that catches and repairs stale selectors (same mechanism as funnel.spec.ts)
 - **Regression detection**: When a `/change` modifies unrelated code that breaks an existing behavior, CI catches it on the next PR
+
+### Assertion Depth Patterns
+
+The `then` clause of each behavior determines the assertion pattern for its tests.
+Bootstrap uses this mapping when generating test bodies:
+
+| `then` keyword class | Assertion pattern | Playwright API |
+|---|---|---|
+| "created", "generated" | Verify content exists with expected values | `toContainText(/.../i)`, `toHaveText(/.../i)` |
+| "redirected", "navigates", "land on" | Verify URL changed to expected target | `toHaveURL(/\/target/)` |
+| "updates", "changes", "marked" | Verify state change is visible | Assert element text/attribute before and after action |
+| "shows", "displays", "renders" | Verify actual data values, not just presence | `toHaveText(/\$[0-9]/)` not just `toBeVisible()` |
+| "accepts", "validates" | Verify input processing end-to-end | `fill()` → submit → verify result or field-level error |
+| (default) | Interact then assert visibility | Click/navigate per `when`, then `toBeVisible()` on outcome |
+
+**Mandatory rule:** Every `test()` in `behaviors.spec.ts` must include at least one assertion
+beyond `toBeVisible()`. The `then` clause determines which pattern. If a test can only
+assert visibility (e.g., "Landing page renders without errors"), add a content assertion
+(e.g., `toHaveText` on the heading text, `toHaveTitle` matching expected title).
+
+This mapping is a heuristic — not an exhaustive parser. When the `then` clause is ambiguous,
+prefer the more specific assertion. When multiple keywords match, use the first match in the
+table (ordered by specificity).
+
+These rules refine the test body for existing `behaviors[].tests` entries. They do NOT create
+additional tests beyond what experiment.yaml specifies.
 
 ## Critical Flow Integration Tests
 
