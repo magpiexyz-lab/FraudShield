@@ -14,7 +14,7 @@ files:
   - e2e/behaviors.spec.ts  # conditional: only when experiment.yaml has behaviors with tests entries
   - tests/flows.test.ts      # conditional: only when experiment.yaml has behaviors with actor: system/cron
 env:
-  server: []
+  server: [E2E_BASE_URL]
   client: []
 ci_placeholders: {}
 clean:
