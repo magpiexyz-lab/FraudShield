@@ -7,6 +7,7 @@ files:
   - playwright.config.ts
   - e2e/global-setup.ts  # conditional: only when all assumes are met
   - e2e/global-teardown.ts  # conditional: only when all assumes are met
+  - e2e/prod-auth.setup.ts  # conditional: only when all assumes are met (used by /deploy production testing)
   - e2e/helpers.ts
   - e2e/smoke.spec.ts
   - e2e/funnel.spec.ts  # conditional: only when all assumes are met
@@ -93,23 +94,41 @@ export default defineConfig({
     trace: "on-first-retry",
   },
   projects: [
-    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
+    // Production auth setup — only active when E2E_BASE_URL and PROD_TEST_EMAIL are set
+    ...(process.env.E2E_BASE_URL && process.env.PROD_TEST_EMAIL
+      ? [
+          {
+            name: "prod-auth-setup",
+            testMatch: /prod-auth\.setup\.ts/,
+            use: { ...devices["Desktop Chrome"] },
+          },
+        ]
+      : []),
+    {
+      name: "chromium",
+      use: { ...devices["Desktop Chrome"] },
+      dependencies: process.env.PROD_TEST_EMAIL ? ["prod-auth-setup"] : [],
+    },
     { name: "Mobile Chrome", use: { ...devices["Pixel 5"] } },
   ],
-  webServer: {
-    command: `PORT=${port} npm run dev`,
-    url: `http://localhost:${port}`,
-    reuseExistingServer: !process.env.CI,
-    env: {
-      NEXT_PUBLIC_SUPABASE_URL: supabase.url,
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: supabase.anonKey,
-      SUPABASE_SERVICE_ROLE_KEY: supabase.serviceRoleKey,
-    },
-  },
+  webServer: process.env.E2E_BASE_URL
+    ? undefined
+    : {
+        command: `PORT=${port} npm run dev`,
+        url: `http://localhost:${port}`,
+        reuseExistingServer: !process.env.CI,
+        env: {
+          NEXT_PUBLIC_SUPABASE_URL: supabase.url,
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: supabase.anonKey,
+          SUPABASE_SERVICE_ROLE_KEY: supabase.serviceRoleKey,
+        },
+      },
 });
 ```
 - Two projects: Desktop Chrome and Mobile Chrome (Pixel 5) — cross-browser is out of scope per Rule 4, but mobile viewport testing catches layout overflow issues
-- `webServer` starts `npm run dev` automatically and waits for the app
+- `webServer` is conditional: when `E2E_BASE_URL` is set, `webServer` is `undefined` (production server already running). This pattern is used by both the preview-smoke CI job and `/deploy` STATE 4 production testing.
+- When `PROD_TEST_EMAIL` is set alongside `E2E_BASE_URL`, the `prod-auth-setup` project runs first to authenticate via the app's login form and save auth state for downstream tests
+- `webServer` starts `npm run dev` automatically and waits for the app (local mode only)
 - `getSupabaseConfig()` reads keys dynamically from `supabase status -o json` — works with both legacy JWT keys (CLI <v2.76) and new `sb_publishable_*`/`sb_secret_*` keys (CLI v2.76+)
 - Keys are assigned to `process.env` so `global-setup.ts` and `global-teardown.ts` (which run in the Playwright main process) can access them. `webServer.env` passes the same keys to the dev server child process.
 - Serial execution (`fullyParallel: false`, `workers: 1`) since funnel tests depend on order
@@ -179,6 +198,39 @@ export default async function globalTeardown() {
 - Reads Supabase URL and service role key from `process.env` — set by `playwright.config.ts` via `webServer.env`
 - Reads user ID from `.auth.json`, deletes via admin API, removes the file
 - Swallows all errors so teardown never fails the test run
+
+### `e2e/prod-auth.setup.ts` — Production auth setup (conditional: only when `E2E_BASE_URL` + `PROD_TEST_EMAIL` set)
+```ts
+import { test as setup } from "@playwright/test";
+import { login } from "./helpers";
+import { writeFileSync } from "fs";
+import path from "path";
+
+const AUTH_FILE = path.join(__dirname, ".auth.json");
+
+setup("authenticate production test user", async ({ page }) => {
+  const email = process.env.PROD_TEST_EMAIL;
+  const password = process.env.PROD_TEST_PASSWORD;
+  if (!email || !password) {
+    setup.skip();
+    return;
+  }
+
+  await login(page, email, password);
+
+  // Save credentials for downstream tests (same format as global-setup.ts)
+  const cookies = await page.context().cookies();
+  writeFileSync(
+    AUTH_FILE,
+    JSON.stringify({ email, password, userId: "prod-test-user", cookies })
+  );
+});
+```
+- Only runs when `PROD_TEST_EMAIL` and `PROD_TEST_PASSWORD` environment variables are set
+- Logs in via the browser (same path as a real user) using the shared `login()` helper — validates the login flow itself
+- Writes auth state to `.auth.json` so downstream tests can read credentials via `getTestCredentials()`
+- Uses the same `AUTH_FILE` path as `global-setup.ts` for compatibility with `helpers.ts`
+- `/deploy` STATE 4 auto-creates the test user and sets these env vars — no manual setup needed
 
 ### `e2e/helpers.ts` — Shared test utilities
 ```ts
@@ -413,13 +465,17 @@ Notes:
 
 ## Environment Variables
 ```
-E2E_PORT=3099         # Optional, defaults to 3099. Avoids conflicts with other services on port 3000.
-E2E_BASE_URL=http://localhost:3099  # Optional, defaults to localhost:${E2E_PORT}
+E2E_PORT=3099                        # Optional, defaults to 3099. Avoids conflicts with other services on port 3000.
+E2E_BASE_URL=http://localhost:3099   # Optional, defaults to localhost:${E2E_PORT}. Set to production URL to skip webServer start.
+PROD_TEST_EMAIL=mvp-test@slug.test   # Optional, production test user email (auto-created by /deploy STATE 4)
+PROD_TEST_PASSWORD=<random>          # Optional, production test user password (auto-created by /deploy STATE 4)
 ```
 
 Full-Auth path reads local Supabase keys dynamically from `supabase status -o json` in `playwright.config.ts` — no manual env vars needed for database or auth.
 
-**When using the No-Auth Fallback:** same as above — only the optional port and base URL apply.
+**Production mode:** When `E2E_BASE_URL` is set to a production URL, the `webServer` block is skipped (production server already running). When `PROD_TEST_EMAIL` and `PROD_TEST_PASSWORD` are also set, the `prod-auth-setup` project runs before chromium tests to authenticate the test user via the login form. `/deploy` STATE 4 auto-creates the test user and passes these env vars — no manual configuration needed.
+
+**When using the No-Auth Fallback:** same as above — only the optional port and base URL apply. Production mode works without `PROD_TEST_EMAIL`/`PROD_TEST_PASSWORD` (smoke tests run as anonymous visitors).
 
 ## .gitignore Additions
 ```
@@ -507,14 +563,17 @@ export default defineConfig({
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
     { name: "Mobile Chrome", use: { ...devices["Pixel 5"] } },
   ],
-  webServer: {
-    command: `PORT=${port} npm run dev`,
-    url: `http://localhost:${port}`,
-    reuseExistingServer: !process.env.CI,
-  },
+  webServer: process.env.E2E_BASE_URL
+    ? undefined
+    : {
+        command: `PORT=${port} npm run dev`,
+        url: `http://localhost:${port}`,
+        reuseExistingServer: !process.env.CI,
+      },
 });
 ```
 - No `globalSetup`/`globalTeardown` — no test user lifecycle needed
+- `webServer` is conditional: when `E2E_BASE_URL` is set, `webServer` is `undefined` (production server already running)
 - Two projects: Desktop Chrome and Mobile Chrome (Pixel 5) — same as full config
 - Everything else is identical to the full config
 

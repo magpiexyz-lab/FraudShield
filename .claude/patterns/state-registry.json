@@ -124,7 +124,7 @@
     "1": "test -f .runs/deploy-config.json",
     "2": "python3 -c \"import json; assert json.load(open('.runs/deploy-context.json')).get('approved') == True, 'approved not set'\"",
     "3": "test -f .runs/deploy-provision.json",
-    "4": "test -f .runs/deploy-health.json",
+    "4": "test -f .runs/deploy-health.json && python3 -c \"import json; d=json.load(open('.runs/deploy-health.json')); assert 'health_check_passed' in d\"",
     "5": "test -f .runs/deploy-manifest.json",
     "6": "python3 -c \"import json; d=json.load(open('.runs/observe-result.json')); assert d['skill']=='deploy'\""
   },
