@@ -37,9 +37,9 @@ Read each STATE's file **only when transitioning to that state**. Do NOT read ah
 | 7 | IMPLEMENT_FIXES | Fix | [state-7-implement-fixes.md](../patterns/resolve/state-7-implement-fixes.md) |
 | 8 | FINAL_VALIDATION | Fix | [state-8-final-validation.md](../patterns/resolve/state-8-final-validation.md) |
 | 8b | SIDE_EFFECT_SCAN | Fix | [state-8b-side-effect-scan.md](../patterns/resolve/state-8b-side-effect-scan.md) |
-| 9 | COMMIT_PR | Fix | [state-9-commit-pr.md](../patterns/resolve/state-9-commit-pr.md) |
-| 10 | SAVE_PATTERNS | Fix | [state-10-save-patterns.md](../patterns/resolve/state-10-save-patterns.md) |
-| 11 | SKILL_EPILOGUE | Fix | [state-11-skill-epilogue.md](../patterns/resolve/state-11-skill-epilogue.md) |
+| 9 | SAVE_PATTERNS | Fix | [state-9-save-patterns.md](../patterns/resolve/state-9-save-patterns.md) |
+| 10 | SKILL_EPILOGUE | Fix | [state-10-skill-epilogue.md](../patterns/resolve/state-10-skill-epilogue.md) |
+| 11 | COMMIT_PR | Fix | [state-11-commit-pr.md](../patterns/resolve/state-11-commit-pr.md) |
 
 Begin at STATE 0. Read [state-0-fetch-issues.md](../patterns/resolve/state-0-fetch-issues.md) now.
 
