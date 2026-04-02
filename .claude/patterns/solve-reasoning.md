@@ -168,6 +168,14 @@ Launch 1 Opus agent as an adversarial critic.
 - **Round 1**: If 0 TYPE A concerns → early exit (solution converged). Otherwise: fix all TYPE A concerns → round 2.
 - **Round 2**: Any remaining TYPE A → package as caveats in output. Stop. Do not iterate further.
 
+**Artifact tracking:** After the critic loop completes, the caller must record:
+- `critic_rounds`: number of rounds actually executed (1 or 2)
+- `round_1_type_a_count`: number of TYPE A concerns from round 1
+
+These fields enable postcondition verification that round 2 was executed when required.
+Store in the caller's challenge artifact (e.g., `resolve-challenge.json`), NOT in
+the shared `solve-trace.json`.
+
 ### Phase 6 — Output
 
 Present the final output:
@@ -195,6 +203,11 @@ Present the final output:
 - **TYPE B** (system constraints): [list, or "None"]
 - **TYPE C** (open questions): [list, or "None"]
 - **Caveats**: [unresolved TYPE A from round 2, if any, or "None"]
+
+## Critic Convergence
+- Rounds completed: [1 or 2]
+- Round 1 TYPE A count: [N]
+- Round 2 needed: [yes/no]
 ```
 
 ---
