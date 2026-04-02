@@ -9,9 +9,8 @@ files:
   - src/lib/events.ts  # conditional: only when framework is nextjs
 env:
   server: []
-  client: [NEXT_PUBLIC_POSTHOG_KEY]
-ci_placeholders:
-  NEXT_PUBLIC_POSTHOG_KEY: phc_placeholder
+  client: []
+ci_placeholders: {}
 clean:
   files: []
   dirs: []
@@ -33,7 +32,7 @@ import posthog from "posthog-js";
 
 const PROJECT_NAME = "TODO"; // Replaced by bootstrap with experiment.yaml `name`
 const PROJECT_OWNER = "TODO"; // Replaced by bootstrap with experiment.yaml `owner`
-const POSTHOG_KEY = process.env.NEXT_PUBLIC_POSTHOG_KEY ?? "";
+const POSTHOG_KEY = process.env.NEXT_PUBLIC_POSTHOG_KEY ?? "phc_TEAM_KEY";
 const POSTHOG_HOST = "/ingest";
 
 let initialized = false;
@@ -74,7 +73,7 @@ Notes:
 - `capture_pageview: false` because pages fire explicit events via `events.ts`
 - `capture_exceptions: true` sends unhandled JS errors and promise rejections to PostHog as `$exception` events — provides post-deploy error visibility without additional error tracking setup
 - Bootstrap replaces `PROJECT_NAME` and `PROJECT_OWNER` with actual experiment.yaml values
-- `POSTHOG_HOST` is `/ingest` on the client (proxied via Next.js rewrites to avoid ad blockers) and `https://us.i.posthog.com` on the server (direct, not affected by ad blockers). `POSTHOG_KEY` is read from `NEXT_PUBLIC_POSTHOG_KEY` env var (a publishable client-side key). If the key is empty (local dev without PostHog), analytics calls are silently skipped.
+- `POSTHOG_HOST` is `/ingest` on the client (proxied via Next.js rewrites to avoid ad blockers) and `https://us.i.posthog.com` on the server (direct, not affected by ad blockers). `POSTHOG_KEY` uses a hardcoded shared publishable key (`phc_TEAM_KEY` — replace with your team's actual key). Override with `NEXT_PUBLIC_POSTHOG_KEY` env var to use a different PostHog project. PostHog `phc_` keys are publishable (write-only, safe for client-side embedding — same class as Stripe `pk_test_`).
 - Global properties are placed after the spread so they can't be overridden by callers
 
 ### `src/lib/analytics-server.ts` — Server-side tracking (for webhooks and API routes)
@@ -83,8 +82,8 @@ import { PostHog } from "posthog-node";
 
 const PROJECT_NAME = "TODO"; // Replaced by bootstrap with experiment.yaml `name`
 const PROJECT_OWNER = "TODO"; // Replaced by bootstrap with experiment.yaml `owner`
-const POSTHOG_KEY = process.env.POSTHOG_SERVER_KEY ?? process.env.NEXT_PUBLIC_POSTHOG_KEY ?? "";
-const POSTHOG_HOST = "https://us.i.posthog.com";
+export const POSTHOG_KEY = process.env.POSTHOG_SERVER_KEY ?? process.env.NEXT_PUBLIC_POSTHOG_KEY ?? "phc_TEAM_KEY";
+export const POSTHOG_HOST = "https://us.i.posthog.com";
 
 export async function trackServerEvent(
   event: string,
@@ -112,7 +111,7 @@ export async function trackServerEvent(
 
 Notes:
 - Creates a PostHog client per call and calls `shutdown()` to flush — required for serverless (Vercel)
-- `POSTHOG_KEY` is read from `POSTHOG_SERVER_KEY` (falls back to `NEXT_PUBLIC_POSTHOG_KEY`); `POSTHOG_HOST` uses the direct PostHog URL since server-side requests are not affected by ad blockers
+- `POSTHOG_KEY` uses the hardcoded shared publishable key, with optional override via `POSTHOG_SERVER_KEY` or `NEXT_PUBLIC_POSTHOG_KEY` env vars; `POSTHOG_HOST` uses the direct PostHog URL since server-side requests are not affected by ad blockers. Both `POSTHOG_KEY` and `POSTHOG_HOST` are exported for use by the health check route.
 - Auto-attaches `project_name` and `project_owner` like client-side `track()`
 - Bootstrap replaces `PROJECT_NAME` and `PROJECT_OWNER` with actual experiment.yaml values
 - Use this in webhook handlers and API routes for server-side events (e.g., `pay_success`)
