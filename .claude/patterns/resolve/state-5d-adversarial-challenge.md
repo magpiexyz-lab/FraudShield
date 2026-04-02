@@ -95,7 +95,9 @@ proceeding to Phase 3.** The user may adjust fix plans or scope.
   challenge = {
       'challenges': [
           {'issue': 0, 'label': '<sound|challenged|needs-revision>', 'challenge': '<what was tried>', 'evidence': '<file:line or fixture>', 'revision': '<if not sound>'}
-      ]
+      ],
+      'critic_rounds': 0,           # 1 or 2 — actual rounds executed (see solve-reasoning.md)
+      'round_1_type_a_count': 0     # TYPE A concerns from round 1
   }
   json.dump(challenge, open('.runs/resolve-challenge.json', 'w'), indent=2)
   "

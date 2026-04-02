@@ -45,4 +45,4 @@ test -f .runs/resolve-side-effects.json
 bash .claude/scripts/advance-state.sh resolve 8b
 ```
 
-**NEXT:** Read [state-9-commit-pr.md](state-9-commit-pr.md) to continue.
+**NEXT:** Read [state-9-save-patterns.md](state-9-save-patterns.md) to continue.
