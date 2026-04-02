@@ -34,7 +34,13 @@ proceed to Step 1 with no friction recorded from this step.
 
 ```bash
 # a. Collect all branch changes
-git diff $(git merge-base main HEAD)...HEAD > .runs/observer-diffs.txt
+# Committed changes if any, otherwise fall back to staged+unstaged
+if git log --oneline $(git merge-base main HEAD)..HEAD 2>/dev/null | grep -q .; then
+  git diff $(git merge-base main HEAD)...HEAD > .runs/observer-diffs.txt
+else
+  git diff --cached > .runs/observer-diffs.txt
+  git diff >> .runs/observer-diffs.txt
+fi
 
 # b. Read fix-log (if exists)
 # .runs/fix-log.md — created during skill execution when retries/failures occur
