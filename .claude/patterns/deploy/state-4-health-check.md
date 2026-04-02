@@ -56,6 +56,114 @@ Pass context:
 
 Wait for the agent to complete. Include the scanner's output table in the Step 6 summary under a **Provision Scan** heading. If any check FAILs, list them as action items — the health check + auto-fix (5c-5d) already attempted remediation, so these are residual issues for the user to address.
 
+### 5d.6: Production Smoke Test (conditional)
+
+**Gate:** Skip this step if `playwright.config.ts` does not exist in the project root (testing stack not present).
+
+Run smoke tests against the live production URL using the same `smoke.spec.ts` used in local E2E and preview CI:
+
+```bash
+npx playwright install chromium --with-deps 2>/dev/null || true
+E2E_BASE_URL=<canonical_url> npx playwright test e2e/smoke.spec.ts \
+  --project=chromium --global-setup="" --global-teardown=""
+```
+
+- `E2E_BASE_URL` points Playwright at the live deployment (conditional `webServer` in config skips local dev server)
+- `--project=chromium` runs Desktop Chrome only (production smoke prioritizes speed)
+- `--global-setup="" --global-teardown=""` disables local Supabase test user lifecycle (same pattern as preview-smoke CI job)
+
+**On success:** Record `smoke_test: { ran: true, passed: true }` for the health artifact.
+**On failure:** Record `smoke_test: { ran: true, passed: false, error: "<summary>" }`. Do NOT enter auto-fix loop — smoke failures after a successful health check indicate front-end rendering issues, not infrastructure problems. Report to user:
+
+> Production smoke test failed. The health check passed (APIs work) but page rendering has issues.
+> Review the Playwright report at `playwright-report/index.html`.
+> Fix the issue, merge to `main`, then re-run `/deploy`. Or run `/rollback` to revert.
+
+Continue to Step 5d.7 regardless of smoke test result (behavior verification may still provide useful signal).
+
+### 5d.7: Auto-create Production Test User (conditional)
+
+**Gate:** Skip if `stack.auth` is absent in experiment.yaml OR `stack.database` is not `supabase`.
+
+Create a dedicated test user for production behavior verification. The test user is identifiable by its email pattern and scoped to testing.
+
+1. **Read Supabase credentials** from the hosting provider env vars (set during STATE 3, Step 4.4):
+   - Retrieve `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` using the hosting stack file's `## Deploy Interface > Auto-Fix` verify command (e.g., `vercel env pull` or REST API).
+   - These were already set during provisioning — this step reads them back.
+
+2. **Generate credentials:**
+   - Email: `mvp-test@<project-slug>.test` where `<project-slug>` is the `name` field from experiment.yaml (lowercased, spaces to hyphens). The `.test` TLD is reserved by RFC 2606.
+   - Password: Generate a random 24-character password via `openssl rand -base64 18`
+
+3. **Create or update the test user:**
+   ```bash
+   node -e "
+   const { createClient } = require('@supabase/supabase-js');
+   const sb = createClient(process.env.SUPABASE_URL, process.env.SERVICE_ROLE_KEY);
+   (async () => {
+     const email = process.env.TEST_EMAIL;
+     const password = process.env.TEST_PASSWORD;
+     // Try to create
+     const { data, error } = await sb.auth.admin.createUser({
+       email,
+       password,
+       email_confirm: true,
+       user_metadata: { is_test_user: true }
+     });
+     if (error && error.message.includes('already been registered')) {
+       // User exists — update password
+       const { data: list } = await sb.auth.admin.listUsers();
+       const existing = list.users.find(u => u.email === email);
+       if (existing) {
+         await sb.auth.admin.updateUserById(existing.id, { password });
+         console.log(JSON.stringify({ email, password, userId: existing.id, created: false }));
+         return;
+       }
+     }
+     if (error) { console.error(error.message); process.exit(1); }
+     console.log(JSON.stringify({ email, password, userId: data.user.id, created: true }));
+   })();
+   "
+   ```
+   - `email_confirm: true` bypasses email verification
+   - `user_metadata: { is_test_user: true }` marks the user as identifiable test data
+   - If the user already exists (re-deploy scenario), update the password instead of failing
+
+4. **Save credentials** to `.runs/prod-test-credentials.json`:
+   ```json
+   { "email": "mvp-test@slug.test", "password": "<random>", "userId": "<uuid>", "created": true }
+   ```
+
+**On failure:** Non-blocking. Record `behavior_verification: { ran: false, reason: "test user creation failed" }`. Report:
+> Could not create production test user. Behavior verification skipped.
+> To verify manually: ask Claude to run Playwright against the production URL with test credentials.
+
+### 5d.8: Production Behavior Verification (conditional)
+
+**Gate:** Skip if Step 5d.6 (smoke test) was skipped (no playwright.config.ts), OR if Step 5d.7 failed AND the app requires auth (auth-gated behaviors need a logged-in user). If no auth stack, behavior verification can still run for anonymous behaviors.
+
+Spawn the `behavior-verifier` agent (`subagent_type: behavior-verifier`) with production mode context:
+
+> Run the behavior-verifier procedure in production mode.
+> E2E_BASE_URL=<canonical_url>
+> Credentials file: .runs/prod-test-credentials.json (if exists)
+>
+> Use E2E_BASE_URL as the base URL. If .runs/prod-test-credentials.json exists, use those credentials for login steps. Use captureAnalytics instead of blockAnalytics. Skip behaviors with trigger: stripe webhook.
+
+Wait for the agent to complete (timeout: 5 minutes). Collect results from the agent's trace output (`.runs/agent-traces/behavior-verifier.json`).
+
+**On success (all behaviors pass):** Record in health artifact.
+**On partial failure (some behaviors fail):** Record failures. Report to user:
+
+> Production behavior verification found issues:
+> - [list of failed behaviors with IDs and brief descriptions]
+>
+> These are behavioral issues in production — not infrastructure problems.
+> Fix the issue, merge to `main`, then re-run `/deploy`. Or run `/rollback` to revert.
+
+**On timeout:** Record `behavior_verification: { ran: true, mode: "production", timed_out: true }`. Report:
+> Production behavior verification timed out after 5 minutes. This may indicate slow page loads or hanging requests in production. Check application logs.
+
 ### 5e: File template observations
 
 If any fix during the deploy flow (Steps 3-5d) required working around a
@@ -76,18 +184,37 @@ failures) — observe.md's trigger evaluation excludes these.
       'health_check_passed': True,
       'auto_fix_rounds': 0,
       'provision_scan_completed': True,
+      'smoke_test': {
+          'ran': True,       # or False if playwright.config.ts absent
+          'passed': True     # or False if smoke test failed
+      },
+      'behavior_verification': {
+          'ran': True,        # or False if skipped/failed to start
+          'mode': 'production',
+          'total': 0,         # from behavior-verifier trace
+          'passed': 0,
+          'failed': 0,
+          'skipped': 0,
+          'failures': []      # list of failure strings, e.g. ['b-03: form submit returns 500']
+      },
       'observations_filed': 0
   }
   json.dump(health, open('.runs/deploy-health.json', 'w'), indent=2)
   "
   ```
 
+  Populate `smoke_test` and `behavior_verification` from Steps 5d.6-5d.8 results. If the steps were skipped (no `playwright.config.ts` or no auth stack), set `ran: false` and omit the detail fields. The `behavior_verification.failures` array should contain the behavior IDs and brief descriptions from the verifier agent's trace.
+
 **POSTCONDITIONS:**
 - Health check executed against canonical_url
 - Auto-fix attempted if health check failed (max 2 rounds)
 - Provision scan completed
+- Production smoke test executed (if `playwright.config.ts` exists)
+- Production test user created (if auth + supabase stack present)
+- Production behavior verification executed (if smoke test ran)
 - Template observations filed (if applicable)
 - `.runs/deploy-health.json` exists
+- `.runs/prod-test-credentials.json` exists (if test user created)
 
 **VERIFY:**
 ```bash

@@ -10,6 +10,18 @@ Read `experiment/experiment.yaml` to determine the archetype (`type` field, defa
 
 ## Procedure: web-app
 
+### Production Mode Detection
+
+Before starting any steps, check for production mode:
+
+- If `E2E_BASE_URL` environment variable is set: **production mode** is active.
+  - `BASE_URL` = value of `E2E_BASE_URL`
+  - Read `.runs/prod-test-credentials.json` if it exists — use `email` and `password` fields for any login steps
+  - Use `captureAnalytics(page)` instead of `blockAnalytics(page)` — validates that production analytics wiring fires correctly while intercepting requests (prevents pollution)
+  - Skip behaviors with `trigger: stripe webhook` — classify as `skipped` with reason "stripe webhook trigger skipped in production mode"
+- If `E2E_BASE_URL` is NOT set: **local mode** (existing behavior unchanged).
+  - `BASE_URL` = `http://localhost:3097`
+
 ### 1. Prerequisite
 
 Run `npx playwright --version`. If it fails, return:
@@ -17,6 +29,13 @@ Run `npx playwright --version`. If it fails, return:
 
 ### 2. Start Server
 
+**Production mode** (`E2E_BASE_URL` set): SKIP server start entirely. The production server is already running. Verify reachability:
+```bash
+curl -s -o /dev/null -w "%{http_code}" "$E2E_BASE_URL"
+```
+If not HTTP 200, abort: "Production server at $E2E_BASE_URL is unreachable (HTTP <code>)."
+
+**Local mode** (`E2E_BASE_URL` not set):
 ```bash
 DEMO_MODE=true NEXT_PUBLIC_DEMO_MODE=true npm run start -- -p 3097 &
 ```
@@ -28,6 +47,13 @@ Poll `http://localhost:3097` until it responds (max 15 seconds, then abort).
 Write an inline Playwright script that walks each `golden_path` step **in a single browser context** — never create a fresh context between steps. The golden path is a connected journey; state must carry forward.
 
 Read `experiment/experiment.yaml` `golden_path` and `behaviors` to determine inputs, expected outcomes, and state transitions for each step.
+
+**Production mode adjustments:**
+- Use `E2E_BASE_URL` as the base URL for all `page.goto()` calls instead of `http://localhost:3097`
+- **Auth handling**: If `.runs/prod-test-credentials.json` exists, use those credentials (`email` and `password` fields) for any login step. Use the same `login()` pattern from `e2e/helpers.ts` (fill email, fill password, click submit, wait for redirect).
+- **Analytics**: Use `captureAnalytics(page)` instead of `blockAnalytics(page)` — this validates that production analytics wiring fires correctly while still intercepting requests (Playwright route interception prevents actual data from reaching the provider). In local mode, continue using `blockAnalytics(page)`.
+- **Payment behaviors**: Skip behaviors with `trigger: stripe webhook` when in production mode — webhook simulation against production Stripe is out of scope. Classify these as `skipped` with reason "stripe webhook trigger skipped in production mode".
+- **Test data**: All test-generated data (form submissions, signups) is created under the production test user. No special prefix needed — RLS scopes data to the authenticated user.
 
 For each step:
 
@@ -61,6 +87,12 @@ For `behaviors` with `actor: system` or `actor: cron`:
 
 ### 7. Cleanup
 
+**Production mode** (`E2E_BASE_URL` set): Skip `kill %1` (no server to kill). Only clean up screenshots:
+```bash
+rm -rf /tmp/behavior-verify
+```
+
+**Local mode** (`E2E_BASE_URL` not set):
 ```bash
 kill %1 2>/dev/null || true
 rm -rf /tmp/behavior-verify
@@ -68,10 +100,15 @@ rm -rf /tmp/behavior-verify
 
 ---
 
+> **Production mode for service/cli archetypes:** The service procedure supports production mode — when `E2E_BASE_URL` is set, use it as the API base URL instead of `http://localhost:3097` in curl commands, and skip server start/kill. CLI archetypes do not support production mode (they test the local binary).
+
 ## Procedure: service
 
 ### 1. Start Server
 
+**Production mode** (`E2E_BASE_URL` set): SKIP server start. Use `E2E_BASE_URL` as the API base URL for all curl commands. Verify reachability with `curl -s -o /dev/null -w "%{http_code}" "$E2E_BASE_URL/api/health"`.
+
+**Local mode** (`E2E_BASE_URL` not set):
 Start the server using the project's start command on port 3097.
 
 ### 2. Walk Golden Path (State Machine)
