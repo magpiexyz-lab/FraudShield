@@ -1,7 +1,7 @@
-# STATE 10: SAVE_PATTERNS
+# STATE 9: SAVE_PATTERNS
 
 **PRECONDITIONS:**
-- PR opened (STATE 9 POSTCONDITIONS met)
+- Side-effect scan complete (STATE 8b POSTCONDITIONS met)
 
 **ACTIONS:**
 
@@ -43,7 +43,7 @@ test -f .runs/patterns-saved.json
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
 ```bash
-bash .claude/scripts/advance-state.sh resolve 10
+bash .claude/scripts/advance-state.sh resolve 9
 ```
 
-**NEXT:** Read [state-11-skill-epilogue.md](state-11-skill-epilogue.md) to continue.
+**NEXT:** Read [state-10-skill-epilogue.md](state-10-skill-epilogue.md) to continue.

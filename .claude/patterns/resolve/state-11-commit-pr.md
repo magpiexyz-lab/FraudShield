@@ -1,7 +1,7 @@
-# STATE 9: COMMIT_PR
+# STATE 11: COMMIT_PR
 
 **PRECONDITIONS:**
-- Side-effect scan complete (STATE 8b POSTCONDITIONS met)
+- Skill epilogue complete (STATE 10 POSTCONDITIONS met)
 
 **ACTIONS:**
 
@@ -60,7 +60,7 @@ gh pr view --json number 2>/dev/null
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
 ```bash
-bash .claude/scripts/advance-state.sh resolve 9
+bash .claude/scripts/advance-state.sh resolve 11
 ```
 
-**NEXT:** Read [state-10-save-patterns.md](state-10-save-patterns.md) to continue.
+**NEXT:** This is the TERMINAL state. The /resolve skill is complete.

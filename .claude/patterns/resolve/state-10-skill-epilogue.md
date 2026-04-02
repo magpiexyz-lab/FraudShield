@@ -1,7 +1,7 @@
-# STATE 11: SKILL_EPILOGUE
+# STATE 10: SKILL_EPILOGUE
 
 **PRECONDITIONS:**
-- Patterns saved (STATE 10 POSTCONDITIONS met)
+- Patterns saved (STATE 9 POSTCONDITIONS met)
 
 **ACTIONS:**
 
@@ -33,7 +33,7 @@ python3 -c "import json; d=json.load(open('.runs/observe-result.json')); assert 
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
 ```bash
-bash .claude/scripts/advance-state.sh resolve 11
+bash .claude/scripts/advance-state.sh resolve 10
 ```
 
-**NEXT:** This is the TERMINAL state. The /resolve skill is complete.
+**NEXT:** Read [state-11-commit-pr.md](state-11-commit-pr.md) to continue.
