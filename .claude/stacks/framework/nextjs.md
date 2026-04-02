@@ -115,7 +115,7 @@ The root `route.ts` is created only when surface is `co-located` (the default fo
 
 ## API Route Conventions
 - Route handlers in `src/app/api/<resource>/route.ts`
-- Validate all input with zod
+- Validate all input with zod — always include `.max()` bounds on all string and array fields. Suggested defaults: short text fields `.max(200)`, long text fields `.max(5000)`, array fields `.max(50)`. Adjust per business logic. Without bounds, a single oversized request can exhaust memory or run up large inference costs.
 - Return `{ error: string }` with appropriate HTTP status codes on failure
 - Use try/catch, return user-friendly error messages
 

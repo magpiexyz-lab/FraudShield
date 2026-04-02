@@ -194,24 +194,43 @@ Instructions for Agent C:
 Read the PostHog personal API key from `~/.posthog/personal-api-key` (same credential used by /iterate auto-query).
 
 If the key does NOT exist:
-1. Tell the user: "PostHog personal API key not found at `~/.posthog/personal-api-key`. To auto-create the experiment dashboard, create one now:"
+1. Tell the user: "PostHog **Personal API Key** (`phx_` prefix) not found at `~/.posthog/personal-api-key`. This is different from the **Project API Key** (`phc_` prefix) used for sending events. To auto-create the experiment dashboard, create a Personal API Key now:"
    - Go to PostHog -> click your profile (bottom left) -> **Personal API keys**
    - Click **Create personal API key**
    - Label: `cli` (or anything)
    - Organization & project access: select your organization
    - Scopes: set **Dashboards** to **Write** and **Insights** to **Write** (all others can stay No access)
-   - Click **Create key** and copy the key
-2. Ask: "Paste the key here, or type **skip** to set up the dashboard manually later."
+   - Click **Create key** and copy the key (it starts with `phx_`)
+2. Ask: "Paste the Personal API Key (`phx_...`) here, or type **skip** to set up the dashboard manually later." Validate prefix: if the user pastes a `phc_` key, tell them: "That's a Project API Key, not a Personal API Key. Personal API Keys start with `phx_`."
 3. If key provided: save to `~/.posthog/personal-api-key` (`mkdir -p ~/.posthog && echo "$KEY" > ~/.posthog/personal-api-key`) and proceed with auto-creation below.
 4. If skipped: return `{status: "skipped", message: "PostHog dashboard not auto-created — manual setup needed.", dashboard_url: null, env_vars_added: []}`.
 
-If the key exists (or was just created), auto-create a dashboard via PostHog API:
+If the key exists (or was just created), validate and discover the PostHog project:
 
-First, discover the PostHog project ID:
+First, validate that the cached personal API key targets the correct project. The personal API key (`phx_` prefix) may have access to multiple PostHog projects — blindly using the first one can create a dashboard in the wrong project.
+
 ```bash
-POSTHOG_PROJECT_ID=$(curl -s "https://us.i.posthog.com/api/projects/" \
-  -H "Authorization: Bearer $POSTHOG_API_KEY" | python3 -c "import sys,json; print(json.load(sys.stdin)['results'][0]['id'])")
+# Fetch all projects accessible by this personal API key
+POSTHOG_PROJECTS=$(curl -s "https://us.i.posthog.com/api/projects/" \
+  -H "Authorization: Bearer $POSTHOG_API_KEY")
 ```
+
+Cross-reference: iterate the `results` array and find the project whose `api_token` matches the experiment's `NEXT_PUBLIC_POSTHOG_KEY` (from Step 4.4 env vars or the analytics library's hardcoded `phc_TEAM_KEY`). If a match is found, use that project's `id`. If no match is found (stale key or wrong org): tell the user the cached key doesn't match the current project and ask for a new Personal API Key (`phx_` prefix — NOT the Project API Key `phc_`). Save the new key to `~/.posthog/personal-api-key` and retry.
+
+```bash
+POSTHOG_PROJECT_ID=$(echo "$POSTHOG_PROJECTS" | python3 -c "
+import sys, json, os
+data = json.load(sys.stdin)
+target_key = os.environ.get('NEXT_PUBLIC_POSTHOG_KEY', 'phc_TEAM_KEY')
+for p in data.get('results', []):
+    if p.get('api_token') == target_key:
+        print(p['id']); break
+else:
+    print('NO_MATCH')
+")
+```
+
+If `POSTHOG_PROJECT_ID` is `NO_MATCH`: ask the user for a new personal API key or skip. If valid, proceed to auto-create the dashboard:
 
 ```bash
 # Create dashboard

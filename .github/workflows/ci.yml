@@ -123,6 +123,9 @@ jobs:
       STRIPE_SECRET_KEY: placeholder-stripe-secret
       NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: placeholder-stripe-publishable
       STRIPE_WEBHOOK_SECRET: placeholder-stripe-webhook-secret
+      NEXT_PUBLIC_SITE_URL: placeholder-site-url
+      # Database stack (stack.database: supabase) — service role key for admin operations
+      SUPABASE_SERVICE_ROLE_KEY: placeholder-service-role-key
       # AI stack (stack.ai: anthropic) — safe to leave even without AI
       ANTHROPIC_API_KEY: placeholder-anthropic-api-key
     steps:

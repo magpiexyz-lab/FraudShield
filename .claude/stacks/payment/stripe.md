@@ -9,12 +9,13 @@ files:
   - src/app/api/checkout/route.ts
   - src/app/api/webhooks/stripe/route.ts
 env:
-  server: [STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET]
+  server: [STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, NEXT_PUBLIC_SITE_URL]
   client: [NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY]
 ci_placeholders:
   STRIPE_SECRET_KEY: placeholder-stripe-secret
   NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: placeholder-stripe-publishable
   STRIPE_WEBHOOK_SECRET: placeholder-stripe-webhook-secret
+  NEXT_PUBLIC_SITE_URL: placeholder-site-url
 clean:
   files: []
   dirs: []
@@ -81,6 +82,7 @@ export const stripePromise = loadStripe(
 STRIPE_SECRET_KEY=sk_test_...
 NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_...
 STRIPE_WEBHOOK_SECRET=whsec_...
+NEXT_PUBLIC_SITE_URL=https://your-domain.com
 ```
 
 ## API Routes
@@ -92,18 +94,24 @@ import { z } from "zod";
 import { getStripe } from "@/lib/stripe";
 
 const checkoutSchema = z.object({
-  plan: z.string(),
-  amount_cents: z.number().int().positive(),
+  // TODO: Replace z.string() with z.enum([...]) listing valid plan values for this project
+  plan: z.string().max(200),
 });
 
 export async function POST(request: Request) {
   // TODO: Add production rate limiting (e.g., Upstash Redis)
   try {
     const body = await request.json();
-    const { plan, amount_cents } = checkoutSchema.parse(body);
+    const { plan } = checkoutSchema.parse(body);
 
     // TODO: Add auth check here — see auth stack file "Server-Side Auth Check" for the correct import
     // This defines `user`, whose `user.id` is referenced in metadata below
+
+    // TODO: Look up price server-side — never trust client-provided prices
+    // Define a PLAN_PRICES map or query the database for the plan's price
+    // Example: const PLAN_PRICES: Record<string, number> = { basic: 999, pro: 2999 };
+    const amount_cents = PLAN_PRICES[plan]; // Intentional — fails build until PLAN_PRICES is defined (see TODO above)
+
     const session = await getStripe().checkout.sessions.create({
       mode: "payment",
       line_items: [
@@ -121,8 +129,8 @@ export async function POST(request: Request) {
         plan,
         amount_cents: String(amount_cents),
       },
-      success_url: `${request.headers.get("origin")}/`,
-      cancel_url: `${request.headers.get("origin")}/`,
+      success_url: `${process.env.NEXT_PUBLIC_SITE_URL}/`,
+      cancel_url: `${process.env.NEXT_PUBLIC_SITE_URL}/`,
     });
 
     return NextResponse.json({ url: session.url });
@@ -136,12 +144,13 @@ export async function POST(request: Request) {
 ```
 
 Notes:
-- Validates request body with zod (plan name, price)
+- Validates request body with zod (plan name)
 - Creates a Stripe Checkout Session in `payment` mode (change to `subscription` for recurring)
-- Sets `success_url` and `cancel_url` back to your app
+- Sets `success_url` and `cancel_url` using `NEXT_PUBLIC_SITE_URL` environment variable — never use client-controlled headers for redirect URLs
 - Returns the session URL to the client
 - If `stack.analytics` is present: fire `pay_start` analytics event before redirecting — use the typed `trackPayStart()` wrapper from `events.ts` (client-side, before calling this route). Skip if analytics is absent.
 - The `user.id` reference is intentionally undefined in the template — it causes a build error until auth is integrated. See the auth stack file's "Server-Side Auth Check" section for the correct import and guard pattern. The `metadata` object is critical — the webhook handler reads `session.metadata.user_id` to update the database.
+- The `PLAN_PRICES[plan]` reference is intentionally undefined — it causes a build error until server-side pricing is implemented. Define a price map or query the database. Never accept prices from the client (see Security section). The `amount_cents` value flows into session metadata and is read by the webhook handler.
 
 ### `src/app/api/webhooks/stripe/route.ts` — Stripe Webhook Handler
 
