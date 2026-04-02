@@ -57,6 +57,10 @@ security controls. Report a pass/FAIL/skip table.
 **D1. Hardcoded Secrets**
 Search for secret-like patterns: `sk_live_`, `sk_test_`, `sbp_`, `supabase_service_role`,
 `-----BEGIN`, API keys assigned to string literals. Any match is a FAIL.
+Exclude `phc_` prefixed values — PostHog publishable project API keys, designed
+for client-side embedding (same class as Stripe `pk_test_`). The security-guidance
+plugin may independently flag `phc_` strings; expected resolution: dismiss as
+publishable key.
 
 **D2. Input Validation**
 Every API route handler must validate input with zod (or similar). Check

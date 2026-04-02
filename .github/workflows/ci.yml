@@ -116,8 +116,6 @@ jobs:
     env:
       NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
       NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
-      NEXT_PUBLIC_POSTHOG_KEY: phc_placeholder
-      NEXT_PUBLIC_POSTHOG_HOST: https://us.i.posthog.com
       # Email stack (stack.email: resend) — safe to leave even without email
       RESEND_API_KEY: re_placeholder_key
       CRON_SECRET: placeholder-cron-secret
@@ -169,8 +167,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      NEXT_PUBLIC_POSTHOG_KEY: phc_placeholder
-      NEXT_PUBLIC_POSTHOG_HOST: https://us.i.posthog.com
       # Payment stack (stack.payment: stripe)
       STRIPE_SECRET_KEY: ${{ secrets.E2E_STRIPE_SECRET_KEY }}
       NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${{ secrets.E2E_STRIPE_PUBLISHABLE_KEY }}
@@ -207,9 +203,6 @@ jobs:
     if: github.event_name == 'pull_request' && hashFiles('playwright.config.ts') != ''
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    env:
-      NEXT_PUBLIC_POSTHOG_KEY: phc_placeholder
-      NEXT_PUBLIC_POSTHOG_HOST: https://us.i.posthog.com
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

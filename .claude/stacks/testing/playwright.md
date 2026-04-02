@@ -447,8 +447,6 @@ Add this job to `.github/workflows/ci.yml` after the `build` job:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      NEXT_PUBLIC_POSTHOG_KEY: phc_placeholder
-      NEXT_PUBLIC_POSTHOG_HOST: https://us.i.posthog.com
       # Payment stack (if stack.payment is present in experiment.yaml):
       # STRIPE_SECRET_KEY: ${{ secrets.E2E_STRIPE_SECRET_KEY }}
       # NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${{ secrets.E2E_STRIPE_PUBLISHABLE_KEY }}
@@ -598,9 +596,6 @@ When using the No-Auth Fallback path, use this CI template instead of the full-a
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      NEXT_PUBLIC_POSTHOG_KEY: phc_placeholder
-      NEXT_PUBLIC_POSTHOG_HOST: https://us.i.posthog.com
-      # Analytics env vars above are PostHog-specific — adapt if stack.analytics is different
       # Database stack (if stack.database is supabase):
       # NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
       # NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
@@ -636,9 +631,6 @@ Add this job to `.github/workflows/ci.yml` after the `e2e` job. It runs page-loa
     if: github.event_name == 'pull_request' && hashFiles('playwright.config.ts') != ''
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    env:
-      NEXT_PUBLIC_POSTHOG_KEY: phc_placeholder
-      NEXT_PUBLIC_POSTHOG_HOST: https://us.i.posthog.com
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
