@@ -18,7 +18,18 @@ For each issue in severity order (HIGH first):
     Include only the stack/archetype config needed to trigger the bug
     pattern, with assertions that catch it. Skip if triggering config
     is already covered.
-3. Run all 3 validators:
+3b. **Record fixture evaluation** in `resolve-context.json`:
+    Set `fixtures_evaluated` to a list of fixture files checked from `tests/fixtures/`,
+    or `["not_needed: <reason>"]` if no fixture is applicable for this fix.
+    ```bash
+    python3 -c "
+    import json
+    ctx = json.load(open('.runs/resolve-context.json'))
+    ctx['fixtures_evaluated'] = []  # list of fixture files checked, or ['not_needed: <reason>']
+    json.dump(ctx, open('.runs/resolve-context.json', 'w'), indent=2)
+    "
+    ```
+3c. Run all 3 validators:
    - `python3 scripts/validate-frontmatter.py`
    - `python3 scripts/validate-semantics.py`
    - `bash scripts/consistency-check.sh`
@@ -37,7 +48,7 @@ If new validator checks were added:
 
 **VERIFY:**
 ```bash
-git diff --name-only HEAD 2>/dev/null | grep -q . || git diff --cached --name-only 2>/dev/null | grep -q .
+(git diff --name-only HEAD 2>/dev/null | grep -q . || git diff --cached --name-only 2>/dev/null | grep -q .) && python3 -c "import json; ctx=json.load(open('.runs/resolve-context.json')); fe=ctx.get('fixtures_evaluated'); assert fe is not None, 'fixtures_evaluated missing from resolve-context.json'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
