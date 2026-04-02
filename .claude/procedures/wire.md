@@ -97,6 +97,15 @@ If `stack.testing` is present in experiment.yaml:
   - For landing page CTA and success-message selectors, use `.first()` — the CTA appears at least twice on landing pages (messaging.md Section B), so selectors will match 2+ elements. Other pages have unique selectors and don't need `.first()`.
   - Use timestamped emails for form submissions to avoid duplicates
   - Skip retain_return (untestable in E2E)
+- If `stack.testing` is present and experiment.yaml has `behaviors` with `tests` entries, generate `e2e/behaviors.spec.ts`:
+  - Read the behaviors test template from the testing stack file
+  - For each behavior with `actor: user` (or `actor` absent — default is user):
+    - Create a `test.describe` block labeled `"<id>: <when clause summary>"`
+    - Determine auth requirement from `given` field: phrases like "logged-in user", "authenticated user", "user on dashboard" → add `test.use({ storageState: "e2e/.auth.json" })`. Otherwise → anonymous (no storageState).
+    - For each entry in `behavior.tests` array: create a `test()` case with the entry as the test name
+    - Read actual page source (from the page associated with the behavior's golden_path step or from the behavior's `given`/`when` context) to extract real Playwright selectors
+  - Skip behaviors with `actor: system` or `actor: cron` (covered by `tests/flows.test.ts`)
+  - Group anonymous behaviors first, then auth-gated behaviors (for readability)
 - Add `.gitignore` entries per testing stack file
 - Add `test:e2e` and `test:e2e:ui` scripts to `package.json`
 - If the existing CI e2e job in `.github/workflows/ci.yml` does not match the chosen
