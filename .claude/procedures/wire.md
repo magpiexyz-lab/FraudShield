@@ -17,6 +17,7 @@ If the archetype is `cli`: skip this step entirely — CLIs have no API routes o
 - If experiment.yaml behaviors imply mutations (creating records, payments, etc.), create corresponding API route handlers. If `stack.payment` is present: for payment routes, use the templates from the payment stack file's "API Routes" section — these include auth-integration checks and webhook signature verification patterns that must not be omitted.
 - For the webhook handler's `// TODO: Update user's payment status in database` comment: resolve it using the database schema you planned in Phase 1. If no payments/subscriptions table was planned, add one to the migration in Step 6 and return here to wire the webhook update after the table exists.
 - Every API route: validate input with zod, return proper HTTP status codes. If `stack.database` is present, use the server-side database client for data access.
+- Export Zod request schemas from route files with `export const` using the naming convention `<verb><Resource>Schema` (e.g., `export const createInvoiceSchema = z.object({...})`). For response shapes, export a plain TypeScript type or interface (e.g., `export type CreateInvoiceResponse = { id: string; sendLink: string }`). Request schemas need Zod (they validate untrusted input). Response types are plain TS (server-authored, not validated). These exports enable Step 6 to collect API contract types into `types.ts`.
 - Follow the hosting stack file for rate limiting guidance in auth and payment API route handlers. Mention any limitations in the PR body so the user knows to address them before production
 
 #### Provision-at-deploy routes
@@ -44,7 +45,10 @@ If `stack.database` is present and experiment.yaml behaviors require persistent 
 - Create the initial migration with all tables needed for experiment.yaml behaviors. Migration numbering is based on the current branch state — concurrent branches may create conflicting numbers, which should be resolved by renumbering at merge time.
 - If `stack.payment` is present and a payments/subscriptions table was created: return to the webhook handler (`src/app/api/webhooks/stripe/route.ts`) and resolve the `// TODO: Update user's payment status in database` using the new table before proceeding to Step 7.
 - If `stack.email` is present and the nudge route requires activation tracking: add `activated_at timestamptz` and `nudge_sent_at timestamptz` columns to the user-related table (or create a `user_status` table if no user table exists beyond Supabase auth). The nudge cron queries this to find un-activated, un-nudged users.
-- Also create `src/lib/types.ts` with TypeScript types matching the table schemas
+- Also create `src/lib/types.ts` with:
+  - **Database row types** matching table schemas, using `XxxRow` naming (e.g., `InvoiceRow`, `UserRow`)
+  - **API contract types** imported from the Zod schemas and response types exported by route files in Step 5. For request types: `import { createInvoiceSchema } from "@/app/api/invoices/route"` then `export type CreateInvoiceRequest = z.infer<typeof createInvoiceSchema>`. For response types: re-export directly (e.g., `export type { CreateInvoiceResponse } from "@/app/api/invoices/route"`). Naming convention: `XxxRequest` for request bodies, `XxxResponse` for response shapes.
+  - Dependency direction: `route.ts` ← `types.ts` ← `page.tsx`. Routes export schemas but never import from `types.ts`. Pages import types from `types.ts`, never from route files directly. This keeps the dependency graph acyclic.
 - Include post-merge database setup instructions in the PR body (see database stack file's "PR Instructions" section)
 
 If no behaviors require database tables, skip this step.
@@ -104,6 +108,14 @@ If `stack.testing` is present in experiment.yaml:
     - Determine auth requirement from `given` field: phrases like "logged-in user", "authenticated user", "user on dashboard" → add `test.use({ storageState: "e2e/.auth.json" })`. Otherwise → anonymous (no storageState).
     - For each entry in `behavior.tests` array: create a `test()` case with the entry as the test name
     - Read actual page source (from the page associated with the behavior's golden_path step or from the behavior's `given`/`when` context) to extract real Playwright selectors
+    - **Assertion depth**: Read the behavior's `then` clause to determine assertion pattern. Every `test()` must include at least one assertion beyond `toBeVisible()`:
+      - `then` contains "created"/"generated" → assert content/data exists (`toContainText`, `toHaveText`)
+      - `then` contains "redirected"/"navigates"/"land on" → assert URL change (`toHaveURL`)
+      - `then` contains "updates"/"changes"/"marked" → assert visible state change (before/after)
+      - `then` contains "shows"/"displays"/"renders" → assert actual data values, not just presence
+      - `then` contains "accepts"/"validates" → verify input processing (fill → submit → verify result)
+      - Default → interact per `when` clause, then assert visibility on outcome
+      This refines existing `behaviors[].tests` assertions — it does NOT create additional tests. See the testing stack file's "Assertion Depth Patterns" section for Playwright-specific examples.
   - Skip behaviors with `actor: system` or `actor: cron` (covered by `tests/flows.test.ts`)
   - Group anonymous behaviors first, then auth-gated behaviors (for readability)
 - Add `.gitignore` entries per testing stack file
@@ -190,6 +202,13 @@ Re-read `.runs/current-plan.md` and `experiment/experiment.yaml` now. Verify eac
 - If `stack.email` is present: confirm `vercel.json` contains the cron config, email routes exist, and welcome email is wired to auth callback
 - If Fake Door features exist: confirm Fake Door components exist, fire `activate` with `fake_door: true`, and render polished UI with a "coming soon" dialog
 - If core "Provision at deploy" routes exist: confirm they compile without real credentials and return 503 with actionable error when env vars are missing
+
+**API contract checks (if archetype is `web-app` or `service`):**
+- For each API route that has an exported Zod schema: find all pages that call this route (grep for the fetch URL path). For each calling page, verify the request body construction matches the schema's field names and types. If any field name mismatch: fix the page to match the API route's schema.
+- For each page that destructures an API response: verify the destructured fields match the API route's response type. If any field is missing or misnamed: fix the page.
+- For each `router.push()` or `redirect()` call with query parameters: verify the target page reads matching parameter names from `searchParams`. If any parameter name mismatch: fix the calling page.
+- Verify `src/lib/types.ts` includes both `XxxRow` database types and `XxxRequest`/`XxxResponse` API contract types for every route with an exported Zod schema.
+- Source of truth: the API route's Zod schema is authoritative. When a mismatch is found, fix the consumer (page), not the contract (route).
 
 **Test file existence check (if `stack.testing` present):**
 - If archetype is `web-app`: confirm `e2e/smoke.spec.ts` exists
