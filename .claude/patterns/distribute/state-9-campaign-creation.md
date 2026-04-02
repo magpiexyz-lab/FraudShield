@@ -72,6 +72,8 @@ Only reached when:
 > Create the campaign manually using the config in `experiment/ads.yaml`.
 > See the channel's stack file "Setup Instructions" section for step-by-step guidance.
 > The PR from Step 8 is ready to merge — it contains the distribution code (UTM capture, feedback widget, ads.yaml) independent of campaign creation. Merge it now, then create the campaign manually.
+>
+> **After creating the campaign:** add `campaign_id: <id>` and `campaign_url: <dashboard-url>` to `experiment/ads.yaml` and commit. This enables idempotency (Step 9b) if `/distribute` is re-run, and provides a reference for `/iterate`. Then follow the next steps in **9g** below.
 
 ### Q-score
 

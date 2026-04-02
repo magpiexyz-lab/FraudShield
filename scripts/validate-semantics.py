@@ -620,7 +620,7 @@ def check_17_env_vars_prose_frontmatter_sync(stack_contents: dict[str, str]) -> 
     """Check 17: Env vars in prose match frontmatter declarations."""
     errors: list[str] = []
     env_var_pattern = re.compile(
-        r"`?(NEXT_PUBLIC_[A-Z_]+|[A-Z][A-Z_]{3,}(?:_KEY|_URL|_ID|_SECRET|_TOKEN|_ANON_KEY|_ROLE_KEY))`?"
+        r"`?(NEXT_PUBLIC_[A-Z0-9_]+|[A-Z][A-Z0-9_]{3,}(?:_KEY|_URL|_ID|_SECRET|_TOKEN|_ANON_KEY|_ROLE_KEY))`?"
     )
     for sf, content in stack_contents.items():
         fm = parse_frontmatter_from_content(content)
