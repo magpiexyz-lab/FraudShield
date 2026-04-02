@@ -60,14 +60,17 @@ Wait for the agent to complete. Include the scanner's output table in the Step 6
 
 **Gate:** Skip this step if `playwright.config.ts` does not exist in the project root (testing stack not present).
 
-Run smoke tests against the live production URL using the same `smoke.spec.ts` used in local E2E and preview CI:
+Run smoke tests and behavior tests against the live production URL:
 
 ```bash
 npx playwright install chromium --with-deps 2>/dev/null || true
-E2E_BASE_URL=<canonical_url> npx playwright test e2e/smoke.spec.ts \
+SPEC_FILES="e2e/smoke.spec.ts"
+test -f e2e/behaviors.spec.ts && SPEC_FILES="$SPEC_FILES e2e/behaviors.spec.ts"
+E2E_BASE_URL=<canonical_url> npx playwright test $SPEC_FILES \
   --project=chromium --global-setup="" --global-teardown=""
 ```
 
+- `SPEC_FILES` includes `behaviors.spec.ts` only if it exists (existence gate avoids "No tests found" errors for projects without behaviors)
 - `E2E_BASE_URL` points Playwright at the live deployment (conditional `webServer` in config skips local dev server)
 - `--project=chromium` runs Desktop Chrome only (production smoke prioritizes speed)
 - `--global-setup="" --global-teardown=""` disables local Supabase test user lifecycle (same pattern as preview-smoke CI job)
@@ -153,13 +156,22 @@ Spawn the `behavior-verifier` agent (`subagent_type: behavior-verifier`) with pr
 Wait for the agent to complete (timeout: 5 minutes). Collect results from the agent's trace output (`.runs/agent-traces/behavior-verifier.json`).
 
 **On success (all behaviors pass):** Record in health artifact.
-**On partial failure (some behaviors fail):** Record failures. Report to user:
+**On partial failure (some behaviors fail):** Record failures in `behavior_verification.failures` array of deploy-health.json. Construct a pre-filled `/change fix` command from the failures and report to user:
 
-> Production behavior verification found issues:
-> - [list of failed behaviors with IDs and brief descriptions]
+> Production behavior verification found issues (N of M behaviors failed):
 >
-> These are behavioral issues in production — not infrastructure problems.
-> Fix the issue, merge to `main`, then re-run `/deploy`. Or run `/rollback` to revert.
+> Failures:
+>   [behavior-id]: [failure description from verifier trace]
+>   [behavior-id]: [failure description from verifier trace]
+>
+> Recovery (zero debugging required — root cause already diagnosed):
+>   1. Run: /change fix "[behavior-id]: [failure summary], [behavior-id]: [failure summary]"
+>   2. Approve the fix plan → wait for verification → merge PR
+>   3. Run: /deploy
+>
+> Or run `/rollback` to revert immediately.
+
+The `/change fix` command string is constructed from the `behavior_verification.failures` array. Each entry includes the behavior ID and a brief root cause description from the verifier agent's findings. This gives `/change` full context to diagnose and fix without requiring the user to investigate.
 
 **On timeout:** Record `behavior_verification: { ran: true, mode: "production", timed_out: true }`. Report:
 > Production behavior verification timed out after 5 minutes. This may indicate slow page loads or hanging requests in production. Check application logs.
