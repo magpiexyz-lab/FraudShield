@@ -34,8 +34,8 @@ Read each STATE's file **only when transitioning to that state**. Do NOT read ah
 | 2f | LOOP_GATE | Loop | [state-2f-loop-gate.md](../patterns/review/state-2f-loop-gate.md) |
 | 3 | UPDATE_INVENTORY | Finalize | [state-3-update-inventory.md](../patterns/review/state-3-update-inventory.md) |
 | 4 | FINAL_VALIDATION | Finalize | [state-4-final-validation.md](../patterns/review/state-4-final-validation.md) |
-| 5 | COMMIT_PR | Finalize | [state-5-commit-pr.md](../patterns/review/state-5-commit-pr.md) |
-| 6 | SKILL_EPILOGUE | Finalize | [state-6-skill-epilogue.md](../patterns/review/state-6-skill-epilogue.md) |
+| 5 | SKILL_EPILOGUE | Finalize | [state-5-skill-epilogue.md](../patterns/review/state-5-skill-epilogue.md) |
+| 6 | COMMIT_PR | Finalize | [state-6-commit-pr.md](../patterns/review/state-6-commit-pr.md) |
 
 ## Loop Dispatch
 

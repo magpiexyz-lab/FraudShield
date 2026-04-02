@@ -86,8 +86,8 @@
     "2f": "test -f .runs/review-loop-decision.json",
     "3": "test -f .runs/review-complete.json",
     "4": "test -f .runs/review-complete.json && python3 scripts/validate-frontmatter.py > /dev/null 2>&1 && python3 scripts/validate-semantics.py > /dev/null 2>&1 && bash scripts/consistency-check.sh > /dev/null 2>&1",
-    "5": "test -f .runs/review-complete.json",
-    "6": "python3 -c \"import json; d=json.load(open('.runs/observe-result.json')); assert d['skill']=='review'\""
+    "5": "python3 -c \"import json; d=json.load(open('.runs/observe-result.json')); assert d['skill']=='review'\"",
+    "6": "test -f .runs/review-complete.json"
   },
   "resolve": {
     "0": "test -f .runs/resolve-context.json",
@@ -224,7 +224,7 @@
       "_required_states": ["0","1","1_5","2","3","4","5","6","7","8","9"]
     },
     "audit":    { "_required_states": ["0","1","2","3"], "_default": { "required_states": ["0"] } },
-    "review":   { "_required_states": ["0","1","5","6"], "_default": { "required_states": ["0","1"] } },
+    "review":   { "_required_states": ["0","1","5"], "_default": { "required_states": ["0","1"] } },
     "resolve":  { "_required_states": ["0","1","2","3","10"], "_default": { "required_states": ["0","1","2","3","4","4b"] } },
     "deploy":   { "_required_states": ["0","1","2","3","4","5","6"], "_default": { "required_states": ["0","1","2"] } },
     "teardown": { "_required_states": ["0","1","2","3","4","5"], "_default": { "required_states": ["0","1","2"] } },
