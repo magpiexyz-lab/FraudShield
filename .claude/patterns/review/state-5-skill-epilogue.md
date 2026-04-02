@@ -1,7 +1,8 @@
-# STATE 6: SKILL_EPILOGUE
+# STATE 5: SKILL_EPILOGUE
 
 **PRECONDITIONS:**
-- PR created or clean review reported (STATE 5 POSTCONDITIONS met)
+- Final validation passed (STATE 4 POSTCONDITIONS met)
+- `.runs/review-complete.json` exists
 
 **ACTIONS:**
 
@@ -42,7 +43,7 @@ python3 -c "import json; d=json.load(open('.runs/observe-result.json')); assert 
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
 ```bash
-bash .claude/scripts/advance-state.sh review 6
+bash .claude/scripts/advance-state.sh review 5
 ```
 
-**NEXT:** TERMINAL — review complete.
+**NEXT:** Read [state-6-commit-pr.md](state-6-commit-pr.md) to continue.

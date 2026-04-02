@@ -1,8 +1,7 @@
-# STATE 5: COMMIT_PR
+# STATE 6: COMMIT_PR
 
 **PRECONDITIONS:**
-- Final validation passed (STATE 4 POSTCONDITIONS met)
-- `.runs/review-complete.json` exists
+- Skill epilogue complete (STATE 5 POSTCONDITIONS met)
 
 **ACTIONS:**
 
@@ -76,7 +75,7 @@ gh pr list --head "$(git branch --show-current)" --json number,title --limit 1
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
 ```bash
-bash .claude/scripts/advance-state.sh review 5
+bash .claude/scripts/advance-state.sh review 6
 ```
 
-**NEXT:** Read [state-6-skill-epilogue.md](state-6-skill-epilogue.md) to continue.
+**NEXT:** TERMINAL — review complete.
