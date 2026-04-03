@@ -18,7 +18,7 @@
 
 - Otherwise: run tests with precondition separation.
 
-  **Determine test runner** from `stack.services[].testing` in experiment.yaml:
+  **Determine test runner** from `stack.testing` in experiment.yaml:
   - `playwright` → list command: `npx playwright test --list`, run command: `npx playwright test`
   - `vitest` → list command: `npx vitest list`, run command: `npx vitest run`
   - If the value is absent or not one of {playwright, vitest} → write `.runs/e2e-result.json`:

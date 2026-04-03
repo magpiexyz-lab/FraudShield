@@ -7,8 +7,9 @@
 
 ### File as GitHub Issue
 
-1. Determine the target repo: use the current repo via `gh repo view --json nameWithOwner --jq '.nameWithOwner'`. If `gh` is not available or the command fails, ask the user: "Where should I file this retro? Enter a repo in `owner/repo` format, or say 'skip' to print it to the terminal instead."
-2. If the user says "skip", print the retro to the terminal and stop.
+1. Verify GitHub authentication: run `gh auth status`. If it fails, stop: "GitHub CLI is not authenticated. Run `gh auth login` to authenticate, then re-run `/retro`. Or say 'skip' to print the retro to the terminal instead."
+2. Determine the target repo: use the current repo via `gh repo view --json nameWithOwner --jq '.nameWithOwner'`. If `gh` is not available or the command fails, ask the user: "Where should I file this retro? Enter a repo in `owner/repo` format, or say 'skip' to print it to the terminal instead."
+3. If the user says "skip", print the retro to the terminal and stop.
 
 File the issue:
 ```

@@ -46,6 +46,9 @@ Production quality mode is now active.
 - All future /change Feature, Fix, and Upgrade changes use TDD automatically.
 - On-touch modules will be hardened when you next /change them.
 - Run /verify to confirm all tests pass.
+- To revert to MVP mode: run `/change set quality to mvp` — this removes `quality: production`
+  from experiment.yaml and disables TDD requirements. Existing spec tests remain on disk but
+  are no longer enforced.
 ```
 
 **POSTCONDITIONS:**
