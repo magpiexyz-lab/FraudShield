@@ -48,8 +48,8 @@
         {"path": "patterns/solve-reasoning.md", "artifact": ".runs/solve-trace.json"}
       ]
     },
-    "4": "true",
-    "5": "true",
+    "4": "python3 -c \"import json; ctx=json.load(open('.runs/change-context.json')); assert ctx.get('classification'), 'classification missing'\"",
+    "5": "python3 -c \"import json; ctx=json.load(open('.runs/change-context.json')); assert isinstance(ctx.get('preconditions_checked'), list), 'preconditions_checked missing'\"",
     "6": {
       "verify": "python3 -c \"import json; d=json.load(open('.runs/plan-validation.json')); checks=['route_conflict','schema_conflict','import_availability','component_reuse','analytics_naming']; missing=[c for c in checks if c not in d]; assert not missing,'plan-validation.json missing: %s'%missing; no_checked=[c for c in checks if d[c].get('checked') is None]; assert not no_checked,'checks without checked field: %s'%no_checked\"",
       "calls": [
@@ -61,7 +61,7 @@
     "9": "grep -q 'checkpoint: phase2-step6' .runs/current-plan.md && python3 -c \"import json; pt=json.load(open('.runs/change-context.json')).get('preliminary_type',''); assert pt!='Feature' or '  - id:' in open('experiment/experiment.yaml').read(), 'Feature requires behaviors'\"",
     "10": "grep -q 'checkpoint: phase2-step7' .runs/current-plan.md && python3 -c \"import json,glob,os; q='production' if 'quality: production' in open('experiment/experiment.yaml').read() else 'mvp'; ts=glob.glob('.runs/agent-traces/implementer-*.json')+glob.glob('.runs/agent-traces/visual-implementer-*.json') if q=='production' else []; bad=[t for t in ts if json.load(open(t)).get('status')=='complete' and not json.load(open(t)).get('worktree_merged')]; assert not bad,'Unmerged: '+','.join(bad); assert not(len(ts)>=2 and not os.path.exists('.runs/consistency-scan-result.json')),'2+ implementers but no consistency-scan-result.json'\"",
     "11": "test -f .runs/verify-report.md",
-    "12": "true"
+    "12": "gh pr view --json number 2>/dev/null"
   },
   "harden": {
     "0": "test -f .runs/harden-context.json && test -f package.json",
@@ -133,7 +133,7 @@
     "1": "python3 -c \"import json; assert json.load(open('.runs/teardown-context.json')).get('confirmed') == True, 'confirmed not set'\"",
     "2": "test -f .runs/teardown-result.json",
     "3": "test -f .runs/teardown-verification.json",
-    "4": "true",
+    "4": "test -f .runs/teardown-cleanup.json",
     "5": "python3 -c \"import json; d=json.load(open('.runs/observe-result.json')); assert d['skill']=='teardown'\""
   },
   "spec": {
@@ -178,7 +178,7 @@
   "audit": {
     "0": "test -f .runs/audit-context.json",
     "1": "test -f .runs/audit-analysis.json",
-    "2": "true",
+    "2": "test -f .runs/audit-analysis.json",
     "3": "python3 -c \"import json; d=json.load(open('.runs/observe-result.json')); assert d['skill']=='audit'\""
   },
 

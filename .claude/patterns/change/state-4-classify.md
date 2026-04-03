@@ -40,8 +40,16 @@ State: "Verification scope: **[scope]**"
 echo "Classification: [type], Verification scope: [scope]"
 ```
 
-**STATE TRACKING:** After postconditions pass, mark this state complete:
+**STATE TRACKING:** After postconditions pass, update context and mark this state complete:
 ```bash
+python3 -c "
+import json
+ctx = json.load(open('.runs/change-context.json'))
+ctx['classification'] = '<stated-classification>'
+ctx['verification_scope'] = '<stated-scope>'
+with open('.runs/change-context.json', 'w') as f:
+    json.dump(ctx, f, indent=2)
+"
 bash .claude/scripts/advance-state.sh change 4
 ```
 

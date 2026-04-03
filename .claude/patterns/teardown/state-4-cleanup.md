@@ -11,6 +11,19 @@
 2. Remove `.env.local` if it exists (contains deployed credentials that are now invalid).
    Ask user first: "`.env.local` contains credentials for the deleted infrastructure.
    Delete it? (y/n)"
+3. Write cleanup manifest:
+   ```bash
+   python3 -c "
+   import json, datetime
+   manifest = {
+       'timestamp': datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+       'deploy_manifest_deleted': True,
+       'env_local_deleted': '<true-or-false>'
+   }
+   with open('.runs/teardown-cleanup.json', 'w') as f:
+       json.dump(manifest, f, indent=2)
+   "
+   ```
 
 ### Q-score
 

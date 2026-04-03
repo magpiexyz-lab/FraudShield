@@ -50,8 +50,15 @@
 echo "Preconditions passed — proceeding to Phase 1 planning"
 ```
 
-**STATE TRACKING:** After postconditions pass, mark this state complete:
+**STATE TRACKING:** After postconditions pass, update context and mark this state complete:
 ```bash
+python3 -c "
+import json
+ctx = json.load(open('.runs/change-context.json'))
+ctx['preconditions_checked'] = ['<list>', '<of>', '<checks>', '<that>', '<passed>']
+with open('.runs/change-context.json', 'w') as f:
+    json.dump(ctx, f, indent=2)
+"
 bash .claude/scripts/advance-state.sh change 5
 ```
 
