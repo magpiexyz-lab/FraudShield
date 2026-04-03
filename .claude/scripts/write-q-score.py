@@ -31,6 +31,48 @@ def compute_q(gate, dimension_scores, r_human=0.0):
     return q_skill, r_system, r
 
 
+def _compact_entry(entry):
+    """Create a compact trace entry (~150-200 bytes) for GitHub upload.
+
+    Compact format (v2) stores only what /resolve --refine needs:
+    state_results, per-state file hashes, team member, and CLAUDE.md hash.
+    """
+    skill = entry.get('skill', '')
+    tv = entry.get('template_version', {})
+    sr_raw = entry.get('state_results', {})
+
+    # Compact state_results: {state_id: [first_pass_as_0_or_1, attempts]}
+    sr = {}
+    for sid, data in sr_raw.items():
+        fp = 1 if data.get('first_pass', True) else 0
+        sr[sid] = [fp, data.get('attempts', 1)]
+
+    # Per-state file hashes: only for states that ran
+    h = {}
+    for sid in sr_raw:
+        prefix = f'.claude/patterns/{skill}/state-{sid}-'
+        for path, blob_hash in tv.items():
+            if path.startswith(prefix):
+                h[sid] = blob_hash[:7]
+                break
+
+    compact = {
+        'v': 2,
+        's': skill,
+        'r': entry.get('run_id', ''),
+        'm': entry.get('team_member', 'unknown'),
+        'sr': sr,
+        'h': h,
+    }
+
+    # CLAUDE.md hash for team version report
+    claude_hash = tv.get('CLAUDE.md', '')
+    if claude_hash:
+        compact['c'] = claude_hash[:7]
+
+    return compact
+
+
 def write_entry(entry):
     """Write entry: always local, then attempt GitHub if configured."""
     import subprocess as sp
@@ -97,7 +139,7 @@ def _upload_to_github(entry):
         if issue_num:
             sp.run(
                 ['gh', 'issue', 'comment', str(issue_num), '--repo', repo_info,
-                 '--body', json.dumps(entry, separators=(',', ':'))],
+                 '--body', json.dumps(_compact_entry(entry), separators=(',', ':'))],
                 capture_output=True, text=True, timeout=10
             )
     except Exception:
