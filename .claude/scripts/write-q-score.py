@@ -32,44 +32,92 @@ def compute_q(gate, dimension_scores, r_human=0.0):
 
 
 def write_entry(entry):
-    """Write entry to verify-history.jsonl via pluggable backend."""
-    backend = os.environ.get('SKILL_HISTORY_BACKEND', 'local')
+    """Write entry: always local, then attempt GitHub if configured."""
+    import subprocess as sp
 
-    if backend == 'local':
-        os.makedirs('.runs', exist_ok=True)
-        with open('.runs/verify-history.jsonl', 'a') as f:
-            f.write(json.dumps(entry) + '\n')
-        print(f"Q-score: {entry['q_skill']} (Gate={entry['gate']}, R={entry.get('r_system', 0)}) "
-              f"— appended to verify-history.jsonl")
+    # ALWAYS write local
+    os.makedirs('.runs', exist_ok=True)
+    with open('.runs/verify-history.jsonl', 'a') as f:
+        f.write(json.dumps(entry) + '\n')
 
+    backend = os.environ.get('SKILL_HISTORY_BACKEND', 'github')
+
+    if backend == 'github':
+        _upload_to_github(entry)
     elif backend == 'api':
-        import urllib.request
-        endpoint = os.environ.get('SKILL_HISTORY_ENDPOINT', '')
-        if endpoint:
-            req = urllib.request.Request(
-                endpoint,
-                data=json.dumps(entry).encode(),
-                headers={'Content-Type': 'application/json'},
-                method='POST',
-            )
-            try:
-                urllib.request.urlopen(req, timeout=5)
-                print(f"Q-score: {entry['q_skill']} — sent to {endpoint}")
-            except Exception as e:
-                # Fallback to local on API failure
-                os.makedirs('.runs', exist_ok=True)
-                with open('.runs/verify-history.jsonl', 'a') as f:
-                    f.write(json.dumps(entry) + '\n')
-                print(f"Q-score: {entry['q_skill']} — API failed ({e}), fell back to local")
-        else:
-            # No endpoint configured, fall back to local
-            os.makedirs('.runs', exist_ok=True)
-            with open('.runs/verify-history.jsonl', 'a') as f:
-                f.write(json.dumps(entry) + '\n')
-            print(f"Q-score: {entry['q_skill']} — no API endpoint, fell back to local")
+        _upload_to_api(entry)
 
-    else:
-        print(f"Q-score: {entry['q_skill']} (tracking disabled)")
+    print(f"Q-score: {entry['q_skill']} (Gate={entry['gate']}, "
+          f"R={entry.get('r_system', 0)}) — appended to verify-history.jsonl")
+
+
+def _upload_to_github(entry):
+    """Post trace as GitHub issue comment. Best-effort."""
+    import subprocess as sp
+    try:
+        # Find template repo via GitHub API
+        current_repo = sp.run(
+            ['gh', 'repo', 'view', '--json', 'nameWithOwner', '-q', '.nameWithOwner'],
+            capture_output=True, text=True, timeout=10
+        ).stdout.strip()
+        if not current_repo:
+            return
+
+        repo_info = sp.run(
+            ['gh', 'api', f'repos/{current_repo}',
+             '--jq', '.template_repository.full_name // .parent.full_name // empty'],
+            capture_output=True, text=True, timeout=10
+        ).stdout.strip()
+        if not repo_info:
+            return
+
+        member = entry.get('team_member', 'unknown')
+
+        # Find existing trace issue for this member
+        result = sp.run(
+            ['gh', 'issue', 'list', '--repo', repo_info, '--label', 'trace',
+             '--search', f'Trace: {member} in:title', '--json', 'number', '--limit', '1'],
+            capture_output=True, text=True, timeout=10
+        )
+        issues = json.loads(result.stdout) if result.stdout.strip() else []
+
+        if issues:
+            issue_num = issues[0]['number']
+        else:
+            # Create new trace issue
+            create = sp.run(
+                ['gh', 'issue', 'create', '--repo', repo_info, '--label', 'trace',
+                 '--title', f'Trace: {member}',
+                 '--body', f'Automated trace collection for {member}'],
+                capture_output=True, text=True, timeout=15
+            )
+            url = create.stdout.strip()
+            issue_num = url.rstrip('/').split('/')[-1] if '/' in url else None
+
+        if issue_num:
+            sp.run(
+                ['gh', 'issue', 'comment', str(issue_num), '--repo', repo_info,
+                 '--body', json.dumps(entry, separators=(',', ':'))],
+                capture_output=True, text=True, timeout=10
+            )
+    except Exception:
+        pass  # Silent — local already written
+
+
+def _upload_to_api(entry):
+    """Legacy HTTP API upload. Best-effort."""
+    import urllib.request
+    endpoint = os.environ.get('SKILL_HISTORY_ENDPOINT', '')
+    if not endpoint:
+        return
+    try:
+        req = urllib.request.Request(
+            endpoint, data=json.dumps(entry).encode(),
+            headers={'Content-Type': 'application/json'}, method='POST'
+        )
+        urllib.request.urlopen(req, timeout=5)
+    except Exception:
+        pass  # Silent — local already written
 
 
 def main():
@@ -119,6 +167,57 @@ def main():
         'r_human': args.r_human,
         'q_skill': q_skill,
     }
+
+    # === Template version tracking (per-file blob hash) ===
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            ['git', 'ls-tree', '-r', 'HEAD', '.claude/', 'CLAUDE.md'],
+            capture_output=True, text=True, timeout=5
+        )
+        file_hashes = {}
+        for line in result.stdout.strip().split('\n'):
+            if line:
+                parts = line.split('\t')
+                if len(parts) == 2:
+                    blob_hash = parts[0].split()[2]
+                    file_path = parts[1]
+                    file_hashes[file_path] = blob_hash
+        entry['template_version'] = file_hashes
+    except Exception:
+        entry['template_version'] = {}
+
+    try:
+        entry['team_member'] = subprocess.run(
+            ['git', 'config', 'user.name'],
+            capture_output=True, text=True, timeout=2
+        ).stdout.strip() or 'unknown'
+    except Exception:
+        entry['team_member'] = 'unknown'
+
+    entry['schema_version'] = 1
+
+    # === State results summary (from execution trace) ===
+    state_results = {}
+    trace_file = f'.runs/{args.skill}-execution-trace.jsonl'
+    if os.path.exists(trace_file):
+        with open(trace_file) as f:
+            for line in f:
+                try:
+                    t = json.loads(line)
+                    if t.get('run_id') != run_id:
+                        continue
+                    sid = t['state_id']
+                    if sid not in state_results:
+                        state_results[sid] = {
+                            'first_pass': t['verify_result'] == 'pass',
+                            'attempts': 0
+                        }
+                    state_results[sid]['attempts'] += 1
+                except Exception:
+                    continue
+    entry['state_results'] = state_results
 
     write_entry(entry)
 
