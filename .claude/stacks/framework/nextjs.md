@@ -158,7 +158,7 @@ export async function OPTIONS() {
 
 import { useEffect } from "react";
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 
 export default function ErrorPage({
   error,
@@ -179,9 +179,7 @@ export default function ErrorPage({
       </p>
       <div className="flex gap-2">
         <Button onClick={() => reset()}>Try again</Button>
-        <Button variant="outline" asChild>
-          <Link href="/">Back to Home</Link>
-        </Button>
+        <Link href="/" className={buttonVariants({ variant: "outline" })}>Back to Home</Link>
       </div>
     </div>
   );

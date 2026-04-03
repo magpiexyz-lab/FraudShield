@@ -93,6 +93,23 @@ import { buttonVariants } from "@/components/ui/button";
 
 This applies to all Radix-based components: `DialogTrigger`, `TooltipTrigger`, `DropdownMenuTrigger`, etc. Wrap children directly instead of using `asChild`.
 
+**Trigger + interactive element**: When a trigger component (`TooltipTrigger`, `DialogTrigger`, etc.) wraps an interactive element like `<Button>`, use the `render` prop to avoid nested `<button>` elements (HTML validity violation):
+
+```tsx
+import { Button } from "@/components/ui/button";
+import { TooltipTrigger } from "@/components/ui/tooltip";
+
+// WRONG (nested <button> — invalid HTML):
+<TooltipTrigger><Button>Click</Button></TooltipTrigger>
+
+// CORRECT (render prop composes without nesting):
+<TooltipTrigger render={<Button variant="ghost" />}>
+  Click
+</TooltipTrigger>
+```
+
+The `render` prop replaces the trigger's default `<button>` wrapper with the provided element, passing through all trigger behavior (event handlers, aria attributes). Children of the trigger become children of the rendered element.
+
 ## Import Example
 ```tsx
 import { Button } from "@/components/ui/button";

@@ -148,13 +148,54 @@ curl -s -X POST "https://api.vercel.com/v10/projects/<name>/env?upsert=true&slug
 ### First Deploy
 - `vercel --prod --yes` — deploy to production without prompts
 
-## Rate Limiting Limitation
-Simple in-memory counters do not persist across serverless invocations on Vercel, so they are not effective for rate limiting.
+## Rate Limiting
 
-For auth and payment API routes:
-- Add `// TODO: Add production rate limiting (e.g., Upstash Redis)` comment at the top of the route handler
-- If experiment.yaml `stack` includes a rate-limiting service (e.g., Upstash), use that instead
-- Mention this limitation in the PR body so the user knows to address it before production
+Simple in-memory counters do not persist across serverless invocations on Vercel, so they are not effective for cross-instance rate limiting. However, they still provide burst protection within a single instance.
+
+### When `quality: mvp` (opt-in)
+Add `// TODO: Add production rate limiting (e.g., Upstash Redis)` comment at the top of auth and payment route handlers. This is accepted by security review D5 for MVP quality.
+
+### When `quality: production` (default)
+Bootstrap creates `src/lib/rate-limit.ts` with an in-memory burst-protection limiter. Auth and payment routes import and apply it. This satisfies security review D5.
+
+**`src/lib/rate-limit.ts`:**
+```ts
+const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
+
+export function rateLimit(
+  key: string,
+  { limit = 10, windowMs = 60_000 }: { limit?: number; windowMs?: number } = {}
+): { success: boolean; remaining: number } {
+  const now = Date.now();
+  const entry = rateLimitMap.get(key);
+
+  if (!entry || now > entry.resetTime) {
+    rateLimitMap.set(key, { count: 1, resetTime: now + windowMs });
+    return { success: true, remaining: limit - 1 };
+  }
+
+  if (entry.count >= limit) {
+    return { success: false, remaining: 0 };
+  }
+
+  entry.count++;
+  return { success: true, remaining: limit - entry.count };
+}
+```
+
+**Usage in route handlers:**
+```ts
+import { rateLimit } from "@/lib/rate-limit";
+
+// At the top of the handler:
+const ip = request.headers.get("x-forwarded-for") ?? "unknown";
+const { success } = rateLimit(ip, { limit: 10, windowMs: 60_000 });
+if (!success) {
+  return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+}
+```
+
+> **Caveat:** In-memory state does not persist across serverless invocations, so this provides burst protection (limiting rapid requests to a single instance) rather than true distributed rate limiting. Add `// TODO: Upgrade to Upstash Redis for cross-instance rate limiting` after the rate limit check. If experiment.yaml `stack` includes a rate-limiting service (e.g., Upstash), use that instead of the in-memory limiter.
 
 ## Security Headers
 
