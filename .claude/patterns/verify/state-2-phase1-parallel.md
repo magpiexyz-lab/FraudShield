@@ -44,9 +44,9 @@ Spawn the `performance-reporter` agent (`subagent_type: performance-reporter`). 
 
 Spawn the `accessibility-scanner` agent (`subagent_type: accessibility-scanner`). No additional context needed.
 
-#### spec-reviewer (if scope is `full` or `security`, AND `quality: production` in experiment.yaml)
+#### spec-reviewer (if scope is `full` or `security`, unless `quality: mvp` in experiment.yaml)
 
-Read `experiment/experiment.yaml`. If `quality` field is set to `production`:
+Read `experiment/experiment.yaml`. Unless `quality` field is set to `mvp`:
 Spawn the `spec-reviewer` agent (`subagent_type: spec-reviewer`). Pass: "Read `.claude/agents/spec-reviewer.md` and execute all checks. Read `experiment/experiment.yaml` and `.runs/current-plan.md` (if it exists) as input. Return the output contract table and verdict."
 
 If `quality` is absent or not `production`, skip this agent.

@@ -92,7 +92,7 @@ Each behavior with `actor: system/cron` is implemented and has a test. Missing i
 Every plan item is addressed in source code. Unaddressed item is a FAIL.
 
 **S7. TDD compliance**
-> Skip if `quality` is absent or not `production` in experiment.yaml.
+> Skip if `quality: mvp` is set in experiment.yaml.
 > Skip if no `.runs/current-plan.md` exists.
 
 For each task in the plan: a specification test file (`*.test.*` or `*.spec.*`)
@@ -109,7 +109,7 @@ is a FAIL — report the missing entry and behavior ID.
 > This check produces WARNINGs, not FAILs — reported but does not block verdict.
 
 1. Read `.runs/current-plan.md`. If `## Process Checklist` section exists, report pass. If missing, report WARNING: "Process gate was not executed."
-2. If `quality: production` and change type is Feature, Fix, or Upgrade: scan git log on current branch (`git log --oneline --name-only main..HEAD`). For each test file (`*.test.*`, `*.spec.*`), check whether its first appearance in a commit precedes or equals the first appearance of the corresponding source file. If source committed before test, report WARNING: "TDD order violation — [source file] committed before [test file]."
+2. Unless `quality: mvp`, and change type is Feature, Fix, or Upgrade: scan git log on current branch (`git log --oneline --name-only main..HEAD`). For each test file (`*.test.*`, `*.spec.*`), check whether its first appearance in a commit precedes or equals the first appearance of the corresponding source file. If source committed before test, report WARNING: "TDD order violation — [source file] committed before [test file]."
 3. Report results as `pass` or `WARN` (never FAIL).
 
 ## Output Contract

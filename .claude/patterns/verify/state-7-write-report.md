@@ -46,7 +46,7 @@ overall_verdict: pass | fail
 - Last output: [last 3-5 lines of build output]
 
 ## Quality Delta
-> Populated when `.runs/verify-history.jsonl` has a previous entry **matching the current skill**. Otherwise omit this section — except when `quality: production` is set in experiment.yaml, in which case emit a note: "Quality Delta: no prior baseline for this skill. This run establishes baseline; subsequent runs will show delta."
+> Populated when `.runs/verify-history.jsonl` has a previous entry **matching the current skill**. Otherwise omit this section — except when production quality is active (i.e., `quality: mvp` is NOT set), in which case emit a note: "Quality Delta: no prior baseline for this skill. This run establishes baseline; subsequent runs will show delta."
 >
 > Read `.runs/verify-history.jsonl` and find the last entry where `skill` matches the current skill (from verify-context.json). If no matching entry exists, omit this section (or emit the production-mode note above).
 
@@ -75,7 +75,7 @@ overall_verdict: pass | fail
 - [list, or "None"]
 
 ## Process Compliance
-> Populated when `quality: production`. Otherwise: "N/A — MVP mode".
+> Populated unless `quality: mvp` is set. Otherwise: "N/A — MVP mode".
 
 - Process Checklist in current-plan.md: [present | missing]
 - TDD order: [pass | WARN — N violations | N/A]

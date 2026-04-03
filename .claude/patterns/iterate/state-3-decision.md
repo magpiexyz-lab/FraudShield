@@ -104,7 +104,7 @@ Common patterns:
 
 | One variant clearly wins | `/change` to consolidate -- remove losing variant, make winner the sole landing page |
 | No variant winner | Extend test for more data, or `/change` to try a new messaging angle |
-| Verdict is SCALE with strong metrics | If `quality: production` is NOT set: suggest `/harden` to graduate: "Your metrics indicate product-market fit. Run `/harden` to add TDD coverage to critical paths before scaling." If `quality: production` is already set: suggest `/change` for scaling features or `/harden <module>` for targeted hardening. |
+| Verdict is SCALE with strong metrics | If `quality: mvp` is set: suggest `/harden` to graduate: "Your metrics indicate product-market fit. Remove `quality: mvp` and run `/harden` to add TDD coverage to critical paths before scaling." Otherwise (production quality already active): suggest `/change` for scaling features or `/harden <module>` for targeted hardening. |
 | Production incident | `/rollback` to revert deploy, then `/change fix <root cause>` |
 
 Present recommendations in priority order (highest impact first).
@@ -146,15 +146,15 @@ If the diagnosis reveals a need to change direction:
   2. Run `/retro` to file a retrospective while findings are fresh
   3. If you deployed the app (via `/deploy`), run `/teardown` to remove cloud infrastructure and stop ongoing costs. If you only bootstrapped without deploying, skip this step -- there's no cloud infrastructure to clean up
   4. If pivoting: edit experiment.yaml with a new thesis/target_user, then `make clean` and `/bootstrap` to start fresh (or in a new repo)
-  5. If `quality: production` is set in experiment.yaml and you're pivoting: consider removing it (`quality: production` -> delete the line) to return to MVP mode for faster iteration on the new direction. Production quality adds TDD overhead that slows experimentation.
+  5. If pivoting and you want faster iteration: consider setting `quality: mvp` in experiment.yaml to disable TDD overhead during early experimentation.
 - Do NOT update experiment.yaml automatically -- the user should decide whether to pivot or stop
 
 #### On track (verdict is SCALE)
 - Say so clearly: "The Step 3 verdict is SCALE. You're on track. [X] of [target from thesis] achieved with [Y days] remaining."
 - Recommend: keep going, focus on distribution, or run `/change improve conversion` to improve conversion
 - If the experiment shows strong, sustained traction:
-  - If `quality: production` is NOT set in experiment.yaml: suggest `/harden` as a graduation step: "Consider graduating to production quality: run `/harden` to add TDD coverage to critical paths before scaling. This adds specification tests to auth, payment, and core business logic."
-  - If `quality: production` is already set: suggest scaling actions: "Already in production quality mode. Consider `/change` to add scaling features, or `/harden <module>` to harden a specific module."
+  - If `quality: mvp` is set in experiment.yaml: suggest graduating: "Consider removing `quality: mvp` (or deleting the line) to enable production quality with TDD coverage on critical paths before scaling."
+  - Otherwise (production quality already active): suggest scaling actions: "Already in production quality mode. Consider `/change` to add scaling features, or `/harden <module>` to harden a specific module."
 
 **POSTCONDITIONS:**
 - Pace and progress calculated

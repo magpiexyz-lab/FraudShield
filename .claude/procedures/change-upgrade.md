@@ -13,7 +13,7 @@
 
 ## Implementation
 
-- If `quality: production` is set in experiment.yaml:
+- Unless `quality: mvp` is set in experiment.yaml:
   1. **ON-TOUCH check** (see `patterns/on-touch-check.md`): If `experiment/on-touch.yaml` exists: first, remove any entries whose `path` no longer exists on disk (stale from deleted modules). Then check if any files in the upgrade plan are listed as ON-TOUCH. For each match: add a prerequisite TDD task to write specification tests for the existing code in that file BEFORE writing upgrade code. Remove the entry from `experiment/on-touch.yaml` after tests are added. If `on_touch` list is now empty, delete `experiment/on-touch.yaml`.
   2. Generate TDD tasks for the integration per `patterns/tdd.md`. Link each task to its behavior ID(s) from experiment.yaml and include the behavior's `tests` array entries — the implementer must generate an `it()` assertion for each entry. Tasks should cover:
      - Credential storage/retrieval
@@ -28,7 +28,7 @@
      - Verify merge commit, update trace `worktree_merged: true`
      If 2+ agents: run consistency scan (3 min budget).
   5. Continue to Step 7
-- If `quality` is absent or `mvp` (default):
+- If `quality: mvp` is set:
 - Read or generate the external stack file for the service (`.claude/stacks/external/<service-slug>.md`) — use the same generation procedure as described in `.claude/procedures/scaffold-externals.md` (Step 6)
 - Replace the Fake Door component with real UI that calls the actual API route
 - Replace any stub route (501/503) with the full integration logic using the service's API

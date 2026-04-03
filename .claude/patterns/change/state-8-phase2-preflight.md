@@ -23,7 +23,7 @@ Before proceeding to Step 5, execute the process gate:
    | Polish | (none — constraints are inline in Step 6) |
    | Analytics | (none — constraints are inline in Step 6) |
 
-2. **If `quality: production`:** also read `.claude/patterns/tdd.md`.
+2. **Unless `quality: mvp`:** also read `.claude/patterns/tdd.md`.
 
 3. **Always read** `.claude/patterns/verify.md` — extract the scope table and agent list for the verification scope from Step 3.
 
@@ -42,7 +42,7 @@ Before proceeding to Step 5, execute the process gate:
      - [3-5 key rules extracted from the procedure file]
    ```
 
-   If `quality: production`, add to the constraints list:
+   Unless `quality: mvp`, add to the constraints list:
    - Feature/Upgrade: `- Implementer agents required — do NOT implement directly`
    - Feature/Upgrade: `- TDD cycle: RED (failing test) before GREEN (implementation)`
    - Fix: `- Regression test must FAIL on current code before writing fix`

@@ -12,23 +12,23 @@ Follow archetype behavior check per `patterns/archetype-behavior-check.md`.
 Follow the procedure in `.claude/procedures/change-feature.md`.
 
 > **Critical assertions (Feature):**
-> - If `quality: production` — you MUST spawn implementer agents. Do NOT implement tasks directly.
-> - If `quality: production` — write the failing test (RED) BEFORE writing production code (GREEN).
+> - Unless `quality: mvp` — you MUST spawn implementer agents. Do NOT implement tasks directly.
+> - Unless `quality: mvp` — write the failing test (RED) BEFORE writing production code (GREEN).
 > - Analytics events MUST be wired before proceeding to Step 7.
 
 #### Upgrade constraints
 Follow the procedure in `.claude/procedures/change-upgrade.md`.
 
 > **Critical assertions (Upgrade):**
-> - If `quality: production` — TDD tasks required for credential storage, webhook validation, error handling.
-> - If `quality: production` — you MUST spawn implementer agents. Do NOT implement tasks directly.
+> - Unless `quality: mvp` — TDD tasks required for credential storage, webhook validation, error handling.
+> - Unless `quality: mvp` — you MUST spawn implementer agents. Do NOT implement tasks directly.
 > - Preserve the `activate` event name when replacing Fake Door — remove `fake_door: true` only.
 
 #### Fix constraints
 Follow the procedure in `.claude/procedures/change-fix.md`.
 
 > **Critical assertions (Fix):**
-> - If `quality: production` — regression test must FAIL on current code BEFORE writing the fix. Stop and write the test first. Run it — it must fail. Only then implement the fix and verify the test passes.
+> - Unless `quality: mvp` — regression test must FAIL on current code BEFORE writing the fix. Stop and write the test first. Run it — it must fail. Only then implement the fix and verify the test passes.
 > - Minimal change only — fix root cause, no refactoring of surrounding code.
 
 #### Polish constraints
@@ -63,7 +63,7 @@ Follow the procedure in `.claude/procedures/change-test.md`.
 >
 > **Critical assertions (Verification):**
 > - If scope is `full` or `security` — security-defender + security-attacker MUST be spawned.
-> - If `quality: production` AND scope is `full` or `security` — spec-reviewer MUST be spawned.
+> - Unless `quality: mvp`, AND scope is `full` or `security` — spec-reviewer MUST be spawned.
 > - `.runs/verify-report.md` MUST be written before Step 8.
 
 - **Implementer trace audit** (informational — does not block G4):
@@ -88,7 +88,7 @@ Follow the procedure in `.claude/procedures/change-test.md`.
   "
   ```
 
-- **G4 Implementation Gate**: Spawn the `gate-keeper` agent (`subagent_type: gate-keeper`). Pass: "Execute G4 Implementation Gate for quality [quality]. Verify: `npm run build` passes. If quality: production — check git log for worktree merge commits (evidence implementer agents were spawned, not direct implementation). Check no `// TODO: implement` or `throw new Error('not implemented')` markers in new code." If gate-keeper returns BLOCK, fix blocking items before Step 7.
+- **G4 Implementation Gate**: Spawn the `gate-keeper` agent (`subagent_type: gate-keeper`). Pass: "Execute G4 Implementation Gate for quality [quality]. Verify: `npm run build` passes. Unless quality: mvp — check git log for worktree merge commits (evidence implementer agents were spawned, not direct implementation). Check no `// TODO: implement` or `throw new Error('not implemented')` markers in new code." If gate-keeper returns BLOCK, fix blocking items before Step 7.
 
 Update checkpoint in `.runs/current-plan.md` frontmatter to `phase2-step7`.
 
@@ -97,15 +97,15 @@ Update checkpoint in `.runs/current-plan.md` frontmatter to `phase2-step7`.
 - Implementer trace audit run
 - G4 Implementation Gate passed
 - Checkpoint updated to `phase2-step7`
-- If `quality: production`: all complete implementer traces have `worktree_merged: true`
+- Unless `quality: mvp`: all complete implementer traces have `worktree_merged: true`
 - If 2+ implementer traces exist: `.runs/consistency-scan-result.json` exists
 
 **VERIFY:**
 ```bash
 grep -q 'checkpoint: phase2-step7' .runs/current-plan.md && python3 -c "
 import json, glob, os
-q = 'production' if 'quality: production' in open('experiment/experiment.yaml').read() else 'mvp'
-ts = glob.glob('.runs/agent-traces/implementer-*.json') + glob.glob('.runs/agent-traces/visual-implementer-*.json') if q == 'production' else []
+q = 'mvp' if 'quality: mvp' in open('experiment/experiment.yaml').read() else 'production'
+ts = glob.glob('.runs/agent-traces/implementer-*.json') + glob.glob('.runs/agent-traces/visual-implementer-*.json') if q != 'mvp' else []
 bad = [t for t in ts if json.load(open(t)).get('status') == 'complete' and not json.load(open(t)).get('worktree_merged')]
 assert not bad, 'Unmerged: ' + ','.join(bad)
 assert not (len(ts) >= 2 and not os.path.exists('.runs/consistency-scan-result.json')), '2+ implementers but no consistency-scan-result.json'
