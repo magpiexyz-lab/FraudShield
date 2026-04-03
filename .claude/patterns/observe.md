@@ -230,6 +230,20 @@ template-level fix.>
 ```
 
 **Filing command:**
+
+Before filing, compute the file version for the template file being observed:
+```bash
+FILE_VERSION=$(git hash-object "$TEMPLATE_FILE" 2>/dev/null || echo "unknown")
+```
+
+Append version metadata to the body (after the `*Auto-filed by the observation pattern.*` line):
+```
+---
+template_file: <full path to the template file>
+file_version: <FILE_VERSION value>
+```
+
+Then file the issue:
 ```bash
 gh issue create --repo $TEMPLATE_REPO \
   --title "<title>" \
