@@ -10,7 +10,7 @@ Rules are in priority order. When two rules conflict, the lower-numbered rule wi
 - Pages are derived from `golden_path` — don't create pages not referenced there
 - If you're unsure whether something is in scope, it isn't
 - To add a new behavior, use the /change skill — it updates experiment.yaml first, then implements
-- When asked to do something outside a defined skill (/audit, /spec, /bootstrap, /change, /deploy, /distribute, /harden, /iterate, /optimize-prompt, /resolve, /retro, /review, /rollback, /solve, /teardown, /verify), ask the user to clarify before proceeding
+- When asked to do something outside a defined skill (/audit, /spec, /bootstrap, /change, /deploy, /distribute, /harden, /iterate, /optimize-prompt, /resolve, /retro, /review, /rollback, /solve, /teardown, /upgrade, /verify), ask the user to clarify before proceeding
 
 ## Rule 1: PR-First Workflow
 - Never commit directly to `main`
