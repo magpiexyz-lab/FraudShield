@@ -180,4 +180,49 @@ try:
         }) + '\n')
 except: pass
 " 2>/dev/null || true
+# === Template remote + version check (only on STATE 0) ===
+if [[ "$STATE_ID" == "0" ]]; then
+    python3 -c "
+import subprocess, sys, os
+try:
+    # Step 1: Ensure template remote exists
+    check = subprocess.run(['git', 'remote', 'get-url', 'template'],
+                           capture_output=True, text=True, timeout=2)
+    if check.returncode != 0:
+        # Find template repo via GitHub API
+        current = subprocess.run(
+            ['gh', 'repo', 'view', '--json', 'nameWithOwner', '-q', '.nameWithOwner'],
+            capture_output=True, text=True, timeout=10
+        ).stdout.strip()
+        if current:
+            info = subprocess.run(
+                ['gh', 'api', f'repos/{current}',
+                 '--jq', '.template_repository.full_name // .parent.full_name // empty'],
+                capture_output=True, text=True, timeout=10
+            ).stdout.strip()
+            if info:
+                subprocess.run(
+                    ['git', 'remote', 'add', 'template', f'https://github.com/{info}.git'],
+                    capture_output=True, timeout=5
+                )
+
+    # Step 2: Version check
+    subprocess.run(['git', 'fetch', 'template', '--quiet'],
+                   capture_output=True, timeout=10)
+    local_hash = subprocess.run(['git', 'hash-object', 'CLAUDE.md'],
+                                capture_output=True, text=True).stdout.strip()
+    remote = subprocess.run(['git', 'show', 'template/main:CLAUDE.md'],
+                            capture_output=True, text=True)
+    if remote.returncode == 0 and remote.stdout:
+        import hashlib
+        blob_content = f'blob {len(remote.stdout)}\0{remote.stdout}'.encode()
+        remote_hash = hashlib.sha1(blob_content).hexdigest()
+        if local_hash != remote_hash:
+            print('NOTE: Your template is behind upstream. '
+                  'Run: git fetch template && git rebase template/main',
+                  file=sys.stderr)
+except Exception:
+    pass
+" 2>/dev/null || true
+fi
 exit 0
