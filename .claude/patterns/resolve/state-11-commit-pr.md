@@ -5,6 +5,15 @@
 
 **ACTIONS:**
 
+Read `resolve-context.json` and check the `mode` field.
+
+**If `mode == "refine"`:**
+- Commit message: `Refine: <improvement description>\n\nFixes #N, #M`
+- PR title: `Refine: <skill> state improvements`
+- All other PR body sections (Root Cause Analysis, Blast Radius, etc.) remain the same
+
+**If `mode` is not `"refine"`:** use the normal format below.
+
 Commit all changes with message: `Fix #N: <imperative description>`
 (or `Fix #N, #M: <description>` for multiple issues).
 

@@ -6,6 +6,39 @@
 
 **ACTIONS:**
 
+Read `resolve-context.json` and check the `mode` field.
+
+**If `mode == "refine"` AND current issue label is `refine` (trace-derived):**
+
+Do NOT run validators or find a traditional divergence_point. Instead:
+
+1. Read the `trace_summary` entry for this issue's `(skill, state_id)` from resolve-context.json
+2. Read the target state file content and analyze:
+   - Are instructions ambiguous? (e.g., "check preconditions" vs "check these 8 specific preconditions")
+   - Is the VERIFY command too weak? (`"true"` or file-existence-only without content checks)
+   - Are PRECONDITIONS missing or underspecified?
+3. Write `.runs/resolve-reproduction.json` (format-compatible with normal mode):
+   ```json
+   {
+     "reproductions": [{
+       "issue": 0,
+       "divergence_point": "<state-file-path>:0",
+       "expected": "<clear instructions with strong VERIFY>",
+       "actual": "<ambiguous instructions or weak VERIFY>",
+       "reproduced": true,
+       "reproduction_method": "trace_analysis",
+       "evidence": {"failure_rate": 0.35, "sample_size": 20, "team_members_affected": 3}
+     }],
+     "pre_fix_baseline": {"frontmatter": 0, "semantics": 0, "consistency": 0}
+   }
+   ```
+   Still run validators for `pre_fix_baseline` (needed by later states).
+
+**If `mode == "refine"` AND current issue label is `observation`:**
+Use the normal reproduction flow below (no change).
+
+**If `mode` is not `"refine"`:** use the normal reproduction flow below.
+
 For each actionable issue (after user approval of triage):
 
 Reproduce the issue by tracing through the template as if you were Claude

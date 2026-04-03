@@ -119,4 +119,4 @@ test -f .runs/resolve-challenge.json
 bash .claude/scripts/advance-state.sh resolve 5d
 ```
 
-**NEXT:** Read [state-6-branch-setup.md](state-6-branch-setup.md) to continue.
+**NEXT:** If `resolve-context.json` has `"ring": 3`, skip to [state-10-skill-epilogue.md](state-10-skill-epilogue.md). Otherwise, read [state-6-branch-setup.md](state-6-branch-setup.md) to continue.
