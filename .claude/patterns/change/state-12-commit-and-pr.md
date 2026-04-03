@@ -24,6 +24,16 @@ Follow gate execution procedure per `procedures/gate-execution.md`.
   - **Checklist — Build**: confirm build passes, no hardcoded secrets
   - **Checklist — Verification**: populate from `.runs/verify-report.md` contents. If Step 7 was skipped or partially run, state why.
 - Fill in **every** section of the PR template. Empty sections are not acceptable. If a section does not apply, write "N/A" with a one-line reason.
+  - **Skill Deficiency Analysis** (Fix type only): If `.runs/change-context.json` contains `skill_deficiency` that is not null AND `classification` is "Fix", add this section to the PR body after the Verification checklist:
+    ```
+    ## Skill Deficiency Analysis
+    - **Defect Category**: <code> (<description from skill-coverage-map.md>)
+    - **Should Have Been Caught By**:
+      - `/<skill>` STATE <N> (<state-name>) — <reason>
+    - **Attribution Confidence**: <high|medium|low>
+    - **Recommendation**: <what the responsible skill/state should do differently>
+    ```
+    If `skill_deficiency` is null, `defect_category` is "unclassified", or type is not Fix: omit this section entirely.
 - If `git push` or `gh pr create` fails: show the error and tell the user to check their GitHub authentication (`gh auth status`) and remote configuration (`git remote -v`), then retry.
 ### Q-score
 

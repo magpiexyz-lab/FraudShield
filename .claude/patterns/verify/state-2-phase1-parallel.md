@@ -49,7 +49,7 @@ Spawn the `accessibility-scanner` agent (`subagent_type: accessibility-scanner`)
 Read `experiment/experiment.yaml`. Unless `quality` field is set to `mvp`:
 Spawn the `spec-reviewer` agent (`subagent_type: spec-reviewer`). Pass: "Read `.claude/agents/spec-reviewer.md` and execute all checks. Read `experiment/experiment.yaml` and `.runs/current-plan.md` (if it exists) as input. Return the output contract table and verdict."
 
-If `quality` is absent or not `production`, skip this agent.
+If `quality` is set to `mvp`, skip this agent.
 
 ### After Phase 1 agents return
 

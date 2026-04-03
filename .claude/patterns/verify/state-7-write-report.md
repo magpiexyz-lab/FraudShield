@@ -232,6 +232,10 @@ Only include agents that were spawned (per scope). Mark others as "skipped — o
   - If `Q_build > 0` → `.runs/build-result.json` exists and `exit_code == 0`
   - If `Q_security > 0` → `.runs/agent-traces/security-*.json` exists
   - If `Q_design > 0` → `.runs/agent-traces/design-critic.json` exists
+- Cross-validation: `hard_gate_failure` consistent with agent verdict traces:
+  - If design-critic verdict is `unresolved` or recovery is `true` → `hard_gate_failure` must be `true`
+  - If ux-journeyer verdict is `blocked`, unresolved_dead_ends > 0, or recovery is `true` → `hard_gate_failure` must be `true`
+  - If security-fixer verdict is `partial` with unresolved_critical > 0, or recovery is `true` → `hard_gate_failure` must be `true`
 
 **VERIFY:**
 ```bash
@@ -242,6 +246,18 @@ ds = e.get('dimension_scores', {})
 assert not(ds.get('Q_build', 0) > 0) or (os.path.exists('.runs/build-result.json') and json.load(open('.runs/build-result.json')).get('exit_code') == 0), 'Q_build>0 but build failed'
 assert not(ds.get('Q_security', 0) > 0) or glob.glob('.runs/agent-traces/security-*.json'), 'Q_security>0 but no security traces'
 assert not(ds.get('Q_design', 0) > 0) or os.path.exists('.runs/agent-traces/design-critic.json'), 'Q_design>0 but no design-critic trace'
+hgf = e.get('hard_gate_failure', False)
+def chk(path, vkey, vvals, extras=None):
+    if not os.path.exists(path): return
+    t = json.load(open(path))
+    needs_hgf = t.get(vkey) in vvals or t.get('recovery', False)
+    if extras:
+        for ek, ev in extras:
+            if t.get(ek, 0) > ev: needs_hgf = True
+    assert not needs_hgf or hgf, path + ' requires hard_gate_failure=true (verdict=%s recovery=%s)' % (t.get(vkey), t.get('recovery'))
+chk('.runs/agent-traces/design-critic.json', 'verdict', ['unresolved'])
+chk('.runs/agent-traces/ux-journeyer.json', 'verdict', ['blocked'], [('unresolved_dead_ends', 0)])
+chk('.runs/agent-traces/security-fixer.json', 'verdict', ['partial'], [('unresolved_critical', 0)])
 "
 ```
 
