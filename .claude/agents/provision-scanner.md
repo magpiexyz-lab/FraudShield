@@ -40,7 +40,11 @@ Read the manifest's `hosting` section (provider, project ID). Read the hosting s
 - `teardown` expects: not found
 
 **P2. Canonical URL**
-Read `canonical_url` from the manifest. Run:
+Read `canonical_url` from the manifest. If the archetype is `cli`, the deployment is a static surface with no `/api/health` endpoint — verify the root URL instead:
+```
+curl -sS -o /dev/null -w '%{http_code}' --max-time 10 <canonical_url>
+```
+Otherwise, verify the health endpoint:
 ```
 curl -sS -o /dev/null -w '%{http_code}' --max-time 10 <canonical_url>/api/health
 ```
@@ -96,7 +100,7 @@ Return a markdown table in this exact format:
 | Check | Status | Detail |
 |-------|--------|--------|
 | P1. Hosting project | pass / FAIL / skip:not-configured / skip:no-cli / skip:auth-missing | <detail> |
-| P2. Canonical URL | pass / FAIL / skip:not-configured | <detail> |
+| P2. Canonical URL | pass / FAIL / skip:not-configured / skip:not-applicable | <detail> |
 | P3. Database project | pass / FAIL / skip:not-configured / skip:no-cli / skip:auth-missing | <detail> |
 | P4. Custom domain | pass / FAIL / skip:not-configured | <detail> |
 | P5. Stripe webhook | pass / FAIL / skip:not-configured / skip:no-cli / skip:auth-missing | <detail> |
