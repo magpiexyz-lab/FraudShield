@@ -2777,6 +2777,62 @@ def check_52_track_server_event_awaited(stack_contents: dict[str, str]) -> list[
     return errors
 
 
+def check_62_trace_framework_completeness() -> list[str]:
+    """Check 62: Every stateful skill has Q-score and epilogue categorization."""
+    errors: list[str] = []
+
+    # Find all stateful skills (dirs with state-*.md files)
+    stateful_skills: list[str] = []
+    patterns_dir = ".claude/patterns"
+    if os.path.isdir(patterns_dir):
+        for d in sorted(os.listdir(patterns_dir)):
+            skill_dir = os.path.join(patterns_dir, d)
+            if os.path.isdir(skill_dir) and glob.glob(os.path.join(skill_dir, "state-*.md")):
+                stateful_skills.append(d)
+
+    # Skills excluded from Q-score check:
+    # - verify: uses own STATE 7 --raw mechanism
+    excluded_qscore = {"verify"}
+    # Skills excluded from epilogue categorization:
+    # - verify: own mechanism
+    # - optimize-prompt: stateless (no state files, won't appear)
+    excluded_epilogue = {"verify"}
+
+    # Check 1: Q-score presence
+    for skill in stateful_skills:
+        if skill in excluded_qscore:
+            continue
+        skill_dir = os.path.join(patterns_dir, skill)
+        state_files = glob.glob(os.path.join(skill_dir, "state-*.md"))
+        has_qscore = False
+        for sf in state_files:
+            with open(sf) as f:
+                if "write-q-score" in f.read():
+                    has_qscore = True
+                    break
+        if not has_qscore:
+            errors.append(
+                f"[62] Skill '{skill}' has {len(state_files)} state files but no "
+                f"write-q-score call in any state"
+            )
+
+    # Check 2: Epilogue categorization
+    epilogue_path = ".claude/patterns/skill-epilogue.md"
+    if os.path.isfile(epilogue_path):
+        with open(epilogue_path) as f:
+            epilogue_content = f.read()
+        for skill in stateful_skills:
+            if skill in excluded_epilogue:
+                continue
+            # Check if skill appears in epilogue (Strategy A, B, or verify-embedded)
+            if f"/{skill}" not in epilogue_content and skill not in epilogue_content:
+                errors.append(
+                    f"[62] Skill '{skill}' not categorized in skill-epilogue.md"
+                )
+
+    return errors
+
+
 # ---------------------------------------------------------------------------
 # Check registry and runner
 # ---------------------------------------------------------------------------
@@ -2860,6 +2916,7 @@ CHECKS: list[tuple[int, str, object]] = [
     (59, "Framework-Archetype Compatibility", lambda ctx: check_59_framework_archetype_compatibility(ctx["bootstrap_content"], ctx["change_content"]) if ctx["bootstrap_content"] and ctx["change_content"] else []),
     (60, "Settings Hook Paths", lambda ctx: check_60_settings_hook_paths()),
     (61, "Footer Directive Sync", lambda ctx: check_61_footer_directive_sync()),
+    (62, "Trace Framework Completeness", lambda ctx: check_62_trace_framework_completeness()),
 ]
 
 

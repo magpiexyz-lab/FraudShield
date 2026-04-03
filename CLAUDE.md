@@ -137,7 +137,7 @@ Template-rooted issues are detected and filed automatically. Every skill
 terminates with a quality check via one of three mechanisms:
 - **Verify-embedded skills** (/bootstrap, /change, /harden, /distribute):
   verify.md STATE 6 Auto-Observe handles observation.
-- **Strategy A skills** (/resolve, /review, /deploy, /spec): the skill's
+- **Strategy A skills** (/resolve, /review, /deploy, /spec, /upgrade): the skill's
   epilogue state (`.claude/patterns/skill-epilogue.md` Strategy A) spawns
   an observer agent when diffs exist.
 - **Strategy B skills** (/audit, /solve, /iterate, /retro, /rollback,
