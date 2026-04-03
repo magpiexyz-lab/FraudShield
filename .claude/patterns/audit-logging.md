@@ -1,6 +1,6 @@
 # Audit Logging Pattern
 
-> **Scope**: `quality: production` only. MVPs do NOT require audit logging.
+> **Scope**: Production quality (the default). Skipped when `quality: mvp` is set.
 
 ## What to Log
 

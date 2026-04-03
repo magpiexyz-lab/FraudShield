@@ -13,7 +13,7 @@
 
 ## Production Quality
 
-When `quality: production` is set, Test type changes do NOT spawn implementer agents — tests observe the app, they don't change application code. Implementer agents are reserved for Feature, Fix, and Upgrade types that modify application logic.
+Unless `quality: mvp` is set, Test type changes do NOT spawn implementer agents — tests observe the app, they don't change application code. Implementer agents are reserved for Feature, Fix, and Upgrade types that modify application logic.
 
 ## Implementation
 

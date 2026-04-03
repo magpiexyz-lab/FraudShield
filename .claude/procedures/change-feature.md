@@ -13,7 +13,7 @@
 
 ## Implementation
 
-- If `quality: production` is set in experiment.yaml:
+- Unless `quality: mvp` is set in experiment.yaml:
   1. **ON-TOUCH check** (see `patterns/on-touch-check.md`): If `experiment/on-touch.yaml` exists: first, remove any entries whose `path` no longer exists on disk (stale from deleted modules). Then check if any files in the implementation plan are listed as ON-TOUCH. For each match: add a prerequisite TDD task to write specification tests for the existing code in that file BEFORE writing new feature code. Remove the entry from `experiment/on-touch.yaml` after tests are added. If `on_touch` list is now empty, delete `experiment/on-touch.yaml`.
   2. Generate implementation plan (see `procedures/tdd-task-generation.md`) — break into 2-5 min TDD tasks (exact files, spec test code, expected failure, minimal impl) per `patterns/tdd.md` § Task Granularity. Link each task to its behavior ID(s) from experiment.yaml. Include the behavior's `tests` array entries in the task description — the implementer must generate an `it()` assertion for each entry. Mark each task as **visual** (targets `.tsx` page or component files) or **logic** (everything else).
   3. Analyze task dependency graph per `patterns/tdd.md` § Task Dependency Ordering:
@@ -67,7 +67,7 @@
      "
      ```
   8. Continue to Step 7
-- If `quality` is absent or `mvp` (default):
+- If `quality: mvp` is set:
 - **MVP Task Breakdown** (Multi-layer features only — skip for Simple):
   Break the implementation into checkpointed steps. Each step ends with a `npm run build` gate.
 

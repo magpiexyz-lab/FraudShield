@@ -1,9 +1,9 @@
 # Test-Driven Development Procedure
 
-Follow this procedure when implementing features, fixes, or hardening under `quality: production` mode.
+Follow this procedure when implementing features, fixes, or hardening (the default, unless `quality: mvp` is set).
 
 > **Scope:** This pattern is consumed by the implementer agent (`agents/implementer.md`)
-> when `quality: production` is set in experiment.yaml. It is not used in MVP mode.
+> unless `quality: mvp` is set in experiment.yaml.
 
 ## Red-Green-Refactor Cycle
 

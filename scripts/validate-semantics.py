@@ -970,17 +970,17 @@ def check_53_supabase_delete_flag(file_contents: dict[str, str]) -> list[str]:
 
 
 def check_54_procedure_production_branch(procedure_files: dict[str, str]) -> list[str]:
-    """Check 54: Procedure files for Feature/Upgrade/Fix have production branches."""
+    """Check 54: Procedure files for Feature/Upgrade/Fix have quality gate branches."""
     errors: list[str] = []
     target_procedures = {"change-feature.md", "change-upgrade.md", "change-fix.md"}
     for path, content in procedure_files.items():
         basename = os.path.basename(path)
         if basename not in target_procedures:
             continue
-        if not re.search(r"quality:\s*production|quality.*production", content):
+        if not re.search(r"quality.*mvp|quality.*production", content):
             errors.append(
-                f"[54] {path}: procedure file missing production branch "
-                f"(expected 'quality: production' or 'quality.*production')"
+                f"[54] {path}: procedure file missing quality gate branch "
+                f"(expected 'quality: mvp' opt-out or 'quality.*production' reference)"
             )
     return errors
 
@@ -993,12 +993,11 @@ def check_55_production_references_tdd(procedure_files: dict[str, str]) -> list[
         basename = os.path.basename(path)
         if basename not in target_procedures:
             continue
-        # Find production sections (content after quality: production mention)
-        prod_match = re.search(r"quality.*production", content, re.IGNORECASE)
-        if not prod_match:
+        # Find quality gate (opt-out: quality: mvp or quality: production)
+        if not re.search(r"quality.*mvp|quality.*production", content, re.IGNORECASE):
             continue
-        prod_content = content[prod_match.start():]
-        if not re.search(r"tdd\.md|patterns/tdd", prod_content):
+        # TDD reference should exist somewhere in the file
+        if not re.search(r"tdd\.md|patterns/tdd", content):
             errors.append(
                 f"[55] {path}: production section does not reference tdd.md"
             )
@@ -1017,11 +1016,11 @@ def check_56_production_references_implementer(procedure_files: dict[str, str]) 
         basename = os.path.basename(path)
         if basename not in target_procedures:
             continue
-        prod_match = re.search(r"quality.*production", content, re.IGNORECASE)
-        if not prod_match:
+        # Find quality gate (opt-out: quality: mvp or quality: production)
+        if not re.search(r"quality.*mvp|quality.*production", content, re.IGNORECASE):
             continue
-        prod_content = content[prod_match.start():]
-        if not re.search(r"implementer\.md|agents/implementer|implementer agent", prod_content):
+        # Implementer reference should exist somewhere in the file
+        if not re.search(r"implementer\.md|agents/implementer|implementer agent", content):
             errors.append(
                 f"[56] {path}: production section does not reference implementer agent"
             )
@@ -1029,17 +1028,17 @@ def check_56_production_references_implementer(procedure_files: dict[str, str]) 
 
 
 def check_57_change_production_precondition(change_content: str) -> list[str]:
-    """Check 57: change.md production block validates stack.testing."""
+    """Check 57: change.md quality gate validates stack.testing."""
     errors: list[str] = []
-    # Find production quality block
-    prod_match = re.search(r"quality.*production", change_content, re.IGNORECASE)
-    if not prod_match:
-        return errors  # No production block — check doesn't apply
-    # Check that stack.testing is validated near the production block
-    prod_context = change_content[max(0, prod_match.start() - 200):prod_match.end() + 500]
-    if not re.search(r"stack\.testing", prod_context):
+    # Find quality gate block (opt-out: quality: mvp)
+    gate_match = re.search(r"quality.*mvp", change_content, re.IGNORECASE)
+    if not gate_match:
+        return errors  # No quality gate block — check doesn't apply
+    # Check that stack.testing is validated near the quality gate
+    gate_context = change_content[max(0, gate_match.start() - 200):gate_match.end() + 500]
+    if not re.search(r"stack\.testing", gate_context):
         errors.append(
-            "[57] change.md: quality:production block does not validate stack.testing"
+            "[57] change.md: quality gate block does not validate stack.testing"
         )
     return errors
 

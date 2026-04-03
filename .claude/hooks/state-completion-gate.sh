@@ -220,7 +220,7 @@ try:
         remote_hash = hashlib.sha1(blob_content).hexdigest()
         if local_hash != remote_hash:
             print('NOTE: Your template is behind upstream. '
-                  'Run: git fetch template && git rebase template/main',
+                  'Run /upgrade to sync with the latest template.',
                   file=sys.stderr)
 except Exception:
     pass

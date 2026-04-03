@@ -11,9 +11,8 @@ owner: my-team                 # Who owns this experiment. Used as project_owner
 type: web-app                  # Product archetype (web-app | service | cli). Default: web-app.
 level: 3                       # Product: auth + payments + complete features
 status: draft
-# quality: production          # Uncomment for TDD, per-task implementer, spec review.
-                               # Default (absent): MVP mode — smoke tests, fast iteration.
-                               # Use /harden to analyze existing code before upgrading.
+quality: production              # Default. TDD, per-task implementer, spec review.
+                               # Set to 'mvp' to skip TDD for faster iteration.
 
 # --- 2. Intent ---
 description: |
