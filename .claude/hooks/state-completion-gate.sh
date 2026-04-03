@@ -99,6 +99,35 @@ fi
 # Run the verify command from project root
 cd "$PROJECT_DIR"
 if ! eval "$VERIFY_CMD" >/dev/null 2>&1; then
+  # Trace: log VERIFY failure
+  python3 -c "
+import json, os, datetime
+try:
+    ctx_path = '.runs/verify-context.json' if '$SKILL' == 'verify' else '.runs/$SKILL-context.json'
+    run_id = json.load(open(ctx_path)).get('run_id', 'unknown') if os.path.exists(ctx_path) else 'unknown'
+    trace_file = '.runs/$SKILL-execution-trace.jsonl'
+    is_first = True
+    if os.path.exists(trace_file):
+        with open(trace_file) as f:
+            for line in f:
+                try:
+                    e = json.loads(line)
+                    if e.get('run_id') == run_id and e.get('state_id') == '$STATE_ID':
+                        is_first = False
+                        break
+                except: pass
+    os.makedirs('.runs', exist_ok=True)
+    with open(trace_file, 'a') as f:
+        f.write(json.dumps({
+            'run_id': run_id,
+            'skill': '$SKILL',
+            'state_id': '$STATE_ID',
+            'timestamp': datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+            'verify_result': 'fail',
+            'is_first_attempt': is_first
+        }) + '\n')
+except: pass
+" 2>/dev/null || true
   deny "State completion gate: $SKILL STATE $STATE_ID postconditions not met. VERIFY failed: $VERIFY_CMD — complete this state's actions before marking it done."
 fi
 
@@ -122,4 +151,33 @@ if missing:
 fi
 
 # Postconditions verified — allow
+# Trace: log VERIFY pass
+python3 -c "
+import json, os, datetime
+try:
+    ctx_path = '.runs/verify-context.json' if '$SKILL' == 'verify' else '.runs/$SKILL-context.json'
+    run_id = json.load(open(ctx_path)).get('run_id', 'unknown') if os.path.exists(ctx_path) else 'unknown'
+    trace_file = '.runs/$SKILL-execution-trace.jsonl'
+    is_first = True
+    if os.path.exists(trace_file):
+        with open(trace_file) as f:
+            for line in f:
+                try:
+                    e = json.loads(line)
+                    if e.get('run_id') == run_id and e.get('state_id') == '$STATE_ID':
+                        is_first = False
+                        break
+                except: pass
+    os.makedirs('.runs', exist_ok=True)
+    with open(trace_file, 'a') as f:
+        f.write(json.dumps({
+            'run_id': run_id,
+            'skill': '$SKILL',
+            'state_id': '$STATE_ID',
+            'timestamp': datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+            'verify_result': 'pass',
+            'is_first_attempt': is_first
+        }) + '\n')
+except: pass
+" 2>/dev/null || true
 exit 0
