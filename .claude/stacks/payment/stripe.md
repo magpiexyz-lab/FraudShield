@@ -92,6 +92,7 @@ NEXT_PUBLIC_SITE_URL=https://your-domain.com
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getStripe } from "@/lib/stripe";
+import { rateLimit } from "@/lib/rate-limit";
 
 const checkoutSchema = z.object({
   // TODO: Replace z.string() with z.enum([...]) listing valid plan values for this project
@@ -99,7 +100,12 @@ const checkoutSchema = z.object({
 });
 
 export async function POST(request: Request) {
-  // TODO: Add production rate limiting (e.g., Upstash Redis)
+  const ip = request.headers.get("x-forwarded-for") ?? "unknown";
+  const { success } = rateLimit(ip, { limit: 10, windowMs: 60_000 });
+  if (!success) {
+    return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+  }
+  // TODO: Upgrade to Upstash Redis for cross-instance rate limiting
   try {
     const body = await request.json();
     const { plan } = checkoutSchema.parse(body);
@@ -144,6 +150,7 @@ export async function POST(request: Request) {
 ```
 
 Notes:
+- Rate limiting: the template includes an in-memory burst limiter (`rateLimit` from `@/lib/rate-limit`) for production quality. When `quality: mvp`, replace the rate limiter import and call with a `// TODO: Add production rate limiting (e.g., Upstash Redis)` comment instead. See the hosting stack file for the rate limiter implementation.
 - Validates request body with zod (plan name)
 - Creates a Stripe Checkout Session in `payment` mode (change to `subscription` for recurring)
 - Sets `success_url` and `cancel_url` using `NEXT_PUBLIC_SITE_URL` environment variable — never use client-controlled headers for redirect URLs
@@ -159,9 +166,15 @@ When `stack.analytics` is absent: remove the `@/lib/analytics-server` import and
 import { NextResponse } from "next/server";
 import { getStripe } from "@/lib/stripe";
 import { trackServerEvent } from "@/lib/analytics-server";
+import { rateLimit } from "@/lib/rate-limit";
 
 export async function POST(request: Request) {
-  // TODO: Add production rate limiting (e.g., Upstash Redis)
+  const ip = request.headers.get("x-forwarded-for") ?? "unknown";
+  const { success } = rateLimit(ip, { limit: 30, windowMs: 60_000 });
+  if (!success) {
+    return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+  }
+  // TODO: Upgrade to Upstash Redis for cross-instance rate limiting
   const body = await request.text();
   const signature = request.headers.get("stripe-signature");
 
@@ -197,6 +210,7 @@ export async function POST(request: Request) {
 ```
 
 Notes:
+- Rate limiting: the template includes an in-memory burst limiter with a higher limit (30/min vs 10/min for checkout) since webhooks may receive bursts from Stripe. When `quality: mvp`, replace with a TODO comment instead. See the hosting stack file and the checkout route notes above.
 - Reads the raw request body (do NOT parse JSON before verification)
 - Verifies the webhook signature using `STRIPE_WEBHOOK_SECRET`
 - Handles `checkout.session.completed` event: should update payment status (see TODO in template) and fires `pay_success` server-side via `trackServerEvent()` with all required experiment/EVENTS.yaml properties (`plan`, `amount_cents`, `provider`)
