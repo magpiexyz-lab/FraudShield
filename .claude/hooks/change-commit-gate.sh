@@ -17,7 +17,7 @@ fi
 
 # If the current branch is not change/, feat/, fix/, or chore/harden, allow it
 BRANCH=$(get_branch)
-if [[ ! "$BRANCH" =~ ^(change|feat|fix)/ ]] && [[ ! "$BRANCH" =~ ^chore/(harden|distribute|review) ]]; then
+if [[ ! "$BRANCH" =~ ^(change|feat|fix)/ ]] && [[ ! "$BRANCH" =~ ^chore/(harden|distribute|review|upgrade) ]]; then
   exit 0
 fi
 

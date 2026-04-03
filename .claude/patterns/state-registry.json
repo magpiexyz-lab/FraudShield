@@ -181,6 +181,12 @@
     "2": "test -f .runs/audit-analysis.json",
     "3": "python3 -c \"import json; d=json.load(open('.runs/observe-result.json')); assert d['skill']=='audit'\""
   },
+  "upgrade": {
+    "0": "test -f .runs/upgrade-context.json && git branch --show-current | grep -q 'chore/upgrade-template'",
+    "1": "test -f .runs/upgrade-diff-report.json",
+    "2": "test -f .runs/upgrade-memory-report.json",
+    "3": "gh pr view --json number 2>/dev/null || test -f .runs/upgrade-diff-report.json"
+  },
 
   "agent_gates": {
     "verify": {
@@ -232,6 +238,7 @@
     "spec":     { "_required_states": ["0","1","2","3","4","5","6","7","8"] },
     "rollback": { "_required_states": ["0","1","2","3","4"] },
     "iterate":  { "_required_states": ["0","1","2","3","4","5"] },
-    "retro":    { "_required_states": ["0","1","2","3","4"] }
+    "retro":    { "_required_states": ["0","1","2","3","4"] },
+    "upgrade":  { "_required_states": ["0","1","2","3"] }
   }
 }
