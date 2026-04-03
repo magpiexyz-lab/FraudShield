@@ -5,6 +5,15 @@
 
 **ACTIONS:**
 
+Read `resolve-context.json` and check the `mode` field.
+
+**If `mode == "refine"`:**
+- Issues with label `refine` (trace-derived): type is fixed as "Gap", severity was already determined in STATE 0, action is "fix"
+- Issues with label `observation`: classify using the standard 10-type system below
+- Present the unified triage table and STOP for user approval (same as normal mode)
+
+**If `mode` is not `"refine"`:** proceed with normal classification below.
+
 Classify each issue into one of 10 types:
 
 **Actionable (proceed to Phase 2):**

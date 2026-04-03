@@ -18,6 +18,26 @@ if severity = HIGH: solve_depth = "full"
 
 State the depth selection with rationale before proceeding.
 
+#### 5a-refine) Ring classification (refine mode only)
+
+If `mode == "refine"` (from resolve-context.json):
+
+Determine Ring level based on files the fix will modify:
+
+| Ring | Scope | solve_depth | Behavior |
+|------|-------|-------------|----------|
+| Ring 1 | Only `.claude/patterns/<skill>/state-*.md` | Keep existing logic (default light) | Normal fix flow |
+| Ring 2 | `.claude/hooks/`, `.claude/scripts/`, `.claude/stacks/` | Force `"full"` | Normal fix flow with full depth |
+| Ring 3 | `state-registry.json` structure or `CLAUDE.md` | N/A | Analysis-only — no fix designed |
+
+**Ring 3 handling:**
+- Output analysis report only (no `fix_plan`)
+- In `solve-trace.json`, set `output` to: "Ring 3: requires architecture discussion — see analysis"
+- In `resolve-context.json`, set `"ring": 3`
+- After STATE 5d completes, skip STATEs 6-11 and jump directly to STATE 10 (skill epilogue)
+
+If `mode` is not `"refine"`: skip Ring classification entirely.
+
 #### 5b-light) Light mode path
 
 When `solve_depth = "light"`: call `.claude/patterns/solve-reasoning.md` light mode (Steps 1-5).

@@ -15,9 +15,14 @@ references:
 branch_prefix: fix
 modifies_specs: false
 ---
-Resolve GitHub issues filed against the template. Three phases with two approval
-gates ensure issues are properly triaged, diagnosed with first-principles
-reasoning, and fixed with blast radius coverage.
+Resolve GitHub issues or refine template quality: $ARGUMENTS
+
+## Modes
+- `/resolve #42` — resolve a specific issue
+- `/resolve open issues` — resolve all open issues
+- `/resolve --refine` — analyze team traces + observation issues to improve template quality
+
+ARGUMENTS: $ARGUMENTS
 
 ## JIT State Dispatch
 
