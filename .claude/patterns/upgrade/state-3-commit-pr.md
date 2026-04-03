@@ -88,6 +88,18 @@ EOF
 
 Fill in the actual values from the report JSON files.
 
+### Q-score
+
+Compute upgrade execution quality (see `.claude/patterns/skill-scoring.md`):
+
+```bash
+RUN_ID=$(python3 -c "import json; print(json.load(open('.runs/upgrade-context.json')).get('run_id', ''))" 2>/dev/null || echo "")
+python3 .claude/scripts/write-q-score.py \
+  --skill upgrade --scope upgrade --archetype N/A \
+  --gate 1.0 --dims '{"completion": 1.0}' \
+  --run-id "$RUN_ID" || true
+```
+
 ### Strategy A epilogue
 
 Follow `.claude/patterns/skill-epilogue.md` **Strategy A** (Code Observation).
