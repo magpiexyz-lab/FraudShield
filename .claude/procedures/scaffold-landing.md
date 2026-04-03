@@ -20,7 +20,7 @@ Read the surface stack file at `.claude/stacks/surface/<value>.md`.
 Read the visual language brief from `.runs/current-visual-brief.md`. Do NOT
 re-derive constraints — the brief contains the canonical design decisions
 (color direction, philosophy, optimization target, palette, typography,
-animation, spacing, component style, and texture). Also read the theme tokens
+animation, spacing, component style, texture, and social proof treatment). Also read the theme tokens
 from `src/app/globals.css` and tailwind config (already set in Step 1).
 
 ### 2. Apply frontend-design methodology

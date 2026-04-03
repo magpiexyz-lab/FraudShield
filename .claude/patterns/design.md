@@ -2,13 +2,15 @@
 
 ## Quality Invariants
 
-Two non-negotiable rules that prevent real usability issues:
+Non-negotiable rules that prevent real usability issues:
 
 1. **Form input sizing**: All `<Input>` and `<Select>` elements must use `text-base` (16px minimum). This prevents iOS Safari from auto-zooming the viewport when a user focuses an input field (triggered at font sizes below 16px). This is a platform bug workaround, not an aesthetic choice.
 
 2. **Use shadcn/ui components**: Use library components (`<Button>`, `<Input>`, `<Card>`, etc.) instead of raw HTML elements. This ensures accessibility baselines (ARIA attributes, keyboard handling, focus management) without manual effort.
 
 3. **Scroll-triggered animation safety**: Never use `opacity: 0` or `visibility: hidden` as an initial state for content sections awaiting scroll reveal. If using IntersectionObserver, handle the initial callback where `isIntersecting` is already `true` for above-the-fold elements. Entrance animations use CSS transforms (translateY, scale) while keeping content visible.
+
+4. **Reduced-motion respect**: All animations (CSS transitions and JS-driven IntersectionObserver reveals) must respect `prefers-reduced-motion`. CSS: wrap motion in `@media (prefers-reduced-motion: no-preference)`. JS: check `window.matchMedia('(prefers-reduced-motion: reduce)')` and skip animation setup when true.
 
 ## Design Decisions
 
@@ -26,9 +28,11 @@ invoke it.
 Three hard constraints must be derived from experiment.yaml's product domain before
 any visual decisions are made. These compress ~100 open decisions to ~10:
 
-1. **Color direction** — dark, light, or neutral. Infer from product domain
-   (e.g., security/dev-tools/AI → dark; consumer/health/education → light;
-   B2B/finance → neutral). The executor may override with justification.
+1. **Color direction** — dark, light, or neutral; with temperature: warm or cool.
+   Infer from product domain (e.g., security/dev-tools/AI → dark-cool;
+   consumer/health/education → light-warm; B2B/finance → neutral-cool).
+   Temperature guides background tint (cream vs blue-grey), text color warmth,
+   and accent hue selection. The executor may override with justification.
 2. **Design philosophy** — minimalist, rich, or playful. Infer from audience
    (developers → minimalist; consumers → rich; creative → playful).
 3. **Optimization target** — conversion, documentation, or demonstration.
@@ -83,7 +87,7 @@ precise targets.
 2. **Layout diversity** — at least one section must break the centered-column pattern (asymmetric grid, full-bleed + inset alternation, overlapping elements)
 3. **Depth layers** — minimum 3 z-layers visible simultaneously (background texture/gradient, content, decorative elements)
 4. **Interactive hero** — hero section must contain a functioning micro-interaction, not static content
-5. **Section differentiation** — each section transition must have a visual event (color temperature shift, layout pattern change, or animation). No two adjacent sections may look structurally identical.
+5. **Section differentiation** — each section transition must have a visual event (color temperature shift, background modulation, layout pattern change, or animation). No two adjacent sections may look structurally identical.
 
 **Inner pages (3 constraints):**
 1. **Loading choreography** — skeleton-to-content transition must stagger elements, not pop everything at once

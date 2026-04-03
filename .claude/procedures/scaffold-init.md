@@ -17,9 +17,10 @@
 4. Write `.runs/current-visual-brief.md` — a structured brief that all page-generating subagents will read for visual coherence. Sections:
    - **Design Constraints**: the 3 constraints derived above (color direction, design philosophy, optimization target)
    - **Color Palette**: primary, accent, background treatment, dark mode approach
-   - **Typography**: display font, body font, scale
-   - **Animation & Motion**: philosophy (e.g., subtle/energetic), scroll effects, micro-interactions, loading states
+   - **Typography**: display font, body font, scale, letter-spacing stance (tight / normal / wide)
+   - **Animation & Motion**: philosophy (e.g., subtle/energetic), scroll effects, micro-interactions, loading states, easing character (snappy / organic / elastic), duration scale (fast / moderate / deliberate), stagger rhythm (tight / relaxed)
    - **Spacing & Density**: overall density, section spacing, card spacing
-   - **Component Style**: border radius, shadows, borders, button style
+   - **Component Style**: shape vocabulary (pill / rounded / sharp), shadows, borders, button style
    - **Visual Texture**: decorative elements, background patterns, depth technique
+   - **Social Proof Treatment**: approach (ticker/marquee / testimonial cards / metric counters / logo strip / none), density, position relative to hero
 
