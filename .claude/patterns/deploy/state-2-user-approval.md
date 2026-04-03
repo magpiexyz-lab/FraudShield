@@ -50,6 +50,19 @@ Reply **approve** to proceed, or tell me what to change.
 Reply **approve** to proceed, or tell me what to change.
 ```
 
+### Surface-only mode plan
+
+If the deployment is surface-only (archetype's `excluded_stacks` includes `hosting` and surface is `detached`):
+
+```
+## Surface-Only Deployment Plan
+
+**Surface deployment:** Vercel (or configured surface hosting provider)
+**No hosting/database infrastructure:** This archetype uses `surface: detached` — only the marketing surface will be deployed.
+
+Reply **approve** to proceed, or tell me what to change.
+```
+
 **STOP.** Do not proceed until the user approves.
 
 If the user requests changes, revise the plan and present it again. Repeat until approved.

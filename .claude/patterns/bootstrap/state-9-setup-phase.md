@@ -25,7 +25,7 @@ Update checkpoint in `.runs/current-plan.md` frontmatter to `phase2-design`.
 
 **Resolve surface type** (used by Design Phase and Landing subagent). Evaluate in order — first match wins:
 1. If `stack.surface` is set in experiment.yaml, use it.
-2. If the archetype is `service` and `stack.surface` is not set and the experiment defines no `golden_path` and no `endpoints` that serve HTML (pure API with no user-facing surface): `none`.
+2. If the archetype is `service` and `stack.surface` is not set and the experiment defines no `golden_path` and no `endpoints` that serve HTML (pure API with no user-facing surface): `none`. Log to user: "Surface resolved to `none` — `/deploy` will not auto-deploy this service. Deploy your API manually, then create `.runs/deploy-manifest.json` with all service keys matching your stack (see `/deploy` STATE 0 and STATE 5 for the schema) to enable `/distribute` and `/teardown`."
 3. If the archetype's `excluded_stacks` includes `hosting` and `stack.surface` is not set: `detached`.
 4. Otherwise infer from hosting: `stack.services[0].hosting` present -> `co-located`; absent -> `detached`.
 

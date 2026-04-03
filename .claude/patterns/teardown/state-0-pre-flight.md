@@ -16,7 +16,11 @@
      `surface: none` but the deploy manifest shows surface infrastructure exists. Proceeding
      with teardown of deployed resources."
 2. Read `.runs/deploy-manifest.json`. If missing, stop: "No deploy manifest found.
-   Run `/deploy` first, or delete resources manually via each provider's dashboard."
+   Run `/deploy` first, or delete resources manually via each provider's dashboard.
+   If you deployed manually without `/deploy`, create `.runs/deploy-manifest.json`
+   with the full manifest schema including optional service keys (`posthog`, `stripe`,
+   etc.) matching your experiment.yaml `stack` — see `/deploy` STATE 5 for the
+   complete schema."
 3. If `hosting` is in the manifest: read `hosting.provider` and load the hosting stack file at
    `.claude/stacks/hosting/<provider>.md`.
    If `database` is in the manifest: read `database.provider` and load the database stack file at
