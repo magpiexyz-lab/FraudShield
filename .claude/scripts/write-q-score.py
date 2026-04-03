@@ -189,7 +189,12 @@ def main():
         entry['template_version'] = {}
 
     try:
-        entry['team_member'] = subprocess.run(
+        gh_result = subprocess.run(
+            ['gh', 'api', 'user', '-q', '.login'],
+            capture_output=True, text=True, timeout=10
+        )
+        gh_login = gh_result.stdout.strip() if gh_result.returncode == 0 else ''
+        entry['team_member'] = gh_login or subprocess.run(
             ['git', 'config', 'user.name'],
             capture_output=True, text=True, timeout=2
         ).stdout.strip() or 'unknown'
