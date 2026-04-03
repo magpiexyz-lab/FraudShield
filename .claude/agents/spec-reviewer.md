@@ -62,7 +62,14 @@ Read `experiment/experiment.yaml` `type` field (default: `web-app`):
 Every experiment.yaml `behavior` has corresponding implementation. Grep for feature-related code (component names, function names, route handlers). A feature with no matching code is a FAIL.
 
 **S2. Page/endpoint/command existence**
-Every experiment.yaml `page` (web-app) / `endpoint` (service) / `command` (cli) exists as a file. Missing file is a FAIL.
+First, validate the archetype-required field is present and non-empty:
+- **web-app**: `golden_path` must exist with ≥1 entry (pages are derived from golden_path)
+- **service**: `endpoints` must exist with ≥1 entry
+- **cli**: `commands` must exist with ≥1 entry
+
+If the required field is absent or empty, report FAIL: "`<archetype>` archetype requires `<field>` in experiment.yaml with ≥1 entry."
+
+Then verify file existence per archetype: for web-app, extract page names from each `golden_path[].page` entry and verify each exists as a page file; for service, verify each `endpoints` entry has a corresponding route file; for cli, verify each `commands` entry has a corresponding command file. Missing file is a FAIL.
 
 **S3. Analytics wiring**
 > Skip if no `experiment/EVENTS.yaml` exists.

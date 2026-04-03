@@ -37,7 +37,7 @@ If any health check fails, diagnose and attempt to fix:
 |-------|-----------|----------|
 | `database` | Re-extract keys using database stack file's Provisioning steps. Compare with hosting stack file's `## Deploy Interface > Auto-Fix` verify command. | If mismatch: re-set env vars using hosting stack file's env var method, then redeploy |
 | `auth` | Re-check auth config via database stack file's `## Deploy Interface > Auth Config` | Re-run the auth config step |
-| `analytics` | Code integration issue — cannot fix via CLI | Report: "Analytics health check failed. This is likely a code issue — merge the current PR to `main`, pull (`git checkout main && git pull`), then run `/change fix analytics integration`. To roll back this deployment immediately, run `/rollback`." |
+| `analytics` | Code integration issue — cannot fix via CLI | Report: "Analytics health check failed. This is a code issue — the analytics library is not initializing correctly in production. Recovery: 1. Run `/rollback` to revert to the last working deployment. 2. Run `/change fix analytics integration` to diagnose and fix the issue locally. 3. After the fix PR is merged to `main`, re-run `/deploy`." |
 | `payment` | Verify webhook: `stripe webhook_endpoints list`. Check env var using hosting stack file's Auto-Fix verify command. | Re-set env vars if missing/wrong, redeploy |
 
 After all fixable issues are addressed:
@@ -113,10 +113,10 @@ Create a dedicated test user for production behavior verification. The test user
        email_confirm: true,
        user_metadata: { is_test_user: true }
      });
-     if (error && error.message.includes('already been registered')) {
+     if (error && error.message?.includes('already been registered')) {
        // User exists — update password
        const { data: list } = await sb.auth.admin.listUsers();
-       const existing = list.users.find(u => u.email === email);
+       const existing = list?.users?.find(u => u.email === email);
        if (existing) {
          await sb.auth.admin.updateUserById(existing.id, { password });
          console.log(JSON.stringify({ email, password, userId: existing.id, created: false }));
@@ -143,7 +143,7 @@ Create a dedicated test user for production behavior verification. The test user
 
 ### 5d.8: Production Behavior Verification (conditional)
 
-**Gate:** Skip if Step 5d.6 (smoke test) was skipped (no playwright.config.ts), OR if Step 5d.7 failed AND the app requires auth (auth-gated behaviors need a logged-in user). If no auth stack, behavior verification can still run for anonymous behaviors.
+**Gate:** For web-app: skip if Step 5d.6 (smoke test) was skipped (no `playwright.config.ts`). For service: proceed if `golden_path` or `endpoints` exist in experiment.yaml (behavior-verifier supports service archetype without Playwright). For cli: skip — CLI archetypes do not support production mode (they test the local binary; see behavior-verifier procedure). For all non-skipped archetypes: skip if Step 5d.7 failed AND the app requires auth (auth-gated behaviors need a logged-in user). If no auth stack, behavior verification can still run for anonymous behaviors.
 
 Spawn the `behavior-verifier` agent (`subagent_type: behavior-verifier`) with production mode context:
 
@@ -215,7 +215,7 @@ failures) — observe.md's trigger evaluation excludes these.
   "
   ```
 
-  Populate `smoke_test` and `behavior_verification` from Steps 5d.6-5d.8 results. If the steps were skipped (no `playwright.config.ts` or no auth stack), set `ran: false` and omit the detail fields. The `behavior_verification.failures` array should contain the behavior IDs and brief descriptions from the verifier agent's trace.
+  Populate `smoke_test` and `behavior_verification` from Steps 5d.6-5d.8 results. If the steps were skipped (no `playwright.config.ts` or no auth stack), set `ran: false` and omit the detail fields. The `behavior_verification.failures` array should contain the behavior IDs and brief descriptions from the verifier agent's trace. For CLI or detached-surface deployments, `provision_scan_completed` reflects all *applicable* checks — some checks (e.g., P2 health endpoint) are skipped with `skip:not-applicable` for static surfaces that have no `/api/health` endpoint.
 
 **POSTCONDITIONS:**
 - Health check executed against canonical_url

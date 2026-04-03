@@ -98,6 +98,8 @@ Write `.runs/deploy-manifest.json` with the resources created during this deploy
 ```json
 {
   "name": "<experiment.yaml name>",
+  "archetype": "<experiment.yaml type, default: web-app>",
+  "surface_type": "<inferred surface type from STATE 3: co-located | detached | none>",
   "canonical_url": "<canonical_url>",
   "hosting": {
     "provider": "<stack.services[0].hosting value>",

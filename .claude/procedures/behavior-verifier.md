@@ -4,7 +4,7 @@
 
 ## Archetype Gate
 
-Read `experiment/experiment.yaml` to determine the archetype (`type` field, default: `web-app`) and `golden_path`.
+Read `experiment/experiment.yaml` to determine the archetype (`type` field, default: `web-app`). For web-app: also read `golden_path`. For service: read `endpoints` and optionally `golden_path` (if present). For cli: read `commands` and optionally `golden_path` (if present).
 
 ---
 
@@ -111,9 +111,11 @@ rm -rf /tmp/behavior-verify
 **Local mode** (`E2E_BASE_URL` not set):
 Start the server using the project's start command on port 3097.
 
-### 2. Walk Golden Path (State Machine)
+### 2. Walk API Flow (State Machine)
 
-For each `golden_path` step, test the corresponding API endpoint **sequentially** — responses from step N inform requests to step N+1 (e.g., auth token from login used in subsequent requests).
+If `golden_path` exists in experiment.yaml, walk each `golden_path` step and test the corresponding API endpoint **sequentially** — responses from step N inform requests to step N+1 (e.g., auth token from login used in subsequent requests).
+
+If `golden_path` does not exist (surface-less service), walk each entry in `endpoints` from experiment.yaml as a sequential API flow instead.
 
 For each step:
 
