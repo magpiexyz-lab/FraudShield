@@ -124,7 +124,8 @@ try:
             'state_id': '$STATE_ID',
             'timestamp': datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
             'verify_result': 'fail',
-            'is_first_attempt': is_first
+            'is_first_attempt': is_first,
+            'verify_cmd': '''$VERIFY_CMD'''
         }) + '\n')
 except: pass
 " 2>/dev/null || true
