@@ -18,16 +18,20 @@ CTXEOF
 ```
 
 **POSTCONDITIONS:**
+
+If surface is `none`: skill has terminated with user guidance. No further states apply. Do not advance state or create context.
+
+If surface ≠ `none`:
 - Current branch is `chore/distribute` (or `chore/distribute-N` if prior branch exists)
 - Branch is not `main`
 - `.runs/distribute-context.json` exists
 
 **VERIFY:**
 ```bash
-git branch --show-current | grep -q 'chore/distribute' && echo "OK" || echo "FAIL"
+if [ ! -f .runs/distribute-context.json ]; then echo "OK"; else git branch --show-current | grep -q 'chore/distribute' && echo "OK" || echo "FAIL"; fi
 ```
 
-**STATE TRACKING:** After postconditions pass, mark this state complete:
+**STATE TRACKING:** After postconditions pass (surface ≠ none only), mark this state complete:
 ```bash
 bash .claude/scripts/advance-state.sh distribute 0
 ```

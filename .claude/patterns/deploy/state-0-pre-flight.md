@@ -36,7 +36,7 @@
 5. Read the archetype file at `.claude/archetypes/<type>.md`. Resolve surface type: if `stack.surface` is set in experiment.yaml, use it. Otherwise infer: if the archetype is `service` and the experiment defines no `golden_path` and no endpoints that serve HTML (pure API with no user-facing surface), infer `none`; if the archetype's `excluded_stacks` includes `hosting`, infer `detached`; if the archetype is `service` or `web-app`, verify `stack.services` is a non-empty list (if not, stop: "Missing `stack.services` in experiment.yaml. Run `/bootstrap` to set up your project.") then check `stack.services[0].hosting` — present -> `co-located`; absent -> `detached`. If the archetype's `excluded_stacks` includes `hosting`:
    - If surface is `detached`: this is a surface-only deployment — skip Steps 0.6–0.10 (no hosting/database infrastructure), Steps 1 and 3–4 (no infrastructure provisioning). Present a simplified plan in Step 2 (surface deployment only), then proceed directly to Step 5a.1.
    - If surface is `none`: stop: "The /deploy skill does not apply to CLI tools with no surface. To distribute your CLI: run `npm publish` (Node.js CLIs) or create a GitHub Release with binary artifacts (compiled CLIs). After publishing, run `/iterate` to analyze adoption metrics."
-   If the archetype is `service` and surface is `none`: stop: "This is a pure API service with no user-facing surface. The /deploy skill requires a hosting target. Deploy your API manually to your hosting provider of choice, or add `surface: co-located` to experiment.yaml `stack` to use hosting-based deployment. Note: `/iterate` can still analyze your funnel with manual numbers — run it after deploying."
+   If the archetype is `service` and surface is `none`: stop: "This is a pure API service with no user-facing surface. The /deploy skill requires a hosting target. Deploy your API manually to your hosting provider of choice, or add `surface: co-located` to experiment.yaml `stack` to use hosting-based deployment. Note: `/iterate` can still analyze your funnel with manual numbers — run it after deploying. To enable `/distribute` later, create `.runs/deploy-manifest.json` manually: `{\"name\": \"<experiment name>\", \"archetype\": \"service\", \"surface_type\": \"none\", \"canonical_url\": \"<your-api-base-url>\", \"deployed_at\": \"<ISO 8601 timestamp>\"}`."
    If `stack.surface` is set in experiment.yaml and the archetype's `excluded_stacks` includes `hosting` and surface is `co-located`: stop: "The `<archetype>` archetype excludes the `hosting` stack, so `surface: co-located` is invalid. Set `stack.surface: detached` for a detached marketing surface, or remove the `surface` field to use the default."
    If the archetype's `excluded_stacks` does not include `hosting`: verify `stack.services` is a non-empty list — if not, stop: "Missing `stack.services` in experiment.yaml. Run `/bootstrap` to set up your project." Then extract `stack.services[0].hosting`.
    The deploy workflow comes from the hosting stack file. For services, browser-based health checks don't apply — use the API health endpoint instead.
@@ -58,15 +58,16 @@
    - If no `## CLI Provisioning` section found — treat as no CLI (stack file predates CLI metadata)
    - Do NOT stop for missing external CLIs — record status for display in Step 2.
 
-Clean stale epilogue artifacts and create context file to initialize state tracking:
+Clean stale epilogue artifacts and create context file to initialize state tracking.
+Substitute `DEPLOY_MODE` with `"initial"` or `"update"` (from step 3b). For initial mode, all service arrays are empty. For update mode, populate from step 3b diff results:
 ```bash
 rm -f .runs/observe-result.json
 cat > .runs/deploy-context.json << CTXEOF
-{"skill":"deploy","branch":"$(git branch --show-current)","timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","run_id":"deploy-$(date -u +%Y-%m-%dT%H:%M:%SZ)","deploy_mode":"<initial|update>","added_services":[<list>],"removed_services":[<list>],"unchanged_services":[<list>],"completed_states":[0]}
+{"skill":"deploy","branch":"$(git branch --show-current)","timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","run_id":"deploy-$(date -u +%Y-%m-%dT%H:%M:%SZ)","deploy_mode":"initial","added_services":[],"removed_services":[],"unchanged_services":[],"completed_states":[0]}
 CTXEOF
 ```
-- `deploy_mode`: `"initial"` for first deploy, `"update"` for re-deploy with existing manifest
-- `added_services`, `removed_services`, `unchanged_services`: diff results from step 3b (empty arrays for initial mode)
+- `deploy_mode`: set to `"update"` when `.runs/deploy-manifest.json` existed (step 3b); otherwise keep `"initial"`
+- `added_services`, `removed_services`, `unchanged_services`: populate from step 3b diff results (empty arrays for initial mode)
 
 **POSTCONDITIONS:**
 - `package.json` exists
