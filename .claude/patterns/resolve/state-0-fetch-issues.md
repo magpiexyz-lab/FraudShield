@@ -45,7 +45,7 @@ Determine which issues to resolve:
   - If `trace_hash != current_hash` → mark "stale" (skip this state's data)
   - If `trace_hash == current_hash` → mark "relevant" (include in analysis)
 
-  For observation issues: read `file_version` from body metadata, compare with current `git hash-object`. Stale observations are excluded.
+  For observation issues: do NOT apply file_version hash filtering. All open observations pass through to STATE 2, which performs semantic staleness verification (reads the file, confirms the specific pattern/text described in the issue is gone or fixed). File hash changes may be unrelated to the reported bug.
 
   Note: staleness is per-file — one trace may have some stale and some relevant states.
 

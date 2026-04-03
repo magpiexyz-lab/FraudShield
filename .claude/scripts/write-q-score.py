@@ -69,7 +69,7 @@ def _upload_to_github(entry):
             capture_output=True, text=True, timeout=10
         ).stdout.strip()
         if not repo_info:
-            return
+            repo_info = current_repo  # Template repo or standalone — trace to self
 
         member = entry.get('team_member', 'unknown')
 
@@ -120,6 +120,69 @@ def _upload_to_api(entry):
         pass  # Silent — local already written
 
 
+def _enrich_entry(entry, skill=None, run_id=None):
+    """Add team_member, template_version, schema_version, state_results if missing."""
+    import subprocess
+
+    if 'template_version' not in entry:
+        try:
+            result = subprocess.run(
+                ['git', 'ls-tree', '-r', 'HEAD', '.claude/', 'CLAUDE.md'],
+                capture_output=True, text=True, timeout=5
+            )
+            file_hashes = {}
+            for line in result.stdout.strip().split('\n'):
+                if line:
+                    parts = line.split('\t')
+                    if len(parts) == 2:
+                        blob_hash = parts[0].split()[2]
+                        file_path = parts[1]
+                        file_hashes[file_path] = blob_hash
+            entry['template_version'] = file_hashes
+        except Exception:
+            entry['template_version'] = {}
+
+    if 'team_member' not in entry:
+        try:
+            gh_result = subprocess.run(
+                ['gh', 'api', 'user', '-q', '.login'],
+                capture_output=True, text=True, timeout=10
+            )
+            gh_login = gh_result.stdout.strip() if gh_result.returncode == 0 else ''
+            entry['team_member'] = gh_login or subprocess.run(
+                ['git', 'config', 'user.name'],
+                capture_output=True, text=True, timeout=2
+            ).stdout.strip() or 'unknown'
+        except Exception:
+            entry['team_member'] = 'unknown'
+
+    if 'schema_version' not in entry:
+        entry['schema_version'] = 1
+
+    if 'state_results' not in entry:
+        skill_name = skill or entry.get('skill', '')
+        rid = run_id or entry.get('run_id', '')
+        state_results = {}
+        trace_file = f'.runs/{skill_name}-execution-trace.jsonl'
+        if skill_name and os.path.exists(trace_file):
+            with open(trace_file) as f:
+                for line in f:
+                    try:
+                        t = json.loads(line)
+                        if t.get('run_id') != rid:
+                            continue
+                        sid = t['state_id']
+                        if sid not in state_results:
+                            state_results[sid] = {
+                                'first_pass': t['verify_result'] == 'pass',
+                                'attempts': 0
+                            }
+                        state_results[sid]['attempts'] += 1
+                    except Exception:
+                        continue
+        entry['state_results'] = state_results
+
+
 def main():
     parser = argparse.ArgumentParser(description='Compute and record Q-score')
     parser.add_argument('--raw', type=str, help='Pre-built entry JSON (raw mode)')
@@ -137,9 +200,10 @@ def main():
     parser.add_argument('--overall-verdict', type=str, default='pass')
     args = parser.parse_args()
 
-    # Raw mode: write pre-built entry directly
+    # Raw mode: write pre-built entry with enrichment
     if args.raw:
         entry = json.loads(args.raw)
+        _enrich_entry(entry)
         write_entry(entry)
         return
 
@@ -168,62 +232,7 @@ def main():
         'q_skill': q_skill,
     }
 
-    # === Template version tracking (per-file blob hash) ===
-    import subprocess
-
-    try:
-        result = subprocess.run(
-            ['git', 'ls-tree', '-r', 'HEAD', '.claude/', 'CLAUDE.md'],
-            capture_output=True, text=True, timeout=5
-        )
-        file_hashes = {}
-        for line in result.stdout.strip().split('\n'):
-            if line:
-                parts = line.split('\t')
-                if len(parts) == 2:
-                    blob_hash = parts[0].split()[2]
-                    file_path = parts[1]
-                    file_hashes[file_path] = blob_hash
-        entry['template_version'] = file_hashes
-    except Exception:
-        entry['template_version'] = {}
-
-    try:
-        gh_result = subprocess.run(
-            ['gh', 'api', 'user', '-q', '.login'],
-            capture_output=True, text=True, timeout=10
-        )
-        gh_login = gh_result.stdout.strip() if gh_result.returncode == 0 else ''
-        entry['team_member'] = gh_login or subprocess.run(
-            ['git', 'config', 'user.name'],
-            capture_output=True, text=True, timeout=2
-        ).stdout.strip() or 'unknown'
-    except Exception:
-        entry['team_member'] = 'unknown'
-
-    entry['schema_version'] = 1
-
-    # === State results summary (from execution trace) ===
-    state_results = {}
-    trace_file = f'.runs/{args.skill}-execution-trace.jsonl'
-    if os.path.exists(trace_file):
-        with open(trace_file) as f:
-            for line in f:
-                try:
-                    t = json.loads(line)
-                    if t.get('run_id') != run_id:
-                        continue
-                    sid = t['state_id']
-                    if sid not in state_results:
-                        state_results[sid] = {
-                            'first_pass': t['verify_result'] == 'pass',
-                            'attempts': 0
-                        }
-                    state_results[sid]['attempts'] += 1
-                except Exception:
-                    continue
-    entry['state_results'] = state_results
-
+    _enrich_entry(entry, skill=args.skill, run_id=run_id)
     write_entry(entry)
 
 
