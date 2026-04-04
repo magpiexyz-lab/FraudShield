@@ -94,6 +94,20 @@ precise targets.
 2. **Empty state as design moment** — empty tables/lists show illustration + clear CTA, not "No data found"
 3. **Hover vocabulary** — every interactive element responds to hover within 50ms (cards lift, buttons glow, links underline-animate)
 
+**Image quality (5 constraints — applies when `public/images/` contains AI-generated assets):**
+1. **Subject relevance** — image content clearly relates to product domain and section purpose (hero = aspirational, feature = concept-specific, empty state = encouraging)
+2. **Style cohesion** — all generated images share a consistent visual system (same illustration approach, consistent level of abstraction, similar rendering technique). A photorealistic hero with flat-vector features is a style fracture.
+3. **Color harmony** — image palette complements the page's custom color palette from globals.css (not clashing, not identical — complementary)
+4. **Compositional quality** — intentional negative space, clear focal point, no cluttered or empty regions, suitable for overlaid text where applicable
+5. **Production polish** — no AI artifacts (distorted text, extra fingers, floating objects, inconsistent lighting, blurred regions)
+
+**Image anti-patterns:**
+- Style fracture — hero uses photorealism while features use flat illustration (inconsistent visual system)
+- Stock photo feel — images look like generic stock rather than custom-designed for this product
+- AI artifact visibility — distorted text, unnatural hands, floating objects, impossible geometry
+- Composition conflict — image content competes with overlaid page text for attention
+- Color temperature disconnect — image color temperature clashes with page design tokens
+
 > These mechanics are structural constraints, not technique prescriptions.
 > `frontend-design` decides HOW to satisfy each one.
 

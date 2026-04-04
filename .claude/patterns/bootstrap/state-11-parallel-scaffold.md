@@ -45,7 +45,7 @@ VERIFY Phase A before proceeding to Phase B:
 
 **DO NOT proceed to Phase B until all VERIFY checks pass.**
 
-**Phase B1 (libs + externals):** Spawn scaffold-libs and scaffold-externals in parallel. These two have no cross-dependency. scaffold-pages and scaffold-landing are NOT spawned yet -- they depend on libs output.
+**Phase B1 (libs + externals + images):** Spawn scaffold-libs, scaffold-externals, and (conditionally) scaffold-images in parallel. These have no cross-dependency. scaffold-pages and scaffold-landing are NOT spawned yet -- they depend on libs output.
 
 **Libs subagent:**
 - subagent_type: scaffold-libs
@@ -66,7 +66,36 @@ VERIFY Phase A before proceeding to Phase B:
   4. Return the classification table and Fake Door list -- do NOT collect
      credentials or write env vars (the lead handles those)
 
-Wait for both B1 subagents to return.
+**Images subagent (conditional):**
+Read `image_gen_status` from `.runs/bootstrap-context.json`.
+
+If `image_gen_status` is `"available"`:
+- subagent_type: scaffold-images
+- prompt: Tell the subagent to:
+  1. Read `.claude/procedures/scaffold-images.md` and execute all steps
+  2. Read context files: `experiment/experiment.yaml`,
+     `.runs/current-visual-brief.md`, `.runs/current-plan.md`
+  3. Follow CLAUDE.md Rules 3, 6
+
+If `image_gen_status` is `"skipped"`:
+Do NOT spawn the images subagent. Instead, the bootstrap lead generates
+SVG placeholders directly:
+1. Create `public/images/` directory
+2. For each image in the file path contract (see `.claude/stacks/images/fal.md`):
+   generate a themed SVG placeholder using the primary color from `globals.css`.
+   Save as `.svg` files (e.g., `public/images/hero.svg`, `public/images/feature-1.svg`, etc.)
+3. Write `.runs/image-manifest.json`:
+   ```json
+   {"status": "placeholders", "fallback": true, "images": [
+     {"filename": "hero.svg", "publicPath": "/images/hero.svg", "altText": "Hero illustration", "width": 1920, "height": 1080, "fallback": true},
+     {"filename": "feature-1.svg", "publicPath": "/images/feature-1.svg", "altText": "Feature illustration", "width": 800, "height": 600, "fallback": true},
+     {"filename": "feature-2.svg", "publicPath": "/images/feature-2.svg", "altText": "Feature illustration", "width": 800, "height": 600, "fallback": true},
+     {"filename": "feature-3.svg", "publicPath": "/images/feature-3.svg", "altText": "Feature illustration", "width": 800, "height": 600, "fallback": true},
+     {"filename": "empty-state.svg", "publicPath": "/images/empty-state.svg", "altText": "Empty state illustration", "width": 400, "height": 400, "fallback": true}
+   ]}
+   ```
+
+Wait for all B1 subagents to return (libs, externals, and images if spawned).
 
 **B1 manifest verification + recovery protocol:**
 1. `test -f .runs/agent-traces/scaffold-libs.json` -- verify manifest exists
@@ -77,9 +106,19 @@ Wait for both B1 subagents to return.
    - Wait for completion and re-check manifest
    - If retry also fails -> **STOP** and report to user: "scaffold-libs failed after retry. Cannot proceed to Phase B2."
 
+**B1 image manifest verification** (non-blocking):
+1. `test -f .runs/image-manifest.json` -- verify manifest exists
+2. Read manifest: if `"status"` is `"complete"` or `"placeholders"`, continue
+3. If manifest is missing and `image_gen_status` is `"available"`:
+   - Log `WARN: image generation did not complete -- falling back to SVG placeholders`
+   - Generate SVG placeholders using the same logic as the `"skipped"` path above
+   - Write manifest with `"status": "placeholders", "fallback": true`
+4. Image generation failure NEVER blocks the pipeline
+
 Check off in `.runs/current-plan.md`:
 - `- [x] scaffold-libs completed`
 - `- [x] scaffold-externals completed`
+- `- [x] scaffold-images completed` (or mark N/A if `image_gen_status` was `"skipped"`)
 
 **B1 type-check checkpoint** (mandatory -- run regardless of `tsp_status`):
 Between B1 completion and B2 spawning, verify the lib files compile cleanly:
@@ -100,7 +139,7 @@ Each per-page agent prompt:
 - Read context files: `experiment/experiment.yaml`, `experiment/EVENTS.yaml`,
   `.runs/current-plan.md`, archetype file,
   framework/UI stack files, `.claude/patterns/design.md`,
-  `.runs/current-visual-brief.md`
+  `.runs/current-visual-brief.md`, `.runs/image-manifest.json`
 - Follow CLAUDE.md Rules 3, 4, 6, 7, 9
 
 **Scope guard -- MANDATORY DERIVATION**: Read `golden_path` from experiment.yaml NOW. Extract the unique page names (excluding landing). Write them as a numbered list below before spawning any agents. Spawn scaffold-pages agents for EXACTLY these pages -- no more, no fewer. Do NOT use the `pages:` field or any other source. BG2 check 3b will independently count pages on disk and BLOCK if actual count exceeds golden_path count.
@@ -117,7 +156,7 @@ Each per-page agent prompt:
      `.runs/current-plan.md`, `.claude/archetypes/<type>.md`,
      framework/UI/surface stack files,
      `.claude/patterns/design.md`, `.claude/patterns/messaging.md`,
-     `.runs/current-visual-brief.md`,
+     `.runs/current-visual-brief.md`, `.runs/image-manifest.json`,
      `src/app/globals.css` (theme tokens from init phase)
   3. Follow CLAUDE.md Rules 3, 4, 6, 7, 9
 
