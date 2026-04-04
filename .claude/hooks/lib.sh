@@ -146,6 +146,19 @@ print(' '.join(str(s) for s in rs))
 " 2>/dev/null || echo ""
 }
 
+# --- compute_missing_states ---
+# Pure computation: prints comma-separated missing states, or "NONE" if all present.
+# Usage: MISSING=$(compute_missing_states "$STATES" "$REQUIRED")
+compute_missing_states() {
+  local states="$1" required="$2"
+  python3 -c "
+cs = set('$states'.split())
+required = '$required'.split()
+missing = [s for s in required if s not in cs]
+print(','.join(missing) if missing else 'NONE')
+" 2>/dev/null || echo "NONE"
+}
+
 # --- check_skill_completion ---
 # Checks that all _required_states for a skill are in completed_states.
 # Appends missing states to global ERRORS array. Does not exit — caller decides.
@@ -158,12 +171,7 @@ check_skill_completion() {
   STATES=$(normalize_states "$ctx_file")
   REQUIRED=$(get_required_states "$skill")
   [[ -z "$REQUIRED" ]] && return 0
-  MISSING=$(python3 -c "
-cs = set('$STATES'.split())
-required = '$REQUIRED'.split()
-missing = [s for s in required if s not in cs]
-print(','.join(missing) if missing else 'NONE')
-" 2>/dev/null || echo "NONE")
+  MISSING=$(compute_missing_states "$STATES" "$REQUIRED")
   if [[ "$MISSING" != "NONE" ]]; then
     ERRORS+=("$skill states [$MISSING] not complete — finish all required states before proceeding")
   fi

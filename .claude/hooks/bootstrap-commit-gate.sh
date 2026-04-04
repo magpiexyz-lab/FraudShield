@@ -74,12 +74,7 @@ BOOTSTRAP_CTX="$PROJECT_DIR/.runs/bootstrap-context.json"
 if [[ -f "$BOOTSTRAP_CTX" ]]; then
   STATES=$(normalize_states "$BOOTSTRAP_CTX")
   REQUIRED=$(get_required_states "bootstrap")
-  MISSING_STATES=$(python3 -c "
-cs = set('$STATES'.split())
-required = '$REQUIRED'.split()
-missing = [s for s in required if s not in cs]
-print(','.join(missing) if missing else 'NONE')
-" 2>/dev/null || echo "NONE")
+  MISSING_STATES=$(compute_missing_states "$STATES" "$REQUIRED")
   if [[ "$MISSING_STATES" != "NONE" ]]; then
     ERRORS+=("bootstrap-context.json missing completed_states: [$MISSING_STATES]")
   fi
