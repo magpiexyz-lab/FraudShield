@@ -63,4 +63,4 @@ python3 -c "import json; d=json.load(open('.runs/bootstrap-wire-trace.json')); a
 bash .claude/scripts/advance-state.sh bootstrap 14
 ```
 
-**NEXT:** Read [state-15-commit-and-push.md](state-15-commit-and-push.md) to continue.
+**NEXT:** Read [state-15-scan-and-classify.md](state-15-scan-and-classify.md) to continue.

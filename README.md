@@ -54,8 +54,8 @@ Every command that writes code shows a plan and waits for your approval before c
                     │
         ┌───────────┼──────────────┐
         ▼           ▼              ▼
-   /change      /harden        /retro
-   /verify    (production)   (experiment ends)
+   /change                     /retro
+   /verify                 (experiment ends)
    merge PR        │              │
         │          │     ┌────────┴────────┐
         └──────────┘     ▼                 ▼
@@ -105,7 +105,6 @@ Every command that writes code shows a plan and waits for your approval before c
 | `/bootstrap` | Generate the full app from experiment.yaml | Yes |
 | `/change [desc]` | Add a feature, fix a bug, polish UI, fix analytics | Yes |
 | `/verify` | Run agents and auto-fix failures | No |
-| `/harden` | Add specification tests to critical paths | Yes |
 | `/resolve` | Resolve GitHub issues filed against the template | Yes |
 
 **Ship**

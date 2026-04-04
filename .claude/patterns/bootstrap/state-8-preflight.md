@@ -55,7 +55,7 @@ Check off in `.runs/current-plan.md`: `- [x] TSP-LSP check completed`
 
 **POSTCONDITIONS:**
 - `tsp_status` is set to `"available"` or `"skipped"`
-- Quality flag recorded (production or MVP)
+- Quality flag recorded (production)
 - `preflight_passed` field set to `true` in `bootstrap-context.json`
 
 **VERIFY:**
