@@ -102,9 +102,25 @@ Only include agents that were spawned (per scope). Mark others as "skipped — o
 > reads this file and includes its contents in the PR body. If the file
 > does not exist, the PR step must run verify.md first.
 
-6. Compute `overall_verdict`: if `hard_gate_failure` is `true` OR `process_violation` is `true` → `fail`, otherwise → `pass`. Write this into the frontmatter.
+6. **Config-error gate:** Before computing the verdict, check if E2E tests were skipped due to config errors:
 
-7. Extract dimension scores from agent traces (before traces are deleted in the calling skill's cleanup step). These scores feed Q-score computation:
+   ```bash
+   if test -f .runs/e2e-result.json && python3 -c "import json; exit(0 if json.load(open('.runs/e2e-result.json')).get('config_error') else 1)" 2>/dev/null; then
+     python3 -c "
+   import re
+   with open('.runs/verify-report.md', 'r') as f:
+       content = f.read()
+   content = re.sub(r'^hard_gate_failure: false$', 'hard_gate_failure: true', content, flags=re.MULTILINE)
+   with open('.runs/verify-report.md', 'w') as f:
+       f.write(content)
+   "
+     echo "Config-error gate: set hard_gate_failure=true (tests never executed)"
+   fi
+   ```
+
+7. Compute `overall_verdict`: if `hard_gate_failure` is `true` OR `process_violation` is `true` → `fail`, otherwise → `pass`. Write this into the frontmatter.
+
+8. Extract dimension scores from agent traces (before traces are deleted in the calling skill's cleanup step). These scores feed Q-score computation:
 
    ```bash
    python3 -c "
@@ -214,7 +230,7 @@ Only include agents that were spawned (per scope). Mark others as "skipped — o
    "
    ```
 
-8. **Q-score observation trigger** (low-Q auto-observe):
+9. **Q-score observation trigger** (low-Q auto-observe):
 
    If `q_skill < 0.5` and `skill` is not `"verify"` (standalone verify has no skill attribution for template issues):
 

@@ -8,7 +8,7 @@
 Follow checkpoint-resumption protocol per `patterns/checkpoint-resumption.md`.
 
 - If `.runs/current-plan.md` exists and the current branch starts with `feat/bootstrap`:
-  1. Read frontmatter. Use values directly — do NOT re-resolve archetype or stack. Read context_files to restore context.
+  1. Read frontmatter. If frontmatter parsing fails: stop and tell the user: "Plan file has corrupted frontmatter. Delete `.runs/current-plan.md` and re-run `/bootstrap` to start fresh." Use values directly — do NOT re-resolve archetype or stack. Read context_files to restore context.
   2. Resume per /bootstrap checkpoint mapping:
 
      | Checkpoint | Resumes at |

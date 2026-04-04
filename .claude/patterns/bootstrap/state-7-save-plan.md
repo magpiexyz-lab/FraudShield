@@ -57,7 +57,7 @@ Check off items already completed at this point:
 
 If the user replied **"approve and clear"** or **"2"**:
   1. Save the plan with frontmatter (same as above)
-  2. Tell the user: "Plan saved. Run `/clear`, then re-run `/bootstrap`. I'll resume at the checkpoint."
+  2. Tell the user: "Plan saved to `.runs/current-plan.md`. Start a new conversation (or press Ctrl+L to clear context), then re-run `/bootstrap`. I'll resume at the checkpoint. Do NOT run `make clean` — it deletes the `.runs/` directory and your saved checkpoint."
   3. STOP — do NOT proceed to STATE 8.
 
 **POSTCONDITIONS:**
@@ -76,4 +76,4 @@ test -f .runs/current-plan.md && grep -q '## Process Checklist' .runs/current-pl
 bash .claude/scripts/advance-state.sh bootstrap 7
 ```
 
-**NEXT:** STATE 8 (approve) | TERMINAL (approve and clear). If user chose "approve", read [state-8-preflight.md](state-8-preflight.md) to continue. If user chose "approve and clear", TERMINAL -- run `/clear` then re-run `/bootstrap`.
+**NEXT:** STATE 8 (approve) | TERMINAL (approve and clear). If user chose "approve", read [state-8-preflight.md](state-8-preflight.md) to continue. If user chose "approve and clear", TERMINAL — start a new conversation, then re-run `/bootstrap`.

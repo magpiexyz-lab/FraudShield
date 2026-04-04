@@ -15,7 +15,7 @@ Follow checkpoint-resumption protocol per `patterns/checkpoint-resumption.md`.
 > 4. Or tell me what to change
 
 DO NOT proceed to Phase 2 until the user explicitly replies with approval.
-If the user selects "skip": run `git checkout main && git branch -D <branch-name>`, tell the user "Change cancelled. Branch deleted. Run `/change` again when ready." and stop.
+If the user selects "skip": run `git checkout main && git branch -D <branch-name>`. If both commands succeed, tell the user "Change cancelled. Branch deleted. Run `/change` again when ready." If either command fails (e.g., uncommitted changes blocking checkout, or branch deletion refused), tell the user: "Could not clean up automatically. Run `git stash && git checkout main && git branch -D <branch-name>` manually, then run `/change` again." Stop in both cases.
 If the user requests changes instead of approving, revise the plan to address their feedback and present it again. Repeat until approved.
 
 Save the approved plan to `.runs/current-plan.md` with YAML frontmatter:
@@ -56,7 +56,7 @@ Then append the plan body. The frontmatter enables resume-after-clear without re
 
 If the user replied **"approve and clear"** or **"2"**:
   1. Save the plan with frontmatter (same as above)
-  2. Tell the user: "Plan saved. Run `/clear`, then re-run `/change [original $ARGUMENTS]`. I'll resume at the checkpoint."
+  2. Tell the user: "Plan saved to `.runs/current-plan.md`. Start a new conversation (or press Ctrl+L to clear context), then re-run `/change [original $ARGUMENTS]`. I'll resume at the checkpoint. Do NOT run `make clean` — it deletes the `.runs/` directory and your saved checkpoint."
   3. STOP — do NOT proceed to Phase 2.
 
 **POSTCONDITIONS:**
@@ -75,4 +75,4 @@ bash .claude/scripts/advance-state.sh change 7
 
 **NEXT:**
 - If user approved (option 1 / "approve"): Read [state-8-phase2-preflight.md](state-8-phase2-preflight.md) to continue.
-- If user selected "approve and clear" (option 2): TERMINAL — plan saved, tell user to `/clear` and re-run `/change`.
+- If user selected "approve and clear" (option 2): TERMINAL — plan saved, start a new conversation, then re-run `/change`.

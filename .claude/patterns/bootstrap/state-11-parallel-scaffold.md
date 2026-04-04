@@ -24,15 +24,20 @@ The lead (not a subagent) creates:
 
 Phase A runs AFTER scaffold-init completes (STATE 10) to ensure design tokens exist.
 
-After creating all Phase A files, write the Phase A sentinel:
+After creating all Phase A files, write the Phase A sentinel. Include variant files in the list when `variants` is present in experiment.yaml:
 ```bash
 mkdir -p .runs/gate-verdicts
-cat > .runs/gate-verdicts/phase-a-sentinel.json << 'PAEOF'
-{"phase_a_complete": true, "timestamp": "<ISO 8601>", "files": ["src/app/layout.tsx", "src/app/not-found.tsx", "src/app/error.tsx", "src/app/icon.tsx", "src/app/opengraph-image.tsx", "src/app/sitemap.ts", "src/app/robots.ts", "public/llms.txt"]}
+CORE_FILES='["src/app/layout.tsx","src/app/not-found.tsx","src/app/error.tsx","src/app/icon.tsx","src/app/opengraph-image.tsx","src/app/sitemap.ts","src/app/robots.ts","public/llms.txt"'
+if grep -q '^variants:' experiment/experiment.yaml 2>/dev/null; then
+  CORE_FILES+=',"src/lib/variants.ts","src/app/page.tsx","src/app/v/[variant]/page.tsx"'
+fi
+CORE_FILES+=']'
+cat > .runs/gate-verdicts/phase-a-sentinel.json << PAEOF
+{"phase_a_complete": true, "timestamp": "<ISO 8601>", "files": ${CORE_FILES}}
 PAEOF
 ```
 
-VERIFY Phase A before proceeding to Phase B:
+VERIFY Phase A before proceeding to Phase B (**web-app only** — service and cli archetypes skip this entire block since they skip Phase A):
 - `test -f src/app/layout.tsx`
 - `test -f src/app/not-found.tsx`
 - `test -f src/app/error.tsx`
@@ -42,6 +47,7 @@ VERIFY Phase A before proceeding to Phase B:
 - `test -f src/app/robots.ts`
 - `test -f public/llms.txt`
 - `test -f .runs/gate-verdicts/phase-a-sentinel.json`
+- If `variants` is present in experiment.yaml: `test -f src/lib/variants.ts && test -f src/app/page.tsx && test -f "src/app/v/[variant]/page.tsx"`
 
 **DO NOT proceed to Phase B until all VERIFY checks pass.**
 
@@ -173,10 +179,10 @@ Check off in `.runs/current-plan.md` for each completed B2 subagent:
 **VERIFY:**
 ```bash
 ls src/lib/*.ts && echo "libs OK" || echo "libs FAIL"
-# Archetype-specific:
-# web-app: test -f src/app/layout.tsx
-# service: ls src/app/api/
-# cli: test -f src/index.ts
+# Archetype-specific (run the line matching the experiment.yaml type):
+# web-app: test -f src/app/layout.tsx && echo "web-app OK"
+# service: ls src/app/api/ && echo "service OK"
+# cli: test -f src/index.ts && echo "cli OK"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

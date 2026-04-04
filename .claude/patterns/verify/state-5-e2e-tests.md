@@ -37,10 +37,12 @@
      - Append fix to `.runs/fix-log.md`: `Fix (e2e-config): <file> — <description>`
      - Re-run list command (max 2 config-fix attempts total).
   4. If test file error (syntax errors in test files, missing imports in tests): proceed to Phase B — these count against the test budget.
-  5. If config errors persist after 2 attempts, write `.runs/e2e-result.json`:
+  5. If config errors persist after 2 attempts, write `.runs/e2e-result.json` and log the failure:
      ```bash
      echo '{"passed":false,"attempts":0,"config_error":true,"reason":"test config broken after 2 fix attempts"}' > .runs/e2e-result.json
+     echo 'WARN (e2e-config): Test infrastructure broken after 2 fix attempts — tests were NOT executed. This will be flagged in the verify report.' >> .runs/fix-log.md
      ```
+     **Important:** STATE 7 (WRITE_REPORT) must check for `config_error` in `e2e-result.json` and set `hard_gate_failure: true` when present — a passing report with untested code violates Rule 5 (Deploy-Ready).
      Skip to STATE 6.
 
   **Phase B: Test execution (3-attempt budget, starts ONLY after list succeeds)**
