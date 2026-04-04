@@ -19,7 +19,7 @@ Referenced by bootstrap (state-3) and change (state-5) precondition checks.
 | framework: nextjs | Required for web-app archetype |
 | framework: commander | Required for cli archetype |
 | framework: (any) | Allowed for service archetype |
-| quality (not mvp) | Requires stack.testing present |
+| (always) | Requires stack.testing present |
 
 ## Assumes-List Validation
 

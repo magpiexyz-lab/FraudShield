@@ -14,9 +14,8 @@ name: TODO                  # Lowercase slug, hyphens only (e.g., "quick-bill").
 # level: 2                    # Experiment scope: 1 (Pitch), 2 (Prototype), 3 (Product).
                                # /spec sets this automatically. Manual: omit to let /bootstrap infer from stack.
 status: draft
-# quality: production          # Uncomment for TDD, per-task implementer, spec review.
-                               # Default (absent): MVP mode — smoke tests, fast iteration.
-                               # Use /harden to analyze existing code before upgrading.
+# quality: production is always active (TDD, per-task implementer, spec review).
+                               # This field is reserved for future use. Do not set quality: mvp.
 
 # --- 2. Intent ---
 description: |

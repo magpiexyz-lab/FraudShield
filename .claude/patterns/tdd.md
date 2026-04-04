@@ -1,9 +1,8 @@
 # Test-Driven Development Procedure
 
-Follow this procedure when implementing features, fixes, or hardening (the default, unless `quality: mvp` is set).
+Follow this procedure when implementing features or fixes.
 
-> **Scope:** This pattern is consumed by the implementer agent (`agents/implementer.md`)
-> unless `quality: mvp` is set in experiment.yaml.
+> **Scope:** This pattern is consumed by the implementer agent (`agents/implementer.md`).
 
 ## Red-Green-Refactor Cycle
 

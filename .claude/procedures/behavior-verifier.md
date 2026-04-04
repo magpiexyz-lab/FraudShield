@@ -74,8 +74,8 @@ For each page with a form, test **one invalid input**:
 
 ### 5. Quality Gate
 
-- **MVP** (`quality: mvp`): Happy path + 1 error path per form page.
-- **Production** (default, unless `quality: mvp`): Also test edge cases — special characters in text inputs (`<script>`, unicode), very long text (>1000 chars), boundary values for numeric inputs, rapid double-submit on forms.
+- Happy path + 1 error path per form page.
+- Also test edge cases — special characters in text inputs (`<script>`, unicode), very long text (>1000 chars), boundary values for numeric inputs, rapid double-submit on forms.
 
 ### 6. System Behavior Smoke
 

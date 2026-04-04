@@ -12,7 +12,7 @@ Follow archetype behavior check per `patterns/archetype-behavior-check.md`.
   1. Build & lint loop (max 3 attempts)
   2. Save notable patterns (if you fixed errors)
   3. Template observation review (ALWAYS — even if no errors were fixed)
-- **Note**: Unless `quality: mvp` is set in experiment.yaml, and scope is `full` or `security`, `/verify` automatically spawns spec-reviewer as an additional parallel agent. spec-reviewer validates all behaviors are implemented and specification tests are present. No extra action needed — just be aware it runs.
+- **Note**: When scope is `full` or `security`, `/verify` automatically spawns spec-reviewer as an additional parallel agent. spec-reviewer validates all behaviors are implemented and specification tests are present. No extra action needed — just be aware it runs.
 - **Write conflict prevention**: verify.md now requires edit-capable agents (design-critic, ux-journeyer) to run serially — not in parallel. The verification procedure handles this automatically. No extra action needed.
 - Re-read `.runs/current-plan.md` to verify implementation matches the approved plan. Check that every item in the plan has been addressed.
 - Type-specific checks:
@@ -20,7 +20,7 @@ Follow archetype behavior check per `patterns/archetype-behavior-check.md`.
   - **Fix**: trace the bug report's user flow through code to confirm it's fixed.
   - **Polish**: open each changed file and confirm analytics imports and event calls are intact.
   - **Analytics**: re-trace each standard funnel event through the code to confirm it now fires correctly.
-  - **Production quality (unless `quality: mvp`)**: verify.md spawns spec-reviewer in addition to scope-determined agents. Pass experiment.yaml + `.runs/current-plan.md` to spec-reviewer.
+  - **Production quality**: verify.md spawns spec-reviewer in addition to scope-determined agents. Pass experiment.yaml + `.runs/current-plan.md` to spec-reviewer.
   - **Test**: verify test discovery works by running the testing stack file's test command in dry-run/list mode (e.g., `npx playwright test --list` for Playwright, `npx vitest run --reporter=verbose` for Vitest). If test discovery fails, treat it as a build error — fix the test files and re-run. If still failing after the verify.md retry budget, report to the user with the error output.
   - **Feature (spec compliance)**: Re-read `.runs/current-plan.md` and `experiment/experiment.yaml`. Verify implementation matches the archetype's primary units:
     - If archetype requires pages: confirm `src/app/<page-name>/page.tsx` exists for each unique page referenced in experiment.yaml `golden_path`

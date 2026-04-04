@@ -9,7 +9,7 @@
 1. Verify `package.json` exists. If not, stop: "No app found. Run `/bootstrap` first."
 2. Verify on `main` branch with clean working tree (`git status --porcelain` is empty). If not, stop: "Switch to main with a clean working tree before deploying."
 3. Run `npm run build` to verify the app builds locally. If it fails, stop: "Fix build errors before deploying."
-3a. Unless `quality: mvp` is set in experiment.yaml, and `stack.testing` is present: run the test command from the testing stack file (e.g., `npm test`). If tests fail, stop: "Specification tests are failing. Run `/verify` to fix test failures before deploying."
+3a. If `stack.testing` is present: run the test command from the testing stack file (e.g., `npm test`). If tests fail, stop: "Tests are failing. Run `/verify` to fix test failures before deploying."
 3b. **Update mode detection:** If `.runs/deploy-manifest.json` exists, read it and enter **update mode**:
     1. Set `deploy_mode = "update"` (stored in deploy-context.json).
     2. Diff `experiment.yaml` stack against manifest to compute:

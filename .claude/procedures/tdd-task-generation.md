@@ -1,6 +1,6 @@
 # TDD Task Generation
 
-> Invoked by change-feature.md unless `quality: mvp` is set in experiment.yaml.
+> Invoked by change-feature.md.
 > See `patterns/tdd.md` for the full TDD workflow and task granularity rules.
 
 ## Task Generation

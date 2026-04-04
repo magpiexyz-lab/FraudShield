@@ -150,7 +150,7 @@ export async function POST(request: Request) {
 ```
 
 Notes:
-- Rate limiting: the template includes an in-memory burst limiter (`rateLimit` from `@/lib/rate-limit`) for production quality. When `quality: mvp`, replace the rate limiter import and call with a `// TODO: Add production rate limiting (e.g., Upstash Redis)` comment instead. See the hosting stack file for the rate limiter implementation.
+- Rate limiting: the template includes an in-memory burst limiter (`rateLimit` from `@/lib/rate-limit`). See the hosting stack file for the rate limiter implementation.
 - Validates request body with zod (plan name)
 - Creates a Stripe Checkout Session in `payment` mode (change to `subscription` for recurring)
 - Sets `success_url` and `cancel_url` using `NEXT_PUBLIC_SITE_URL` environment variable — never use client-controlled headers for redirect URLs
@@ -210,7 +210,7 @@ export async function POST(request: Request) {
 ```
 
 Notes:
-- Rate limiting: the template includes an in-memory burst limiter with a higher limit (30/min vs 10/min for checkout) since webhooks may receive bursts from Stripe. When `quality: mvp`, replace with a TODO comment instead. See the hosting stack file and the checkout route notes above.
+- Rate limiting: the template includes an in-memory burst limiter with a higher limit (30/min vs 10/min for checkout) since webhooks may receive bursts from Stripe. See the hosting stack file and the checkout route notes above.
 - Reads the raw request body (do NOT parse JSON before verification)
 - Verifies the webhook signature using `STRIPE_WEBHOOK_SECRET`
 - Handles `checkout.session.completed` event: should update payment status (see TODO in template) and fires `pay_success` server-side via `trackServerEvent()` with all required experiment/EVENTS.yaml properties (`plan`, `amount_cents`, `provider`)

@@ -34,7 +34,7 @@ Hypothesis Verdicts
 ```
 
 If ALL testable hypotheses are CONFIRMED (excluding BLOCKED) and verdict from the overall assessment is SCALE, note:
-> All hypotheses confirmed. This experiment has validated its core assumptions. Consider graduating with `/harden`.
+> All hypotheses confirmed. This experiment has validated its core assumptions. Consider scaling with `/change`.
 
 ### Validation Scorecard
 

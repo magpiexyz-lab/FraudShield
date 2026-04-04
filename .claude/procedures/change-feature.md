@@ -13,8 +13,7 @@
 
 ## Implementation
 
-- Unless `quality: mvp` is set in experiment.yaml:
-  1. **ON-TOUCH check** -- follow `patterns/on-touch-check.md` for files in the implementation plan. Write spec tests BEFORE new feature code.
+1. **ON-TOUCH check** -- follow `patterns/on-touch-check.md` for files in the implementation plan. Write spec tests BEFORE new feature code.
   2. Generate implementation plan (see `procedures/tdd-task-generation.md`) — break into 2-5 min TDD tasks (exact files, spec test code, expected failure, minimal impl) per `patterns/tdd.md` § Task Granularity. Link each task to its behavior ID(s) from experiment.yaml. Include the behavior's `tests` array entries in the task description — the implementer must generate an `it()` assertion for each entry. Mark each task as **visual** (targets `.tsx` page or component files) or **logic** (everything else).
   3. Analyze task dependency graph per `patterns/tdd.md` § Task Dependency Ordering:
      - Independent tasks → spawn implementer agents in parallel (isolation: "worktree")
@@ -49,37 +48,6 @@
      After merge, update the trace: set `worktree_merged: true`.
   7. **Merge worktree changes with verification** -- follow `procedures/worktree-merge-verification.md` for each completed implementer worktree.
   8. Continue to Step 7
-- If `quality: mvp` is set:
-- **MVP Task Breakdown** (Multi-layer features only — skip for Simple):
-  Break the implementation into checkpointed steps. Each step ends with a `npm run build` gate.
-
-  1. **Data layer** (if database changes needed):
-     - Create migration file, TypeScript types, server-side DB helpers
-     - Checkpoint: `npm run build` — types must compile
-
-  2. **API layer** (if new routes needed):
-     - Create API route handlers with zod validation
-     - Wire to database helpers from step 1
-     - Checkpoint: `npm run build` — routes must compile
-
-  3. **UI/Output layer**:
-     - web-app: Create page components, wire to API routes
-     - service: Wire response formatting, add error responses
-     - cli: Create command handlers, wire to lib functions
-     - Checkpoint: `npm run build` — full app must compile
-
-  4. **Analytics wiring**:
-     - Add tracking calls per experiment/EVENTS.yaml
-     - Checkpoint: `npm run build` — final verification
-
-  Update `.runs/current-plan.md` after each completed step:
-  - Mark the step done in the plan body (prefix with `[x]`)
-  - Keep `checkpoint: phase2-step6` in YAML frontmatter throughout Step 6 (resumption re-reads the plan body to determine which layers are done)
-  - After all layers complete (including Analytics wiring): update checkpoint to `phase2-step7`
-
-  For Simple (single-layer) features: implement directly without sub-steps — the existing implementation flow below provides sufficient structure.
-
-  This task breakdown supersedes the Sub-step 6a/6b flow at the end of this file for Multi-layer features.
 
 - If adding `payment` to experiment.yaml `stack`: verify both `stack.auth` and `stack.database` are also present. If `stack.auth` is missing, stop and tell the user: "Payment requires authentication to identify the paying user. Add `auth: supabase` (or another auth provider) to experiment.yaml `stack` first." If `stack.database` is missing, stop and tell the user: "Payment requires a database to record transaction state. Add `database: supabase` (or another database provider) to your experiment.yaml `stack` section."
 - If the change requires a stack category whose library files don't exist yet (e.g., `payment: stripe` was just added to experiment.yaml but `src/lib/stripe.ts` is missing): install the packages listed in the stack file's "Packages" section, create the library files from its "Files to Create" section, and add its environment variables to `.env.example` — before proceeding to routes and pages. If any install command fails, stop and show the error — the user must fix the environment issue, then retry the failed install command on this branch (do NOT re-run `/change`).

@@ -58,9 +58,9 @@
   E2EEOF
   ```
 
-  **Phase C: Specification tests (quality:production with co-installed vitest)**
+  **Phase C: Specification tests (co-installed vitest)**
 
-  Unless `quality: mvp` is set in experiment.yaml, AND the primary test runner is NOT vitest (e.g., `playwright`) AND a `vitest.config.ts` file exists on disk:
+  If the primary test runner is NOT vitest (e.g., `playwright`) AND a `vitest.config.ts` file exists on disk:
 
   1. Run: `npx vitest run`
   2. If vitest passes: update `.runs/e2e-result.json` to include `"spec_passed": true`
