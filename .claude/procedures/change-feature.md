@@ -14,7 +14,7 @@
 ## Implementation
 
 - Unless `quality: mvp` is set in experiment.yaml:
-  1. **ON-TOUCH check** (see `patterns/on-touch-check.md`): If `experiment/on-touch.yaml` exists: first, remove any entries whose `path` no longer exists on disk (stale from deleted modules). Then check if any files in the implementation plan are listed as ON-TOUCH. For each match: add a prerequisite TDD task to write specification tests for the existing code in that file BEFORE writing new feature code. Remove the entry from `experiment/on-touch.yaml` after tests are added. If `on_touch` list is now empty, delete `experiment/on-touch.yaml`.
+  1. **ON-TOUCH check** -- follow `patterns/on-touch-check.md` for files in the implementation plan. Write spec tests BEFORE new feature code.
   2. Generate implementation plan (see `procedures/tdd-task-generation.md`) — break into 2-5 min TDD tasks (exact files, spec test code, expected failure, minimal impl) per `patterns/tdd.md` § Task Granularity. Link each task to its behavior ID(s) from experiment.yaml. Include the behavior's `tests` array entries in the task description — the implementer must generate an `it()` assertion for each entry. Mark each task as **visual** (targets `.tsx` page or component files) or **logic** (everything else).
   3. Analyze task dependency graph per `patterns/tdd.md` § Task Dependency Ordering:
      - Independent tasks → spawn implementer agents in parallel (isolation: "worktree")
@@ -47,25 +47,7 @@
      "
      ```
      After merge, update the trace: set `worktree_merged: true`.
-  7. **Merge worktree changes with verification.**
-     For each completed implementer worktree:
-     a. Verify the agent committed: run `git log --oneline main..<worktree-branch>` and confirm at least one commit beyond the fork point. If NO commit exists:
-        - **Do NOT copy files manually or commit on behalf of the agent.**
-        - Re-spawn the same implementer agent with a commit-only task: "Your prior implementation is complete but uncommitted. Stage and commit all changed files with `git add <files> && git commit -m 'Add <task-slug>'`. Then verify with `git log --oneline -1`." Budget: 1 retry.
-        - If still no commit after retry, mark task as blocked in PR body.
-     b. Merge: `git merge <worktree-branch> --no-ff -m "Merge implementer: <task-slug>"`. The `--no-ff` flag ensures a merge commit in git history (required for G4).
-     c. If merge conflicts: resolve, then commit the merge resolution.
-     d. Verify merge succeeded: `git log --oneline -1` must show the merge commit.
-     e. Update the trace: set `worktree_merged: true`.
-
-     If 2+ implementer agents were spawned: quick consistency scan — check for naming divergence, duplicate utilities (3+ copies per Rule 4), and mixed error handling patterns across modified files. Fix under green tests. Budget: 3 minutes. After scan, write result artifact:
-     ```bash
-     python3 -c "
-     import json, datetime
-     result = {'timestamp': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'), 'implementer_count': <N>, 'issues_found': <N>, 'issues_fixed': <N>, 'status': 'pass'}
-     json.dump(result, open('.runs/consistency-scan-result.json', 'w'))
-     "
-     ```
+  7. **Merge worktree changes with verification** -- follow `procedures/worktree-merge-verification.md` for each completed implementer worktree.
   8. Continue to Step 7
 - If `quality: mvp` is set:
 - **MVP Task Breakdown** (Multi-layer features only — skip for Simple):

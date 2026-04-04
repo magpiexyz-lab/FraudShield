@@ -71,12 +71,7 @@ elif [[ "$BRANCH" =~ ^chore/harden ]]; then
   if [[ -f "$CTX" ]]; then
     STATES=$(normalize_states "$CTX")
     REQUIRED=$(get_required_states "harden")
-    MISSING=$(python3 -c "
-cs = set('$STATES'.split())
-required = '$REQUIRED'.split()
-missing = [s for s in required if s not in cs]
-print(','.join(missing) if missing else 'NONE')
-" 2>/dev/null || echo "NONE")
+    MISSING=$(compute_missing_states "$STATES" "$REQUIRED")
     if [[ "$MISSING" != "NONE" ]]; then
       ERRORS+=("harden states [$MISSING] not complete — finish all states before PR")
     fi
@@ -90,12 +85,7 @@ elif [[ "$BRANCH" =~ ^chore/distribute ]]; then
   if [[ -f "$CTX" ]]; then
     STATES=$(normalize_states "$CTX")
     REQUIRED=$(get_required_states "distribute")
-    MISSING=$(python3 -c "
-cs = set('$STATES'.split())
-required = '$REQUIRED'.split()
-missing = [s for s in required if s not in cs]
-print(','.join(missing) if missing else 'NONE')
-" 2>/dev/null || echo "NONE")
+    MISSING=$(compute_missing_states "$STATES" "$REQUIRED")
     if [[ "$MISSING" != "NONE" ]]; then
       ERRORS+=("distribute states [$MISSING] not complete — finish all states before PR")
     fi

@@ -14,19 +14,14 @@
 ## Implementation
 
 - Unless `quality: mvp` is set in experiment.yaml:
-  1. **ON-TOUCH check** (see `patterns/on-touch-check.md`): If `experiment/on-touch.yaml` exists: first, remove any entries whose `path` no longer exists on disk (stale from deleted modules). Then check if any files in the upgrade plan are listed as ON-TOUCH. For each match: add a prerequisite TDD task to write specification tests for the existing code in that file BEFORE writing upgrade code. Remove the entry from `experiment/on-touch.yaml` after tests are added. If `on_touch` list is now empty, delete `experiment/on-touch.yaml`.
+  1. **ON-TOUCH check** -- follow `patterns/on-touch-check.md` for files in the upgrade plan. Write spec tests BEFORE upgrade code.
   2. Generate TDD tasks for the integration per `patterns/tdd.md`. Link each task to its behavior ID(s) from experiment.yaml and include the behavior's `tests` array entries — the implementer must generate an `it()` assertion for each entry. Tasks should cover:
      - Credential storage/retrieval
      - Webhook signature validation (if applicable)
      - Error recovery (timeout, rate limit, invalid response)
      - Happy path end-to-end
   3. Spawn implementer agents (same procedure as Feature production path, including step 6 trace writing)
-  4. **Merge worktree changes with verification** (same procedure as `change-feature.md` step 7, substeps a-e). For each implementer worktree:
-     - Verify implementer committed (`git log --oneline main..<worktree-branch>`)
-     - If no commit: re-spawn agent for commit-only (do NOT commit on behalf of the agent). Budget: 1 retry.
-     - Merge: `git merge <worktree-branch> --no-ff -m "Merge implementer: <task-slug>"`
-     - Verify merge commit, update trace `worktree_merged: true`
-     If 2+ agents: run consistency scan (3 min budget).
+  4. **Merge worktree changes with verification** -- follow `procedures/worktree-merge-verification.md` (include consistency scan if 2+ agents).
   5. Continue to Step 7
 - If `quality: mvp` is set:
 - Read or generate the external stack file for the service (`.claude/stacks/external/<service-slug>.md`) — use the same generation procedure as described in `.claude/procedures/scaffold-externals.md` (Step 6)
