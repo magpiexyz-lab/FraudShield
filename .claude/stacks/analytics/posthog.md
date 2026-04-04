@@ -241,6 +241,7 @@ per-tool opt-out. Both default to tracking-enabled (absent = opt-in).
 - `track()` auto-attaches `project_name` and `project_owner` to every event
 - All projects in the company share the same analytics project — these properties distinguish experiments
 - If you rename the project in experiment.yaml (`name` field), update the `PROJECT_NAME` and `PROJECT_OWNER` constants in both `src/lib/analytics.ts` and `src/lib/analytics-server.ts`
+- For web-app: standard funnel events (`visit_landing`, `signup_start`, `signup_complete`, `activate`) are **mandatory markers** — they must fire at every funnel stage even when custom events track the specific action. Custom events supplement standard events, never replace them. Example: a waitlist flow fires both `track("waitlist_signup")` and `trackSignupComplete({ method: "waitlist" })`. This ensures cross-experiment aggregation tools always find data at standard funnel stages. For CLI/service archetypes, only archetype-specific events and `visit_landing` (on the surface page) are baseline.
 
 ## Test Blocking
 When running E2E tests, block analytics requests to prevent test data from polluting production analytics. The endpoint pattern for PostHog is:

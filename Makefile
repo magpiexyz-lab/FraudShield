@@ -231,6 +231,13 @@ clean: ## Remove generated files (lets you re-run bootstrap)
 	rm -f .env.example                                     # all stacks
 	rm -rf e2e playwright.config.ts test-results playwright-report blob-report  # testing/playwright
 	rm -rf tests vitest.config.ts                          # testing/vitest
+	rm -rf public docs                                     # bootstrap-generated assets and docs
+	rm -rf .runs .verify-baseline                          # skill execution state
+	rm -rf .vercel                                         # Vercel CLI config
+	rm -f vercel.json tsconfig.tsbuildinfo                 # deploy and build config
+	rm -f externals-decisions.json run-skill.sh            # bootstrap artifacts
+	rm -f .gitleaks.toml                                   # harden-generated config
+	rm -f .env.local .env                                  # runtime credentials
 	@echo "Cleaned. You can now open Claude Code and run /bootstrap again."
 	@echo "Note: experiment/experiment.yaml, experiment/EVENTS.yaml, and supabase/ were NOT removed. Use 'make clean-all' for a full reset."
 

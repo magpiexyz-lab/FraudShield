@@ -147,6 +147,16 @@ events:
     archetypes: [cli]
     trigger: User executes a CLI command
 
+# Standard vs. custom events:
+# For web-app: standard funnel events (visit_landing, signup_start, signup_complete,
+# activate) are MANDATORY markers — they must fire at every funnel stage even when
+# custom events track the specific user action. Custom events are additive, not
+# replacements. Example: a waitlist flow should fire both track("waitlist_signup")
+# AND trackSignupComplete({ method: "waitlist" }).
+# For CLI/service: only archetype-specific events (command_run, api_call) and
+# visit_landing (on the surface page) are baseline. Other funnel events apply only
+# when the archetype has the corresponding UX flow (e.g., signup requires auth).
+#
 # Custom events — add experiment-specific events directly to the events map above.
 # Naming convention: <object>_<action> in snake_case (e.g., invoice_created, report_exported)
 # Include funnel_stage for each event.

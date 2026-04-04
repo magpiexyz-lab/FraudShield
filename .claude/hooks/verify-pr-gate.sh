@@ -100,6 +100,12 @@ print(','.join(missing) if missing else 'NONE')
       ERRORS+=("distribute states [$MISSING] not complete — finish all states before PR")
     fi
   fi
+elif [[ "$BRANCH" =~ ^chore/upgrade-template ]]; then
+  # /upgrade uses its own report artifacts, not verify-report.md
+  if [[ ! -f "$PROJECT_DIR/.runs/upgrade-diff-report.json" ]]; then
+    ERRORS+=("upgrade-diff-report.json not found — /upgrade must complete merge validation")
+  fi
+  check_skill_completion "upgrade" "$PROJECT_DIR/.runs/upgrade-context.json"
 else
   # Standard path: Checks 1-5 (verify-report.md required)
 
