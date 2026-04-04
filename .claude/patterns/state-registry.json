@@ -30,7 +30,10 @@
     "12": "test -f .runs/gate-verdicts/bg2.5.json",
     "13": "test -f .runs/gate-verdicts/bg2.json",
     "14": "python3 -c \"import json; d=json.load(open('.runs/bootstrap-wire-trace.json')); assert 'checkpoint' in d, 'checkpoint missing'\"",
-    "15": "test -f .runs/gate-verdicts/bg4.json"
+    "15": "test -f .runs/bootstrap-scan.json",
+    "16": "test -f .runs/bootstrap-modules-trace.json",
+    "17": "test -f experiment/on-touch.yaml && test -f .runs/bootstrap-on-touch-trace.json",
+    "18": "test -f .runs/gate-verdicts/bg4.json"
   },
   "change": {
     "0": "test -f .runs/change-context.json && test -f package.json && test -f experiment/EVENTS.yaml",
@@ -59,21 +62,9 @@
     "7": "test -f .runs/current-plan.md && grep -q 'checkpoint:' .runs/current-plan.md",
     "8": "grep -q 'Process Checklist' .runs/current-plan.md",
     "9": "grep -q 'checkpoint: phase2-step6' .runs/current-plan.md && python3 -c \"import json; pt=json.load(open('.runs/change-context.json')).get('preliminary_type',''); assert pt!='Feature' or '  - id:' in open('experiment/experiment.yaml').read(), 'Feature requires behaviors'\"",
-    "10": "grep -q 'checkpoint: phase2-step7' .runs/current-plan.md && python3 -c \"import json,glob,os; q='mvp' if 'quality: mvp' in open('experiment/experiment.yaml').read() else 'production'; ts=glob.glob('.runs/agent-traces/implementer-*.json')+glob.glob('.runs/agent-traces/visual-implementer-*.json') if q!='mvp' else []; bad=[t for t in ts if json.load(open(t)).get('status')=='complete' and not json.load(open(t)).get('worktree_merged')]; assert not bad,'Unmerged: '+','.join(bad); assert not(len(ts)>=2 and not os.path.exists('.runs/consistency-scan-result.json')),'2+ implementers but no consistency-scan-result.json'\"",
+    "10": "grep -q 'checkpoint: phase2-step7' .runs/current-plan.md && python3 -c \"import json,glob,os; ts=glob.glob('.runs/agent-traces/implementer-*.json')+glob.glob('.runs/agent-traces/visual-implementer-*.json'); bad=[t for t in ts if json.load(open(t)).get('status')=='complete' and not json.load(open(t)).get('worktree_merged')]; assert not bad,'Unmerged: '+','.join(bad); assert not(len(ts)>=2 and not os.path.exists('.runs/consistency-scan-result.json')),'2+ implementers but no consistency-scan-result.json'\"",
     "11": "test -f .runs/verify-report.md",
     "12": "gh pr view --json number 2>/dev/null"
-  },
-  "harden": {
-    "0": "test -f .runs/harden-context.json && test -f package.json",
-    "1": "test -f .runs/harden-scan.json",
-    "2": "test -f .runs/current-plan.md",
-    "3": "test -f .runs/current-plan.md && grep -q 'skill: harden' .runs/current-plan.md",
-    "4": "git branch --show-current | grep -q 'chore/harden' && ! grep -q 'quality: mvp' experiment/experiment.yaml",
-    "5": "test -f .runs/harden-modules-trace.json",
-    "6": "npm run build 2>/dev/null",
-    "7": "test -f experiment/on-touch.yaml",
-    "8": "test -f .runs/verify-report.md",
-    "9": "gh pr view --json number 2>/dev/null"
   },
   "review": {
     "0": "test -f .runs/review-context.json",
@@ -196,7 +187,6 @@
     "spec":       { "strategy": "A", "gate_mechanism": "postcondition-only" },
     "bootstrap":  { "strategy": "verify-embedded", "gate_mechanism": "commit-pr-gate", "gate_artifacts": ["verify-report.md"], "pr_validation": "full-verify" },
     "change":     { "strategy": "verify-embedded", "gate_mechanism": "commit-pr-gate", "gate_artifacts": ["verify-report.md"], "pr_validation": "full-verify" },
-    "harden":     { "strategy": "verify-embedded", "gate_mechanism": "commit-pr-gate", "gate_artifacts": ["verify-report.md"], "pr_validation": "full-verify" },
     "distribute": { "strategy": "verify-embedded", "gate_mechanism": "commit-pr-gate", "gate_artifacts": ["verify-report.md"], "pr_validation": "full-verify" },
     "audit":      { "strategy": "B", "gate_mechanism": "postcondition-only" },
     "solve":      { "strategy": "B", "gate_mechanism": "postcondition-only" },
@@ -224,7 +214,7 @@
       "pattern-classifier":         { "required_states": ["0","1","2","3","4","5","6"] }
     },
     "bootstrap": {
-      "_required_states": ["0","1","2","3","3a","3b","4","5","6","7","8","9","10","11","12","13","14","15"],
+      "_required_states": ["0","1","2","3","3a","3b","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18"],
       "gate-keeper":        { "allow_unconditional": true },
       "scaffold-externals": { "allow_unconditional": true },
       "scaffold-setup":     { "required_states": ["0","1","2","3","3a","3b","4","5","6","7","8"], "artifacts": [".runs/gate-verdicts/bg1.json"], "deny_isolation": ["worktree"] },
@@ -239,10 +229,6 @@
       "gate-keeper":        { "allow_unconditional": true },
       "implementer":        { "required_states": ["0","1","2","3","4","5","6","7","8","9"], "artifacts": [".runs/gate-verdicts/g3.json"], "_note": "required_states enforces ordering; g3.json artifact is the authoritative gate for plan approval" },
       "visual-implementer": { "required_states": ["0","1","2","3","4","5","6","7","8","9"], "artifacts": [".runs/gate-verdicts/g3.json"], "_note": "required_states enforces ordering; g3.json artifact is the authoritative gate for plan approval" }
-    },
-    "harden": {
-      "_required_states": ["0","1","2","3","4","5","6","7","8","9"],
-      "implementer":        { "required_states": ["0","1","2","3","4"] }
     },
     "distribute": {
       "_required_states": ["0","1","1_5","2","3","4","5","6","7","8","9"]

@@ -15,7 +15,7 @@ For each category in experiment.yaml `stack`:
 - `.runs/current-plan.md` — persisted plan from previous session
 - `.runs/iterate-manifest.json` — analysis from last /iterate run
 - `.runs/deploy-manifest.json` — resources from last /deploy run
-- `experiment/on-touch.yaml` — modules deferred for hardening
+- `experiment/on-touch.yaml` — modules deferred for unit test generation
 
 ## How to Reference
 Skills should say: "Read context per `.claude/patterns/read-context.md`" instead of

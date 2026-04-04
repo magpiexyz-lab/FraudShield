@@ -48,6 +48,9 @@ Read each STATE's file **only when transitioning to that state**. Do NOT read ah
 | 12 | EXTERNALS_DECISIONS | Implement | [state-12-externals-decisions.md](../patterns/bootstrap/state-12-externals-decisions.md) |
 | 13 | MERGED_VALIDATION | Implement | [state-13-merged-validation.md](../patterns/bootstrap/state-13-merged-validation.md) |
 | 14 | WIRE_PHASE | Implement | [state-14-wire-phase.md](../patterns/bootstrap/state-14-wire-phase.md) |
-| 15 | COMMIT_AND_PUSH | Implement | [state-15-commit-and-push.md](../patterns/bootstrap/state-15-commit-and-push.md) |
+| 15 | SCAN_AND_CLASSIFY | Implement | [state-15-scan-and-classify.md](../patterns/bootstrap/state-15-scan-and-classify.md) |
+| 16 | UNIT_TEST_GENERATION | Implement | [state-16-unit-test-generation.md](../patterns/bootstrap/state-16-unit-test-generation.md) |
+| 17 | PERSIST_ON_TOUCH | Implement | [state-17-persist-on-touch.md](../patterns/bootstrap/state-17-persist-on-touch.md) |
+| 18 | COMMIT_AND_PUSH | Implement | [state-18-commit-and-push.md](../patterns/bootstrap/state-18-commit-and-push.md) |
 
 Begin at STATE 0. Read [state-0-branch-setup.md](../patterns/bootstrap/state-0-branch-setup.md) now.

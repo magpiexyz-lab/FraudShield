@@ -55,33 +55,33 @@ preventing them. Consumed by `/change` STATE 11 for Fix-type skill deficiency at
 Which skill(s) are responsible for preventing each defect category.
 A dash (-) means the skill has no prevention responsibility for that defect.
 
-| Defect | bootstrap (STATE 14 wire) | verify (per scope) | harden (STATE 5 modules) | deploy (STATE 4 health) |
-|--------|--------------------------|--------------------|--------------------------|-----------------------|
-| B1 | Generate working pages/endpoints | behavior-verifier | - | Health check (runtime) |
-| B2 | Correct routing and data flow | behavior-verifier | - | Health check (runtime) |
-| B3 | - | behavior-verifier | - | - |
-| B4 | Scaffold zod schemas for forms | behavior-verifier | Spec tests for validation | - |
-| B5 | - | behavior-verifier | - | - |
-| B6 | - | behavior-verifier | Spec tests for API contracts | - |
-| D1 | No secrets in generated code | security-defender | - | - |
-| D2 | Scaffold zod for all API routes | security-defender | - | - |
-| D3 | Generate RLS policies with schema | security-defender | - | - |
-| D4 | Correct client/server imports | security-defender | - | - |
-| D5 | Scaffold rate limiting middleware | security-defender | - | - |
-| D6 | - | security-defender | - | - |
-| A1 | - | security-attacker | Spec tests for validation edge cases | - |
-| A2 | RLS + ownership checks in schema | security-attacker | Spec tests for access control | - |
-| A3 | Parameterized queries in templates | security-attacker | - | - |
-| A4 | - | security-attacker | - | - |
-| A5 | Secure auth scaffold (httpOnly) | security-attacker | Spec tests for auth flows | - |
-| S1 | Implement all behaviors | spec-reviewer | - | - |
-| S2 | Create all pages/endpoints/commands | spec-reviewer | - | - |
-| S3 | Wire all analytics events | spec-reviewer | - | - |
-| S4 | Link all golden path steps | spec-reviewer | - | - |
-| S5 | - | spec-reviewer | - | - |
-| S6 | - | spec-reviewer | - | - |
-| S7 | - | spec-reviewer | Add spec tests for critical paths | - |
-| S8 | - | spec-reviewer | - | - |
+| Defect | bootstrap (STATE 14-16) | verify (per scope) | deploy (STATE 4 health) |
+|--------|--------------------------|--------------------|-----------------------|
+| B1 | Generate working pages/endpoints | behavior-verifier | Health check (runtime) |
+| B2 | Correct routing and data flow | behavior-verifier | Health check (runtime) |
+| B3 | - | behavior-verifier | - |
+| B4 | Scaffold zod schemas + unit tests for validation | behavior-verifier | - |
+| B5 | - | behavior-verifier | - |
+| B6 | Unit tests for API contracts | behavior-verifier | - |
+| D1 | No secrets in generated code | security-defender | - |
+| D2 | Scaffold zod for all API routes | security-defender | - |
+| D3 | Generate RLS policies with schema | security-defender | - |
+| D4 | Correct client/server imports | security-defender | - |
+| D5 | Scaffold rate limiting middleware | security-defender | - |
+| D6 | - | security-defender | - |
+| A1 | Unit tests for validation edge cases | security-attacker | - |
+| A2 | RLS + ownership checks + unit tests | security-attacker | - |
+| A3 | Parameterized queries in templates | security-attacker | - |
+| A4 | - | security-attacker | - |
+| A5 | Secure auth scaffold + unit tests | security-attacker | - |
+| S1 | Implement all behaviors | spec-reviewer | - |
+| S2 | Create all pages/endpoints/commands | spec-reviewer | - |
+| S3 | Wire all analytics events | spec-reviewer | - |
+| S4 | Link all golden path steps | spec-reviewer | - |
+| S5 | - | spec-reviewer | - |
+| S6 | - | spec-reviewer | - |
+| S7 | Unit tests for critical paths | spec-reviewer | - |
+| S8 | - | spec-reviewer | - |
 
 ## Classification Priority
 
