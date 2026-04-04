@@ -53,6 +53,15 @@ elif [[ "$BRANCH" =~ ^fix/resolve- ]]; then
     ERRORS+=("observe-result.json not found — /resolve must complete observation before PR")
   fi
   check_skill_completion "resolve" "$PROJECT_DIR/.runs/resolve-context.json"
+elif [[ "$BRANCH" =~ ^chore/upgrade-template ]]; then
+  # /upgrade uses observe-result.json (Strategy A epilogue) + upgrade-diff-report.json
+  if [[ ! -f "$PROJECT_DIR/.runs/upgrade-diff-report.json" ]]; then
+    ERRORS+=("upgrade-diff-report.json not found — /upgrade must complete merge validation before PR")
+  fi
+  if [[ ! -f "$PROJECT_DIR/.runs/observe-result.json" ]]; then
+    ERRORS+=("observe-result.json not found — /upgrade must complete observation before PR")
+  fi
+  check_skill_completion "upgrade" "$PROJECT_DIR/.runs/upgrade-context.json"
 elif [[ "$BRANCH" =~ ^chore/harden ]]; then
   # /harden runs /verify — require verify-report.md + completed_states
   if [[ ! -f "$REPORT" ]]; then

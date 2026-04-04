@@ -91,6 +91,13 @@ if [[ "$BRANCH" =~ ^chore/review ]]; then
   exit 0
 fi
 
+# Handle chore/upgrade branches — /upgrade uses Strategy A epilogue, not verify-report.md
+if [[ "$BRANCH" =~ ^chore/upgrade ]]; then
+  PROJECT_DIR="${CLAUDE_PROJECT_DIR:-.}"
+  # /upgrade commits are allowed — observation is enforced by observe-commit-gate
+  exit 0
+fi
+
 # Only allow worktree merge commits through unconditionally
 if [[ "$COMMAND" == *"Merge implementer"* ]]; then
   exit 0
