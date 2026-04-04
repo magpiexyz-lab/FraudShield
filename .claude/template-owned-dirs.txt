@@ -1,0 +1,10 @@
+.claude/stacks
+.claude/commands
+.claude/patterns
+.claude/archetypes
+.claude/hooks
+.claude/scripts
+.claude/agents
+.claude/procedures
+.claude/orchestration
+scripts

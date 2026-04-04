@@ -169,6 +169,88 @@ print(','.join(missing) if missing else 'NONE')
   fi
 }
 
+# --- detect_active_skill_for_branch ---
+# Scans *-context.json files, matches branch, returns skill name.
+# Returns "" if no matching context found. Follows agent-state-gate.sh pattern.
+# Ignores epilogue-context.json and completed contexts.
+# Usage: SKILL=$(detect_active_skill_for_branch "$BRANCH")
+detect_active_skill_for_branch() {
+  local branch="$1"
+  local project_dir="${CLAUDE_PROJECT_DIR:-.}"
+  python3 -c "
+import json, glob, os
+branch = '$branch'
+project = '$project_dir'
+best_skill = ''
+best_ts = ''
+for f in glob.glob(os.path.join(project, '.runs', '*-context.json')):
+    if 'epilogue-context' in f:
+        continue
+    try:
+        d = json.load(open(f))
+        if d.get('branch') != branch:
+            continue
+        if d.get('completed'):
+            continue
+        ts = d.get('timestamp', '')
+        if ts > best_ts:
+            best_ts = ts
+            best_skill = d.get('skill', '')
+    except:
+        continue
+print(best_skill)
+" 2>/dev/null || echo ""
+}
+
+# --- get_observation_gate ---
+# Reads observation_gates metadata from state-registry.json for a skill.
+# Returns the value of a specific field, or "" if not found.
+# Usage: MECH=$(get_observation_gate "upgrade" "gate_mechanism")
+get_observation_gate() {
+  local skill="$1"
+  local field="$2"
+  local registry="${CLAUDE_PROJECT_DIR:-.}/.claude/patterns/state-registry.json"
+  [[ ! -f "$registry" ]] && { echo ""; return; }
+  python3 -c "
+import json
+d = json.load(open('$registry'))
+obs = d.get('observation_gates', {}).get('$skill', {})
+val = obs.get('$field', '')
+if isinstance(val, list):
+    print(' '.join(val))
+else:
+    print(val)
+" 2>/dev/null || echo ""
+}
+
+# --- check_verdict_consistency ---
+# Checks that observe-result.json verdict is consistent with observer-diffs.txt content.
+# Blocks if: non-empty diffs + verdict "clean" + not execution-audit + not dry-run.
+# Appends to global ERRORS array. Does not exit — caller decides.
+# Usage: check_verdict_consistency "$SKILL"
+check_verdict_consistency() {
+  local skill="$1"
+  local project_dir="${CLAUDE_PROJECT_DIR:-.}"
+  local diffs_file="$project_dir/.runs/observer-diffs.txt"
+  local obs_file="$project_dir/.runs/observe-result.json"
+  local ctx_file="$project_dir/.runs/${skill}-context.json"
+
+  # Only check if both files exist and diffs is non-empty
+  [[ ! -f "$diffs_file" ]] && return 0
+  [[ ! -s "$diffs_file" ]] && return 0
+  [[ ! -f "$obs_file" ]] && return 0
+
+  local verdict strategy dry_run
+  verdict=$(read_json_field "$obs_file" "verdict")
+  strategy=$(read_json_field "$obs_file" "strategy")
+  dry_run=$(read_json_field "$ctx_file" "dry_run")
+
+  # Invariant: non-empty diffs + "clean" verdict + Strategy A = violation
+  if [[ "$verdict" == "clean" ]] && [[ "$strategy" != "execution-audit" ]] && [[ "$dry_run" != "True" ]]; then
+    ERRORS+=("Verdict inconsistency: observer-diffs.txt has content but observe-result.json verdict is 'clean' — the observer was not spawned. Re-run the skill epilogue.")
+  fi
+}
+
 # --- check_verdict_gates ---
 # Loops over gate verdict files, checks existence + PASS verdict + optional branch match.
 # Appends errors to the global ERRORS array. Does not exit — caller decides.

@@ -35,9 +35,9 @@ This registers your presence. If you exhaust turns before writing the final trac
 2. Otherwise:
    a. Run `git diff` to collect all changes made during the build/lint loop.
    b. For each changed file, write a one-line summary of what was fixed.
-   c. List template files:
+   c. List template files (canonical source: `.claude/template-owned-dirs.txt`):
       ```bash
-      find .claude/stacks .claude/commands .claude/patterns scripts -type f 2>/dev/null
+      cat .claude/template-owned-dirs.txt | xargs find -type f 2>/dev/null
       ```
       Add `Makefile` and `CLAUDE.md` to the list.
    d. Return the output.

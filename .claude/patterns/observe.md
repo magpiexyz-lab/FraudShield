@@ -85,10 +85,10 @@ whether it qualifies as a template observation. A change qualifies when **all
 three** conditions are true:
 
 **A. Template file is the root cause.** The fix required changing — or would ideally
-change — a file under:
-  - `.claude/stacks/**/*.md`
-  - `.claude/commands/*.md`
-  - `.claude/patterns/*.md`
+change — a file under any directory listed in `.claude/template-owned-dirs.txt`:
+  - `.claude/stacks/`, `.claude/commands/`, `.claude/patterns/`
+  - `.claude/archetypes/`, `.claude/hooks/`, `.claude/scripts/`
+  - `.claude/agents/`, `.claude/procedures/`, `.claude/orchestration/`
   - `scripts/`
   - `Makefile` or `CLAUDE.md`
 

@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # observe-commit-gate.sh — Claude Code PreToolUse hook for Bash commands.
-# Blocks final /resolve and /review commits unless observation epilogue has been performed.
+# Blocks final skill commits unless observation epilogue has been performed.
+# Data-driven: uses *-context.json + state-registry.json observation_gates
+# to determine which skills need observation enforcement.
 # Skills that run /verify (bootstrap, change, harden, distribute) are exempt —
 # verify-report.md proves STATE 6 auto-observe ran.
 
@@ -16,10 +18,20 @@ if [[ "$COMMAND" != *"git commit"* ]]; then
   exit 0
 fi
 
-# Only enforce on fix/ branches (/resolve) and chore/review-fixes branches (/review)
+# --- Data-driven skill detection ---
+# Scan *-context.json for branch match → get active skill
 BRANCH=$(get_branch)
-if [[ ! "$BRANCH" =~ ^fix/ ]] && [[ ! "$BRANCH" =~ ^chore/review-fixes ]]; then
+SKILL=$(detect_active_skill_for_branch "$BRANCH")
+
+# No skill context for this branch → non-skill branch, allow
+if [[ -z "$SKILL" ]]; then
   exit 0
+fi
+
+# Check if this skill uses commit-gate enforcement
+GATE_MECH=$(get_observation_gate "$SKILL" "gate_mechanism")
+if [[ "$GATE_MECH" != "commit-pr-gate" ]]; then
+  exit 0  # postcondition-only skills don't need commit gate
 fi
 
 # Allow WIP commits (only enforce on final commits)
@@ -34,22 +46,23 @@ if [[ -f "$PROJECT_DIR/.runs/verify-report.md" ]]; then
   exit 0
 fi
 
-# If observe-result.json exists, the skill epilogue ran — allow
+# If observe-result.json exists, check verdict consistency then allow
 if [[ -f "$PROJECT_DIR/.runs/observe-result.json" ]]; then
+  # Verdict consistency invariant: non-empty diffs + "clean" + Strategy A = violation
+  ERRORS=()
+  check_verdict_consistency "$SKILL"
+  if [[ ${#ERRORS[@]} -gt 0 ]]; then
+    deny_errors "Observation integrity check failed: " "Re-run the skill epilogue to spawn the observer."
+  fi
   exit 0
 fi
 
-# State completion check — deny with specific feedback before generic observation deny
+# No observation evidence — check state completion for specific feedback
 ERRORS=()
-if [[ "$BRANCH" =~ ^fix/ ]]; then
-  check_skill_completion "resolve" "$PROJECT_DIR/.runs/resolve-context.json"
-fi
-if [[ "$BRANCH" =~ ^chore/review-fixes ]]; then
-  check_skill_completion "review" "$PROJECT_DIR/.runs/review-context.json"
-fi
+check_skill_completion "$SKILL" "$PROJECT_DIR/.runs/${SKILL}-context.json"
 if [[ ${#ERRORS[@]} -gt 0 ]]; then
   deny_errors "Commit blocked: " "Complete all required states before final commit."
 fi
 
 # No observation evidence found — deny
-deny "Observation not performed. Run the skill epilogue (.claude/patterns/skill-epilogue.md) before the final commit. This ensures template-level issues are detected and filed."
+deny "Observation not performed for /$SKILL. Run the skill epilogue (.claude/patterns/skill-epilogue.md) before the final commit. This ensures template-level issues are detected and filed."

@@ -18,7 +18,7 @@ else
 fi
 
 python3 -c "
-import json
+import json, os
 f='$CTX'; d=json.load(open(f))
 cs=d.get('completed_states',[])
 state='$STATE_NUM'
@@ -30,5 +30,16 @@ try:
 except ValueError:
     pass
 if state not in cs: cs.append(state)
-d['completed_states']=cs; json.dump(d,open(f,'w'))
+d['completed_states']=cs
+# Mark context as completed when all required states are present
+reg_path = os.path.join('${CLAUDE_PROJECT_DIR:-.}', '.claude/patterns/state-registry.json')
+if os.path.exists(reg_path):
+    reg = json.load(open(reg_path))
+    req = reg.get('agent_gates', {}).get('$SKILL', {}).get('_required_states', [])
+    if req:
+        cs_set = set(str(s) for s in cs)
+        req_set = set(str(s) for s in req)
+        if req_set.issubset(cs_set):
+            d['completed'] = True
+json.dump(d, open(f, 'w'))
 "

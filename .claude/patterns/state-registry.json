@@ -188,6 +188,24 @@
     "3": "gh pr view --json number 2>/dev/null || test -f .runs/upgrade-diff-report.json"
   },
 
+  "observation_gates": {
+    "resolve":    { "strategy": "A", "gate_mechanism": "commit-pr-gate", "gate_artifacts": ["observe-result.json"], "pr_validation": "artifact-only" },
+    "review":     { "strategy": "A", "gate_mechanism": "commit-pr-gate", "gate_artifacts": ["review-complete.json", "observe-result.json"], "pr_validation": "custom-review" },
+    "upgrade":    { "strategy": "A", "gate_mechanism": "commit-pr-gate", "gate_artifacts": ["observe-result.json", "upgrade-diff-report.json"], "pr_validation": "artifact-only" },
+    "deploy":     { "strategy": "A", "gate_mechanism": "postcondition-only" },
+    "spec":       { "strategy": "A", "gate_mechanism": "postcondition-only" },
+    "bootstrap":  { "strategy": "verify-embedded", "gate_mechanism": "commit-pr-gate", "gate_artifacts": ["verify-report.md"], "pr_validation": "full-verify" },
+    "change":     { "strategy": "verify-embedded", "gate_mechanism": "commit-pr-gate", "gate_artifacts": ["verify-report.md"], "pr_validation": "full-verify" },
+    "harden":     { "strategy": "verify-embedded", "gate_mechanism": "commit-pr-gate", "gate_artifacts": ["verify-report.md"], "pr_validation": "full-verify" },
+    "distribute": { "strategy": "verify-embedded", "gate_mechanism": "commit-pr-gate", "gate_artifacts": ["verify-report.md"], "pr_validation": "full-verify" },
+    "audit":      { "strategy": "B", "gate_mechanism": "postcondition-only" },
+    "solve":      { "strategy": "B", "gate_mechanism": "postcondition-only" },
+    "iterate":    { "strategy": "B", "gate_mechanism": "postcondition-only" },
+    "retro":      { "strategy": "B", "gate_mechanism": "postcondition-only" },
+    "rollback":   { "strategy": "B", "gate_mechanism": "postcondition-only" },
+    "teardown":   { "strategy": "B", "gate_mechanism": "postcondition-only" }
+  },
+
   "agent_gates": {
     "verify": {
       "_required_states": ["0","1","2","3","4","5","6","7","8"],
