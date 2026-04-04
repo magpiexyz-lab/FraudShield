@@ -152,10 +152,6 @@ curl -s -X POST "https://api.vercel.com/v10/projects/<name>/env?upsert=true&slug
 
 Simple in-memory counters do not persist across serverless invocations on Vercel, so they are not effective for cross-instance rate limiting. However, they still provide burst protection within a single instance.
 
-### When `quality: mvp` (opt-in)
-Add `// TODO: Add production rate limiting (e.g., Upstash Redis)` comment at the top of auth and payment route handlers. This is accepted by security review D5 for MVP quality.
-
-### When `quality: production` (default)
 Bootstrap creates `src/lib/rate-limit.ts` with an in-memory burst-protection limiter. Auth and payment routes import and apply it. This satisfies security review D5.
 
 **`src/lib/rate-limit.ts`:**
@@ -216,7 +212,7 @@ Add a `vercel.json` with baseline security headers. These apply to all responses
 }
 ```
 
-- **CSP intentionally omitted** for MVPs — Content-Security-Policy breaks inline styles from UI libraries (shadcn, Tailwind) and analytics scripts (PostHog). Add CSP only when hardening for production with `/harden`.
+- **CSP intentionally omitted** — Content-Security-Policy breaks inline styles from UI libraries (shadcn, Tailwind) and analytics scripts (PostHog). Add CSP when ready for strict content security.
 - Bootstrap should create `vercel.json` with these headers if it doesn't already exist. If `vercel.json` exists (e.g., for rewrites), merge the `headers` array.
 
 ## Patterns

@@ -13,17 +13,15 @@
 
 ## Implementation
 
-- Unless `quality: mvp` is set in experiment.yaml:
-  1. **ON-TOUCH check** -- follow `patterns/on-touch-check.md` for files in the upgrade plan. Write spec tests BEFORE upgrade code.
-  2. Generate TDD tasks for the integration per `patterns/tdd.md`. Link each task to its behavior ID(s) from experiment.yaml and include the behavior's `tests` array entries — the implementer must generate an `it()` assertion for each entry. Tasks should cover:
-     - Credential storage/retrieval
-     - Webhook signature validation (if applicable)
-     - Error recovery (timeout, rate limit, invalid response)
-     - Happy path end-to-end
-  3. Spawn implementer agents (same procedure as Feature production path, including step 6 trace writing)
-  4. **Merge worktree changes with verification** -- follow `procedures/worktree-merge-verification.md` (include consistency scan if 2+ agents).
-  5. Continue to Step 7
-- If `quality: mvp` is set:
+1. **ON-TOUCH check** -- follow `patterns/on-touch-check.md` for files in the upgrade plan. Write spec tests BEFORE upgrade code.
+2. Generate TDD tasks for the integration per `patterns/tdd.md`. Link each task to its behavior ID(s) from experiment.yaml and include the behavior's `tests` array entries — the implementer must generate an `it()` assertion for each entry. Tasks should cover:
+   - Credential storage/retrieval
+   - Webhook signature validation (if applicable)
+   - Error recovery (timeout, rate limit, invalid response)
+   - Happy path end-to-end
+3. Spawn implementer agents (same procedure as Feature production path, including step 6 trace writing)
+4. **Merge worktree changes with verification** -- follow `procedures/worktree-merge-verification.md` (include consistency scan if 2+ agents).
+5. Continue to Step 7
 - Read or generate the external stack file for the service (`.claude/stacks/external/<service-slug>.md`) — use the same generation procedure as described in `.claude/procedures/scaffold-externals.md` (Step 6)
 - Replace the Fake Door component with real UI that calls the actual API route
 - Replace any stub route (501/503) with the full integration logic using the service's API

@@ -24,7 +24,7 @@ If no scope is specified, the default is `full`.
 
 \* = skip if archetype is NOT `web-app`
 \*\* = web-app only (existing gate)
-\*\*\* = requires the listed scope (full or security); skipped only when `quality: mvp` is set in experiment.yaml
+\*\*\* = requires the listed scope (full or security)
 
 behavior-verifier runs for all archetypes (web-app, service, cli) — it has archetype-specific procedures internally.
 

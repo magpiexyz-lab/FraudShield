@@ -60,11 +60,10 @@ Rules are in priority order. When two rules conflict, the lower-numbered rule wi
 ## Rule 4: Keep It Minimal
 - Prefer well-known libraries over custom code
 - Bootstrap creates page-load smoke tests when `stack.testing` is present. Use `/change` for full funnel tests and `/verify` to run tests and fix failures. No additional tests except for auth and payment flows. Exception: if a feature contains non-trivial business logic (calculations, state machines, multi-step workflows), add unit tests for that logic. This is rare in first MVPs — if you're writing complex algorithms, consider whether you're overbuilding.
-- By default (unless `quality: mvp` is set in experiment.yaml):
-  - Business logic (calculations, state machines, data mutations, auth, payment) MUST have specification tests (see `patterns/tdd.md`)
-  - Every /change Feature, Fix, or Upgrade spawns implementer agents (see `agents/implementer.md`) with task dependency ordering
-  - /verify adds spec-reviewer as an additional parallel agent (see `agents/spec-reviewer.md`)
-  - `stack.testing` is required — /change and /bootstrap will stop if testing stack is absent. Set `quality: mvp` to skip this requirement.
+- Business logic (calculations, state machines, data mutations, auth, payment) MUST have specification tests (see `patterns/tdd.md`)
+- Every /change Feature, Fix, or Upgrade spawns implementer agents (see `agents/implementer.md`) with task dependency ordering
+- /verify adds spec-reviewer as an additional parallel agent (see `agents/spec-reviewer.md`)
+- `stack.testing` is required — /change and /bootstrap will stop if testing stack is absent.
 - No abstraction layers unless there's concrete duplication (3+ copies)
 - Ship the simplest thing that works
 - No premature optimization — no caching, no memoization, no lazy loading unless there's a measured problem
@@ -135,7 +134,7 @@ Follow the database patterns defined in your active database stack file (`.claud
 ## Rule 12: Template Observations
 Template-rooted issues are detected and filed automatically. Every skill
 terminates with a quality check via one of three mechanisms:
-- **Verify-embedded skills** (/bootstrap, /change, /harden, /distribute):
+- **Verify-embedded skills** (/bootstrap, /change, /distribute):
   verify.md STATE 6 Auto-Observe handles observation.
 - **Strategy A skills** (/resolve, /review, /deploy, /spec, /upgrade): the skill's
   epilogue state (`.claude/patterns/skill-epilogue.md` Strategy A) spawns

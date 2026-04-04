@@ -16,7 +16,7 @@ owner: <team-or-user-slug>       # Derive from `gh repo view --json owner --jq '
 type: web-app                    # web-app | service | cli
 level: <selected level>
 status: draft
-quality: production              # Default. Set to 'mvp' to skip TDD and spec-reviewer.
+quality: production              # Always active. TDD and spec-reviewer enabled.
 ```
 
 ### Section 2 — Intent

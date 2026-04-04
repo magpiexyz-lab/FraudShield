@@ -30,9 +30,6 @@ python3 .claude/scripts/write-q-score.py \
 - Delete `.runs/current-visual-brief.md` (keep `.runs/current-plan.md` -- `/verify` needs it)
 - Tell the user: "Bootstrap pushed. Run `/verify` to run verification and create the PR." If archetype is `cli` and surface is not `none`, add: "After merging, run `/deploy` for the marketing surface, then `npm publish` for the CLI binary. To verify the publish: run `npm info <package-name>` (where `<package-name>` is the `name` field from experiment.yaml) to confirm the version is live. If `npm publish` fails, check `npm whoami` — if not logged in, run `npm login` first." If archetype is `cli` and surface is `none`, add: "After merging, run `npm publish` for the CLI binary (no surface to deploy). To verify the publish: run `npm info <package-name>` (where `<package-name>` is the `name` field from experiment.yaml) to confirm the version is live. If `npm publish` fails, check `npm whoami` — if not logged in, run `npm login` first."
 
-Unless `quality: mvp` is set in experiment.yaml, add to the user message:
-> "Bootstrap complete with production quality mode. After `/verify`, run `/harden` to add TDD coverage to critical paths (auth, payment, data persistence)."
-
 Check off in `.runs/current-plan.md`: `- [x] BG4 PR Gate passed`
 
 **POSTCONDITIONS:**

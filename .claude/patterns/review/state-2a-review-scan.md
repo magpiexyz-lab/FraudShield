@@ -107,7 +107,7 @@ After reading: trace the user journey for each archetype:
 - service: (`/spec`) -> `make validate` -> `/bootstrap` -> merge -> `/verify` -> `/deploy` -> `/change` -> `/verify` -> `/distribute` (if surface != none) -> `/iterate` -> `/retro` -> `/teardown`
 - cli: (`/spec`) -> `make validate` -> `/bootstrap` -> merge -> `/verify` -> `/deploy` (surface only) -> `npm publish` -> `/change` -> `/verify` -> `/distribute` (if surface != none) -> `/iterate` -> `/retro`
 
-For production quality experiments (the default, unless `quality: mvp`), also trace: `/iterate` (SCALE verdict) -> `/harden` -> `/change` (production path: TDD + implementer agents + spec-reviewer) -> `/verify` (with spec-reviewer)
+Production quality is always active: `/change` uses TDD + implementer agents, `/verify` spawns spec-reviewer.
 
 For each finding, record the archetype and fixture(s) whose config matches the
 dead-end scenario. If no fixture covers it, note "no fixture coverage."

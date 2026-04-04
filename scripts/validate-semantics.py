@@ -977,35 +977,32 @@ def check_54_procedure_production_branch(procedure_files: dict[str, str]) -> lis
         basename = os.path.basename(path)
         if basename not in target_procedures:
             continue
-        if not re.search(r"quality.*mvp|quality.*production", content):
+        # TDD/implementer references must be present unconditionally (no MVP mode)
+        if not re.search(r"tdd\.md|patterns/tdd|ON-TOUCH", content):
             errors.append(
-                f"[54] {path}: procedure file missing quality gate branch "
-                f"(expected 'quality: mvp' opt-out or 'quality.*production' reference)"
+                f"[54] {path}: procedure file missing TDD or ON-TOUCH reference"
             )
     return errors
 
 
 def check_55_production_references_tdd(procedure_files: dict[str, str]) -> list[str]:
-    """Check 55: Production sections in procedure files reference TDD."""
+    """Check 55: Procedure files reference TDD (unconditional — no MVP mode)."""
     errors: list[str] = []
     target_procedures = {"change-feature.md", "change-upgrade.md", "change-fix.md"}
     for path, content in procedure_files.items():
         basename = os.path.basename(path)
         if basename not in target_procedures:
             continue
-        # Find quality gate (opt-out: quality: mvp or quality: production)
-        if not re.search(r"quality.*mvp|quality.*production", content, re.IGNORECASE):
-            continue
         # TDD reference should exist somewhere in the file
-        if not re.search(r"tdd\.md|patterns/tdd", content):
+        if not re.search(r"tdd\.md|patterns/tdd|TDD|regression test", content):
             errors.append(
-                f"[55] {path}: production section does not reference tdd.md"
+                f"[55] {path}: procedure file does not reference tdd.md"
             )
     return errors
 
 
 def check_56_production_references_implementer(procedure_files: dict[str, str]) -> list[str]:
-    """Check 56: Production sections reference implementer agent.
+    """Check 56: Feature and upgrade procedures reference implementer agent.
 
     Only checks feature and upgrade procedures — fix uses a simpler single-task
     TDD path (regression test + minimal fix) without implementer agents.
@@ -1016,29 +1013,21 @@ def check_56_production_references_implementer(procedure_files: dict[str, str]) 
         basename = os.path.basename(path)
         if basename not in target_procedures:
             continue
-        # Find quality gate (opt-out: quality: mvp or quality: production)
-        if not re.search(r"quality.*mvp|quality.*production", content, re.IGNORECASE):
-            continue
         # Implementer reference should exist somewhere in the file
         if not re.search(r"implementer\.md|agents/implementer|implementer agent", content):
             errors.append(
-                f"[56] {path}: production section does not reference implementer agent"
+                f"[56] {path}: procedure file does not reference implementer agent"
             )
     return errors
 
 
 def check_57_change_production_precondition(change_content: str) -> list[str]:
-    """Check 57: change.md quality gate validates stack.testing."""
+    """Check 57: change.md validates stack.testing is present."""
     errors: list[str] = []
-    # Find quality gate block (opt-out: quality: mvp)
-    gate_match = re.search(r"quality.*mvp", change_content, re.IGNORECASE)
-    if not gate_match:
-        return errors  # No quality gate block — check doesn't apply
-    # Check that stack.testing is validated near the quality gate
-    gate_context = change_content[max(0, gate_match.start() - 200):gate_match.end() + 500]
-    if not re.search(r"stack\.testing", gate_context):
+    # stack.testing should be validated unconditionally
+    if not re.search(r"stack\.testing", change_content):
         errors.append(
-            "[57] change.md: quality gate block does not validate stack.testing"
+            "[57] change.md: does not validate stack.testing is present"
         )
     return errors
 

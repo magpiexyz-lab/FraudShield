@@ -15,13 +15,13 @@ prompt tells them WHICH files to read and WHAT to do.
 > also inflates prompt size, reducing the subagent's effective working
 > memory (each 200 lines ~ 2 lost reasoning turns). Let subagents read.
 
-1. **Production quality check**: Unless `quality: mvp` is set in experiment.yaml, pass this flag to each scaffold-* agent prompt: "quality: production is active. Generate tests alongside each file you create." Agent test ownership:
+1. **Production quality check**: Pass this flag to each scaffold-* agent prompt: "quality: production is active. Generate tests alongside each file you create." Agent test ownership:
    - scaffold-setup: create testing config (playwright.config.ts or vitest.config.ts)
    - scaffold-libs: generate unit tests for utility functions alongside library code
-   - scaffold-pages: generate page-load smoke tests (same as MVP, but more thorough)
+   - scaffold-pages: generate page-load smoke tests (thorough)
    - scaffold-wire: run test discovery checkpoint (`npx playwright test --list` or vitest equivalent)
 
-   **Vitest co-installation**: Unless `quality: mvp` is set, AND `stack.testing` is NOT `vitest` (e.g., `testing: playwright`):
+   **Vitest co-installation**: If `stack.testing` is NOT `vitest` (e.g., `testing: playwright`):
    - Also install `vitest` and `@vitest/coverage-v8` as dev dependencies
    - Create `vitest.config.ts` using the template from `.claude/stacks/testing/vitest.md`
    - This ensures specification tests (TDD per `patterns/tdd.md`) can run alongside E2E tests

@@ -146,7 +146,7 @@ Evaluate whether the stack matches the experiment's needs.
 - [ ] **Level-appropriate stack**: Level 1 has no database/auth, Level 2 adds database, Level 3 adds auth (and payment if monetize hypotheses exist)
 - [ ] **No over-engineering**: Stack components match what's needed to test the hypotheses, not what would be needed at scale
 - [ ] **Distribution-compatible**: The stack supports the planned distribution channels (e.g., if targeting paid ads, analytics must be present for conversion tracking)
-- [ ] **Testing-compatible**: Unless `quality: mvp`, `stack.testing` is present
+- [ ] **Testing-compatible**: `stack.testing` is present
 - [ ] **No conflicting stacks**: No incompatible combinations (e.g., Playwright with service archetype)
 
 ### Type-to-archetype mapping

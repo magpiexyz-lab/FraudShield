@@ -155,7 +155,7 @@ Verify after specs are updated:
    - **Upgrade**: `.env.example` updated if plan mentions new env vars
    - **Fix/Polish/Analytics**: no experiment.yaml behavior changes required
    - **Test**: `stack.testing` present in experiment.yaml if adding tests for first time
-4. Unless `quality: mvp` in experiment.yaml: `stack.testing` must be present
+4. `stack.testing` must be present in experiment.yaml
 5. **Quality: solve trace complete** — if `.runs/solve-trace.json` exists: all 5 required fields (`mode`, `problem_decomposition`, `constraint_enumeration`, `solution_design`, `self_check`, `output`) are non-empty — run `python3 -c "import json; d=json.load(open('.runs/solve-trace.json')); required=['mode','problem_decomposition','constraint_enumeration','solution_design','self_check','output']; empty=[k for k in required if not d.get(k)]; print('PASS: all fields populated' if not empty else 'BLOCK: empty fields: '+','.join(empty))"` (skip if solve-trace.json does not exist)
 
 ### G4 Implementation Gate
@@ -163,8 +163,7 @@ Verify after specs are updated:
 Verify after implementation:
 
 1. `npm run build` passes
-2. Unless `quality: mvp`:
-   - `git log --oneline main..HEAD` contains worktree merge commits (implementer agent evidence). No merge evidence → BLOCK
+2. `git log --oneline main..HEAD` contains worktree merge commits (implementer agent evidence). No merge evidence → BLOCK
    - Count worktree merge commits in `git log --oneline main..HEAD`. Read `.runs/current-plan.md` and count planned implementation tasks (distinct task items under the plan's implementation section). If merge count < task count by 2 or more → BLOCK: "Fewer worktree merges (N) than planned tasks (M) — some tasks may have been implemented directly instead of via implementer agents."
    - Grep new/modified source files for `// TODO: implement` or `throw new Error('not implemented')` — BLOCK if found
 3. If `stack.analytics` in experiment.yaml: spot-check new pages/routes for analytics imports
@@ -178,7 +177,7 @@ Verify after Step 7 verification:
 3. `agents_expected` matches `agents_completed` (all agents finished)
 4. If 2+ implementer agents (check git log): `consistency_scan` is NOT `skipped`
 5. If fix cycles ran (security-fixer or design-critic "fixed" in report): `auto_observe` is NOT `skipped-no-fixes`
-6. Unless `quality: mvp` in experiment.yaml, AND spec-reviewer in `agents_completed`: read spec-reviewer verdict from `.runs/verify-report.md` or `.runs/agent-traces/spec-reviewer.json` — BLOCK if verdict is `FAIL`
+6. If spec-reviewer in `agents_completed`: read spec-reviewer verdict from `.runs/verify-report.md` or `.runs/agent-traces/spec-reviewer.json` — BLOCK if verdict is `FAIL`
 7. `.runs/e2e-result.json` exists — BLOCK if missing: "E2E tests (STATE 5) were not executed"
 8. `.runs/patterns-saved.json` exists — BLOCK if missing: "Save Patterns (STATE 8) was not executed"
 9. If `.runs/verify-context.json` has `completed_states` field: verify it contains all states [0,1,2,3,4,5,6,7,8]. If any state is missing, BLOCK: "States [missing] were skipped during verification."
@@ -207,7 +206,7 @@ Verify experiment.yaml validation was thorough:
 4. Grep the file for literal "TODO" — BLOCK if any field value contains it
 5. Archetype-specific: web-app → `golden_path` with `page: landing`; service → `endpoints` non-empty; cli → `commands` non-empty
 6. Stack dependencies: `payment` → both `auth` and `database` must exist; `email` → both `auth` and `database` must exist
-7. Unless `quality: mvp` → `stack.testing` must be present
+7. `stack.testing` must be present
 8. If `variants` present → ≥2 entries, each has slug/headline/subheadline/cta/pain_points, all slugs unique
 
 9. **Quality: archetype trace matches** — `.runs/bootstrap-archetype-trace.json` exists and `archetype` field matches `type` in `experiment/experiment.yaml` — run `python3 -c "import json,yaml; t=json.load(open('.runs/bootstrap-archetype-trace.json')); e=yaml.safe_load(open('experiment/experiment.yaml')); print('PASS' if t.get('archetype')==e.get('type','web-app') else 'BLOCK: trace=%s, yaml=%s' % (t.get('archetype'),e.get('type')))"` (skip if bootstrap-archetype-trace.json does not exist)
