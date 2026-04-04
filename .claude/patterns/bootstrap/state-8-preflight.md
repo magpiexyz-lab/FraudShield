@@ -43,18 +43,44 @@ interact with users).
 
 Check off in `.runs/current-plan.md`: `- [x] TSP-LSP check completed`
 
+3. **FAL_KEY check** (AI image generation): Check if `FAL_KEY` environment variable
+   is set (check both shell environment and `.env.local` if it exists):
+   ```bash
+   python3 -c "import os; v=os.environ.get('FAL_KEY',''); print('available' if v and not v.startswith('placeholder') else 'missing')"
+   ```
+   If `FAL_KEY` is available, record `image_gen_status: "available"`.
+   If `FAL_KEY` is not set, tell the user:
+   > `FAL_KEY` is not set. AI image generation (FLUX.2 Pro via fal.ai) creates
+   > custom hero images, feature illustrations, and empty state graphics during
+   > bootstrap. Without it, themed SVG placeholders will be used instead.
+   >
+   > Get your key from https://fal.ai > Dashboard > Keys, then:
+   > `export FAL_KEY=your-fal-ai-key`
+   >
+   > Say "skip" to proceed with SVG placeholders.
+   Wait for the user to set the key or say "skip". If they set it, re-check.
+   Record `image_gen_status` as `"available"` or `"skipped"`.
+
+   This value is passed to subagents in their prompts (subagents cannot
+   interact with users).
+
+Check off in `.runs/current-plan.md`: `- [x] FAL_KEY check completed`
+
 - **Record preflight results** in `bootstrap-context.json`:
   ```bash
   python3 -c "
   import json
   ctx = json.load(open('.runs/bootstrap-context.json'))
   ctx['preflight_passed'] = True
+  ctx['image_gen_status'] = '<available_or_skipped>'
   json.dump(ctx, open('.runs/bootstrap-context.json', 'w'), indent=2)
   "
   ```
+  Replace `<available_or_skipped>` with the actual value determined above.
 
 **POSTCONDITIONS:**
 - `tsp_status` is set to `"available"` or `"skipped"`
+- `image_gen_status` is set to `"available"` or `"skipped"`
 - Quality flag recorded (production)
 - `preflight_passed` field set to `true` in `bootstrap-context.json`
 

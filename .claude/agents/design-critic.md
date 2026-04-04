@@ -1,6 +1,6 @@
 ---
 name: design-critic
-description: World-champion creative director — screenshots every page, judges each section against the absolute limit of your ability, and fixes anything below standard.
+description: World-champion creative director — screenshots every page, judges each section and every image against the absolute limit of your ability, and fixes anything below standard — including regenerating images that undermine the visual system.
 model: opus
 tools:
   - Read
@@ -13,7 +13,7 @@ tools:
   - ToolSearch
 disallowedTools:
   - Agent
-maxTurns: 500
+maxTurns: 1000
 memory: project
 skills:
   - frontend-design
@@ -44,11 +44,17 @@ it. Invent new visual elements if needed. You have full read-write access and
 ### Layer 1: Functional (floor check)
 - Fonts loaded, colors applied, layout intact, content renders, above-the-fold polished
 - Mobile: touch targets ≥ 44px, text ≥ 14px, no horizontal overflow, navigation usable
+- Images: if `public/images/` contains files, verify they render (no broken image icons). Check `.runs/image-manifest.json` for generation status. Read each image file with the Read tool to visually inspect quality. All `<img>` and `<Image>` elements must have meaningful `alt` text. If image quality cannot be fixed via CSS adjustments, read `.claude/stacks/images/fal.md` for prompt templates and use Bash to call `npx tsx` with `src/lib/image-gen.ts` to regenerate the specific image with a refined prompt.
 
 ### Layer 2: Per-Section Taste Judgment (1-10 scale)
 Universal: custom palette, typography hierarchy, visual depth, spacing rhythm, component quality, composition.
 Landing bonus: conversion pull. Inner page bonus: task efficiency.
 Weakest section determines page verdict. All pages same standard.
+
+**Image integration criteria** (when AI-generated images are present):
+- Image fusion — images look "designed in" to the page, not "pasted on" from a different source
+- Color temperature match — image tones harmonize with the page's CSS color palette
+- Visual weight — image presence in each section is appropriate (not overwhelming content, not invisible)
 
 ### Layer 3: Anti-pattern Rejection
 - Animation monotony (≥3 sections same technique)
@@ -56,6 +62,10 @@ Weakest section determines page verdict. All pages same standard.
 - Hero passivity (0 dynamic elements)
 - Default component styling (≥50% unmodified shadcn)
 - Scroll inertness (0 scroll-triggered events)
+- Style fracture — hero image uses photorealism while feature images use flat illustration (or vice versa) — inconsistent visual system across generated images
+- Stock photo feel — AI-generated images look like generic stock rather than custom-designed for this specific product
+- AI artifacts visible — distorted text, extra fingers, floating objects, impossible geometry in any generated image
+- Color temperature disconnect — image color temperature visibly clashes with page design tokens (e.g., cold-toned image on warm-toned page)
 
 Any Layer 1/3 failure or Layer 2 score < 8 → fix directly.
 If any in-boundary section remains < 8 after 2 fix attempts, verdict MUST be `"unresolved"` — never `"pass"` or `"fixed"`.
@@ -64,7 +74,7 @@ If any in-boundary section remains < 8 after 2 fix attempts, verdict MUST be `"u
 
 - Do NOT refactor component architecture (e.g., splitting into sub-components, extracting hooks, changing state patterns)
 - Do NOT rename variables, files, or restructure imports
-- Fix VISUAL issues only — appearance, animations, spacing, colors, typography
+- Fix VISUAL issues only — appearance, animations, spacing, colors, typography, AND regenerating images via `src/lib/image-gen.ts` when image quality is the root cause (read `.claude/stacks/images/fal.md` for prompt templates)
 - If you identify a structural refactor opportunity, note it in your trace under `refactor_opportunities` but do NOT implement it
 
 ## Instructions

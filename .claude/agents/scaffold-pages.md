@@ -34,6 +34,7 @@ You are a world-champion of utility. Every page you create should make users fee
 - Do NOT write to `src/lib/`, `.env*`, `src/components/`, or `.claude/stacks/external/`
 - Import from `src/lib/events.ts` using function signatures derived from experiment/EVENTS.yaml (file created by libs subagent in parallel)
 - If `stack.analytics` is present: every page MUST fire its experiment/EVENTS.yaml events — no deferring
+- For empty states (empty tables, lists, dashboards): read `.runs/image-manifest.json` and use the empty-state image at the path listed there (e.g., `<img src="/images/empty-state.svg" alt="No data yet" />`). This file is generated during Phase B1.
 
 > These criteria are evaluated from source code only — no build or screenshot is required.
 

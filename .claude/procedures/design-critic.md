@@ -75,6 +75,8 @@ For every page, check:
 - **Mobile: text legibility** — body font size ≥ 14px
 - **Mobile: no horizontal overflow** — no content wider than viewport
 - **Mobile: navigation usable** — hamburger menu or equivalent on small screens
+- **Images render** — if `public/images/` contains files, verify no broken image icons in screenshots. Read each image file with the Read tool to visually inspect standalone quality.
+- **Image manifest** — check `.runs/image-manifest.json` for generation status and per-image quality scores from scaffold-images
 
 Any Layer 1 failure → fix immediately before continuing to Layer 2.
 
@@ -91,6 +93,11 @@ mediocre social proof behind a great hero.
 4. Spacing rhythm — consistent padding, margins, gaps across sections?
 5. Component quality — shadcn/ui components with project theming, no raw HTML?
 6. Composition — intentional layout hierarchy, polished arrangement?
+
+**Image integration criteria** (when `public/images/` contains AI-generated assets):
+7b. Image fusion — do images look "designed in" to the page, or "pasted on" from a different source?
+7c. Color temperature match — do image tones harmonize with the page's CSS color palette?
+7d. Visual weight — is image presence in each section appropriate (not overwhelming, not invisible)?
 
 **Landing page bonus criterion** — each section is also judged on **persuasion**:
 7. Conversion pull — does this section actively advance the visitor toward the CTA? (emotional hook, objection handling, urgency, social proof)
@@ -109,6 +116,10 @@ Any of these triggers automatic fix — each has a measurable threshold:
 - **Hero passivity** — hero contains 0 interactive or dynamic elements beyond a static button (no animation, no illustration, no gradient shift, no particle/shape) → add visual dynamism
 - **Default component styling** — ≥50% of Card/Button/Badge instances use unmodified shadcn defaults (no custom colors, borders, shadows, or size overrides) → apply project theme
 - **Scroll inertness** — page has 0 scroll-triggered visual events across all sections (no reveals, parallax, counters, sticky transforms) → add scroll interaction to ≥2 sections
+- **Style fracture** — hero image uses photorealism while feature images use flat illustration (or vice versa) → regenerate inconsistent images with unified style prompt
+- **Stock photo feel** — AI-generated images look like generic stock rather than custom-designed → regenerate with more product-specific prompts
+- **AI artifacts visible** — distorted text, extra fingers, floating objects in any image → regenerate with refined prompt emphasizing "clean, no artifacts"
+- **Color temperature disconnect** — image color temperature visibly clashes with page design tokens → regenerate with explicit HEX color references from globals.css
 
 > **Scope Lock**: When fixing sections, change ONLY visual output (CSS classes, JSX structure for layout, animation code). Do NOT refactor component architecture, rename variables, or change state management patterns. If a section needs architectural changes to fix visually, note it as unresolved.
 
@@ -121,6 +132,15 @@ For any section rated below 8/10 in Layer 2, or any Layer 1/Layer 3 failure:
 3. Run `npm run build` (must pass)
 4. Re-screenshot the fixed page
 5. Verify improvement with the Read tool
+
+**Image fix path** (when root cause is the image itself, not CSS/layout):
+1. Read `.claude/stacks/images/fal.md` for the model selection table and prompt templates
+2. Analyze what's wrong with the image (color mismatch? wrong subject? AI artifacts? style inconsistency?)
+3. Craft an improved prompt addressing the specific issue, using the per-model template from fal.md
+4. Regenerate via Bash: `npx tsx -e "import { generateImage } from './src/lib/image-gen'; const r = await generateImage({ type: '<type>', prompt: '<improved prompt>', width: <w>, height: <h>, filename: '<same filename>', altText: '<alt>' }); console.log(JSON.stringify(r));"`
+5. Read the new image file to verify improvement
+6. Update `.runs/image-manifest.json` with new scores
+Same budget: max 2 fix attempts per image, matching the per-section CSS fix budget.
 
 After fixing sections on a page, re-screenshot the entire page once and re-rate all fixed sections from that screenshot. If any fixed section is still < 8, try one more fix (max 2 fix attempts per section, matching the security-fixer re-check pattern). Budget is 50 turns total; reserve ~10 turns for re-rate verification. If remaining turns < 10, stop fixing and write the trace immediately with verdict `"unresolved"`.
 

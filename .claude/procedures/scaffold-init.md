@@ -23,4 +23,12 @@
    - **Component Style**: shape vocabulary (pill / rounded / sharp), shadows, borders, button style
    - **Visual Texture**: decorative elements, background patterns, depth technique
    - **Social Proof Treatment**: approach (ticker/marquee / testimonial cards / metric counters / logo strip / none), density, position relative to hero
+   - **Image Direction**: comprehensive visual guidance for AI image generation during bootstrap Phase B1. Must cover ALL image types:
+     - **Visual system**: photography / illustration / mixed — the overall approach for all generated images
+     - **Hero**: subject matter (abstract/concrete), composition direction (negative space placement for text overlay), mood (aspirational/functional/dramatic)
+     - **Features**: style (iconographic/photographic/illustrative), consistency rule (all features must share the same visual treatment)
+     - **Logo**: graphic type (geometric/organic/letterform), shape logic (symmetry, complexity), constraint level (minimal 2-color / moderate / detailed)
+     - **OG/Social**: text hierarchy approach, background treatment, brand presentation style
+     - **Empty states**: emotional tone (encouraging/humorous/neutral), abstraction level
+     - **Color temperature**: warm/cool/neutral alignment with the Color Palette above — this ensures AI-generated images harmonize with page CSS
 

@@ -50,6 +50,11 @@ varies by archetype:
   framework stack file. Import analytics functions from `src/lib/events.ts`
   (created by scaffold-libs in Phase B1, which completes before this agent
   launches in Phase B2)
+- Read `.runs/image-manifest.json` for generated images. Use the hero image
+  (`/images/hero.webp` or `/images/hero.svg`) in the hero section and feature
+  images (`/images/feature-{1,2,3}.webp` or `.svg`) in feature sections.
+  For `.webp` files use `next/image` `Image` component; for `.svg` files use
+  `<img>` tags. These paths are guaranteed to exist from Phase B1.
 - If no `variants`: write `src/app/page.tsx` — a complete React landing
   page component. Must fire `visit_landing` on mount with experiment/EVENTS.yaml properties.
 - If `variants`: write `src/components/landing-content.tsx` — a shared
