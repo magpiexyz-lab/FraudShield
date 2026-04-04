@@ -36,7 +36,7 @@ Read the target files and any files they import. Understand the current state be
 
 Also glob for existing test files (`**/*.test.*`, `**/*.spec.*`). If test files exist, read 1-2 to understand the project's testing patterns (assertion style, helper naming, file organization). Note the conventions already established in the codebase: function naming pattern (camelCase verbs: validate*, get*, create*), error handling pattern (throw vs return), import style (@/ alias vs relative). Match these conventions in your new code and tests.
 
-If NO test files exist (first hardening run), use these defaults: vitest `describe`/`it`/`expect` blocks, camelCase verb prefixes for functions (validate*, get*, create*), `@/` alias imports, colocate test files next to source (`foo.ts` -> `foo.test.ts`). Read the testing stack file at `.claude/stacks/testing/<value>.md` (value from `experiment/experiment.yaml` `stack.testing`) for any framework-specific patterns (setup files, custom matchers, coverage config).
+If NO test files exist (first TDD run), use these defaults: vitest `describe`/`it`/`expect` blocks, camelCase verb prefixes for functions (validate*, get*, create*), `@/` alias imports, colocate test files next to source (`foo.ts` -> `foo.test.ts`). Read the testing stack file at `.claude/stacks/testing/<value>.md` (value from `experiment/experiment.yaml` `stack.testing`) for any framework-specific patterns (setup files, custom matchers, coverage config).
 
 ### 2. Write specification test
 
@@ -74,7 +74,7 @@ Verify the commit exists: run `git log --oneline -1` and confirm your commit mes
 
 ## Bug Discovery Protocol
 
-If a specification test reveals that existing code has a bug (test fails AND the failure shows incorrect behavior, not just missing code): fix the code to match the specification. This IS the point of hardening — the spec test defines correct behavior, and the code must conform.
+If a specification test reveals that existing code has a bug (test fails AND the failure shows incorrect behavior, not just missing code): fix the code to match the specification. The spec test defines correct behavior, and the code must conform.
 
 ## Key Constraints
 

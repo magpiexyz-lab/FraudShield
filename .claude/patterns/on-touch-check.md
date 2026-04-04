@@ -30,16 +30,16 @@ of every production-quality change (Feature, Fix, Upgrade).
 ```yaml
 on_touch:
   - path: src/app/api/invoices/route.ts
-    reason: "Read-only GET, no mutations — deferred from /harden"
+    reason: "Read-only GET, no mutations — deferred from bootstrap"
   - path: src/lib/utils.ts
     reason: "Simple utility, low risk"
 ```
 
 ## When ON-TOUCH Entries Are Created
 
-The `/harden` skill creates ON-TOUCH entries during its reconciliation phase
-(STATE 7) for modules that were classified as low-risk and deferred from
-immediate hardening. See `.claude/patterns/harden/state-7-persist-on-touch.md`.
+ON-TOUCH entries are created during `/bootstrap` (STATE 17) for modules
+classified as low-risk and deferred from immediate unit test generation.
+See `.claude/patterns/bootstrap/state-17-persist-on-touch.md`.
 
 ## Parameterization by Change Type
 

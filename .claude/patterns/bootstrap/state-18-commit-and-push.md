@@ -1,7 +1,7 @@
-# STATE 15: COMMIT_AND_PUSH
+# STATE 18: COMMIT_AND_PUSH
 
 **PRECONDITIONS:**
-- Wire done (STATE 14 POSTCONDITIONS met)
+- ON-TOUCH persisted (STATE 17 POSTCONDITIONS met)
 - Checkpoint is `awaiting-verify`
 
 **ACTIONS:**
@@ -46,7 +46,7 @@ git log -1 --oneline | grep -q "Bootstrap MVP scaffold" && echo "Commit OK" || e
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
 ```bash
-bash .claude/scripts/advance-state.sh bootstrap 15
+bash .claude/scripts/advance-state.sh bootstrap 18
 ```
 
 **NEXT:** TERMINAL -- run `/verify` next.

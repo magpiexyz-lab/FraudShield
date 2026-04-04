@@ -62,20 +62,6 @@ elif [[ "$BRANCH" =~ ^chore/upgrade-template ]]; then
     ERRORS+=("observe-result.json not found — /upgrade must complete observation before PR")
   fi
   check_skill_completion "upgrade" "$PROJECT_DIR/.runs/upgrade-context.json"
-elif [[ "$BRANCH" =~ ^chore/harden ]]; then
-  # /harden runs /verify — require verify-report.md + completed_states
-  if [[ ! -f "$REPORT" ]]; then
-    ERRORS+=("verify-report.md not found — /harden must run /verify before PR")
-  fi
-  CTX="$PROJECT_DIR/.runs/harden-context.json"
-  if [[ -f "$CTX" ]]; then
-    STATES=$(normalize_states "$CTX")
-    REQUIRED=$(get_required_states "harden")
-    MISSING=$(compute_missing_states "$STATES" "$REQUIRED")
-    if [[ "$MISSING" != "NONE" ]]; then
-      ERRORS+=("harden states [$MISSING] not complete — finish all states before PR")
-    fi
-  fi
 elif [[ "$BRANCH" =~ ^chore/distribute ]]; then
   # /distribute runs /verify — require verify-report.md + completed_states
   if [[ ! -f "$REPORT" ]]; then
@@ -146,8 +132,6 @@ fi  # end branch-aware checks
 # Check 5.5a: Postcondition re-verification
 if [[ "$BRANCH" =~ ^(change|feat|fix)/ ]] && [[ ! "$BRANCH" =~ ^feat/bootstrap ]] && [[ ! "$BRANCH" =~ ^fix/resolve- ]]; then
   rerun_postconditions "change"
-elif [[ "$BRANCH" =~ ^chore/harden ]]; then
-  rerun_postconditions "harden"
 elif [[ "$BRANCH" =~ ^chore/distribute ]]; then
   rerun_postconditions "distribute"
 fi

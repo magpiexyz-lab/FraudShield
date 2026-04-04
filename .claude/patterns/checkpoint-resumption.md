@@ -19,14 +19,14 @@ exact checkpoint without re-deriving classification, scope, or stack.
 
 | Field | Required By | Purpose |
 |-------|------------|---------|
-| `skill` | all | Which skill is running (`change`, `bootstrap`, `harden`, `distribute`) |
+| `skill` | all | Which skill is running (`change`, `bootstrap`, `distribute`) |
 | `type` | change | Change classification (Feature, Upgrade, Fix, Polish, Analytics, Test) |
 | `scope` | change | Verification scope — skip re-derivation |
 | `archetype` | all | Product archetype (web-app, service, cli) |
 | `branch` | all | Git branch name — informational |
 | `stack` | all | Map of category/value pairs — skip stack resolution |
 | `checkpoint` | all | Exact resume position (maps to state) |
-| `modules` | harden | Ordered list of modules to harden |
+| `modules` | bootstrap | Ordered list of modules for unit test generation |
 | `context_files` | all | Files to re-read on resume for full state reconstruction |
 
 ## Per-Skill Checkpoint Mapping
@@ -50,17 +50,6 @@ exact checkpoint without re-deriving classification, scope, or stack.
 | `phase2-scaffold` | STATE 11 (parallel scaffold) |
 | `phase2-wire` | STATE 14 (wire phase) |
 | `awaiting-verify` | Terminal — run `/verify`, not `/bootstrap` |
-
-### /harden
-
-| Checkpoint | Resumes at |
-|-----------|------------|
-| `step2-approval` | STATE 2 (plan approval) |
-| `step3-setup` | STATE 4 (branch + config) |
-| `step3-module-N` | STATE 5 at module N (skip completed) |
-| `step3-reconcile` | STATE 6 (reconciliation) |
-| `step3-verify` | STATE 8 (run /verify) |
-| `step3-pr` | STATE 9 (commit/PR) |
 
 ## When to Save
 

@@ -3,7 +3,7 @@
 # Blocks final skill commits unless observation epilogue has been performed.
 # Data-driven: uses *-context.json + state-registry.json observation_gates
 # to determine which skills need observation enforcement.
-# Skills that run /verify (bootstrap, change, harden, distribute) are exempt —
+# Skills that run /verify (bootstrap, change, distribute) are exempt —
 # verify-report.md proves STATE 6 auto-observe ran.
 
 set -euo pipefail

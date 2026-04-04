@@ -12,14 +12,14 @@ checkpoint without re-deriving classification or stack.
 
 | Field | Purpose |
 |-------|---------|
-| `skill` | Which skill (`change` / `bootstrap` / `harden`) |
+| `skill` | Which skill (`change` / `bootstrap`) |
 | `type` | Change classification — skip re-classification |
 | `scope` | Verification scope — skip re-derivation |
 | `archetype` | Product archetype — skip experiment.yaml type read |
 | `branch` | Git branch — informational |
 | `stack` | All category/value pairs — skip stack resolution |
 | `checkpoint` | Exact resume position |
-| `modules` | Ordered list of modules to harden — `/harden` only |
+| `modules` | Ordered list of modules for unit test generation |
 | `context_files` | Files to re-read on resume — full state reconstruction |
 
 **Backward compatible:** No frontmatter → current behavior (skip Phase 1, start at Phase 2 beginning).
@@ -61,9 +61,9 @@ checkpoint without re-deriving classification or stack.
 - **Recovery:** Re-run `/distribute` — reads existing ads.yaml
 - **Manual cleanup:** Delete `experiment/ads.yaml` to regenerate
 
-### /harden failure
-- **State saved:** `.runs/current-plan.md` with frontmatter (archetype, stack, checkpoint, modules), `experiment/on-touch.yaml`, specification tests on feature branch
-- **Recovery:** Re-run `/harden` on the same branch — Step 0 reads frontmatter checkpoint and resumes at exact module. Completed modules already have tests.
+### Bootstrap unit test generation failure
+- **State saved:** `.runs/bootstrap-scan.json`, `.runs/bootstrap-modules-trace.json`, unit tests on feature branch
+- **Recovery:** Re-run `/bootstrap` — STATE 15 re-scans modules, STATE 16 skips modules with existing tests.
 - **Manual cleanup:** `git checkout main && git branch -d <branch-name>`
 
 ## Generic Recovery Steps

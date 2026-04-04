@@ -24,7 +24,7 @@
    - If `stack.testing` is present in experiment.yaml, read `.claude/stacks/testing/<value>.md`
 
 4. Determine skill name:
-   - If `.runs/current-plan.md` exists with a `skill:` field in its frontmatter → use that value (e.g., `"bootstrap"`, `"change"`, `"harden"`)
+   - If `.runs/current-plan.md` exists with a `skill:` field in its frontmatter → use that value (e.g., `"bootstrap"`, `"change"`)
    - Otherwise → use `"verify"` (standalone mode)
 
 5. Read previous verify baseline (if available), filtered by current skill:

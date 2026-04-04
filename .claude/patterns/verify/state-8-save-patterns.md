@@ -40,7 +40,6 @@ bash .claude/scripts/advance-state.sh verify 8
 **NEXT:**
 - If mode is **change-verify**: Done — return to /change for PR creation.
 - If mode is **distribute-verify**: Done — return to /distribute for final PR creation.
-- If mode is **harden-verify**: Done — return to /harden for module loop completion and PR creation.
 - If mode is **standalone**: Done.
 - If mode is **bootstrap-verify**: Create the bootstrap PR:
   1. Read `.runs/verify-report.md` frontmatter `overall_verdict`

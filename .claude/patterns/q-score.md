@@ -117,7 +117,6 @@ the embedded verify Q) or produce no measurable agent artifacts.
 |-------|-----------|---------|--------|
 | bootstrap | Q_states, Q_gates | `completed / expected`; `gates_passed / gates_total` | bootstrap-context.json, gate-verdicts/ |
 | change | Q_states, Q_plan | `completed / expected`; `checked / total checkboxes` | change-context.json, current-plan.md |
-| harden | Q_states, Q_modules | `completed / expected`; `modules_done / modules_total` | harden-context.json, current-plan.md |
 | distribute | Q_states, Q_campaign | `completed / expected`; `1 if campaign_id else 0.5` | distribute-context.json, ads.yaml |
 | resolve | Q_states, Q_fix | `completed / expected`; `1.0 (reached terminal)` | resolve-context.json |
 | retro | Q_sections, Q_filed | `1.0`; `1 if issue created else 0.5` | terminal state output |

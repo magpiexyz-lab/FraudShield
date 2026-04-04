@@ -15,41 +15,15 @@ if [[ "$COMMAND" != *"git commit"* ]]; then
   exit 0
 fi
 
-# If the current branch is not change/, feat/, fix/, or chore/harden, allow it
+# If the current branch is not change/, feat/, fix/, or chore/, allow it
 BRANCH=$(get_branch)
-if [[ ! "$BRANCH" =~ ^(change|feat|fix)/ ]] && [[ ! "$BRANCH" =~ ^chore/(harden|distribute|review|upgrade) ]]; then
+if [[ ! "$BRANCH" =~ ^(change|feat|fix)/ ]] && [[ ! "$BRANCH" =~ ^chore/(distribute|review|upgrade) ]]; then
   exit 0
 fi
 
 # Exclude bootstrap branches (handled by bootstrap-commit-gate.sh)
 if [[ "$BRANCH" =~ ^feat/bootstrap ]]; then
   exit 0
-fi
-
-# Handle chore/harden branches — only enforce at final step, require verify-report.md
-if [[ "$BRANCH" =~ ^chore/harden ]]; then
-  PROJECT_DIR="${CLAUDE_PROJECT_DIR:-.}"
-  PLAN="$PROJECT_DIR/.runs/current-plan.md"
-  if [[ -f "$PLAN" ]]; then
-    HARDEN_CP=$(python3 -c "
-import re
-with open('$PLAN') as f:
-    content = f.read()
-m = re.search(r'checkpoint:\s*(\S+)', content)
-print(m.group(1) if m else '')
-" 2>/dev/null || echo "")
-    if [[ -n "$HARDEN_CP" && "$HARDEN_CP" != "step3-pr" ]]; then
-      exit 0  # Not at final step, allow
-    fi
-  else
-    exit 0  # No plan file = not at final step
-  fi
-  # Final harden commit — require verify-report.md
-  REPORT="$PROJECT_DIR/.runs/verify-report.md"
-  if [[ ! -f "$REPORT" ]]; then
-    deny "Harden commit blocked: verify-report.md missing — run /verify before final commit."
-  fi
-  exit 0  # verify-report exists, allow
 fi
 
 # Handle chore/distribute branches — require verify-report.md before final commit
