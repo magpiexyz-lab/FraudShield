@@ -164,6 +164,14 @@ jobs:
             echo "No lint script found — skipping"
           fi
 
+      - name: Unit tests
+        run: |
+          if [ -f vitest.config.ts ]; then
+            npx vitest run
+          else
+            echo "No vitest.config.ts found — skipping unit tests"
+          fi
+
   e2e:
     needs: build
     if: hashFiles('playwright.config.ts') != ''

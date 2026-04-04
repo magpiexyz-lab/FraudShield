@@ -75,15 +75,19 @@ VARIABLE_NAME=description-or-example
      during visual review (no real credentials at bootstrap time).
 
      Server-side: FIRST check for production misuse, THEN check for demo mode:
-       if (process.env.DEMO_MODE === "true" && process.env.NODE_ENV === "production") {
+       if (process.env.DEMO_MODE === "true" && process.env.VERCEL === "1") {
          throw new Error("DEMO_MODE is not allowed in production");
        }
        if (process.env.DEMO_MODE === "true") return createDemoClient();
-     The production guard prevents silent data bypass if DEMO_MODE is
-     accidentally set in a production deployment.
+     The production guard uses `VERCEL === "1"` (injected by Vercel on all
+     deployments) instead of `NODE_ENV === "production"` because `next start`
+     sets NODE_ENV=production locally, which would block demo mode during
+     visual review and verification. For non-Vercel hosting, replace with
+     the provider's deployment indicator (e.g., `RAILWAY_ENVIRONMENT_NAME`).
 
      Client-side: check `process.env.NEXT_PUBLIC_DEMO_MODE === "true"` and
-     return a mock client. NEXT_PUBLIC_ is required because Next.js inlines
+     return a mock client. Do NOT add a NODE_ENV guard — the demo flag alone
+     is sufficient. NEXT_PUBLIC_ is required because Next.js inlines
      client env vars at build time.
 
      For Supabase-style chainable APIs (e.g., `from()`), use a Proxy-based mock:

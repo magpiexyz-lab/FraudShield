@@ -222,6 +222,9 @@ migrate: ## Push pending migrations to remote Supabase database
 	@echo "Migrations applied successfully."
 
 # Default artifacts for all archetypes. Update if you change stack.framework or stack.ui.
+# DO NOT delete .claude/commands/, .claude/patterns/, .claude/stacks/,
+# .claude/archetypes/, .claude/hooks/, .claude/scripts/, .claude/agents/,
+# .claude/procedures/, .claude/orchestration/ — these are template-owned.
 clean: ## Remove generated files (lets you re-run bootstrap)
 	rm -rf node_modules .next out                          # framework/nextjs
 	rm -rf dist                                            # framework/hono, framework/commander

@@ -55,7 +55,7 @@ import { createServerSupabaseClient } from "@/lib/supabase-server";
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
-  if (process.env.DEMO_MODE === "true" && process.env.NODE_ENV === "production") {
+  if (process.env.DEMO_MODE === "true" && process.env.VERCEL === "1") {
     throw new Error("DEMO_MODE is not allowed in production");
   }
   if (process.env.DEMO_MODE === "true") return NextResponse.redirect(`${origin}/`);
@@ -738,7 +738,7 @@ function createDemoClient() {
 }
 
 export function createAuthClient() {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "true" && process.env.NODE_ENV !== "production") return createDemoClient();
+  if (process.env.NEXT_PUBLIC_DEMO_MODE === "true") return createDemoClient();
   return createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL ?? "https://placeholder.supabase.co",
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "placeholder-anon-key"
@@ -797,7 +797,7 @@ function createDemoClient() {
 }
 
 export async function createServerAuthClient() {
-  if (process.env.DEMO_MODE === "true" && process.env.NODE_ENV === "production") {
+  if (process.env.DEMO_MODE === "true" && process.env.VERCEL === "1") {
     throw new Error("DEMO_MODE is not allowed in production");
   }
   if (process.env.DEMO_MODE === "true") return createDemoClient();

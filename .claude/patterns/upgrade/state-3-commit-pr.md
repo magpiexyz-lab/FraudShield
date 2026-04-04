@@ -51,6 +51,21 @@ If orphans exist:
 - Only delete files the user explicitly confirms
 - Do NOT delete without confirmation
 
+### Missing file restoration
+
+Read missing from `.runs/upgrade-diff-report.json`.
+
+If missing template-owned files exist:
+- Present the list to the user:
+  ```
+  The following template files are missing from your project (possibly deleted during a prior cleanup):
+    - .claude/orchestration/missing-file.json
+  Restore these files from the template? (Confirm each or all)
+  ```
+- For each confirmed file: `git show template/main:<path> > <path>`
+- Only restore files the user explicitly confirms
+- Do NOT restore without confirmation
+
 ### Commit
 
 Stage all changes (merged files + orphan deletions + any build fixes):

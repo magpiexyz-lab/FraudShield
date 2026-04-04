@@ -56,7 +56,7 @@ function getResend(): Resend {
 const FROM_ADDRESS = "onboarding@resend.dev";
 
 export async function sendWelcomeEmail(to: string, name: string, ctaUrl: string) {
-  if (process.env.DEMO_MODE === "true" && process.env.NODE_ENV === "production") {
+  if (process.env.DEMO_MODE === "true" && process.env.VERCEL === "1") {
     throw new Error("DEMO_MODE is not allowed in production");
   }
   if (process.env.DEMO_MODE === "true") return;
@@ -74,7 +74,7 @@ export async function sendWelcomeEmail(to: string, name: string, ctaUrl: string)
 }
 
 export async function sendActivationNudge(to: string, name: string, activationAction: string, ctaUrl: string) {
-  if (process.env.DEMO_MODE === "true" && process.env.NODE_ENV === "production") {
+  if (process.env.DEMO_MODE === "true" && process.env.VERCEL === "1") {
     throw new Error("DEMO_MODE is not allowed in production");
   }
   if (process.env.DEMO_MODE === "true") return;
