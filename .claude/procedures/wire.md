@@ -54,8 +54,8 @@ If `stack.database` is present and experiment.yaml behaviors require persistent 
 If no behaviors require database tables, skip this step.
 
 ### Step 7: Environment config
-- Generate `.env.example` by combining all environment variables from active stack files (framework, database, analytics, and any others that define env vars)
-- If `image_gen_status` in `.runs/bootstrap-context.json` is `"available"`, also include `FAL_KEY` from `.claude/stacks/images/fal.md` with a comment: `# AI image generation via fal.ai (optional -- SVG placeholders used if absent)`
+- Generate `.env.example` by combining all environment variables from active stack files (framework, database, analytics, images, and any others that define env vars)
+- Always include `FAL_KEY` in `.env.example` for web-app archetypes with a comment: `# AI image generation via fal.ai (optional -- SVG placeholders used if absent)`. Read `.claude/stacks/images/fal.md` for the env var name and format. The key is optional — bootstrap generates SVG placeholders when absent.
 
 ### Step 7b: Test scaffolding (if stack.testing is present)
 
