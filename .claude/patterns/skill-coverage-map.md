@@ -47,7 +47,7 @@ preventing them. Consumed by `/change` STATE 11 for Fix-type skill deficiency at
 | S4 | Golden Path Reachability | Step unreachable: page missing, CTA missing, or event not firing |
 | S5 | System/Cron Behaviors | System/cron behavior not implemented or untested |
 | S6 | Plan Completion | Plan item not addressed in source code |
-| S7 | TDD Compliance | Critical path missing spec test |
+| S7 | TDD Compliance | Critical path missing unit test |
 | S8 | Process Compliance | Process checklist missing or TDD order violation (WARN only) |
 
 ## Coverage Matrix

@@ -12,7 +12,7 @@ Follow archetype behavior check per `patterns/archetype-behavior-check.md`.
   1. Build & lint loop (max 3 attempts)
   2. Save notable patterns (if you fixed errors)
   3. Template observation review (ALWAYS — even if no errors were fixed)
-- **Note**: When scope is `full` or `security`, `/verify` automatically spawns spec-reviewer as an additional parallel agent. spec-reviewer validates all behaviors are implemented and specification tests are present. No extra action needed — just be aware it runs.
+- **Note**: When scope is `full` or `security`, `/verify` automatically spawns spec-reviewer as an additional parallel agent. spec-reviewer validates all behaviors are implemented and unit tests are present. No extra action needed — just be aware it runs.
 - **Write conflict prevention**: verify.md now requires edit-capable agents (design-critic, ux-journeyer) to run serially — not in parallel. The verification procedure handles this automatically. No extra action needed.
 - Re-read `.runs/current-plan.md` to verify implementation matches the approved plan. Check that every item in the plan has been addressed.
 - Type-specific checks:

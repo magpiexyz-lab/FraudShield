@@ -24,9 +24,9 @@ prompt tells them WHICH files to read and WHAT to do.
    **Vitest co-installation**: If `stack.testing` is NOT `vitest` (e.g., `testing: playwright`):
    - Also install `vitest` and `@vitest/coverage-v8` as dev dependencies
    - Create `vitest.config.ts` using the template from `.claude/stacks/testing/vitest.md`
-   - This ensures specification tests (TDD per `patterns/tdd.md`) can run alongside E2E tests
+   - This ensures unit tests (TDD per `patterns/tdd.md`) can run alongside E2E tests
    - scaffold-setup handles this: check if vitest.config.ts exists before creating
-   - Two test runners coexist: `npx playwright test` for E2E, `npx vitest run` for spec tests
+   - Two test runners coexist: `npx playwright test` for E2E, `npx vitest run` for unit tests
 
 2. **TSP-LSP check**: Run `which typescript-language-server`. If found, record
    `tsp_status: "available"`. If not found, tell the user:

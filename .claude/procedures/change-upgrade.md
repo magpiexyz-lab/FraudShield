@@ -13,7 +13,7 @@
 
 ## Implementation
 
-1. **ON-TOUCH check** -- follow `patterns/on-touch-check.md` for files in the upgrade plan. Write spec tests BEFORE upgrade code.
+1. **ON-TOUCH check** -- follow `patterns/on-touch-check.md` for files in the upgrade plan. Write unit tests BEFORE upgrade code.
 2. Generate TDD tasks for the integration per `patterns/tdd.md`. Link each task to its behavior ID(s) from experiment.yaml and include the behavior's `tests` array entries — the implementer must generate an `it()` assertion for each entry. Tasks should cover:
    - Credential storage/retrieval
    - Webhook signature validation (if applicable)

@@ -1,6 +1,6 @@
 ---
 name: implementer
-description: TDD-aware subagent — implements a single task with specification tests in an isolated worktree.
+description: TDD-aware subagent — implements a single task with unit tests in an isolated worktree.
 model: opus
 tools:
   - Read
@@ -38,9 +38,9 @@ Also glob for existing test files (`**/*.test.*`, `**/*.spec.*`). If test files 
 
 If NO test files exist (first TDD run), use these defaults: vitest `describe`/`it`/`expect` blocks, camelCase verb prefixes for functions (validate*, get*, create*), `@/` alias imports, colocate test files next to source (`foo.ts` -> `foo.test.ts`). Read the testing stack file at `.claude/stacks/testing/<value>.md` (value from `experiment/experiment.yaml` `stack.testing`) for any framework-specific patterns (setup files, custom matchers, coverage config).
 
-### 2. Write specification test
+### 2. Write unit test
 
-Write a test that defines what the code SHOULD do — per `patterns/tdd.md` section Specification Tests. Derive test cases from the task specification, not from current behavior. If behavior `tests` entries were provided in the task, generate an `it()` assertion for each entry — these are non-negotiable acceptance criteria.
+Write a test that defines what the code SHOULD do — per `patterns/tdd.md` section Unit Tests. Derive test cases from the task specification, not from current behavior. If behavior `tests` entries were provided in the task, generate an `it()` assertion for each entry — these are non-negotiable acceptance criteria.
 
 ### 3. RED — verify test fails
 
@@ -74,14 +74,14 @@ Verify the commit exists: run `git log --oneline -1` and confirm your commit mes
 
 ## Bug Discovery Protocol
 
-If a specification test reveals that existing code has a bug (test fails AND the failure shows incorrect behavior, not just missing code): fix the code to match the specification. The spec test defines correct behavior, and the code must conform.
+If a unit test reveals that existing code has a bug (test fails AND the failure shows incorrect behavior, not just missing code): fix the code to match the specification. The unit test defines correct behavior, and the code must conform.
 
 ## Key Constraints
 
 - One task per invocation, one concern per task
 - Do NOT modify files outside task scope
 - Do NOT skip the RED phase (verify test fails before writing code)
-- Do NOT write characterization tests (spec tests only — see `patterns/tdd.md`)
+- Do NOT write characterization tests (unit tests only — see `patterns/tdd.md`)
 - `npm run build` MUST pass before completing
 
 ## Output Contract

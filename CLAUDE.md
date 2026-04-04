@@ -60,7 +60,7 @@ Rules are in priority order. When two rules conflict, the lower-numbered rule wi
 ## Rule 4: Keep It Minimal
 - Prefer well-known libraries over custom code
 - Bootstrap creates page-load smoke tests when `stack.testing` is present. Use `/change` for full funnel tests and `/verify` to run tests and fix failures. No additional tests except for auth and payment flows. Exception: if a feature contains non-trivial business logic (calculations, state machines, multi-step workflows), add unit tests for that logic. This is rare in first MVPs — if you're writing complex algorithms, consider whether you're overbuilding.
-- Business logic (calculations, state machines, data mutations, auth, payment) MUST have specification tests (see `patterns/tdd.md`)
+- Business logic (calculations, state machines, data mutations, auth, payment) MUST have unit tests (see `patterns/tdd.md`)
 - Every /change Feature, Fix, or Upgrade spawns implementer agents (see `agents/implementer.md`) with task dependency ordering
 - /verify adds spec-reviewer as an additional parallel agent (see `agents/spec-reviewer.md`)
 - `stack.testing` is required — /change and /bootstrap will stop if testing stack is absent.

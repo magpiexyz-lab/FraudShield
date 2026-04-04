@@ -10,7 +10,7 @@
 
 2. **Generate 1 task per behavior** with 2-5 minute scope. Each task specifies:
    - Exact files to create or modify
-   - Spec test code (RED phase assertion)
+   - Unit test code (RED phase assertion)
    - Expected failure message
    - Minimal implementation (GREEN phase)
 
@@ -51,7 +51,7 @@ design quality during the GREEN phase.
 ## Implementer Contract
 
 Each implementer follows the RED-GREEN-REFACTOR cycle:
-1. **RED**: Write spec test from the `tests` entries → verify it fails
+1. **RED**: Write unit test from the `tests` entries → verify it fails
 2. **GREEN**: Write minimal implementation → verify test passes
 3. **REFACTOR**: Clean up without changing behavior
 

@@ -29,7 +29,7 @@ json.dump(validation, open('.runs/plan-validation.json', 'w'), indent=2)
 **Plan structure validation** (before presenting for approval):
 - Feature plans classified as Multi-layer: verify `## Approaches` section exists
 - All plans: if `.runs/iterate-manifest.json` exists, verify the plan's Why section references the iterate bottleneck
-- Production plans: verify each task with business logic has a specification test in its description
+- Production plans: verify each task with business logic has a unit test in its description
 - All plans: verify `## Exploration Summary` section exists (shows files scanned, patterns found, conflicts detected)
 If validation fails, fix the plan before presenting.
 
