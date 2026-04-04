@@ -62,15 +62,29 @@ If branch exists with changes:
   gh issue close <number> --comment "Fixed in review PR #<pr-number>"
   ```
 
+### Auto-merge
+
+If no branch exists (no findings across all iterations): skip auto-merge —
+there is no PR.
+
+If branch and PR exist: follow `.claude/patterns/auto-merge.md`. The PR number
+is from the `gh pr create` output above.
+
+If any safety gate fails, report the failure and leave the PR open.
+
+If auto-merge succeeded: "Review PR auto-merged to main. N findings fixed, M observation issues closed."
+If auto-merge skipped: "Review PR created but not auto-merged (<reason>). Merge manually."
+
 **POSTCONDITIONS:**
 - All changes committed
-- PR created with full review summary
+- PR created with full review summary (or no PR if no findings)
 - Resolved observation issues closed
+- Auto-merge completed (or intentionally skipped / no PR case)
 
 **VERIFY:**
 ```bash
 git status --porcelain | grep -v '??' | wc -l | xargs test 0 -eq && echo "Clean" || echo "Uncommitted changes"
-gh pr list --head "$(git branch --show-current)" --json number,title --limit 1
+gh pr list --head "$(git branch --show-current)" --json number,title --limit 1 2>/dev/null || echo "On main (auto-merged)"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
@@ -78,4 +92,4 @@ gh pr list --head "$(git branch --show-current)" --json number,title --limit 1
 bash .claude/scripts/advance-state.sh review 6
 ```
 
-**NEXT:** TERMINAL — review complete.
+**NEXT:** TERMINAL — review complete, PR auto-merged (or left open with reason / no changes).

@@ -49,4 +49,4 @@ git log -1 --oneline && echo "Commit OK"
 bash .claude/scripts/advance-state.sh distribute 8
 ```
 
-**NEXT:** Read [state-9-campaign-creation.md](state-9-campaign-creation.md) to continue.
+**NEXT:** Read [state-9-campaign-creation.md](state-9-campaign-creation.md) to continue. Auto-merge happens in state-9 after campaign creation completes (not here, because state-9 may push campaign metadata to the branch).

@@ -53,7 +53,18 @@ python3 .claude/scripts/write-q-score.py \
 
 - Delete `.runs/current-plan.md`, `.runs/verify-report.md`, and `.runs/agent-traces/` (if it exists) — the plan is captured in the PR description and the verification results are in the PR checklist. Note: plan deletion happens AFTER Step 7 completes (spec-reviewer needs the plan during verification).
 - **Save planning patterns**: If this change revealed planning-relevant patterns (auth flow interactions, stack integration quirks, codebase conventions discovered during exploration, schema design patterns), save a brief entry to auto memory under a "Planning Patterns" heading. These get consulted during future Phase 1 exploration via `.claude/procedures/plan-exploration.md` Step 5.
-- Tell the user: "Change PR created. Next: review and merge to `main`. Run `/verify` to confirm tests pass." If the archetype is `cli`, add: "CLIs are distributed via `npm publish` or GitHub Releases — see the archetype file. After merging this PR to `main`, bump the version in `package.json` and run `npm publish` to release the update. If this change modified the marketing surface, also run `/deploy` to push the updated surface to production. After publishing and collecting usage data, run `/iterate` to review metrics, or `/retro` when ready to wrap up." Otherwise, add: "Then run `/deploy` if not yet deployed."
+- **Auto-merge**: Follow `.claude/patterns/auto-merge.md`. The PR number is from
+  the `gh pr create` output above. If any safety gate fails, report the failure
+  and leave the PR open — tell the user to merge manually.
+- If auto-merge succeeded, tell the user: "Change PR auto-merged to main."
+  If the archetype is `cli`, add: "CLIs are distributed via `npm publish` or
+  GitHub Releases — see the archetype file. Bump the version in `package.json`
+  and run `npm publish` to release the update. If this change modified the
+  marketing surface, also run `/deploy` to push the updated surface to production.
+  After publishing and collecting usage data, run `/iterate` to review metrics,
+  or `/retro` when ready to wrap up." Otherwise, add: "Run `/deploy` if not yet deployed."
+- If auto-merge was skipped (safety gate), tell the user: "Change PR created but
+  not auto-merged (<reason>). Merge manually, then run `/deploy`."
 
 **POSTCONDITIONS:**
 - G5 Verification Gate passed
@@ -63,6 +74,7 @@ python3 .claude/scripts/write-q-score.py \
 - PR created with all template sections filled
 - `.runs/current-plan.md`, `.runs/verify-report.md`, `.runs/agent-traces/` deleted
 - Planning patterns saved to auto memory (if applicable)
+- Auto-merge completed (or intentionally skipped with reason reported)
 
 **VERIFY:**
 ```bash
@@ -75,4 +87,4 @@ git log -1 --oneline && echo "Commit OK"
 bash .claude/scripts/advance-state.sh change 12
 ```
 
-**NEXT:** TERMINAL — PR created, tell user next steps.
+**NEXT:** TERMINAL — PR auto-merged (or left open with reason).

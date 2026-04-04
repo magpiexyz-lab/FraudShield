@@ -57,14 +57,27 @@ If none: "No new checks — pattern is unlikely to recur."
 ### Potentially Resolved
 (From Step 8b, or "None — no side-effect matches detected")
 
+### Auto-merge
+
+Follow `.claude/patterns/auto-merge.md`. The PR number is from the `gh pr create`
+output above.
+
+If any safety gate fails, report the failure and leave the PR open — tell the
+user to merge manually.
+
+If auto-merge succeeded: "Resolve PR auto-merged to main. Issues closed."
+If auto-merge skipped: "Resolve PR created but not auto-merged (<reason>). Merge manually."
+
 **POSTCONDITIONS:**
 - All changes committed
 - PR opened with full template sections
 - `Closes #N` in PR body for each resolved issue
+- Auto-merge completed (or intentionally skipped with reason reported)
 
 **VERIFY:**
 ```bash
 gh pr view --json number 2>/dev/null
+git branch --show-current | grep -qE '^main$' && echo "On main" || echo "Not on main (auto-merge may have been skipped)"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
@@ -72,4 +85,4 @@ gh pr view --json number 2>/dev/null
 bash .claude/scripts/advance-state.sh resolve 11
 ```
 
-**NEXT:** This is the TERMINAL state. The /resolve skill is complete.
+**NEXT:** TERMINAL — resolve complete, PR auto-merged (or left open with reason).

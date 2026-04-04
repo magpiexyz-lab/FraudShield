@@ -126,8 +126,20 @@ Inputs for Strategy A:
 
 Spawn observer if diffs exist. Write `.runs/observe-result.json` with `"skill": "upgrade"`.
 
+### Auto-merge (skip for dry-run)
+
+If `dry_run == true` in `.runs/upgrade-context.json`: skip this section
+entirely (no PR was created).
+
+If `dry_run == false` (normal mode): follow `.claude/patterns/auto-merge.md`.
+The PR number is from the `gh pr create` output above.
+
+If any safety gate fails, report and leave PR open.
+If auto-merge succeeded: "Upgrade PR auto-merged to main."
+If auto-merge skipped: "Upgrade PR created but not auto-merged (<reason>). Merge manually."
+
 **POSTCONDITIONS:**
-- PR created (or dry-run report presented)
+- PR created and auto-merged (normal mode), or dry-run report presented, or PR left open (safety gate)
 - `.runs/observe-result.json` exists with `"skill": "upgrade"`
 
 **VERIFY:**
@@ -140,4 +152,4 @@ gh pr view --json number 2>/dev/null || test -f .runs/upgrade-diff-report.json
 bash .claude/scripts/advance-state.sh upgrade 3
 ```
 
-**NEXT:** TERMINAL -- the /upgrade skill is complete.
+**NEXT:** TERMINAL — upgrade complete, PR auto-merged (or dry-run / left open with reason).

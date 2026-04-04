@@ -55,4 +55,10 @@ bash .claude/scripts/advance-state.sh verify 8
      - **What Changed**: List files from `git diff main --name-only`.
      - **Why**: "Initial MVP scaffold for experiment."
      - Include verify-report.md agent verdicts in the Verification checklist.
-  4. Tell the user the PR URL. Done.
+  4. Tell the user the PR URL.
+  5. **Auto-merge**: Follow `.claude/patterns/auto-merge.md`. The PR number
+     is from the `gh pr create` output in step 3. If any safety gate fails,
+     report the failure and leave the PR open — tell the user to merge
+     manually. If auto-merge succeeds, tell the user:
+     "Bootstrap PR auto-merged to main." followed by the archetype-specific
+     guidance from the How to Test section above. Done.

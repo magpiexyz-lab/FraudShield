@@ -97,10 +97,26 @@ python3 .claude/scripts/write-q-score.py \
 > 3. **Monitor performance** — after the campaign runs for a few days, run `/iterate` to analyze your metrics and decide what to change next.
 > 4. **After `/iterate` feedback** — if `/iterate` recommends changes (e.g., improve landing page, reduce activation friction), run `/change` with the specific improvement. The campaign can keep running during changes — new visitors will see the updated page after you merge and deploy. If `/iterate` recommends revising targeting or budget, pause the campaign in the ad platform dashboard, update `experiment/ads.yaml`, re-run `/distribute`, then enable the new campaign.
 
+### 9h: Auto-merge
+
+Follow `.claude/patterns/auto-merge.md`. The PR number is from state-8's
+`gh pr create` output (retrieve via `gh pr view --json number -q .number`).
+
+If the manual fallback path (9f) was taken AND the user has not yet merged:
+proceed with auto-merge — the PR contains the distribution code independent
+of campaign creation.
+
+If any safety gate fails, report the failure and include it in the 9g next
+steps message. The user merges manually.
+
+If auto-merge succeeds, prepend to the 9g message: "Distribution PR auto-merged
+to main."
+
 **POSTCONDITIONS:**
 - Campaign created via API (9e) with campaign_id/campaign_url added to ads.yaml, OR
 - Manual fallback instructions provided (9f), OR
 - Existing campaign detected (9b) and skipped to next steps (9g)
+- PR auto-merged to main (or intentionally skipped with reason)
 
 **VERIFY:**
 ```bash
@@ -112,4 +128,4 @@ grep -q 'campaign_id' experiment/ads.yaml 2>/dev/null || grep -q 'manual_creatio
 bash .claude/scripts/advance-state.sh distribute 9
 ```
 
-**NEXT:** TERMINAL -- campaign is ready. Follow the next steps in 9g.
+**NEXT:** TERMINAL — campaign is ready, PR auto-merged (or left open with reason). Follow the next steps in 9g.
