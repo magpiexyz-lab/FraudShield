@@ -58,7 +58,7 @@
   E2EEOF
   ```
 
-  **Phase C: Specification tests (co-installed vitest)**
+  **Phase C: Unit tests (co-installed vitest)**
 
   If the primary test runner is NOT vitest (e.g., `playwright`) AND a `vitest.config.ts` file exists on disk:
 

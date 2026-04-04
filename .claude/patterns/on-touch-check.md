@@ -1,7 +1,7 @@
 # ON-TOUCH Check Pattern
 
 When `experiment/on-touch.yaml` exists, files marked as ON-TOUCH require
-specification tests before modification. This pattern is checked at the start
+unit tests before modification. This pattern is checked at the start
 of every production-quality change (Feature, Fix, Upgrade).
 
 ## Protocol
@@ -15,7 +15,7 @@ of every production-quality change (Feature, Fix, Upgrade).
    `on_touch` entries. Identify any files that appear in both.
 
 4. **Add TDD prerequisite.** For each overlapping file: add a prerequisite TDD task
-   to write specification tests for the existing code in that file BEFORE writing
+   to write unit tests for the existing code in that file BEFORE writing
    new feature/fix/upgrade code. This ensures existing behavior is captured before
    modification.
 

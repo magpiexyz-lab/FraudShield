@@ -94,13 +94,13 @@ Every plan item is addressed in source code. Unaddressed item is a FAIL.
 **S7. TDD compliance**
 > Skip if no `.runs/current-plan.md` exists.
 
-For each task in the plan: a specification test file (`*.test.*` or `*.spec.*`)
+For each task in the plan: a unit test file (`*.test.*` or `*.spec.*`)
 MUST exist covering that task's target module. A task with production code but
-no corresponding spec test indicates TDD was bypassed — this is a FAIL regardless
+no corresponding unit test indicates TDD was bypassed — this is a FAIL regardless
 of whether the code is functionally correct.
 
 Additionally, if the task references behavior IDs from experiment.yaml: grep the
-spec test file for each `behavior.tests` entry. Each entry must have a corresponding
+unit test file for each `behavior.tests` entry. Each entry must have a corresponding
 `it()` or `test()` assertion. A behavior `tests` entry with no matching assertion
 is a FAIL — report the missing entry and behavior ID.
 
@@ -122,7 +122,7 @@ is a FAIL — report the missing entry and behavior ID.
 | S4. Golden path | pass/FAIL/skip | <unreachable steps if FAIL> |
 | S5. System/cron behaviors | pass/FAIL/skip | <missing tests if FAIL> |
 | S6. Plan completion | pass/FAIL/skip | <unaddressed items if FAIL> |
-| S7. TDD compliance | pass/FAIL/skip | <tasks missing spec tests if FAIL> |
+| S7. TDD compliance | pass/FAIL/skip | <tasks missing unit tests if FAIL> |
 | S8. Process compliance | pass/WARN/skip | <process violations if WARN> |
 
 ## Verdict

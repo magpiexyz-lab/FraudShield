@@ -13,8 +13,8 @@
 
 ## Implementation
 
-1. **ON-TOUCH check** -- follow `patterns/on-touch-check.md` for files in the implementation plan. Write spec tests BEFORE new feature code.
-  2. Generate implementation plan (see `procedures/tdd-task-generation.md`) — break into 2-5 min TDD tasks (exact files, spec test code, expected failure, minimal impl) per `patterns/tdd.md` § Task Granularity. Link each task to its behavior ID(s) from experiment.yaml. Include the behavior's `tests` array entries in the task description — the implementer must generate an `it()` assertion for each entry. Mark each task as **visual** (targets `.tsx` page or component files) or **logic** (everything else).
+1. **ON-TOUCH check** -- follow `patterns/on-touch-check.md` for files in the implementation plan. Write unit tests BEFORE new feature code.
+  2. Generate implementation plan (see `procedures/tdd-task-generation.md`) — break into 2-5 min TDD tasks (exact files, unit test code, expected failure, minimal impl) per `patterns/tdd.md` § Task Granularity. Link each task to its behavior ID(s) from experiment.yaml. Include the behavior's `tests` array entries in the task description — the implementer must generate an `it()` assertion for each entry. Mark each task as **visual** (targets `.tsx` page or component files) or **logic** (everything else).
   3. Analyze task dependency graph per `patterns/tdd.md` § Task Dependency Ordering:
      - Independent tasks → spawn implementer agents in parallel (isolation: "worktree")
      - Dependent tasks (B imports A) → sequential execution per `patterns/tdd.md` § Sequential Execution Protocol (merge A's worktree, verify output on branch, then spawn B)

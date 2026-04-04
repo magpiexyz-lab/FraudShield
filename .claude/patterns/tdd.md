@@ -8,7 +8,7 @@ Follow this procedure when implementing features or fixes.
 
 For every task:
 
-1. **RED** — Write a failing specification test that defines what the code SHOULD do.
+1. **RED** — Write a failing unit test that defines what the code SHOULD do.
    Run the test. Confirm it fails with the expected error.
 2. **GREEN** — Write the minimal code to make the test pass. No more, no less.
 3. **REFACTOR** — Improve the code under green tests. Rename, extract, simplify.
@@ -23,21 +23,21 @@ For every task:
 Never skip the RED phase. If the test passes immediately, the code already
 satisfies the specification — skip to REFACTOR and move on.
 
-## Specification Tests
+## Unit Tests
 
-Specification tests are the primary approach in production mode. They define
+Unit tests are the primary approach in production mode. They define
 what the code SHOULD do, not what it currently DOES.
 
 - Derive test cases from experiment.yaml `behaviors`, `golden_path`, and behaviors with `actor: system/cron`
-- **Use `behavior.tests` entries as required assertions**: each entry in a behavior's `tests` array becomes an `it()` assertion in the spec test. These are the acceptance criteria — every entry must have a corresponding test.
+- **Use `behavior.tests` entries as required assertions**: each entry in a behavior's `tests` array becomes an `it()` assertion in the unit test. These are the acceptance criteria — every entry must have a corresponding test.
 - Each test asserts correct behavior for a specific input/scenario
-- If code fails a specification test, that is a real bug — fix the code
+- If code fails a unit test, that is a real bug — fix the code
 - Do NOT write characterization tests (tests that merely snapshot current behavior)
 
 Example:
 
 ```typescript
-// Specification test: defines CORRECT behavior
+// Unit test: defines CORRECT behavior
 expect(validateEmail("bad@@email")).toBe(false);
 expect(validateEmail("user@example.com")).toBe(true);
 
@@ -47,7 +47,7 @@ expect(validateEmail("user@example.com")).toBe(true);
 
 ## Regression Tests
 
-Use regression tests for bug fixes. They are distinct from specification tests.
+Use regression tests for bug fixes. They are distinct from unit tests.
 
 1. Write a test that demonstrates the bug (fails on the current code)
 2. Fix the code
@@ -66,7 +66,7 @@ Each TDD task must be small and self-contained:
 - **Clarity:** Expected test code, expected failure message, minimal implementation
 
 Bad task: "Add user authentication"
-Good task: "Add `validatePassword` in `src/lib/auth.ts` — spec test: rejects
+Good task: "Add `validatePassword` in `src/lib/auth.ts` — unit test: rejects
 passwords shorter than 8 characters, accepts valid passwords. Expected failure:
 `validatePassword is not a function`."
 
@@ -107,12 +107,12 @@ Do NOT spawn a dependent task until its prerequisites are merged and verified.
 | Scenario | Test Type | Workflow |
 |----------|-----------|----------|
 | New feature | Specification (TDD) | RED — GREEN — REFACTOR |
-| Hardening existing module | Specification | Write spec test — may fail — fix code |
+| Existing module needing tests | Unit | Write unit test — may fail — fix code |
 | Bug fix | Regression | Write test demonstrating bug — fix — pass |
 | Refactoring | Existing tests | Refactor under green tests only |
 
-- **New feature:** No code exists yet. Write the spec test first, then the code.
-- **Hardening:** Code exists but lacks tests. Write spec tests for what it SHOULD do.
+- **New feature:** No code exists yet. Write the unit test first, then the code.
+- **Existing module:** Code exists but lacks tests. Write unit tests for what it SHOULD do.
   If the test fails, the code has a bug — fix it.
 - **Bug fix:** A specific failure is known. Write a regression test, then fix.
 - **Refactoring:** Tests already pass. Change structure without changing behavior.
