@@ -1,7 +1,7 @@
 # STATE 5: MANIFEST_WRITE
 
 **PRECONDITIONS:**
-- Health check and provision scan completed (STATE 4 POSTCONDITIONS met)
+- Health check and provision scan completed (STATE 4b POSTCONDITIONS met)
 
 **ACTIONS:**
 

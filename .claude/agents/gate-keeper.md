@@ -180,7 +180,7 @@ Verify after Step 7 verification:
 6. If spec-reviewer in `agents_completed`: read spec-reviewer verdict from `.runs/verify-report.md` or `.runs/agent-traces/spec-reviewer.json` — BLOCK if verdict is `FAIL`
 7. `.runs/e2e-result.json` exists — BLOCK if missing: "E2E tests (STATE 5) were not executed"
 8. `.runs/patterns-saved.json` exists — BLOCK if missing: "Save Patterns (STATE 8) was not executed"
-9. If `.runs/verify-context.json` has `completed_states` field: verify it contains all states [0,1,2,3,4,5,6,7,8]. If any state is missing, BLOCK: "States [missing] were skipped during verification."
+9. If `.runs/verify-context.json` has `completed_states` field: verify it contains all states [0,1,2,3a,3b,3c,4,5,6,7a,7b,8]. If any state is missing, BLOCK: "States [missing] were skipped during verification."
 
 ### G6 PR Gate
 

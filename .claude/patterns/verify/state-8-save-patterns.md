@@ -1,6 +1,6 @@
 # STATE 8: SAVE_PATTERNS
 
-**PRECONDITIONS:** STATE 7 complete.
+**PRECONDITIONS:** STATE 7b complete.
 
 If `.runs/fix-log.md` has only the header line and no entries, this state is a no-op — write `.runs/patterns-saved.json` with `{"saved":0,"skipped":0,"total":0,"saved_to_files":[],"saved_to_memory":0}` and return.
 

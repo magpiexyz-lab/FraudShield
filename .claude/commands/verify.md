@@ -36,11 +36,14 @@ Read each STATE's file **only when transitioning to that state**. Do NOT read ah
 | 0 | READ_CONTEXT | Setup | [state-0-read-context.md](../patterns/verify/state-0-read-context.md) |
 | 1 | BUILD_LINT_LOOP | Verify | [state-1-build-lint-loop.md](../patterns/verify/state-1-build-lint-loop.md) |
 | 2 | PHASE1_PARALLEL | Verify | [state-2-phase1-parallel.md](../patterns/verify/state-2-phase1-parallel.md) |
-| 3 | PHASE2_SERIAL | Verify | [state-3-phase2-serial.md](../patterns/verify/state-3-phase2-serial.md) |
+| 3a | DESIGN_AGENTS | Verify | [state-3a-design-agents.md](../patterns/verify/state-3a-design-agents.md) |
+| 3b | QUALITY_GATE | Verify | [state-3b-quality-gate.md](../patterns/verify/state-3b-quality-gate.md) |
+| 3c | UX_MERGE | Verify | [state-3c-ux-merge.md](../patterns/verify/state-3c-ux-merge.md) |
 | 4 | SECURITY_MERGE_FIX | Verify | [state-4-security-merge-fix.md](../patterns/verify/state-4-security-merge-fix.md) |
 | 5 | E2E_TESTS | Verify | [state-5-e2e-tests.md](../patterns/verify/state-5-e2e-tests.md) |
 | 6 | AUTO_OBSERVE | Finalize | [state-6-auto-observe.md](../patterns/verify/state-6-auto-observe.md) |
-| 7 | WRITE_REPORT | Finalize | [state-7-write-report.md](../patterns/verify/state-7-write-report.md) |
+| 7a | WRITE_REPORT | Finalize | [state-7a-write-report.md](../patterns/verify/state-7a-write-report.md) |
+| 7b | COMPUTE_QSCORE | Finalize | [state-7b-compute-qscore.md](../patterns/verify/state-7b-compute-qscore.md) |
 | 8 | SAVE_PATTERNS | Finalize | [state-8-save-patterns.md](../patterns/verify/state-8-save-patterns.md) |
 
 Begin at STATE 0. Read [state-0-read-context.md](../patterns/verify/state-0-read-context.md) now.

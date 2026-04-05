@@ -91,4 +91,4 @@ python3 -c "import json; assert json.load(open('.runs/deploy-context.json')).get
 bash .claude/scripts/advance-state.sh deploy 2
 ```
 
-**NEXT:** Read [state-3-provision.md](state-3-provision.md) to continue.
+**NEXT:** Read [state-3a-provision-db.md](state-3a-provision-db.md) to continue.

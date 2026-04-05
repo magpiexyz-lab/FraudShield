@@ -45,11 +45,14 @@ Read each STATE's file **only when transitioning to that state**. Do NOT read ah
 | 0 | READ_CONTEXT | [state-0-read-context.md](verify/state-0-read-context.md) |
 | 1 | BUILD_LINT_LOOP | [state-1-build-lint-loop.md](verify/state-1-build-lint-loop.md) |
 | 2 | PHASE1_PARALLEL | [state-2-phase1-parallel.md](verify/state-2-phase1-parallel.md) |
-| 3 | PHASE2_SERIAL | [state-3-phase2-serial.md](verify/state-3-phase2-serial.md) |
+| 3a | DESIGN_AGENTS | [state-3a-design-agents.md](verify/state-3a-design-agents.md) |
+| 3b | QUALITY_GATE | [state-3b-quality-gate.md](verify/state-3b-quality-gate.md) |
+| 3c | UX_MERGE | [state-3c-ux-merge.md](verify/state-3c-ux-merge.md) |
 | 4 | SECURITY_MERGE_FIX | [state-4-security-merge-fix.md](verify/state-4-security-merge-fix.md) |
 | 5 | E2E_TESTS | [state-5-e2e-tests.md](verify/state-5-e2e-tests.md) |
 | 6 | AUTO_OBSERVE | [state-6-auto-observe.md](verify/state-6-auto-observe.md) |
-| 7 | WRITE_REPORT | [state-7-write-report.md](verify/state-7-write-report.md) |
+| 7a | WRITE_REPORT | [state-7a-write-report.md](verify/state-7a-write-report.md) |
+| 7b | COMPUTE_QSCORE | [state-7b-compute-qscore.md](verify/state-7b-compute-qscore.md) |
 | 8 | SAVE_PATTERNS | [state-8-save-patterns.md](verify/state-8-save-patterns.md) |
 
 ---
@@ -275,7 +278,7 @@ See [state-6-auto-observe.md](verify/state-6-auto-observe.md) for full procedure
 
 ## Write Verification Report
 
-See [state-7-write-report.md](verify/state-7-write-report.md) for full procedure.
+See [state-7a-write-report.md](verify/state-7a-write-report.md) and [state-7b-compute-qscore.md](verify/state-7b-compute-qscore.md) for full procedure.
 
 ## Save Notable Patterns
 

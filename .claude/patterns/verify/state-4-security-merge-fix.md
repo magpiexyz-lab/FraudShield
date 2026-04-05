@@ -1,6 +1,6 @@
 # STATE 4: SECURITY_MERGE_FIX
 
-**PRECONDITIONS:** STATE 3 complete.
+**PRECONDITIONS:** STATE 3c complete.
 
 **Always write** `.runs/security-merge.json` — this is a metadata artifact, not an operational step:
 
@@ -90,7 +90,7 @@ After each fix, append to `.runs/fix-log.md`.
 #### Lead-side validation (security-fixer)
 
 1. Read `.runs/agent-traces/security-fixer.json` trace.
-2. If `verdict` == `"partial"` AND `unresolved_critical` > 0, this is a **hard gate failure** — Critical/High security issues or Defender FAILs remain unfixed after 2 fix cycles. Skip STATEs 5-6 but still write verify-report.md (STATE 7) and execute STATE 8 (Save Patterns). Report failure to user with the unresolved items.
+2. If `verdict` == `"partial"` AND `unresolved_critical` > 0, this is a **hard gate failure** — Critical/High security issues or Defender FAILs remain unfixed after 2 fix cycles. Skip STATEs 5-6 but still write verify-report.md (STATE 7a) and execute STATE 8 (Save Patterns). Report failure to user with the unresolved items.
 3. If trace has `"recovery": true` AND `verdict` == `"partial"`, treat as hard gate failure (recovery traces cannot confirm fixes succeeded).
 4. Extract Fix Summaries from the agent's return message. Append each fix to `.runs/fix-log.md` with the prefix `Fix (security-fixer):`.
 5. If the lead directly applies additional security fixes beyond what security-fixer handled (e.g., defender findings the fixer did not address), append to `.runs/fix-log.md`:

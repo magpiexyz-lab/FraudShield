@@ -3,11 +3,14 @@
     "0": "test -f .runs/verify-context.json && test -f .runs/fix-log.md && test -d .runs/agent-traces",
     "1": "test -f .runs/build-result.json && python3 -c \"import json; assert json.load(open('.runs/build-result.json'))['exit_code'] == 0\"",
     "2": "ls .runs/agent-traces/*.json >/dev/null 2>&1",
-    "3": "python3 -c \"import json,os; fl=open('.runs/fix-log.md').read() if os.path.exists('.runs/fix-log.md') else ''; checks=[('design-critic','.runs/agent-traces/design-critic.json'),('ux-journeyer','.runs/agent-traces/ux-journeyer.json'),('security-fixer','.runs/agent-traces/security-fixer.json')]; errs=[n+': trace has fixes but fix-log missing Fix ('+n+')' for n,p in checks if os.path.exists(p) and len(json.load(open(p)).get('fixes',[]))>0 and 'Fix ('+n not in fl]; assert not errs, '; '.join(errs)\"",
+    "3a": "ls .runs/agent-traces/design-critic-*.json >/dev/null 2>&1",
+    "3b": "test -f .runs/agent-traces/design-critic.json && python3 -c \"import json; assert json.load(open('.runs/build-result.json'))['exit_code']==0\"",
+    "3c": "python3 -c \"import json,os; fl=open('.runs/fix-log.md').read() if os.path.exists('.runs/fix-log.md') else ''; checks=[('design-critic','.runs/agent-traces/design-critic.json'),('ux-journeyer','.runs/agent-traces/ux-journeyer.json'),('security-fixer','.runs/agent-traces/security-fixer.json')]; errs=[n+': trace has fixes but fix-log missing Fix ('+n+')' for n,p in checks if os.path.exists(p) and len(json.load(open(p)).get('fixes',[]))>0 and 'Fix ('+n not in fl]; assert not errs, '; '.join(errs)\"",
     "4": "test -f .runs/security-merge.json",
     "5": "test -f .runs/e2e-result.json",
     "6": "true",
-    "7": {
+    "7a": "head -1 .runs/verify-report.md | grep -q '^---$'",
+    "7b": {
       "verify": "head -1 .runs/verify-report.md | grep -q '^---$' && tail -1 .runs/verify-history.jsonl | python3 -c 'import json,sys,os,glob; e=json.loads(sys.stdin.read()); ds=e.get(\"dimension_scores\",{}); assert not(ds.get(\"Q_build\",0)>0) or (os.path.exists(\".runs/build-result.json\") and json.load(open(\".runs/build-result.json\")).get(\"exit_code\")==0), \"Q_build>0 but build failed\"; assert not(ds.get(\"Q_security\",0)>0) or glob.glob(\".runs/agent-traces/security-*.json\"), \"Q_security>0 but no security traces\"; assert not(ds.get(\"Q_design\",0)>0) or os.path.exists(\".runs/agent-traces/design-critic.json\"), \"Q_design>0 but no design-critic trace\"; hgf=e.get(\"hard_gate_failure\",False); [(lambda p,vk,vv,ex=None: (lambda t: (lambda n: None if not n or hgf else (_ for _ in ()).throw(AssertionError(p+\" requires hard_gate_failure=true\")))(t.get(vk) in vv or t.get(\"recovery\",False) or any(t.get(ek,0)>ev for ek,ev in (ex or []))))(json.load(open(p))) if os.path.exists(p) else None)(p,vk,vv,ex) for p,vk,vv,ex in [(\".runs/agent-traces/design-critic.json\",\"verdict\",[\"unresolved\"],None),(\".runs/agent-traces/ux-journeyer.json\",\"verdict\",[\"blocked\"],[(\"unresolved_dead_ends\",0)]),(\".runs/agent-traces/security-fixer.json\",\"verdict\",[\"partial\"],[(\"unresolved_critical\",0)])]]'"
     },
     "8": "test -f .runs/patterns-saved.json"
@@ -114,8 +117,11 @@
     "0": "test -f .runs/deploy-context.json",
     "1": "test -f .runs/deploy-config.json",
     "2": "python3 -c \"import json; assert json.load(open('.runs/deploy-context.json')).get('approved') == True, 'approved not set'\"",
-    "3": "test -f .runs/deploy-provision.json",
-    "4": "test -f .runs/deploy-health.json && python3 -c \"import json; d=json.load(open('.runs/deploy-health.json')); assert 'health_check_passed' in d\"",
+    "3a": "test -f .runs/deploy-provision-3a.json",
+    "3b": "test -f .runs/deploy-provision-3b.json",
+    "3c": "test -f .runs/deploy-provision.json",
+    "4a": "test -f .runs/deploy-health-4a.json",
+    "4b": "test -f .runs/deploy-health.json && python3 -c \"import json; d=json.load(open('.runs/deploy-health.json')); assert 'health_check_passed' in d\"",
     "5": "test -f .runs/deploy-manifest.json",
     "6": "python3 -c \"import json; d=json.load(open('.runs/observe-result.json')); assert d['skill']=='deploy'\""
   },
@@ -198,7 +204,7 @@
 
   "agent_gates": {
     "verify": {
-      "_required_states": ["0","1","2","3","4","5","6","7","8"],
+      "_required_states": ["0","1","2","3a","3b","3c","4","5","6","7a","7b","8"],
       "build-info-collector":       { "required_states": ["0","1"], "artifacts": [".runs/build-result.json"], "deny_background": true, "required_checks": ["diff_collected","summaries_written","template_files_listed"] },
       "security-defender":          { "required_states": ["0","1"], "artifacts": [".runs/build-result.json"], "deny_background": true, "required_checks": ["D1_secrets","D2_validation","D3_rls","D4_client_server","D5_rate_limit","D6_deps"] },
       "security-attacker":          { "required_states": ["0","1"], "artifacts": [".runs/build-result.json"], "deny_background": true, "required_checks": ["A1_validation_bypass","A2_access_control","A3_injection","A4_info_leakage","A5_auth_weakness"] },
@@ -209,9 +215,9 @@
       "design-critic":              { "required_states": ["0","1"], "artifacts": [".runs/build-result.json"], "required_checks": ["layer1_functional","layer2_taste","layer3_antipattern","visual_regression"] },
       "design-consistency-checker": { "required_states": ["0","1"], "artifacts": [".runs/build-result.json"], "required_checks": ["C1_color","C2_typography","C3_spacing","C4_component","C5_layout"] },
       "ux-journeyer":               { "required_states": ["0","1"], "artifacts": [".runs/build-result.json"], "required_checks": ["golden_path_trace","flow_issues","clicks_to_value"] },
-      "security-fixer":             { "required_states": ["0","1","2","3"], "artifacts": [".runs/build-result.json"], "required_checks": ["fix_code","rebuild","recheck","collect_changes","generate_tables"] },
-      "observer":                   { "required_states": ["0","1","2","3","4"], "artifacts": [".runs/e2e-result.json"], "required_checks": ["prerequisites","fix_evaluation","redaction","dedup","issue_filing"] },
-      "pattern-classifier":         { "required_states": ["0","1","2","3","4","5","6"], "required_checks": ["pattern_analysis","template_classification"] }
+      "security-fixer":             { "required_states": ["0","1","2","3a","3b","3c"], "artifacts": [".runs/build-result.json"], "required_checks": ["fix_code","rebuild","recheck","collect_changes","generate_tables"] },
+      "observer":                   { "required_states": ["0","1","2","3a","3b","3c","4"], "artifacts": [".runs/e2e-result.json"], "required_checks": ["prerequisites","fix_evaluation","redaction","dedup","issue_filing"] },
+      "pattern-classifier":         { "required_states": ["0","1","2","3a","3b","3c","4","5","6"], "required_checks": ["pattern_analysis","template_classification"] }
     },
     "bootstrap": {
       "_required_states": ["0","1","2","3","3a","3b","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18"],
@@ -237,7 +243,7 @@
     "audit":    { "_required_states": ["0","1","2","3"], "_default": { "required_states": ["0"] } },
     "review":   { "_required_states": ["0","1","5"], "_default": { "required_states": ["0","1"] } },
     "resolve":  { "_required_states": ["0","1","2","3","10"], "_default": { "required_states": ["0","1","2","3","4","4b"] } },
-    "deploy":   { "_required_states": ["0","1","2","3","4","5","6"], "_default": { "required_states": ["0","1","2"] } },
+    "deploy":   { "_required_states": ["0","1","2","3a","3b","3c","4a","4b","5","6"], "_default": { "required_states": ["0","1","2"] } },
     "teardown": { "_required_states": ["0","1","2","3","4","5"], "_default": { "required_states": ["0","1","2"] } },
     "solve":    { "_required_states": ["0","1","2","3"], "_default": { "required_states": ["0"] } },
     "spec":     { "_required_states": ["0","1","2","3","4","5","6","7","8"] },

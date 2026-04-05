@@ -1,86 +1,9 @@
-# STATE 3: PROVISION
+# STATE 3c: DEPLOY_SERVICES
 
 **PRECONDITIONS:**
-- User approved deployment plan (STATE 2 POSTCONDITIONS met)
+- STATE 3b POSTCONDITIONS met (hosting project exists with env vars set, canonical_url partially determined)
 
 **ACTIONS:**
-
-> **Update mode behavior:** When `deploy_mode == "update"` (from deploy-context.json), provisioning is diff-based. The following steps are modified:
-> - **Always execute** (both modes): Step 5a (code deploy), Step 4.4 (env var sync with upsert), and DB migrations (idempotent)
-> - **Added services only**: Full provisioning (Steps 3, 3.5, 4.1–4.3 as applicable for new services)
-> - **Unchanged services**: Skip provisioning entirely — health check in STATE 4 verifies they still work
-> - **Removed services**: Skip entirely — marked orphaned in STATE 5 manifest
-> - **Post-deploy agents (5b)**: Only spawn for added services
->
-> For the steps below, "skip for update mode (unchanged)" means: skip this step if `deploy_mode == "update"` AND the relevant stack category is in `unchanged_services`.
-
-### Step 3: Provision database
-
-Skip this step if `stack.database` is absent or if the database stack file's `## Deploy Interface > Provisioning` says "none" (e.g., SQLite — auto-created on startup).
-
-**Update mode:** If `deploy_mode == "update"` and database is in `unchanged_services`: skip provisioning but **always run migrations** — read the database stack file's migration command and execute it. Migrations are idempotent (already-applied migrations are no-ops). If database is in `added_services`: run full provisioning below.
-
-**Initial mode / added service:** Read the database stack file's `## Deploy Interface > Provisioning` and follow each substep in order. The stack file specifies the exact CLI commands, polling logic, key extraction, and migration commands for the configured database provider.
-
-### Step 3.5: Collect OAuth credentials (first deploy only)
-
-Skip if `stack.auth_providers` is absent OR credentials already collected in Step 1.
-
-Now that the Supabase ref is known from Step 3, for each provider in `auth_providers`:
-show the callback URL (`https://<ref>.supabase.co/auth/v1/callback`), ask for Client ID
-and Secret (or **skip**). Store as `oauth_credentials: { provider: { client_id, secret } }`.
-
-### Step 4: Create hosting project and set env vars
-
-#### 4.1: Project setup
-
-**Update mode:** If `deploy_mode == "update"` and hosting is in `unchanged_services`: skip project setup (project already exists and is linked). Proceed to Step 4.4 (env var sync).
-
-**Initial mode:** Read the hosting stack file's `## Deploy Interface > Project Setup`. Follow the instructions to create/link the project. For the GitHub integration step: connect GitHub for **PR preview deployments only** — then disable production auto-deploy per the hosting stack file's instructions. If the GitHub connection fails, set `git_connect_failed=true` (reported in Step 6 summary) — this is non-blocking since production deploys are manual.
-
-#### 4.2: Domain setup
-
-Read the hosting stack file's `## Deploy Interface > Domain Setup`. Follow the instructions to add a custom domain. The default parent domain is `draftlabs.org`; override with `deploy.domain` in experiment.yaml.
-- **On success:** `canonical_url` = the custom domain, `domain_added` = true
-- **On failure:** warn with the stack file's fallback message, set `canonical_url` = null (finalized after Step 5a deploy), `domain_added` = false
-
-#### 4.3: Volume setup (if needed)
-
-Read the database stack file's `## Deploy Interface > Hosting Requirements > volume_config`. If `needed: true`:
-1. Read the hosting stack file's `## Deploy Interface > Volume Setup`
-2. Follow the instructions to create a persistent volume with the specified mount path
-3. Set the env vars from `volume_config.env_vars` using the hosting stack file's env var method
-
-If the hosting stack file has no `Volume Setup` section, stop: "Hosting provider <provider> does not support persistent volumes, which are required by <database>."
-
-#### 4.4: Set environment variables
-
-> **Always executed in both initial and update mode.** Env vars are synced using upsert semantics — existing values are overwritten, new values are added. This ensures `.env.example` changes are reflected on the hosting provider.
-
-Read the hosting stack file's `## Deploy Interface > Environment Variables` for the method (API, CLI, auth token location, fallback).
-
-Collect all env vars and set them using the hosting provider's method:
-
-   Variables from database provisioning (Step 3) — the database stack file's Provisioning substep specifies which env vars and their values.
-
-   Additional variables (when `stack.auth: supabase` AND `stack.database` is NOT `supabase`):
-   The auth stack needs a Supabase project even without the database stack. Ask the user for their existing Supabase project URL and anon key:
-   - `NEXT_PUBLIC_SUPABASE_URL` — from Supabase Dashboard -> Settings -> API -> Project URL
-   - `NEXT_PUBLIC_SUPABASE_ANON_KEY` — from Supabase Dashboard -> Settings -> API -> Publishable Key
-
-   Additional variables (when `stack.payment: stripe`):
-   - `STRIPE_SECRET_KEY`
-   - `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`
-   - `STRIPE_WEBHOOK_SECRET` (skip if Stripe CLI is available — set after webhook creation in Step 5)
-
-   Additional variables (when `stack.email` is present):
-   - `RESEND_API_KEY` — ask the user (from resend.com -> API Keys)
-   - `CRON_SECRET` — generate with `openssl rand -base64 24`
-
-   Additional variables (external service credentials from bootstrap):
-   - Read `.env.example` and collect all env var keys
-   - Exclude keys already handled by stack categories above (database, Stripe, email, PostHog)
-   - For each remaining key: read the value from `.env.local`. If found, set it on the hosting provider. If `.env.local` is missing or the key is absent, ask the user for the production value.
 
 ### Step 5a: Initial deploy
 
@@ -335,7 +258,7 @@ test -f .runs/deploy-provision.json
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
 ```bash
-bash .claude/scripts/advance-state.sh deploy 3
+bash .claude/scripts/advance-state.sh deploy 3c
 ```
 
-**NEXT:** Read [state-4-health-check.md](state-4-health-check.md) to continue.
+**NEXT:** Read [state-4a-health-fix.md](state-4a-health-fix.md) to continue.

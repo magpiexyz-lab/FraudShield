@@ -11,7 +11,7 @@
     },
     {
       "name": "Implement",
-      "state_range": [3, 6],
+      "state_range": ["3a", 6],
       "interactive": false,
       "max_budget": 50,
       "gate": {

@@ -24,8 +24,11 @@ Read each STATE's file **only when transitioning to that state**. Do NOT read ah
 | 0 | PRE_FLIGHT | Plan | [state-0-pre-flight.md](../patterns/deploy/state-0-pre-flight.md) |
 | 1 | CONFIG_GATHER | Plan | [state-1-config-gather.md](../patterns/deploy/state-1-config-gather.md) |
 | 2 | USER_APPROVAL | Plan | [state-2-user-approval.md](../patterns/deploy/state-2-user-approval.md) |
-| 3 | PROVISION | Implement | [state-3-provision.md](../patterns/deploy/state-3-provision.md) |
-| 4 | HEALTH_CHECK | Implement | [state-4-health-check.md](../patterns/deploy/state-4-health-check.md) |
+| 3a | PROVISION_DB | Implement | [state-3a-provision-db.md](../patterns/deploy/state-3a-provision-db.md) |
+| 3b | PROVISION_HOST | Implement | [state-3b-provision-host.md](../patterns/deploy/state-3b-provision-host.md) |
+| 3c | DEPLOY_SERVICES | Implement | [state-3c-deploy-services.md](../patterns/deploy/state-3c-deploy-services.md) |
+| 4a | HEALTH_FIX | Implement | [state-4a-health-fix.md](../patterns/deploy/state-4a-health-fix.md) |
+| 4b | PROD_VALIDATION | Implement | [state-4b-production-validation.md](../patterns/deploy/state-4b-production-validation.md) |
 | 5 | MANIFEST_WRITE | Implement | [state-5-manifest-write.md](../patterns/deploy/state-5-manifest-write.md) |
 | 6 | SKILL_EPILOGUE | Implement | [state-6-skill-epilogue.md](../patterns/deploy/state-6-skill-epilogue.md) |
 

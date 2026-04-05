@@ -67,4 +67,4 @@ ls .runs/agent-traces/*.json
 bash .claude/scripts/advance-state.sh verify 2
 ```
 
-**NEXT:** Read [state-3-phase2-serial.md](state-3-phase2-serial.md) to continue.
+**NEXT:** Read [state-3a-design-agents.md](state-3a-design-agents.md) to continue.
