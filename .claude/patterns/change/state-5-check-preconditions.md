@@ -24,6 +24,8 @@
      | `phase2-step7` | STATE 11 (verify) |
      | `phase2-step8` | STATE 12 (commit/PR) |
 
+     If `checkpoint` is present but does not match any row above: stop — "Saved plan has unrecognized checkpoint `<value>`. Delete `.runs/current-plan.md` and re-run `/change` for a fresh start. To abort: `git checkout main && git branch -D <branch-name>`."
+
   5. If no frontmatter (old format): warn user, read experiment.yaml type, skip Phase 1, jump to Step 5.
 - Else if `.runs/current-plan.md` exists but NOT on a `change/` branch: offer resume or fresh start, then stop.
 > **If resuming from a failed /change:** see `.claude/patterns/recovery.md`. The plan persists across sessions.

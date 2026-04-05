@@ -54,16 +54,16 @@ validate: ## Check experiment.yaml for valid YAML, TODOs, name format, and struc
 	@# validate-experiment.py checks: name format, archetype structure, required fields, stack files, testing warning, assumes
 	@STACK_WARN=0; \
 	python3 scripts/validate-experiment.py || STACK_WARN=$$?; \
-	if [ "$$STACK_WARN" -ne 0 ] && [ "$$STACK_WARN" -ne 2 ]; then exit 1; fi; \
+	if [ "$$STACK_WARN" -ne 0 ] && [ "$$STACK_WARN" -ne 2 ]; then echo "Experiment validation failed — fix the errors above in experiment/experiment.yaml, then re-run 'make validate'."; exit 1; fi; \
 	if [ -f experiment/EVENTS.yaml ]; then \
 		python3 scripts/validate-events.py || exit 1; \
 		echo "experiment/EVENTS.yaml looks good — valid structure."; \
 	else \
 		echo "Warning: experiment/EVENTS.yaml not found — /bootstrap will fail. Ensure experiment/EVENTS.yaml exists in the experiment/ folder."; \
 	fi; \
-	python3 scripts/validate-semantics.py || exit 1; \
+	python3 scripts/validate-semantics.py || { echo "Semantic validation failed — fix the errors above, then re-run 'make validate'."; exit 1; }; \
 	if [ "$$STACK_WARN" -eq 2 ]; then \
-		echo "Validation passed with warnings — review above."; \
+		echo "Validation passed with warnings — review the issues above. These are non-blocking but should be addressed before /bootstrap."; \
 	else \
 		echo "Validation passed — experiment.yaml and experiment/EVENTS.yaml look good."; \
 	fi; \
@@ -235,6 +235,7 @@ clean: ## Remove generated files (lets you re-run bootstrap)
 	rm -rf e2e playwright.config.ts test-results playwright-report blob-report  # testing/playwright
 	rm -rf tests vitest.config.ts                          # testing/vitest
 	rm -rf public docs                                     # bootstrap-generated assets and docs
+	rm -rf public/images                                   # images/fal
 	rm -rf .runs .verify-baseline                          # skill execution state
 	rm -rf .vercel                                         # Vercel CLI config
 	rm -f vercel.json tsconfig.tsbuildinfo                 # deploy and build config

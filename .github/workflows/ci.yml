@@ -128,6 +128,8 @@ jobs:
       SUPABASE_SERVICE_ROLE_KEY: placeholder-service-role-key
       # AI stack (stack.ai: anthropic) — safe to leave even without AI
       ANTHROPIC_API_KEY: placeholder-anthropic-api-key
+      # Image generation stack (images/fal) — safe to leave even without image gen
+      FAL_KEY: placeholder-fal-key
     steps:
       - uses: actions/checkout@v4
 

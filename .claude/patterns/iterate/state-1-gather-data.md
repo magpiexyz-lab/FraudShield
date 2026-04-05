@@ -44,6 +44,8 @@ Tell the user how to get the numbers. See the analytics stack file's "Dashboard 
 
 Ask the user to provide funnel numbers -- for each event in the experiment/EVENTS.yaml `events` map (filtered by `requires` and `archetypes`), how many users? Present the actual event names from experiment/EVENTS.yaml so the user knows what to look for in their dashboard.
 
+> **Insufficient data check:** If `visit_landing` count is fewer than 10, tell the user: "Not enough traffic for meaningful analysis (fewer than 10 visits). Run `/distribute` to drive traffic, wait a few days, and re-run `/iterate`." Proceed to STATE 2 only if the user wants analysis despite low volume.
+
 ### 1c: Ask for qualitative data
 
 Whether funnel numbers came from auto-query (1a) or manual input (1b), also ask the user to provide whatever they have. Not all of these will be available -- use what you get:
