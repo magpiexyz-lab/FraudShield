@@ -12,6 +12,8 @@ After each edit-capable agent completes, read its completion report and append i
 
 ### design-critic (if scope is `full` or `visual`, AND archetype is `web-app`) — PARALLEL PER PAGE
 
+> REF: Archetype-based agent scoping per `.claude/patterns/archetype-behavior-check.md` Usage Point 4 — visual design pipeline is web-app only; skip for service/cli.
+
 #### Stage 1: Per-page review (parallel)
 
 Discover **all** pages — not just golden_path pages:

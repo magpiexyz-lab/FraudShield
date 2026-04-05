@@ -47,6 +47,10 @@ If no fixes qualify -> return `"No template observations"` and stop.
 
 ## Procedure
 
+> REF: This procedure implements `.claude/patterns/observe.md` Path 1 (Observer Agent with diff).
+> The canonical decision framework, redaction rules, dedup logic, and issue filing format
+> are defined there. The steps below are the agent-specific execution sequence.
+
 ### 1. Prerequisites
 
 1. Resolve the template repo: `TEMPLATE_REPO=$(git remote get-url template 2>/dev/null | sed 's|.*github.com[:/]||;s|\.git$||')`. If empty, fall back: `TEMPLATE_REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)`. If experiment.yaml does not exist or both commands fail -> return "No template observations".
@@ -115,11 +119,9 @@ Return one of:
 
 ## Trace Output
 
-After completing all work, write a trace file:
+Write a completion trace per `.claude/patterns/agent-trace-protocol.md`. Use the base schema plus the `fixes_evaluated` extension field. `checks_performed`: `["prerequisites","fix_evaluation","redaction","dedup","issue_filing"]`. Replace `<verdict>` with `"filed"`, `"commented"`, `"no observations"`, or `"prerequisite-unavailable"`.
 
 ```bash
 RUN_ID=$(python3 -c "import json;print(json.load(open('.runs/verify-context.json')).get('run_id',''))" 2>/dev/null || echo "")
 mkdir -p .runs/agent-traces && echo '{"agent":"observer","timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","verdict":"<verdict>","checks_performed":["prerequisites","fix_evaluation","redaction","dedup","issue_filing"],"fixes_evaluated":<N>,"run_id":"'"$RUN_ID"'"}' > .runs/agent-traces/observer.json
 ```
-
-Replace `<verdict>` with `"filed"`, `"commented"`, `"no observations"`, or `"prerequisite-unavailable"`.

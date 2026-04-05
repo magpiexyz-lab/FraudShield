@@ -21,6 +21,21 @@ Referenced by bootstrap (state-3) and change (state-5) precondition checks.
 | framework: (any) | Allowed for service archetype |
 | (always) | Requires stack.testing present |
 
+## Error Message Templates
+
+Use these canonical error messages when a dependency is unmet. Replace `<provider>` with
+the missing provider suggestion (e.g., `supabase`).
+
+| Stack | Missing | Error message |
+|-------|---------|--------------|
+| payment | auth | "Payment requires authentication to identify the paying user. Add `auth: <provider>` (or another auth provider) to your experiment.yaml `stack` section." |
+| payment | database | "Payment requires a database to record transaction state. Add `database: <provider>` (or another database provider) to your experiment.yaml `stack` section." |
+| email | auth | "Email requires authentication to know who to send emails to. Add `auth: <provider>` (or another auth provider) to your experiment.yaml `stack` section." |
+| email | database | "Email requires a database to track user activation status. Add `database: <provider>` (or another database provider) to your experiment.yaml `stack` section." |
+| auth_providers | auth | "OAuth providers require an auth system. Add `auth: supabase` to your experiment.yaml `stack` section." |
+
+For `/change` context, append branch cleanup instructions: "To abort: `git checkout main && git branch -D <branch-name>`. To fix and retry: make the required changes, then re-run `/change`."
+
 ## Assumes-List Validation
 
 Stack files may declare an `assumes` list in frontmatter (e.g., `assumes: [framework/nextjs]`).

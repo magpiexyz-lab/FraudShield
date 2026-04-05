@@ -105,6 +105,10 @@ and if triggered, include inline LLM evaluation of anomalies before spawning obs
 
 ## Step 4: Spawn observer
 
+> REF: The observer agent implements `.claude/patterns/observe.md` Path 1
+> (Observer Agent with diff). The decision framework, redaction rules, dedup
+> logic, and issue filing format are defined there.
+
 If evidence exists (non-empty diff or fix-log entries):
 
 1. Prepare observer inputs:
@@ -116,7 +120,6 @@ If evidence exists (non-empty diff or fix-log entries):
 2. Spawn the `observer` agent (`subagent_type: observer`).
    Pass ONLY the inputs above — do NOT include experiment.yaml content,
    project name, or feature descriptions.
-   The observer follows `.claude/patterns/observe.md` Path 1 criteria.
 
 3. After observer returns, write `.runs/observe-result.json`:
    ```json

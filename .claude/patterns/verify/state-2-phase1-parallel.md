@@ -38,6 +38,8 @@ Spawn the `behavior-verifier` agent (`subagent_type: behavior-verifier`). No add
 
 #### performance-reporter (if scope is `full` or `visual`, AND archetype is `web-app`)
 
+> REF: Archetype-based agent scoping per `.claude/patterns/archetype-behavior-check.md` — visual agents (performance, accessibility, design) are web-app only.
+
 Spawn the `performance-reporter` agent (`subagent_type: performance-reporter`). No additional context needed.
 
 #### accessibility-scanner (if scope is `full` or `visual`, AND archetype is `web-app`)

@@ -7,6 +7,10 @@
 
 ### File as GitHub Issue
 
+> REF: The issue filing pattern (auth check, repo resolution, label fallback, error handling)
+> follows `.claude/patterns/observe.md` "Issue Creation" section. Retro uses label `"retro"`
+> and a different title format, but the gh CLI workflow is the same.
+
 1. Verify GitHub authentication: run `gh auth status`. If it fails, stop: "GitHub CLI is not authenticated. Run `gh auth login` to authenticate, then re-run `/retro`. Or say 'skip' to print the retro to the terminal instead."
 2. Determine the target repo: use the current repo via `gh repo view --json nameWithOwner --jq '.nameWithOwner'`. If `gh` is not available or the command fails, ask the user: "Where should I file this retro? Enter a repo in `owner/repo` format, or say 'skip' to print it to the terminal instead."
 3. If the user says "skip", print the retro to the terminal and stop.
@@ -19,12 +23,7 @@ gh issue create \
   --body "<structured retro content>"
 ```
 
-### Error Handling
-- If `gh issue create` fails with a label error (e.g., label "retro" doesn't exist): retry **without** the `--label "retro"` flag. The user may not have triage permissions to create labels.
-- If `gh issue create` fails for any other reason: show the full error message and suggest:
-  - Check GitHub authentication: `gh auth status`
-  - Try filing manually by copying the retro content above
-- If the issue is created successfully, show the issue URL.
+If label `"retro"` doesn't exist, retry without `--label`. If `gh issue create` fails for another reason, show the error and suggest `gh auth status` or manual filing. Show the issue URL on success.
 
 ### Q-score
 
