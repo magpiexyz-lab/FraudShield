@@ -118,6 +118,7 @@ This registers your presence. If you exhaust turns before writing the final trac
 - Layout: pass/fail — <detail>
 - Content: pass/fail — <detail>
 - Above-fold: pass/fail — <detail>
+- Images: pass/fail/N/A — <count> evaluated, <count> >= 8, <count> fixed
 
 ### Layer 2: Per-Section Scores
 - <section-name>: <score>/10 — <detail>
@@ -176,6 +177,9 @@ trace = {
     "unresolved_sections": <U>,
     "min_score_all": <SA>,
     "pre_existing_debt": <DEBT>,
+    "images_evaluated": <IE>,
+    "image_scores": <IS>,
+    "image_fixes": <IF>,
     "page": "<page_name>",
     "run_id": run_id,
     "fixes": [
@@ -198,3 +202,6 @@ Replace placeholders with actual values:
 - `<U>`: count of in-boundary sections still below 8 when turn budget was exhausted (0 if all resolved)
 - `<SA>`: lowest Layer 2 score across ALL pages including out-of-boundary (integer 1-10)
 - `<DEBT>`: JSON array of `{"page":"<name>","score":<N>}` for out-of-boundary pages with sections below 8 (use `[]` if none)
+- `<IE>`: number of images evaluated (0 if no images exist). Record image evaluation results even when no fixes are needed. If `image-manifest.json` does not exist or contains no images, set to 0.
+- `<IS>`: JSON array of `{"file":"<filename>","scores":{"subject":<N>,"style":<N>,"color":<N>,"composition":<N>,"polish":<N>},"verdict":"pass|fixed"}` for each image evaluated (use `[]` if none)
+- `<IF>`: number of images fixed (regenerated or replaced) (0 if none)

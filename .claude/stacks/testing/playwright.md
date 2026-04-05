@@ -879,6 +879,12 @@ When asserting text that appears in multiple page sections (e.g., a pricing stri
 ### Strict-mode violations with password input and show/hide toggle
 When locating a password input on pages with a show/hide visibility toggle, `getByLabel(/password/i)` matches both the input and the toggle button's aria-label. Use `page.locator("#password")` instead to target the input element directly.
 
+### Mobile-hidden labels cause strict-mode violations
+When a UI element uses responsive visibility classes (e.g., `hidden sm:inline`), its text is absent in the Mobile Chrome (Pixel 5) viewport. `getByText()` and `getByRole()` with name matching will fail on mobile because the element is not rendered. Use an always-visible alternative: prefer `getByLabel()` targeting the associated form input, or `getByRole()` targeting an element that is visible at all viewport sizes. Never use `getByText()` on text that is conditionally hidden via responsive classes.
+
+### shadcn CardTitle renders as div, not heading
+`shadcn/ui` `CardTitle` renders as a `<div>` by default, not a heading element. `getByRole('heading', { name: ... })` will not match it. Use `getByText('Card Title Text')` or a `data-testid` attribute instead.
+
 ## PR Instructions
 - Install [Docker Desktop](https://www.docker.com/products/docker-desktop/) if not already installed
 - Start local Supabase: `make supabase-start` (or `npx supabase start -x realtime,storage,imgproxy,inbucket,pgadmin-schema-diff,migra,postgres-meta,studio,edge-runtime,logflare,pgbouncer,vector && npx supabase db reset`)

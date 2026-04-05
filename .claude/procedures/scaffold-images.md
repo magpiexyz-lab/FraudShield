@@ -107,6 +107,17 @@ For each image, follow this cycle: **Craft prompt → Generate → View → Scor
 
 6. If the specialized model fails entirely, the `generateImage()` function automatically falls back to FLUX.2 Pro, then to SVG placeholder. Continue with the next image.
 
+### Step 4b: Completeness Check
+
+Before writing the manifest, verify all images from the Step 4 table exist on disk:
+
+1. Count image files in `public/images/` — must equal the row count from the Step 4 table (7 images)
+2. For each row in the table, verify the expected filename exists in `public/images/`:
+   - `hero.webp`, `feature-1.webp`, `feature-2.webp`, `feature-3.webp`, `logo.svg`, `og-photo.webp`, `empty-state.webp`
+3. If any image is missing, generate it now using the same prompt-craft-generate-evaluate cycle from Step 4 before proceeding
+
+Do NOT proceed to Step 5 until all images are present on disk.
+
 ### Step 5: Write manifest
 Write `.runs/image-manifest.json`:
 ```json
