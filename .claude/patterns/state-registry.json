@@ -199,19 +199,19 @@
   "agent_gates": {
     "verify": {
       "_required_states": ["0","1","2","3","4","5","6","7","8"],
-      "build-info-collector":       { "required_states": ["0","1"], "artifacts": [".runs/build-result.json"], "deny_background": true },
-      "security-defender":          { "required_states": ["0","1"], "artifacts": [".runs/build-result.json"], "deny_background": true },
-      "security-attacker":          { "required_states": ["0","1"], "artifacts": [".runs/build-result.json"], "deny_background": true },
-      "behavior-verifier":          { "required_states": ["0","1"], "artifacts": [".runs/build-result.json"], "deny_background": true },
-      "performance-reporter":       { "required_states": ["0","1"], "artifacts": [".runs/build-result.json"], "deny_background": true },
-      "accessibility-scanner":      { "required_states": ["0","1"], "artifacts": [".runs/build-result.json"], "deny_background": true },
-      "spec-reviewer":              { "required_states": ["0","1"], "artifacts": [".runs/build-result.json"], "deny_background": true },
-      "design-critic":              { "required_states": ["0","1"], "artifacts": [".runs/build-result.json"] },
-      "design-consistency-checker": { "required_states": ["0","1"], "artifacts": [".runs/build-result.json"] },
-      "ux-journeyer":               { "required_states": ["0","1"], "artifacts": [".runs/build-result.json"] },
-      "security-fixer":             { "required_states": ["0","1","2","3"], "artifacts": [".runs/build-result.json"] },
-      "observer":                   { "required_states": ["0","1","2","3","4"], "artifacts": [".runs/e2e-result.json"] },
-      "pattern-classifier":         { "required_states": ["0","1","2","3","4","5","6"] }
+      "build-info-collector":       { "required_states": ["0","1"], "artifacts": [".runs/build-result.json"], "deny_background": true, "required_checks": ["diff_collected","summaries_written","template_files_listed"] },
+      "security-defender":          { "required_states": ["0","1"], "artifacts": [".runs/build-result.json"], "deny_background": true, "required_checks": ["D1_secrets","D2_validation","D3_rls","D4_client_server","D5_rate_limit","D6_deps"] },
+      "security-attacker":          { "required_states": ["0","1"], "artifacts": [".runs/build-result.json"], "deny_background": true, "required_checks": ["A1_validation_bypass","A2_access_control","A3_injection","A4_info_leakage","A5_auth_weakness"] },
+      "behavior-verifier":          { "required_states": ["0","1"], "artifacts": [".runs/build-result.json"], "deny_background": true, "required_checks": ["state_model","happy_path","error_path","system_smoke","state_continuity"] },
+      "performance-reporter":       { "required_states": ["0","1"], "artifacts": [".runs/build-result.json"], "deny_background": true, "required_checks": ["P1_build","P2_routes","P3_large_pages","P4_deps","P5_lighthouse","P6_api"] },
+      "accessibility-scanner":      { "required_states": ["0","1"], "artifacts": [".runs/build-result.json"], "deny_background": true, "required_checks": ["axe_scan","tab_order"] },
+      "spec-reviewer":              { "required_states": ["0","1"], "artifacts": [".runs/build-result.json"], "deny_background": true, "required_checks": ["S1_features","S2_pages","S3_analytics","S4_golden_path","S5_system","S6_plan","S7_tdd","S8_process"] },
+      "design-critic":              { "required_states": ["0","1"], "artifacts": [".runs/build-result.json"], "required_checks": ["layer1_functional","layer2_taste","layer3_antipattern","visual_regression"] },
+      "design-consistency-checker": { "required_states": ["0","1"], "artifacts": [".runs/build-result.json"], "required_checks": ["C1_color","C2_typography","C3_spacing","C4_component","C5_layout"] },
+      "ux-journeyer":               { "required_states": ["0","1"], "artifacts": [".runs/build-result.json"], "required_checks": ["golden_path_trace","flow_issues","clicks_to_value"] },
+      "security-fixer":             { "required_states": ["0","1","2","3"], "artifacts": [".runs/build-result.json"], "required_checks": ["fix_code","rebuild","recheck","collect_changes","generate_tables"] },
+      "observer":                   { "required_states": ["0","1","2","3","4"], "artifacts": [".runs/e2e-result.json"], "required_checks": ["prerequisites","fix_evaluation","redaction","dedup","issue_filing"] },
+      "pattern-classifier":         { "required_states": ["0","1","2","3","4","5","6"], "required_checks": ["pattern_analysis","template_classification"] }
     },
     "bootstrap": {
       "_required_states": ["0","1","2","3","3a","3b","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18"],

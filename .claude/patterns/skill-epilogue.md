@@ -23,9 +23,12 @@ Read `.runs/<skill>-context.json` and compare `completed_states` against
 `_required_states` from `state-registry.json` `agent_gates[<skill>]`.
 
 If any required state is missing:
-- Record as friction in Step B2/Step 4 evaluation
-- Note the missing state IDs for observe.md Path 2 evaluation
-- Continue with Step 1 regardless (observation is best-effort)
+- **HARD FAIL**: The skill cannot produce `verdict: "clean"`. Set a flag
+  `_incomplete_states = true` with the missing state IDs.
+- The final `observe-result.json` MUST have `verdict: "incomplete"` — this
+  overrides any other verdict determination in Steps 3-4 / B3-B4.
+- Continue with remaining epilogue steps for compliance auditing, but the
+  verdict is locked to "incomplete".
 
 If all required states are present or `_required_states` is not defined for this skill,
 proceed to Step 1 with no friction recorded from this step.
@@ -85,6 +88,21 @@ Write `.runs/observe-result.json`:
 **DONE.** Zero overhead on the happy path. The commit gate
 (`observe-commit-gate.sh`) is satisfied.
 
+## Step 3.5: Compliance Audit (Layer 2 — shared with Strategy B)
+
+Run cross-artifact consistency checks (same as Step B2.5):
+```bash
+SKILL=$(python3 -c "import json;d=[json.load(open(f)) for f in __import__('glob').glob('.runs/*-context.json') if 'epilogue' not in f and 'verify' not in f];print(d[0]['skill'] if d else 'unknown')" 2>/dev/null)
+RUN_ID=$(python3 -c "import json;d=[json.load(open(f)) for f in __import__('glob').glob('.runs/*-context.json') if 'epilogue' not in f and 'verify' not in f];print(d[0].get('run_id','') if d else '')" 2>/dev/null)
+python3 .claude/scripts/compliance-audit.py --skill "$SKILL" --run-id "$RUN_ID"
+```
+
+Read `.runs/compliance-audit-result.json`. If `anomaly_count > 0`, pass anomalies
+as additional context to the observer agent in Step 4.
+
+The adaptive LLM audit decision (Step B2.6) also applies here — run `audit-sample.py`
+and if triggered, include inline LLM evaluation of anomalies before spawning observer.
+
 ## Step 4: Spawn observer
 
 If evidence exists (non-empty diff or fix-log entries):
@@ -135,7 +153,54 @@ Scan the execution for signs of template-caused friction:
 - Were any template files (`.claude/patterns/`, `.claude/stacks/`, `.claude/commands/`,
   `scripts/`) read during execution and found to be ambiguous, incomplete, or contradictory?
 
-If no friction detected, skip to Step B4.
+If no friction detected, continue to Step B2.5 (compliance audit still runs).
+
+### Step B2.5: Compliance Audit (Layer 2)
+
+Run deterministic cross-artifact consistency checks:
+```bash
+SKILL=$(python3 -c "import json;print(json.load(open('.runs/<skill>-context.json'))['skill'])")
+RUN_ID=$(python3 -c "import json;print(json.load(open('.runs/<skill>-context.json')).get('run_id',''))")
+python3 .claude/scripts/compliance-audit.py --skill "$SKILL" --run-id "$RUN_ID"
+```
+
+Read `.runs/compliance-audit-result.json`. Record `anomaly_count`.
+
+If `anomaly_count > 0`:
+- Record anomalies as additional friction items
+- Set `friction_detected = true` for Step B3 evaluation
+
+If `anomaly_count == 0` AND no friction from Step B2:
+- Skip to Step B2.6 (sampling decision) then Step B4
+
+### Step B2.6: Adaptive LLM Audit Decision (Layer 3)
+
+Determine whether to trigger deep LLM semantic audit:
+```bash
+Q_SCORE=$(python3 -c "
+import json
+try:
+    with open('.runs/verify-history.jsonl') as f:
+        lines = f.readlines()
+    last = json.loads(lines[-1]) if lines else {}
+    print(last.get('q_skill', 1.0))
+except: print('1.0')
+" 2>/dev/null || echo "1.0")
+ANOMALIES=$(python3 -c "import json;print(json.load(open('.runs/compliance-audit-result.json')).get('anomaly_count',0))" 2>/dev/null || echo "0")
+python3 .claude/scripts/audit-sample.py --anomaly-count "$ANOMALIES" --q-score "$Q_SCORE" --run-id "$RUN_ID"
+```
+
+Read the JSON output. If `trigger` is `true`:
+- Perform **inline** LLM reasoning over compliance anomalies (do NOT spawn a subagent)
+- For each failing check in `compliance-audit-result.json`:
+  - Assess: Is this a genuine process violation or an expected edge case?
+    (e.g., mtime skew from filesystem latency is expected; missing required checks is genuine)
+  - Record assessment
+- If genuine violations found, treat as friction for Step B3 Path 2 evaluation
+- Write findings to `observe-result.json` under `compliance_audit_notes` field
+
+If `trigger` is `false`:
+- Skip LLM audit, proceed to Step B3/B4
 
 ### Step B3: Evaluate template root cause (Path 2)
 
