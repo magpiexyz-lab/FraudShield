@@ -18,9 +18,7 @@ if severity = HIGH: solve_depth = "full"
 
 State the depth selection with rationale before proceeding.
 
-#### 5a-refine) Ring classification (refine mode only)
-
-If `mode == "refine"` (from resolve-context.json):
+#### 5a-ring) Ring classification
 
 Determine Ring level based on files the fix will modify:
 
@@ -36,7 +34,6 @@ Determine Ring level based on files the fix will modify:
 - In `resolve-context.json`, set `"ring": 3`
 - After STATE 5d completes, skip STATEs 6-11 and jump directly to STATE 10 (skill epilogue)
 
-If `mode` is not `"refine"`: skip Ring classification entirely.
 
 #### 5b-light) Light mode path
 
