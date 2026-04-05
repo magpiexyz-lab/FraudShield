@@ -26,6 +26,22 @@ Classify each issue into one of 10 types:
 | Regression | Previously working behavior now broken |
 | Observation | Filed by observe.md — template-rooted issue from a project |
 
+**Architectural (defer to /solve, skip Phase 2):**
+
+| Type | Criteria |
+|------|----------|
+| Architectural | Issue describes changes to CLAUDE.md structure, state-registry.json, state machine flow, skill contracts, or cross-skill systemic concerns. Requires design-level analysis beyond auto-fix scope. |
+
+For architectural issues, post a comment and leave the issue open (do NOT close):
+```bash
+gh issue comment <N> --body "**Deferred: Architectural Issue**
+
+This observation describes a template-architecture concern that requires first-principles design analysis.
+
+**Recommended next step:**
+\`/solve \"Issue #<N>: <title>\"\`"
+```
+
 **Non-actionable (handle now, skip Phase 2):**
 
 | Type | Action |
@@ -50,8 +66,8 @@ Present a triage table:
 
 Severity levels: HIGH (breaks execution), MEDIUM (wrong output), LOW (cosmetic).
 
-If all issues are non-actionable (all closed in Step 2): report "All issues
-resolved as non-actionable — no Phase 2 diagnosis needed." Stop here.
+If all issues are non-actionable or architectural (all closed or deferred in Step 2): report "All issues
+resolved as non-actionable or deferred — no Phase 2 diagnosis needed." Stop here.
 
 **STOP. Present the triage table to the user and wait for approval before
 proceeding to Phase 2.** The user may reclassify issues or remove them from scope.
@@ -62,10 +78,11 @@ proceeding to Phase 2.** The user may reclassify issues or remove them from scop
   import json
   triage = {
       'issues': [
-          {'number': 0, 'type': '<bug|gap|inconsistency|regression|observation>', 'severity': '<high|medium|low>', 'action': '<fix|close|defer>'}
+          {'number': 0, 'type': '<bug|gap|inconsistency|regression|observation|architectural>', 'severity': '<high|medium|low>', 'action': '<fix|close|defer>'}
       ],
       'actionable_count': 0,
-      'closed_count': 0
+      'closed_count': 0,
+      'deferred_count': 0
   }
   json.dump(triage, open('.runs/resolve-triage.json', 'w'), indent=2)
   "
@@ -88,4 +105,4 @@ python3 -c "import json; d=json.load(open('.runs/resolve-triage.json')); assert 
 bash .claude/scripts/advance-state.sh resolve 2
 ```
 
-**NEXT:** If all issues were non-actionable (all closed above), skill is complete — TERMINAL. Otherwise, read [state-3-reproduce.md](state-3-reproduce.md) to continue.
+**NEXT:** If all issues were non-actionable or deferred (all closed/deferred above), skill is complete — TERMINAL. Otherwise, read [state-3-reproduce.md](state-3-reproduce.md) to continue.
