@@ -22,6 +22,26 @@
    ```
 5. Extract RGB color values from the visual brief for Recraft models' `colors` API parameter
 
+### Step 1b: Check image source strategy
+
+Read `.runs/current-visual-brief.md` Image Direction → **Image source strategy** field.
+
+- If `photography` or `mixed` with photography images:
+  1. For each image marked for photography: use WebFetch (load via ToolSearch)
+     to search `https://unsplash.com/s/photos/{search-terms}` with terms from
+     the visual brief's Image Direction
+  2. Select the most relevant photo, extract the photo ID from the page
+  3. Download to `public/images/{filename}` via:
+     ```bash
+     curl -L "https://images.unsplash.com/photo-{ID}?auto=format&fit=crop&w={width}&q=80" \
+       -o public/images/{filename}
+     ```
+  4. Self-evaluate the downloaded image (same 5 quality dimensions)
+  5. Write manifest entry with `"source": "unsplash"` and `"unsplash_id": "{ID}"`
+
+- If `illustration` or remaining AI-generated images in `mixed`:
+  Continue with Steps 2-4 below (fal.ai generation)
+
 ### Step 2: Install package
 ```bash
 npm install @fal-ai/client
@@ -83,7 +103,7 @@ For each image, follow this cycle: **Craft prompt → Generate → View → Scor
    - Compositional quality (1-10)
    - Production polish (1-10)
 
-5. **If any dimension < 8**: Analyze the specific problem. Refine the prompt to address it (e.g., "colors too cold" → add warm color HEX codes; "composition cluttered" → add "clean negative space, single focal point"). Re-generate. Max 2 retries per image.
+5. **If any dimension < 8**: Analyze the specific problem. Refine the prompt to address it (e.g., "colors too cold" → add warm color HEX codes; "composition cluttered" → add "clean negative space, single focal point"). Re-generate and re-evaluate. If retries within the current source are not improving, switch to the alternate source (AI ↔ Unsplash — see Image Source Strategy in design.md). Compare the best result from each source and keep the higher-scoring version. Continue until all dimensions ≥ 8 or turn budget exhausted. Reserve ≥ 20 turns for manifest and trace writing.
 
 6. If the specialized model fails entirely, the `generateImage()` function automatically falls back to FLUX.2 Pro, then to SVG placeholder. Continue with the next image.
 
@@ -102,6 +122,8 @@ Write `.runs/image-manifest.json`:
       "height": <height>,
       "fallback": <true if SVG placeholder>,
       "model": "<model ID used>",
+      "source": "<fal | unsplash | placeholder>",
+      "unsplash_id": "<photo ID if source is unsplash, null otherwise>",
       "score": {
         "subject": <1-10>,
         "style": <1-10>,
@@ -109,7 +131,7 @@ Write `.runs/image-manifest.json`:
         "composition": <1-10>,
         "polish": <1-10>
       },
-      "retries": <0-2>
+      "retries": <number of retries across all sources>
     }
   ]
 }

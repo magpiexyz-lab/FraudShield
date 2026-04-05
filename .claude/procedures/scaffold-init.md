@@ -31,4 +31,30 @@
      - **OG/Social**: text hierarchy approach, background treatment, brand presentation style
      - **Empty states**: emotional tone (encouraging/humorous/neutral), abstraction level
      - **Color temperature**: warm/cool/neutral alignment with the Color Palette above — this ensures AI-generated images harmonize with page CSS
+   - **Numeric Precision** (brief MUST include concrete values, not directional terms):
+     - **Letter-spacing**: display heading value in px (e.g., "-2.0px"), body value (e.g., "-0.1px")
+     - **Line-height**: heading value (e.g., 1.1), body value (e.g., 1.55)
+     - **Shadow stack**: define 3 elevation levels — each as a complete multi-layer box-shadow value with brand-color-tinted rgba. Example: light `0 1px 2px rgba(accent, 0.06), 0 2px 4px rgba(accent, 0.08)`, medium `0 4px 8px rgba(accent, 0.10), 0 8px 16px rgba(accent, 0.12)`, heavy `0 0 0 1px rgba(accent, 0.08), 0 8px 16px rgba(accent, 0.15), 0 16px 32px rgba(accent, 0.10)`
+     - **Color count**: exact number of brand colors (max 3) with their roles (primary, accent, CTA) and hex values
+     - **Border-radius scale**: at least 3 levels (pill: 9999px, card: Npx, input: Npx)
+     - **Neutral tint**: specific tinted near-white (e.g., "#f5f4ed") and near-black (e.g., "#1a1a0e") with warm/cool justification from the color direction
+   - **Signature Animation**: one hero-level micro-interaction tied to the product concept. The animation must TELL THE PRODUCT STORY, not be generic decoration. Selection guide:
+     - Audio / voice / music product → waveform equalizer bars
+     - Dashboard / analytics → NumberTicker counter cascade
+     - Messaging / communication → typing indicator pulse
+     - File / storage / upload → progress shimmer beam
+     - Search / discovery → spotlight sweep
+     - Scheduling / calendar → clock hand rotation
+     - Payment / finance → transaction flow animation
+     - Security / auth → lock/shield pulse
+     - AI / ML → particle system or neural network dots
+     - Social / community → avatar orbit or marquee
+     - If no clear mapping: choose from Spotlight, Ripple, or Particles (neutral effects)
+   - **Project-Specific Guardrails**: derive at least 3 "Never do" rules specific to THIS product's palette, domain, and visual stance. These are in ADDITION to the universal anti-patterns in design.md. Examples:
+     - Warm palette: "Never use cool blue-gray for text, borders, or shadows"
+     - Dark theme: "Never use drop shadows on dark surfaces — use translucent borders and subtle glows"
+     - Minimalist stance: "Never add decorative gradients or background patterns"
+     - Professional services: "Never use AI-generated human faces — use Unsplash real photography"
+     - Playful brand: "Never use sharp corners — minimum border-radius 12px on all elements"
+   - **Image source strategy**: photography (Unsplash) / illustration (AI-generated) / mixed — choose based on product domain using the Image Source Strategy table in design.md. When "photography": include specific Unsplash search terms per image type (e.g., hero: "modern dental office professional", features: "patient consultation"). When "mixed": specify which images use photography and which use illustration. When "illustration": follow existing fal.md model selection
 

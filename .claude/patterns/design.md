@@ -111,6 +111,105 @@ precise targets.
 > These mechanics are structural constraints, not technique prescriptions.
 > `frontend-design` decides HOW to satisfy each one.
 
+### CSS Technique Catalog
+
+Vocabulary of premium techniques for the executor — tools available, not a
+checklist. `frontend-design` retains creative authority over HOW to use them.
+Prefer the left column over the right column in each row.
+
+**Color & Surface:**
+
+| Scenario | Prefer | Over |
+|----------|--------|------|
+| Text color | Tinted near-black: warm `#1a1a0e` / cool `#0a0a1a` | Pure black `#000000` |
+| Background | Tinted near-white: warm `#f5f4ed` / cool `#f0f4f8` | Pure white `#ffffff` |
+| Warm/cool choice | Follow design constraints temperature derivation | Arbitrary choice |
+| Accent color usage | Primary CTA and key actions only | Decorative usage |
+
+**Typography:**
+
+| Scenario | Prefer | Over |
+|----------|--------|------|
+| Display letter-spacing (48px+) | -1.5px to -2.5px | 0px or positive values |
+| Body letter-spacing | -0.1px to 0px | Large negative values |
+| Heading line-height | 1.07 to 1.15 (compressed) | Uniform line-height |
+| Body line-height | 1.5 to 1.6 (open) | Uniform line-height |
+| Font features | `font-feature-settings: "ss01" on` when supported | Default settings |
+
+**Depth & Shadow:**
+
+| Scenario | Prefer | Over |
+|----------|--------|------|
+| Card borders | `box-shadow: 0 0 0 1px rgba(...)` (ring shadow) | `border: 1px solid #ccc` |
+| Shadow color | Brand-accent-tinted `rgba(accent, 0.12-0.25)` | Neutral gray `rgba(0,0,0,0.1)` |
+| Shadow layers | 2-3 layers (near blur 2-4px + far blur 16-24px) | Single layer |
+| Depth texture | `backdrop-filter: blur(16px)` + SVG noise (opacity 0.03-0.05) | Flat opaque backgrounds |
+| Dark mode cards | Translucent `rgba(255,255,255,0.05)` + rgba border | Flat dark gray |
+
+**Interaction:**
+
+| Scenario | Prefer | Over |
+|----------|--------|------|
+| Primary CTA shape | Pill `border-radius: 9999px` | Default radius |
+| Secondary buttons | `border-radius: 6-8px` | Pill shape |
+| Hover states | Opacity transition or warm color shift | Background color change |
+| Scroll reveal | BlurFade (blur + translate + opacity) | Simple `opacity: 0→1` |
+
+**Magic UI Component Selection Guide** (all 74 pre-installed, import from `@/components/ui/`):
+
+| Category | Components | Use for |
+|----------|-----------|---------|
+| Text effects | aurora-text, morphing-text, line-shadow-text, text-reveal, hyper-text, animated-gradient-text, word-rotate, typing-animation, sparkles-text, spinning-text, flip-text, text-animate, animated-shiny-text | Hero headlines, section titles, animated labels |
+| Background effects | warp-background, grid-pattern, dot-pattern, flickering-grid, retro-grid, animated-grid-pattern, particles, meteors, grid-beams | Hero backgrounds, section backgrounds |
+| Card effects | magic-card, neon-gradient-card, border-beam, shine-border | Feature cards, pricing cards, product showcases |
+| Button effects | shimmer-button, shiny-button, pulsating-button, ripple-button, rainbow-button, interactive-hover-button, animated-subscribe-button | Primary CTA, signup buttons, action buttons |
+| Layout | bento-grid, marquee, orbiting-circles, dock, avatar-circles, icon-cloud | Feature grids, social proof, tech stack display |
+| Reveal effects | blur-fade, box-reveal, scroll-progress, progressive-blur, text-reveal, scratch-to-reveal | Section entrance, content reveal, progress indicators |
+| Delight | confetti, cool-mode, ripple | Conversion confirmation, Easter eggs |
+| Product mockups | safari, iphone-15-pro, terminal, android | Product screenshots, demo displays |
+| Developer | file-tree, code-comparison, script-copy-btn | Dev tool products, API docs |
+| Utility | number-ticker, animated-list, lens, pointer, smooth-cursor, highlighter, arc-timeline, animated-theme-toggler, hero-video-dialog, globe, animated-circular-progress-bar, pixel-image, video-text, scroll-based-velocity, comic-text, striped-pattern, interactive-grid-pattern | Stats, lists, navigation, data viz |
+
+### Design Anti-Patterns (Never Do)
+
+Prohibitive rules with HIGHER priority than creative suggestions. The
+`design-critic` Layer 3 check evaluates violations of these rules.
+
+1. **Pure black text** — never use `#000000`. Use tinted near-black (warm: `#1a1a0e`, cool: `#0a0a1a`)
+2. **Pure white background** — never use `#ffffff` as main background. Use tinted near-white
+3. **Gray shadows** — never use neutral `rgba(0,0,0,x)` for shadows. Tint with brand accent color
+4. **Single-layer shadows** — at least 2 layers (near blur 2-4px + far blur 16-24px)
+5. **CSS border for cards** — use ring shadow `box-shadow: 0 0 0 1px rgba()` instead
+6. **Positive letter-spacing at display** — headings 48px+ must use negative letter-spacing (-1.5 to -2.5px)
+7. **3+ consecutive same layout** — no 3 adjacent sections with identical layout structure
+8. **5+ brand colors** — max 3 brand colors (primary + accent + CTA). CTA color used sparingly
+9. **Generic opacity fade-in** — don't use simple `opacity: 0→1`. Use BlurFade (blur + translate) or richer entrance effects
+10. **Static hero** — hero section must have ≥1 dynamic element (signature animation, background effect, or interactive element)
+11. **Uniform line-height** — headings and body must have different line-heights (headings compressed 1.07-1.15, body open 1.5-1.6)
+12. **Background-color hover** — interactive elements should use opacity transition or color-tone shift, not abrupt background color change
+
+### Image Source Strategy
+
+When `image_gen_status` is available, the image source is a creative decision
+made by `scaffold-init` in the visual brief's Image Direction section.
+Two sources coexist — choose per image based on what builds MORE TRUST
+for the specific product domain:
+
+| Signal | Recommended source | Reason |
+|--------|-------------------|--------|
+| Professional services (medical, legal, financial, real estate) | Unsplash real photography | Real photos build trust. Clients need credibility |
+| B2B SaaS / developer tools | AI-generated illustration | Abstract concepts suit conceptual visuals |
+| Consumer products (lifestyle, health, fitness) | Mixed: hero Unsplash, features AI | Real scenarios + conceptual features |
+| Creative tools / design products | AI-generated illustration | Showcases creative capability |
+| Hardware / physical products | Unsplash product photography | Real product photos are more credible |
+
+**Unsplash usage notes:**
+- License: free for commercial use, attribution not required (but encouraged)
+- No API key needed — direct URL access
+- URL format: `https://images.unsplash.com/photo-{ID}?auto=format&fit=crop&w={width}&q=80`
+- Download to `public/images/` to match existing manifest format
+- Agent searches Unsplash via WebFetch for domain-relevant photos
+
 When `frontend-design` is available, invoke it for all pages (with
 context-appropriate creative brief). When unavailable, follow the theme
 tokens and the relevant expression criteria.

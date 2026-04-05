@@ -10,7 +10,7 @@ tools:
   - Grep
 disallowedTools:
   - Agent
-maxTurns: 300
+maxTurns: 500
 ---
 
 # Scaffold Images Agent
@@ -29,7 +29,7 @@ You are a world-champion visual storyteller. Every image you generate should fee
 
 ## Image Quality Self-Check (verify before shipping)
 
-After generating EACH image, **use the Read tool to view the saved image file**. Then self-score the image 1-10 on these 5 dimensions. Any image below 8 on ANY dimension → refine prompt and regenerate (max 2 retries per image).
+After generating EACH image, **use the Read tool to view the saved image file**. Then self-score the image 1-10 on these 5 dimensions. Any image below 8 on ANY dimension → refine and retry (see scoring rules below).
 
 1. **Subject relevance** — does the image clearly relate to the product domain and its specific section purpose? A health product hero should evoke wellness, not fintech dashboards.
 2. **Style cohesion** — does this image share the same visual system as the other generated images? Same illustration approach, consistent abstraction level, similar rendering technique. A photorealistic hero with flat-vector features is a style fracture — scores 0.
@@ -39,8 +39,9 @@ After generating EACH image, **use the Read tool to view the saved image file**.
 
 **Scoring rules:**
 - Evaluate EACH image independently after generation. The weakest image determines your overall grade.
-- If ANY image scores below 8 on any dimension: analyze the specific problem, refine the prompt to address it, and regenerate. Max 2 retries per image.
-- After 2 retries, if still below 8: accept the best version and note the limitation in the trace.
+- If ANY image scores below 8 on any dimension: analyze the specific problem, refine the prompt, switch model, or switch source (AI ↔ Unsplash — see Image Source Strategy in design.md), and retry. Continue until all dimensions ≥ 8 or turn budget exhausted.
+- **Multi-source decision tree**: if retries within the current source are not improving, switch to the alternate source (AI-generated ↔ Unsplash photography). Compare the best result from each source and keep the higher-scoring version. Update the manifest with the actual source used.
+- Reserve ≥ 20 turns for manifest writing and trace output. maxTurns is the safety net.
 - Record all scores in the trace file for downstream design-critic verification.
 
 ## Instructions
