@@ -180,6 +180,10 @@ deploy: ## Deploy to Vercel (first run will prompt to link project)
 	else \
 		echo "Warning: Could not verify health endpoint. Check your deployment manually."; \
 	fi
+	@echo ""
+	@echo "Note: 'make deploy' does not create .runs/deploy-manifest.json."
+	@echo "The /teardown and /iterate skills require this manifest. For full lifecycle"
+	@echo "support (teardown, iterate, distribute), use the /deploy skill in Claude Code instead."
 
 setup-prod: ## Link Vercel + Supabase for production debugging
 	@if [ ! -f package.json ]; then \

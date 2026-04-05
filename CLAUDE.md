@@ -149,7 +149,7 @@ context (ad-hoc requests), evaluate whether the root cause is in a
 template file and follow `.claude/patterns/observe.md` if so.
 
 ## Rule 13: Skill Execution Pattern
-All 15 skills use state machines with JIT (Just-In-Time) dispatch. Each skill's command file (`.claude/commands/<skill>.md`) contains a dispatch table pointing to state files at `.claude/patterns/<skill>/state-*.md`. Read only one state file at a time — never read ahead.
+All 15 lifecycle skills use state machines with JIT (Just-In-Time) dispatch (the utility skill /optimize-prompt is standalone). Each skill's command file (`.claude/commands/<skill>.md`) contains a dispatch table pointing to state files at `.claude/patterns/<skill>/state-*.md`. Read only one state file at a time — never read ahead.
 - Each state file has 6 required sections: PRECONDITIONS, ACTIONS, POSTCONDITIONS, VERIFY, STATE TRACKING, NEXT
 - `.claude/patterns/state-registry.json` maps every skill's states to postcondition checks, enforced at runtime by `.claude/hooks/state-completion-gate.sh`
 - Context files (`.runs/<skill>-context.json`) track execution state with base schema: `{skill, branch, timestamp, completed_states}`

@@ -12,6 +12,7 @@
 3a. If `stack.testing` is present: run the test command from the testing stack file (e.g., `npm test`). If tests fail, stop: "Tests are failing. Run `/verify` to fix test failures before deploying."
 3b. **Update mode detection:** If `.runs/deploy-manifest.json` exists, read it and enter **update mode**:
     1. Set `deploy_mode = "update"` (stored in deploy-context.json).
+    1a. **Staleness check:** Compare manifest `name` to experiment.yaml `name` and manifest `archetype` to experiment.yaml `type`. If either differs, stop: "The deploy manifest is from a different experiment or a prior version (manifest: `<manifest.name>`/`<manifest.archetype>`, current: `<experiment.name>`/`<experiment.type>`). Run `/teardown` first to remove old resources, then `/deploy` again to set up for the current experiment."
     2. Diff `experiment.yaml` stack against manifest to compute:
        - `added_services`: stack categories present in experiment.yaml but absent from manifest (e.g., added `stack.payment: stripe` since last deploy)
        - `removed_services`: stack categories present in manifest but absent from experiment.yaml (e.g., removed `stack.analytics`)
