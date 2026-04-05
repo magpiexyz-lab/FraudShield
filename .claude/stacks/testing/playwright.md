@@ -252,7 +252,7 @@ export function getTestCredentials() {
 export async function login(page: Page, email: string, password: string) {
   await page.goto("/login");
   await page.getByLabel(/email/i).fill(email);
-  await page.getByLabel(/password/i).fill(password);
+  await page.locator("#password").fill(password);
   await page.locator("form").getByRole("button", { name: /log in|sign in/i }).click();
   await page.waitForURL((url) => !url.pathname.includes("/login"));
 }
@@ -870,6 +870,14 @@ Add this job to `.github/workflows/ci.yml` after the `e2e` job. It runs page-loa
 - Production Supabase keys are never used in tests
 - `e2e/.auth.json` is gitignored — contains test credentials that should not be committed
 - Test users are created and deleted per run — no persistent test accounts
+
+## Known Issues
+
+### Strict-mode violations with repeated text across page sections
+When asserting text that appears in multiple page sections (e.g., a pricing string like "$297" in hero, features, and pricing sections), `getByText()` in strict mode fails because it resolves to multiple elements. Scope the locator to a specific section or use `.first()` — e.g., `page.getByText("$297").first()`.
+
+### Strict-mode violations with password input and show/hide toggle
+When locating a password input on pages with a show/hide visibility toggle, `getByLabel(/password/i)` matches both the input and the toggle button's aria-label. Use `page.locator("#password")` instead to target the input element directly.
 
 ## PR Instructions
 - Install [Docker Desktop](https://www.docker.com/products/docker-desktop/) if not already installed

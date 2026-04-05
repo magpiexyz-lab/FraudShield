@@ -255,5 +255,8 @@ function verifySecret(provided: string, expected: string): boolean {
 }
 ```
 
+### When a page fails the checkNoHorizontalOverflow smoke test on Mobile Chrome
+Add `overflow-x-hidden` to the outermost wrapper `<div>` of the page component. Wide flex rows, animated elements, and shadcn Card grids are the most common cause of horizontal overflow on mobile viewports. This is the standard first fix; if overflow persists, audit for elements with fixed pixel widths or negative margins.
+
 ## PR Instructions
 - No additional framework setup needed after merging — `npm install && npm run dev` is sufficient

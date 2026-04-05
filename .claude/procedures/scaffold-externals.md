@@ -31,7 +31,7 @@ Before API routes are generated, assess whether experiment.yaml features require
 
 4. **Core features — two options** (no Skip, no Fake Door — core features must have a complete experience):
    - **Provide now** — user gives credentials during bootstrap, Step 5 builds full integration
-   - **Provision at deploy** — Step 5 builds full integration code referencing env vars; credentials are obtained during `/deploy` Step 5b. Code must compile without real credentials (guard with runtime check → 503 `{ error: "Service not configured", service: "[name]", setup: "Run /deploy to provision credentials" }`).
+   - **Provision at deploy** — Step 5 builds full integration code referencing env vars; credentials are obtained during `/deploy` Step 5b. Code must compile without real credentials (guard with runtime check → 503 `{ error: "Service not configured" }` + `console.error(\`[503] [name] not configured — run /deploy to provision\`)`).
 
 5. **Non-core features — three options:**
    - **Fake Door** (default) — real UI + `activate` event with `fake_door: true` + "Coming soon" dialog. Collects intent data from paid traffic. See Fake Door output format below.
@@ -116,5 +116,15 @@ Entry format:
 - **Source**: #<issue-number> or <project-name>
 ```
 
-*(No entries yet — entries are added as external service observations are filed and resolved.)*
+### Twilio
+- **Quirk**: TwiML XML injection via unsanitized interpolation
+- **Detail**: TwiML responses that interpolate user-supplied or database-stored strings (practice names, phone numbers, service lists) are vulnerable to XML injection. Characters like `<`, `>`, `&`, `"` break the TwiML structure or inject arbitrary TwiML verbs.
+- **Mitigation**: The generated stack file must include an `escapeXml()` helper that escapes all 5 XML special characters, and all TwiML code templates must use it for every interpolated value. Also validate all FormData fields with zod before building the TwiML response.
+- **Source**: #598
+
+### Retell AI
+- **Quirk**: Webhook agent_id cross-validation and PII in logs
+- **Detail**: Retell AI webhook routes that process call results should cross-validate the `agent_id` in the payload against the practice/user record in the database. A valid Retell signature alone does not prevent a legitimate agent from posting to the wrong endpoint. Additionally, phone numbers in log output constitute PII exposure.
+- **Mitigation**: The generated stack file must include: (1) after signature verification, validate `agent_id` against the stored record, (2) redact phone numbers and PII from all log output, (3) remove internal service names from error responses.
+- **Source**: #599
 

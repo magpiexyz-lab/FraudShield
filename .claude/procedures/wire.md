@@ -26,8 +26,9 @@ For each core dependency marked "Provision at deploy" in Step 4b: create the ful
 
 ```typescript
 if (!process.env.SERVICE_API_KEY) {
+  console.error(`[503] [name] not configured — run /deploy to provision credentials`);
   return NextResponse.json(
-    { error: "Service not configured", service: "[name]", setup: "Run /deploy to provision credentials" },
+    { error: "Service not configured" },
     { status: 503 }
   );
 }
@@ -35,7 +36,7 @@ if (!process.env.SERVICE_API_KEY) {
 
 These routes must:
 - Compile and pass `npm run build` without real credentials present
-- Return 503 with actionable error message when env vars are missing
+- Return 503 with generic error message when env vars are missing (service details logged server-side only — see security-review.md A4)
 - Implement the complete integration logic (OAuth flow, API calls, etc.) when env vars are present
 - Read the external stack file (`.claude/stacks/external/<service-slug>.md`) for API patterns and code templates
 
