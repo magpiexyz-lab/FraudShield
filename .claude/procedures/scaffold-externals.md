@@ -42,6 +42,7 @@ Before API routes are generated, assess whether experiment.yaml features require
 classification. Include them here for reference so the lead knows what to do.
 
 6. **Auto-generate external stack files.** For each fully-integrated service (core or non-core with "Full Integration", "Provide now", or "Provision at deploy"), check if `.claude/stacks/external/<service-slug>.md` exists. If not, generate it:
+   - **Check Known Service Quirks** (below) for the service name. If an entry exists, incorporate its documented patterns into the generated stack file (e.g., correct auth flow, known gotchas, required headers).
    - Read `.claude/stacks/TEMPLATE.md` for the required frontmatter schema
    - Read existing stack files as structural reference
    - Generate `.claude/stacks/external/<service-slug>.md` with: OAuth/API flow documentation, required env vars, code templates for client library and route handlers, rate limits and quotas, sandbox/test mode details, and a `## CLI Provisioning` section
@@ -98,4 +99,22 @@ For each non-core feature choosing Fake Door, include in your output a structure
 Do NOT create the Fake Door components — they are created by the orchestrator
 after all parallel agents complete (they live in `src/app/<page>/`, which is
 the pages subagent's territory).
+
+## Known Service Quirks
+
+Cross-project patterns observed when integrating external services. Check this
+section before auto-generating an external stack file (Step 6). When closing
+observations about external service pitfalls, extract the root-cause finding
+here before closing.
+
+Entry format:
+```
+### <Service Name>
+- **Quirk**: <one-line description>
+- **Detail**: <what goes wrong and why>
+- **Mitigation**: <what the generated stack file should include>
+- **Source**: #<issue-number> or <project-name>
+```
+
+*(No entries yet — entries are added as external service observations are filed and resolved.)*
 
