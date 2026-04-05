@@ -45,6 +45,7 @@ Any section below 8 on ANY dimension → rework before shipping.
 4. **Layout variation** — no 2 consecutive sections share identical layout structure (e.g., both centered single-column)
 5. **Conversion pull** — every section has a clear persuasion job (hook, proof, objection-handle, or CTA); no decorative-only sections
 6. **Scroll dynamism** — page has ≥2 scroll-triggered visual events (transforms, parallax, counters, sticky elements). Content is visible by default — animations are additive (transform, scale, filter), never subtractive (no opacity:0 or visibility:hidden as initial state)
+7. **Effect component usage** — page uses ≥3 Magic UI effect components (blur-fade for scroll reveal is mandatory; select others from the CSS Technique Catalog component guide in design.md matching product context)
 
 ## Instructions
 

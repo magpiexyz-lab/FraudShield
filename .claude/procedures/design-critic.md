@@ -133,16 +133,19 @@ For any section rated below 8/10 in Layer 2, or any Layer 1/Layer 3 failure:
 4. Re-screenshot the fixed page
 5. Verify improvement with the Read tool
 
-**Image fix path** (when root cause is the image itself, not CSS/layout):
-1. Read `.claude/stacks/images/fal.md` for the model selection table and prompt templates
+**Image fix path — multi-source decision tree** (when root cause is the image itself, not CSS/layout):
+1. Check `.runs/image-manifest.json` for the current image's `"source"` field (`"fal"`, `"unsplash"`, or `"placeholder"`)
 2. Analyze what's wrong with the image (color mismatch? wrong subject? AI artifacts? style inconsistency?)
-3. Craft an improved prompt addressing the specific issue, using the per-model template from fal.md
-4. Regenerate via Bash: `npx tsx -e "import { generateImage } from './src/lib/image-gen'; const r = await generateImage({ type: '<type>', prompt: '<improved prompt>', width: <w>, height: <h>, filename: '<same filename>', altText: '<alt>' }); console.log(JSON.stringify(r));"`
-5. Read the new image file to verify improvement
-6. Update `.runs/image-manifest.json` with new scores
-Same budget: max 2 fix attempts per image, matching the per-section CSS fix budget.
+3. **Try to fix within current source first:**
+   - AI-generated: read `.claude/stacks/images/fal.md` for prompt templates, craft an improved prompt, regenerate via Bash: `npx tsx -e "import { generateImage } from './src/lib/image-gen'; const r = await generateImage({ type: '<type>', prompt: '<improved prompt>', width: <w>, height: <h>, filename: '<same filename>', altText: '<alt>' }); console.log(JSON.stringify(r));"`
+   - Unsplash: search for a better photo with refined search terms via WebFetch (load via ToolSearch). Download replacement: `curl -L "https://images.unsplash.com/photo-{ID}?auto=format&fit=crop&w={width}&q=80" -o public/images/{filename}`
+   - Placeholder: try both sources below
+4. Read the new image file to verify improvement
+5. **If current source not improving → try alternate source** (AI ↔ Unsplash). Compare the best result from each source and keep the higher-scoring version
+6. Update `.runs/image-manifest.json` with new scores and source type
+Continue image fixes until all image scores ≥ 8 or turn budget exhausted.
 
-After fixing sections on a page, re-screenshot the entire page once and re-rate all fixed sections from that screenshot. If any fixed section is still < 8, try one more fix (max 2 fix attempts per section, matching the security-fixer re-check pattern). Budget is 50 turns total; reserve ~10 turns for re-rate verification. If remaining turns < 10, stop fixing and write the trace immediately with verdict `"unresolved"`.
+After fixing sections on a page, re-screenshot the entire page once and re-rate all fixed sections from that screenshot. If any fixed section is still < 8, continue fixing. Reserve ≥ 30 turns for re-screenshot verification and trace writing. If remaining turns < 30, stop fixing and write the trace immediately with verdict `"unresolved"`.
 
 **Fix Tracking**: As you apply each fix, record it as `{"file": "<path>", "symptom": "<what was wrong>", "fix": "<what you changed>"}`. These entries populate the `fixes` array in the final trace JSON. The count of entries in `fixes` must equal the `fixes_applied` numeric field.
 
@@ -183,7 +186,7 @@ Before writing the trace file, compute these metrics from your review:
 - **`weakest_page`**: the page name that contains the section with the lowest post-fix score (in-boundary only). If tied, pick the first page alphabetically.
 - **`sections_below_8`**: count of sections that scored below 8 *before* fixes were applied (in-boundary only). This captures how much work was needed.
 - **`fixes_applied`**: total number of fixes applied across all pages (Layer 1 + Layer 2 + Layer 3 combined). Use `0` if no fixes were needed.
-- **`unresolved_sections`**: count of in-boundary sections that remained below 8 after 2 fix attempts. Use `0` if all sections were fixed to >= 8.
+- **`unresolved_sections`**: count of in-boundary sections that remained below 8 when turn budget was exhausted. Use `0` if all sections were fixed to >= 8.
 - **`min_score_all`**: the lowest Layer 2 per-section score across **all pages** (including out-of-boundary), measured after fixes. This provides full visibility into pre-existing quality debt.
 - **`pre_existing_debt`**: JSON array of `{"page":"<name>","score":<N>}` objects for out-of-boundary pages with any section scoring below 8. Use `[]` if none.
 

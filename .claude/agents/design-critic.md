@@ -44,7 +44,20 @@ it. Invent new visual elements if needed. You have full read-write access and
 ### Layer 1: Functional (floor check)
 - Fonts loaded, colors applied, layout intact, content renders, above-the-fold polished
 - Mobile: touch targets ≥ 44px, text ≥ 14px, no horizontal overflow, navigation usable
-- Images: if `public/images/` contains files, verify they render (no broken image icons). Check `.runs/image-manifest.json` for generation status. Read each image file with the Read tool to visually inspect quality. All `<img>` and `<Image>` elements must have meaningful `alt` text. If image quality cannot be fixed via CSS adjustments, read `.claude/stacks/images/fal.md` for prompt templates and use Bash to call `npx tsx` with `src/lib/image-gen.ts` to regenerate the specific image with a refined prompt.
+- Images: if `public/images/` contains files, verify they render (no broken image icons). Check `.runs/image-manifest.json` for generation status and source type (`"source"` field: `"fal"`, `"unsplash"`, or `"placeholder"`). Read each image file with the Read tool to visually inspect quality. All `<img>` and `<Image>` elements must have meaningful `alt` text.
+
+  **Image quality fix — multi-source decision tree:**
+  If any image scores < 8 on subject relevance, color harmony, composition, or production polish:
+  1. **Identify current source** from image-manifest.json `"source"` field
+  2. **Try to fix within current source first:**
+     - AI-generated → refine prompt and regenerate via `src/lib/image-gen.ts` (read `.claude/stacks/images/fal.md` for templates)
+     - Unsplash → search for a better photo with refined search terms via WebFetch (load via ToolSearch). Download replacement to same path
+     - Placeholder → try both sources below
+  3. **If current source not improving → try alternate source:**
+     - Was AI → search Unsplash for a real photo of the same subject (professional services, real-world scenarios, and human subjects often look better as real photography)
+     - Was Unsplash → try AI generation (abstract concepts, product illustrations, and custom branded visuals often look better as AI-generated art)
+  4. **Pick the winner:** compare the best result from each source, keep whichever scores higher on the 5 quality dimensions. Update image-manifest.json with the new source type
+  Continue until all image scores ≥ 8 or turn budget exhausted.
 
 ### Layer 2: Per-Section Taste Judgment (1-10 scale)
 Universal: custom palette, typography hierarchy, visual depth, spacing rhythm, component quality, composition.
@@ -68,13 +81,13 @@ Weakest section determines page verdict. All pages same standard.
 - Color temperature disconnect — image color temperature visibly clashes with page design tokens (e.g., cold-toned image on warm-toned page)
 
 Any Layer 1/3 failure or Layer 2 score < 8 → fix directly.
-If any in-boundary section remains < 8 after 2 fix attempts, verdict MUST be `"unresolved"` — never `"pass"` or `"fixed"`.
+Continue fixing until all scores ≥ 8 or turn budget exhausted. Reserve ≥ 30 turns for re-screenshot verification and trace writing. If turns exhausted with sections still < 8, verdict MUST be `"unresolved"` — never `"pass"` or `"fixed"`.
 
 ## Scope Lock
 
 - Do NOT refactor component architecture (e.g., splitting into sub-components, extracting hooks, changing state patterns)
 - Do NOT rename variables, files, or restructure imports
-- Fix VISUAL issues only — appearance, animations, spacing, colors, typography, AND regenerating images via `src/lib/image-gen.ts` when image quality is the root cause (read `.claude/stacks/images/fal.md` for prompt templates)
+- Fix VISUAL issues only — appearance, animations, spacing, colors, typography, AND image replacement via: (a) regenerating AI images via `src/lib/image-gen.ts` with refined prompts (read `.claude/stacks/images/fal.md` for templates), (b) searching and downloading Unsplash photos via WebFetch + curl, (c) switching between sources when one produces clearly better results
 - If you identify a structural refactor opportunity, note it in your trace under `refactor_opportunities` but do NOT implement it
 
 ## Instructions
@@ -182,6 +195,6 @@ Replace placeholders with actual values:
 - `<page-name>`: page containing the weakest-scoring section after fixes (in-boundary only)
 - `<B>`: count of sections that scored below 8 before fixes were applied (in-boundary only)
 - `<F>`: total number of fixes applied (0 if none)
-- `<U>`: count of in-boundary sections still below 8 after 2 fix attempts (0 if all resolved)
+- `<U>`: count of in-boundary sections still below 8 when turn budget was exhausted (0 if all resolved)
 - `<SA>`: lowest Layer 2 score across ALL pages including out-of-boundary (integer 1-10)
 - `<DEBT>`: JSON array of `{"page":"<name>","score":<N>}` for out-of-boundary pages with sections below 8 (use `[]` if none)
