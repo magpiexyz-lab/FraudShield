@@ -43,10 +43,21 @@ interact with users).
 
 Check off in `.runs/current-plan.md`: `- [x] TSP-LSP check completed`
 
-3. **FAL_KEY check** (AI image generation): Check if `FAL_KEY` environment variable
-   is set (check both shell environment and `.env.local` if it exists):
+3. **FAL_KEY check** (AI image generation): Check if `FAL_KEY` is available
+   via persistent file (`~/.fal/key`) or environment variable:
    ```bash
-   python3 -c "import os; v=os.environ.get('FAL_KEY',''); print('available' if v and not v.startswith('placeholder') else 'missing')"
+   python3 -c "
+   import os
+   v = ''
+   try:
+       with open(os.path.expanduser('~/.fal/key')) as f:
+           v = f.read().strip()
+   except FileNotFoundError:
+       pass
+   if not v:
+       v = os.environ.get('FAL_KEY', '')
+   print('available' if v and not v.startswith('placeholder') else 'missing')
+   "
    ```
    If `FAL_KEY` is available, record `image_gen_status: "available"`.
    If `FAL_KEY` is not set, tell the user:
@@ -58,8 +69,9 @@ Check off in `.runs/current-plan.md`: `- [x] TSP-LSP check completed`
    > `export FAL_KEY=your-fal-ai-key`
    >
    > Say "skip" to proceed with SVG placeholders.
-   Wait for the user to set the key or say "skip". If they set it, re-check.
-   Record `image_gen_status` as `"available"` or `"skipped"`.
+   Wait for the user to set the key or say "skip". If they provide it,
+   persist for future sessions: `mkdir -p ~/.fal && echo "$FAL_KEY" > ~/.fal/key`
+   Then re-check. Record `image_gen_status` as `"available"` or `"skipped"`.
 
    This value is passed to subagents in their prompts (subagents cannot
    interact with users).

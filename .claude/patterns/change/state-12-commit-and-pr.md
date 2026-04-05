@@ -78,8 +78,7 @@ python3 .claude/scripts/write-q-score.py \
 
 **VERIFY:**
 ```bash
-git status --porcelain | grep -v '??' | wc -l | xargs test 0 -eq && echo "Clean" || echo "Uncommitted changes"
-git log -1 --oneline && echo "Commit OK"
+gh pr view --json number 2>/dev/null || git branch --show-current | grep -qE '^main$'
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

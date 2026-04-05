@@ -76,8 +76,7 @@ If auto-merge skipped: "Resolve PR created but not auto-merged (<reason>). Merge
 
 **VERIFY:**
 ```bash
-gh pr view --json number 2>/dev/null
-git branch --show-current | grep -qE '^main$' && echo "On main" || echo "Not on main (auto-merge may have been skipped)"
+gh pr view --json number 2>/dev/null || git branch --show-current | grep -qE '^main$'
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
