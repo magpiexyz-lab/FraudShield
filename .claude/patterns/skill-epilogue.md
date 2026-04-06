@@ -11,7 +11,7 @@ Two strategies, dispatched by evidence type:
 | **B — Execution Audit** | `/audit`, `/solve`, `/iterate`, `/retro`, `/rollback`, `/teardown` | Analysis-only, no diffs → inline friction check |
 
 **Skip for:**
-- Skills that embed `/verify` (`/bootstrap`, `/change`, `/distribute`) — verify.md STATE 6 handles observation
+- Skills that embed `/verify` (`/change`, `/distribute`) — verify.md STATE 6 handles observation
 - `/optimize-prompt` — stateless utility, no state machine
 - `/verify` itself — has its own STATE 6 + STATE 7
 

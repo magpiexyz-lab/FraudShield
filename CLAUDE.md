@@ -135,9 +135,9 @@ Follow the database patterns defined in your active database stack file (`.claud
 ## Rule 12: Template Observations
 Template-rooted issues are detected and filed automatically. Every skill
 terminates with a quality check via one of three mechanisms:
-- **Verify-embedded skills** (/bootstrap, /change, /distribute):
+- **Verify-embedded skills** (/change, /distribute):
   verify.md STATE 6 Auto-Observe handles observation.
-- **Strategy A skills** (/resolve, /review, /deploy, /spec, /upgrade): the skill's
+- **Strategy A skills** (/bootstrap, /resolve, /review, /deploy, /spec, /upgrade): the skill's
   epilogue state (`.claude/patterns/skill-epilogue.md` Strategy A) spawns
   an observer agent when diffs exist.
 - **Strategy B skills** (/audit, /solve, /iterate, /retro, /rollback,

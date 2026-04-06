@@ -27,6 +27,31 @@ python3 .claude/scripts/write-q-score.py \
   --run-id "$RUN_ID" || true
 ```
 
+### Observation (defense in depth)
+
+Idempotency guard: if `.runs/observe-result.json` already exists, skip this section.
+
+Check if observation evidence exists:
+1. `.runs/fix-log.md` has entries beyond the header (more than 2 lines), OR
+2. Any `.runs/agent-traces/*.json` file has a non-empty `fixes` array
+
+If evidence exists:
+1. Collect template diffs: `git diff HEAD~1..HEAD -- .claude/ > .runs/observer-diffs.txt`
+2. Follow `.claude/patterns/skill-epilogue.md` Strategy A (spawn observer with collected diffs)
+
+If no evidence, write `.runs/observe-result.json`:
+```json
+{
+  "skill": "bootstrap",
+  "timestamp": "<ISO 8601>",
+  "friction_detected": false,
+  "observations_filed": 0,
+  "verdict": "clean"
+}
+```
+
+If observer spawning fails: write observe-result.json with `"verdict": "clean"` and continue (best-effort).
+
 - Delete `.runs/current-visual-brief.md` (keep `.runs/current-plan.md` -- `/verify` needs it)
 - Tell the user: "Bootstrap pushed. Run `/verify` to run verification and create the PR." If archetype is `cli` and surface is not `none`, add: "After merging, run `/deploy` for the marketing surface, then `npm publish` for the CLI binary. To verify the publish: run `npm info <package-name>` (where `<package-name>` is the `name` field from experiment.yaml) to confirm the version is live. If `npm publish` fails, check `npm whoami` — if not logged in, run `npm login` first." If archetype is `cli` and surface is `none`, add: "After merging, run `npm publish` for the CLI binary (no surface to deploy). To verify the publish: run `npm info <package-name>` (where `<package-name>` is the `name` field from experiment.yaml) to confirm the version is live. If `npm publish` fails, check `npm whoami` — if not logged in, run `npm login` first."
 
@@ -36,12 +61,14 @@ Check off in `.runs/current-plan.md`: `- [x] BG4 PR Gate passed`
 - All files committed (no uncommitted tracked changes)
 - BG4 PR Gate verdict is PASS
 - Branch pushed to remote
+- `.runs/observe-result.json` exists
 - `.runs/current-visual-brief.md` deleted
 
 **VERIFY:**
 ```bash
 git status --porcelain | grep -v '??' | wc -l | xargs test 0 -eq && echo "Clean" || echo "Uncommitted changes"
 git log -1 --oneline | grep -q "Bootstrap MVP scaffold" && echo "Commit OK" || echo "Commit FAIL"
+test -f .runs/observe-result.json && echo "Observation OK" || echo "Observation FAIL"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

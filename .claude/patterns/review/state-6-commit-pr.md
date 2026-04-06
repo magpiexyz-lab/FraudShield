@@ -85,6 +85,7 @@ If auto-merge skipped: "Review PR created but not auto-merged (<reason>). Merge 
 ```bash
 git status --porcelain | grep -v '??' | wc -l | xargs test 0 -eq && echo "Clean" || echo "Uncommitted changes"
 gh pr list --head "$(git branch --show-current)" --json number,title --limit 1 2>/dev/null || echo "On main (auto-merged)"
+test -f .runs/observe-result.json && echo "Observation OK" || echo "Observation FAIL"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

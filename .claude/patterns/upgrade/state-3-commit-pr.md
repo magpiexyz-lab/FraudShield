@@ -144,7 +144,8 @@ If auto-merge skipped: "Upgrade PR created but not auto-merged (<reason>). Merge
 
 **VERIFY:**
 ```bash
-gh pr view --json number 2>/dev/null || test -f .runs/upgrade-diff-report.json
+(gh pr view --json number 2>/dev/null || test -f .runs/upgrade-diff-report.json) && echo "PR OK" || echo "PR FAIL"
+test -f .runs/observe-result.json && echo "Observation OK" || echo "Observation FAIL"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
