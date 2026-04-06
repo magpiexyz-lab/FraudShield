@@ -108,6 +108,7 @@ export interface GenerateImageOptions {
   filename: string;
   altText: string;
   colors?: Array<{ r: number; g: number; b: number }>; // For Recraft models
+  outputDir?: string; // Override output directory (default: public/images). Used for multi-candidate generation to write to .runs/image-candidates/
 }
 
 export interface ImageResult {
@@ -128,9 +129,9 @@ async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function ensureDir(): Promise<void> {
-  if (!existsSync(PUBLIC_IMAGES_DIR)) {
-    await mkdir(PUBLIC_IMAGES_DIR, { recursive: true });
+async function ensureDir(dir: string = PUBLIC_IMAGES_DIR): Promise<void> {
+  if (!existsSync(dir)) {
+    await mkdir(dir, { recursive: true });
   }
 }
 
@@ -162,12 +163,13 @@ async function downloadToFile(url: string, filePath: string): Promise<void> {
 export async function generateImage(
   options: GenerateImageOptions
 ): Promise<ImageResult> {
-  const { type, prompt, width, height, filename, altText, colors } = options;
+  const { type, prompt, width, height, filename, altText, colors, outputDir } = options;
   const config = MODEL_CONFIGS[type];
-  const filePath = join(PUBLIC_IMAGES_DIR, filename);
-  const publicPath = `/images/${filename}`;
+  const targetDir = outputDir ?? PUBLIC_IMAGES_DIR;
+  const filePath = join(targetDir, filename);
+  const publicPath = outputDir ? `${outputDir}/${filename}` : `/images/${filename}`;
 
-  await ensureDir();
+  await ensureDir(targetDir);
 
   if (isDemoMode()) {
     return generateSvgPlaceholder({ width, height, filename, altText });
@@ -289,6 +291,38 @@ Written to `.runs/image-manifest.json` after generation:
   ]
 }
 ```
+
+## Multi-Candidate Usage
+
+The `outputDir` option enables the **Compete & Shortlist** architecture. Instead
+of writing directly to `public/images/`, candidates are written to a staging
+directory for comparison and selection.
+
+**Generating a candidate:**
+```ts
+const result = await generateImage({
+  type: "hero",
+  prompt: "...",
+  width: 1920, height: 1080,
+  filename: "hero-v1.webp",
+  altText: "...",
+  outputDir: ".runs/image-candidates"
+});
+// result.path = ".runs/image-candidates/hero-v1.webp"
+```
+
+**Selecting a winner:** After scoring all candidates, copy the winner to the
+canonical path:
+```bash
+cp .runs/image-candidates/hero-v2.webp public/images/hero.webp
+```
+
+**Sidecar file:** All candidate metadata is recorded in `.runs/image-candidates.json`
+(separate from the main `.runs/image-manifest.json`). See
+`.claude/procedures/scaffold-images.md` Step 5b for the sidecar schema.
+
+**Backwards compatibility:** When `outputDir` is omitted, behavior is identical
+to the original single-candidate flow. The main manifest schema is unchanged.
 
 ## Model Documentation
 

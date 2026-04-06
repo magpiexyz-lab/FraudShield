@@ -46,18 +46,23 @@ it. Invent new visual elements if needed. You have full read-write access and
 - Mobile: touch targets ≥ 44px, text ≥ 14px, no horizontal overflow, navigation usable
 - Images: if `public/images/` contains files, verify they render (no broken image icons). Check `.runs/image-manifest.json` for generation status and source type (`"source"` field: `"fal"`, `"unsplash"`, or `"placeholder"`). Read each image file with the Read tool to visually inspect quality. All `<img>` and `<Image>` elements must have meaningful `alt` text.
 
-  **Image quality fix — multi-source decision tree:**
+  **Image quality fix — three-priority decision tree:**
   If any image scores < 8 on subject relevance, color harmony, composition, or production polish:
-  1. **Identify current source** from image-manifest.json `"source"` field
-  2. **Try to fix within current source first:**
-     - AI-generated → refine prompt and regenerate via `src/lib/image-gen.ts` (read `.claude/stacks/images/fal.md` for templates)
-     - Unsplash → search for a better photo with refined search terms via WebFetch (load via ToolSearch). Download replacement to same path
-     - Placeholder → try both sources below
-  3. **If current source not improving → try alternate source:**
-     - Was AI → search Unsplash for a real photo of the same subject (professional services, real-world scenarios, and human subjects often look better as real photography)
-     - Was Unsplash → try AI generation (abstract concepts, product illustrations, and custom branded visuals often look better as AI-generated art)
-  4. **Pick the winner:** compare the best result from each source, keep whichever scores higher on the 5 quality dimensions. Update image-manifest.json with the new source type
+
+  **Priority 1 — Pre-generated candidates:** Check `.runs/image-candidates.json` sidecar. If it exists and has unused candidates for this image slot:
+  - For each unused candidate: copy to `public/images/<filename>`, re-screenshot the page, score the candidate IN page context (image fusion + color temperature + visual weight)
+  - Pick the candidate that scores highest in context. Update manifest and sidecar.
+
+  **Priority 2 — Generate new candidates with page context:** If no pre-generated candidate scores ≥ 8 in context, generate 2-3 NEW candidates. Craft prompts informed by the SPECIFIC visual problem seen in the screenshot (e.g., "color temperature too warm" → explicit cool HEX from globals.css; "composition competes with text" → "clean negative space, focal point offset"). Store new candidates in `.runs/image-candidates/`, try each in context. Update sidecar with new entries.
+
+  **Priority 3 — Source switching fallback:** If still not ≥ 8:
+  - Was AI → search Unsplash for a real photo of the same subject
+  - Was Unsplash → try AI generation with refined prompts
+  - Compare best from each source, keep the higher scorer. Update manifest.
+
   Continue until all image scores ≥ 8 or turn budget exhausted.
+
+  **Landing-page critic owns ALL image decisions.** Other page critics discovering image issues should note them in trace under `image_issues_for_landing` but NOT regenerate images themselves. This prevents conflicting image replacements across parallel design-critic agents.
 
 ### Layer 2: Per-Section Taste Judgment (1-10 scale)
 Universal: custom palette, typography hierarchy, visual depth, spacing rhythm, component quality, composition.
@@ -87,7 +92,7 @@ Continue fixing until all scores ≥ 8 or turn budget exhausted. Reserve ≥ 30 
 
 - Do NOT refactor component architecture (e.g., splitting into sub-components, extracting hooks, changing state patterns)
 - Do NOT rename variables, files, or restructure imports
-- Fix VISUAL issues only — appearance, animations, spacing, colors, typography, AND image replacement via: (a) regenerating AI images via `src/lib/image-gen.ts` with refined prompts (read `.claude/stacks/images/fal.md` for templates), (b) searching and downloading Unsplash photos via WebFetch + curl, (c) switching between sources when one produces clearly better results
+- Fix VISUAL issues only — appearance, animations, spacing, colors, typography, AND image replacement via: (a) trying pre-generated candidates from `.runs/image-candidates.json` sidecar, (b) generating new candidates with page-context-informed prompts via `src/lib/image-gen.ts` (read `.claude/stacks/images/fal.md` for templates), (c) searching and downloading Unsplash photos via WebFetch + curl, (d) switching between sources when one produces clearly better results
 - If you identify a structural refactor opportunity, note it in your trace under `refactor_opportunities` but do NOT implement it
 
 ## Instructions
@@ -205,3 +210,6 @@ Replace placeholders with actual values:
 - `<IE>`: number of images evaluated (0 if no images exist). Record image evaluation results even when no fixes are needed. If `image-manifest.json` does not exist or contains no images, set to 0.
 - `<IS>`: JSON array of `{"file":"<filename>","scores":{"subject":<N>,"style":<N>,"color":<N>,"composition":<N>,"polish":<N>},"verdict":"pass|fixed"}` for each image evaluated (use `[]` if none)
 - `<IF>`: number of images fixed (regenerated or replaced) (0 if none)
+- `candidates_tried`: number of pre-generated candidates tried from sidecar (0 if sidecar absent or no candidates tried)
+- `new_candidates_generated`: number of new candidates generated with page-context-informed prompts (0 if none)
+- `image_issues_for_landing`: JSON array of `{"slot":"<image-slot>","issue":"<description>"}` — for non-landing critics only, records image issues to be addressed by the landing-page critic (use `[]` if landing-page critic or no issues)

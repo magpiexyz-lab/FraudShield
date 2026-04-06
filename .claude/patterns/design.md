@@ -210,6 +210,39 @@ for the specific product domain:
 - Download to `public/images/` to match existing manifest format
 - Agent searches Unsplash via WebFetch for domain-relevant photos
 
+**Multi-Candidate Selection:**
+
+The Image Source Strategy table above is a STARTING POINT, not a commitment.
+For high-impact images, both AI and Unsplash candidates are generated regardless
+of domain, and the best candidate is selected.
+
+**Tiered candidate budget:**
+
+| Image | Candidates | Sources |
+|-------|-----------|---------|
+| Hero | 5 | 3 AI prompt variants + 2 Unsplash |
+| Feature ×3 | 3 each (ensemble) | 2 AI + 1 Unsplash |
+| OG/Social | 3 | 2 AI + 1 Unsplash |
+| Logo | 2 | 2 AI variants |
+| Empty state | 2 | 1 AI + 1 Unsplash |
+
+**Ensemble selection for features:** feature-1 winner is the style anchor.
+feature-2 and feature-3 candidates are generated style-matched to feature-1's
+winning visual system. The goal is the best COMBINATION of 3, not 3 independent bests.
+
+**Circuit breaker:** scaffold-images degrades to single-candidate mode when
+`turns_remaining < images_remaining × 8 + 20`. All 7 canonical images must
+be generated — candidate diversity is sacrificed before completeness.
+
+**Candidate storage:** All candidates live in `.runs/image-candidates/` (NOT
+`public/images/`). Only winners are copied to canonical paths. Metadata is
+recorded in the sidecar file `.runs/image-candidates.json`. The main manifest
+(`.runs/image-manifest.json`) schema is unchanged.
+
+**Unsplash fallback reallocation:** If WebFetch cannot extract multiple Unsplash
+photo IDs from the search page, reallocate the Unsplash budget to additional
+AI prompt variants. Total candidate count per slot is maintained.
+
 When `frontend-design` is available, invoke it for all pages (with
 context-appropriate creative brief). When unavailable, follow the theme
 tokens and the relevant expression criteria.

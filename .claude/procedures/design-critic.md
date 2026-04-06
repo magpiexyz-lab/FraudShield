@@ -123,6 +123,28 @@ Any of these triggers automatic fix — each has a measurable threshold:
 
 > **Scope Lock**: When fixing sections, change ONLY visual output (CSS classes, JSX structure for layout, animation code). Do NOT refactor component architecture, rename variables, or change state management patterns. If a section needs architectural changes to fix visually, note it as unresolved.
 
+### 5.5. Candidate Selection Phase (landing-page critic only)
+
+If you are reviewing the **landing page** AND `.runs/image-candidates.json` exists:
+
+1. Read `.runs/image-candidates.json` — this sidecar contains pre-generated candidates from the scaffold-images agent
+2. For each image slot with `candidates.length > 1`:
+   a. Identify the current winner rendered on the page (the image at `public/images/<canonical filename>`)
+   b. Assess the current winner's quality IN page context using the Layer 2 image integration criteria (image fusion, color temperature match, visual weight)
+   c. If the current winner scores **≥ 8** in context → keep it, skip to next slot
+   d. If the current winner scores **< 8** in context → systematically try each alternate candidate:
+      - Copy the candidate to `public/images/<canonical filename>` (overwriting the current winner)
+      - Run `npm run build` to ensure the build passes
+      - Re-screenshot the page
+      - Score the candidate IN page context (image fusion + color temperature + visual weight)
+   e. Select the candidate that scores highest in context
+   f. Update `.runs/image-manifest.json` with the winner's source, model, and scores
+   g. Update `.runs/image-candidates.json` sidecar: set `"selected": true` on the new winner, `"selected": false` on the old winner
+
+3. If NO candidate for a slot reaches ≥ 8 in context: flag the slot for new generation in Step 6
+
+If you are NOT reviewing the landing page: skip this step entirely. Record any image issues you notice in the trace under `image_issues_for_landing`.
+
 ### 6. Fix Below-Standard Sections
 
 For any section rated below 8/10 in Layer 2, or any Layer 1/Layer 3 failure:
@@ -133,16 +155,39 @@ For any section rated below 8/10 in Layer 2, or any Layer 1/Layer 3 failure:
 4. Re-screenshot the fixed page
 5. Verify improvement with the Read tool
 
-**Image fix path — multi-source decision tree** (when root cause is the image itself, not CSS/layout):
-1. Check `.runs/image-manifest.json` for the current image's `"source"` field (`"fal"`, `"unsplash"`, or `"placeholder"`)
-2. Analyze what's wrong with the image (color mismatch? wrong subject? AI artifacts? style inconsistency?)
-3. **Try to fix within current source first:**
-   - AI-generated: read `.claude/stacks/images/fal.md` for prompt templates, craft an improved prompt, regenerate via Bash: `npx tsx -e "import { generateImage } from './src/lib/image-gen'; const r = await generateImage({ type: '<type>', prompt: '<improved prompt>', width: <w>, height: <h>, filename: '<same filename>', altText: '<alt>' }); console.log(JSON.stringify(r));"`
-   - Unsplash: search for a better photo with refined search terms via WebFetch (load via ToolSearch). Download replacement: `curl -L "https://images.unsplash.com/photo-{ID}?auto=format&fit=crop&w={width}&q=80" -o public/images/{filename}`
-   - Placeholder: try both sources below
-4. Read the new image file to verify improvement
-5. **If current source not improving → try alternate source** (AI ↔ Unsplash). Compare the best result from each source and keep the higher-scoring version
-6. Update `.runs/image-manifest.json` with new scores and source type
+**Image fix path — three-priority decision tree** (when root cause is the image itself, not CSS/layout):
+
+**Non-landing critics:** Do NOT regenerate or replace images. Record the issue in the trace `image_issues_for_landing` array (e.g., `{"slot": "hero", "issue": "color temperature too warm for this page's cool palette"}`). The landing-page critic owns all image decisions.
+
+**Landing-page critic only:**
+
+1. Analyze what's wrong with the image in page context (color mismatch? wrong subject? AI artifacts? style inconsistency? composition competes with text?)
+
+2. **Priority 1 — Try remaining pre-generated candidates** (if `.runs/image-candidates.json` exists and was not exhausted in Step 5.5):
+   - For each untried candidate in the sidecar for this slot: copy to `public/images/<filename>`, rebuild, re-screenshot, score in context
+   - If any candidate scores ≥ 8 in context → accept it. Update manifest and sidecar.
+
+3. **Priority 2 — Generate new candidates with page context:**
+   - Read `.claude/stacks/images/fal.md` for prompt templates
+   - Craft 2-3 NEW prompts, each addressing the visual problem from a DIFFERENT angle. Each prompt should vary on a different axis (subject framing, composition, emotional tone, camera perspective) while fixing the identified problem. Examples:
+     - Problem: "color temperature too warm" → v1: cool-toned abstract with explicit cool HEX; v2: blue-hour photography with muted palette; v3: monochrome illustration with accent color from globals.css
+     - Problem: "composition competes with headline" → v1: "clean negative space, focal point lower-right"; v2: "soft bokeh background, subject small and offset"; v3: "atmospheric gradient, no strong subject"
+   - Generate new candidates to `.runs/image-candidates/`:
+     ```bash
+     npx tsx -e "import { generateImage } from './src/lib/image-gen'; const r = await generateImage({ type: '<type>', prompt: '<context-informed prompt>', width: <w>, height: <h>, filename: '<slot>-critic-<N>.webp', altText: '<alt>', outputDir: '.runs/image-candidates' }); console.log(JSON.stringify(r));"
+     ```
+   - Try each new candidate in context (copy → build → screenshot → score)
+   - Update `.runs/image-candidates.json` sidecar with new entries
+   - Also try Unsplash if appropriate: craft search terms informed by the visual problem (e.g., "color too warm" → search for cool-toned photos: `cool-tone-minimal-workspace`). Use a DIFFERENT search query for each Unsplash candidate — picking multiple photos from the same search produces similar results, not diverse candidates. WebFetch search → download to `.runs/image-candidates/` → try in context
+
+4. **Priority 3 — Source switching fallback:**
+   - Was AI → search Unsplash for a real photo (professional services, human subjects often better as real photography)
+   - Was Unsplash → try AI generation (abstract concepts often better as AI art)
+   - Compare best from each source, keep the higher scorer
+
+5. Read the new image file to verify improvement
+6. Update `.runs/image-manifest.json` with new scores, source type, and model
+
 Continue image fixes until all image scores ≥ 8 or turn budget exhausted.
 
 After fixing sections on a page, re-screenshot the entire page once and re-rate all fixed sections from that screenshot. If any fixed section is still < 8, continue fixing. Reserve ≥ 30 turns for re-screenshot verification and trace writing. If remaining turns < 30, stop fixing and write the trace immediately with verdict `"unresolved"`.

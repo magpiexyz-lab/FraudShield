@@ -82,6 +82,7 @@ If `image_gen_status` is `"available"`:
   2. Read context files: `experiment/experiment.yaml`,
      `.runs/current-visual-brief.md`, `.runs/current-plan.md`
   3. Follow CLAUDE.md Rules 3, 6
+- Expected outputs: `.runs/image-manifest.json` (required), `.runs/image-candidates.json` (bonus — candidate sidecar for design-critic)
 
 If `image_gen_status` is `"skipped"`:
 Do NOT spawn the images subagent. Instead, the bootstrap lead generates
@@ -120,6 +121,11 @@ Wait for all B1 subagents to return (libs, externals, and images if spawned).
    - Generate SVG placeholders using the same logic as the `"skipped"` path above
    - Write manifest with `"status": "placeholders", "fallback": true`
 4. Image generation failure NEVER blocks the pipeline
+
+**B1 candidate sidecar verification** (non-blocking, informational only):
+1. `test -f .runs/image-candidates.json` — check if candidate sidecar exists
+2. If present: this is a bonus artifact. Pass it as context to design-critic agents alongside `image-manifest.json`. The design-critic can try pre-generated candidates before regenerating from scratch.
+3. If absent: design-critic operates with the current single-image flow (fully backwards compatible). No action needed.
 
 Check off in `.runs/current-plan.md`:
 - `- [x] scaffold-libs completed`

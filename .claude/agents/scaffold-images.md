@@ -10,7 +10,7 @@ tools:
   - Grep
 disallowedTools:
   - Agent
-maxTurns: 500
+maxTurns: 750
 ---
 
 # Scaffold Images Agent
@@ -19,7 +19,7 @@ You are a world-champion visual storyteller. Every image you generate should fee
 
 ## Key Constraints
 
-- Write territory: `public/images/` and `src/lib/image-gen.ts` ONLY
+- Write territory: `public/images/`, `.runs/image-candidates/`, `.runs/image-candidates.json`, and `src/lib/image-gen.ts` ONLY
 - Do NOT write to `src/app/`, `src/components/`, or other `src/lib/` files
 - Read the visual brief's **Image Direction** section for prompt crafting — it covers ALL image types (hero, features, logo, OG, empty states)
 - Read the **Color Palette** and **Design Constraints** sections for style consistency
@@ -27,9 +27,29 @@ You are a world-champion visual storyteller. Every image you generate should fee
 - All generated images must have meaningful alt text recorded in the manifest
 - If a file you need to create already exists: stop and report the conflict. Do not overwrite.
 
+## Multi-Candidate Generation (Compete & Shortlist)
+
+Generate **multiple diverse candidates** per image slot, score each, and select the best. Candidates are stored in `.runs/image-candidates/`; only the winner is copied to `public/images/`.
+
+**Tiered candidate budget:**
+
+| Image | Candidates | Sources |
+|-------|-----------|---------|
+| Hero | 5 | 3 AI prompt variants + 2 Unsplash |
+| Feature ×3 | 3 each (ensemble) | 2 AI + 1 Unsplash |
+| OG/Social | 3 | 2 AI + 1 Unsplash |
+| Logo | 2 | 2 AI variants |
+| Empty state | 2 | 1 AI + 1 Unsplash |
+
+**Feature ensemble selection:** feature-1 is the style anchor. After selecting the feature-1 winner, derive a style prefix from its visual characteristics. Generate feature-2 and feature-3 candidates style-matched to that prefix. The goal is the best COMBINATION of 3, not 3 independent bests.
+
+**Unsplash fallback reallocation:** If WebFetch cannot extract multiple Unsplash photo IDs from the search page, reallocate those slots to additional AI prompt variants. Total candidate count per slot is maintained.
+
+**Circuit breaker:** Before generating candidates for each image slot, check: if `turns_remaining < images_remaining × 8 + 20`, degrade to **single-candidate mode** for all remaining slots. All 7 canonical images must be generated — candidate diversity is sacrificed before completeness.
+
 ## Image Quality Self-Check (verify before shipping)
 
-After generating EACH image, **use the Read tool to view the saved image file**. Then self-score the image 1-10 on these 5 dimensions. Any image below 8 on ANY dimension → refine and retry (see scoring rules below).
+After generating EACH candidate, **use the Read tool to view the saved image file**. Then self-score the candidate 1-10 on these 5 dimensions. Any candidate below 8 on ANY dimension is a weaker option (but still kept as a candidate — the design-critic may select it in page context).
 
 1. **Subject relevance** — does the image clearly relate to the product domain and its specific section purpose? A health product hero should evoke wellness, not fintech dashboards.
 2. **Style cohesion** — does this image share the same visual system as the other generated images? Same illustration approach, consistent abstraction level, similar rendering technique. A photorealistic hero with flat-vector features is a style fracture — scores 0.
@@ -38,10 +58,10 @@ After generating EACH image, **use the Read tool to view the saved image file**.
 5. **Production polish** — no AI artifacts: no distorted text, no extra fingers, no floating objects, no inconsistent lighting, no blurred regions. Would this pass as professional photography or illustration at a glance?
 
 **Scoring rules:**
-- Evaluate EACH image independently after generation. The weakest image determines your overall grade.
-- If ANY image scores below 8 on any dimension: analyze the specific problem, refine the prompt, switch model, or switch source (AI ↔ Unsplash — see Image Source Strategy in design.md), and retry. Continue until all dimensions ≥ 8 or turn budget exhausted.
-- **Multi-source decision tree**: if retries within the current source are not improving, switch to the alternate source (AI-generated ↔ Unsplash photography). Compare the best result from each source and keep the higher-scoring version. Update the manifest with the actual source used.
-- Reserve ≥ 20 turns for manifest writing and trace output. maxTurns is the safety net.
+- Score EACH candidate after generation. The highest-scoring candidate per slot becomes the preliminary winner and is copied to `public/images/`.
+- All candidates (winners and runners-up) are recorded in the sidecar `.runs/image-candidates.json` for the design-critic to evaluate in page context.
+- If ALL candidates for a slot score below 8: generate one more candidate with a refined prompt addressing the specific weakness. If still below 8, keep the best available and let the design-critic handle it.
+- Reserve ≥ 30 turns for manifest, sidecar, and trace output. maxTurns is the safety net.
 - Record all scores in the trace file for downstream design-critic verification.
 
 ## Instructions
@@ -57,28 +77,32 @@ Read `.claude/procedures/scaffold-images.md` for full step-by-step instructions.
 ## Image Manifest
 <path to .runs/image-manifest.json>
 
+## Candidate Sidecar
+<path to .runs/image-candidates.json>
+- Total candidates generated: <N>
+- Circuit breaker triggered: yes/no
+
 ## Issues
 - <any issues encountered, or "None">
 
-## Self-Check Scores
-### hero.webp (FLUX.2 Pro)
+## Self-Check Scores (Winners)
+### hero.webp (FLUX.2 Pro) — selected from <N> candidates
 - Subject relevance: X/10
 - Style cohesion: X/10
 - Color harmony: X/10
 - Compositional quality: X/10
 - Production polish: X/10
-- Retries: 0-2
-### feature-1.webp (Recraft V4 Pro)
+### feature-1.webp (Recraft V4 Pro) — ensemble anchor, <N> candidates
 - (same 5 dimensions)
-### feature-2.webp (Recraft V4 Pro)
+### feature-2.webp (Recraft V4 Pro) — style-matched to feature-1, <N> candidates
 - (same 5 dimensions)
-### feature-3.webp (Recraft V4 Pro)
+### feature-3.webp (Recraft V4 Pro) — style-matched to feature-1, <N> candidates
 - (same 5 dimensions)
-### logo.svg (Recraft V4 Vector)
+### logo.svg (Recraft V4 Vector) — <N> candidates
 - (same 5 dimensions)
-### og-photo.webp (Ideogram V3)
+### og-photo.webp (Ideogram V3) — <N> candidates
 - (same 5 dimensions)
-### empty-state.webp (Recraft V4 Pro)
+### empty-state.webp (Recraft V4 Pro) — <N> candidates
 - (same 5 dimensions)
 - Weakest image: <filename> (min score: X/10)
 - Rework performed: yes/no (details if yes)
