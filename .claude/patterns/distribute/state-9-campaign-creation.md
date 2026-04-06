@@ -139,6 +139,76 @@ This step is idempotent — on re-runs, Step 0 checks first and skips if the act
   ```
 - Commit the updated `experiment/ads.yaml` to the current feature branch and push (updates the open PR)
 
+**Step 7.5: Capture and upload Image Assets**
+
+Google Search ads support optional Image Assets displayed alongside the text ad. This step captures high-quality product screenshots and uploads them.
+
+**Skip conditions** (check first):
+- If `image_assets_uploaded: true` already in ads.yaml → skip (idempotent)
+- If user says "skip images" → skip, record `image_assets_uploaded: skipped` in ads.yaml
+
+**7.5a: Open MVP landing page**
+1. Use Chrome MCP to navigate to `deploy.url` from experiment.yaml (open in a new tab, keep the Google Ads tab)
+2. Wait for full page load — confirm no skeleton screens, no loading spinners, all images rendered
+3. Dismiss any cookie banners, chat widgets, or popups via Chrome MCP clicks
+
+**7.5b: Set viewport for high-res capture**
+1. Execute JavaScript via Chrome MCP to set viewport width to 1200px:
+   `document.documentElement.style.width = '1200px'`
+   or resize the browser window to 1200px wide
+2. This ensures the screenshot matches Google Ads landscape spec without upscaling
+
+**7.5c: Capture Landscape image (1200×628)**
+1. Scroll to the top of the page (hero section)
+2. Take a full-width screenshot via Chrome MCP
+3. Use Bash to crop to exact dimensions:
+   ```bash
+   convert /tmp/screenshot-hero.png -gravity North -crop 1200x628+0+0 +repage /tmp/ad-image-landscape.png
+   ```
+4. If imagemagick is not installed: use Python Pillow as fallback:
+   ```bash
+   python3 -c "from PIL import Image; img=Image.open('/tmp/screenshot-hero.png'); img.crop((0,0,1200,628)).save('/tmp/ad-image-landscape.png')"
+   ```
+
+**7.5d: Capture Square image (1200×1200)**
+1. Scroll down to the product UI / feature showcase section (typically below the hero fold)
+2. Take a screenshot
+3. Crop to 1200×1200:
+   ```bash
+   convert /tmp/screenshot-features.png -gravity Center -crop 1200x1200+0+0 +repage /tmp/ad-image-square.png
+   ```
+
+**7.5e: Show to user for approval**
+
+**STOP.** Display both cropped images to the user:
+
+> **Image Assets for your Google Ad:**
+>
+> **Landscape (1200×628):** [show /tmp/ad-image-landscape.png]
+> **Square (1200×1200):** [show /tmp/ad-image-square.png]
+>
+> These will be uploaded as Image Assets alongside your text ad. Reply **approve** to upload, or tell me which section of the page to capture instead. Reply **skip** to skip image assets.
+
+- If approved → continue to 7.5f
+- If user wants different section → scroll to specified area, re-capture, re-show
+- If user says skip → record `image_assets_uploaded: skipped` in ads.yaml, skip to Step 8
+
+**7.5f: Upload to Google Ads**
+1. Switch back to the Google Ads tab
+2. Navigate to the campaign → **Ads & assets** → **Assets**
+3. Click **"+"** → Select **"Image"**
+4. Upload the landscape image (`/tmp/ad-image-landscape.png`)
+5. Upload the square image (`/tmp/ad-image-square.png`)
+6. Save
+7. If upload fails (file too large, format rejected): resize to 80% quality JPEG and retry:
+   ```bash
+   convert /tmp/ad-image-landscape.png -quality 80 /tmp/ad-image-landscape.jpg
+   ```
+
+**7.5g: Record in ads.yaml**
+- Add `image_assets_uploaded: true` to `experiment/ads.yaml`
+- Commit and push (updates the open PR)
+
 **On failure at any step:**
 - Screenshot the error state
 - Report to the user what went wrong and at which step

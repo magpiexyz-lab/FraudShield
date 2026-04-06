@@ -340,6 +340,22 @@ Before creating a campaign, `/distribute` state-9 Step 0 ensures a conversion ac
 6. Add negative keywords at campaign level
 7. Save campaign in PAUSED status
 8. Record `campaign_id` and `campaign_url` in ads.yaml
+9. Capture product screenshots and upload as Image Assets (user approves before upload)
+
+### Image Assets
+
+Google Search ads support optional Image Assets displayed alongside the text ad. `/distribute` state-9 Step 7.5 automates this by screenshotting the deployed MVP landing page.
+
+| Spec | Dimensions | Content |
+|------|-----------|---------|
+| Landscape | 1200×628 | Hero section (headline + visual) |
+| Square | 1200×1200 | Product UI / feature showcase |
+
+**Process:** Chrome MCP opens the deployed URL → waits for full load → dismisses overlays → takes screenshots → crops to spec via imagemagick → shows to user for approval → uploads to Google Ads campaign Assets.
+
+**Quality requirements:** Page must be fully loaded (no skeletons/spinners). No cookie banners, chat widgets, or popups visible. Use light mode if the page supports dark/light toggle.
+
+**User approval gate:** Screenshots are shown to the user before upload. User can approve, request a different page section, or skip entirely.
 
 ### Error Handling
 
