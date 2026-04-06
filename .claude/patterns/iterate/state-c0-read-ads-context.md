@@ -40,9 +40,11 @@ Use ToolSearch to check for Chrome MCP tools:
 ToolSearch: query="claude-in-chrome", max_results=5
 ```
 
-If no `mcp__claude-in-chrome__*` tools are returned, STOP:
-> "Chrome MCP is required for --check mode. It lets me interact with the Google Ads dashboard directly."
-> "Please connect the Claude-in-Chrome extension and ensure Chrome is open with Google Ads logged in, then re-run `/iterate --check`."
+If no `mcp__claude-in-chrome__*` tools are returned, STOP and show the setup guide:
+
+1. Read `.claude/patterns/chrome-mcp-setup-guide.md`
+2. Present the full guide to the user
+3. End with: "After completing the setup, re-run `/iterate --check`."
 
 ### Create context file
 
