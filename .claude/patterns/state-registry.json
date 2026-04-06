@@ -101,7 +101,7 @@
     "11": "(gh pr view --json number 2>/dev/null || git branch --show-current | grep -qE '^main$') && test -f .runs/observe-result.json"
   },
   "distribute": {
-    "0": "test -f .runs/distribute-context.json",
+    "0": "test -f .runs/distribute-context.json && python3 -c \"import json; ctx=json.load(open('.runs/distribute-context.json')); assert 'phase' in ctx, 'phase missing'; assert ctx['phase'] in (1,2), 'phase must be 1 or 2'\"",
     "1": "test -f .runs/distribute-preconditions.json",
     "1_5": "python3 -c \"import json; ctx=json.load(open('.runs/distribute-context.json')); assert 'hypothesis_loaded' in ctx, 'hypothesis_loaded missing'\"",
     "2": "test -f .runs/distribute-targeting.json",

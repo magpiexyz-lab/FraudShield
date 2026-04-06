@@ -33,6 +33,17 @@ Campaign metadata (`campaign_id`, `campaign_url`) is committed to the feature br
    5. After all credentials are saved → proceed to **9d**
    6. If the user cannot set up credentials now, offer: "Type **skip** to skip campaign creation. You can create the campaign manually after merging the PR — see the channel's stack file 'Setup Instructions'. Or re-run `/distribute` later — Step 9b checks for `campaign_id` and picks up where you left off." If skipped, jump to Step 9f (manual fallback).
 
+### 9d-pre: Phase 1 approval gate bypass check
+
+Read `phase` from `.runs/distribute-context.json`. Read `channel` from `experiment/ads.yaml`.
+
+If phase is 1 AND channel is `google-ads`:
+- The Phase 1 Playbook uses standardized settings that have been pre-validated. The config approval at Step 6 already covered the AI-generated content (keywords, ad copy).
+- Skip the Step 9d approval gate and proceed directly to **9e**.
+- Log: "Phase 1 Playbook: standardized campaign settings — skipping 9d approval gate (settings pre-validated by Playbook)."
+
+If phase is 2, or channel is not `google-ads`, proceed to 9d as normal.
+
 ### 9d: STOP for approval
 
 **STOP.** Show a campaign creation preview:
@@ -63,6 +74,34 @@ Campaign metadata (`campaign_id`, `campaign_url`) is committed to the feature br
    - Report the error to the user
    - Fall through to **9f**
 
+### 9e-2: Phase 1 launch protocol
+
+Read `phase` from `.runs/distribute-context.json`. If phase is 1:
+
+1. Campaign was created in PAUSED status (standard).
+2. Compute the recommended unpause date (48 hours from campaign creation):
+   ```bash
+   UNPAUSE_DATE=$(python3 -c "
+   from datetime import datetime, timedelta
+   unpause = datetime.utcnow() + timedelta(hours=48)
+   print(unpause.strftime('%Y-%m-%d %H:%M UTC'))
+   ")
+   echo "Recommended unpause: $UNPAUSE_DATE"
+   ```
+3. Add `launch_protocol` to `experiment/ads.yaml`:
+   ```yaml
+   launch_protocol:
+     created_paused: true
+     recommended_unpause: "<YYYY-MM-DD HH:MM UTC>"
+     pre_launch_checklist:
+       - "Check ad approval status (24-48h after creation)"
+       - "Verify conversion tracking with test click"
+       - "Confirm PageSpeed >= 70 mobile"
+   ```
+4. Commit the updated `experiment/ads.yaml` to the current feature branch and push (updates the open PR).
+
+If phase is not 1, skip this step.
+
 ### 9f: Manual fallback
 
 Only reached when:
@@ -90,6 +129,27 @@ python3 .claude/scripts/write-q-score.py \
 ```
 
 ### 9g: Next steps
+
+Read `phase` from `.runs/distribute-context.json`.
+
+**If phase is 1:**
+
+> Your Phase 1 campaign is created in PAUSED mode. Follow the Day -2 / -1 / 0 protocol:
+>
+> **Day -2 (today):** Campaign created and paused. Ads are being reviewed by Google.
+> **Day -1 (tomorrow):** Check ad approval status in Google Ads dashboard. If any ads are disapproved, fix and resubmit.
+> **Day 0 ({recommended_unpause_date from launch_protocol}):** If all ads are approved and conversion tracking is verified, enable the campaign in the dashboard.
+>
+> **During Phase 1 (Days 1-7):**
+> 1. Run `/iterate --check` on Days 1, 3, and 5 to monitor campaign performance.
+> 2. Check the Search Terms Report on Day 3 and Day 7 — add irrelevant terms to negative keywords.
+> 3. If any keyword gets zero impressions after 48 hours, switch it to Broad Match.
+> 4. Do NOT change bidding strategy during Phase 1 — stay on Manual CPC.
+>
+> **After Phase 1:**
+> Run `/iterate` to analyze 7-day performance and decide: continue as-is, adjust, or run `/distribute --phase 2` for an extended campaign.
+
+**If phase is 2 (or no phase):**
 
 > Your distribution campaign is ready. Next steps:
 > 1. **Enable the campaign** — it was created in PAUSED status. After verifying conversion tracking, enable it in the ad platform dashboard.

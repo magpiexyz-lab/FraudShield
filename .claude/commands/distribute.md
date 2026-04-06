@@ -19,7 +19,16 @@ Generate a distribution campaign configuration from experiment.yaml and implemen
 
 > If `experiment/ads.yaml` already exists from a previous run, this skill reads it and presents it for approval. Delete `experiment/ads.yaml` to regenerate from scratch.
 
-This skill generates `experiment/ads.yaml` with targeting, ad creative, budgets, and thresholds, then adds UTM/click ID capture and a feedback widget to the deployed app. The channel is selected at runtime — each channel has a stack file at `.claude/stacks/distribution/<channel>.md` with format constraints, targeting model, policy restrictions, and config schema. Phase 1 is manual — the human creates the campaign in the channel's ad platform using the generated config.
+This skill generates `experiment/ads.yaml` with targeting, ad creative, budgets, and thresholds, then adds UTM/click ID capture and a feedback widget to the deployed app. The channel is selected at runtime — each channel has a stack file at `.claude/stacks/distribution/<channel>.md` with format constraints, targeting model, policy restrictions, and config schema.
+
+## Arguments
+
+Parse `$ARGUMENTS` for:
+- **Phase flag**: `--phase 1` or `--phase 2` (default: `1`)
+  - Phase 1: Standardized Playbook settings (manual CPC, phrase match, search only, $100/7 days, 2 RSAs, 1 ad group, 50 universal negative keywords). Google Ads only — other channels ignore the phase flag.
+  - Phase 2: Extended campaign ($500/14 days), eligible for automated bidding and customized settings based on Phase 1 learnings.
+
+If `$ARGUMENTS` contains no `--phase` flag, default to phase 1.
 
 ## JIT State Dispatch
 
@@ -43,7 +52,7 @@ Begin at STATE 0. Read [state-0-archetype-check-branch.md](../patterns/distribut
 
 ## Do NOT
 
-- Create a campaign via API without showing the approval preview (Step 9d) — real money is at stake
+- Create a campaign via API without showing the approval preview (Step 9d) — real money is at stake. Exception: Phase 1 campaigns with standardized Playbook settings skip 9d (settings are pre-validated by the Playbook)
 - Create a campaign if `campaign_id` already exists in `experiment/ads.yaml` — campaigns are idempotent
 - Skip credential setup — if credentials are missing, guide the user through setup; do not fall back to manual campaign creation
 - Hardcode credential file paths — read from the channel's stack file "Credential Files" subsection

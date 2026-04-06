@@ -10,10 +10,16 @@ Read the archetype file at `.claude/archetypes/<type>.md` (type from experiment.
 
 If surface ≠ none: verify the surface stack file exists at `.claude/stacks/surface/<surface_type>.md`. If missing, stop: "Surface type resolved to `<surface_type>`, but the stack file `.claude/stacks/surface/<surface_type>.md` does not exist. Set `stack.surface` explicitly in experiment.yaml to one of: `none`, `co-located`, `detached`." Then proceed regardless of archetype. Follow `.claude/patterns/branch.md`. Branch: `chore/distribute`.
 
+Parse `$ARGUMENTS` for `--phase 1` or `--phase 2`. If no `--phase` flag is present, default to phase 1. Store the parsed phase value (integer: 1 or 2) for inclusion in the context file.
+
 Create `.runs/distribute-context.json` to initialize state tracking:
 ```bash
+# Parse phase from $ARGUMENTS (default: 1)
+PHASE=1
+if echo "$ARGUMENTS" | grep -qE '\-\-phase\s+2'; then PHASE=2; fi
+
 cat > .runs/distribute-context.json << CTXEOF
-{"skill":"distribute","branch":"$(git branch --show-current)","timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","run_id":"distribute-$(date -u +%Y-%m-%dT%H:%M:%SZ)","completed_states":[0]}
+{"skill":"distribute","branch":"$(git branch --show-current)","timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","run_id":"distribute-$(date -u +%Y-%m-%dT%H:%M:%SZ)","completed_states":[0],"phase":$PHASE}
 CTXEOF
 ```
 
