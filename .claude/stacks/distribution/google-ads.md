@@ -309,6 +309,25 @@ Campaign creation uses Chrome MCP to interact with the Google Ads web UI directl
 
 If any prerequisite is missing, `/distribute` state-9 will detect it and show the setup guide automatically.
 
+### Conversion Action Setup
+
+Before creating a campaign, `/distribute` state-9 Step 0 ensures a conversion action exists in the sub-account for offline conversion import (gclid → Google Ads).
+
+| Setting | Value |
+|---------|-------|
+| Name | `MVP Signup` |
+| Category | Lead → Sign-up |
+| Source | Import (Other data sources or CRMs → Track conversions from clicks) |
+| Count | One (one conversion per click) |
+| Value | Don't use a value |
+| Window | 30 days |
+
+**Per sub-account, not per campaign.** Each team member has one sub-account. All their MVP campaigns share this `MVP Signup` action. Google Ads attributes conversions to the correct campaign automatically via the gclid.
+
+**Idempotent.** Step 0 checks the conversions list first. If `MVP Signup` already exists, it skips creation.
+
+**gclid import flow.** After campaigns run, `/iterate --check` queries PostHog for conversions with gclid, generates a CSV, and uploads it via Chrome MCP (Tools → Conversions → Uploads). This is incremental — each check cycle imports only new conversions since the last import.
+
 ### Campaign Creation Flow (via Chrome MCP)
 
 `/distribute` state-9 performs these steps in the Google Ads UI:

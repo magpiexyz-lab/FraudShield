@@ -68,6 +68,27 @@ If phase is 2, or channel is not `google-ads`, proceed to 9d as normal.
 
 Read all settings from `experiment/ads.yaml`. Then execute the following steps via Chrome MCP, interacting with the Google Ads UI:
 
+**Step 0: Ensure Conversion Action exists**
+
+Before creating the campaign, verify the sub-account has the required conversion action for offline import:
+
+1. Navigate to **Tools & Settings** (wrench icon) → **Measurement** → **Conversions** via Chrome MCP
+2. Scan the conversion actions list for one named `MVP Signup`
+3. **If found:** Log "Conversion action 'MVP Signup' already exists — skipping creation" → proceed to Step 1
+4. **If not found:** Create it:
+   - Click "+ New conversion action"
+   - Select **Import** → "Other data sources or CRMs" → "Track conversions from clicks"
+   - Conversion name: `MVP Signup`
+   - Category: **Lead** → **Sign-up**
+   - Value: "Don't use a value"
+   - Count: **One** (one conversion per click — prevents duplicate counting)
+   - Click-through conversion window: 30 days
+   - Click "Create and Continue", then "Done"
+5. Verify the new action appears in the conversions list
+6. Log: "Created 'MVP Signup' conversion action"
+
+This step is idempotent — on re-runs, Step 0 checks first and skips if the action exists. The action is per sub-account (not per campaign) because Google Ads uses the gclid to auto-attribute conversions to the correct campaign.
+
 **Step 1: Start new campaign**
 - Click "+ New campaign" button
 - Select "Create a campaign without a goal's guidance" (to avoid Smart Campaign defaults)

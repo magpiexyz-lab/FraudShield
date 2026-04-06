@@ -105,6 +105,97 @@ Read `campaign_age_days` from `.runs/iterate-check-context.json`. For each issue
 
 ---
 
+#### Post-fix: gclid offline conversion import
+
+After processing all health issues, import offline conversions from PostHog to Google Ads. This runs on every `--check` cycle and is incremental.
+
+**Skip conditions** (check all before proceeding):
+- Channel in ads.yaml is not `google-ads` → skip
+- `~/.posthog/personal-api-key` does not exist → skip, log "Skipping gclid import — PostHog API key not configured"
+- Chrome MCP tools unavailable → skip, log "Skipping gclid import — Chrome MCP not available"
+
+**Step 1: Determine import window**
+
+Read `last_gclid_import_at` from `.runs/iterate-check-context.json`. If absent (first run), use campaign start date from ads.yaml. If neither exists, use 30 days ago.
+
+**Step 2: Query PostHog for conversions with gclid**
+
+Read PostHog credentials and project ID per the Auto Query procedure in `.claude/stacks/analytics/posthog.md`.
+
+HogQL query — join reach events (have gclid) with demand events (conversion) by distinct_id:
+```sql
+SELECT
+  reach.properties.gclid AS gclid,
+  min(demand.timestamp) AS conversion_time
+FROM events AS demand
+INNER JOIN events AS reach
+  ON demand.distinct_id = reach.distinct_id
+  AND reach.properties.funnel_stage = 'reach'
+  AND reach.properties.gclid IS NOT NULL
+  AND reach.properties.gclid != ''
+WHERE demand.properties.project_name = {project_name}
+  AND demand.properties.funnel_stage = 'demand'
+  AND demand.timestamp > {last_import_at}
+GROUP BY gclid
+```
+
+Note: gclid is captured on the reach event (landing page), not on the demand event (signup). The join by distinct_id links "which user clicked the ad" to "which user converted."
+
+If query returns 0 rows → log "No new conversions with gclid since last import" → skip to Write fixes artifact.
+
+**Step 3: Generate CSV**
+
+Format results as Google Ads offline conversion CSV:
+```csv
+Google Click ID,Conversion Name,Conversion Time
+{gclid},MVP Signup,{conversion_time in yyyy-MM-dd HH:mm:ss format}
+```
+
+Rules:
+- Conversion Name must match: `MVP Signup` (created in /distribute state-9 Step 0)
+- Conversion Time: `yyyy-MM-dd HH:mm:ss` format (UTC)
+- Deduplicate by gclid (one conversion per click)
+- Write to `/tmp/gclid-import-{timestamp}.csv`
+
+**Step 4: Upload via Chrome MCP**
+
+1. Navigate to **Tools & Settings** → **Measurement** → **Conversions**
+2. Click **Uploads** tab
+3. Click **"+" (Upload)**
+4. Select **"Upload a file"** → choose the CSV from Step 3
+5. Click **"Upload and apply"**
+6. Wait for processing (status: "Processing" → "Done" or "Partially applied")
+7. Read result:
+   - "Done": record number of conversions imported
+   - "Partially applied": read error details, log them (expired gclids are expected, not errors)
+
+If Chrome MCP cannot handle file upload dialog, fallback: copy CSV content → use "paste" upload option in the Google Ads UI.
+
+**Step 5: Update import timestamp**
+
+```bash
+python3 -c "
+import json
+from datetime import datetime
+ctx = json.load(open('.runs/iterate-check-context.json'))
+ctx['last_gclid_import_at'] = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+json.dump(ctx, open('.runs/iterate-check-context.json', 'w'), indent=2)
+"
+```
+
+**Step 6: Record in fixes**
+
+Add gclid_import entry:
+```json
+{
+  "issue_type": "gclid_import",
+  "action_taken": "applied",
+  "description": "Uploaded {N} offline conversions to Google Ads. {M} accepted, {K} rejected."
+}
+```
+
+---
+
 ### Write fixes artifact
 
 ```bash

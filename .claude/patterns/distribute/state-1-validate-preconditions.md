@@ -52,6 +52,93 @@
     5. If curl fails (network error, timeout): WARN (non-blocking): "PageSpeed check failed (network error). Verify manually at https://pagespeed.web.dev/"
     This is a WARNING, not a blocker — the skill continues regardless of the score.
 
+13. **Ad-readiness checks (Phase 1 + google-ads only):**
+    Read `phase` from `.runs/distribute-context.json` and `channel` from the selected channel. If phase is not 1 or channel is not google-ads, skip checks 13a-13e.
+
+    **13a: gclid capture**
+    ```bash
+    grep -r 'gclid' src/ site/ 2>/dev/null | grep -v node_modules | grep -v '.yaml' | grep -v '.md'
+    ```
+    - PASS: at least one match in `.ts`/`.tsx`/`.js`/`.jsx` that reads `gclid` from URL params
+    - FAIL: landing page does not capture Google Click ID
+
+    **13b: Unified funnel_stage**
+    Read `experiment/EVENTS.yaml`. For every event in the `events` map, verify `funnel_stage` exists and is one of: `reach`, `demand`, `activate`, `monetize`, `retain`.
+    - PASS: all events have valid `funnel_stage`
+    - FAIL: list the event names missing `funnel_stage`
+
+    **13c: Click ID in reach event properties**
+    Read `experiment/EVENTS.yaml`. Find events where `funnel_stage` is `reach`. Verify at least one has `gclid` or `click_id` in its `properties`.
+    - PASS: reach event defines gclid/click_id
+    - FAIL: no reach event has gclid/click_id property
+
+    **13d: UTM capture**
+    ```bash
+    grep -r 'utm_source' src/ site/ 2>/dev/null | grep -v node_modules | grep -v '.yaml' | grep -v '.md'
+    ```
+    - PASS: at least one match that reads `utm_source` from URL params
+    - FAIL: landing page does not capture UTM parameters
+
+    **13e: Conversion event exists**
+    Read `experiment/EVENTS.yaml`. Check that at least one event has `funnel_stage: demand` or `funnel_stage: activate`.
+    - PASS: at least one demand/activate event exists
+    - FAIL (WARN only, non-blocking): "No conversion events in EVENTS.yaml. Google Ads needs a demand or activate stage event to track conversions."
+
+    **Auto-fix flow (if any of 13a-13d FAIL):**
+
+    1. Report failures:
+       > "Ad-readiness check failed. These issues must be fixed before creating a campaign:"
+       > - [list each failed check]
+       > "I will fix these now and create a PR. After merge + deploy, re-run `/distribute`."
+
+    2. Record in context:
+       ```bash
+       python3 -c "
+       import json
+       ctx = json.load(open('.runs/distribute-context.json'))
+       ctx['ad_readiness_fix_needed'] = True
+       json.dump(ctx, open('.runs/distribute-context.json', 'w'), indent=2)
+       "
+       ```
+
+    3. Create fix branch:
+       ```bash
+       git stash
+       git checkout main && git pull --ff-only
+       git checkout -b fix/ad-readiness
+       ```
+
+    4. Apply fixes for each FAIL:
+       - **13a fix:** Add gclid URL param reading to landing page component. Read archetype from experiment.yaml to find correct file (web-app: `src/app/page.tsx`). Add `const gclid = searchParams.get('gclid')` and include in the reach-stage track call.
+       - **13b fix:** Edit EVENTS.yaml — add `funnel_stage` to events missing it. Use LLM to infer from event name: "visit/view" → reach, "signup/register" → demand, "create/complete" → activate, "pay/subscribe" → monetize, "return/revisit" → retain.
+       - **13c fix:** Edit EVENTS.yaml — add `gclid` and `click_id` properties to the first reach-stage event.
+       - **13d fix:** Add UTM param reading (`utm_source`, `utm_medium`, `utm_campaign`) to landing page component alongside the gclid fix.
+
+    5. Verify and create PR:
+       ```bash
+       npm run build
+       git add -A
+       git commit -m "fix: add ad-readiness tracking (gclid, UTM, funnel_stage)"
+       git push -u origin fix/ad-readiness
+       gh pr create --title "Fix ad-readiness tracking" --body "Add missing gclid capture, UTM tracking, and/or funnel_stage definitions for Google Ads."
+       ```
+
+    6. **STOP — require deploy before continuing:**
+       > "PR created: {pr_url}"
+       >
+       > "**You must merge this PR and deploy before continuing.**"
+       > "Without these changes live, ad clicks won't be tracked and money will be wasted."
+       >
+       > "Steps:"
+       > "1. Merge the PR"
+       > "2. Run `/deploy`"
+       > "3. Verify: visit deployed URL with `?gclid=test123&utm_source=test` — check analytics event has gclid"
+       > "4. Re-run `/distribute` — it picks up where it left off"
+
+       **Do not proceed to POSTCONDITIONS.** The skill terminates here. On re-run, state-1 re-executes and checks 13a-13d should now pass.
+
+    **If only 13e FAIL (and 13a-13d all pass):** WARN only, continue to POSTCONDITIONS.
+
 **POSTCONDITIONS:**
 - experiment/experiment.yaml exists and is valid
 - experiment/EVENTS.yaml exists with valid `events` dict
@@ -62,6 +149,7 @@
 - Analytics stack is configured and verified
 - Live analytics verification passed (reach-stage events found)
 - PageSpeed check completed (Phase 1: score logged, warning if < 70)
+- Ad-readiness checks passed (Phase 1 + google-ads: gclid, funnel_stage, UTM verified; or auto-fix PR created and skill stopped)
 
 - **Write preconditions artifact** (`.runs/distribute-preconditions.json`):
   ```bash
@@ -74,7 +162,9 @@
       'channel': '<selected channel>',
       'analytics_verified': True,
       'phase': <phase from context>,
-      'pagespeed_score': <score or None if check skipped/failed>
+      'pagespeed_score': <score or None if check skipped/failed>,
+      'ad_readiness_passed': True,  # True if 13a-13d passed (or phase != 1 / channel != google-ads)
+      'ad_readiness_warnings': []   # e.g., ['13e: no conversion event']
   }
   json.dump(preconditions, open('.runs/distribute-preconditions.json', 'w'), indent=2)
   "
