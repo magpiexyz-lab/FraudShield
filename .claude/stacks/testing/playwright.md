@@ -635,6 +635,9 @@ Add this job to `.github/workflows/ci.yml` after the `build` job:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
+      # Database stack (if stack.database is supabase):
+      # NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+      # NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
       # Payment stack (if stack.payment is present in experiment.yaml):
       # STRIPE_SECRET_KEY: ${{ secrets.E2E_STRIPE_SECRET_KEY }}
       # NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${{ secrets.E2E_STRIPE_PUBLISHABLE_KEY }}

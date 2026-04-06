@@ -8,7 +8,7 @@
 
 Read the archetype file at `.claude/archetypes/<type>.md` (type from experiment.yaml, default `web-app`). Resolve surface type per the archetype's capabilities (REF: `.claude/patterns/archetype-behavior-check.md`): if `stack.surface` is set in experiment.yaml, use it. Otherwise infer from archetype and stack configuration — `none` (pure API/CLI with no surface), `detached` (excluded hosting), or `co-located` (hosting present). If surface is `none`, stop **before creating a branch**: "The /distribute skill generates ad campaigns that drive traffic to a surface page. No surface is configured. Options: (1) add `stack.surface: co-located` or `detached` to experiment.yaml, then run `make clean && /bootstrap` to rebuild with the surface enabled (warning: `make clean` deletes all generated code — commit or back up your work first), then run `/distribute`; or (2) distribute manually — for CLI tools: `npm publish` to npm registry, GitHub Releases for binaries, Homebrew for macOS; for services: API marketplace listings, documentation links, or direct outreach. See the archetype file for details."
 
-If surface ≠ none, proceed regardless of archetype. Follow `.claude/patterns/branch.md`. Branch: `chore/distribute`.
+If surface ≠ none: verify the surface stack file exists at `.claude/stacks/surface/<surface_type>.md`. If missing, stop: "Surface type resolved to `<surface_type>`, but the stack file `.claude/stacks/surface/<surface_type>.md` does not exist. Set `stack.surface` explicitly in experiment.yaml to one of: `none`, `co-located`, `detached`." Then proceed regardless of archetype. Follow `.claude/patterns/branch.md`. Branch: `chore/distribute`.
 
 Create `.runs/distribute-context.json` to initialize state tracking:
 ```bash

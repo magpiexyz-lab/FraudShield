@@ -27,7 +27,9 @@
        - Unchanged services: [list — health check only]
        Reply **continue** to proceed, or run `/teardown` first to start fresh."
     4. Wait for user confirmation.
-    If `.runs/deploy-manifest.json` does NOT exist: set `deploy_mode = "initial"`.
+    If `.runs/deploy-manifest.json` does NOT exist:
+    1. **Check for prior deployment:** Run the hosting provider's inspect command (e.g., `npx vercel inspect --json 2>/dev/null`) to detect whether the app is already deployed. If the command returns valid project data (project name, URL, alias): warn the user: "Your app appears to be already deployed (found: `<project-url>`), but no deploy manifest exists. This typically happens when `make deploy` was used instead of `/deploy`. Running `/deploy` now will create the manifest and synchronize lifecycle tracking. Any infrastructure already provisioned will be detected and reused (not duplicated)." Then set `deploy_mode = "initial"` and proceed normally — the deploy workflow will reconcile with existing infrastructure.
+    2. If no prior deployment detected: set `deploy_mode = "initial"` and proceed.
 3c. **Dependency audit:** Run `npm audit --audit-level=critical`. If critical vulnerabilities are found:
     "Critical npm vulnerabilities detected:
     <npm audit output>

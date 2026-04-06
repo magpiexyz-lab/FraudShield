@@ -24,10 +24,10 @@ src/app/api/<endpoint>/route.ts
 There are no page folders, no landing page, no UI components, and no
 `src/components/` directory. The `ui` stack category is excluded.
 
-Surface type is inferred by bootstrap when `stack.surface` is not set: if the
-experiment has no `golden_path` and no endpoints serving HTML, surface is `none`;
-otherwise if `stack.services[0].hosting` is present, surface is `co-located`;
-if absent, `detached`. Set `stack.surface` explicitly to override.
+Surface type is inferred by bootstrap when `stack.surface` is not set (evaluated in order — first match wins):
+1. If the experiment defines no `golden_path` **and** no behavior describes a user-facing HTML page (all behaviors are pure API with no user-facing surface): surface is `none`. This applies regardless of whether hosting is configured — a pure API service has no landing page.
+2. If the experiment has user-facing behaviors or golden_path: `stack.services[0].hosting` present → `co-located` (root URL serves a marketing page alongside API routes); hosting absent → `detached` (separate static marketing site).
+When in doubt, set `stack.surface` explicitly in experiment.yaml to override inference.
 
 When surface is `co-located` (the most common default), the root URL (`/`) serves
 an HTML marketing page — see `.claude/stacks/surface/co-located.md`. API endpoints

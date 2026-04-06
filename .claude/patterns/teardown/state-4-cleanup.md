@@ -66,8 +66,11 @@ python3 .claude/scripts/write-q-score.py \
 - experiment.yaml, experiment/EVENTS.yaml (experiment definition)
 - Migration files (can re-deploy with /deploy)
 
-To re-deploy this experiment: run `/deploy` again.
-To archive this experiment: `gh release create v1.0 --notes "Experiment <name> concluded"`
+**Next steps:**
+- To analyze results and decide direction: run `/iterate` (recommended before re-deploying)
+- To implement changes based on learnings: run `/change` to modify the experiment
+- To re-deploy with updated code: run `/deploy` (creates fresh infrastructure)
+- To archive this experiment: `gh release create v1.0 --notes "Experiment <name> concluded"`
 ```
 
 **POSTCONDITIONS:**
