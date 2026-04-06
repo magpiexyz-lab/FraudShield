@@ -133,9 +133,9 @@
        > "1. Merge the PR"
        > "2. Run `/deploy`"
        > "3. Verify: visit deployed URL with `?gclid=test123&utm_source=test` — check analytics event has gclid"
-       > "4. Re-run `/distribute` — it picks up where it left off"
+       > "4. Re-run `/distribute` — state-1 re-executes all checks to verify fixes are live"
 
-       **Do not proceed to POSTCONDITIONS.** The skill terminates here. On re-run, state-1 re-executes and checks 13a-13d should now pass.
+       **Do not advance state tracking.** The skill terminates here without completing state-1. On re-run, state-1 re-executes from the beginning and checks 13a-13d should now pass.
 
     **If only 13e FAIL (and 13a-13d all pass):** WARN only, continue to POSTCONDITIONS.
 
@@ -149,7 +149,7 @@
 - Analytics stack is configured and verified
 - Live analytics verification passed (reach-stage events found)
 - PageSpeed check completed (Phase 1: score logged, warning if < 70)
-- Ad-readiness checks passed (Phase 1 + google-ads: gclid, funnel_stage, UTM verified; or auto-fix PR created and skill stopped)
+- Ad-readiness checks passed (Phase 1 + google-ads: gclid, funnel_stage, UTM verified). If auto-fix was needed, state-1 did not advance — on re-run it re-executes to verify fixes are live.
 
 - **Write preconditions artifact** (`.runs/distribute-preconditions.json`):
   ```bash

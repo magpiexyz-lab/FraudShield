@@ -16,6 +16,7 @@ references:
   - .claude/patterns/solve-reasoning.md
   - .claude/procedures/plan-exploration.md
   - .claude/procedures/plan-validation.md
+  - .claude/procedures/change-plans.md
 branch_prefix: change
 modifies_specs: true
 ---
