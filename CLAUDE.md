@@ -51,7 +51,7 @@ Rules are in priority order. When two rules conflict, the lower-numbered rule wi
 | Variants (A/B messaging) | ✅ | ❌ | ❌ |
 | Fake Door components | ✅ | stub routes | stub commands |
 | Browser tests (Playwright) | ✅ | ❌ | ❌ |
-| API/unit tests (Vitest) | optional | ✅ | ✅ |
+| API/unit tests (Vitest) | ✅ | ✅ | ✅ |
 | /distribute (ad campaigns) | ✅ | ✅ (if surface) | ✅ (if surface) |
 | /deploy | ✅ | ✅ | surface only |
 | Analytics (client-side) | ✅ | ❌ | ❌ |

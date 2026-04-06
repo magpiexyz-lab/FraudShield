@@ -4,10 +4,10 @@ packages:
   runtime: ["@supabase/supabase-js", "@supabase/ssr", pg]
   dev: []
 files:
-  - src/lib/supabase.ts
-  - src/lib/supabase-server.ts
+  - src/lib/supabase.ts  # conditional: only when framework is nextjs
+  - src/lib/supabase-server.ts  # conditional: templates differ per framework
   - src/lib/types.ts
-  - scripts/auto-migrate.mjs
+  - scripts/auto-migrate.mjs  # conditional: templates differ per framework
 env:
   server: [SUPABASE_SERVICE_ROLE_KEY]
   client: [NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY]
@@ -630,3 +630,105 @@ Standardized subsections referenced by deploy.md and teardown.md. Each subsectio
   "org_id": "<org-id>"
 }
 ```
+
+## Non-Next.js Fallback
+
+> Used when `stack.database: supabase` but framework is **not** nextjs (e.g., Hono service, Commander CLI).
+> The browser client (`src/lib/supabase.ts`) is not created — service/CLI archetypes have no browser runtime.
+> Replace `@supabase/ssr` with direct `@supabase/supabase-js` usage and `@next/env` with `dotenv`.
+
+### Fallback Packages
+```bash
+npm install @supabase/supabase-js pg dotenv
+```
+
+### `src/lib/supabase-server.ts` — Server client (non-Next.js)
+```ts
+import { createClient } from "@supabase/supabase-js";
+
+export function createServerSupabaseClient() {
+  return createClient(
+    process.env.SUPABASE_URL ?? "https://placeholder.supabase.co",
+    process.env.SUPABASE_ANON_KEY ?? "placeholder-anon-key"
+  );
+}
+
+export function createServiceRoleClient() {
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!serviceRoleKey) throw new Error("SUPABASE_SERVICE_ROLE_KEY is not configured");
+  return createClient(
+    process.env.SUPABASE_URL ?? "https://placeholder.supabase.co",
+    serviceRoleKey
+  );
+}
+```
+- `createServerSupabaseClient()`: Use in route handlers for anon-scoped operations
+- `createServiceRoleClient()`: Use for admin operations that bypass RLS
+- No cookie-based auth — service/CLI archetypes use API keys or service tokens directly
+
+### `scripts/auto-migrate.mjs` — Migration runner (non-Next.js)
+```js
+import "dotenv/config";
+import pg from "pg";
+import { readdir, readFile } from "fs/promises";
+import { join } from "path";
+
+const connectionString = process.env.POSTGRES_URL_NON_POOLING;
+if (!connectionString) process.exit(0); // No database URL — skip silently (local dev, CI)
+
+const client = new pg.Client({ connectionString });
+await client.connect();
+
+await client.query(`
+  CREATE TABLE IF NOT EXISTS _auto_migrations (
+    name TEXT PRIMARY KEY,
+    applied_at TIMESTAMPTZ DEFAULT now()
+  )
+`);
+
+const { rows: applied } = await client.query("SELECT name FROM _auto_migrations");
+const appliedSet = new Set(applied.map((r) => r.name));
+
+const migrationsDir = join(process.cwd(), "supabase", "migrations");
+let files;
+try {
+  files = (await readdir(migrationsDir)).filter((f) => f.endsWith(".sql")).sort();
+} catch {
+  await client.end();
+  process.exit(0); // No migrations directory — skip
+}
+
+for (const file of files) {
+  if (appliedSet.has(file)) continue;
+  const sql = await readFile(join(migrationsDir, file), "utf8");
+  await client.query(sql);
+  await client.query("INSERT INTO _auto_migrations (name) VALUES ($1)", [file]);
+  console.log(`Applied migration: ${file}`);
+}
+
+await client.end();
+```
+
+### Fallback Environment Variables
+```
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_ANON_KEY=your-publishable-api-key
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+POSTGRES_URL_NON_POOLING=postgresql://postgres.<ref>:<password>@<pooler-host>:5432/postgres
+```
+
+> **Note:** Non-Next.js runtimes use `SUPABASE_URL` and `SUPABASE_ANON_KEY` (no `NEXT_PUBLIC_` prefix) since there is no client-side bundle exposure distinction.
+
+> **Note:** `POSTGRES_URL_NON_POOLING` is required for the auto-migrate script. Find it at: Supabase Dashboard → Settings → Database → Connection string (URI, session mode). When using the Supabase Vercel Integration, this is injected automatically.
+
+### Fallback Build Integration
+
+Add the migration runner to `package.json` so it runs before each build:
+```json
+{ "scripts": { "prebuild": "node scripts/auto-migrate.mjs" } }
+```
+- On Vercel: `prebuild` runs automatically before `build`
+- On other platforms (Docker, Fly.io, Railway): add `node scripts/auto-migrate.mjs` as a pre-start or build step
+- Locally: run `node scripts/auto-migrate.mjs` manually, or use `make migrate` with `supabase db push`
+
+The migration runner exits silently when `POSTGRES_URL_NON_POOLING` is not set (local dev without database), so adding `prebuild` is safe even when the variable is absent.

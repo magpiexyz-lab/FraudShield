@@ -48,7 +48,7 @@ better enforced by the scoped LLM review (`scripts/scoped-review-prompt.md`).
 | Verify hardcoded provider names match assumes | Code blocks using provider-specific or framework-specific identifiers (e.g., `@next/`) must have matching `assumes` declaration |
 | Verify prose file references in reads frontmatter | Spec files (CLAUDE.md, experiment/EVENTS.yaml) referenced in skill prose must appear in `reads` frontmatter |
 | Verify fixture coverage for stack file branching | Conditional stack paths (`when stack.X is NOT Y`) must have fixture coverage for the alternate branch |
-| Verify stack fallback when assumes not met | Stack files with optional-category `assumes` must have a fallback section for absent dependencies |
+| Verify stack fallback when assumes not met | Stack files with optional-category `assumes` must have a fallback section for absent dependencies. Also checks framework assumes for shared-category stacks (database, auth, analytics, payment, email) — these must have fallbacks since the framework value can differ across service archetypes |
 | Verify Makefile deploy hosting guard | Deploy target using provider-specific commands must check `stack.hosting` |
 | Verify change skill validates payment-auth dependency | change.md must validate that `stack.auth` is present when adding `payment` to experiment.yaml stack |
 | Verify stack file env vars in prose match frontmatter declarations | Environment Variables prose sections mentioning env var names must have those vars declared in frontmatter `env.server` or `env.client` |

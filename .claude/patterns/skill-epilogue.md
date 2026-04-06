@@ -7,7 +7,7 @@ Two strategies, dispatched by evidence type:
 
 | Strategy | Skills | When |
 |----------|--------|------|
-| **A — Code Observation** | `/resolve`, `/review`, `/deploy`, `/spec`, `/upgrade` | Skill produces diffs or modifies template files → spawn observer agent |
+| **A — Code Observation** | `/bootstrap`, `/resolve`, `/review`, `/deploy`, `/spec`, `/upgrade` | Skill produces diffs or modifies template files → spawn observer agent |
 | **B — Execution Audit** | `/audit`, `/solve`, `/iterate`, `/retro`, `/rollback`, `/teardown` | Analysis-only, no diffs → inline friction check |
 
 **Skip for:**

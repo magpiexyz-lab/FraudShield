@@ -36,7 +36,7 @@ __all__ = [
 def check_5_conditional_dependency_refs(skill_contents: dict[str, str]) -> list[str]:
     """Check 5: References to optional stack categories have conditional guards."""
     errors: list[str] = []
-    optional_categories = {"database", "auth", "payment", "email", "testing"}
+    optional_categories = {"database", "auth", "payment", "email"}
     for sf, content in skill_contents.items():
         prose = extract_prose(content)
         for m in re.finditer(r"from the (\w+) stack file", prose):

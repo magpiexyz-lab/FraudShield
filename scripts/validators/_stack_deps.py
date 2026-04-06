@@ -105,6 +105,9 @@ def check_14_stack_fallback_when_assumes_not_met(stack_contents: dict[str, str])
         r"when.*(?:not|missing|absent)|anonymous)\b"
     )
     OPTIONAL_ASSUME_CATEGORIES = {"database", "auth", "payment", "testing"}
+    # Shared stack categories (not per-service) that may assume a specific framework
+    # but must work across different service runtimes
+    SHARED_STACK_CATEGORIES = {"database", "auth", "analytics", "payment", "email"}
 
     for sf, content in stack_contents.items():
         fm = parse_frontmatter(sf)
@@ -114,10 +117,27 @@ def check_14_stack_fallback_when_assumes_not_met(stack_contents: dict[str, str])
         if not assumes:
             continue
 
+        # Determine the stack file's own category from its path
+        # e.g., .claude/stacks/database/supabase.md -> "database"
+        parts = sf.replace("\\", "/").split("/")
+        file_category = ""
+        if "stacks" in parts:
+            idx = parts.index("stacks")
+            if idx + 1 < len(parts):
+                file_category = parts[idx + 1]
+
+        # Framework assumes need fallbacks only for shared-category stack files
+        # (per-service categories like ui are always paired with their framework)
+        framework_assumes = [
+            a for a in assumes if a.split("/")[0] == "framework"
+        ]
         optional_assumes = [
             a for a in assumes
             if a.split("/")[0] in OPTIONAL_ASSUME_CATEGORIES
         ]
+        if framework_assumes and file_category in SHARED_STACK_CATEGORIES:
+            optional_assumes.extend(framework_assumes)
+
         if not optional_assumes:
             continue
 

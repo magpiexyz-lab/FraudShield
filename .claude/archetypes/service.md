@@ -1,7 +1,7 @@
 ---
 description: "Backend service with API endpoints, no browser UI"
-required_stacks: [framework, hosting]
-optional_stacks: [database, auth, analytics, payment, email, testing]
+required_stacks: [framework, hosting, testing]
+optional_stacks: [database, auth, analytics, payment, email]
 excluded_stacks: [ui]
 required_experiment_fields: [endpoints]
 build_command: "npm run build"
