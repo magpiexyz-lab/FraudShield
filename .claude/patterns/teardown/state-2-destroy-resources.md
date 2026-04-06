@@ -35,22 +35,7 @@ This is a reminder only — npm cleanup is done after infrastructure teardown.
 
 Delete in reverse order of creation. Each step is independent — continue on failure.
 
-#### 3a: Analytics dashboard (if present in manifest)
-
-Read `~/.posthog/personal-api-key`. If available, first discover the project ID:
-```bash
-POSTHOG_PROJECT_ID=$(curl -s "https://us.i.posthog.com/api/projects/" \
-  -H "Authorization: Bearer <api_key>" | python3 -c "import sys,json; print(json.load(sys.stdin)['results'][0]['id'])")
-```
-Then delete the dashboard:
-```bash
-curl -s -X DELETE "https://us.i.posthog.com/api/projects/$POSTHOG_PROJECT_ID/dashboards/<dashboard_id>/" \
-  -H "Authorization: Bearer <api_key>"
-```
-If key not available or API fails: report "PostHog dashboard #<id> — delete manually
-at https://us.posthog.com/dashboard/<id>"
-
-#### 3b: Stripe webhook endpoint (if present in manifest)
+#### 3a: Stripe webhook endpoint (if present in manifest)
 
 If Stripe CLI is available:
 ```bash
@@ -65,19 +50,19 @@ Note: manifest stores the URL, not the endpoint ID. List endpoints to find the I
 If CLI not available or fails: report "Stripe webhook — delete manually at
 https://dashboard.stripe.com/webhooks"
 
-#### 3c: Custom domain (if present in manifest)
+#### 3b: Custom domain (if present in manifest)
 
 Read the hosting stack file's `## Deploy Interface > Teardown`. Execute the remove-domain command with the domain from the manifest.
 
 If fails: report and continue.
 
-#### 3d: Hosting project (if present in manifest)
+#### 3c: Hosting project (if present in manifest)
 
 Read the hosting stack file's `## Deploy Interface > Teardown`. Execute the remove-project command.
 
 If fails: report with the dashboard URL from the stack file's Teardown section for manual fallback.
 
-#### 3d.5: Surface project (if `surface_url` in manifest and no `hosting` in manifest)
+#### 3c.5: Surface project (if `surface_url` in manifest and no `hosting` in manifest)
 
 This applies to archetypes with detached surfaces (e.g., CLI) where the surface is deployed
 independently — no hosting project was created. Read the surface stack file at
@@ -89,20 +74,20 @@ delete manually via the hosting provider's dashboard."
 
 If fails: report with the provider dashboard URL for manual fallback.
 
-#### 3e: Database project (if present in manifest)
+#### 3d: Database project (if present in manifest)
 
 Read the database stack file's `## Deploy Interface > Teardown`. Execute the delete command.
 
 If fails: report with the dashboard URL from the stack file's Teardown section for manual fallback.
 
-#### 3f: External services (manual)
+#### 3e: External services (manual)
 
 For each service in `external_services`:
 - Read `.claude/stacks/external/<service-slug>.md` for the dashboard URL
 - List the service with its dashboard URL for manual cleanup
 
 **POSTCONDITIONS:**
-- All deletable resources have been attempted (analytics, stripe, domain, hosting, surface, database)
+- All deletable resources have been attempted (stripe, domain, hosting, surface, database)
 - External services listed for manual cleanup
 - Results (success/failure) recorded for each resource
 

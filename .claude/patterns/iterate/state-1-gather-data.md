@@ -27,9 +27,27 @@ Source: Analytics Query API (project_name = "<name>")
 - If the user replies "looks good" (or any affirmative), proceed to STATE 2 with the auto-fetched data
 - If the user provides corrections (e.g., "visit_landing should be 500"), update the affected counts and re-present the table for confirmation. Use the corrected values in STATE 2.
 
-### 1b: Fall back to manual input
+### 1b: Handle missing credentials or query failure
 
-If the analytics stack file has no "Auto Query" section, or credentials are missing, or the query fails, fall back to manual input.
+If the analytics stack file has no "Auto Query" section, STOP: "Analytics stack file missing Auto Query section. Contact the template maintainer."
+
+If credentials are missing (personal API key file not found), **STOP** — do not fall back to manual input:
+
+> PostHog personal API key not found at `~/.posthog/personal-api-key`.
+>
+> This key is required for `/iterate` to query your funnel data. Create one now:
+> 1. Go to PostHog -> click your profile (bottom left) -> **Personal API keys**
+> 2. Click **Create personal API key**
+> 3. Label: `cli` (or anything)
+> 4. Scopes: set **Query** to **Read** (all others can stay No access)
+> 5. Click **Create key** and copy the key (it starts with `phx_`)
+> 6. Save it:
+> ```
+> mkdir -p ~/.posthog && echo 'phx_YOUR_KEY' > ~/.posthog/personal-api-key
+> ```
+> Then re-run `/iterate`.
+
+If credentials exist but the query fails (network error, auth error, unexpected response), fall back to manual input.
 
 Tell the user how to get the numbers. See the analytics stack file's "Dashboard Navigation" section for provider-specific instructions on how to pull funnel numbers. If no stack file exists or it lacks a "Dashboard Navigation" section, give general guidance.
 

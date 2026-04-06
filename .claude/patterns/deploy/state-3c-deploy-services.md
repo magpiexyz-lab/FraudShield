@@ -39,10 +39,9 @@ Determine which agents to launch based on experiment.yaml stack (all use
 `subagent_type: general-purpose`):
 - **Agent A** (Supabase Auth): spawn if `stack.auth: supabase` (regardless of database provider — Step 4.4 collects Supabase credentials when database is not supabase)
 - **Agent B** (Stripe Webhook): spawn if `stack.payment: stripe` AND Stripe CLI is available
-- **Agent C** (Analytics Dashboard): spawn if `stack.analytics: posthog`
 - **Agent D** (External Services): spawn if any external stack files exist (Step 0.10 found services)
 
-**Update mode filtering:** When `deploy_mode == "update"`, only spawn agents for services in `added_services`. Skip agents for `unchanged_services` (already configured from previous deploy) and `removed_services` (orphaned). For example, if `stack.analytics: posthog` is in `unchanged_services`, do NOT spawn Agent C.
+**Update mode filtering:** When `deploy_mode == "update"`, only spawn agents for services in `added_services`. Skip agents for `unchanged_services` (already configured from previous deploy) and `removed_services` (orphaned).
 
 Launch all applicable agents **simultaneously** using parallel Agent tool calls. Each agent returns a result object: `{status, message, env_vars_added, ...}`.
 
@@ -106,87 +105,6 @@ If webhook creation fails, return `{status: "failed", message: "<error details>.
 
 ---
 
-#### Agent C — Analytics Dashboard
-
-**Spawn condition:** `stack.analytics: posthog`
-**Receives:** `canonical_url`, experiment.yaml `name`/`description`/`variants`, archetype type, `experiment/EVENTS.yaml` content, `stack.payment` presence
-**Returns:** `{status: "ok"|"failed"|"skipped", message: "<details>", dashboard_url: "<url>"|null, env_vars_added: []}`
-
-Instructions for Agent C:
-
-Read the PostHog personal API key from `~/.posthog/personal-api-key` (same credential used by /iterate auto-query).
-
-If the key does NOT exist:
-1. Tell the user: "PostHog **Personal API Key** (`phx_` prefix) not found at `~/.posthog/personal-api-key`. This is different from the **Project API Key** (`phc_` prefix) used for sending events. To auto-create the experiment dashboard, create a Personal API Key now:"
-   - Go to PostHog -> click your profile (bottom left) -> **Personal API keys**
-   - Click **Create personal API key**
-   - Label: `cli` (or anything)
-   - Organization & project access: select your organization
-   - Scopes: set **Dashboards** to **Write** and **Insights** to **Write** (all others can stay No access)
-   - Click **Create key** and copy the key (it starts with `phx_`)
-2. Ask: "Paste the Personal API Key (`phx_...`) here, or type **skip** to set up the dashboard manually later." Validate prefix: if the user pastes a `phc_` key, tell them: "That's a Project API Key, not a Personal API Key. Personal API Keys start with `phx_`."
-3. If key provided: save to `~/.posthog/personal-api-key` (`mkdir -p ~/.posthog && echo "$KEY" > ~/.posthog/personal-api-key`) and proceed with auto-creation below.
-4. If skipped: return `{status: "skipped", message: "PostHog dashboard not auto-created — manual setup needed.", dashboard_url: null, env_vars_added: []}`.
-
-If the key exists (or was just created), validate and discover the PostHog project:
-
-First, validate that the cached personal API key targets the correct project. The personal API key (`phx_` prefix) may have access to multiple PostHog projects — blindly using the first one can create a dashboard in the wrong project.
-
-```bash
-# Fetch all projects accessible by this personal API key
-POSTHOG_PROJECTS=$(curl -s "https://us.i.posthog.com/api/projects/" \
-  -H "Authorization: Bearer $POSTHOG_API_KEY")
-```
-
-Cross-reference: iterate the `results` array and find the project whose `api_token` matches the experiment's `NEXT_PUBLIC_POSTHOG_KEY` (from Step 4.4 env vars or the analytics library's hardcoded `phc_TEAM_KEY`). If a match is found, use that project's `id`. If no match is found (stale key or wrong org): tell the user the cached key doesn't match the current project and ask for a new Personal API Key (`phx_` prefix — NOT the Project API Key `phc_`). Save the new key to `~/.posthog/personal-api-key` and retry.
-
-```bash
-POSTHOG_PROJECT_ID=$(echo "$POSTHOG_PROJECTS" | python3 -c "
-import sys, json, os
-data = json.load(sys.stdin)
-target_key = os.environ.get('NEXT_PUBLIC_POSTHOG_KEY', 'phc_TEAM_KEY')
-for p in data.get('results', []):
-    if p.get('api_token') == target_key:
-        print(p['id']); break
-else:
-    print('NO_MATCH')
-")
-```
-
-If `POSTHOG_PROJECT_ID` is `NO_MATCH`: ask the user for a new personal API key or skip. If valid, proceed to auto-create the dashboard:
-
-```bash
-# Create dashboard
-curl -s -X POST "https://us.i.posthog.com/api/projects/$POSTHOG_PROJECT_ID/dashboards/" \
-  -H "Authorization: Bearer $POSTHOG_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"name": "<project-name> Experiment", "description": "Auto-created by /deploy for <project-name>"}'
-```
-
-Extract the dashboard `id` from the response. Then create funnel insight. Build the funnel series from experiment/EVENTS.yaml `events` map: filter by `requires` (match experiment stack) and `archetypes` (match experiment type), order by funnel_stage (reach -> demand -> activate -> monetize -> retain). If the filtered events cover fewer than 2 funnel stages, log a warning ("Funnel insight skipped — filtered events cover fewer than 2 stages for this archetype/stack combination") and skip funnel creation (dashboard is still useful for individual event trends). For web-app this typically yields `visit_landing -> signup_start -> signup_complete -> activate` (plus `pay_start` and `pay_success` if `stack.payment` is present). For service/cli, this yields the events defined in the fixture (typically `activate -> retain_return`).
-
-```bash
-# Create funnel insight and add to dashboard
-curl -s -X POST "https://us.i.posthog.com/api/projects/$POSTHOG_PROJECT_ID/insights/" \
-  -H "Authorization: Bearer $POSTHOG_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"name": "<project-name> Funnel", "dashboards": [<dashboard_id>], "query": {"kind": "InsightVizNode", "source": {"kind": "FunnelsQuery", "series": [<archetype-appropriate EventsNode entries>], "filterTestAccounts": true, "properties": {"type": "AND", "values": [{"type": "AND", "values": [{"key": "project_name", "value": ["<project-name>"], "operator": "exact", "type": "event"}]}]}}}}'
-```
-
-If experiment.yaml has `variants` (web-app only): create a second funnel insight named `<project-name> Funnel by Variant` on the same dashboard, with the same series and filters as above, plus a breakdown:
-```bash
-curl -s -X POST "https://us.i.posthog.com/api/projects/$POSTHOG_PROJECT_ID/insights/" \
-  -H "Authorization: Bearer $POSTHOG_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"name": "<project-name> Funnel by Variant", "dashboards": [<dashboard_id>], "query": {"kind": "InsightVizNode", "source": {"kind": "FunnelsQuery", "series": [<same web-app series>], "filterTestAccounts": true, "breakdownFilter": {"breakdown": "variant", "breakdown_type": "event"}, "properties": {"type": "AND", "values": [{"type": "AND", "values": [{"key": "project_name", "value": ["<project-name>"], "operator": "exact", "type": "event"}]}]}}}}'
-```
-Include `pay_start` and `pay_success` in the series if `stack.payment` is present. This lets the user compare conversion rates between variant landing pages — the core purpose of the variants feature.
-
-If any API call fails, return `{status: "failed", message: "<error details>. To set up manually: go to PostHog → Dashboards → New dashboard → name it '<project-name> Experiment'. Add a funnel insight with the events from experiment/EVENTS.yaml filtered by project_name.", dashboard_url: null, env_vars_added: []}`.
-If all API calls succeed, return `{status: "ok", message: "Dashboard and funnel insights created.", dashboard_url: "<PostHog dashboard URL>", env_vars_added: []}`.
-
----
-
 #### Agent D — External Services
 
 **Spawn condition:** any external stack files exist (Step 0.10 found services)
@@ -217,9 +135,8 @@ Collect all env vars added across all services. Return `{status, message, env_va
 **Wait for all agents to complete before continuing.**
 
 1. Collect `env_vars_added` arrays from all agent results into a single list.
-2. Collect `dashboard_url` from Agent C result (for Step 6 summary).
-3. Collect per-agent `status` and `message` (for Step 6 summary).
-4. Collect `per_service` from Agent D result (for Step 6 external services section).
+2. Collect per-agent `status` and `message` (for Step 6 summary).
+3. Collect `per_service` from Agent D result (for Step 6 external services section).
 
 #### 5b.5: Redeploy (only if any agent reported non-empty `env_vars_added`)
 

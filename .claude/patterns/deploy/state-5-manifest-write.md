@@ -48,15 +48,6 @@ Print a deployment summary:
 - [service]: auto-provisioned via CLI / manually configured / not configured — set via hosting provider's env var CLI
 [If none] **External services:** None
 
-[If PostHog dashboard was auto-created] **Analytics dashboard:** <dashboard_url>
-[If PostHog dashboard was NOT auto-created] **Analytics dashboard (manual):**
-  1. Go to PostHog -> Dashboards -> New dashboard -> name it "<project-name> Experiment"
-  2. Add a Funnel insight: visit_landing -> signup_start -> signup_complete -> activate [-> pay_start -> pay_success if payment]. Filter by project_name = "<project-name>".
-  If experiment.yaml has `variants`: add a second Funnel insight with the same events, but add Breakdown -> Event property -> `variant`. Name it "<project-name> Funnel by Variant".
-  3. Add a Trend insight: all events from experiment/EVENTS.yaml events map, daily, last 14 days, filtered by project_name.
-
-**Scheduled digest (recommended):** In PostHog -> Dashboards -> "<project-name> Experiment" -> click "Subscribe" (bell icon) -> set frequency to every 3 days -> add your email. You'll receive funnel charts by email automatically — no need to remember to check.
-
 **Monitoring setup** (recommended):
 - **Health check alerts:** Set up uptime monitoring for `https://<canonical_url>/api/health` using a free service (e.g., UptimeRobot, Better Stack). Alert on non-200 responses. Check interval: 5 minutes.
 - **Analytics digest:** In PostHog -> Dashboards -> "<project-name> Experiment" -> click "Subscribe" (bell icon) -> every 3 days -> add your email.
@@ -109,9 +100,6 @@ Write `.runs/deploy-manifest.json` with the resources created during this deploy
     "provider": "<stack.database value>",
     "...provider-specific keys from database stack file's ## Deploy Interface > Manifest Keys"
   },
-  "posthog": {
-    "dashboard_id": "<id or null>"
-  },
   "stripe": {
     "webhook_endpoint_url": "<url or null>"
   },
@@ -130,7 +118,7 @@ Write `.runs/deploy-manifest.json` with the resources created during this deploy
 - Update `deployed_at` to the current timestamp
 - Add new entries for `added_services` (newly provisioned resources)
 - Keep existing entries for `unchanged_services` (preserve previous manifest values)
-- For `removed_services`: keep the entry but add `"status": "orphaned"` to it. Example: `"posthog": {"dashboard_id": "123", "status": "orphaned"}`. This signals that the resource exists but is no longer referenced by experiment.yaml.
+- For `removed_services`: keep the entry but add `"status": "orphaned"` to it. Example: `"stripe": {"webhook_endpoint_url": "https://...", "status": "orphaned"}`. This signals that the resource exists but is no longer referenced by experiment.yaml.
   - `/teardown` deletes ALL entries (active + orphaned)
   - `/deploy` update mode skips health checks for orphaned entries
   - **Backward compatibility:** missing `status` field = `"active"` (default)

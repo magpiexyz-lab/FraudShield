@@ -326,7 +326,13 @@ This returns the first project in the organization. All experiments share one Po
 ```bash
 test -f ~/.posthog/personal-api-key
 ```
-Missing → fall back to manual input + show setup instructions.
+Missing → **STOP**. Do not fall back to manual input. Show setup instructions and tell user to create the key before re-running:
+
+> PostHog personal API key not found at `~/.posthog/personal-api-key`.
+> Create one: PostHog → click your profile (bottom left) → Personal API keys → Create personal API key → Label: `cli` → Scopes: Query Read → Create key → copy the `phx_` key → save:
+> ```
+> mkdir -p ~/.posthog && echo 'phx_YOUR_KEY' > ~/.posthog/personal-api-key
+> ```
 
 ### Query Procedure
 1. Read API key from `~/.posthog/personal-api-key`
