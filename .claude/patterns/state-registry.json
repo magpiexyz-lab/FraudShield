@@ -159,6 +159,12 @@
     "4": "test -f .runs/iterate-manifest.json",
     "5": "python3 -c \"import json; d=json.load(open('.runs/observe-result.json')); assert d['skill']=='iterate'\""
   },
+  "iterate-check": {
+    "c0": "test -f .runs/iterate-check-context.json",
+    "c1": "test -f .runs/iterate-check-health.json",
+    "c2": "test -f .runs/iterate-check-fixes.json",
+    "c3": "python3 -c \"import json; d=json.load(open('.runs/observe-result.json')); assert d['skill']=='iterate-check'\""
+  },
   "retro": {
     "0": "test -f .runs/retro-context.json",
     "1": "test -f .runs/retro-interview.json",
@@ -197,6 +203,7 @@
     "audit":      { "strategy": "B", "gate_mechanism": "postcondition-only" },
     "solve":      { "strategy": "B", "gate_mechanism": "postcondition-only" },
     "iterate":    { "strategy": "B", "gate_mechanism": "postcondition-only" },
+    "iterate-check": { "strategy": "B", "gate_mechanism": "postcondition-only" },
     "retro":      { "strategy": "B", "gate_mechanism": "postcondition-only" },
     "rollback":   { "strategy": "B", "gate_mechanism": "postcondition-only" },
     "teardown":   { "strategy": "B", "gate_mechanism": "postcondition-only" }
@@ -249,6 +256,7 @@
     "spec":     { "_required_states": ["0","1","2","3","4","5","6","7","8"] },
     "rollback": { "_required_states": ["0","1","2","3","4"] },
     "iterate":  { "_required_states": ["0","1","2","3","4","5"] },
+    "iterate-check": { "_required_states": ["c0","c1","c2","c3"] },
     "retro":    { "_required_states": ["0","1","2","3","4"] },
     "upgrade":  { "_required_states": ["0","1","2","3"] }
   }

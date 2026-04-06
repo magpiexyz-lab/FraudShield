@@ -13,6 +13,42 @@ modifies_specs: false
 ---
 Review the experiment's progress and recommend what to do next.
 
+## Argument Dispatch
+
+Parse `$ARGUMENTS` for mode flags:
+
+| Flag | Mode | Description |
+|------|------|-------------|
+| _(empty)_ | default | Funnel analysis (states 0-5) |
+| `--check` | check | Ads campaign health check via Chrome MCP (states c0-c3) |
+| `--cross` | cross | Cross-MVP evaluation (not yet implemented) |
+
+**If `$ARGUMENTS` contains `--cross`:**
+> Cross-MVP evaluation is not yet implemented. It will be available in a future update.
+> Run `/iterate` (without flags) for funnel analysis or `/iterate --check` for ads health monitoring.
+> **STOP here.**
+
+**If `$ARGUMENTS` contains `--check`**, use the Check Mode dispatch table below.
+
+### Check Mode JIT State Dispatch
+
+Read each STATE's file **only when transitioning to that state**. Do NOT read ahead. Complete the VERIFY check before reading the next state. This ensures you hold only one state's instructions in working memory at a time.
+
+| STATE | Name | Phase | File |
+|-------|------|-------|------|
+| c0 | READ_ADS_CONTEXT | Plan | [state-c0-read-ads-context.md](../patterns/iterate/state-c0-read-ads-context.md) |
+| c1 | CHECK_HEALTH | Plan | [state-c1-check-health.md](../patterns/iterate/state-c1-check-health.md) |
+| c2 | AUTO_FIX | Implement | [state-c2-auto-fix.md](../patterns/iterate/state-c2-auto-fix.md) |
+| c3 | REPORT | Implement | [state-c3-report.md](../patterns/iterate/state-c3-report.md) |
+
+Begin at STATE c0. Read [state-c0-read-ads-context.md](../patterns/iterate/state-c0-read-ads-context.md) now.
+
+**STOP here -- do not continue to the default dispatch table below.**
+
+---
+
+**If `$ARGUMENTS` does NOT contain `--check` or `--cross`**, proceed with the default funnel analysis below.
+
 ## JIT State Dispatch
 
 Read each STATE's file **only when transitioning to that state**. Do NOT read ahead. Complete the VERIFY check before reading the next state. This ensures you hold only one state's instructions in working memory at a time.
