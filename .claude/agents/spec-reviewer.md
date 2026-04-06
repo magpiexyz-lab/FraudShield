@@ -74,7 +74,15 @@ Then verify file existence per archetype: for web-app, extract page names from e
 **S3. Analytics wiring**
 > Skip if no `experiment/EVENTS.yaml` exists.
 
-Every event in `experiment/EVENTS.yaml` has a tracking call in source code. Grep for each event name. Missing tracking call is a FAIL.
+Three sub-checks:
+
+S3a. **Tracking calls exist**: Every event in `experiment/EVENTS.yaml` `events` map has a tracking call in source code. Grep for each event name. Missing tracking call is a FAIL.
+
+S3b. **Event schema valid**: Run `python3 scripts/validate-events.py`. Non-zero exit is a FAIL — report the script's error output. (This validates every event has `funnel_stage` from reach/demand/activate/monetize/retain and a `trigger` field.)
+
+S3c. **Golden path event consistency** (skip if no `golden_path` in experiment.yaml):
+- Every `golden_path[].event` value must exist as a key in the `experiment/EVENTS.yaml` `events` map. Skip steps where `event` is absent. Missing event is a FAIL.
+- The `funnel_stage` values of golden_path steps' events must be non-decreasing in funnel order (reach < demand < activate < monetize < retain). A step whose event's funnel_stage precedes the previous step's is a FAIL. Steps at the same stage are allowed.
 
 **S4. Golden path reachability**
 > Skip if no `golden_path` in experiment.yaml.

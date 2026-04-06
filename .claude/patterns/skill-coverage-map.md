@@ -43,7 +43,7 @@ preventing them. Consumed by `/change` STATE 11 for Fix-type skill deficiency at
 |------|------|-------------|
 | S1 | Feature Coverage | Behavior in experiment.yaml has no implementation |
 | S2 | Page/Endpoint Existence | Archetype-required page/endpoint/command file missing |
-| S3 | Analytics Wiring | EVENTS.yaml event has no tracking call in code |
+| S3 | Analytics Wiring | EVENTS.yaml event has no tracking call, invalid event schema, or golden_path event not in EVENTS.yaml / funnel order violation |
 | S4 | Golden Path Reachability | Step unreachable: page missing, CTA missing, or event not firing |
 | S5 | System/Cron Behaviors | System/cron behavior not implemented or untested |
 | S6 | Plan Completion | Plan item not addressed in source code |
