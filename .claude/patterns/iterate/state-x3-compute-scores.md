@@ -29,20 +29,23 @@ MVPs that match **none** of the gates also proceed to scoring (they have some da
 
 ### Compute Traction Score
 
+Traction Score is **phase-aware** — each phase uses different signals based on
+available data volume. Read `phase` from the `--cross` arguments or default to 1.
+
 For each MVP not eliminated by hard gates:
 
 ```
 # Extract values
-demand_users  = posthog.demand
+demand_users   = posthog.demand
 activate_users = posthog.activate
-ctr           = google_ads.ctr          # as decimal (e.g., 0.035)
-spend         = google_ads.spend        # in dollars
-quality_score = google_ads.quality_score # 1-10 scale, or 0 if unavailable
+ctr            = google_ads.ctr          # as decimal (e.g., 0.035)
+spend          = google_ads.spend        # in dollars
+quality_score  = google_ads.quality_score # 1-10 scale, or 0 if unavailable
 
 # Industry average CTR default
 industry_avg_ctr = 0.025  # 2.5%
 
-# Signal calculations
+# Signal calculations (shared across phases)
 conversion_signal = min(demand_users * 25, 100)
 activation_signal = min((activate_users / max(demand_users, 1)) * 100, 100)
 ctr_signal        = min((ctr / industry_avg_ctr) * 50, 100)
@@ -50,22 +53,64 @@ cost_signal       = max(100 - (spend / max(demand_users, 1) / 50 * 100), 0)
 qs_signal         = quality_score * 10
 ```
 
-**Standard weights** (when `quality_score > 0`):
+#### Phase 1 weights ($100/7 days — activation data too sparse to be reliable)
+
+Phase 1 does NOT include activation_signal. With only 1-5 signups expected,
+activation would be 0-2 data points — pure noise at 20% weight.
+
+**Standard** (when `quality_score > 0`):
 ```
-score = conversion_signal * 0.35
-      + activation_signal * 0.20
+score = conversion_signal * 0.45
+      + ctr_signal        * 0.25
+      + cost_signal       * 0.20
+      + qs_signal         * 0.10
+```
+
+**QS fallback** (when `quality_score == 0`):
+```
+score = conversion_signal * 0.50
+      + ctr_signal        * 0.30
+      + cost_signal       * 0.20
+```
+
+#### Phase 2 weights ($500/14 days — activation becomes reliable)
+
+**Standard** (when `quality_score > 0`):
+```
+score = conversion_signal * 0.30
+      + activation_signal * 0.25
       + ctr_signal        * 0.20
       + cost_signal       * 0.15
       + qs_signal         * 0.10
 ```
 
-**QS fallback weights** (when `quality_score == 0` -- insufficient keyword data):
+**QS fallback** (when `quality_score == 0`):
 ```
-score = conversion_signal * 0.40
-      + activation_signal * 0.20
+score = conversion_signal * 0.35
+      + activation_signal * 0.25
       + ctr_signal        * 0.25
       + cost_signal       * 0.15
-# qs_signal omitted, weight redistributed to conversion (+5%) and ctr (+5%)
+```
+
+#### Phase 3 weights ($1000+/ongoing — monetization data available)
+
+Phase 3 adds monetization and retention signals. These replace the simpler
+cost/CTR signals that matter less at scale.
+
+```
+monetize_users = posthog.monetize
+retain_users   = posthog.retain
+monetization_signal = min((monetize_users / max(demand_users, 1)) * 200, 100)
+retention_signal    = min((retain_users / max(activate_users, 1)) * 100, 100)
+roas_signal         = min((revenue / max(spend, 1)) * 50, 100)  # revenue from PostHog pay events
+```
+
+```
+score = conversion_signal    * 0.15
+      + activation_signal    * 0.20
+      + monetization_signal  * 0.25
+      + roas_signal          * 0.25
+      + retention_signal     * 0.15
 ```
 
 ### Write scores file

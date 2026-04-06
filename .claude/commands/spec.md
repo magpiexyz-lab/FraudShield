@@ -1,5 +1,5 @@
 ---
-description: "Transform an idea + level into a complete experiment.yaml with hypotheses, behaviors, variants, and stack."
+description: "Transform an idea into a complete Level 3 experiment.yaml with hypotheses, behaviors, variants, and stack."
 type: code-writing
 reads: [experiment/EVENTS.yaml]
 stack_categories: []
@@ -34,13 +34,11 @@ Begin at STATE 0. Read [state-0-input-parse.md](../patterns/spec/state-0-input-p
 
 ## Do NOT
 - Add behaviors not traceable to a hypothesis
-- Add stack components not required by the selected level
-- Generate fewer than 3 variants or fewer pending hypotheses than the level minimum (L1: 2, L2: 4, L3: 5)
+- Add stack components not required by Level 3
+- Generate fewer than 3 variants or fewer than 5 pending hypotheses
 - Produce hypotheses without a `metric` object containing `formula`, numeric `threshold`, and `operator`
 - Modify any file other than `experiment/experiment.yaml`, `.runs/spec-manifest.json`, and `.runs/verify-history.jsonl`
 - Skip the user approval checkpoint in Step 6
 - Proceed past any STOP point without explicit user confirmation
-- Add `monetize` category hypotheses at Level 1
-- Add `payment: stripe` to stack unless Level 3 with monetize hypotheses
-- Add `auth: supabase` to stack at Level 1
-- Add `database: supabase` to stack at Level 1
+- Skip auth or database — Level 3 always includes them
+- Skip payment stack when monetize hypotheses are present

@@ -7,12 +7,9 @@
 
 Parse `$ARGUMENTS` for:
 - **Idea text**: the main argument (everything except flags)
-- **Level flag**: `--level 1`, `--level 2`, or `--level 3` (default: `1`)
+- **Level**: always `3` (Full MVP). The `--level` flag is accepted for backwards compatibility but the value is always overridden to 3.
 
-Level definitions:
-- **Level 1 — Landing test**: static page, analytics, no database or auth. Tests demand signals.
-- **Level 2 — Interactive MVP**: Level 1 + database + core feature. Tests activation and retention.
-- **Level 3 — Full MVP**: Level 2 + auth + payments (if applicable). Tests monetization.
+Level 3 — Full MVP: auth + database + core feature + payments (if applicable). Tests the complete funnel from reach to monetization. This is the default because a full MVP takes ~2 hours to build with the template, and running ads against anything less wastes budget on incomplete funnels.
 
 ### Fallback
 If `$ARGUMENTS` is empty or contains only a level flag:
@@ -31,8 +28,7 @@ If `$ARGUMENTS` is empty or contains only a level flag:
 ### Guards
 - If the idea text (excluding flags) is fewer than 20 characters: stop with:
   > That's too brief. Describe the problem and solution in at least a sentence so I can generate meaningful hypotheses.
-- If the level is not 1, 2, or 3: stop with:
-  > Invalid level. Use `--level 1` (landing test), `--level 2` (interactive MVP), or `--level 3` (full MVP).
+- If the level flag is provided with a value other than 3: log "Level overridden to 3 (Full MVP is the standard for ad-ready MVPs)" and continue with level 3.
 
 ### Input Sufficiency Check
 
@@ -65,12 +61,12 @@ For each dimension, classify as:
 ### Confirm
 Display the parsed input and confirm before proceeding:
 > **Idea:** [parsed idea text]
-> **Level:** [1/2/3] — [level name]
+> **Level:** 3 — Full MVP
 >
 > Understanding:
 > [present/inferable/missing status for each dimension]
 >
-> Proceed with this? (yes / change level / rephrase)
+> Proceed with this? (yes / rephrase)
 
 Wait for user confirmation.
 
@@ -84,7 +80,7 @@ CTXEOF
 
 **POSTCONDITIONS:**
 - Idea text parsed (>= 20 characters)
-- Level parsed (1, 2, or 3)
+- Level is 3 (always)
 - Input sufficiency assessed (all 3 dimensions present/inferable, or follow-up completed)
 - User confirmed input
 - `.runs/spec-context.json` exists
