@@ -47,6 +47,7 @@ is satisfied.
 ## Merge
 
 ```bash
+FEATURE_BRANCH=$(git branch --show-current)
 gh pr merge --squash --delete-branch
 ```
 
@@ -60,6 +61,7 @@ If `gh pr merge` fails:
 
 ```bash
 git checkout main && git pull
+git branch -d "$FEATURE_BRANCH" 2>/dev/null || true
 ```
 
 After switching to main:
