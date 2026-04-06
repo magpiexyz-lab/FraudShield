@@ -50,7 +50,7 @@ Begin at STATE 0. Read [state-0-pre-flight.md](../patterns/change/state-0-pre-fl
 - Add libraries not in experiment.yaml `stack` without user approval
 - Skip updating experiment.yaml when adding new behaviors — the source of truth must always reflect the current app
 - Change analytics event names — they must match experiment/EVENTS.yaml
-- Add custom analytics events without user approval
+- Add analytics events without user approval
 - Add error-state tests — funnel happy path only (Rule 4)
 - Mock services in tests — the whole point is testing real integrations
 - Skip Step 7 verification (verify.md must run with the classified scope — build loop and auto-observe always run; review agents run per scope)

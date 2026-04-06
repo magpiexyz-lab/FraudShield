@@ -126,7 +126,7 @@ Each value maps to a stack file at `.claude/stacks/<category>/<value>.md`. Skill
 | **Excluded stacks** | *(none)* | ui | hosting, ui, auth, payment, email |
 | **Deploy model** | `/deploy` (Vercel) | `/deploy` (Vercel/Railway) | `npm publish` or GitHub Releases |
 | **Distribution** | `/distribute` (ad campaigns) | Direct outreach / API docs | Package registry listing |
-| **Funnel** | Standard web funnel | Custom events | Custom events |
+| **Funnel** | Default web funnel | Archetype events | Archetype events |
 | **Testing** | Playwright (browser) | Vitest (API) | Vitest (CLI) |
 
 ## Extending the template

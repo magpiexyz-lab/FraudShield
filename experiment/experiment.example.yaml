@@ -213,6 +213,9 @@ stack:
                                  # Default: inferred from archetype and hosting config during /bootstrap.
                                  # Set explicitly when inference doesn't match your intent.
 
+# --- Target Geography ---
+target_geo: [US, GB, CA, AU, NZ]   # English-speaking Five Eyes nations. Used by /distribute for ad targeting.
+
 deploy:
   url: null
   repo: null

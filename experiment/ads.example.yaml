@@ -59,7 +59,7 @@ budget:
   daily_budget_cents: 1500          # $15/day
   total_budget_cents: 10000         # $100 total cap (max 50000 without override)
   duration_days: 7                  # experiment duration
-  bidding_strategy: maximize_clicks # Phase 1; switch to target_cpa after 15+ conversions
+  bidding_strategy: manual_cpc    # Phase 1; see google-ads.md Phase 1 Playbook for progression
 
 # --- Targeting ---
 targeting:

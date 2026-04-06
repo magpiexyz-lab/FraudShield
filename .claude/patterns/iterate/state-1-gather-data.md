@@ -50,7 +50,7 @@ Ask the user to provide funnel numbers -- for each event in the experiment/EVENT
 
 Whether funnel numbers came from auto-query (1a) or manual input (1b), also ask the user to provide whatever they have. Not all of these will be available -- use what you get:
 
-1. **Additional event numbers** -- if experiment/EVENTS.yaml has events not already fetched in 1a (e.g., archetype-specific events), ask for counts of each. Include these in the STATE 2 diagnosis as supplementary data below the standard funnel table.
+1. **Additional event numbers** -- if experiment/EVENTS.yaml has events not already fetched in 1a (e.g., archetype-specific events), ask for counts of each. Include these in the STATE 2 diagnosis as supplementary data below the funnel table.
 
 2. **Timeline** -- how far into the experiment timeline are we?
 

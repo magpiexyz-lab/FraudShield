@@ -47,7 +47,7 @@ Follow the procedure in `.claude/procedures/change-fix.md`.
 - Fix gaps per the audit: add missing tracking calls with all required properties, add missing properties to incomplete calls
 - Do NOT change event names — they must match experiment/EVENTS.yaml exactly
 - Do NOT remove existing correct analytics calls
-- Only add custom events the user explicitly approved
+- Only add new events the user explicitly approved
 - If archetype is `cli`: all `trackServerEvent()` calls must be wrapped in the `isAnalyticsEnabled()` consent guard per the analytics stack file's CLI Opt-In Consent section. CLI telemetry must be opt-in — see CLAUDE.md Rule 2.
 
 #### Test constraints

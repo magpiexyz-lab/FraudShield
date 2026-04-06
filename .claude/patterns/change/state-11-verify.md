@@ -19,7 +19,7 @@ Follow archetype behavior check per `patterns/archetype-behavior-check.md`.
   - **Feature**: trace the user flow — can a user discover, use, and complete the feature? Verify all new analytics events fire.
   - **Fix**: trace the bug report's user flow through code to confirm it's fixed.
   - **Polish**: open each changed file and confirm analytics imports and event calls are intact.
-  - **Analytics**: re-trace each standard funnel event through the code to confirm it now fires correctly.
+  - **Analytics**: re-trace each funnel event through the code to confirm it now fires correctly.
   - **Production quality**: verify.md spawns spec-reviewer in addition to scope-determined agents. Pass experiment.yaml + `.runs/current-plan.md` to spec-reviewer.
   - **Test**: verify test discovery works by running the testing stack file's test command in dry-run/list mode (e.g., `npx playwright test --list` for Playwright, `npx vitest run --reporter=verbose` for Vitest). If test discovery fails, treat it as a build error — fix the test files and re-run. If still failing after the verify.md retry budget, report to the user with the error output.
   - **Feature (spec compliance)**: Re-read `.runs/current-plan.md` and `experiment/experiment.yaml`. Verify implementation matches the archetype's primary units:

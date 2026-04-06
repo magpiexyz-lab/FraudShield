@@ -74,12 +74,15 @@ Import method: analytics provider webhook → Google Ads Offline Conversions.
 
 **CPC (Cost Per Click)** — you pay when a user clicks your ad.
 
-- Bidding strategy (Phase 1): `maximize_clicks` — Google optimizes for volume
-- After 15+ conversions: switch to `target_cpa` — Google optimizes for your target cost per acquisition
-- `guardrails.max_cpc_cents` sets a ceiling on individual bid amounts
+Bidding phases:
+- **Phase 1** (days 1-7): `manual_cpc` — set max CPC to Keyword Planner "Top of page bid (low range)" for each keyword. Full control over spend while learning which keywords convert.
+- **Phase 2** (days 8-21): `manual_cpc` continues — adjust bids based on Phase 1 data. Exception: if projected conversions > 30 in the Phase 2 window, switch to `maximize_conversions` to let Google optimize.
+- **Phase 3** (day 22+): `target_cpa` — set target CPA based on Phase 1-2 cost-per-conversion data. Only enter Phase 3 with 30+ total conversions.
+
+- `guardrails.max_cpc_cents` sets a ceiling on individual bid amounts (Phase 1-2). Set initial value from Keyword Planner "Top of page bid (low range)".
 
 Budget structure:
-- `daily_budget_cents`: daily spend cap
+- `daily_budget_cents`: daily spend cap (= `total_budget_cents / duration_days`)
 - `total_budget_cents`: total campaign cap (max 50000 / $500 without explicit override)
 - `duration_days`: campaign length (set based on experiment duration)
 
@@ -115,7 +118,7 @@ budget:
   daily_budget_cents: ...
   total_budget_cents: ...
   duration_days: ...
-  bidding_strategy: maximize_clicks
+  bidding_strategy: manual_cpc
 
 targeting:
   locations: [US]
@@ -138,6 +141,134 @@ thresholds:
   go_signal: "..."
   no_go_signal: "..."
 ```
+
+## Phase 1 Playbook
+
+Step-by-step guide for the first 7 days of a Google Ads Search campaign. Follow this before adjusting any settings.
+
+### Campaign Structure
+
+| Setting | Value |
+|---------|-------|
+| Campaign type | Search |
+| Network | Google Search only (disable Search Partners and Display Network) |
+| Bidding | `manual_cpc` (Enhanced CPC OFF) |
+| Max CPC | Keyword Planner "Top of page bid (low range)" per keyword |
+| Daily budget | `total_budget_cents / duration_days` |
+| Duration | Phase 1: 7 days, Phase 2: 14 days |
+| Status | PAUSED (enable after pre-flight checklist passes) |
+
+### Ad Group Structure
+
+- **1 STAG** (Single Theme Ad Group) per campaign
+- **5-15 keywords** per ad group, all on the same theme
+- **Match type**: Phrase Match for all keywords. If a keyword gets zero impressions after 48 hours, switch that keyword to Broad Match.
+- **2 RSAs** (Responsive Search Ads) per ad group
+
+### RSA Template
+
+```
+Headlines (8 slots):
+  H1: [MVP Name] — PINNED to position 1
+  H2: [Primary value proposition] — PINNED to position 2
+  H3-H8: Unpinned — rotate variations of benefits, features, social proof, urgency
+
+Descriptions (4 slots):
+  D1: [What the product does + primary benefit] (up to 90 chars)
+  D2: [How it works or what makes it different] (up to 90 chars)
+  D3: [Social proof or credibility signal] (up to 90 chars)
+  D4: [Call to action with urgency] (up to 90 chars)
+```
+
+Pin H1 and H2 to ensure the MVP name and value prop always appear. Leave H3-H8 unpinned so Google can test combinations.
+
+### Negative Keywords (Universal)
+
+Add these 50 universal negative keywords to every campaign. They exclude traffic that wastes budget on informational, career, enterprise, or unrelated searches.
+
+```
+free
+how to
+what is
+tutorial
+guide
+example
+template
+sample
+course
+training
+certification
+degree
+salary
+job
+jobs
+career
+careers
+hiring
+intern
+internship
+enterprise
+corporate
+fortune 500
+government
+federal
+download
+open source
+github
+stackoverflow
+reddit
+review
+reviews
+comparison
+vs
+versus
+alternative
+alternatives
+cheap
+cheapest
+discount
+coupon
+promo
+scam
+complaint
+lawsuit
+wiki
+wikipedia
+definition
+meaning
+pdf
+```
+
+These are starting negatives. Add campaign-specific negatives based on the experiment domain (e.g., competitor names that draw irrelevant clicks).
+
+### Conversion Setup
+
+- **Method**: Offline conversion import via `gclid`
+- **Flow**: Landing page captures `gclid` from URL → stored with user record → on `activate` event, analytics provider sends conversion with `gclid` to Google Ads Offline Conversions API
+- **Verification**: Complete one test conversion end-to-end before enabling the campaign
+
+### Pre-flight Checklist
+
+Before enabling the campaign:
+
+1. [ ] Campaign status is PAUSED
+2. [ ] Landing page PageSpeed score >= 70 (mobile)
+3. [ ] All ads approved by Google (check ad status — allow 48 hours for review)
+4. [ ] Conversion tracking verified with a test conversion
+5. [ ] Negative keywords added (50 universal + campaign-specific)
+6. [ ] UTM parameters set correctly on all final URLs
+7. [ ] Daily budget matches `total_budget_cents / duration_days`
+8. [ ] `gclid` capture verified on landing page (click ad preview, check analytics for `gclid` property)
+
+### Phase 1 Monitoring (Days 1-7)
+
+| Metric | Check frequency | Action threshold |
+|--------|----------------|-----------------|
+| Impressions | Daily | < 50/day after day 2 → switch low-impression keywords to Broad Match |
+| CTR | Daily | < 1% after 500 impressions → revise ad copy |
+| Avg CPC | Daily | > 2x initial max CPC → lower bids or pause expensive keywords |
+| Conversions | Day 4+ | 0 conversions after 50% budget spent → verify tracking, check landing page |
+| Search terms report | Day 3, Day 7 | Add irrelevant terms to negative keywords |
 
 ## UTM Parameters
 

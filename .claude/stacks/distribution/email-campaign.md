@@ -103,8 +103,8 @@ gitignore: []
 1. Create a webhook endpoint in your app: `POST /api/webhooks/resend`
 2. Register the webhook in Resend Dashboard → Webhooks
 3. Map events to analytics:
-   - `email.opened` → fire `email_opened` custom event
-   - `email.clicked` → fire `email_clicked` custom event
+   - `email.opened` → fire `email_opened` event
+   - `email.clicked` → fire `email_clicked` event
    - `email.bounced` → update contact status
 
 **UTM tracking on links:**

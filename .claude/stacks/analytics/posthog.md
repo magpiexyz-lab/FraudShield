@@ -154,7 +154,7 @@ export function trackPaySuccess(props: { plan: string; amount_cents: number; pro
 ```
 
 Notes:
-- Bootstrap generates this file from experiment/EVENTS.yaml — the template above matches the default experiment/EVENTS.yaml. Additional events added to the experiment/EVENTS.yaml `events` map use `track()` from `analytics.ts` directly (no typed wrapper needed for events added after bootstrap).
+- Bootstrap generates this file from experiment/EVENTS.yaml — the template above matches the default experiment/EVENTS.yaml. When events are added to experiment/EVENTS.yaml after bootstrap (via `/change` or `/distribute`), regenerate typed wrappers in `events.ts` for the new events. All events get typed wrappers.
 - `trackVisitLanding` uses an optional props parameter since all its properties are optional in experiment/EVENTS.yaml.
 - Payment event functions (`trackPayStart`, `trackPaySuccess`) are only included when the event has `requires: [payment]` in experiment/EVENTS.yaml and `stack.payment` is present in experiment.yaml. Omit them otherwise.
 - `trackPaySuccess` is exported for completeness but the webhook handler uses `trackServerEvent()` from `analytics-server.ts` instead (server-side). The client-side wrapper is available if a success page needs to track it.
@@ -197,7 +197,7 @@ Skip `src/lib/analytics.ts` and `src/lib/events.ts`.
 
 **All tracking uses `trackServerEvent()`** from `analytics-server.ts`. There are
 no typed event wrappers — call `trackServerEvent(eventName, distinctId, properties)`
-directly for all events (standard funnel, payment funnel, and custom).
+directly for all events defined in experiment/EVENTS.yaml.
 
 ### CLI Opt-In Consent
 
@@ -241,7 +241,7 @@ per-tool opt-out. Both default to tracking-enabled (absent = opt-in).
 - `track()` auto-attaches `project_name` and `project_owner` to every event
 - All projects in the company share the same analytics project — these properties distinguish experiments
 - If you rename the project in experiment.yaml (`name` field), update the `PROJECT_NAME` and `PROJECT_OWNER` constants in both `src/lib/analytics.ts` and `src/lib/analytics-server.ts`
-- For web-app: standard funnel events (`visit_landing`, `signup_start`, `signup_complete`, `activate`) are **mandatory markers** — they must fire at every funnel stage even when custom events track the specific action. Custom events supplement standard events, never replace them. Example: a waitlist flow fires both `track("waitlist_signup")` and `trackSignupComplete({ method: "waitlist" })`. This ensures cross-experiment aggregation tools always find data at standard funnel stages. For CLI/service archetypes, only archetype-specific events and `visit_landing` (on the surface page) are baseline.
+- Every event in experiment/EVENTS.yaml must have a `funnel_stage`. The analytics library generates typed wrappers for all events in the EVENTS.yaml `events` map. Cross-MVP funnel analysis queries by `funnel_stage` (with `count(DISTINCT distinct_id)` dedup), not by event name — this allows each MVP to define events that fit its domain while remaining comparable at the funnel level.
 
 ## Test Blocking
 When running E2E tests, block analytics requests to prevent test data from polluting production analytics. The endpoint pattern for PostHog is:

@@ -52,7 +52,7 @@ Add `feedback_submitted` to experiment/EVENTS.yaml `events` map:
 - Uses shadcn `Dialog`, `Button`, `Label`, `Textarea`, and `Select` components (read the UI stack file for import conventions)
 - Appears after the user completes the activation action (triggered via prop callback)
 - Stores "shown" flag in localStorage to show only once per user
-- Fires `feedback_submitted` custom event via `track()` from the analytics library (see analytics stack file for the import path and `track()` usage)
+- Fires `feedback_submitted` event via `track()` from the analytics library (see analytics stack file for the import path and `track()` usage)
 - Fields: "How did you find us?" (select: Google Search, Social Media, Friend/Referral, Other), "Any feedback?" (textarea)
 - Non-blocking: user can dismiss without submitting
 

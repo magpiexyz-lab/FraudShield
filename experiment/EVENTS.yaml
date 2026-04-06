@@ -2,7 +2,12 @@
 #
 # All events are sent via the analytics library (see analytics stack file for path).
 # Every event automatically includes global_properties.
-# Event names are snake_case. Custom events should follow the pattern: <object>_<action>.
+#
+# Rules:
+#   1. Every event MUST have a funnel_stage: reach|demand|activate|monetize|retain
+#   2. Naming: <object>_<action> in snake_case (e.g., invoice_created, visit_landing)
+#   3. Multiple events MAY share the same funnel_stage
+#   4. Cross-MVP comparison aggregates by funnel_stage with distinct_id dedup
 #
 # Structure: flat map keyed by event name. Each event has:
 #   funnel_stage: reach|demand|activate|monetize|retain
@@ -147,19 +152,9 @@ events:
     archetypes: [cli]
     trigger: User executes a CLI command
 
-# Standard vs. custom events:
-# For web-app: standard funnel events (visit_landing, signup_start, signup_complete,
-# activate) are MANDATORY markers — they must fire at every funnel stage even when
-# custom events track the specific user action. Custom events are additive, not
-# replacements. Example: a waitlist flow should fire both track("waitlist_signup")
-# AND trackSignupComplete({ method: "waitlist" }).
-# For CLI/service: only archetype-specific events (command_run, api_call) and
-# visit_landing (on the surface page) are baseline. Other funnel events apply only
-# when the archetype has the corresponding UX flow (e.g., signup requires auth).
-#
-# Custom events — add experiment-specific events directly to the events map above.
-# Naming convention: <object>_<action> in snake_case (e.g., invoice_created, report_exported)
-# Include funnel_stage for each event.
+# Adding events — add experiment-specific events directly to the events map above.
+# Follow the naming and funnel_stage rules in the header.
+# The /change and /distribute skills add events directly to the events map.
 #
 # Example:
 #   invoice_created:
@@ -174,5 +169,3 @@ events:
 #         type: integer
 #         required: true
 #         description: Number of line items on the invoice
-#
-# The /change and /distribute skills add events directly to the events map.

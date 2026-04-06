@@ -293,9 +293,9 @@ Two files, clear separation:
 import { trackSpecGenerated } from "@/lib/events";
 trackSpecGenerated({ anonymous: true, idea_length: 250 });
 
-// Generic fallback for custom one-offs
+// Generic track() for one-off events
 import { track } from "@/lib/analytics";
-track("custom_event", { key: "value" });
+track("one_off_event", { key: "value" });
 ```
 
 Global properties (`project_name`, `project_owner`) are auto-attached by `track()`. Never pass them manually.
