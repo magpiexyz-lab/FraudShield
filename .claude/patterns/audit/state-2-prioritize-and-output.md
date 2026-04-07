@@ -118,11 +118,71 @@ python3 .claude/scripts/write-q-score.py \
   --run-id "$RUN_ID" || true
 ```
 
+### Actionable Prompts
+
+For each of the Top 5 recommendations above, generate a self-contained prompt block
+that the user can copy-paste into a new Claude Code session. Each prompt must work
+independently — include all necessary context because the target session has no
+knowledge of this audit.
+
+**Classification rule:**
+- **`/solve`** — Use when the finding is architectural, cross-cutting (affects 3+ files),
+  or requires first-principles tradeoff analysis. Typical for: Dimension C (abstractability)
+  findings, Dimension D (skill architecture) findings, and any finding where the fix approach
+  is non-obvious.
+- **`plan mode`** — Use when the finding is localized, mechanical, and the fix path is clear.
+  Typical for: Dimension A (textual duplication) findings, Dimension B (complexity reduction)
+  findings where the suggestion is specific (e.g., "split file X at function Y").
+
+**Format for each prompt block:**
+
+~~~
+#### Prompt N: [Finding ID] — [One-line summary]
+**Approach**: `/solve` | `plan mode`
+**Why this approach**: [One sentence explaining the classification]
+
+Copy-paste into a new Claude Code session:
+
+[Approach instruction — either "Use /solve to analyze:" or "Use plan mode for this task. Create a branch `fix/<topic>` and open a PR when done."]
+
+## Problem
+
+[Describe the finding in full: what is wrong, which dimension it falls under, why it matters]
+
+## Affected Files
+
+[List every file path from the audit finding — these are critical for the target session to locate the issue]
+
+## Constraints
+
+- [List relevant constraints: what cannot change, what rules apply]
+- This is a template-level change — follow CLAUDE.md Rule 1 (PR-first workflow)
+- Follow CLAUDE.md Rule 13 if modifying state files (state registry must sync)
+
+## Expected Outcome
+
+[What success looks like — e.g., "Duplicated block appears in 1 file instead of 5" or "File X is under 400 lines"]
+
+## Verification
+
+[How to verify the fix — e.g., "Run: grep -c 'pattern' file1 file2" or "Run: wc -l file"]
+~~~
+
+**Important rules for prompt generation:**
+- Each prompt is independent — do NOT create dependency ordering between prompts
+- If a finding logically depends on another (e.g., "extract shared code" must happen before
+  "use shared code"), note it in the Problem section as: "Note: Consider addressing [Finding ID]
+  first, as it creates the shared code this finding would use."
+- Include exact file paths from the audit findings — never use placeholder paths
+- For `/solve` prompts: frame as an analysis question, not an implementation instruction
+- For `plan mode` prompts: include branch name suggestion and explicit PR instruction
+- The prompts must respect CLAUDE.md rules: Rule 1 (PR-first), Rule 13 (state registry sync
+  for skill changes), Rule 4 (minimalism)
+
 ## STOP
 
-After printing the report, **STOP**. Do not implement any changes.
-The user decides next steps — they may cherry-pick recommendations
-and run `/resolve` or manual refactoring for specific items.
+After printing the report and actionable prompts, **STOP**. Do not implement any changes.
+The user decides which prompts to run — copy-paste any prompt into a new Claude Code session.
 
 **POSTCONDITIONS:**
 - Findings prioritized using the priority matrix
