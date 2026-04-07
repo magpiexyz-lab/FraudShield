@@ -52,6 +52,100 @@ echo "=== Hook functions ===" && \
 grep -hn '^[a-z_]*()' .claude/hooks/*.sh 2>/dev/null
 ```
 
+### Skill manifest (Dimension D pre-computation)
+
+> Dimension D (Skill Architecture) runs only under `full` scope.
+> If scope is not `full`, skip this section entirely.
+
+If scope is `full`, generate `.runs/audit-skill-manifest.json`:
+
+```bash
+python3 -c "
+import json, glob, re, os
+
+manifest = {}
+# 1. Read dispatch tables from command files
+for cmd_file in sorted(glob.glob('.claude/commands/*.md')):
+    skill = os.path.basename(cmd_file).replace('.md', '')
+    # Extract state file references from dispatch table
+    with open(cmd_file) as f:
+        content = f.read()
+    refs = re.findall(r'state-(\S+?)\.md', content)
+    dispatch_ids = sorted(set(refs))
+
+    # 2. Find actual state files on disk
+    pattern = f'.claude/patterns/{skill}/state-*.md'
+    disk_files = sorted(glob.glob(pattern))
+
+    states = []
+    for sf in disk_files:
+        with open(sf) as f:
+            lines = f.readlines()
+        total_lines = len(lines)
+
+        # 3. Count ### sub-headers in ACTIONS (excluding code fences)
+        in_actions = False
+        in_fence = False
+        sub_headers = 0
+        artifact_writes = 0
+        postcond_items = 0
+        in_postcond = False
+
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith('\`\`\`'):
+                in_fence = not in_fence
+                continue
+            if in_fence:
+                # Count artifact writes inside code fences within ACTIONS
+                if in_actions:
+                    if re.search(r'(json\.dump|open\(.*[\"\\x27]w[\"\\x27]\)|cat\s*>|>\s*\.runs/|>\s*\.\./)', stripped):
+                        artifact_writes += 1
+                continue
+            if stripped == '**ACTIONS:**':
+                in_actions = True
+                in_postcond = False
+                continue
+            if stripped == '**POSTCONDITIONS:**':
+                in_actions = False
+                in_postcond = True
+                continue
+            if stripped.startswith('**VERIFY'):
+                in_postcond = False
+                continue
+            if in_actions and stripped.startswith('### '):
+                sub_headers += 1
+            if in_postcond and stripped.startswith('- '):
+                postcond_items += 1
+
+        state_id = re.search(r'state-(.+?)\.md', sf)
+        states.append({
+            'id': state_id.group(1) if state_id else sf,
+            'file': sf,
+            'total_lines': total_lines,
+            'actions_sub_headers': sub_headers,
+            'intermediate_artifact_writes': artifact_writes,
+            'postcondition_items': postcond_items
+        })
+
+    # 4. Cross-reference dispatch vs disk
+    disk_ids = [re.search(r'state-(.+?)\.md', f).group(1) for f in disk_files if re.search(r'state-(.+?)\.md', f)]
+    orphan_files = [f for f, did in zip(disk_files, disk_ids) if did not in dispatch_ids]
+
+    manifest[skill] = {
+        'command_file': cmd_file,
+        'dispatch_state_ids': dispatch_ids,
+        'disk_state_count': len(disk_files),
+        'orphan_state_files': orphan_files,
+        'states': states
+    }
+
+os.makedirs('.runs', exist_ok=True)
+json.dump(manifest, open('.runs/audit-skill-manifest.json', 'w'), indent=2)
+print(f'Skill manifest: {len(manifest)} skills, {sum(s[\"disk_state_count\"] for s in manifest.values())} state files')
+"
+```
+
 Validator health baseline:
 ```bash
 python3 scripts/validate-frontmatter.py 2>&1 | tail -1
@@ -88,6 +182,7 @@ CTXEOF
 - Baseline metrics collected (file inventory, largest files, duplication signals, references, functions)
 - Validator health baseline collected
 - Prior audit findings loaded (if any)
+- Skill manifest generated (`.runs/audit-skill-manifest.json`) if scope is `full`
 - `.runs/audit-context.json` exists
 
 **VERIFY:**

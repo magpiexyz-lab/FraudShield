@@ -184,7 +184,7 @@
   },
   "audit": {
     "0": "test -f .runs/audit-context.json",
-    "1": "test -f .runs/audit-analysis.json",
+    "1": "python3 -c \"import json,os; d=json.load(open('.runs/audit-analysis.json')); assert 'duplication' in d; assert not os.path.exists('.runs/audit-skill-manifest.json') or 'skill_architecture' in d\"",
     "2": "test -f .runs/audit-analysis.json",
     "3": "python3 -c \"import json; d=json.load(open('.runs/observe-result.json')); assert d['skill']=='audit'\""
   },

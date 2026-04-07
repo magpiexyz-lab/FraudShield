@@ -7,7 +7,9 @@
 
 ## Step 1: Parallel analysis
 
-Launch 3 Explore subagents in parallel. Construct each agent's prompt from:
+Launch 3 Explore subagents in parallel (A, B, C). If scope is `full`, also
+launch a 4th Explore subagent (D: Skill Architecture). Construct each agent's
+prompt from:
 - The **shared context instruction** below
 - The agent's **dimension section**
 - The **Finding Format** and **Rules**
@@ -33,6 +35,12 @@ Launch 3 Explore subagents in parallel. Construct each agent's prompt from:
 > agent prompts are intentionally self-contained. Some repetition is by design
 > to avoid cross-file dependencies during context-limited execution. Do NOT
 > flag self-containment repetition as duplication.
+>
+> **For Dimension D only**: also read `.runs/audit-skill-manifest.json` (the
+> pre-computed structural manifest from State 0). Use the manifest as your
+> primary data source for state-level metrics — do NOT re-read all raw state
+> files. Selective reads of specific state files are allowed only to confirm
+> manifest anomalies.
 
 ---
 
@@ -126,13 +134,76 @@ Files to read: all directories from shared context instruction.
 
 ---
 
+### Dimension D: Skill Architecture (full scope only)
+
+> **Scope gate**: This dimension runs ONLY when audit scope is `full`.
+> If scope is not `full`, this agent is not launched.
+
+Focus: Find **structural inefficiencies in skill design** — states that are
+overcomplicated for their work, redundant operations within a single skill's
+state machine, and dead paths that serve no purpose.
+
+**Data source**: `.runs/audit-skill-manifest.json` (pre-computed in State 0).
+Use the manifest as primary evidence. Read raw state files only to confirm
+specific anomalies flagged by the manifest.
+
+**Sub-dimension D1: Overcomplexity**
+
+Flags:
+- **Thin states**: A skill where >=2 states have <10 lines in ACTIONS —
+  those thin states likely should merge with neighbors.
+- **Step density**: A state with >7 `###` sub-headers in ACTIONS AND 0
+  intermediate artifact writes. High sub-header count without checkpoints
+  means the LLM does too much in-memory work — risk of step skipping.
+- **Heavy mechanism for light task**: A skill with >4 states for a task
+  that produces a single output artifact (e.g., a report or JSON file).
+
+**Dedup rule vs Dimension B**: B measures file-level complexity (function
+nesting, mixed responsibilities within a single file). D1 measures
+skill-level complexity (state count, state granularity, step density). If
+a file is both a complex file (B) and a thin state (D1), report under D1
+— the skill-level fix subsumes the file-level concern.
+
+**Sub-dimension D2: Intra-Skill Redundancy**
+
+Flags:
+- Same bash/python operation (by textual or semantic similarity) appearing
+  in 2+ states within the SAME skill. Examples: duplicate artifact cleanup
+  commands, repeated context-file reads, identical validation checks.
+- Same POSTCONDITION check appearing in 2+ states of the same skill.
+
+**Dedup rule vs Dimension C**: D2 covers intra-skill redundancy ONLY
+(same operation repeated across states within one skill). Cross-skill
+redundancy (same pattern in different skills) belongs to Dimension C.
+If a pattern spans both intra-skill and cross-skill, report under C —
+the broader fix is higher impact.
+
+**Sub-dimension D3: Dead Paths**
+
+Flags:
+- **Orphan state files**: State files on disk (`.claude/patterns/<skill>/
+  state-*.md`) not referenced in the dispatch table (`.claude/commands/
+  <skill>.md`). Check the manifest `orphan_state_files` field.
+- **Unreachable branches**: Conditional branches in state ACTIONS where
+  the condition can never be true given the skill's preconditions or
+  archetype constraints (e.g., `elif cli` in a skill that only handles
+  `web-app`).
+- **Write-only context fields**: JSON fields written to a context file
+  (e.g., `.runs/<skill>-context.json`) but never read by any subsequent
+  state in that skill.
+
+Files to read: `.runs/audit-skill-manifest.json` (primary). Selective
+raw state file reads only when a manifest anomaly needs confirmation.
+
+---
+
 ### Finding Format
 
 Every finding from every dimension must use this format:
 
 ```
 ### Finding <D><N>: <title>
-- **Dimension**: A (Duplication) | B (Complexity) | C (Abstractability)
+- **Dimension**: A (Duplication) | B (Complexity) | C (Abstractability) | D (Skill Architecture)
 - **Impact**: HIGH (10+ files or >100 dup lines) | MEDIUM (4-9 files) | LOW (2-3 files)
 - **Effort**: LOW (<30 min) | MEDIUM (1-2 hours) | HIGH (>2 hours)
 - **Files**: <file1>, <file2>, ... (or "N files — see list below")
@@ -150,6 +221,8 @@ Include in each subagent prompt:
 3. **No overlap between dimensions.** Dimension A = textual duplication.
    Dimension C = semantic equivalence (different text, same intent). If the same
    pattern qualifies for both, report it under A only.
+3b. **D2 boundary.** D2 = intra-skill redundancy only. Cross-skill patterns → C.
+    D1 = skill-level complexity. File-level complexity → B.
 4. **Zero findings is valid.** Say "No findings — scanned N files, all clean."
 5. **Confidence filter.** Only report HIGH confidence (can quote specific lines)
    and MEDIUM confidence (likely issue, evidence points to it). Drop LOW.
@@ -159,7 +232,7 @@ Include in each subagent prompt:
 
 ---
 
-After all 3 agents return, collect findings and deduplicate:
+After all agents return (3 if scope is not full, 4 if scope is full), collect findings and deduplicate:
 - Finding signature = `<dimension>:<primary_file>:<title>`
 - If two findings from different dimensions describe the same underlying issue,
   keep the one with higher impact; drop the other with a note.
@@ -171,9 +244,11 @@ After all 3 agents return, collect findings and deduplicate:
 - Flag intentional JIT repetition as duplication
 - Report "long but simple" files as complexity hotspots
 - Report the same finding under both Dimension A and Dimension C
+- Report D2 findings for cross-skill patterns — that is Dimension C's scope
+- Report D1 findings for file-level complexity — that is Dimension B's scope
 
 **POSTCONDITIONS:**
-- 3 subagents completed (Duplication, Complexity, Abstractability)
+- 3 subagents completed (Duplication, Complexity, Abstractability), plus Dimension D (Skill Architecture) if scope is `full`
 - Findings collected and deduplicated
 - Each finding follows the Finding Format
 - Rules enforced (max 7 per dimension, no overlap, confidence filter)
@@ -182,19 +257,29 @@ After all 3 agents return, collect findings and deduplicate:
   ```bash
   python3 -c "
   import json
+  import os
   analysis = {
       'duplication': {'findings': [], 'count': 0},
       'complexity': {'findings': [], 'count': 0},
       'abstractability': {'findings': [], 'count': 0},
       'total_findings': 0
   }
+  if os.path.exists('.runs/audit-skill-manifest.json'):
+      analysis['skill_architecture'] = {'findings': [], 'count': 0}
   json.dump(analysis, open('.runs/audit-analysis.json', 'w'), indent=2)
   "
   ```
 
 **VERIFY:**
 ```bash
-test -f .runs/audit-analysis.json
+python3 -c "
+import json, os
+d = json.load(open('.runs/audit-analysis.json'))
+assert 'duplication' in d and 'complexity' in d and 'abstractability' in d
+if os.path.exists('.runs/audit-skill-manifest.json'):
+    assert 'skill_architecture' in d, 'full scope but missing skill_architecture'
+print('OK')
+"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

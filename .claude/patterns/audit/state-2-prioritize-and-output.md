@@ -47,6 +47,12 @@ Prior audit: <date> (<N> findings) | none
 |---|---------|--------------|-------------------|----------|
 | 1 | ...     | ...          | ...               | P1       |
 
+## Skill Architecture (<N> findings)
+> If scope is not `full`, omit this section entirely.
+| # | Skill | Sub-dim | Issue | Suggestion | Priority |
+|---|-------|---------|-------|------------|----------|
+| 1 | ...   | D1/D2/D3| ...  | ...        | P2       |
+
 ## Delta (vs prior audit)
 - New: <N> findings
 - Resolved: <N> findings
@@ -74,7 +80,7 @@ If `save_manifest` is true, write `.runs/audit-manifest.json`:
   "findings": [
     {
       "id": "<D><N>",
-      "dimension": "duplication|complexity|abstractability",
+      "dimension": "duplication|complexity|abstractability|skill_architecture",
       "title": "<title>",
       "impact": "HIGH|MEDIUM|LOW",
       "effort": "LOW|MEDIUM|HIGH",

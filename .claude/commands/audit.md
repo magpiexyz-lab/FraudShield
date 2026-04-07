@@ -1,5 +1,5 @@
 ---
-description: "Analyze template structural quality: duplication, complexity, abstractability. Analysis only — no code changes."
+description: "Analyze template structural quality: duplication, complexity, abstractability, skill architecture. Analysis only — no code changes."
 type: analysis-only
 reads:
   - CLAUDE.md
@@ -32,3 +32,5 @@ Begin at STATE 0. Read [state-0-scope-and-baseline.md](../patterns/audit/state-0
 - Flag intentional JIT repetition as duplication
 - Report "long but simple" files as complexity hotspots
 - Report the same finding under both Dimension A and Dimension C
+- Report D2 findings for cross-skill patterns — that is Dimension C's scope
+- Report D1 findings for file-level complexity — that is Dimension B's scope
