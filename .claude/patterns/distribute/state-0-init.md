@@ -42,4 +42,4 @@ if [ ! -f .runs/distribute-context.json ]; then echo "OK"; else git branch --sho
 bash .claude/scripts/advance-state.sh distribute 0
 ```
 
-**NEXT:** Read [state-1-validate-prerequisites.md](state-1-validate-prerequisites.md) to continue.
+**NEXT:** Read [state-1-validate-files.md](state-1-validate-files.md) to continue.

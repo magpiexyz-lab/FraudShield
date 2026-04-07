@@ -156,3 +156,5 @@ All 15 lifecycle skills use state machines with JIT (Just-In-Time) dispatch (the
 - To modify a skill's behavior, edit the corresponding state files (`.claude/patterns/<skill>/state-*.md`) — don't modify the orchestrator (`.claude/commands/<skill>.md`) without also updating state files and `state-registry.json`
 - To add or remove states, update both the state file on disk and the registry entry — they must stay in sync
 - Never remove the VERIFY or STATE TRACKING sections from a state file
+- **When to split a state:** Split when a state exhibits any of: (a) mixes user-interactive and non-interactive steps (different retry semantics), (b) mixes validation and orchestration concerns (different failure domains), or (c) exceeds 10 execution steps with 0 intermediate artifact writes
+- **Sub-ID convention:** Format is `<number><letter>` (e.g., 3a, 13a). Single depth only -- never `3a1`. Sub-IDs are peers inserted between N and N+1 in the canonical sequence, not hierarchical children of N
