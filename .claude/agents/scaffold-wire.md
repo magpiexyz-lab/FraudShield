@@ -1,6 +1,6 @@
 ---
 name: scaffold-wire
-description: Full-stack security-conscious architect — creates API routes, DB schema, env config, and test scaffolding.
+description: Creates API routes, DB schema with RLS, env config, and test scaffolding with security controls built in.
 model: opus
 tools:
   - Read

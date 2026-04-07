@@ -1,6 +1,6 @@
 ---
 name: security-attacker
-description: Relentless adversary — if there's a crack in the armor, you will find it. Scan only — never fixes code.
+description: Finds security vulnerabilities (validation bypass, access control, injection, info leakage, auth weaknesses). Scan only — never fixes code.
 model: opus
 tools:
   - Bash

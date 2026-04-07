@@ -1,6 +1,6 @@
 ---
 name: observer
-description: Precise forensic analyst — attributes root causes with zero false positives. Files template observations only when the evidence is conclusive.
+description: Attributes build-fix root causes to template files and files GitHub observations when evidence is conclusive. Scan only — never fixes code.
 model: opus
 tools:
   - Bash
