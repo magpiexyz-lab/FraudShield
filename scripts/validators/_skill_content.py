@@ -415,6 +415,34 @@ def check_40_distribute_feedback_event(distribute_content: str | None) -> list[s
     return errors
 
 
+def _find_preconditions_text(content: str) -> str | None:
+    """Extract combined preconditions text from a skill's content.
+
+    Handles both formats:
+    - Old: single "## Step 1:" section
+    - JIT: multiple state files with VALIDATE_*, ANALYTICS_*, or PREREQUISITES names
+    """
+    # Old format: ## Step 1: ... ## Step 2:
+    old_match = re.search(
+        r"## Step 1:.*?\n(.*?)(?=\n## Step 2:|\Z)",
+        content,
+        re.DOTALL,
+    )
+    if old_match:
+        return old_match.group(1)
+
+    # JIT format: gather all validation/analytics/prerequisite state sections
+    sections = re.findall(
+        r"# STATE \d+[a-z]?:\s*(?:VALIDATE_\w+|ANALYTICS_\w+|PREREQUISITES\w*).*?\n(.*?)(?=\n# STATE|\Z)",
+        content,
+        re.DOTALL,
+    )
+    if sections:
+        return "\n".join(sections)
+
+    return None
+
+
 def check_42_distribute_validates_analytics(distribute_content: str | None) -> list[str]:
     """Check 42: distribute.md preconditions validate stack.analytics."""
     errors: list[str] = []
@@ -422,19 +450,16 @@ def check_42_distribute_validates_analytics(distribute_content: str | None) -> l
     if not distribute_content:
         return errors
 
-    preconditions_match = re.search(
-        r"(?:## Step 1:|# STATE \d+:\s*VALIDATE_PRECONDITIONS|# STATE \d+:\s*VALIDATE_PREREQUISITES).*?\n(.*?)(?=\n## Step 2:|\n# STATE|\Z)",
-        distribute_content,
-        re.DOTALL,
-    )
-    if preconditions_match:
-        preconditions_text = preconditions_match.group(1)
+    preconditions_text = _find_preconditions_text(distribute_content)
+    if preconditions_text:
         has_analytics_validation = bool(
             re.search(
                 r"(?i)analytics.*(?:required|not present|not configured).*stop|"
                 r"stack\.analytics.*(?:present|not|missing)|"
-                r"(?:verify|check).*stack\.analytics",
+                r"(?:verify|check).*stack\.analytics|"
+                r"analytics.*verif",
                 preconditions_text,
+                re.IGNORECASE,
             )
         )
         if not has_analytics_validation:
@@ -458,13 +483,8 @@ def check_43_distribute_validates_events_structure(distribute_content: str | Non
     if not distribute_content:
         return errors
 
-    preconditions_match = re.search(
-        r"(?:## Step 1:|# STATE \d+:\s*VALIDATE_PRECONDITIONS|# STATE \d+:\s*VALIDATE_PREREQUISITES).*?\n(.*?)(?=\n## Step 2:|\n# STATE|\Z)",
-        distribute_content,
-        re.DOTALL,
-    )
-    if preconditions_match:
-        preconditions_text = preconditions_match.group(1)
+    preconditions_text = _find_preconditions_text(distribute_content)
+    if preconditions_text:
         has_events_validation = bool(
             re.search(
                 r"`events`.*(?:dict|map|stop|malformed|missing)",

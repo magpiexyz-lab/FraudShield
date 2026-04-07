@@ -22,125 +22,23 @@ if [[ ${#CTX_FILES[@]} -eq 0 ]]; then
   exit 0
 fi
 
-# ── Single python3 block: detect active skill + registry checks ──
+# ── Detect active skill + registry checks via external script ──
 # Passes payload and agent type via environment variables.
-# Returns JSON: {"skill":"...", "errors":[], "warn":""}
+# Returns tab-separated: skill\twarn on line 1, errors on subsequent lines.
 # shellcheck disable=SC2153
 export _PAYLOAD="$PAYLOAD"
 export _AGENT_TYPE="$SUBAGENT_TYPE"
-GATE_RESULT=$(python3 << 'PYEOF'
-import json, glob, os, sys
-
-project = os.environ.get('CLAUDE_PROJECT_DIR', '.')
-agent_type = os.environ.get('_AGENT_TYPE', '')
-payload_str = os.environ.get('_PAYLOAD', '{}')
-
-try:
-    payload = json.loads(payload_str)
-except:
-    payload = {}
-
-isolation = payload.get('tool_input', {}).get('isolation', '')
-
-# 1. Detect active skill — scan *-context.json, pick most recent timestamp
-ctx_files = glob.glob(os.path.join(project, '.runs', '*-context.json'))
-# Filter out epilogue-context.json for active skill detection
-ctx_files = [f for f in ctx_files if 'epilogue-context' not in f]
-
-best_skill = ''
-best_ts = ''
-for cf in ctx_files:
-    try:
-        d = json.load(open(cf))
-        ts = d.get('timestamp', '')
-        if ts > best_ts:
-            best_ts = ts
-            best_skill = d.get('skill', os.path.basename(cf).replace('-context.json', ''))
-    except:
-        pass
-
-if not best_skill:
-    print(json.dumps({'skill': '', 'errors': [], 'warn': ''}))
-    sys.exit(0)
-
-# 2. Load registry
-reg_path = os.path.join(project, '.claude', 'patterns', 'state-registry.json')
-if not os.path.isfile(reg_path):
-    print(json.dumps({'skill': best_skill, 'errors': [], 'warn': 'registry missing'}))
-    sys.exit(0)
-
-reg = json.load(open(reg_path))
-agent_gates = reg.get('agent_gates', {})
-skill_gates = agent_gates.get(best_skill, {})
-
-# 3. Resolve gate config for this agent type
-gate = skill_gates.get(agent_type, skill_gates.get('_default', None))
-
-errors = []
-warn = ''
-
-if gate is None:
-    if skill_gates:
-        warn = f'unrecognized agent {agent_type} for skill {best_skill}'
-    # else: skill has no gates at all — silent allow
-elif gate.get('allow_unconditional'):
-    pass  # always allow
-else:
-    # Check deny_isolation
-    for denied in gate.get('deny_isolation', []):
-        if isolation == denied:
-            errors.append(f'{agent_type} cannot use isolation={denied} — agents for {best_skill} must share the main filesystem')
-
-    # Check deny_background
-    run_in_bg = payload.get('tool_input', {}).get('run_in_background', False)
-    deny_bg = gate.get('deny_background', False)
-    if deny_bg and run_in_bg:
-        errors.append(f"Agent type '{agent_type}' requires foreground execution (deny_background=true) but run_in_background=true")
-
-    # Check required_states (using registry key order for proper ordering)
-    required = gate.get('required_states', [])
-    if required:
-        ctx_file = os.path.join(project, '.runs',
-            'verify-context.json' if best_skill == 'verify'
-            else f'{best_skill}-context.json')
-        if os.path.isfile(ctx_file):
-            ctx = json.load(open(ctx_file))
-            cs = [str(s) for s in ctx.get('completed_states', [])]
-            if not cs:
-                pass  # Fail-open if field absent (backward compat)
-            else:
-                missing = [str(r) for r in required if str(r) not in cs]
-                if missing:
-                    errors.append(f"States [{','.join(missing)}] not in completed_states — prerequisite states were skipped")
-
-    # Check artifacts
-    for art in gate.get('artifacts', []):
-        art_path = os.path.join(project, art)
-        if not os.path.isfile(art_path):
-            errors.append(f'{os.path.basename(art)} missing — required artifact for {agent_type}')
-
-print(json.dumps({'skill': best_skill, 'errors': errors, 'warn': warn}))
-PYEOF
-)
+GATE_RESULT=$(python3 "$(dirname "$0")/../scripts/agent-gate-check.py")
 unset _PAYLOAD _AGENT_TYPE
 
-# Parse python3 output (single parse)
-_PARSED=$(echo "$GATE_RESULT" | python3 -c "
-import json, sys
-d = json.load(sys.stdin)
-print(d.get('skill','') + '\t' + d.get('warn',''))
-for e in d.get('errors',[]):
-    print(e)
-" 2>/dev/null || echo $'\t')
-
-ACTIVE_SKILL=$(echo "$_PARSED" | head -1 | cut -f1)
-GATE_WARN=$(echo "$_PARSED" | head -1 | cut -f2)
+# Parse tab-separated output directly (no second python3 invocation)
+ACTIVE_SKILL=$(echo "$GATE_RESULT" | head -1 | cut -f1)
+GATE_WARN=$(echo "$GATE_RESULT" | head -1 | cut -f2)
 
 # Accumulate registry errors
 while IFS= read -r line; do
   [[ -n "$line" ]] && ERRORS+=("$line")
-done < <(echo "$_PARSED" | tail -n +2)
-unset _PARSED
+done < <(echo "$GATE_RESULT" | tail -n +2)
 
 # Log warnings
 if [[ -n "$GATE_WARN" ]]; then
@@ -155,40 +53,38 @@ fi
 # are in lib.sh.
 # ══════════════════════════════════════════════════════════════════════
 
-verify_extended_checks() {
-  case "$SUBAGENT_TYPE" in
-    design-critic|ux-journeyer)
-      # Archetype guard: these agents are web-app only
-      local DC_ARCH
-      DC_ARCH=$(read_json_field "$PROJECT_DIR/.runs/verify-context.json" "archetype")
-      if [[ "$DC_ARCH" != "web-app" ]]; then
-        ERRORS+=("$SUBAGENT_TYPE requires archetype=web-app but got archetype=$DC_ARCH — design agents are not valid for service or cli archetypes")
-      fi
-      check_postcondition_artifacts 0
-      check_build_result
-      # Phase 1 traces must exist
-      if [[ ! -f "$TRACES_DIR/build-info-collector.json" ]]; then
-        ERRORS+=("build-info-collector.json trace missing — Phase 1 has not completed")
-      fi
-      require_trace_verdict "$TRACES_DIR/build-info-collector.json" "agent may still be running or exhausted turns"
-      check_trace_run_id "$TRACES_DIR/build-info-collector.json"
+_verify_design_ux_checks() {
+  # Archetype guard: these agents are web-app only
+  local DC_ARCH
+  DC_ARCH=$(read_json_field "$PROJECT_DIR/.runs/verify-context.json" "archetype")
+  if [[ "$DC_ARCH" != "web-app" ]]; then
+    ERRORS+=("$SUBAGENT_TYPE requires archetype=web-app but got archetype=$DC_ARCH — design agents are not valid for service or cli archetypes")
+  fi
+  check_postcondition_artifacts 0
+  check_build_result
+  # Phase 1 traces must exist
+  if [[ ! -f "$TRACES_DIR/build-info-collector.json" ]]; then
+    ERRORS+=("build-info-collector.json trace missing — Phase 1 has not completed")
+  fi
+  require_trace_verdict "$TRACES_DIR/build-info-collector.json" "agent may still be running or exhausted turns"
+  check_trace_run_id "$TRACES_DIR/build-info-collector.json"
 
-      local SCOPE
-      SCOPE=$(read_json_field "$PROJECT_DIR/.runs/verify-context.json" "scope")
-      if [[ "$SCOPE" == "full" ]]; then
-        for AGENT in security-defender security-attacker behavior-verifier; do
-          if [[ ! -f "$TRACES_DIR/$AGENT.json" ]]; then
-            ERRORS+=("$AGENT.json trace missing — Phase 1 agent incomplete (scope=$SCOPE)")
-          else
-            require_trace_verdict "$TRACES_DIR/$AGENT.json" "agent may still be running or exhausted turns"
-            check_trace_run_id "$TRACES_DIR/$AGENT.json"
-          fi
-        done
+  local SCOPE
+  SCOPE=$(read_json_field "$PROJECT_DIR/.runs/verify-context.json" "scope")
+  if [[ "$SCOPE" == "full" ]]; then
+    for AGENT in security-defender security-attacker behavior-verifier; do
+      if [[ ! -f "$TRACES_DIR/$AGENT.json" ]]; then
+        ERRORS+=("$AGENT.json trace missing — Phase 1 agent incomplete (scope=$SCOPE)")
+      else
+        require_trace_verdict "$TRACES_DIR/$AGENT.json" "agent may still be running or exhausted turns"
+        check_trace_run_id "$TRACES_DIR/$AGENT.json"
       fi
-      # Per-page design-critic file boundary enforcement
-      if [[ "$SUBAGENT_TYPE" == "design-critic" ]]; then
-        local IS_PER_PAGE
-        IS_PER_PAGE=$(python3 -c "
+    done
+  fi
+  # Per-page design-critic file boundary enforcement
+  if [[ "$SUBAGENT_TYPE" == "design-critic" ]]; then
+    local IS_PER_PAGE
+    IS_PER_PAGE=$(python3 -c "
 import json, sys, re
 d = json.loads(sys.stdin.read())
 prompt = d.get('tool_input',{}).get('prompt','')
@@ -197,118 +93,118 @@ if re.search(r'design-critic-\w+\.json', prompt):
 else:
     print('no')
 " <<< "$PAYLOAD" 2>/dev/null || echo "no")
-        if [[ "$IS_PER_PAGE" == "yes" ]]; then
-          check_file_boundary "design-critic (per-page)"
-        fi
-      fi
-      # ux-journeyer: check design-critic retry + consistency checker
-      if [[ "$SUBAGENT_TYPE" == "ux-journeyer" ]]; then
-        check_tier1_retry_complete "design-critic-*" "$TRACES_DIR"
-        check_tier1_retry_complete "design-critic" "$TRACES_DIR"
-        local SCOPE_V1 ARCH_V1
-        SCOPE_V1=$(read_json_field "$PROJECT_DIR/.runs/verify-context.json" "scope")
-        ARCH_V1=$(read_json_field "$PROJECT_DIR/.runs/verify-context.json" "archetype")
-        if [[ "$SCOPE_V1" =~ ^(full|visual)$ ]] && [[ "$ARCH_V1" == "web-app" ]]; then
-          if [ ! -f "$TRACES_DIR/design-consistency-checker.json" ]; then
-            ERRORS+=("design-consistency-checker.json trace missing — spawn consistency checker before ux-journeyer")
-          else
-            require_trace_verdict "$TRACES_DIR/design-consistency-checker.json" "consistency checker may still be running or exhausted turns"
-          fi
-        fi
-      fi
-      check_efficiency_directives
-      ;;
-
-    security-fixer)
-      check_postcondition_artifacts 3
-      if [[ ! -f "$TRACES_DIR/build-info-collector.json" ]]; then
-        ERRORS+=("build-info-collector.json trace missing — Phase 1 has not completed")
-      fi
-      require_trace_verdict "$TRACES_DIR/build-info-collector.json" "agent may still be running or exhausted turns"
-      check_trace_run_id "$TRACES_DIR/build-info-collector.json"
-
-      local SF_SCOPE SF_ARCH
-      SF_SCOPE=$(read_json_field "$PROJECT_DIR/.runs/verify-context.json" "scope")
-      SF_ARCH=$(read_json_field "$PROJECT_DIR/.runs/verify-context.json" "archetype")
-      if [[ "$SF_ARCH" == "web-app" && ( "$SF_SCOPE" == "full" || "$SF_SCOPE" == "visual" ) ]]; then
-        for AGENT in design-critic ux-journeyer; do
-          if [[ ! -f "$TRACES_DIR/$AGENT.json" ]]; then
-            ERRORS+=("$AGENT.json trace missing — Phase 2 agent incomplete (scope=$SF_SCOPE, archetype=$SF_ARCH)")
-          else
-            require_trace_verdict "$TRACES_DIR/$AGENT.json" "agent may still be running or exhausted turns"
-            check_trace_run_id "$TRACES_DIR/$AGENT.json"
-          fi
-        done
-      fi
-      check_tier1_retry_complete "ux-journeyer" "$TRACES_DIR"
-      # Hard gate: design-ux-merge.json verdict must not be "fail"
-      if [[ "$SF_ARCH" == "web-app" && ( "$SF_SCOPE" == "full" || "$SF_SCOPE" == "visual" ) ]]; then
-        if [[ -f "$PROJECT_DIR/.runs/design-ux-merge.json" ]]; then
-          local MERGE_VERDICT
-          MERGE_VERDICT=$(read_json_field "$PROJECT_DIR/.runs/design-ux-merge.json" "verdict")
-          if [[ "$MERGE_VERDICT" == "fail" ]]; then
-            ERRORS+=("design-ux-merge.json verdict=fail — hard gate failure, skip to STATE 7")
-          fi
-        fi
-      fi
-      if [[ "$SF_SCOPE" == "security" ]]; then
-        if [[ ! -f "$TRACES_DIR/behavior-verifier.json" ]]; then
-          ERRORS+=("behavior-verifier.json trace missing — Phase 1 agent incomplete (scope=$SF_SCOPE)")
-        fi
-        require_trace_verdict "$TRACES_DIR/behavior-verifier.json" "agent may still be running or exhausted turns"
-        check_trace_run_id "$TRACES_DIR/behavior-verifier.json"
-      fi
-      check_efficiency_directives
-      ;;
-
-    observer)
-      # Epilogue path: relaxed requirements for skill-epilogue.md observers
-      if [[ -f "$PROJECT_DIR/.runs/epilogue-context.json" ]] && \
-         [[ ! -f "$PROJECT_DIR/.runs/verify-context.json" ]]; then
-        local FIX_COUNT
-        FIX_COUNT=$(grep -cE '^\*\*Fix|^Fix \(' "$PROJECT_DIR/.runs/fix-log.md" 2>/dev/null || echo "0")
-        if [ "$FIX_COUNT" -gt 0 ] && [ ! -s "$PROJECT_DIR/.runs/observer-diffs.txt" ]; then
-          ERRORS+=("observer-diffs.txt missing or empty — collect diffs before spawning observer (epilogue path)")
-        fi
+    if [[ "$IS_PER_PAGE" == "yes" ]]; then
+      check_file_boundary "design-critic (per-page)"
+    fi
+  fi
+  # ux-journeyer: check design-critic retry + consistency checker
+  if [[ "$SUBAGENT_TYPE" == "ux-journeyer" ]]; then
+    check_tier1_retry_complete "design-critic-*" "$TRACES_DIR"
+    check_tier1_retry_complete "design-critic" "$TRACES_DIR"
+    local SCOPE_V1 ARCH_V1
+    SCOPE_V1=$(read_json_field "$PROJECT_DIR/.runs/verify-context.json" "scope")
+    ARCH_V1=$(read_json_field "$PROJECT_DIR/.runs/verify-context.json" "archetype")
+    if [[ "$SCOPE_V1" =~ ^(full|visual)$ ]] && [[ "$ARCH_V1" == "web-app" ]]; then
+      if [ ! -f "$TRACES_DIR/design-consistency-checker.json" ]; then
+        ERRORS+=("design-consistency-checker.json trace missing — spawn consistency checker before ux-journeyer")
       else
-        # Verify path: full prerequisites
-        check_postcondition_artifacts 4
-        if [[ ! -f "$PROJECT_DIR/.runs/e2e-result.json" ]]; then
-          ERRORS+=("e2e-result.json not found — E2E tests (STATE 5) must complete before observer")
-        fi
-        if [[ -f "$PROJECT_DIR/.runs/e2e-result.json" ]]; then
-          local HAS_TESTING
-          HAS_TESTING=$(grep -c "testing:" "$PROJECT_DIR/experiment/experiment.yaml" 2>/dev/null || echo "0")
-          if [[ "$HAS_TESTING" -gt 0 ]]; then
-            local E2E_REASON
-            E2E_REASON=$(read_json_field "$PROJECT_DIR/.runs/e2e-result.json" "reason")
-            if [[ "$E2E_REASON" == "no testing stack" ]]; then
-              ERRORS+=("e2e-result.json says 'no testing stack' but experiment.yaml has stack.testing — STATE 5 was not executed correctly")
-            elif [[ "$E2E_REASON" == "unrecognized test runner" ]]; then
-              ERRORS+=("e2e-result.json says 'unrecognized test runner' but experiment.yaml has stack.testing — check stack.services[].testing value is one of {playwright, vitest}")
-            fi
-          fi
-        fi
-        local FIX_COUNT
-        FIX_COUNT=$(grep -cE '^\*\*Fix|^Fix \(' "$PROJECT_DIR/.runs/fix-log.md" 2>/dev/null || echo "0")
-        if [ "$FIX_COUNT" -gt 0 ] && [ ! -s "$PROJECT_DIR/.runs/observer-diffs.txt" ]; then
-          ERRORS+=("observer-diffs.txt missing or empty — run diff collection script before spawning observer")
-        fi
-        check_efficiency_directives
+        require_trace_verdict "$TRACES_DIR/design-consistency-checker.json" "consistency checker may still be running or exhausted turns"
       fi
-      ;;
+    fi
+  fi
+  check_efficiency_directives
+}
 
-    build-info-collector|security-defender|security-attacker|behavior-verifier|performance-reporter|accessibility-scanner|spec-reviewer)
-      check_postcondition_artifacts 0
-      check_build_result
-      check_efficiency_directives
-      ;;
+_verify_security_fixer_checks() {
+  check_postcondition_artifacts 3
+  if [[ ! -f "$TRACES_DIR/build-info-collector.json" ]]; then
+    ERRORS+=("build-info-collector.json trace missing — Phase 1 has not completed")
+  fi
+  require_trace_verdict "$TRACES_DIR/build-info-collector.json" "agent may still be running or exhausted turns"
+  check_trace_run_id "$TRACES_DIR/build-info-collector.json"
 
-    design-consistency-checker)
-      check_postcondition_artifacts 0
-      check_build_result
-      local HAS_SHARED
-      HAS_SHARED=$(python3 -c "
+  local SF_SCOPE SF_ARCH
+  SF_SCOPE=$(read_json_field "$PROJECT_DIR/.runs/verify-context.json" "scope")
+  SF_ARCH=$(read_json_field "$PROJECT_DIR/.runs/verify-context.json" "archetype")
+  if [[ "$SF_ARCH" == "web-app" && ( "$SF_SCOPE" == "full" || "$SF_SCOPE" == "visual" ) ]]; then
+    for AGENT in design-critic ux-journeyer; do
+      if [[ ! -f "$TRACES_DIR/$AGENT.json" ]]; then
+        ERRORS+=("$AGENT.json trace missing — Phase 2 agent incomplete (scope=$SF_SCOPE, archetype=$SF_ARCH)")
+      else
+        require_trace_verdict "$TRACES_DIR/$AGENT.json" "agent may still be running or exhausted turns"
+        check_trace_run_id "$TRACES_DIR/$AGENT.json"
+      fi
+    done
+  fi
+  check_tier1_retry_complete "ux-journeyer" "$TRACES_DIR"
+  # Hard gate: design-ux-merge.json verdict must not be "fail"
+  if [[ "$SF_ARCH" == "web-app" && ( "$SF_SCOPE" == "full" || "$SF_SCOPE" == "visual" ) ]]; then
+    if [[ -f "$PROJECT_DIR/.runs/design-ux-merge.json" ]]; then
+      local MERGE_VERDICT
+      MERGE_VERDICT=$(read_json_field "$PROJECT_DIR/.runs/design-ux-merge.json" "verdict")
+      if [[ "$MERGE_VERDICT" == "fail" ]]; then
+        ERRORS+=("design-ux-merge.json verdict=fail — hard gate failure, skip to STATE 7")
+      fi
+    fi
+  fi
+  if [[ "$SF_SCOPE" == "security" ]]; then
+    if [[ ! -f "$TRACES_DIR/behavior-verifier.json" ]]; then
+      ERRORS+=("behavior-verifier.json trace missing — Phase 1 agent incomplete (scope=$SF_SCOPE)")
+    fi
+    require_trace_verdict "$TRACES_DIR/behavior-verifier.json" "agent may still be running or exhausted turns"
+    check_trace_run_id "$TRACES_DIR/behavior-verifier.json"
+  fi
+  check_efficiency_directives
+}
+
+_verify_observer_checks() {
+  # Epilogue path: relaxed requirements for skill-epilogue.md observers
+  if [[ -f "$PROJECT_DIR/.runs/epilogue-context.json" ]] && \
+     [[ ! -f "$PROJECT_DIR/.runs/verify-context.json" ]]; then
+    local FIX_COUNT
+    FIX_COUNT=$(grep -cE '^\*\*Fix|^Fix \(' "$PROJECT_DIR/.runs/fix-log.md" 2>/dev/null || echo "0")
+    if [ "$FIX_COUNT" -gt 0 ] && [ ! -s "$PROJECT_DIR/.runs/observer-diffs.txt" ]; then
+      ERRORS+=("observer-diffs.txt missing or empty — collect diffs before spawning observer (epilogue path)")
+    fi
+  else
+    # Verify path: full prerequisites
+    check_postcondition_artifacts 4
+    if [[ ! -f "$PROJECT_DIR/.runs/e2e-result.json" ]]; then
+      ERRORS+=("e2e-result.json not found — E2E tests (STATE 5) must complete before observer")
+    fi
+    if [[ -f "$PROJECT_DIR/.runs/e2e-result.json" ]]; then
+      local HAS_TESTING
+      HAS_TESTING=$(grep -c "testing:" "$PROJECT_DIR/experiment/experiment.yaml" 2>/dev/null || echo "0")
+      if [[ "$HAS_TESTING" -gt 0 ]]; then
+        local E2E_REASON
+        E2E_REASON=$(read_json_field "$PROJECT_DIR/.runs/e2e-result.json" "reason")
+        if [[ "$E2E_REASON" == "no testing stack" ]]; then
+          ERRORS+=("e2e-result.json says 'no testing stack' but experiment.yaml has stack.testing — STATE 5 was not executed correctly")
+        elif [[ "$E2E_REASON" == "unrecognized test runner" ]]; then
+          ERRORS+=("e2e-result.json says 'unrecognized test runner' but experiment.yaml has stack.testing — check stack.services[].testing value is one of {playwright, vitest}")
+        fi
+      fi
+    fi
+    local FIX_COUNT
+    FIX_COUNT=$(grep -cE '^\*\*Fix|^Fix \(' "$PROJECT_DIR/.runs/fix-log.md" 2>/dev/null || echo "0")
+    if [ "$FIX_COUNT" -gt 0 ] && [ ! -s "$PROJECT_DIR/.runs/observer-diffs.txt" ]; then
+      ERRORS+=("observer-diffs.txt missing or empty — run diff collection script before spawning observer")
+    fi
+    check_efficiency_directives
+  fi
+}
+
+_verify_phase1_agent_checks() {
+  check_postcondition_artifacts 0
+  check_build_result
+  check_efficiency_directives
+}
+
+_verify_consistency_checker_checks() {
+  check_postcondition_artifacts 0
+  check_build_result
+  local HAS_SHARED
+  HAS_SHARED=$(python3 -c "
 import json, glob
 for f in glob.glob('$TRACES_DIR/design-critic-*.json'):
     if 'design-critic-shared' in f: continue
@@ -319,19 +215,25 @@ for f in glob.glob('$TRACES_DIR/design-critic-*.json'):
     except: pass
 else: print('no')
 " 2>/dev/null || echo "no")
-      if [[ "$HAS_SHARED" == "yes" ]]; then
-        if [[ ! -f "$TRACES_DIR/design-critic-shared.json" ]]; then
-          ERRORS+=("design-critic-shared.json missing — per-page agents reported shared-component issues")
-        else
-          require_trace_verdict "$TRACES_DIR/design-critic-shared.json" "shared-component agent may still be running"
-        fi
-      fi
-      check_efficiency_directives
-      ;;
+  if [[ "$HAS_SHARED" == "yes" ]]; then
+    if [[ ! -f "$TRACES_DIR/design-critic-shared.json" ]]; then
+      ERRORS+=("design-critic-shared.json missing — per-page agents reported shared-component issues")
+    else
+      require_trace_verdict "$TRACES_DIR/design-critic-shared.json" "shared-component agent may still be running"
+    fi
+  fi
+  check_efficiency_directives
+}
 
-    *)
-      echo "WARN: agent-state-gate: unknown agent type '$SUBAGENT_TYPE' for verify — skipping extended checks" >&2
-      ;;
+verify_extended_checks() {
+  case "$SUBAGENT_TYPE" in
+    design-critic|ux-journeyer) _verify_design_ux_checks ;;
+    security-fixer) _verify_security_fixer_checks ;;
+    observer) _verify_observer_checks ;;
+    build-info-collector|security-defender|security-attacker|behavior-verifier|performance-reporter|accessibility-scanner|spec-reviewer)
+      _verify_phase1_agent_checks ;;
+    design-consistency-checker) _verify_consistency_checker_checks ;;
+    *) echo "WARN: agent-state-gate: unknown agent type '$SUBAGENT_TYPE' for verify — skipping extended checks" >&2 ;;
   esac
 }
 
