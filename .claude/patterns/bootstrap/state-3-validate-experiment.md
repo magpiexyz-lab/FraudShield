@@ -14,11 +14,7 @@
 - Verify `name` is lowercase with hyphens only (no spaces, no uppercase)
 - For each category in the archetype's `excluded_stacks` list: if that category is present in experiment.yaml `stack`, stop and tell the user: "The `<archetype>` archetype excludes `<category>`. Remove `<category>: <value>` from your experiment.yaml `stack` section, or switch to a different archetype."
 - For each category in the archetype's `required_stacks` list: verify the category is present in experiment.yaml `stack`. Per-service categories (`framework`, `hosting`, `ui`, `testing`) map to `stack.services[]` keys (`runtime` for framework, others by name). Shared categories (`database`, `auth`, `analytics`, `payment`, `email`) map to `stack.<category>`. If a required category is missing, stop and tell the user: "The `<archetype>` archetype requires `<category>`. Add it to your experiment.yaml `stack` section — shared categories go at the top level (e.g., `database: supabase`), per-service categories go under `stack.services[]` (e.g., `hosting: vercel` under a service entry)."
-- Validate stack dependencies per `patterns/stack-dependency-validation.md` — read the Dependency Matrix, Compatibility Constraints, and Error Message Templates sections. Use the canonical error messages from that file for all stop messages. Key checks:
-  - Payment requires auth to be present; payment requires database to be present
-  - Email requires auth to be present; email requires database to be present
-  - auth_providers requires auth to be present
-  - Playwright is incompatible with service/cli archetypes
+- Validate stack dependencies per `patterns/stack-dependency-validation.md` — read the Dependency Matrix, Compatibility Constraints, and Error Message Templates sections. Use the canonical error messages from that file for all stop messages. Key checks: payment requires auth+database; email requires auth+database; auth_providers requires auth; playwright incompatible with service/cli.
   - Validate framework-archetype compatibility: web-app requires nextjs; cli requires commander
 - Verify `stack.testing` is present. If absent: stop — "Testing framework required. Add `testing: playwright` (web-app) or `testing: vitest` (service/cli) to experiment.yaml `stack` and re-run `/bootstrap`."
 - If `stack.auth_providers` is present:

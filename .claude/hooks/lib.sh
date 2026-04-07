@@ -845,6 +845,14 @@ for state_id, entry in skill_data.items():
   return "$had_failure"
 }
 
+# --- parse_advance_state_args ---
+# Parse advance-state.sh arguments from a command string.
+# Sets SKILL and STATE_ID globals. Expects $COMMAND to be set.
+parse_advance_state_args() {
+  SKILL=$(echo "$COMMAND" | grep -oE 'advance-state\.sh[[:space:]]+([a-z-]+)' | awk '{print $NF}' || echo "")
+  STATE_ID=$(echo "$COMMAND" | grep -oE 'advance-state\.sh[[:space:]]+[a-z-]+[[:space:]]+([0-9a-z_]+)' | awk '{print $NF}' || echo "")
+}
+
 # --- check_block_verdicts ---
 # Checks gate-verdicts/ for any BLOCK verdicts on the current branch.
 # Appends blocking gate IDs to global ERRORS array. Does not exit — caller decides.

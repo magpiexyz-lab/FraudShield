@@ -124,14 +124,23 @@ PYEOF
 )
 unset _PAYLOAD _AGENT_TYPE
 
-# Parse python3 output
-ACTIVE_SKILL=$(echo "$GATE_RESULT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('skill',''))" 2>/dev/null || echo "")
-GATE_WARN=$(echo "$GATE_RESULT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('warn',''))" 2>/dev/null || echo "")
+# Parse python3 output (single parse)
+_PARSED=$(echo "$GATE_RESULT" | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+print(d.get('skill','') + '\t' + d.get('warn',''))
+for e in d.get('errors',[]):
+    print(e)
+" 2>/dev/null || echo $'\t')
+
+ACTIVE_SKILL=$(echo "$_PARSED" | head -1 | cut -f1)
+GATE_WARN=$(echo "$_PARSED" | head -1 | cut -f2)
 
 # Accumulate registry errors
 while IFS= read -r line; do
   [[ -n "$line" ]] && ERRORS+=("$line")
-done < <(echo "$GATE_RESULT" | python3 -c "import json,sys; [print(x) for x in json.load(sys.stdin).get('errors',[])]" 2>/dev/null || true)
+done < <(echo "$_PARSED" | tail -n +2)
+unset _PARSED
 
 # Log warnings
 if [[ -n "$GATE_WARN" ]]; then

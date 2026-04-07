@@ -16,9 +16,7 @@ if [[ "$COMMAND" != *"advance-state.sh"* ]]; then
   exit 0
 fi
 
-# Extract skill name and state identifier from: advance-state.sh <skill> <state>
-SKILL=$(echo "$COMMAND" | grep -oE 'advance-state\.sh[[:space:]]+([a-z-]+)' | awk '{print $NF}' || echo "")
-STATE_ID=$(echo "$COMMAND" | grep -oE 'advance-state\.sh[[:space:]]+[a-z-]+[[:space:]]+([0-9a-z_]+)' | awk '{print $NF}' || echo "")
+parse_advance_state_args
 
 if [[ -z "$SKILL" || -z "$STATE_ID" ]]; then
   exit 0
