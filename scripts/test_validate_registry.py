@@ -199,3 +199,157 @@ class TestStateOrdering:
             assert keys == sorted_keys, (
                 f"{skill}: state keys out of order: {keys} vs expected {sorted_keys}"
             )
+
+
+# ---------------------------------------------------------------------------
+# Bidirectional file <-> registry sync validation
+# ---------------------------------------------------------------------------
+
+PATTERNS_DIR = os.path.join(
+    os.path.dirname(__file__), "..", ".claude", "patterns"
+)
+
+
+def _discover_state_files():
+    """Find all state-*.md files under .claude/patterns/*/."""
+    import glob
+    return sorted(glob.glob(os.path.join(PATTERNS_DIR, "*", "state-*.md")))
+
+
+def _extract_advance_state_calls(filepath):
+    """Parse advance-state.sh <skill> <state> from a state file.
+
+    Uses the skill name from the call, NOT the directory name.
+    Handles multi-mode: iterate/state-c0-*.md -> iterate-check.c0
+    """
+    results = []
+    with open(filepath) as f:
+        for line in f:
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                continue
+            m = re.search(
+                r'advance-state\.sh\s+([a-z][-a-z]*)\s+([a-z0-9_]+)',
+                stripped,
+            )
+            if m:
+                results.append((m.group(1), m.group(2)))
+    return results
+
+
+class TestForwardSync:
+    """Every state file on disk must have a matching registry entry."""
+
+    def test_every_state_file_has_registry_entry(self):
+        reg = load_registry()
+        missing = []
+        for f in _discover_state_files():
+            for skill, state_id in _extract_advance_state_calls(f):
+                if skill not in reg or state_id not in reg.get(skill, {}):
+                    missing.append(
+                        f"{skill}.{state_id} (from {os.path.basename(f)})"
+                    )
+        assert not missing, (
+            f"{len(missing)} unregistered entries:\n"
+            + "\n".join(f"  {m}" for m in missing)
+        )
+
+    def test_every_state_file_has_advance_state_call(self):
+        no_call = []
+        for f in _discover_state_files():
+            if not _extract_advance_state_calls(f):
+                no_call.append(os.path.relpath(f))
+        assert not no_call, (
+            f"{len(no_call)} state files lack advance-state.sh call:\n"
+            + "\n".join(f"  {f}" for f in no_call)
+        )
+
+
+class TestReverseSync:
+    """Every registry entry must have a corresponding state file."""
+
+    def test_every_registry_entry_has_state_file(self):
+        reg = load_registry()
+        skip = {"agent_gates", "observation_gates"}
+        file_map = {}
+        for f in _discover_state_files():
+            for skill, state_id in _extract_advance_state_calls(f):
+                file_map[(skill, state_id)] = f
+        missing = []
+        for skill, states in reg.items():
+            if skill in skip:
+                continue
+            for state_id in states:
+                if (skill, state_id) not in file_map:
+                    missing.append(f"{skill}.{state_id}")
+        assert not missing, (
+            f"{len(missing)} orphan registry entries:\n"
+            + "\n".join(f"  {m}" for m in missing)
+        )
+
+
+class TestRequiredStatesSync:
+    """agent_gates._required_states entries must exist in top-level registry."""
+
+    def test_required_states_have_registry_entries(self):
+        reg = load_registry()
+        ag = reg.get("agent_gates", {})
+        missing = []
+        for skill, gates in ag.items():
+            for s in gates.get("_required_states", []):
+                if str(s) not in reg.get(skill, {}):
+                    missing.append(
+                        f"agent_gates.{skill}._required_states[{s}]"
+                        f" -> {skill}.{s} missing"
+                    )
+        assert not missing, "\n".join(missing)
+
+
+class TestPostconditionSyntax:
+    """Verify postcondition commands are syntactically valid."""
+
+    def test_python_commands_parse(self):
+        import ast
+        reg = load_registry()
+        skip = {"agent_gates", "observation_gates"}
+        errors = []
+        for skill, states in reg.items():
+            if skill in skip:
+                continue
+            for state_id, entry in states.items():
+                cmd = (
+                    entry.get("verify", entry)
+                    if isinstance(entry, dict)
+                    else entry
+                )
+                if not isinstance(cmd, str):
+                    continue
+                for m in re.finditer(
+                    r'python3 -c "(.*?)"(?:\s|$|\|)', cmd, re.DOTALL
+                ):
+                    code = m.group(1).replace('\\"', '"')
+                    try:
+                        ast.parse(code)
+                    except SyntaxError as e:
+                        errors.append(f"{skill}.{state_id}: {e}")
+        assert not errors, (
+            f"{len(errors)} syntax errors:\n" + "\n".join(errors)
+        )
+
+    def test_object_entries_structure(self):
+        reg = load_registry()
+        skip = {"agent_gates", "observation_gates"}
+        errors = []
+        for skill, states in reg.items():
+            if skill in skip:
+                continue
+            for state_id, entry in states.items():
+                if not isinstance(entry, dict):
+                    continue
+                if "verify" not in entry:
+                    errors.append(f"{skill}.{state_id}: missing 'verify'")
+                elif not isinstance(entry["verify"], str):
+                    errors.append(f"{skill}.{state_id}: 'verify' not string")
+                if "calls" in entry and not isinstance(entry["calls"], list):
+                    errors.append(f"{skill}.{state_id}: 'calls' not list")
+        assert not errors, "\n".join(errors)

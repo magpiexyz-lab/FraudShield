@@ -17,6 +17,20 @@ else
   CTX="$PROJECT_DIR/.runs/${SKILL}-context.json"
 fi
 
+# Fail-closed: verify STATE_NUM exists in registry
+REGISTRY="$PROJECT_DIR/.claude/patterns/state-registry.json"
+if [[ -f "$REGISTRY" ]]; then
+  STATE_EXISTS=$(python3 -c "
+import json
+reg = json.load(open('$REGISTRY'))
+print('yes' if '$STATE_NUM' in reg.get('$SKILL', {}) else 'no')
+" 2>/dev/null || echo "error")
+  if [[ "$STATE_EXISTS" == "no" ]]; then
+    echo "ERROR: advance-state.sh — $SKILL.$STATE_NUM not in state-registry.json" >&2
+    exit 1
+  fi
+fi
+
 python3 -c "
 import json, os
 f='$CTX'; d=json.load(open(f))

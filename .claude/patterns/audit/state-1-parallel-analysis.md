@@ -200,6 +200,31 @@ Flags:
 Files to read: `.runs/audit-skill-manifest.json` (primary). Selective
 raw state file reads only when a manifest anomaly needs confirmation.
 
+**Sub-dimension D4: Registry Sync Quality**
+
+> Complement to D3 (D3 uses dispatch tables, D4 uses registry entries).
+
+Flags:
+- **(b) File-stronger-than-registry**: The VERIFY block in a state file
+  checks MORE conditions than the registry entry. The registry is the
+  runtime authority — a weaker registry entry means the gate allows
+  states to pass without checking conditions the documentation requires.
+- **(c) Semantically-different checks**: The file VERIFY and registry
+  entry check DIFFERENT artifacts or conditions (not just weaker/stronger).
+- **Cross-state artifact chains**: State N's POSTCONDITIONS create
+  artifact X, but state N+1's registry postcondition does NOT verify X.
+
+**Intentional skips:**
+- **(a) Registry-stronger-than-file**: Intentional — registry was upgraded
+  while .md files retain simpler checks for LLM readability. Do NOT report.
+- **`audit` skill states**: Exclude from self-referential comparison.
+- **Cosmetic differences**: `&& echo "OK" || echo "FAIL"` appended to
+  file checks is human-readable feedback, not a postcondition difference.
+
+Data source: `.claude/patterns/state-registry.json` entries vs VERIFY
+blocks in `state-*.md` files. Use manifest `postcondition_items` as
+secondary signal.
+
 ---
 
 ### Finding Format

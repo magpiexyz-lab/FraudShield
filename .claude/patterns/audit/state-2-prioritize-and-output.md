@@ -51,7 +51,7 @@ Prior audit: <date> (<N> findings) | none
 > If scope is not `full`, omit this section entirely.
 | # | Skill | Sub-dim | Issue | Suggestion | Priority |
 |---|-------|---------|-------|------------|----------|
-| 1 | ...   | D1/D2/D3| ...  | ...        | P2       |
+| 1 | ...   | D1/D2/D3/D4| ...  | ...        | P2       |
 
 ## Delta (vs prior audit)
 - New: <N> findings

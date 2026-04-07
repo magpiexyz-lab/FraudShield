@@ -84,16 +84,24 @@ if cur in states:
     missing = [s for s in states[:idx] if s not in cs]
     if missing:
         print(','.join(missing))
+else:
+    print('UNREGISTERED')
 " 2>/dev/null || echo "")
 
-  if [[ -n "$CHAIN_RESULT" ]]; then
+  if [[ "$CHAIN_RESULT" == "UNREGISTERED" ]]; then
+    deny "State completion gate: $SKILL STATE $STATE_ID — not in state-registry.json. Register before advancing."
+  elif [[ -n "$CHAIN_RESULT" ]]; then
     deny "State completion gate: $SKILL STATE $STATE_ID — prior states not complete: [$CHAIN_RESULT]. Complete earlier states before advancing."
   fi
 fi
 
 # --- Artifact check: run VERIFY command from registry ---
-if [[ -z "$VERIFY_CMD" || "$VERIFY_CMD" == "true" ]]; then
-  exit 0  # No artifact check for this state (chain check above still enforces order)
+if [[ "$VERIFY_CMD" == "true" ]]; then
+  exit 0  # Intentional no-check (explicitly registered as "true")
+fi
+
+if [[ -z "$VERIFY_CMD" ]]; then
+  deny "State completion gate: $SKILL STATE $STATE_ID — no VERIFY in registry. Add postcondition entry before advancing."
 fi
 
 # Run the verify command from project root
