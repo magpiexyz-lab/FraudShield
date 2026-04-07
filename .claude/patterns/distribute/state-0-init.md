@@ -1,4 +1,4 @@
-# STATE 0: ARCHETYPE_CHECK_BRANCH
+# STATE 0: INIT
 
 **PRECONDITIONS:**
 - Git repository exists in working directory
@@ -42,4 +42,4 @@ if [ ! -f .runs/distribute-context.json ]; then echo "OK"; else git branch --sho
 bash .claude/scripts/advance-state.sh distribute 0
 ```
 
-**NEXT:** Read [state-1-validate-preconditions.md](state-1-validate-preconditions.md) to continue.
+**NEXT:** Read [state-1-validate-prerequisites.md](state-1-validate-prerequisites.md) to continue.

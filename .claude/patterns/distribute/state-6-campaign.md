@@ -1,19 +1,19 @@
-# STATE 9: CAMPAIGN_CREATION
+# STATE 6: CAMPAIGN
 
 **PRECONDITIONS:**
-- PR opened (STATE 8 POSTCONDITIONS met)
+- PR opened (STATE 5 POSTCONDITIONS met)
 
 **ACTIONS:**
 
-After opening the PR, create the Google Ads campaign via Chrome MCP.
+After opening the PR, create the ad campaign via Chrome MCP.
 Campaign metadata (`campaign_id`, `campaign_url`) is committed to the feature branch and included in the PR.
 
-### 9a: Check for existing campaign
+### 6a: Check for existing campaign
 
-1. If `experiment/ads.yaml` has a `campaign_id` field → campaign already created (idempotent), skip to **9g**
-2. If not → proceed to **9b**
+1. If `experiment/ads.yaml` has a `campaign_id` field → campaign already created (idempotent), skip to **6i**
+2. If not → proceed to **6b**
 
-### 9b: Verify Chrome MCP availability
+### 6b: Verify Chrome MCP availability
 
 Use ToolSearch to check for Chrome MCP tools:
 ```
@@ -24,9 +24,9 @@ If no `mcp__claude-in-chrome__*` tools are returned, STOP and show the setup gui
 
 1. Read `.claude/patterns/chrome-mcp-setup-guide.md`
 2. Present the full guide to the user
-3. End with: "After completing the setup, re-run `/distribute` — it will pick up where it left off (Step 9a checks for existing campaign)."
+3. End with: "After completing the setup, re-run `/distribute` — it will pick up where it left off."
 
-### 9c: Verify Google Ads login
+### 6c: Verify Google Ads login
 
 1. Use Chrome MCP to navigate to `https://ads.google.com`
 2. If a login prompt is shown, tell the user:
@@ -35,20 +35,16 @@ If no `mcp__claude-in-chrome__*` tools are returned, STOP and show the setup gui
 3. Verify the user is in their sub-account (not the MCC top level):
    - If at MCC level, tell the user to navigate to their sub-account first
 
-### 9d-pre: Phase 1 approval gate bypass check
+### 6d: Campaign approval gate (Phase 2 / non-google-ads only)
 
 Read `phase` from `.runs/distribute-context.json`. Read `channel` from `experiment/ads.yaml`.
 
 If phase is 1 AND channel is `google-ads`:
-- The Phase 1 Playbook uses standardized settings that have been pre-validated. The config approval at Step 6 already covered the AI-generated content (keywords, ad copy).
-- Skip the Step 9d approval gate and proceed directly to **9e**.
-- Log: "Phase 1 Playbook: standardized campaign settings — skipping 9d approval gate (settings pre-validated by Playbook)."
+- Skip this step. Log: "Phase 1 Playbook: standardized campaign settings — skipping campaign approval gate."
+- Proceed directly to **6e**.
 
-If phase is 2, or channel is not `google-ads`, proceed to 9d as normal.
-
-### 9d: STOP for approval
-
-**STOP.** Show a campaign creation preview:
+If phase is 2, or channel is not `google-ads`:
+- **STOP.** Show a campaign creation preview:
 
 > **Ready to create campaign via Chrome**
 > - **Channel:** {channel}
@@ -57,14 +53,14 @@ If phase is 2, or channel is not `google-ads`, proceed to 9d as normal.
 > - **Bidding:** Manual CPC, max ${max_cpc_cents / 100}
 > - **Keywords:** {keyword count} keywords (Phrase Match)
 > - **Ads:** {number of RSAs} Responsive Search Ads
-> - **Geo:** {target_geo from ads.yaml}
+> - **Geo:** {target_geo}
 > - **Status:** Campaign will be created in **PAUSED** status
 >
-> I will now create this campaign in your Google Ads account via Chrome. Reply **approve** to proceed, or tell me what to change.
+> Reply **approve** to proceed, or tell me what to change.
 
 **Do not proceed until the user approves.** If the user requests changes, revise `experiment/ads.yaml` and present the preview again.
 
-### 9e: Create campaign via Chrome MCP
+### 6e: Create campaign via Chrome MCP
 
 Read all settings from `experiment/ads.yaml`. Then execute the following steps via Chrome MCP, interacting with the Google Ads UI:
 
@@ -137,7 +133,6 @@ This step is idempotent — on re-runs, Step 0 checks first and skips if the act
   campaign_id: "<campaign_id>"
   campaign_url: "<dashboard_url>"
   ```
-- Commit the updated `experiment/ads.yaml` to the current feature branch and push (updates the open PR)
 
 **Step 7.5: Capture and upload Image Assets**
 
@@ -158,7 +153,7 @@ Google Search ads support optional Image Assets displayed alongside the text ad.
    or resize the browser window to 1200px wide
 2. This ensures the screenshot matches Google Ads landscape spec without upscaling
 
-**7.5c: Capture Landscape image (1200×628)**
+**7.5c: Capture Landscape image (1200x628)**
 1. Scroll to the top of the page (hero section)
 2. Take a full-width screenshot via Chrome MCP
 3. Use Bash to crop to exact dimensions:
@@ -170,10 +165,10 @@ Google Search ads support optional Image Assets displayed alongside the text ad.
    python3 -c "from PIL import Image; img=Image.open('/tmp/screenshot-hero.png'); img.crop((0,0,1200,628)).save('/tmp/ad-image-landscape.png')"
    ```
 
-**7.5d: Capture Square image (1200×1200)**
+**7.5d: Capture Square image (1200x1200)**
 1. Scroll down to the product UI / feature showcase section (typically below the hero fold)
 2. Take a screenshot
-3. Crop to 1200×1200:
+3. Crop to 1200x1200:
    ```bash
    convert /tmp/screenshot-features.png -gravity Center -crop 1200x1200+0+0 +repage /tmp/ad-image-square.png
    ```
@@ -184,14 +179,14 @@ Google Search ads support optional Image Assets displayed alongside the text ad.
 
 > **Image Assets for your Google Ad:**
 >
-> **Landscape (1200×628):** [show /tmp/ad-image-landscape.png]
-> **Square (1200×1200):** [show /tmp/ad-image-square.png]
+> **Landscape (1200x628):** [show /tmp/ad-image-landscape.png]
+> **Square (1200x1200):** [show /tmp/ad-image-square.png]
 >
 > These will be uploaded as Image Assets alongside your text ad. Reply **approve** to upload, or tell me which section of the page to capture instead. Reply **skip** to skip image assets.
 
 - If approved → continue to 7.5f
 - If user wants different section → scroll to specified area, re-capture, re-show
-- If user says skip → record `image_assets_uploaded: skipped` in ads.yaml, skip to Step 8
+- If user says skip → record `image_assets_uploaded: skipped` in ads.yaml, skip to 6f
 
 **7.5f: Upload to Google Ads**
 1. Switch back to the Google Ads tab
@@ -213,9 +208,9 @@ Google Search ads support optional Image Assets displayed alongside the text ad.
 - Screenshot the error state
 - Report to the user what went wrong and at which step
 - Retry from the failed step (up to 2 retries per step)
-- If still failing after retries: STOP and ask the user to resolve the issue in Chrome, then re-run `/distribute` (Step 9a idempotency check will skip already-completed work)
+- If still failing after retries: STOP and ask the user to resolve the issue in Chrome, then re-run `/distribute` (Step 6a idempotency check will skip already-completed work)
 
-### 9e-2: Phase 1 launch protocol
+### 6f: Phase 1 launch protocol
 
 Read `phase` from `.runs/distribute-context.json`. If phase is 1:
 
@@ -243,11 +238,10 @@ Read `phase` from `.runs/distribute-context.json`. If phase is 1:
 
 If phase is not 1, skip this step.
 
-### 9f: (Removed — no manual fallback)
+### 6g: Commit campaign metadata and push
 
-Campaign creation is always via Chrome MCP. If Chrome MCP fails, the user
-resolves the issue and re-runs `/distribute` — Step 9a's idempotency check
-picks up where it left off.
+- Add `campaign_id` and `campaign_url` to `experiment/ads.yaml`
+- Commit to the current feature branch and push (updates the open PR)
 
 ### Q-score
 
@@ -263,7 +257,15 @@ python3 .claude/scripts/write-q-score.py \
   --run-id "$RUN_ID" || true
 ```
 
-### 9g: Next steps
+### 6h: Auto-merge
+
+Follow `.claude/patterns/auto-merge.md`. The PR number is from State 5's `gh pr create` output (retrieve via `gh pr view --json number -q .number`).
+
+If any safety gate fails, report the failure and include it in the 6i message. The user merges manually.
+
+If auto-merge succeeds, prepend to the 6i message: "Distribution PR auto-merged to main."
+
+### 6i: Next steps
 
 Read `phase` from `.runs/distribute-context.json`.
 
@@ -273,10 +275,10 @@ Read `phase` from `.runs/distribute-context.json`.
 >
 > **Day -2 (today):** Campaign created and paused. Ads are being reviewed by Google.
 > **Day -1 (tomorrow):** Run `/iterate --check` to verify ad approval status. If any ads are disapproved, it will auto-fix them.
-> **Day 0 ({recommended_unpause_date from launch_protocol}):** Run `/iterate --check` — if all ads are approved, it will unpause the campaign automatically.
+> **Day 0 ({recommended_unpause_date}):** Run `/iterate --check` — if all ads are approved, it will unpause the campaign automatically.
 >
-> **During Phase 1 (Days 1-7):**
-> 1. Run `/iterate --check` on Days 1, 3, and 5 to monitor campaign performance.
+> **During Phase 1 (Days 1-5):**
+> 1. Run `/iterate --check` on Days 1 and 3 to monitor campaign performance.
 > 2. It will automatically fix issues: add negative keywords, raise CPC if zero impressions, etc.
 > 3. Do NOT change bidding strategy during Phase 1 — stay on Manual CPC.
 >
@@ -287,34 +289,22 @@ Read `phase` from `.runs/distribute-context.json`.
 
 > Your distribution campaign is ready. Next steps:
 > 1. **Enable the campaign** — it was created in PAUSED status. After verifying conversion tracking, enable it in the ad platform dashboard.
-> 2. **Verify conversion tracking** by clicking your own ad and completing the activation flow — confirm the event appears in your analytics dashboard.
-> 3. **Monitor performance** — after the campaign runs for a few days, run `/iterate` to analyze your metrics and decide what to change next.
-> 4. **After `/iterate` feedback** — if `/iterate` recommends changes (e.g., improve landing page, reduce activation friction), run `/change` with the specific improvement. The campaign can keep running during changes — new visitors will see the updated page after you merge and deploy. If `/iterate` recommends revising targeting or budget, pause the campaign in the ad platform dashboard, update `experiment/ads.yaml`, re-run `/distribute`, then enable the new campaign.
-
-### 9h: Auto-merge
-
-Follow `.claude/patterns/auto-merge.md`. The PR number is from state-8's
-`gh pr create` output (retrieve via `gh pr view --json number -q .number`).
-
-If any safety gate fails, report the failure and include it in the 9g next
-steps message. The user merges manually.
-
-If auto-merge succeeds, prepend to the 9g message: "Distribution PR auto-merged
-to main."
+> 2. **Verify conversion tracking** by clicking your own ad and completing the activation flow.
+> 3. **Monitor performance** — after a few days, run `/iterate` to analyze metrics.
+> 4. **After `/iterate` feedback** — if changes recommended, run `/change`. Campaign can keep running during changes.
 
 **POSTCONDITIONS:**
-- Campaign created via Chrome MCP (9e) with campaign_id/campaign_url added to ads.yaml, OR
-- Existing campaign detected (9a) and skipped to next steps (9g)
+- Campaign created via Chrome MCP with campaign_id/campaign_url in ads.yaml, OR existing campaign detected and skipped
 - PR auto-merged to main (or intentionally skipped with reason)
 
 **VERIFY:**
 ```bash
-grep -q 'campaign_id' experiment/ads.yaml 2>/dev/null || test -f experiment/ads.yaml
+grep -q 'campaign_id' experiment/ads.yaml 2>/dev/null || grep -q 'manual_creation' experiment/ads.yaml 2>/dev/null || test -f experiment/ads.yaml
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
 ```bash
-bash .claude/scripts/advance-state.sh distribute 9
+bash .claude/scripts/advance-state.sh distribute 6
 ```
 
-**NEXT:** TERMINAL — campaign is ready, PR auto-merged (or left open with reason). Follow the next steps in 9g.
+**NEXT:** TERMINAL — campaign is ready, PR auto-merged (or left open with reason). Follow the next steps in 6i.

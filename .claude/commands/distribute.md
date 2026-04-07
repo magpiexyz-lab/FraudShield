@@ -25,7 +25,7 @@ This skill generates `experiment/ads.yaml` with targeting, ad creative, budgets,
 
 Parse `$ARGUMENTS` for:
 - **Phase flag**: `--phase 1` or `--phase 2` (default: `1`)
-  - Phase 1: Standardized Playbook settings (manual CPC, phrase match, search only, $100/7 days, 2 RSAs, 1 ad group, 50 universal negative keywords). Google Ads only — other channels ignore the phase flag.
+  - Phase 1: Standardized Playbook settings (manual CPC, phrase match, search only, $100/5 days, 2 RSAs, 1 ad group, 50 universal negative keywords). Google Ads only — other channels ignore the phase flag.
   - Phase 2: Extended campaign ($500/14 days), eligible for automated bidding and customized settings based on Phase 1 learnings.
 
 If `$ARGUMENTS` contains no `--phase` flag, default to phase 1.
@@ -36,19 +36,15 @@ Read each STATE's file **only when transitioning to that state**. Do NOT read ah
 
 | STATE | Name | Phase | File |
 |-------|------|-------|------|
-| 0 | ARCHETYPE_CHECK_BRANCH | Setup | [state-0-archetype-check-branch.md](../patterns/distribute/state-0-archetype-check-branch.md) |
-| 1 | VALIDATE_PRECONDITIONS | Setup | [state-1-validate-preconditions.md](../patterns/distribute/state-1-validate-preconditions.md) |
-| 1_5 | LOAD_HYPOTHESIS | Setup | [state-1_5-load-hypothesis.md](../patterns/distribute/state-1_5-load-hypothesis.md) |
-| 2 | RESEARCH_TARGETING | Research | [state-2-research-targeting.md](../patterns/distribute/state-2-research-targeting.md) |
-| 3 | GENERATE_CREATIVE | Research | [state-3-generate-creative.md](../patterns/distribute/state-3-generate-creative.md) |
-| 4 | GENERATE_THRESHOLDS | Research | [state-4-generate-thresholds.md](../patterns/distribute/state-4-generate-thresholds.md) |
-| 5 | GENERATE_ADS_YAML | Config | [state-5-generate-ads-yaml.md](../patterns/distribute/state-5-generate-ads-yaml.md) |
-| 6 | APPROVAL_GATE | Config | [state-6-approval-gate.md](../patterns/distribute/state-6-approval-gate.md) |
-| 7 | IMPLEMENT | Implement | [state-7-implement.md](../patterns/distribute/state-7-implement.md) |
-| 8 | VERIFY_AND_PR | Implement | [state-8-verify-and-pr.md](../patterns/distribute/state-8-verify-and-pr.md) |
-| 9 | CAMPAIGN_CREATION | Launch | [state-9-campaign-creation.md](../patterns/distribute/state-9-campaign-creation.md) |
+| 0 | INIT | Setup | [state-0-init.md](../patterns/distribute/state-0-init.md) |
+| 1 | VALIDATE_PREREQUISITES | Setup | [state-1-validate-prerequisites.md](../patterns/distribute/state-1-validate-prerequisites.md) |
+| 2 | VALIDATE_ANALYTICS | Setup | [state-2-validate-analytics.md](../patterns/distribute/state-2-validate-analytics.md) |
+| 3 | IMPLEMENT_AND_VERIFY | Implement | [state-3-implement-and-verify.md](../patterns/distribute/state-3-implement-and-verify.md) |
+| 4 | GENERATE | Research | [state-4-generate.md](../patterns/distribute/state-4-generate.md) |
+| 5 | APPROVE_AND_SHIP | Config | [state-5-approve-and-ship.md](../patterns/distribute/state-5-approve-and-ship.md) |
+| 6 | CAMPAIGN | Launch | [state-6-campaign.md](../patterns/distribute/state-6-campaign.md) |
 
-Begin at STATE 0. Read [state-0-archetype-check-branch.md](../patterns/distribute/state-0-archetype-check-branch.md) now.
+Begin at STATE 0. Read [state-0-init.md](../patterns/distribute/state-0-init.md) now.
 
 ## Do NOT
 

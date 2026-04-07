@@ -53,7 +53,7 @@ cost_signal       = max(100 - (spend / max(demand_users, 1) / 50 * 100), 0)
 qs_signal         = quality_score * 10
 ```
 
-#### Phase 1 weights ($100/7 days — activation data too sparse to be reliable)
+#### Phase 1 weights ($100/5 days — activation data too sparse to be reliable)
 
 Phase 1 does NOT include activation_signal. With only 1-5 signups expected,
 activation would be 0-2 data points — pure noise at 20% weight.

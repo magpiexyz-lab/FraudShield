@@ -42,10 +42,10 @@ If no `mcp__claude-in-chrome__*` tools are returned, STOP and show the setup gui
 
 Only keep campaigns that meet these criteria:
 - Status is **Ended**, OR
-- Campaign has been running for **>= 7 days** (based on start date)
+- Campaign has been running for **>= 5 days** (based on start date)
 
 Exclude:
-- Campaigns still running with < 7 days elapsed
+- Campaigns still running with < 5 days elapsed
 - Campaigns with no Final URL (cannot match to an MVP)
 
 ### Extract MVP identifiers
@@ -101,7 +101,7 @@ Replace the `mvps` list with actual data collected from Chrome MCP.
 **POSTCONDITIONS:**
 - Chrome MCP tools verified available
 - MCC dashboard accessed, campaigns listed
-- Eligible MVPs filtered (Ended or >= 7 days)
+- Eligible MVPs filtered (Ended or >= 5 days)
 - Team Lead confirmed the MVP list
 - `.runs/iterate-cross-context.json` exists with MVP list
 

@@ -58,7 +58,7 @@ ads:
 budget:
   daily_budget_cents: 1500          # $15/day
   total_budget_cents: 10000         # $100 total cap (max 50000 without override)
-  duration_days: 7                  # experiment duration
+  duration_days: 5                  # experiment duration
   bidding_strategy: manual_cpc    # Phase 1; see google-ads.md Phase 1 Playbook for progression
 
 # --- Targeting ---
@@ -126,7 +126,7 @@ thresholds:
   expected_clicks: 70               # $100 / ~$1.40 avg CPC for SaaS keywords
   expected_signups: 7               # ~10% landing->signup (conservative for cold traffic)
   expected_activations: 2           # ~30% signup->activate (new product, high friction)
-  go_signal: "3+ activations from paid traffic in 7 days"
+  go_signal: "3+ activations from paid traffic in 5 days"
   no_go_signal: "0 activations after $50 spend, or <1% CTR after 500 impressions"
 
 # --- Alternative Channel Schemas ---
@@ -165,7 +165,7 @@ thresholds:
 # budget:
 #   daily_budget_cents: 1500
 #   total_budget_cents: 10000
-#   duration_days: 7
+#   duration_days: 5
 #   bidding_strategy: cpe
 #
 # conversions:
@@ -184,7 +184,7 @@ thresholds:
 #   expected_clicks: 250
 #   expected_signups: 25
 #   expected_activations: 7
-#   go_signal: "3+ activations from paid traffic in 7 days"
+#   go_signal: "3+ activations from paid traffic in 5 days"
 #   no_go_signal: "0 activations after $50 spend"
 #
 # --- Reddit (channel: reddit) ---
@@ -213,7 +213,7 @@ thresholds:
 # budget:
 #   daily_budget_cents: 1500
 #   total_budget_cents: 10000
-#   duration_days: 7
+#   duration_days: 5
 #   bidding_strategy: cpc
 #
 # conversions:
@@ -232,5 +232,5 @@ thresholds:
 #   expected_clicks: 150
 #   expected_signups: 15
 #   expected_activations: 4
-#   go_signal: "3+ activations from paid traffic in 7 days"
+#   go_signal: "3+ activations from paid traffic in 5 days"
 #   no_go_signal: "0 activations after $50 spend"

@@ -71,7 +71,7 @@ Column definitions:
 - If CTR is low but demand exists: "Optimize ad copy and keywords -- demand signal is there but ads aren't resonating"
 - If CPA is high: "Test lower-cost channels or optimize landing page conversion rate before scaling"
 - If activation is low: "Improve onboarding flow -- users are signing up but not activating"
-- If borderline score: "Extend test by 7 days with optimized keywords for a clearer signal"
+- If borderline score: "Extend test by 5 days with optimized keywords for a clearer signal"
 - If Broad Match detected: "Switch to Phrase/Exact match and re-test -- current metrics may be inflated by irrelevant traffic"
 
 **For NO-GO MVPs:**

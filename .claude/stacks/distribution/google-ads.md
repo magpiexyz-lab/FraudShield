@@ -75,7 +75,7 @@ Import method: analytics provider webhook → Google Ads Offline Conversions.
 **CPC (Cost Per Click)** — you pay when a user clicks your ad.
 
 Bidding phases:
-- **Phase 1** (days 1-7): `manual_cpc` — set max CPC to Keyword Planner "Top of page bid (low range)" for each keyword. Full control over spend while learning which keywords convert.
+- **Phase 1** (days 1-5): `manual_cpc` — set max CPC to Keyword Planner "Top of page bid (low range)" for each keyword. Full control over spend while learning which keywords convert.
 - **Phase 2** (days 8-21): `manual_cpc` continues — adjust bids based on Phase 1 data. Exception: if projected conversions > 30 in the Phase 2 window, switch to `maximize_conversions` to let Google optimize.
 - **Phase 3** (day 22+): `target_cpa` — set target CPA based on Phase 1-2 cost-per-conversion data. Only enter Phase 3 with 30+ total conversions.
 
@@ -144,7 +144,7 @@ thresholds:
 
 ## Phase 1 Playbook
 
-Step-by-step guide for the first 7 days of a Google Ads Search campaign. Follow this before adjusting any settings.
+Step-by-step guide for the first 5 days of a Google Ads Search campaign. Follow this before adjusting any settings.
 
 ### Campaign Structure
 
@@ -155,7 +155,7 @@ Step-by-step guide for the first 7 days of a Google Ads Search campaign. Follow 
 | Bidding | `manual_cpc` (Enhanced CPC OFF) |
 | Max CPC | Keyword Planner "Top of page bid (low range)" per keyword |
 | Daily budget | `total_budget_cents / duration_days` |
-| Duration | Phase 1: 7 days, Phase 2: 14 days |
+| Duration | Phase 1: 5 days, Phase 2: 14 days |
 | Status | PAUSED (enable after pre-flight checklist passes) |
 
 ### Ad Group Structure
@@ -260,7 +260,7 @@ Before enabling the campaign:
 7. [ ] Daily budget matches `total_budget_cents / duration_days`
 8. [ ] `gclid` capture verified on landing page (click ad preview, check analytics for `gclid` property)
 
-### Phase 1 Monitoring (Days 1-7)
+### Phase 1 Monitoring (Days 1-5)
 
 | Metric | Check frequency | Action threshold |
 |--------|----------------|-----------------|
