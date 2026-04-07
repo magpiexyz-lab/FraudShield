@@ -31,7 +31,8 @@
     "10": "test -f .runs/current-visual-brief.md && grep -q 'theme\\|palette\\|font\\|color' .runs/current-visual-brief.md",
     "11": "ls src/lib/*.ts >/dev/null 2>&1 && (test ! -f .runs/image-manifest.json || python3 -c \"import json; m=json.load(open('.runs/image-manifest.json')); s=m.get('status'); assert s in ('complete','placeholders','skipped'), f'bad status: {s}'; ic=len(m.get('images',[])); assert s!='complete' or ic>=7, f'expected >=7 images, got {ic}'\")",
     "12": "python3 -c \"import json; d=json.load(open('.runs/gate-verdicts/bg2.5.json')); assert d.get('verdict')=='PASS', 'BG2.5 verdict is %s' % d.get('verdict'); assert d.get('timestamp','')!='', 'timestamp empty'\"",
-    "13": "python3 -c \"import json; d=json.load(open('.runs/gate-verdicts/bg2.json')); assert d.get('verdict')=='PASS', 'BG2 verdict is %s' % d.get('verdict'); assert d.get('timestamp','')!='', 'timestamp empty'\"",
+    "13": "npm run build --silent",
+    "13a": "python3 -c \"import json; d=json.load(open('.runs/gate-verdicts/bg2.json')); assert d.get('verdict')=='PASS', 'BG2 verdict is %s' % d.get('verdict'); assert d.get('timestamp','')!='', 'timestamp empty'\"",
     "14": "python3 -c \"import json; d=json.load(open('.runs/bootstrap-wire-trace.json')); assert 'checkpoint' in d, 'checkpoint missing'\"",
     "15": "python3 -c \"import json; d=json.load(open('.runs/bootstrap-scan.json')); assert isinstance(d.get('critical'), list), 'critical not a list'; assert isinstance(d.get('on_touch'), list), 'on_touch not a list'; assert isinstance(d.get('skip'), list), 'skip not a list'; assert isinstance(d.get('already_covered'), list), 'already_covered not a list'\"",
     "16": "python3 -c \"import json; d=json.load(open('.runs/bootstrap-modules-trace.json')); assert isinstance(d.get('modules_completed'), list), 'modules_completed not a list'; assert isinstance(d.get('build_passing'), bool), 'build_passing not a bool'; assert d['build_passing'], 'build not passing after unit test generation'\"",
@@ -102,7 +103,10 @@
   },
   "distribute": {
     "0": "test -f .runs/distribute-context.json && python3 -c \"import json; ctx=json.load(open('.runs/distribute-context.json')); assert 'phase' in ctx, 'phase missing'; assert ctx['phase'] in (1,2), 'phase must be 1 or 2'\"",
-    "1": "python3 -c \"import json; p=json.load(open('.runs/distribute-preconditions.json')); assert p.get('deployed_url'); assert p.get('channel'); assert p.get('policy_checked'); assert p.get('analytics_configured')\"",
+    "1": "python3 -c \"import json; p=json.load(open('.runs/distribute-preconditions.json')); assert p.get('deployed_url')\"",
+    "1a": "python3 -c \"import json; p=json.load(open('.runs/distribute-preconditions.json')); assert p.get('channel')\"",
+    "1b": "python3 -c \"import json; p=json.load(open('.runs/distribute-preconditions.json')); assert p.get('policy_checked')\"",
+    "1c": "python3 -c \"import json; p=json.load(open('.runs/distribute-preconditions.json')); assert p.get('analytics_configured')\"",
     "2": "python3 -c \"import json; p=json.load(open('.runs/distribute-preconditions.json')); assert p.get('project_name_verified') is not None; assert p.get('analytics_live')\"",
     "3": "test -f .runs/verify-report.md && (grep -q 'utm_source' src/app/page.tsx 2>/dev/null || grep -q 'utm_source' site/index.html 2>/dev/null) && python3 -c \"import json; d=json.load(open('.runs/distribute-impl-step-check.json')); assert len(d.get('steps_completed',[])) > 0\"",
     "4": "test -f experiment/ads.yaml && head -1 experiment/ads.yaml | grep -q 'channel'",
@@ -232,7 +236,7 @@
       "pattern-classifier":         { "required_states": ["0","1","2","3a","3b","3c","4","5","6"], "required_checks": ["pattern_analysis","template_classification"] }
     },
     "bootstrap": {
-      "_required_states": ["0","1","2","3","3a","3b","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18"],
+      "_required_states": ["0","1","2","3","3a","3b","4","5","6","7","8","9","10","11","12","13","13a","14","15","16","17","18"],
       "gate-keeper":        { "allow_unconditional": true },
       "scaffold-externals": { "allow_unconditional": true },
       "scaffold-setup":     { "required_states": ["0","1","2","3","3a","3b","4","5","6","7","8"], "artifacts": [".runs/gate-verdicts/bg1.json"], "deny_isolation": ["worktree"] },
@@ -241,7 +245,7 @@
       "scaffold-images":    { "required_states": ["0","1","2","3","3a","3b","4","5","6","7","8","9","10"], "artifacts": [".runs/gate-verdicts/bg1.json"], "deny_isolation": ["worktree"] },
       "scaffold-pages":     { "required_states": ["0","1","2","3","3a","3b","4","5","6","7","8","9","10","11"], "artifacts": [".runs/gate-verdicts/bg1.json",".runs/agent-traces/scaffold-libs.json"], "deny_isolation": ["worktree"] },
       "scaffold-landing":   { "required_states": ["0","1","2","3","3a","3b","4","5","6","7","8","9","10","11"], "artifacts": [".runs/gate-verdicts/bg1.json",".runs/agent-traces/scaffold-libs.json"], "deny_isolation": ["worktree"] },
-      "scaffold-wire":      { "required_states": ["0","1","2","3","3a","3b","4","5","6","7","8","9","10","11","12","13"], "artifacts": [".runs/gate-verdicts/bg1.json",".runs/gate-verdicts/bg2.json"], "deny_isolation": ["worktree"] }
+      "scaffold-wire":      { "required_states": ["0","1","2","3","3a","3b","4","5","6","7","8","9","10","11","12","13","13a"], "artifacts": [".runs/gate-verdicts/bg1.json",".runs/gate-verdicts/bg2.json"], "deny_isolation": ["worktree"] }
     },
     "change": {
       "_required_states": ["0","1","2","3","4","5","6","7","8","9","10","11","12"],
@@ -250,7 +254,7 @@
       "visual-implementer": { "required_states": ["0","1","2","3","4","5","6","7","8","9"], "artifacts": [".runs/gate-verdicts/g3.json"], "_note": "required_states enforces ordering; g3.json artifact is the authoritative gate for plan approval" }
     },
     "distribute": {
-      "_required_states": ["0","1","2","3","4","5","6"]
+      "_required_states": ["0","1","1a","1b","1c","2","3","4","5","6"]
     },
     "audit":    { "_required_states": ["0","1","2","3"], "_default": { "required_states": ["0"] } },
     "review":   { "_required_states": ["0","1","5"], "_default": { "required_states": ["0","1"] } },

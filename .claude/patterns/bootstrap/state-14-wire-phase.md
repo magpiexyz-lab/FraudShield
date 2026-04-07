@@ -1,7 +1,7 @@
 # STATE 14: WIRE_PHASE
 
 **PRECONDITIONS:**
-- BG2 PASS, build passes (STATE 13 POSTCONDITIONS met)
+- BG2 PASS, build passes (STATE 13a POSTCONDITIONS met)
 
 **ACTIONS:**
 

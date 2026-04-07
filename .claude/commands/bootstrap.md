@@ -47,6 +47,7 @@ Read each STATE's file **only when transitioning to that state**. Do NOT read ah
 | 11 | PARALLEL_SCAFFOLD | Implement | [state-11-parallel-scaffold.md](../patterns/bootstrap/state-11-parallel-scaffold.md) |
 | 12 | EXTERNALS_DECISIONS | Implement | [state-12-externals-decisions.md](../patterns/bootstrap/state-12-externals-decisions.md) |
 | 13 | MERGED_VALIDATION | Implement | [state-13-merged-validation.md](../patterns/bootstrap/state-13-merged-validation.md) |
+| 13a | BG2_GATE | Implement | [state-13a-bg2-gate.md](../patterns/bootstrap/state-13a-bg2-gate.md) |
 | 14 | WIRE_PHASE | Implement | [state-14-wire-phase.md](../patterns/bootstrap/state-14-wire-phase.md) |
 | 15 | SCAN_AND_CLASSIFY | Implement | [state-15-scan-and-classify.md](../patterns/bootstrap/state-15-scan-and-classify.md) |
 | 16 | UNIT_TEST_GENERATION | Implement | [state-16-unit-test-generation.md](../patterns/bootstrap/state-16-unit-test-generation.md) |
