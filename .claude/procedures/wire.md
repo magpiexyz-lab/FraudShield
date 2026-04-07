@@ -8,6 +8,8 @@
 
 ## Steps
 
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+
 ### Step 5: API routes
 
 If the archetype is `cli`: skip this step entirely — CLIs have no API routes or hosting stack.

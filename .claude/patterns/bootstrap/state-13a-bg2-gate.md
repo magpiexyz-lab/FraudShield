@@ -5,6 +5,18 @@
 
 **ACTIONS:**
 
+> **Archetype routing** (per `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table):
+>
+> | Concern | web-app | service | cli |
+> |---------|---------|---------|-----|
+> | Primary unit | page | endpoint | command |
+> | Spec field | `golden_path` | `endpoints` | `commands` |
+> | Skip | — | pages, landing, Fake Door | pages, API, landing, Fake Door |
+> | Visual agents | full pipeline | skip | skip |
+> | Analytics | client + server | server only | server only, opt-in |
+>
+> State-specific logic below takes precedence.
+
 Follow gate execution procedure per `procedures/gate-execution.md`.
 
 Spawn the `gate-keeper` agent (`subagent_type: gate-keeper`). Pass: "Execute BG2 Orchestration Gate. Verify: (1) npm run build passes; (2) scaffold output files exist (src/lib/*.ts, .runs/current-visual-brief.md, src/app/icon.tsx and src/app/opengraph-image.tsx (web-app only), archetype-specific pages/routes/commands from experiment.yaml); (3) landing page exists if surface!=none; (4) checkpoint is phase2-scaffold or later; (5) if stack.analytics present: for each event in experiment/EVENTS.yaml events map (filtered by requires and archetypes for current stack and archetype), grep for the event name in src/ -- BLOCK if any event is missing; (6) if stack.analytics present: grep src/lib/analytics*.ts for PROJECT_NAME and PROJECT_OWNER -- BLOCK if either is 'TODO'."

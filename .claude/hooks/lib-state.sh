@@ -128,3 +128,33 @@ parse_advance_state_args() {
   SKILL=$(echo "$COMMAND" | grep -oE 'advance-state\.sh[[:space:]]+([a-z-]+)' | awk '{print $NF}' || echo "")
   STATE_ID=$(echo "$COMMAND" | grep -oE 'advance-state\.sh[[:space:]]+[a-z-]+[[:space:]]+([0-9a-z_]+)' | awk '{print $NF}' || echo "")
 }
+
+# --- get_archetype ---
+# Reads archetype from context JSON (matching hook patterns) or experiment.yaml.
+# Returns "web-app" if absent or on error.
+# Usage: ARCH=$(get_archetype)
+get_archetype() {
+  local project_dir="${CLAUDE_PROJECT_DIR:-.}"
+  # 1. Try context JSON files (same pattern as agent-state-gate.sh)
+  for f in "$project_dir"/.runs/*-context.json; do
+    [[ -f "$f" ]] || continue
+    local arch
+    arch=$(read_json_field "$f" "archetype")
+    [[ -n "$arch" ]] && { echo "$arch"; return; }
+  done
+  # 2. Fallback to experiment.yaml
+  python3 -c "
+import yaml
+try:
+    d = yaml.safe_load(open('$project_dir/experiment/experiment.yaml'))
+    print(d.get('type', 'web-app'))
+except: print('web-app')
+" 2>/dev/null || echo "web-app"
+}
+
+# --- is_web_app_only ---
+# Returns 0 (true) if archetype is web-app, 1 (false) otherwise.
+# Usage: if is_web_app_only; then ... fi
+is_web_app_only() {
+  [[ "$(get_archetype)" == "web-app" ]]
+}

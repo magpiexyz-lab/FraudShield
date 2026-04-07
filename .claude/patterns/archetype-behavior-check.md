@@ -33,6 +33,21 @@ branch on the archetype from `experiment/experiment.yaml` `type` field
 - **Verification agents**: skip design-critic, ux-journeyer, design-consistency-checker
 - **Analytics**: server-side only, must be opt-in (consent guard on `trackServerEvent`)
 
+## Quick-Reference Table
+
+> Canonical inline block — embed or reference this table in files with archetype branching.
+
+| Concern | web-app | service | cli |
+|---------|---------|---------|-----|
+| Primary unit | page (`src/app/<page>/page.tsx`) | endpoint (`src/app/api/<ep>/route.ts`) | command (`src/commands/<cmd>.ts`) |
+| Spec field | `golden_path` | `endpoints` | `commands` |
+| Skip | — | pages, landing, Fake Door, golden_path | pages, API routes, landing, Fake Door, golden_path |
+| Visual agents | design-critic, ux-journeyer, consistency-checker | skip | skip |
+| Analytics | client + server | server only | server only, opt-in |
+| Browser tests | Playwright | skip | skip |
+
+> State-specific logic takes precedence over this summary.
+
 ## Usage Points
 
 This branching applies at four stages of every skill:

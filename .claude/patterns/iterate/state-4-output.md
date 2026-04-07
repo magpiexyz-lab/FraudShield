@@ -64,6 +64,8 @@ This file is read by `/change` to provide context for the next iteration.
 
 Compute iterate analysis quality (see `.claude/patterns/skill-scoring.md`):
 
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+
 ```bash
 RUN_ID=$(python3 -c "import json; print(json.load(open('.runs/iterate-context.json')).get('run_id', ''))" 2>/dev/null || echo "")
 ITERATE_DIMS=$(python3 -c "

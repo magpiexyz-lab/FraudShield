@@ -5,6 +5,18 @@
 
 **ACTIONS:**
 
+> **Archetype routing** (per `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table):
+>
+> | Concern | web-app | service | cli |
+> |---------|---------|---------|-----|
+> | Primary unit | page | endpoint | command |
+> | Spec field | `golden_path` | `endpoints` | `commands` |
+> | Skip | — | pages, landing, Fake Door | pages, API, landing, Fake Door |
+> | Visual agents | full pipeline | skip | skip |
+> | Analytics | client + server | server only | server only, opt-in |
+>
+> State-specific logic below takes precedence.
+
 ## Step 6: Assemble experiment.yaml
 
 Build the complete experiment.yaml with these 7 sections:

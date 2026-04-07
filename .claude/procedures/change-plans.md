@@ -25,6 +25,8 @@
 **New analytics events (if any):**
 - [event_name] — fires when [trigger]
 
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+
 **Golden Path impact:** (web-app: pages, service: endpoints, cli: commands — skip if archetype has no golden_path)
 - Current: [show current golden_path from experiment.yaml, or "not defined"]
 - After this change: [updated path if flow changes, or "unchanged"]

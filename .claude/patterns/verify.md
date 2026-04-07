@@ -10,6 +10,8 @@ Run this procedure after making code changes and before committing.
 
 > **Do NOT skip this procedure.** Do NOT claim the build passes without running it. Do NOT commit without a passing build. There are no exceptions.
 
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+
 ## Scope Parameter
 
 This procedure accepts an optional **scope** that controls which review agents run.

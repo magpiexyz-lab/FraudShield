@@ -142,6 +142,9 @@ Verify after Phase 1 plan creation:
 7. `.runs/current-plan.md` contains `## Exploration Summary` section — grep for the heading
 8. **Quality: plan validation complete** — if `.runs/plan-validation.json` exists: all 5 checks (`route_conflict`, `schema_conflict`, `import_availability`, `component_reuse`, `analytics_naming`) have `checked: true` — run `python3 -c "import json; d=json.load(open('.runs/plan-validation.json')); checks=['route_conflict','schema_conflict','import_availability','component_reuse','analytics_naming']; missing=[c for c in checks if not d.get(c,{}).get('checked')]; print('PASS: all 5 checks complete' if not missing else 'BLOCK: unchecked: '+','.join(missing))"` (skip if plan-validation.json does not exist)
 9. **Quality: plan validation failures flagged** — if `.runs/plan-validation.json` exists and any check has `result: "fail"`: note in Observed column "WARN: plan-validation has failures: [list]" — this is informational (PASS status), but the verdict file `quality_checks` array must include this finding
+
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+
 10. **Quality: plan references constraints** — if `.runs/exploration-trace.json` exists: grep `.runs/current-plan.md` for at least one term from `archetype_constraints` — run `python3 -c "import json; t=json.load(open('.runs/exploration-trace.json')); cs=t.get('archetype_constraints',[]); plan=open('.runs/current-plan.md').read().lower(); found=[c for c in cs if c.lower() in plan]; print('PASS: %d constraints referenced' % len(found) if found else 'BLOCK: plan does not reference any archetype constraints')"` (skip if exploration-trace.json does not exist)
 
 ### G3 Spec Gate

@@ -8,6 +8,18 @@
 
 Catch conflicts between the proposed plan and the existing codebase. Auto-adjust the plan when possible, or flag issues in the Questions section for the user to resolve.
 
+> **Archetype routing** (per `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table):
+>
+> | Concern | web-app | service | cli |
+> |---------|---------|---------|-----|
+> | Primary unit | page | endpoint | command |
+> | Spec field | `golden_path` | `endpoints` | `commands` |
+> | Skip | — | pages, landing, Fake Door | pages, API, landing, Fake Door |
+> | Visual agents | full pipeline | skip | skip |
+> | Analytics | client + server | server only | server only, opt-in |
+>
+> State-specific logic below takes precedence.
+
 ## Validation Checks
 
 Run all applicable checks based on the archetype and stack. If a check finds a conflict, either auto-adjust the plan or add a flagged item to the plan's Questions section.

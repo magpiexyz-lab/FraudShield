@@ -5,7 +5,7 @@
 
 **ACTIONS:**
 
-REF: `patterns/archetype-behavior-check.md` — archetype behavior rules (no artifact).
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
 
 - Read `experiment/experiment.yaml` — understand the current scope, pages (derived from golden_path), existing behaviors, target user, thesis
 - Read `experiment/EVENTS.yaml` — understand existing analytics events (this is the canonical event list)

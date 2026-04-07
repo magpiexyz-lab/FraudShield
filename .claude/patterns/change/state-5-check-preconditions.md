@@ -5,6 +5,8 @@
 
 **ACTIONS:**
 
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+
 > **Precondition types:** This step contains two kinds of checks: (1) *condition-specific* checks that trigger based on what the change involves (e.g., adding payment, setting production mode), applying to all change types when the condition is met; and (2) *type-specific* checks that apply only to certain classifications (e.g., Test, Upgrade). Both must be evaluated.
 
 > **Branch cleanup on failure:** Any "stop" in this step leaves you on a feature branch (created in Step 1). Include in the stop message: "To abort: `git checkout main && git branch -D <branch-name>`. To fix and retry: switch to main (`git checkout main`), edit experiment.yaml with the required changes (the stop message specifies what to change), then re-run `/change` — it will create a new feature branch with the corrected configuration. Do NOT edit experiment.yaml on the feature branch, as `/change` reads experiment.yaml during state 2 on the base branch."

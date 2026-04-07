@@ -11,6 +11,18 @@
 - Plan approved (Phase 1)
 - Specs updated (Step 5)
 
+> **Archetype routing** (per `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table):
+>
+> | Concern | web-app | service | cli |
+> |---------|---------|---------|-----|
+> | Primary unit | page | endpoint | command |
+> | Spec field | `golden_path` | `endpoints` | `commands` |
+> | Skip | — | pages, landing, Fake Door | pages, API, landing, Fake Door |
+> | Visual agents | full pipeline | skip | skip |
+> | Analytics | client + server | server only | server only, opt-in |
+>
+> State-specific logic below takes precedence.
+
 ## Production Quality
 
 Test type changes do NOT spawn implementer agents — tests observe the app, they don't change application code. Implementer agents are reserved for Feature, Fix, and Upgrade types that modify application logic.

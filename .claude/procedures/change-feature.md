@@ -5,6 +5,8 @@
 
 ## Prerequisites from change.md
 
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+
 - experiment.yaml and experiment/EVENTS.yaml have been read (Step 2)
 - Change classified as Feature (Step 3)
 - Preconditions checked (Step 4)

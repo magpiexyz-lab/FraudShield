@@ -53,6 +53,7 @@ fi
 # are in lib.sh.
 # ══════════════════════════════════════════════════════════════════════
 
+# REF: Archetype agent scoping — .claude/patterns/archetype-behavior-check.md
 _verify_design_ux_checks() {
   # Archetype guard: these agents are web-app only
   local DC_ARCH

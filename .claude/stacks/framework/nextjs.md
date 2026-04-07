@@ -28,6 +28,8 @@ gitignore: [.next/, out/]
 # Framework: Next.js (App Router)
 > Used when experiment.yaml has `stack.services[].runtime: nextjs`
 
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+
 > **Conditional files**: Files marked `# conditional` in the frontmatter `files` list are only created when the condition matches. Bootstrap skips conditional files whose archetype or surface type does not apply. The archetype file (`.claude/archetypes/<type>.md`) and the resolved surface type determine which conditionals are included.
 
 ## Packages

@@ -100,6 +100,8 @@ If you notice something outside your scope during testing, ignore it. Stay in yo
 
 ## Instructions
 
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+
 Read and follow `.claude/procedures/behavior-verifier.md` for the archetype-specific step-by-step procedure.
 
 ## First Action

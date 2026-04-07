@@ -5,6 +5,8 @@
 
 **ACTIONS:**
 
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+
 ### Step 2: Pre-delete safety check (if database present)
 
 If `database` is in the manifest and the database stack file has a `## Deploy Interface > Teardown` section with a pre-delete safety check:

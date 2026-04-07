@@ -34,6 +34,18 @@ You receive two values as plain text:
 
 ## Checks
 
+> **Archetype routing** (per `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table):
+>
+> | Concern | web-app | service | cli |
+> |---------|---------|---------|-----|
+> | Primary unit | page | endpoint | command |
+> | Spec field | `golden_path` | `endpoints` | `commands` |
+> | Skip | — | pages, landing, Fake Door | pages, API, landing, Fake Door |
+> | Visual agents | full pipeline | skip | skip |
+> | Analytics | client + server | server only | server only, opt-in |
+>
+> State-specific logic below takes precedence.
+
 **P1. Hosting project**
 Read the manifest's `hosting` section (provider, project ID). Read the hosting stack file at `.claude/stacks/hosting/<provider>.md`, find its `## Deploy Interface` section for the provider-specific list/inspect command. Run that command to check if the project exists.
 - `deploy` expects: found

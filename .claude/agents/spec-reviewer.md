@@ -50,6 +50,8 @@ This registers your presence. If you exhaust turns before writing the final trac
 
 ## Archetype Scope
 
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+
 Read `experiment/experiment.yaml` `type` field (default: `web-app`):
 
 - **web-app**: checks S1-S8

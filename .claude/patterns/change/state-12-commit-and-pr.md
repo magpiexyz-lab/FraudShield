@@ -7,6 +7,18 @@
 
 **ACTIONS:**
 
+> **Archetype routing** (per `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table):
+>
+> | Concern | web-app | service | cli |
+> |---------|---------|---------|-----|
+> | Primary unit | page | endpoint | command |
+> | Spec field | `golden_path` | `endpoints` | `commands` |
+> | Skip | — | pages, landing, Fake Door | pages, API, landing, Fake Door |
+> | Visual agents | full pipeline | skip | skip |
+> | Analytics | client + server | server only | server only, opt-in |
+>
+> State-specific logic below takes precedence.
+
 Follow gate execution procedure per `procedures/gate-execution.md`.
 
 - **G5 Verification Gate**: Spawn the `gate-keeper` agent (`subagent_type: gate-keeper`). Pass: "Execute G5 Verification Gate. Verify: .runs/verify-report.md exists. Read it and check: agents_expected equals agents_completed; if 2+ implementer agents spawned, consistency_scan is not 'skipped'; if fix cycles ran, auto_observe is not 'skipped-no-fixes'; build result is pass; if spec-reviewer in agents_completed, spec-reviewer verdict is not FAIL." If gate-keeper returns BLOCK: if the block reason is spec-reviewer FAIL, read the spec-reviewer findings from `.runs/verify-report.md` — the implementation is missing features, so go back to STATE 10 (IMPLEMENT) to add the missing behaviors/pages/endpoints/events, then re-run STATE 11 (VERIFY). For all other blocks, go back and complete Step 7.

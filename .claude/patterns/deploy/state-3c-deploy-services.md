@@ -5,6 +5,8 @@
 
 **ACTIONS:**
 
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+
 ### Step 5a: Initial deploy
 
 If surface is `detached` and the archetype's `excluded_stacks` includes `hosting` (e.g., CLI), OR if the archetype is `service` and surface is `detached`: **skip this step** — proceed directly to Step 5a.1 (surface-only deployment). Archetypes with detached surfaces have no hosting infrastructure to deploy to.

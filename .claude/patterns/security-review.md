@@ -32,6 +32,8 @@ checklist below.
 
 ### Archetype Scope
 
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+
 Read `experiment/experiment.yaml` to determine the archetype (`type` field, default: `web-app`).
 Scope applies to both Defender and Attacker agents below:
 

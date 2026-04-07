@@ -15,6 +15,8 @@ The `src/lib/events.ts` file exists when this agent runs — import typed wrappe
 
 ## Instructions by archetype
 
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+
 ### web-app
 
 #### App shell (Step 3)

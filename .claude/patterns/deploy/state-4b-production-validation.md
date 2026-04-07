@@ -5,6 +5,8 @@
 
 **ACTIONS:**
 
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+
 ### 5d.5: Provision scan (independent verification)
 
 Spawn the `provision-scanner` agent (`subagent_type: provision-scanner`).

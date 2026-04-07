@@ -114,6 +114,9 @@ same pattern (textually identical blocks), do NOT re-report it here. Dimension C
 is exclusively for **semantic** equivalence — same intent, different text.
 
 **Primary scan targets:**
+
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+
 - Protocol descriptions (e.g., fix-log writing format described differently in 13 files)
 - Conditional archetype handling (`if web-app... elif service... elif cli...`)
   reimplemented per-skill instead of referencing a shared decision tree

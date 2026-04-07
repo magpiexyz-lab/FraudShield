@@ -5,6 +5,18 @@
 - Step 1 complete (theme tokens in `src/app/globals.css`, visual brief at `.runs/current-visual-brief.md`)
 - `.runs/current-plan.md` exists
 
+> **Archetype routing** (per `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table):
+>
+> | Concern | web-app | service | cli |
+> |---------|---------|---------|-----|
+> | Primary unit | page | endpoint | command |
+> | Spec field | `golden_path` | `endpoints` | `commands` |
+> | Skip | — | pages, landing, Fake Door | pages, API, landing, Fake Door |
+> | Visual agents | full pipeline | skip | skip |
+> | Analytics | client + server | server only | server only, opt-in |
+>
+> State-specific logic below takes precedence.
+
 ## Instructions
 
 Resolve the surface type: if `stack.surface` is set in experiment.yaml, use it.
