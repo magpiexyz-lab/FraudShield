@@ -17,7 +17,7 @@
   },
   "bootstrap": {
     "0": "test -f .runs/bootstrap-context.json && git branch --show-current | grep -q 'feat/bootstrap'",
-    "1": "test -f experiment/experiment.yaml && test -s experiment/experiment.yaml && test -f experiment/EVENTS.yaml && test -s experiment/EVENTS.yaml",
+    "1": "test -f experiment/experiment.yaml && grep -q 'name:' experiment/experiment.yaml && test -f experiment/EVENTS.yaml && grep -q 'events:' experiment/EVENTS.yaml",
     "2": "python3 -c \"import json; d=json.load(open('.runs/bootstrap-archetype-trace.json')); assert d.get('archetype'), 'archetype field empty'\"",
     "3": "python3 -c \"import json; d=json.load(open('.runs/bootstrap-validation-trace.json')); assert d.get('experiment_valid') is not None, 'experiment_valid missing'\"",
     "3a": "python3 -c \"import json; d=json.load(open('.runs/gate-verdicts/bg1.json')); assert d.get('verdict')=='PASS', 'BG1 verdict is %s' % d.get('verdict'); assert d.get('timestamp','')!='', 'timestamp empty'; assert d.get('branch','')!='', 'branch empty'\"",
@@ -28,7 +28,7 @@
     "7": "test -f .runs/current-plan.md && grep -q 'Process Checklist' .runs/current-plan.md",
     "8": "python3 -c \"import json; assert json.load(open('.runs/bootstrap-context.json')).get('preflight_passed') == True, 'preflight_passed not set'\"",
     "9": "python3 -c \"import json; d=json.load(open('package.json')); assert 'dependencies' in d, 'dependencies missing from package.json'\" && test -d node_modules",
-    "10": "test -f .runs/current-visual-brief.md && test -s .runs/current-visual-brief.md",
+    "10": "test -f .runs/current-visual-brief.md && grep -q 'theme\\|palette\\|font\\|color' .runs/current-visual-brief.md",
     "11": "ls src/lib/*.ts >/dev/null 2>&1 && (test ! -f .runs/image-manifest.json || python3 -c \"import json; m=json.load(open('.runs/image-manifest.json')); s=m.get('status'); assert s in ('complete','placeholders','skipped'), f'bad status: {s}'; ic=len(m.get('images',[])); assert s!='complete' or ic>=7, f'expected >=7 images, got {ic}'\")",
     "12": "python3 -c \"import json; d=json.load(open('.runs/gate-verdicts/bg2.5.json')); assert d.get('verdict')=='PASS', 'BG2.5 verdict is %s' % d.get('verdict'); assert d.get('timestamp','')!='', 'timestamp empty'\"",
     "13": "python3 -c \"import json; d=json.load(open('.runs/gate-verdicts/bg2.json')); assert d.get('verdict')=='PASS', 'BG2 verdict is %s' % d.get('verdict'); assert d.get('timestamp','')!='', 'timestamp empty'\"",
@@ -172,7 +172,7 @@
   "retro": {
     "0": "test -f .runs/retro-context.json",
     "1": "python3 -c \"import json; d=json.load(open('.runs/retro-interview.json')); assert d.get('questions_answered')==4, 'questions_answered=%s, expected 4' % d.get('questions_answered'); assert isinstance(d.get('answers'), dict) and len(d['answers'])>0, 'answers empty'\"",
-    "2": "test -f .runs/retro-interview.json && test -s .runs/retro-interview.json && test -f .runs/retro-context.json && test -s .runs/retro-context.json",
+    "2": "python3 -c \"import json; d=json.load(open('.runs/retro-interview.json')); assert isinstance(d.get('answers'), dict), 'answers missing or not dict'\" && test -f .runs/retro-context.json",
     "3": "python3 -c \"import json; ctx=json.load(open('.runs/retro-context.json')); assert ctx.get('issue_filed') or ctx.get('issue_skipped'), 'retro issue not filed and not skipped'\"",
     "4": "python3 -c \"import json; d=json.load(open('.runs/observe-result.json')); assert d['skill']=='retro'\""
   },
