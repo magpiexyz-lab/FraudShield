@@ -144,7 +144,7 @@ thresholds:
 
 ## Phase 1 Playbook
 
-Step-by-step guide for the first 5 days of a Google Ads Search campaign. Follow this before adjusting any settings.
+Step-by-step guide for the first 7 days of a Google Ads Search campaign. Follow this before adjusting any settings.
 
 ### Campaign Structure
 
@@ -155,7 +155,7 @@ Step-by-step guide for the first 5 days of a Google Ads Search campaign. Follow 
 | Bidding | `manual_cpc` (Enhanced CPC OFF) |
 | Max CPC | Keyword Planner "Top of page bid (low range)" per keyword |
 | Daily budget | `total_budget_cents / duration_days` |
-| Duration | Phase 1: 5 days, Phase 2: 14 days |
+| Duration | Phase 1: 7 days, Phase 2: 14 days |
 | Status | PAUSED (enable after pre-flight checklist passes) |
 
 ### Ad Group Structure

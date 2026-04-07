@@ -143,10 +143,10 @@ Read the analytics stack file's Dashboard Navigation section for provider-specif
 
 1. Go to the analytics dashboard -> New dashboard -> "Ads Performance: {project_name}"
 2. Add these insights (read the channel's stack file "UTM Parameters" section for the correct `utm_source` value):
-   - **Traffic by Source**: Trend chart, event `visit_landing`, breakdown by `utm_source`, last 5 days
-   - **Paid Funnel**: Funnel chart, events `visit_landing` (filtered: utm_source = {channel_source}) -> `signup_complete` -> `activate`, last 5 days
+   - **Traffic by Source**: Trend chart, event `visit_landing`, breakdown by `utm_source`, last 7 days
+   - **Paid Funnel**: Funnel chart, events `visit_landing` (filtered: utm_source = {channel_source}) -> `signup_complete` -> `activate`, last 7 days
    - **Cost per Activation**: Number (manual calculation) — Total channel spend / activate count where utm_source = {channel_source}
-   - **Feedback Summary**: Trend chart, event `feedback_submitted`, breakdown by `source` property, last 5 days
+   - **Feedback Summary**: Trend chart, event `feedback_submitted`, breakdown by `source` property, last 7 days
 
 ### Completion checkpoint
 

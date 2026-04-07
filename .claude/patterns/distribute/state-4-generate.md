@@ -109,8 +109,8 @@ Apply phase-specific budget and duration defaults:
 
 | Setting | Phase 1 | Phase 2 | No phase (legacy) |
 |---------|---------|---------|-------------------|
-| `duration_days` | 5 | 14 | 14 |
-| `total_budget_cents` | 10000 ($100) | 50000 ($500) | 10000 ($100) |
+| `duration_days` | 7 | 14 | 14 |
+| `total_budget_cents` | 14000 ($140) | 50000 ($500) | 14000 ($140) |
 | `daily_budget_cents` | ~2000 ($20.00/day) | ~3571 ($35.71/day) | ~714 ($7.14/day) |
 
 These are defaults — if experiment.yaml or user input specifies different values, those take precedence.
@@ -137,7 +137,7 @@ Show the reasoning chain, not just the numbers:
 ```
 ## Threshold Reasoning
 
-Budget: $100 over 5 days
+Budget: $140 over 7 days
 Estimated [CPC/CPM] for [targeting category]: ~$X.XX
 Expected [clicks/impressions]: [calculation]
 Expected signups: [clicks * landing-to-signup rate] ([rate]% -- [reasoning])
@@ -152,8 +152,8 @@ Define go/no-go signals based on experiment.yaml `thesis` and `funnel` threshold
 #### Schema rules for ads.yaml
 - `channel`: the selected distribution channel (e.g., `google-ads`, `twitter`, `reddit`)
 - `campaign_name`: auto-generated following the channel's config schema pattern (e.g., `{project-name}-search-v{N}` for google-ads, `{project-name}-twitter-v{N}` for twitter)
-- `budget.total_budget_cents`: Phase 1 default 10000 ($100), Phase 2 default 50000 ($500). Max 50000 without explicit override.
-- `budget.duration_days`: Phase 1 default 5 days, Phase 2 default 14 days. Overridable by user.
+- `budget.total_budget_cents`: Phase 1 default 14000 ($140), Phase 2 default 50000 ($500). Max 50000 without explicit override.
+- `budget.duration_days`: Phase 1 default 7 days, Phase 2 default 14 days. Overridable by user.
 - `guardrails`: channel-specific — CPC channels require `max_cpc_cents`; other channels may use `max_cpe_cents` or just `auto_pause_rules`
 - `thresholds`: AI-generated from experiment.yaml context using first-principles reasoning
 

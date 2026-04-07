@@ -25,7 +25,7 @@ This skill generates `experiment/ads.yaml` with targeting, ad creative, budgets,
 
 Parse `$ARGUMENTS` for:
 - **Phase flag**: `--phase 1` or `--phase 2` (default: `1`)
-  - Phase 1: Standardized Playbook settings (manual CPC, phrase match, search only, $100/5 days, 2 RSAs, 1 ad group, 50 universal negative keywords). Google Ads only — other channels ignore the phase flag.
+  - Phase 1: Standardized Playbook settings (manual CPC, phrase match, search only, $140/7 days, 2 RSAs, 1 ad group, 50 universal negative keywords). Google Ads only — other channels ignore the phase flag.
   - Phase 2: Extended campaign ($500/14 days), eligible for automated bidding and customized settings based on Phase 1 learnings.
 
 If `$ARGUMENTS` contains no `--phase` flag, default to phase 1.
