@@ -423,7 +423,7 @@ def check_42_distribute_validates_analytics(distribute_content: str | None) -> l
         return errors
 
     preconditions_match = re.search(
-        r"(?:## Step 1:|# STATE \d+:\s*VALIDATE_PRECONDITIONS).*?\n(.*?)(?=\n## Step 2:|\n# STATE|\Z)",
+        r"(?:## Step 1:|# STATE \d+:\s*VALIDATE_PRECONDITIONS|# STATE \d+:\s*VALIDATE_PREREQUISITES).*?\n(.*?)(?=\n## Step 2:|\n# STATE|\Z)",
         distribute_content,
         re.DOTALL,
     )
@@ -459,7 +459,7 @@ def check_43_distribute_validates_events_structure(distribute_content: str | Non
         return errors
 
     preconditions_match = re.search(
-        r"(?:## Step 1:|# STATE \d+:\s*VALIDATE_PRECONDITIONS).*?\n(.*?)(?=\n## Step 2:|\n# STATE|\Z)",
+        r"(?:## Step 1:|# STATE \d+:\s*VALIDATE_PRECONDITIONS|# STATE \d+:\s*VALIDATE_PREREQUISITES).*?\n(.*?)(?=\n## Step 2:|\n# STATE|\Z)",
         distribute_content,
         re.DOTALL,
     )

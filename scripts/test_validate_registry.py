@@ -55,8 +55,9 @@ class TestStateEntryFormats:
 
     def test_object_entries_have_verify_key(self):
         reg = load_registry()
+        skip_sections = {"agent_gates", "observation_gates"}
         for skill, states in reg.items():
-            if skill == "agent_gates":
+            if skill in skip_sections:
                 continue
             for state_id, entry in states.items():
                 if isinstance(entry, dict):
@@ -66,8 +67,9 @@ class TestStateEntryFormats:
 
     def test_object_entries_verify_is_string(self):
         reg = load_registry()
+        skip_sections = {"agent_gates", "observation_gates"}
         for skill, states in reg.items():
-            if skill == "agent_gates":
+            if skill in skip_sections:
                 continue
             for state_id, entry in states.items():
                 if isinstance(entry, dict):
@@ -77,8 +79,9 @@ class TestStateEntryFormats:
 
     def test_object_entries_calls_is_list(self):
         reg = load_registry()
+        skip_sections = {"agent_gates", "observation_gates"}
         for skill, states in reg.items():
-            if skill == "agent_gates":
+            if skill in skip_sections:
                 continue
             for state_id, entry in states.items():
                 if isinstance(entry, dict) and "calls" in entry:
@@ -88,8 +91,9 @@ class TestStateEntryFormats:
 
     def test_calls_entries_have_required_keys(self):
         reg = load_registry()
+        skip_sections = {"agent_gates", "observation_gates"}
         for skill, states in reg.items():
-            if skill == "agent_gates":
+            if skill in skip_sections:
                 continue
             for state_id, entry in states.items():
                 if isinstance(entry, dict) and "calls" in entry:
@@ -114,7 +118,7 @@ KNOWN_OBJECT_ENTRIES = {
     ("change", "2"),
     ("change", "3"),
     ("change", "6"),
-    ("verify", "7"),
+    ("verify", "7b"),
 }
 
 
@@ -141,8 +145,9 @@ class TestRegistryBaseline:
     def test_non_listed_entries_are_strings(self):
         """Entries NOT in KNOWN_OBJECT_ENTRIES must still be strings."""
         reg = load_registry()
+        skip_sections = {"agent_gates", "observation_gates"}
         for skill, states in reg.items():
-            if skill == "agent_gates":
+            if skill in skip_sections:
                 continue
             for state_id, entry in states.items():
                 if (skill, state_id) in KNOWN_OBJECT_ENTRIES:
@@ -185,8 +190,9 @@ def _state_sort_key(state_id):
 class TestStateOrdering:
     def test_state_keys_in_ascending_order(self):
         reg = load_registry()
+        skip_sections = {"agent_gates", "observation_gates"}
         for skill, states in reg.items():
-            if skill == "agent_gates":
+            if skill in skip_sections:
                 continue
             keys = list(states.keys())
             sorted_keys = sorted(keys, key=_state_sort_key)
