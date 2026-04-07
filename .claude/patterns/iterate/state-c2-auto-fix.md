@@ -152,7 +152,7 @@ Google Click ID,Conversion Name,Conversion Time
 ```
 
 Rules:
-- Conversion Name must match: `MVP Signup` (created in /distribute state-9 Step 0)
+- Conversion Name must match: `MVP Signup` (created in /distribute state-6 Step 0)
 - Conversion Time: `yyyy-MM-dd HH:mm:ss` format (UTC)
 - Deduplicate by gclid (one conversion per click)
 - Write to `/tmp/gclid-import-{timestamp}.csv`

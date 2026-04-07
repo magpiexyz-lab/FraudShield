@@ -307,11 +307,11 @@ Campaign creation uses Chrome MCP to interact with the Google Ads web UI directl
 2. **Google Ads account** — user is logged into their sub-account in Chrome
 3. **Chrome tab** with Google Ads open
 
-If any prerequisite is missing, `/distribute` state-9 will detect it and show the setup guide automatically.
+If any prerequisite is missing, `/distribute` state-6 will detect it and show the setup guide automatically.
 
 ### Conversion Action Setup
 
-Before creating a campaign, `/distribute` state-9 Step 0 ensures a conversion action exists in the sub-account for offline conversion import (gclid → Google Ads).
+Before creating a campaign, `/distribute` state-6 Step 0 ensures a conversion action exists in the sub-account for offline conversion import (gclid → Google Ads).
 
 | Setting | Value |
 |---------|-------|
@@ -330,7 +330,7 @@ Before creating a campaign, `/distribute` state-9 Step 0 ensures a conversion ac
 
 ### Campaign Creation Flow (via Chrome MCP)
 
-`/distribute` state-9 performs these steps in the Google Ads UI:
+`/distribute` state-6 performs these steps in the Google Ads UI:
 
 1. Click "+ New campaign" → "Create a campaign without a goal's guidance" → Search
 2. Set campaign name, uncheck Search Partners and Display Network
@@ -344,7 +344,7 @@ Before creating a campaign, `/distribute` state-9 Step 0 ensures a conversion ac
 
 ### Image Assets
 
-Google Search ads support optional Image Assets displayed alongside the text ad. `/distribute` state-9 Step 7.5 automates this by screenshotting the deployed MVP landing page.
+Google Search ads support optional Image Assets displayed alongside the text ad. `/distribute` state-6 Step 7.5 automates this by screenshotting the deployed MVP landing page.
 
 | Spec | Dimensions | Content |
 |------|-----------|---------|
