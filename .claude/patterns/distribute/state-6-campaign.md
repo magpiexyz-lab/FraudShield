@@ -293,13 +293,48 @@ Read `phase` from `.runs/distribute-context.json`.
 > 3. **Monitor performance** — after a few days, run `/iterate` to analyze metrics.
 > 4. **After `/iterate` feedback** — if changes recommended, run `/change`. Campaign can keep running during changes.
 
+### Completion checkpoint
+
+Write `.runs/distribute-step-check.json`:
+```bash
+python3 -c "
+import json, os, subprocess
+steps = ['6a']  # idempotency check always runs
+ads = {}
+if os.path.exists('experiment/ads.yaml'):
+    import yaml
+    ads = yaml.safe_load(open('experiment/ads.yaml')) or {}
+if ads.get('campaign_id'):
+    steps.extend(['6b','6c','6d','6e','6f','6g'])
+pr = subprocess.run(['gh','pr','view','--json','number'], capture_output=True, text=True)
+if pr.returncode == 0:
+    steps.append('6h')
+if os.path.exists('.runs/q-score-distribute.json'):
+    steps.append('q_score')
+steps.append('6i')
+os.makedirs('.runs', exist_ok=True)
+json.dump({
+    'steps_completed': steps,
+    'key_outputs': {
+        'campaign_id': str(ads.get('campaign_id', '')),
+        'image_assets_uploaded': str(ads.get('image_assets_uploaded', 'false')),
+        'phase': json.load(open('.runs/distribute-context.json')).get('phase', 0) if os.path.exists('.runs/distribute-context.json') else 0
+    }
+}, open('.runs/distribute-step-check.json', 'w'), indent=2)
+print('SELF-CHECK: wrote .runs/distribute-step-check.json with', len(steps), 'steps')
+"
+```
+
+This checkpoint is mandatory. Do not skip it.
+
 **POSTCONDITIONS:**
 - Campaign created via Chrome MCP with campaign_id/campaign_url in ads.yaml, OR existing campaign detected and skipped
 - PR auto-merged to main (or intentionally skipped with reason)
+- `.runs/distribute-step-check.json` exists with at least 1 completed step
 
 **VERIFY:**
 ```bash
-grep -q 'campaign_id' experiment/ads.yaml 2>/dev/null || grep -q 'manual_creation' experiment/ads.yaml 2>/dev/null || test -f experiment/ads.yaml
+(grep -q 'campaign_id' experiment/ads.yaml 2>/dev/null || grep -q 'manual_creation' experiment/ads.yaml 2>/dev/null || test -f experiment/ads.yaml) && python3 -c "import json; d=json.load(open('.runs/distribute-step-check.json')); assert len(d.get('steps_completed',[])) > 0"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

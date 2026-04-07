@@ -104,10 +104,10 @@
     "0": "test -f .runs/distribute-context.json && python3 -c \"import json; ctx=json.load(open('.runs/distribute-context.json')); assert 'phase' in ctx, 'phase missing'; assert ctx['phase'] in (1,2), 'phase must be 1 or 2'\"",
     "1": "python3 -c \"import json; p=json.load(open('.runs/distribute-preconditions.json')); assert p.get('deployed_url'); assert p.get('channel'); assert p.get('policy_checked'); assert p.get('analytics_configured')\"",
     "2": "python3 -c \"import json; p=json.load(open('.runs/distribute-preconditions.json')); assert p.get('project_name_verified') is not None; assert p.get('analytics_live')\"",
-    "3": "test -f .runs/verify-report.md && (grep -q 'utm_source' src/app/page.tsx 2>/dev/null || grep -q 'utm_source' site/index.html 2>/dev/null)",
+    "3": "test -f .runs/verify-report.md && (grep -q 'utm_source' src/app/page.tsx 2>/dev/null || grep -q 'utm_source' site/index.html 2>/dev/null) && python3 -c \"import json; d=json.load(open('.runs/distribute-impl-step-check.json')); assert len(d.get('steps_completed',[])) > 0\"",
     "4": "test -f experiment/ads.yaml && head -1 experiment/ads.yaml | grep -q 'channel'",
     "5": "python3 -c \"import json; assert json.load(open('.runs/distribute-context.json')).get('approved') == True\"",
-    "6": "grep -q 'campaign_id' experiment/ads.yaml 2>/dev/null || grep -q 'manual_creation' experiment/ads.yaml 2>/dev/null || test -f experiment/ads.yaml"
+    "6": "(grep -q 'campaign_id' experiment/ads.yaml 2>/dev/null || grep -q 'manual_creation' experiment/ads.yaml 2>/dev/null || test -f experiment/ads.yaml) && python3 -c \"import json; d=json.load(open('.runs/distribute-step-check.json')); assert len(d.get('steps_completed',[])) > 0\""
   },
   "deploy": {
     "0": "test -f .runs/deploy-context.json",
@@ -192,7 +192,7 @@
     "0": "test -f .runs/upgrade-context.json && git branch --show-current | grep -q 'chore/upgrade-template'",
     "1": "python3 -c \"import json; d=json.load(open('.runs/upgrade-diff-report.json')); assert d.get('merge_status') in ('clean','conflict','dry-run'), 'merge_status invalid: %s' % d.get('merge_status'); assert isinstance(d.get('conflicts'), list), 'conflicts not list'; assert isinstance(d.get('orphans'), list), 'orphans not list'; assert isinstance(d.get('missing'), list), 'missing not list'\"",
     "2": "python3 -c \"import json; d=json.load(open('.runs/upgrade-memory-report.json')); assert isinstance(d.get('memories_checked'), int), 'memories_checked not int'; assert isinstance(d.get('stale_entries'), list), 'stale_entries not list'; assert d.get('action_taken') in ('reported','user-confirmed-deletions'), 'action_taken invalid: %s' % d.get('action_taken')\"",
-    "3": "(gh pr view --json number 2>/dev/null || test -f .runs/upgrade-diff-report.json) && test -f .runs/observe-result.json"
+    "3": "(gh pr view --json number 2>/dev/null || test -f .runs/upgrade-diff-report.json) && test -f .runs/observe-result.json && python3 -c \"import json; d=json.load(open('.runs/upgrade-step-check.json')); assert len(d.get('steps_completed',[])) > 0\""
   },
 
   "observation_gates": {

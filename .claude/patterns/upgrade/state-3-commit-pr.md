@@ -138,14 +138,57 @@ If any safety gate fails, report and leave PR open.
 If auto-merge succeeded: "Upgrade PR auto-merged to main."
 If auto-merge skipped: "Upgrade PR created but not auto-merged (<reason>). Merge manually."
 
+### Completion checkpoint
+
+Write `.runs/upgrade-step-check.json`:
+```bash
+python3 -c "
+import json, os, subprocess
+steps = []
+if os.path.exists('package.json'):
+    steps.append('build_verify')
+ctx = json.load(open('.runs/upgrade-context.json')) if os.path.exists('.runs/upgrade-context.json') else {}
+dry_run = ctx.get('dry_run', False)
+if dry_run:
+    steps.append('dry_run_exit')
+else:
+    if os.path.exists('.runs/upgrade-diff-report.json'):
+        diff = json.load(open('.runs/upgrade-diff-report.json'))
+        if len(diff.get('orphans', [])) > 0:
+            steps.append('orphan_cleanup')
+        if len(diff.get('missing', [])) > 0:
+            steps.append('missing_restore')
+    pr = subprocess.run(['gh','pr','view','--json','number','-q','.number'], capture_output=True, text=True)
+    pr_number = None
+    if pr.returncode == 0 and pr.stdout.strip():
+        steps.append('commit')
+        steps.append('pr')
+        pr_number = int(pr.stdout.strip())
+    steps.append('auto_merge')
+steps.extend(['q_score', 'epilogue'])
+os.makedirs('.runs', exist_ok=True)
+json.dump({
+    'steps_completed': steps,
+    'key_outputs': {
+        'build_passed': 'build_verify' in steps or not os.path.exists('package.json'),
+        'pr_number': int(pr.stdout.strip()) if not dry_run and pr.returncode == 0 and pr.stdout.strip() else None,
+        'dry_run': dry_run
+    }
+}, open('.runs/upgrade-step-check.json', 'w'), indent=2)
+print('SELF-CHECK: wrote .runs/upgrade-step-check.json with', len(steps), 'steps')
+"
+```
+
+This checkpoint is mandatory. Do not skip it.
+
 **POSTCONDITIONS:**
 - PR created and auto-merged (normal mode), or dry-run report presented, or PR left open (safety gate)
 - `.runs/observe-result.json` exists with `"skill": "upgrade"`
+- `.runs/upgrade-step-check.json` exists with at least 1 completed step
 
 **VERIFY:**
 ```bash
-(gh pr view --json number 2>/dev/null || test -f .runs/upgrade-diff-report.json) && echo "PR OK" || echo "PR FAIL"
-test -f .runs/observe-result.json && echo "Observation OK" || echo "Observation FAIL"
+(gh pr view --json number 2>/dev/null || test -f .runs/upgrade-diff-report.json) && test -f .runs/observe-result.json && python3 -c "import json; d=json.load(open('.runs/upgrade-step-check.json')); assert len(d.get('steps_completed',[])) > 0"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

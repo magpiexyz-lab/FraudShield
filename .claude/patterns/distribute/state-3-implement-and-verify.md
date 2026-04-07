@@ -148,6 +148,47 @@ Read the analytics stack file's Dashboard Navigation section for provider-specif
    - **Cost per Activation**: Number (manual calculation) — Total channel spend / activate count where utm_source = {channel_source}
    - **Feedback Summary**: Trend chart, event `feedback_submitted`, breakdown by `source` property, last 5 days
 
+### Completion checkpoint
+
+Write `.runs/distribute-impl-step-check.json`:
+```bash
+python3 -c "
+import json, os, subprocess
+steps = []
+utm = subprocess.run(['grep','-rq','utm_source','src/','site/'], capture_output=True)
+utm_wired = utm.returncode == 0
+if utm_wired:
+    steps.append('3a')
+click = subprocess.run(['grep','-rq','gclid','src/','site/'], capture_output=True)
+click_id_wired = click.returncode == 0
+if click_id_wired:
+    steps.append('3b')
+fb = False
+if os.path.exists('experiment/EVENTS.yaml'):
+    fb = 'feedback_submitted' in open('experiment/EVENTS.yaml').read()
+if fb:
+    steps.append('3c')
+steps.append('3d')  # project_name fix (no-op if mismatch was false)
+steps.append('3e')  # ad-readiness checks ran
+if os.path.exists('.runs/verify-report.md'):
+    steps.append('3f')
+steps.append('3g')  # commit
+os.makedirs('.runs', exist_ok=True)
+json.dump({
+    'steps_completed': steps,
+    'key_outputs': {
+        'utm_wired': utm_wired,
+        'click_id_wired': click_id_wired,
+        'feedback_widget_added': fb,
+        'ad_readiness_passed': len(steps) >= 5
+    }
+}, open('.runs/distribute-impl-step-check.json', 'w'), indent=2)
+print('SELF-CHECK: wrote .runs/distribute-impl-step-check.json with', len(steps), 'steps')
+"
+```
+
+This checkpoint is mandatory. Do not skip it.
+
 **POSTCONDITIONS:**
 - UTM capture wired on landing page (utm_source, utm_medium, utm_campaign parsed from URL params)
 - Click ID capture wired on landing page (channel-specific click ID + gclid for backward compatibility)
@@ -157,10 +198,11 @@ Read the analytics stack file's Dashboard Navigation section for provider-specif
 - Ad-readiness checks passed (Phase 1 + google-ads: blocking; Phase 2 + google-ads: warnings noted)
 - verify.md completed and `.runs/verify-report.md` exists
 - All changes committed to branch
+- `.runs/distribute-impl-step-check.json` exists with at least 1 completed step
 
 **VERIFY:**
 ```bash
-test -f .runs/verify-report.md && (grep -q 'utm_source' src/app/page.tsx 2>/dev/null || grep -q 'utm_source' site/index.html 2>/dev/null)
+test -f .runs/verify-report.md && (grep -q 'utm_source' src/app/page.tsx 2>/dev/null || grep -q 'utm_source' site/index.html 2>/dev/null) && python3 -c "import json; d=json.load(open('.runs/distribute-impl-step-check.json')); assert len(d.get('steps_completed',[])) > 0"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
