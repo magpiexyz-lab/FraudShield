@@ -72,6 +72,8 @@ print(f'Collected diffs for {len(diffs)} files -> .runs/observer-diffs.txt')
 **POSTCONDITIONS:** Observer ran (if fixes exist) or was correctly skipped.
 
 **VERIFY:** If fix-log.md has entries beyond header, `observer.json` trace exists.
+<!-- VERIFY=true: Observer spawns conditionally (only if fix-log has entries).
+     Both paths (skip and spawn) are valid. State 7a is the actual quality gate. -->
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
 ```bash
