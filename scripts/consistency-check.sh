@@ -10,6 +10,7 @@ set -euo pipefail
 #   CLAUDE.md, .claude/commands/*.md
 
 ERRORS=0
+WARNINGS=0
 
 # Derive code-writing skills dynamically from frontmatter type
 CODE_WRITING_SKILLS=()
@@ -150,7 +151,36 @@ if [ -f "$STATE5" ]; then
   fi
 fi
 
+# 17. Non-STATE-0 registry entries should use content validation, not just test -f
+REGISTRY=".claude/patterns/state-registry.json"
+if [ -f "$REGISTRY" ]; then
+  WEAK=$(python3 -c "
+import json, sys
+data = json.load(open('$REGISTRY'))
+skip = {'observation_gates', 'agent_gates'}
+s0 = {'0', 'c0', 'x0'}
+weak = []
+for skill, states in data.items():
+    if skill in skip or not isinstance(states, dict): continue
+    for sid, pc in states.items():
+        if sid in s0: continue
+        if isinstance(pc, str) and pc.startswith('test -f ') and 'python3' not in pc and 'grep' not in pc:
+            weak.append(f'{skill}[{sid}]')
+for w in weak:
+    print(w)
+" 2>/dev/null)
+  if [ -n "$WEAK" ]; then
+    echo "WARN: state-registry.json — non-STATE-0 entries use file-existence-only postconditions (consider content validation):"
+    echo "$WEAK" | sed 's/^/  /'
+    echo ""
+    WARNINGS=$((WARNINGS + 1))
+  fi
+fi
+
 echo ""
+if [ "$WARNINGS" -gt 0 ]; then
+  echo "WARNINGS: $WARNINGS weak postcondition(s) detected (non-blocking)."
+fi
 if [ "$ERRORS" -gt 0 ]; then
   echo "FAILED: $ERRORS violation(s). Move facts to canonical sources (experiment/EVENTS.yaml, stack files)."
   exit 1
