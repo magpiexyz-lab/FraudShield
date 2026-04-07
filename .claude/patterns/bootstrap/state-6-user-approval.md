@@ -19,6 +19,8 @@ If the user requests changes instead of approving, revise the plan to address th
 
 **VERIFY:**
 ```bash
+# VERIFY=true: Human gate — approval is conversational, not artifact-based.
+# advance-state.sh execution is the proof of approval.
 # User message contains approval (e.g., "approve", "1", "2", "approve and clear", "looks good", "proceed")
 echo "User approval received"
 ```
