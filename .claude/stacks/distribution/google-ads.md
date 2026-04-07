@@ -303,7 +303,7 @@ Campaign creation uses Chrome MCP to interact with the Google Ads web UI directl
 
 ### Prerequisites
 
-1. **Claude-in-Chrome extension** installed and connected (see `.claude/patterns/chrome-mcp-setup-guide.md`)
+1. **Claude in Chrome extension** installed and connected (see `.claude/patterns/chrome-mcp-setup-guide.md`)
 2. **Google Ads account** — user is logged into their sub-account in Chrome
 3. **Chrome tab** with Google Ads open
 

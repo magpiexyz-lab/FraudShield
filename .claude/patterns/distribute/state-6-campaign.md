@@ -24,7 +24,9 @@ If no `mcp__claude-in-chrome__*` tools are returned, STOP and show the setup gui
 
 1. Read `.claude/patterns/chrome-mcp-setup-guide.md`
 2. Present the full guide to the user
-3. End with: "After completing the setup, re-run `/distribute` — it will pick up where it left off."
+3. End with: "After completing the setup (including restarting Claude Code to load the tools), re-run `/distribute` — it will pick up where it left off."
+
+> **Note:** `/chrome` → "Enable by default" saves the setting but does NOT load tools into the current session. The user must exit and start a new Claude Code session for the tools to appear.
 
 ### 6c: Verify Google Ads login
 
