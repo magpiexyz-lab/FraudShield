@@ -1,7 +1,44 @@
 #!/usr/bin/env bash
 # lib-merge.sh — Merge gate validation functions.
 # Sourced via lib.sh facade. Do NOT source directly.
-# Cross-module: none (self-contained).
+# Cross-module: uses parse_payload, read_payload_field, extract_write_content,
+#   handle_validation from lib-core.sh (loaded before this module by facade).
+
+# --- run_merge_gate ---
+# Parameterized merge gate executor. Encapsulates the full gate flow:
+# parse_payload → match file_path → extract content → validate → handle result.
+# Each merge gate hook calls this with its 3 parameters, eliminating skeleton duplication.
+# $1: file_path substring to match (e.g., "design-ux-merge")
+# $2: check definitions JSON string (passed to validate_merge_json)
+# $3: human-readable gate name (e.g., "Design-UX merge gate")
+# Usage: run_merge_gate "design-ux-merge" "$CHECKS_JSON" "Design-UX merge gate"
+run_merge_gate() {
+  local file_pattern="$1"
+  local check_defs="$2"
+  local gate_name="$3"
+
+  local file_path
+  file_path=$(read_payload_field "tool_input.file_path")
+
+  # Only fire when file_path matches the pattern
+  if [[ "$file_path" != *"$file_pattern"* ]]; then
+    exit 0
+  fi
+
+  extract_write_content
+
+  # Skip if content is empty
+  if [[ -z "$CONTENT" ]]; then
+    exit 0
+  fi
+
+  local validation
+  validation=$(echo "$CONTENT" | validate_merge_json "$check_defs")
+
+  handle_validation "$validation" "$gate_name" "Merge JSON must match source agent traces."
+
+  exit 0
+}
 
 # --- validate_merge_json ---
 # Parameterized JSON validation for merge gate hooks. Reads merge content from stdin.

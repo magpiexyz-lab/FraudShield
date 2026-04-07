@@ -8,23 +8,6 @@ set -euo pipefail
 source "$(dirname "$0")/lib.sh"
 parse_payload
 
-FILE_PATH=$(read_payload_field "tool_input.file_path")
-
-# Only fire when file_path contains "design-ux-merge"
-if [[ "$FILE_PATH" != *"design-ux-merge"* ]]; then
-  exit 0
-fi
-
-# --- design-ux-merge.json write detected — run trace validation ---
-
-extract_write_content
-
-# Skip if content is empty
-if [[ -z "$CONTENT" ]]; then
-  exit 0
-fi
-
-# Validate merge JSON against source traces
 DESIGN_UX_CHECKS='{
   "traces": [
     {
@@ -58,9 +41,5 @@ DESIGN_UX_CHECKS='{
   ],
   "self_checks": []
 }'
-VALIDATION=$(echo "$CONTENT" | validate_merge_json "$DESIGN_UX_CHECKS")
 
-handle_validation "$VALIDATION" "Design-UX merge gate" "Merge JSON must match source agent traces."
-
-# All checks passed — allow
-exit 0
+run_merge_gate "design-ux-merge" "$DESIGN_UX_CHECKS" "Design-UX merge gate"
