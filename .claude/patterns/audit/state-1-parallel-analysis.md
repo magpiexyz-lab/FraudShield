@@ -152,9 +152,14 @@ specific anomalies flagged by the manifest.
 Flags:
 - **Thin states**: A skill where >=2 states have <10 lines in ACTIONS —
   those thin states likely should merge with neighbors.
-- **Step density**: A state with >7 `###` sub-headers in ACTIONS AND 0
-  intermediate artifact writes. High sub-header count without checkpoints
-  means the LLM does too much in-memory work — risk of step skipping.
+- **Step density**: Flag a state when ANY of these conditions AND 0
+  intermediate artifact writes:
+  - >7 `###` sub-headers in ACTIONS
+  - >10 numbered steps (lines matching `^[0-9]+\.`) in ACTIONS (excluding code fences)
+  - Any single `###` section exceeding 120 lines in ACTIONS
+  Classify each flagged state as:
+  - **PROCEDURAL** (sequential imperative steps — genuine risk)
+  - **CONDITIONAL** (decision tree / branching logic — lower risk, note but deprioritize)
 - **Heavy mechanism for light task**: A skill with >4 states for a task
   that produces a single output artifact (e.g., a report or JSON file).
 

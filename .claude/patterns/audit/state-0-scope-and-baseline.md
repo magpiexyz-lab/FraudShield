@@ -87,6 +87,9 @@ for cmd_file in sorted(glob.glob('.claude/commands/*.md')):
         in_actions = False
         in_fence = False
         sub_headers = 0
+        numbered_steps = 0
+        current_section_lines = 0
+        max_section_lines = 0
         artifact_writes = 0
         postcond_items = 0
         in_postcond = False
@@ -114,9 +117,16 @@ for cmd_file in sorted(glob.glob('.claude/commands/*.md')):
                 in_postcond = False
                 continue
             if in_actions and stripped.startswith('### '):
+                max_section_lines = max(max_section_lines, current_section_lines)
+                current_section_lines = 0
                 sub_headers += 1
+            elif in_actions:
+                current_section_lines += 1
+                if re.match(r'^\d+\.', stripped):
+                    numbered_steps += 1
             if in_postcond and stripped.startswith('- '):
                 postcond_items += 1
+        max_section_lines = max(max_section_lines, current_section_lines)
 
         state_id = re.search(r'state-(.+?)\.md', sf)
         states.append({
@@ -124,6 +134,8 @@ for cmd_file in sorted(glob.glob('.claude/commands/*.md')):
             'file': sf,
             'total_lines': total_lines,
             'actions_sub_headers': sub_headers,
+            'actions_numbered_steps': numbered_steps,
+            'actions_max_section_lines': max_section_lines,
             'intermediate_artifact_writes': artifact_writes,
             'postcondition_items': postcond_items
         })
