@@ -50,7 +50,7 @@ FULL_TABLE_FILES=(
   ".claude/procedures/scaffold-landing.md"
   ".claude/agents/performance-reporter.md"
   ".claude/agents/security-defender.md"
-  ".claude/patterns/bootstrap/state-13a-bg2-gate.md"
+  ".claude/patterns/bootstrap/state-13c-bg2-gate.md"
   ".claude/patterns/bootstrap/state-9-setup-phase.md"
   ".claude/patterns/bootstrap/state-18-commit-and-push.md"
   ".claude/patterns/retro/state-3-file-issue.md"

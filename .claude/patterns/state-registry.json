@@ -31,8 +31,10 @@
     "10": "test -f .runs/current-visual-brief.md && grep -q 'theme\\|palette\\|font\\|color' .runs/current-visual-brief.md",
     "11": "ls src/lib/*.ts >/dev/null 2>&1 && (test ! -f .runs/image-manifest.json || python3 -c \"import json; m=json.load(open('.runs/image-manifest.json')); s=m.get('status'); assert s in ('complete','placeholders','skipped'), f'bad status: {s}'; ic=len(m.get('images',[])); assert s!='complete' or ic>=7, f'expected >=7 images, got {ic}'\")",
     "12": "python3 -c \"import json; d=json.load(open('.runs/gate-verdicts/bg2.5.json')); assert d.get('verdict')=='PASS', 'BG2.5 verdict is %s' % d.get('verdict'); assert d.get('timestamp','')!='', 'timestamp empty'\"",
-    "13": "npm run build --silent",
-    "13a": "python3 -c \"import json; d=json.load(open('.runs/gate-verdicts/bg2.json')); assert d.get('verdict')=='PASS', 'BG2 verdict is %s' % d.get('verdict'); assert d.get('timestamp','')!='', 'timestamp empty'\"",
+    "13": "npm run build --silent && test -f .runs/bootstrap-build-validated.json",
+    "13a": "python3 -c \"import json; d=json.load(open('.runs/bootstrap-design-validated.json')); assert all(v in (True, 'skipped') for v in d.values()), f'failed checks: {d}'\"",
+    "13b": "grep -q 'phase2-wire' .runs/current-plan.md",
+    "13c": "python3 -c \"import json; d=json.load(open('.runs/gate-verdicts/bg2.json')); assert d.get('verdict')=='PASS', 'BG2 verdict is %s' % d.get('verdict'); assert d.get('timestamp','')!='', 'timestamp empty'\"",
     "14": "python3 -c \"import json; d=json.load(open('.runs/bootstrap-wire-trace.json')); assert 'checkpoint' in d, 'checkpoint missing'\"",
     "15": "python3 -c \"import json; d=json.load(open('.runs/bootstrap-scan.json')); assert isinstance(d.get('critical'), list), 'critical not a list'; assert isinstance(d.get('on_touch'), list), 'on_touch not a list'; assert isinstance(d.get('skip'), list), 'skip not a list'; assert isinstance(d.get('already_covered'), list), 'already_covered not a list'\"",
     "16": "python3 -c \"import json; d=json.load(open('.runs/bootstrap-modules-trace.json')); assert isinstance(d.get('modules_completed'), list), 'modules_completed not a list'; assert isinstance(d.get('build_passing'), bool), 'build_passing not a bool'; assert d['build_passing'], 'build not passing after unit test generation'\"",
@@ -236,7 +238,7 @@
       "pattern-classifier":         { "required_states": ["0","1","2","3a","3b","3c","4","5","6"], "required_checks": ["pattern_analysis","template_classification"] }
     },
     "bootstrap": {
-      "_required_states": ["0","1","2","3","3a","3b","4","5","6","7","8","9","10","11","12","13","13a","14","15","16","17","18"],
+      "_required_states": ["0","1","2","3","3a","3b","4","5","6","7","8","9","10","11","12","13","13a","13b","13c","14","15","16","17","18"],
       "gate-keeper":        { "allow_unconditional": true },
       "scaffold-externals": { "allow_unconditional": true },
       "scaffold-setup":     { "required_states": ["0","1","2","3","3a","3b","4","5","6","7","8"], "artifacts": [".runs/gate-verdicts/bg1.json"], "deny_isolation": ["worktree"] },
@@ -245,7 +247,7 @@
       "scaffold-images":    { "required_states": ["0","1","2","3","3a","3b","4","5","6","7","8","9","10"], "artifacts": [".runs/gate-verdicts/bg1.json"], "deny_isolation": ["worktree"] },
       "scaffold-pages":     { "required_states": ["0","1","2","3","3a","3b","4","5","6","7","8","9","10","11"], "artifacts": [".runs/gate-verdicts/bg1.json",".runs/agent-traces/scaffold-libs.json"], "deny_isolation": ["worktree"] },
       "scaffold-landing":   { "required_states": ["0","1","2","3","3a","3b","4","5","6","7","8","9","10","11"], "artifacts": [".runs/gate-verdicts/bg1.json",".runs/agent-traces/scaffold-libs.json"], "deny_isolation": ["worktree"] },
-      "scaffold-wire":      { "required_states": ["0","1","2","3","3a","3b","4","5","6","7","8","9","10","11","12","13","13a"], "artifacts": [".runs/gate-verdicts/bg1.json",".runs/gate-verdicts/bg2.json"], "deny_isolation": ["worktree"] }
+      "scaffold-wire":      { "required_states": ["0","1","2","3","3a","3b","4","5","6","7","8","9","10","11","12","13","13a","13b","13c"], "artifacts": [".runs/gate-verdicts/bg1.json",".runs/gate-verdicts/bg2.json"], "deny_isolation": ["worktree"] }
     },
     "change": {
       "_required_states": ["0","1","2","3","4","5","6","7","8","9","10","11","12"],
