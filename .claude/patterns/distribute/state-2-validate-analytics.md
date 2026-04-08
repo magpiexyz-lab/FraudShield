@@ -1,7 +1,7 @@
 # STATE 2: VALIDATE_ANALYTICS
 
 **PRECONDITIONS:**
-- Prerequisites validated (STATE 1c POSTCONDITIONS met)
+- Prerequisites validated (STATE 1 POSTCONDITIONS met)
 
 **ACTIONS:**
 

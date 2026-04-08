@@ -37,10 +37,7 @@ Read each STATE's file **only when transitioning to that state**. Do NOT read ah
 | STATE | Name | Phase | File |
 |-------|------|-------|------|
 | 0 | INIT | Setup | [state-0-init.md](../patterns/distribute/state-0-init.md) |
-| 1 | VALIDATE_FILES | Setup | [state-1-validate-files.md](../patterns/distribute/state-1-validate-files.md) |
-| 1a | CHANNEL_SELECTION | Setup | [state-1a-channel-selection.md](../patterns/distribute/state-1a-channel-selection.md) |
-| 1b | POLICY_CHECK | Setup | [state-1b-policy-check.md](../patterns/distribute/state-1b-policy-check.md) |
-| 1c | ANALYTICS_CONFIG | Setup | [state-1c-analytics-config.md](../patterns/distribute/state-1c-analytics-config.md) |
+| 1 | CONFIG_WIZARD | Setup | [state-1-config-wizard.md](../patterns/distribute/state-1-config-wizard.md) |
 | 2 | VALIDATE_ANALYTICS | Setup | [state-2-validate-analytics.md](../patterns/distribute/state-2-validate-analytics.md) |
 | 3 | IMPLEMENT_AND_VERIFY | Implement | [state-3-implement-and-verify.md](../patterns/distribute/state-3-implement-and-verify.md) |
 | 4 | GENERATE | Research | [state-4-generate.md](../patterns/distribute/state-4-generate.md) |

@@ -21,6 +21,25 @@ if echo "$ARGUMENTS" | grep -qE '\-\-phase\s+2'; then PHASE=2; fi
 bash .claude/scripts/init-context.sh distribute "{\"phase\":$PHASE}"
 ```
 
+> **Branch cleanup on failure:** Any "stop" below leaves you on a feature branch. Include in the stop message: "To abort: `git checkout main && git branch -D chore/distribute`. To fix and retry: address the prerequisite, then re-run `/distribute`."
+
+1. Verify `experiment/experiment.yaml` exists and is complete. If not, stop: "No experiment found. Create `experiment/experiment.yaml` from the template first, then run `/bootstrap`."
+2. Verify `experiment/EVENTS.yaml` exists. If not, stop: "experiment/EVENTS.yaml not found. This file defines all analytics events and is required."
+3. Verify `experiment/EVENTS.yaml` contains an `events` key that is a dict (flat map). If not, stop: "experiment/EVENTS.yaml is malformed — the `events` key is missing or not a dict. Run `make validate` to diagnose, or restore the file from the template."
+4. Verify `package.json` exists. If not, stop: "No app found. Run `/bootstrap` first to create the app, deploy it, then run `/distribute`."
+5. Verify the app is deployed: check `landing_url` in existing `experiment/ads.yaml`, or check `surface_url` (then `canonical_url`) in `.runs/deploy-manifest.json`, or ask the user for the deployed URL. For CLI archetype, the surface URL IS the target URL. If the user does not have a deployed URL, stop: "The app must be deployed before running `/distribute` — ad campaigns need a live surface page. Run `/deploy` first, then re-run `/distribute`."
+
+Write the preconditions artifact:
+```bash
+python3 -c "
+import json
+preconditions = {
+    'deployed_url': '<url>'
+}
+json.dump(preconditions, open('.runs/distribute-preconditions.json', 'w'), indent=2)
+"
+```
+
 **POSTCONDITIONS:**
 
 If surface is `none`: skill has terminated with user guidance. No further states apply. Do not advance state or create context.
@@ -28,11 +47,12 @@ If surface is `none`: skill has terminated with user guidance. No further states
 If surface ≠ `none`:
 - Current branch is `chore/distribute` (or `chore/distribute-N` if prior branch exists)
 - Branch is not `main`
-- `.runs/distribute-context.json` exists
+- `.runs/distribute-context.json` exists with `phase` field
+- `.runs/distribute-preconditions.json` written with field: `deployed_url`
 
 **VERIFY:**
 ```bash
-if [ ! -f .runs/distribute-context.json ]; then echo "OK"; else git branch --show-current | grep -q 'chore/distribute' && echo "OK" || echo "FAIL"; fi
+if [ ! -f .runs/distribute-context.json ]; then echo "OK"; else git branch --show-current | grep -q 'chore/distribute' && python3 -c "import json; p=json.load(open('.runs/distribute-preconditions.json')); assert p.get('deployed_url'), 'no deployed_url'" && echo "OK" || echo "FAIL"; fi
 ```
 
 **STATE TRACKING:** After postconditions pass (surface ≠ none only), mark this state complete:
@@ -40,4 +60,4 @@ if [ ! -f .runs/distribute-context.json ]; then echo "OK"; else git branch --sho
 bash .claude/scripts/advance-state.sh distribute 0
 ```
 
-**NEXT:** Read [state-1-validate-files.md](state-1-validate-files.md) to continue.
+**NEXT:** Read [state-1-config-wizard.md](state-1-config-wizard.md) to continue.

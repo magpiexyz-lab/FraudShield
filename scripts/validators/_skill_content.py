@@ -431,9 +431,9 @@ def _find_preconditions_text(content: str) -> str | None:
     if old_match:
         return old_match.group(1)
 
-    # JIT format: gather all validation/analytics/prerequisite state sections
+    # JIT format: gather all validation/analytics/prerequisite/init/config state sections
     sections = re.findall(
-        r"# STATE \d+[a-z]?:\s*(?:VALIDATE_\w+|ANALYTICS_\w+|PREREQUISITES\w*).*?\n(.*?)(?=\n# STATE|\Z)",
+        r"# STATE \d+[a-z]?:\s*(?:VALIDATE_\w+|ANALYTICS_\w+|PREREQUISITES\w*|INIT|CONFIG_\w+).*?\n(.*?)(?=\n# STATE|\Z)",
         content,
         re.DOTALL,
     )

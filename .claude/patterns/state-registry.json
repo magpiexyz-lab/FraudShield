@@ -104,11 +104,8 @@
     "11": "(gh pr view --json number 2>/dev/null || git branch --show-current | grep -qE '^main$') && test -f .runs/observe-result.json"
   },
   "distribute": {
-    "0": "test -f .runs/distribute-context.json && python3 -c \"import json; ctx=json.load(open('.runs/distribute-context.json')); assert 'phase' in ctx, 'phase missing'; assert ctx['phase'] in (1,2), 'phase must be 1 or 2'\"",
-    "1": "python3 -c \"import json; p=json.load(open('.runs/distribute-preconditions.json')); assert p.get('deployed_url')\"",
-    "1a": "python3 -c \"import json; p=json.load(open('.runs/distribute-preconditions.json')); assert p.get('channel')\"",
-    "1b": "python3 -c \"import json; p=json.load(open('.runs/distribute-preconditions.json')); assert p.get('policy_checked')\"",
-    "1c": "python3 -c \"import json; p=json.load(open('.runs/distribute-preconditions.json')); assert p.get('analytics_configured')\"",
+    "0": "test -f .runs/distribute-context.json && python3 -c \"import json; ctx=json.load(open('.runs/distribute-context.json')); assert 'phase' in ctx, 'phase missing'; assert ctx['phase'] in (1,2), 'phase must be 1 or 2'\" && python3 -c \"import json; p=json.load(open('.runs/distribute-preconditions.json')); assert p.get('deployed_url')\"",
+    "1": "python3 -c \"import json; p=json.load(open('.runs/distribute-preconditions.json')); assert p.get('channel'); assert p.get('policy_checked'); assert p.get('analytics_configured')\"",
     "2": "python3 -c \"import json; p=json.load(open('.runs/distribute-preconditions.json')); assert p.get('project_name_verified') is not None; assert p.get('analytics_live')\"",
     "3": "test -f .runs/verify-report.md && (grep -q 'utm_source' src/app/page.tsx 2>/dev/null || grep -q 'utm_source' site/index.html 2>/dev/null) && python3 -c \"import json; d=json.load(open('.runs/distribute-impl-step-check.json')); assert len(d.get('steps_completed',[])) > 0\"",
     "4": "test -f experiment/ads.yaml && head -1 experiment/ads.yaml | grep -q 'channel'",
@@ -256,7 +253,7 @@
       "visual-implementer": { "required_states": ["0","1","2","3","4","5","6","7","8","9"], "artifacts": [".runs/gate-verdicts/g3.json"], "_note": "required_states enforces ordering; g3.json artifact is the authoritative gate for plan approval" }
     },
     "distribute": {
-      "_required_states": ["0","1","1a","1b","1c","2","3","4","5","6"]
+      "_required_states": ["0","1","2","3","4","5","6"]
     },
     "audit":    { "_required_states": ["0","1","2","3"], "_default": { "required_states": ["0"] } },
     "review":   { "_required_states": ["0","1","5"], "_default": { "required_states": ["0","1"] } },
