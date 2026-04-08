@@ -50,26 +50,10 @@ If no `mcp__claude-in-chrome__*` tools are returned, STOP and show the setup gui
 
 ```bash
 rm -f .runs/observe-result.json
-cat > .runs/iterate-check-context.json << 'CTXEOF'
-{
-  "skill": "iterate-check",
-  "mode": "check",
-  "channel": "<channel from ads.yaml>",
-  "campaign_name": "<campaign_name>",
-  "campaign_id": "<campaign_id>",
-  "campaign_age_days": <N>,
-  "budget_total_cents": <N>,
-  "budget_daily_cents": <N>,
-  "max_cpc_cents": <N>,
-  "branch": "<current branch>",
-  "timestamp": "<ISO 8601 UTC>",
-  "run_id": "iterate-check-<ISO 8601 UTC>",
-  "completed_states": ["c0"]
-}
-CTXEOF
+bash .claude/scripts/init-context.sh iterate-check "{\"mode\":\"check\",\"channel\":\"<channel from ads.yaml>\",\"campaign_name\":\"<campaign_name>\",\"campaign_id\":\"<campaign_id>\",\"campaign_age_days\":<N>,\"budget_total_cents\":<N>,\"budget_daily_cents\":<N>,\"max_cpc_cents\":<N>,\"completed_states\":[\"c0\"]}"
 ```
 
-Replace all `<placeholder>` values with actual data read from ads.yaml and experiment.yaml. Use a Python one-liner or bash to construct the JSON with real values.
+Replace all `<placeholder>` values with actual data read from ads.yaml and experiment.yaml. The base fields (`skill`, `branch`, `timestamp`, `run_id`) are provided automatically by init-context.sh. The `completed_states:["c0"]` override replaces the default `[0]` to use iterate-check's string state IDs.
 
 **POSTCONDITIONS:**
 - `experiment/ads.yaml` read, channel is `google-ads`, `campaign_id` exists

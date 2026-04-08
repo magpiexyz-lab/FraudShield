@@ -25,7 +25,8 @@ bash .claude/scripts/init-context.sh <skill> [extra_json]
 - Output: `.runs/$1-context.json`
 - When `$2` is empty: pure bash heredoc (no python3 dependency).
 - When `$2` has content: python3 merges base + extra.
-- **State-reset guard**: refuses to overwrite if existing context has `completed_states` beyond `[0]`.
+- When `$2` starts with `@`: read extra JSON from the referenced file path (e.g., `@.runs/_extra.json`). Avoids shell quoting issues for values with special characters.
+- **State-reset guard**: refuses to overwrite if existing context has multiple `completed_states` (length > 1, i.e., skill already in progress).
 
 ## Extra Fields by Skill
 
@@ -36,16 +37,9 @@ bash .claude/scripts/init-context.sh <skill> [extra_json]
 | distribute | `phase` (integer: 1 or 2) |
 | resolve | `issue_list` ([]) |
 | upgrade | `dry_run` (false) |
-
-## Excluded Skills
-
-| Skill | Reason |
-|-------|--------|
-| verify | 5 unique extra fields, `run_id` format omits skill prefix, values computed from multi-step logic within STATE 0 |
-| iterate-check (c0) | Quoted heredoc (`<< 'CTXEOF'`) prevents shell expansion; 8 ads-specific placeholder fields |
-| iterate-cross (x0) | Python3 inline creation with dynamic `mvps` list; `completed_states` uses string `["x0"]` not integer `[0]` |
-
-These skills retain inline context creation in their STATE 0 files.
+| verify | `skill` (overrides base — set to calling skill e.g. "bootstrap"), `scope`, `archetype`, `quality` ("production"), `mode`, `baseline_available` |
+| iterate-check | `mode` ("check"), `channel`, `campaign_name`, `campaign_id`, `campaign_age_days`, `budget_total_cents`, `budget_daily_cents`, `max_cpc_cents`, `completed_states` (["c0"]) |
+| iterate-cross | `mode` ("cross"), `mvp_count`, `mvps` (array), `completed_states` (["x0"]) — uses @file mechanism |
 
 ## Relationship to advance-state.sh
 

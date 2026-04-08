@@ -73,30 +73,28 @@ Wait for Team Lead confirmation. If they want to exclude or add MVPs, adjust the
 
 ```bash
 rm -f .runs/observe-result.json
+# Write extra JSON to temp file (avoids shell quoting issues with campaign names)
 python3 -c "
 import json
-from datetime import datetime, timezone
 
 mvps = [
     # Populate from discovered data:
     # {'name': 'pettracker', 'domain': 'pettracker.vercel.app', 'campaign_name': '...', 'campaign_id': '...', 'status': '...', 'days_running': 7, 'final_url': 'https://...'}
 ]
 
-ctx = {
-    'skill': 'iterate-cross',
+extra = {
     'mode': 'cross',
     'mvp_count': len(mvps),
     'mvps': mvps,
-    'branch': '$(git branch --show-current)',
-    'timestamp': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
-    'run_id': 'iterate-cross-' + datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
     'completed_states': ['x0']
 }
-json.dump(ctx, open('.runs/iterate-cross-context.json', 'w'), indent=2)
+json.dump(extra, open('.runs/_iterate-cross-extra.json', 'w'))
 "
+bash .claude/scripts/init-context.sh iterate-cross "@.runs/_iterate-cross-extra.json"
+rm -f .runs/_iterate-cross-extra.json
 ```
 
-Replace the `mvps` list with actual data collected from Chrome MCP.
+Replace the `mvps` list with actual data collected from Chrome MCP. The base fields (`skill`, `branch`, `timestamp`, `run_id`) are provided automatically by init-context.sh.
 
 **POSTCONDITIONS:**
 - Chrome MCP tools verified available

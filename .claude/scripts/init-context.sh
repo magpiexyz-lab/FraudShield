@@ -4,12 +4,25 @@
 # Examples:
 #   bash .claude/scripts/init-context.sh solve
 #   bash .claude/scripts/init-context.sh change '{"preliminary_type":null,"affected_areas":null,"solve_depth":null}'
+#   bash .claude/scripts/init-context.sh iterate-cross @.runs/_iterate-cross-extra.json
 # Companion to advance-state.sh which updates completed_states after each state passes.
 set -euo pipefail
 
 SKILL="${1:-}"
 EXTRA="${2:-}"
+
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-.}"
+
+# File-reference: @path reads extra JSON from file (resolve relative to PROJECT_DIR)
+if [[ -n "$EXTRA" && "$EXTRA" == @* ]]; then
+  EXTRA_FILE="${EXTRA#@}"
+  [[ "$EXTRA_FILE" != /* ]] && EXTRA_FILE="$PROJECT_DIR/$EXTRA_FILE"
+  if [[ ! -f "$EXTRA_FILE" ]]; then
+    echo "ERROR: init-context.sh — extra file not found: $EXTRA_FILE" >&2
+    exit 1
+  fi
+  EXTRA=$(cat "$EXTRA_FILE")
+fi
 CTX="$PROJECT_DIR/.runs/${SKILL}-context.json"
 
 # --- Arg validation ---
@@ -25,10 +38,10 @@ if [[ -f "$CTX" ]]; then
 import json
 d = json.load(open('$CTX'))
 cs = d.get('completed_states', [])
-print('block' if len(cs) > 1 or (len(cs) == 1 and cs[0] != 0) else 'ok')
+print('block' if len(cs) > 1 else 'ok')
 " 2>/dev/null || echo "ok")
   if [[ "$GUARD" == "block" ]]; then
-    echo "ERROR: init-context.sh — $CTX exists with completed_states beyond [0]. Delete it manually to re-initialize." >&2
+    echo "ERROR: init-context.sh — $CTX exists with multiple completed states (skill already in progress). Delete it manually to re-initialize." >&2
     exit 1
   fi
 fi

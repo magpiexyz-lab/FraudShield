@@ -44,11 +44,9 @@
    fi
    ```
 
-6. Write `.runs/verify-context.json` (includes `skill` for Q-score attribution, `run_id` for trace freshness validation, `mode` for PR gate behavior, and `baseline_available` for delta reporting):
+6. Write `.runs/verify-context.json` via shared init script. Extra fields override base: `skill` attributes Q-scores to the calling skill, `scope`/`archetype`/`quality` drive agent gating, `mode` controls PR gate behavior, `baseline_available` enables delta reporting. Base fields (`branch`, `timestamp`, `run_id`, `completed_states`) are provided automatically:
    ```bash
-   cat > .runs/verify-context.json << CTXEOF
-   {"scope":"<scope>","archetype":"<type>","quality":"production","skill":"<skill from step 4>","mode":"<standalone if skill is verify, otherwise the skill name + -verify e.g. bootstrap-verify, change-verify>","branch":"$(git branch --show-current)","timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","run_id":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","baseline_available":$BASELINE_AVAILABLE,"completed_states":[0]}
-   CTXEOF
+   bash .claude/scripts/init-context.sh verify "{\"skill\":\"<skill from step 4>\",\"scope\":\"<scope>\",\"archetype\":\"<type>\",\"quality\":\"production\",\"mode\":\"<standalone if skill is verify, otherwise the skill name + -verify e.g. bootstrap-verify, change-verify>\",\"baseline_available\":$BASELINE_AVAILABLE}"
    ```
 
 7. Create `.runs/fix-log.md` on disk:
