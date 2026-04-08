@@ -13,23 +13,12 @@ Create the upgrade branch:
 git checkout -b chore/upgrade-template
 ```
 
-Auto-discover `template` remote if missing:
+Auto-add `template` remote if missing:
 ```bash
-# Check if template remote exists
-if ! git remote get-url template >/dev/null 2>&1; then
-  # Find template repo via GitHub API
-  CURRENT_REPO=$(gh repo view --json nameWithOwner -q '.nameWithOwner' 2>/dev/null)
-  if [ -n "$CURRENT_REPO" ]; then
-    TEMPLATE_REPO=$(gh api "repos/$CURRENT_REPO" \
-      --jq '.template_repository.full_name // .parent.full_name // empty' 2>/dev/null)
-    if [ -n "$TEMPLATE_REPO" ]; then
-      git remote add template "https://github.com/$TEMPLATE_REPO.git"
-    fi
-  fi
+if ! git remote get-url template &>/dev/null; then
+  git remote add template https://github.com/magpiexyz-lab/mvp-template.git
 fi
 ```
-
-If `template` remote still not found, stop with error: "No template remote configured. Add it manually: `git remote add template <url>`"
 
 Fetch template:
 ```bash

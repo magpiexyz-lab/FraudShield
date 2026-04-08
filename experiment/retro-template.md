@@ -45,9 +45,9 @@ Claude generates a structured document with these sections:
 ## Part 4: File as GitHub Issue
 
 After generating the retro, Claude files it as a GitHub Issue:
-Get the template repo from the current repo context:
+Set the template repo:
 ```
-TEMPLATE_REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
+TEMPLATE_REPO="magpiexyz-lab/mvp-template"
 ```
 
 Command Claude runs:
