@@ -73,6 +73,27 @@ Read `campaign_age_days` from `.runs/iterate-check-context.json`. For each issue
 
 ---
 
+#### Issue: `sitelink_disapproved`
+
+1. Navigate to the campaign's **Ads & assets** → **Assets** tab via Chrome MCP
+2. Click on the disapproved sitelink to view the disapproval reason
+3. Read the disapproval reason (e.g., "Destination not working", "Misleading content", "Policy violation")
+4. AI-rewrite the sitelink to comply:
+   - If destination URL is broken: check if the page exists at the `final_url`. If not, replace with an anchor sitelink on the landing page (fallback to a working destination)
+   - If copy violates policy: rewrite `link_text`/descriptions following messaging.md Section F rules while addressing the specific violation
+   - Preserve UTM parameters in the new `final_url`
+   - Respect character limits: link_text ≤ 25, descriptions ≤ 35
+5. Create a replacement sitelink via Chrome MCP:
+   - Click "+" → "Sitelink" in the Assets tab
+   - Enter the rewritten link_text, description_1, description_2, final_url
+   - Save
+6. Leave the original disapproved sitelink in place for reference (user can remove manually)
+7. Notify the user:
+   > "Sitelink '{link_text}' was disapproved for [{reason}]. Created a replacement sitelink with compliant copy. Review approval status in 24-48h."
+8. Record: "Sitelink disapproved for {reason}. Created replacement. Original left for reference."
+
+---
+
 #### Issue: `wasted_clicks`
 
 1. Read the problematic search terms from the health check (terms with cost > $1 AND CTR < 1%)

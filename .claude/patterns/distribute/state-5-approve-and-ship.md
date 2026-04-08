@@ -9,6 +9,19 @@
 
 Present the full `experiment/ads.yaml` content to the user.
 
+If ads.yaml contains a non-empty `sitelinks` array, present a formatted sitelink preview table after the main ads.yaml content:
+
+> **Sitelinks Preview:**
+>
+> | # | Link Text | Chars | Desc 1 | Chars | Desc 2 | Chars | URL |
+> |---|-----------|-------|--------|-------|--------|-------|-----|
+> | 1 | {link_text} | {len} | {description_1} | {len} | {description_2} | {len} | {final_url} |
+> | ... | | | | | | | |
+>
+> Character limits: link_text ≤ 25, descriptions ≤ 35 each.
+
+If `sitelinks: []`, note: "No sitelinks generated (fewer than 2 qualifying destination pages)."
+
 ### 5b: STOP for approval
 
 **STOP.** End your response here. Say:

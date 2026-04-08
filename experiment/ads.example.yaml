@@ -54,6 +54,24 @@ ads:
       - "No spreadsheets. No complexity. Create, send, get paid. Built for freelancers billing a few clients."
       - "Professional invoices without the learning curve. Sign up free and send your first invoice today."
 
+# --- Sitelink Extensions ---
+# Auto-generated from golden_path pages. Min 2, max 4 for Phase 1.
+# When <2 qualifying pages exist, set sitelinks: []
+# URL format: query params BEFORE fragment for anchor sitelinks
+sitelinks:
+  - link_text: "Create an Invoice"
+    description_1: "Send invoices in under 60s"
+    description_2: "No accounting degree needed"
+    final_url: "https://quickbill.vercel.app/dashboard?utm_source=google&utm_medium=cpc&utm_campaign=quickbill-search-v1&utm_content=sitelink_dashboard"
+  - link_text: "Sign Up Free"
+    description_1: "Start sending invoices today"
+    description_2: "Free for up to 5 clients"
+    final_url: "https://quickbill.vercel.app/signup?utm_source=google&utm_medium=cpc&utm_campaign=quickbill-search-v1&utm_content=sitelink_signup"
+  - link_text: "View Pricing"
+    description_1: "Simple, transparent pricing"
+    description_2: "No hidden fees"
+    final_url: "https://quickbill.vercel.app?utm_source=google&utm_medium=cpc&utm_campaign=quickbill-search-v1&utm_content=sitelink_anchor_pricing#pricing"
+
 # --- Budget & Bidding ---
 budget:
   daily_budget_cents: 1500          # $15/day

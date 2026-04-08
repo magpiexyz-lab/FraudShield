@@ -96,6 +96,63 @@ When experiment.yaml has a `variants` field, generate per-variant creative:
 - Follow messaging.md Section D: ad headlines for a variant match that variant's landing page headline
 - See `experiment/ads.example.yaml` for schema format examples
 
+### 4b.5: Generate sitelinks (google-ads only)
+
+**Skip condition:** If the channel is not `google-ads`, skip this step entirely. Sitelinks are a Google Ads-specific extension.
+
+#### Step 1: Identify candidate pages
+
+Read `golden_path` from `experiment/experiment.yaml`. Extract all unique `page` values. Filter to candidate pages:
+- Must be a user-facing page (has a corresponding `page.tsx` or equivalent route file, not an API route)
+- Exclude `landing` (the main ad already links there)
+- Keep auth pages (signup) if in golden_path — they are valid sitelink targets
+
+Count the independent candidate pages.
+
+#### Step 2: Threshold check and anchor fallback
+
+**If independent pages >= 2:** Proceed to Step 3 using these pages (up to 4, prioritizing pages earlier in the golden_path).
+
+**If independent pages < 2:** Scan the landing page component for section IDs:
+- **web-app**: Read `src/app/page.tsx` (or the landing component it imports). Search for JSX/HTML elements with `id` attributes on major sections (e.g., `<section id="features">`, `<div id="pricing">`, `<section id="faq">`). Ignore utility IDs (e.g., `id="root"`, `id="__next"`).
+- **service/cli (detached)**: Read `site/index.html`. Search for elements with `id` attributes on sections.
+- Collect section IDs as anchor sitelink candidates.
+
+Combine independent pages + anchor sections:
+- **Combined total >= 2:** Proceed to Step 3 (prioritize independent pages over anchors)
+- **Combined total < 2:** Skip sitelinks. Write `sitelinks: []` with a comment explaining why (e.g., `# No sitelinks: only 1 qualifying destination found`). Log the reason and proceed to step 4c.
+
+#### Step 3: Generate sitelink copy
+
+For each candidate (up to 4, prioritizing independent pages over anchors):
+
+1. Find the golden_path step and matching behavior for this page (behavior whose `event` matches the step's `event`)
+2. Apply messaging.md Section F copy rules:
+   - `link_text`: imperative verb + noun from step description (max 25 chars)
+   - `description_1`: benefit from behavior `then` clause (max 35 chars)
+   - `description_2`: qualifier from experiment.yaml `description` or behavior `given` clause (max 35 chars)
+3. For anchor sitelinks: derive copy from the section content on the landing page per messaging.md Section F "Anchor Sitelinks" rules
+
+#### Step 4: Construct URLs
+
+Read UTM parameter template from the channel stack file "UTM Parameters" section.
+
+- **Independent page:** `{landing_url}/{page}?utm_source=google&utm_medium=cpc&utm_campaign={campaign_name}&utm_content=sitelink_{page}`
+- **Anchor section:** `{landing_url}?utm_source=google&utm_medium=cpc&utm_campaign={campaign_name}&utm_content=sitelink_anchor_{section_id}#{section_id}`
+
+Note: UTM query params must come BEFORE the fragment identifier (`?...#section`). Reversing this breaks analytics tracking.
+
+#### Step 5: Validate
+
+- Each `link_text` <= 25 characters
+- Each `description_1` <= 35 characters
+- Each `description_2` <= 35 characters
+- All `final_url` values are unique
+- No `final_url` equals the main ad landing URL (without UTM params)
+- At least 2 sitelink entries
+
+Store the generated sitelinks array for inclusion in ads.yaml (Step 4d).
+
 ### 4c: Calculate thresholds
 
 #### Phase-aware defaults
@@ -161,6 +218,8 @@ Define go/no-go signals based on experiment.yaml `thesis` and `funnel` threshold
 
 Write the complete `experiment/ads.yaml` file. Include `channel: <selected-channel>` as the first field. Follow the selected channel's stack file "Config Schema" section for the channel-specific structure. See `experiment/ads.example.yaml` for full schema examples across channels.
 
+After the `ads` block (or `ad_groups` block if variants are present), include the `sitelinks` array generated in Step 4b.5. If Step 4b.5 produced an empty array, write `sitelinks: []` with a comment explaining why (e.g., `# No sitelinks: only 1 user-facing page`).
+
 #### Phase 1 Playbook injection
 
 Read `phase` from `.runs/distribute-context.json`.
@@ -219,6 +278,7 @@ Present the full config for review.
 - If Phase 1 + google-ads: `playbook` block present with all standardized fields
 - Playbook negative_keywords include the universal keywords from the stack file
 - If variants exist: per-variant ad groups generated with utm_content and /v/{slug} URLs
+- Sitelinks generated from golden_path (2-4 entries with valid char limits and unique URLs), OR explicitly skipped with `sitelinks: []` and documented reason
 - All committed to branch
 
 **VERIFY:**

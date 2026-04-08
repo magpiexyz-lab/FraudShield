@@ -252,6 +252,30 @@ Google Search ads support optional Image Assets displayed alongside the text ad.
 - Add `image_assets_uploaded: true` to `experiment/ads.yaml`
 - Commit and push (updates the open PR)
 
+**Step 7.6: Create Sitelink Extensions**
+
+**Skip condition:** If ads.yaml `sitelinks` is an empty array, missing, or null, skip this step. Record evidence: step=`sitelink_assets`, action="Skipped -- no sitelinks in ads.yaml", evidence="sitelinks array empty or absent".
+
+**Idempotency:** If ads.yaml has `sitelink_assets_uploaded: true`, skip this step.
+
+For each sitelink in ads.yaml `sitelinks` array:
+
+1. Navigate to the campaign → **Ads & assets** → **Assets** tab
+2. Click **"+"** → Select **"Sitelink"**
+3. Enter fields from ads.yaml:
+   - **Sitelink text**: `link_text`
+   - **Description line 1**: `description_1`
+   - **Description line 2**: `description_2`
+   - **Final URL**: `final_url`
+4. Click **Save**
+5. Repeat for each sitelink entry
+
+> **Record evidence:** step=`sitelink_assets`, action="Created {N} sitelink extensions", evidence="<what you literally observed: e.g., 'Created 3 sitelinks: Create an Invoice, Sign Up Free, View Pricing. All saved successfully in Assets tab.'>"
+
+**On success:** Add `sitelink_assets_uploaded: true` to `experiment/ads.yaml`. Commit and push.
+
+**On failure:** Retry up to 2 times per sitelink. If a sitelink fails after retries, skip it and record the failure in evidence. Continue with remaining sitelinks. A partial set (as long as >= 2 succeed) is acceptable. If fewer than 2 succeed, record evidence noting the failure but do not block campaign creation.
+
 **On failure at any step:**
 - Screenshot the error state
 - Report to the user what went wrong and at which step
@@ -301,8 +325,9 @@ Read `.runs/distribute-campaign-evidence.json` and cross-check against `experime
 > 5. Both RSAs are created with pinned headlines? (y/n)
 > 6. Negative keywords are added at campaign level? (y/n)
 > 7. Campaign status is PAUSED? (y/n)
+> 8. Sitelinks created in campaign Assets tab (if ads.yaml has sitelinks)? (y/n/N/A)
 
-Record all responses. If any is "n": STOP and ask user to fix in Google Ads UI, then re-confirm. Write audit result:
+Record all responses. Treat "N/A" on item 8 as a pass (no sitelinks configured). If any is "n": STOP and ask user to fix in Google Ads UI, then re-confirm. Write audit result:
 
 ```bash
 python3 -c "
@@ -346,6 +371,7 @@ for e in entries:
 | 6 | rsa_2 | `rsa_2` | non-empty evidence | -- |
 | 7 | negative_keywords | `negative_keywords` | evidence count > 0 | -- |
 | 8 | campaign_status | `campaign_status` | evidence mentions "Paused" | -- |
+| 9 | sitelink_assets (conditional) | `sitelink_assets` | non-empty evidence | Only checked when ads.yaml has non-empty `sitelinks` array |
 
 Write the audit result:
 
@@ -408,6 +434,18 @@ if status_entry.get('evidence'):
         'expected': 'paused',
         'actual': status_entry['evidence'][:80],
         'pass': 'paus' in status_entry['evidence'].lower()
+    })
+
+# Conditional check: sitelink assets (only when ads.yaml has non-empty sitelinks)
+sitelinks = ads.get('sitelinks', [])
+if sitelinks:  # non-empty list
+    sl_entry = entries.get('sitelink_assets', {})
+    has_sl_evidence = bool(sl_entry.get('evidence', '').strip())
+    checks.append({
+        'name': 'evidence_exists_sitelink_assets',
+        'expected': 'non-empty evidence',
+        'actual': sl_entry.get('evidence', '')[:120] if has_sl_evidence else 'MISSING',
+        'pass': has_sl_evidence
     })
 
 all_passed = all(c['pass'] for c in checks)
@@ -564,6 +602,7 @@ json.dump({
     'key_outputs': {
         'campaign_id': str(ads.get('campaign_id', '')),
         'image_assets_uploaded': str(ads.get('image_assets_uploaded', 'false')),
+        'sitelink_assets_created': str(bool(ads.get('sitelinks', []))),
         'phase': json.load(open('.runs/distribute-context.json')).get('phase', 0) if os.path.exists('.runs/distribute-context.json') else 0,
         'audit_passed': str(os.path.exists(audit_file) and (json.load(open(audit_file)).get('all_passed', False) or json.load(open(audit_file)).get('manual_creation', False))) if os.path.exists(audit_file) else 'false'
     }

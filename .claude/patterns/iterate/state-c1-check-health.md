@@ -17,7 +17,7 @@
 
 ### Health checks
 
-Perform 5 health checks via Chrome MCP. For each, navigate to the relevant section and read the UI:
+Perform the following health checks via Chrome MCP (5 standard + conditional Check 6 when sitelinks exist). For each, navigate to the relevant section and read the UI:
 
 #### Check 1: Ad approval status
 - Navigate to the campaign's **Ads** tab
@@ -52,6 +52,16 @@ Perform 5 health checks via Chrome MCP. For each, navigate to the relevant secti
   - Actual spend from the campaign dashboard
 - Healthy: actual spend is between 30% and 150% of expected spend
 - Issue type: `budget_anomaly` -- record actual vs expected spend and the anomaly direction (underspend/overspend)
+
+#### Check 6: Sitelink approval status
+
+**Skip condition:** Read `experiment/ads.yaml`. If `sitelinks` is missing, null, or an empty array, skip this check entirely. Log: "No sitelinks in ads.yaml -- skipping sitelink health check."
+
+- Navigate to the campaign's **Ads & assets** → **Assets** tab (or **Extensions** tab in older UI versions)
+- Filter or scroll to Sitelink type assets
+- Read the **Status** column for each sitelink
+- Healthy: all sitelinks show "Eligible", "Approved", or "Under review" (under review is expected for the first 24-48 hours)
+- Issue type: `sitelink_disapproved` -- record which sitelinks are disapproved and their status/reason text
 
 ### Collect campaign metrics
 
@@ -96,7 +106,7 @@ json.dump(health, open('.runs/iterate-check-health.json', 'w'), indent=2)
 Replace all placeholder values with actual data collected from Chrome MCP.
 
 **POSTCONDITIONS:**
-- All 5 health checks performed via Chrome MCP
+- All health checks performed via Chrome MCP (5 standard + conditional sitelink check when ads.yaml has sitelinks)
 - Campaign metrics collected
 - `.runs/iterate-check-health.json` exists with structured results
 

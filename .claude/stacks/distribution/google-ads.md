@@ -25,6 +25,16 @@ gitignore: []
 - Minimum 2 ad variations per campaign
 - Google assembles the best combination from your headlines and descriptions
 
+**Sitelink Extensions:**
+- Link text: up to 25 characters (the clickable blue text)
+- Description line 1: up to 35 characters
+- Description line 2: up to 35 characters
+- Final URL: must be distinct from the main ad landing URL and from all other sitelink URLs
+- Minimum 2 sitelinks per campaign (Google rarely shows just 1)
+- Maximum 4 sitelinks for Phase 1 (balances coverage vs complexity at $140 budget)
+- Each sitelink must point to a different destination page or anchor section
+- Auto-generated from `golden_path` pages — see state-4-generate.md Step 4b.5
+
 ## Targeting Model
 
 **Keyword-based targeting** — ads appear when users search for matching terms.
@@ -113,6 +123,14 @@ ads:
 #     ads:
 #       - headlines: [...]
 #         descriptions: [...]
+
+sitelinks:
+  - link_text: "..."            # up to 25 chars, imperative verb + noun
+    description_1: "..."        # up to 35 chars, benefit statement
+    description_2: "..."        # up to 35 chars, qualifier/differentiator
+    final_url: "..."            # distinct URL with UTM params
+# When <2 qualifying pages exist: sitelinks: []
+# See state-4-generate.md Step 4b.5 for generation rules
 
 budget:
   daily_budget_cents: ...
@@ -247,6 +265,16 @@ These are starting negatives. Add campaign-specific negatives based on the exper
 - **Flow**: Landing page captures `gclid` from URL → stored with user record → on `activate` event, analytics provider sends conversion with `gclid` to Google Ads Offline Conversions API
 - **Verification**: Complete one test conversion end-to-end before enabling the campaign
 
+### Sitelink Strategy
+
+- **Auto-generate** sitelinks from experiment.yaml `golden_path` when the app has 2+ non-landing user-facing pages
+- **Priority order**: real independent pages (signup, dashboard, etc.) > anchor sections on the landing page (`/#features`, `/#pricing`) > skip
+- **Anchor fallback**: When independent pages < 2, scan the landing page component for section elements with `id` attributes (e.g., `id="features"`, `id="pricing"`) and generate anchor sitelinks
+- **Combined threshold**: independent pages + anchor sections must total >= 2, otherwise skip sitelinks entirely
+- **Phase 1 cap**: maximum 4 sitelinks
+- **Copy rules**: follow messaging.md Section F for link_text, description_1, description_2 derivation
+- **UTM tracking**: each sitelink URL includes `utm_content=sitelink_{route_slug}` (or `sitelink_anchor_{section_id}` for anchors)
+
 ### Pre-flight Checklist
 
 Before enabling the campaign:
@@ -276,6 +304,8 @@ Before enabling the campaign:
 - `utm_medium=cpc`
 - `utm_campaign={campaign_name}`
 - `utm_content={variant_slug}` (when using variants)
+- `utm_content=sitelink_{route_slug}` (for sitelink traffic to independent pages)
+- `utm_content=sitelink_anchor_{section_id}` (for sitelink traffic to anchor sections)
 
 ## Setup Instructions
 
@@ -341,6 +371,7 @@ Before creating a campaign, `/distribute` state-6 Step 0 ensures a conversion ac
 7. Save campaign in PAUSED status
 8. Record `campaign_id` and `campaign_url` in ads.yaml
 9. Capture product screenshots and upload as Image Assets (user approves before upload)
+10. Create sitelink extensions from ads.yaml `sitelinks` array (if non-empty)
 
 ### Image Assets
 

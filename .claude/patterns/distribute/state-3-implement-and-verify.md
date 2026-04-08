@@ -17,6 +17,16 @@
 
 - When experiment.yaml has `variants`, also capture `utm_content` from URL params alongside UTM params. This maps to the variant slug and enables per-variant attribution in analytics (e.g., filter `visit_landing` by `utm_content = "speed"` to see paid traffic for the speed variant).
 
+### 3a.5: UTM capture on sitelink destination pages
+
+Read `golden_path` from `experiment/experiment.yaml`. For each non-landing page in the golden_path that has a user-facing route:
+
+- **web-app**: Check if the page's route file (e.g., `src/app/{page}/page.tsx`) captures UTM parameters. If not, wire UTM + click ID capture using the same pattern as step 3a (parse `utm_source`, `utm_medium`, `utm_campaign`, `utm_content` from URL params and include in the page's analytics event).
+- **Idempotent**: If the page already captures `utm_source` (grep the page file), skip it.
+- **Anchor sitelinks**: No action needed — anchor sitelinks land on the same landing page, which already has UTM capture from step 3a. The `utm_content` parameter distinguishes sitelink traffic.
+
+> **Note:** This step runs before ads.yaml is generated (state 3 precedes state 4). It wires UTM capture for all golden_path pages preemptively, not just sitelink-specific ones. The sitelink pages are a subset — this ensures any page a sitelink might point to is ready for attribution tracking.
+
 ### 3b: Add click ID capture
 
 - Read the selected channel's stack file "Click ID" section to get the parameter name (e.g., `gclid` for google-ads, `twclid` for twitter, `rdt_cid` for reddit)

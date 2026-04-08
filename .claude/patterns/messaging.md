@@ -130,3 +130,48 @@ Derive all content from experiment.yaml fields (`name`, `description`, `behavior
 ### Variant Override
 
 When experiment.yaml has `variants`, the root layout metadata uses the **default variant's** headline and subheadline (or Section A derivation if no variants). Each variant page exports `generateMetadata()` using that variant's `headline` and `subheadline` to override layout defaults.
+
+## Section F: Sitelink Copy Rules
+
+Rules for generating Google Ads sitelink extension copy from `golden_path` step descriptions and behavior `then` clauses. Used by `/distribute` state-4 Step 4b.5.
+
+### Input Sources
+
+- **Step description**: the `step` field from `golden_path` (e.g., "Click 'New Invoice' on dashboard")
+- **Behavior then clause**: the `then` field from the behavior matching the step's `event` (e.g., "Invoice is created with line items and sent to client email")
+- **Page context**: what the destination page does (from the `golden_path` `page` field and experiment.yaml `description`)
+
+### Copy Formulas
+
+**link_text** (max 25 characters):
+- Formula: `[imperative verb] [noun]` — the action the user takes on the destination page
+- Derive the verb from the step description, the noun from the page purpose
+- Examples: "Create an Invoice" (18), "View Dashboard" (14), "Track Payments" (14), "Sign Up Free" (12)
+- Avoid generic CTAs: "Learn More", "Click Here", "Visit Page"
+
+**description_1** (max 35 characters):
+- Formula: benefit statement — what the user gains on this page
+- Derive from the behavior's `then` clause (the outcome)
+- Examples: "Send invoices in under 60 seconds" (33), "See all clients at a glance" (26)
+
+**description_2** (max 35 characters):
+- Formula: qualifier or differentiator — how or why this is valuable
+- Derive from experiment.yaml `description` or the behavior's `given` clause
+- Examples: "No accounting degree needed" (26), "Free for up to 5 clients" (24)
+
+### Tone
+
+- Action-oriented and specific to the destination page
+- No superlatives ("best", "amazing") unless substantiated
+- Consistent with the ad RSA copy and landing page messaging (Section C applies)
+
+### Message Match
+
+- Sitelink link_text must be consistent with the destination page's headline (if page exists)
+- A user clicking a sitelink should see content that directly relates to the link_text they clicked
+
+### Anchor Sitelinks
+
+For anchor sitelinks (destination = `?...#section_id`), derive copy from the section content on the landing page:
+- link_text should name the section purpose: "See Our Features" (16), "View Pricing" (12), "Read the FAQ" (12)
+- Descriptions should describe what the section contains
