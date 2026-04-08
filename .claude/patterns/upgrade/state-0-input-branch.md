@@ -39,10 +39,7 @@ git fetch template
 Clean stale artifacts and create context file:
 ```bash
 rm -f .runs/upgrade-*.json .runs/observe-result.json
-
-cat > .runs/upgrade-context.json << CTXEOF
-{"skill":"upgrade","branch":"chore/upgrade-template","timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","completed_states":[],"dry_run":false}
-CTXEOF
+bash .claude/scripts/init-context.sh upgrade '{"dry_run":false}'
 ```
 
 If `--dry-run` was specified, update the context file:

@@ -28,9 +28,7 @@ Remember whether you entered a worktree — STATE 3 needs this to know whether t
 Clean stale epilogue artifacts and create context file to initialize state tracking:
 ```bash
 rm -f .runs/observe-result.json
-cat > .runs/solve-context.json << CTXEOF
-{"skill":"solve","branch":"$(git branch --show-current)","timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","run_id":"solve-$(date -u +%Y-%m-%dT%H:%M:%SZ)","completed_states":[0]}
-CTXEOF
+bash .claude/scripts/init-context.sh solve
 ```
 
 **POSTCONDITIONS:**

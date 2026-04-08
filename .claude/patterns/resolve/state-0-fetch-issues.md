@@ -61,9 +61,7 @@ Store the fetched issues as `issue_list`.
 Clean stale epilogue artifacts and create context file to initialize state tracking:
 ```bash
 rm -f .runs/observe-result.json
-cat > .runs/resolve-context.json << CTXEOF
-{"skill":"resolve","branch":"$(git branch --show-current)","timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","run_id":"resolve-$(date -u +%Y-%m-%dT%H:%M:%SZ)","completed_states":[0],"issue_list":[]}
-CTXEOF
+bash .claude/scripts/init-context.sh resolve '{"issue_list":[]}'
 ```
 
 **POSTCONDITIONS:**

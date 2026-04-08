@@ -183,9 +183,7 @@ Store prior findings as `prior_findings` for delta comparison in Step 2.
 Clean stale epilogue artifacts and create context file to initialize state tracking:
 ```bash
 rm -f .runs/observe-result.json
-cat > .runs/audit-context.json << CTXEOF
-{"skill":"audit","branch":"$(git branch --show-current)","timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","run_id":"audit-$(date -u +%Y-%m-%dT%H:%M:%SZ)","completed_states":[0]}
-CTXEOF
+bash .claude/scripts/init-context.sh audit
 ```
 
 **POSTCONDITIONS:**

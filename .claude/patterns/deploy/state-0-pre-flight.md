@@ -65,9 +65,7 @@ Clean stale epilogue artifacts and create context file to initialize state track
 Substitute `DEPLOY_MODE` with `"initial"` or `"update"` (from step 3b). For initial mode, all service arrays are empty. For update mode, populate from step 3b diff results:
 ```bash
 rm -f .runs/observe-result.json
-cat > .runs/deploy-context.json << CTXEOF
-{"skill":"deploy","branch":"$(git branch --show-current)","timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","run_id":"deploy-$(date -u +%Y-%m-%dT%H:%M:%SZ)","deploy_mode":"initial","added_services":[],"removed_services":[],"unchanged_services":[],"completed_states":[0]}
-CTXEOF
+bash .claude/scripts/init-context.sh deploy '{"deploy_mode":"initial","added_services":[],"removed_services":[],"unchanged_services":[]}'
 ```
 - `deploy_mode`: set to `"update"` when `.runs/deploy-manifest.json` existed (step 3b); otherwise keep `"initial"`
 - `added_services`, `removed_services`, `unchanged_services`: populate from step 3b diff results (empty arrays for initial mode)

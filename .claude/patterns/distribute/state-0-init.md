@@ -18,9 +18,7 @@ Create `.runs/distribute-context.json` to initialize state tracking:
 PHASE=1
 if echo "$ARGUMENTS" | grep -qE '\-\-phase\s+2'; then PHASE=2; fi
 
-cat > .runs/distribute-context.json << CTXEOF
-{"skill":"distribute","branch":"$(git branch --show-current)","timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","run_id":"distribute-$(date -u +%Y-%m-%dT%H:%M:%SZ)","completed_states":[0],"phase":$PHASE}
-CTXEOF
+bash .claude/scripts/init-context.sh distribute "{\"phase\":$PHASE}"
 ```
 
 **POSTCONDITIONS:**

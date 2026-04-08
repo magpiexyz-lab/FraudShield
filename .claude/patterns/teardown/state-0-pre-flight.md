@@ -40,9 +40,7 @@
 Clean stale epilogue artifacts and create context file to initialize state tracking:
 ```bash
 rm -f .runs/observe-result.json
-cat > .runs/teardown-context.json << CTXEOF
-{"skill":"teardown","branch":"$(git branch --show-current)","timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","run_id":"teardown-$(date -u +%Y-%m-%dT%H:%M:%SZ)","completed_states":[0]}
-CTXEOF
+bash .claude/scripts/init-context.sh teardown
 ```
 
 **POSTCONDITIONS:**
