@@ -21,15 +21,7 @@ You are a performance sentinel. Your thresholds are strict and non-negotiable �
 
 ## Archetype Gate
 
-> **Archetype routing** (per `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table):
->
-> | Concern | web-app | service | cli |
-> |---------|---------|---------|-----|
-> | Primary unit | page | endpoint | command |
-> | Spec field | `golden_path` | `endpoints` | `commands` |
-> | Skip | — | pages, landing, Fake Door | pages, API, landing, Fake Door |
-> | Visual agents | full pipeline | skip | skip |
-> | Analytics | client + server | server only | server only, opt-in |
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
 >
 > State-specific logic below takes precedence.
 

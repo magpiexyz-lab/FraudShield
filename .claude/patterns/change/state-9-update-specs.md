@@ -7,22 +7,14 @@
 
 **ACTIONS:**
 
-> **Archetype routing** (per `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table):
->
-> | Concern | web-app | service | cli |
-> |---------|---------|---------|-----|
-> | Primary unit | page | endpoint | command |
-> | Spec field | `golden_path` | `endpoints` | `commands` |
-> | Skip | — | pages, landing, Fake Door | pages, API, landing, Fake Door |
-> | Visual agents | full pipeline | skip | skip |
-> | Analytics | client + server | server only | server only, opt-in |
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
 >
 > State-specific logic below takes precedence.
 
 > **Gate check:** Read `.runs/current-plan.md` and look for `## Process Checklist`.
 > If missing, STOP — execute the Phase 2 Pre-flight above first.
 
-- **Feature**: add the new behavior to experiment.yaml `behaviors` list. If the new behavior changes the user journey, update the archetype-specific journey field per the routing table above. Do NOT remove or modify existing behaviors.
+- **Feature**: add the new behavior to experiment.yaml `behaviors` list. If the new behavior changes the user journey, update the archetype-specific journey field per the archetype routing in `.claude/patterns/archetype-behavior-check.md`. Do NOT remove or modify existing behaviors.
 - **Upgrade**: do NOT modify experiment.yaml `behaviors` (the behavior already exists — it was listed when the Fake Door was created). Add new env vars to `.env.example`.
 - **Analytics**: if the user approved new events, add them to the `events` map in experiment/EVENTS.yaml with appropriate `funnel_stage`, following the `<object>_<action>` naming convention with all properties.
 - **Fix / Polish**: do NOT modify experiment.yaml or experiment/EVENTS.yaml.
