@@ -98,6 +98,8 @@ def check_12_prose_file_refs_in_reads(skill_contents: dict[str, str]) -> list[st
         if not fm:
             continue
         reads = set(fm.get("reads", []) or [])
+        writes = set(fm.get("writes", []) or [])
+        declared = reads | writes
         prose = extract_prose(content)
 
         for ref_file in SPEC_REFERENCE_FILES:
@@ -109,13 +111,13 @@ def check_12_prose_file_refs_in_reads(skill_contents: dict[str, str]) -> list[st
                 if re.search(r"e\.g\.\s*,", context_before):
                     continue
 
-                matched = any(ref_file in r or r in ref_file for r in reads)
+                matched = any(ref_file in r or r in ref_file for r in declared)
                 if not matched:
                     pos = content.find(ref_file)
                     line_num = content[:pos].count("\n") + 1 if pos >= 0 else "?"
                     errors.append(
                         f"[12] {sf}:{line_num}: prose references '{ref_file}' "
-                        f"but it's not in 'reads' frontmatter"
+                        f"but it's not in 'reads' or 'writes' frontmatter"
                     )
                     break
     return errors

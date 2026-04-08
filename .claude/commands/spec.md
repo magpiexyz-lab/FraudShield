@@ -1,7 +1,7 @@
 ---
 description: "Transform an idea into a complete Level 3 experiment.yaml with hypotheses, behaviors, variants, and stack."
 type: code-writing
-reads: [experiment/EVENTS.yaml]
+writes: [experiment/EVENTS.yaml]
 stack_categories: []
 requires_approval: true
 references:
@@ -37,7 +37,7 @@ Begin at STATE 0. Read [state-0-input-parse.md](../patterns/spec/state-0-input-p
 - Add stack components not required by Level 3
 - Generate fewer than 3 variants or fewer than 5 pending hypotheses
 - Produce hypotheses without a `metric` object containing `formula`, numeric `threshold`, and `operator`
-- Modify any file other than `experiment/experiment.yaml`, `.runs/spec-manifest.json`, and `.runs/verify-history.jsonl`
+- Modify any file other than `experiment/experiment.yaml`, `experiment/EVENTS.yaml`, `.runs/spec-manifest.json`, and `.runs/verify-history.jsonl`
 - Skip the user approval checkpoint in Step 6
 - Proceed past any STOP point without explicit user confirmation
 - Skip auth or database — Level 3 always includes them

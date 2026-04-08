@@ -140,40 +140,64 @@ Level 2: Level 1 + `database: sqlite`
 
 Level 3: Level 2 (cli excludes auth and payment per archetype definition)
 
+### Section 8 — Events (EVENTS.yaml)
+
+Derive project-specific analytics events from golden_path, behaviors, and hypothesis formulas. There are NO standard/template events — every project defines its own events. `funnel_stage` is the only cross-MVP standardization layer.
+
+**Derivation algorithm:**
+
+1. **From golden_path**: each step's `event:` field → one event entry
+2. **From hypothesis formulas**: extract all event names referenced in `metric.formula` fields (e.g., `user_signup / landing_view` → `user_signup`, `landing_view`). Ensure each appears in the event set.
+3. **From behaviors**: scan `then` clauses for additional observable actions not yet covered. Derive event names using `<object>_<action>` snake_case convention.
+4. **Assign funnel_stage**: derive from the hypothesis category that references each event (reach → reach, demand → demand, etc.). If an event is referenced by multiple hypotheses, use the earlier funnel stage.
+5. **Assign trigger**: derive from the behavior's `then` clause or golden_path step description.
+6. **Variant property**: if the experiment has `variants` and the first golden_path event is a landing page event, add a `variant` property (type: string, required: false) to that event.
+7. **Payment events**: if `stack.payment` is present, derive payment-related events from monetize hypotheses and behaviors. Add `requires: [payment]` to those events.
+8. **Archetype-specific events**: if type is `service`, add `archetypes: [service]` to API-specific events. If `cli`, add `archetypes: [cli]` to command-specific events.
+
+**Generate EVENTS.yaml structure:**
+```yaml
+global_properties:
+  project_name:
+    description: From experiment.yaml `name` field. Identifies which experiment this data belongs to.
+    type: string
+    required: true
+  project_owner:
+    description: From experiment.yaml `owner` field. Identifies who owns this experiment.
+    type: string
+    required: true
+
+events:
+  <derived events in funnel_stage order: reach → demand → activate → monetize → retain>
+```
+
+Present the derived EVENTS.yaml alongside experiment.yaml for review.
+
 ### CHECKPOINT
 
-Present the assembled YAML in full. Then say:
-> **Review the experiment specification above.**
+Present the assembled experiment.yaml and EVENTS.yaml in full. Then say:
+> **Review the experiment specification and analytics events above.**
 >
 > - Check that hypotheses match your intuition
 > - Check that behaviors cover what you want to test
 > - Check that variants feel genuinely different
 > - Check that the stack matches your needs
+> - Check that analytics events cover the key actions you want to measure
 >
-> Reply **approve** to write the file, or tell me what to change.
+> Reply **approve** to write the files, or tell me what to change.
 
 **STOP.** Do NOT write any files until the user explicitly approves.
 
-If the user requests changes, revise the YAML and present it again. Repeat until approved.
+If the user requests changes, revise the YAML and/or events and present again. Repeat until approved.
 
 **POSTCONDITIONS:**
 - Complete experiment.yaml assembled with all 7 sections
-- User approved the specification <!-- enforced by agent behavior, not VERIFY gate -->
+- Complete EVENTS.yaml derived from golden_path, behaviors, and hypotheses
+- User approved the specification and events <!-- enforced by agent behavior, not VERIFY gate -->
 
 **VERIFY:**
 ```bash
-python3 -c "
-import yaml
-d = yaml.safe_load(open('experiment/experiment.yaml'))
-assert d.get('name'), 'name missing'
-assert d.get('type'), 'type missing'
-assert d.get('thesis'), 'thesis missing'
-assert d.get('behaviors'), 'behaviors missing'
-gp = d.get('golden_path') or d.get('endpoints') or d.get('commands')
-assert gp, 'no golden_path/endpoints/commands'
-assert d.get('stack'), 'stack missing'
-assert d.get('funnel'), 'funnel missing'
-"
+python3 -c "import yaml; d=yaml.safe_load(open('experiment/experiment.yaml')); assert d.get('name'), 'name missing'; assert d.get('type'), 'type missing'; assert d.get('thesis'), 'thesis missing'; assert d.get('behaviors'), 'behaviors missing'; gp=d.get('golden_path') or d.get('endpoints') or d.get('commands'); assert gp, 'no golden_path/endpoints/commands'; assert d.get('stack'), 'stack missing'; assert d.get('funnel'), 'funnel missing'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

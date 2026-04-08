@@ -43,7 +43,7 @@ Each hypothesis must have:
   category: demand               # demand | reach | activate | monetize | retain
   statement: "..."               # Testable claim with specific numbers
   metric:
-    formula: "event_a / event_b" # References event names from experiment/EVENTS.yaml
+    formula: "event_a / event_b" # Use <object>_<action> snake_case names aligned with your behaviors
     threshold: 0.05              # Numeric pass/fail value (e.g., 0.05 for 5%)
     operator: gte                # gt | gte | lt | lte
   priority_score: 80             # 0-100, higher = test first
@@ -54,7 +54,7 @@ Each hypothesis must have:
 
 ### Rules
 - Research-type hypotheses from Step 2 are included with `status: resolved` and their verdicts
-- Every hypothesis MUST have a `metric:` object with numeric `threshold`, `formula` referencing experiment/EVENTS.yaml event names, and an `operator` — no vague language
+- Every hypothesis MUST have a `metric:` object with numeric `threshold`, `formula` using `<object>_<action>` snake_case event names (these become EVENTS.yaml entries in STATE 6), and an `operator` — no vague language
 - Filter: only include hypotheses where `experiment_level <= selected level`
 - Counts below are for **pending** hypotheses only (require building product + real user data). The 4 resolved research hypotheses from Step 2 are separate and don't count toward these minimums.
 - At least one hypothesis per required category:
@@ -78,7 +78,7 @@ Hypothesis Quality Review
 -------------------------
   [pass/warn/fail] Metric structure: [all have formula, numeric threshold, and operator?]
   [pass/warn/fail] Grounded thresholds: [based on benchmarks/data or guesswork?]
-  [pass/warn/fail] Formula references: [formulas reference valid experiment/EVENTS.yaml event names?]
+  [pass/warn/fail] Formula references: [formulas use valid <object>_<action> snake_case event names?]
   [pass/warn/fail] Category coverage: [all required categories present?]
   [pass/warn/fail] No duplicates: [each tests independent risk?]
   [pass/warn/fail] Dependencies explicit: [depends_on correctly set?]

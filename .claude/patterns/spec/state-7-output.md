@@ -10,6 +10,10 @@
 ### 7a: Write experiment.yaml
 Write the approved YAML to `experiment/experiment.yaml`.
 
+### 7a.1: Write EVENTS.yaml
+Write the approved EVENTS.yaml to `experiment/EVENTS.yaml`.
+This overwrites the template example file entirely with project-specific events.
+
 ### 7b: Write spec-manifest.json
 Write `.runs/spec-manifest.json` with the full research and hypothesis details:
 ```json
@@ -49,11 +53,15 @@ Write `.runs/spec-manifest.json` with the full research and hypothesis details:
    ```bash
    python3 -c "import yaml; yaml.safe_load(open('experiment/experiment.yaml'))"
    ```
-2. Verify spec-manifest.json is valid JSON:
+2. Verify EVENTS.yaml is valid and has required structure:
+   ```bash
+   python3 scripts/validate-events.py
+   ```
+3. Verify spec-manifest.json is valid JSON:
    ```bash
    python3 -c "import json; json.load(open('.runs/spec-manifest.json'))"
    ```
-3. Spot-check:
+4. Spot-check:
    - Every hypothesis has a `metric` object with numeric `threshold`, `formula`, and `operator`
    - Every behavior traces to a hypothesis ID that exists
    - Variant headlines have >30% word difference (compare each pair)
@@ -157,6 +165,7 @@ Next: Run /bootstrap to scaffold the app, or edit experiment/experiment.yaml to 
 
 **POSTCONDITIONS:**
 - `experiment/experiment.yaml` written and valid YAML
+- `experiment/EVENTS.yaml` written and validated
 - `.runs/spec-manifest.json` written and valid JSON
 - Q-score computed and appended to `.runs/verify-history.jsonl` <!-- enforced by agent behavior, not VERIFY gate -->
 - Observation check completed (if applicable)
@@ -164,7 +173,7 @@ Next: Run /bootstrap to scaffold the app, or edit experiment/experiment.yaml to 
 
 **VERIFY:**
 ```bash
-python3 -c "import json,yaml; yaml.safe_load(open('experiment/experiment.yaml')); m=json.load(open('.runs/spec-manifest.json')); assert m.get('created_at'), 'created_at empty'; assert isinstance(m.get('hypotheses'), list) and len(m['hypotheses'])>0, 'no hypotheses'; assert isinstance(m.get('behaviors'), list) and len(m['behaviors'])>0, 'no behaviors'"
+python3 -c "import json,yaml; yaml.safe_load(open('experiment/experiment.yaml')); m=json.load(open('.runs/spec-manifest.json')); assert m.get('created_at'), 'created_at empty'; assert isinstance(m.get('hypotheses'), list) and len(m['hypotheses'])>0, 'no hypotheses'; assert isinstance(m.get('behaviors'), list) and len(m['behaviors'])>0, 'no behaviors'; e=yaml.safe_load(open('experiment/EVENTS.yaml')); assert isinstance(e.get('events'), dict) and len(e['events'])>0, 'no events in EVENTS.yaml'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

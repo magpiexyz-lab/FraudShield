@@ -15,11 +15,11 @@ Derive golden_path from behaviors. The format depends on the archetype:
 ```yaml
 golden_path:
   - step: "<description>"         # e.g., "Visit landing page"
-    event: visit_landing
-    page: landing
+    event: <project_event>        # Use <object>_<action> naming (e.g., landing_view, page_visit)
+    page: <page>
   # Continue through behavior chain to value moment
   - step: "<value-delivering action>"
-    event: activate
+    event: <core_action_event>    # e.g., invoice_created, repo_scanned
     page: <value page>
 target_clicks: <N>
 ```
@@ -33,10 +33,10 @@ endpoints:
   # List all API endpoints from behaviors
 golden_path:
   - step: "<description>"
-    event: api_call
+    event: <project_event>        # e.g., request_received, data_ingested
     endpoint: "/<endpoint>"
   - step: "<value-delivering action>"
-    event: activate
+    event: <core_action_event>    # e.g., report_generated, webhook_delivered
     endpoint: "/<value endpoint>"
 ```
 
@@ -48,10 +48,10 @@ commands:
   # List all commands from behaviors
 golden_path:
   - step: "<description>"
-    event: command_run
+    event: <project_event>        # e.g., config_initialized, scan_started
     command: "<command>"
   - step: "<value-delivering action>"
-    event: activate
+    event: <core_action_event>    # e.g., report_exported, migration_completed
     command: "<value command>"
 ```
 

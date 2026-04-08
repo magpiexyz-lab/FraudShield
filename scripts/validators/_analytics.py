@@ -220,13 +220,15 @@ def check_39_ads_campaign_name(ads_data: dict, idea_data: dict, ads_path: str) -
 
 
 def check_45_visit_landing_variant_property(events_data: dict | None) -> list[str]:
-    """Check 45: visit_landing event has variant property."""
+    """Check 45: visit_landing event has variant property (when present)."""
     errors: list[str] = []
     events_path = "experiment/EVENTS.yaml"
     if not events_data or not isinstance(events_data, dict):
         return errors
 
     flat_events = events_data.get("events", {})
+    # Only validate when visit_landing exists — events are project-specific,
+    # not all projects will have this event name.
     if isinstance(flat_events, dict) and "visit_landing" in flat_events:
         visit_landing_event = flat_events["visit_landing"]
         props = visit_landing_event.get("properties", {}) if isinstance(visit_landing_event, dict) else {}
@@ -235,9 +237,4 @@ def check_45_visit_landing_variant_property(events_data: dict | None) -> list[st
                 f"[45] {events_path}: visit_landing event is missing "
                 f"a 'variant' property (needed for experiment matrix)"
             )
-    else:
-        errors.append(
-            f"[45] {events_path}: visit_landing event not found "
-            f"in events map"
-        )
     return errors
