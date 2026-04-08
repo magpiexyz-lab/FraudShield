@@ -131,7 +131,7 @@ Do NOT skip an entry just because it seems simple. A "simple" missing import tha
 Process entries in fix-log order:
 
 1. **For each universal pattern:**
-   a. Determine the template repo: read `.claude/template-meta.json` if it exists (use `repo` field). If not, try `git remote get-url template 2>/dev/null`. If neither found, fall back to local stack file (step 1f-local).
+   a. Determine the template repo: `TEMPLATE_REPO="magpiexyz-lab/mvp-template"`. Auto-add remote if missing: `if ! git remote get-url template &>/dev/null; then git remote add template https://github.com/magpiexyz-lab/mvp-template.git; fi`. If `gh auth status` fails, fall back to local stack file (step 1f-local).
    b. Read the target stack file
    c. Search for existing "Known Issues" section (or "## Patterns" or similar)
    d. Search within that section for duplicate content (same root cause already described)

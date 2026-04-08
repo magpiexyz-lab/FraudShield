@@ -10,7 +10,7 @@ Rules are in priority order. When two rules conflict, the lower-numbered rule wi
 - Pages are derived from `golden_path` — don't create pages not referenced there
 - If you're unsure whether something is in scope, it isn't
 - To add a new behavior, use the /change skill — it updates experiment.yaml first, then implements
-- When asked to do something outside a defined skill (/audit, /spec, /bootstrap, /change, /deploy, /distribute, /iterate, /optimize-prompt, /resolve, /retro, /review, /rollback, /solve, /teardown, /upgrade, /verify), ask the user to clarify before proceeding
+- When asked to do something outside a defined skill (/audit, /spec, /bootstrap, /change, /deploy, /distribute, /iterate, /observe, /optimize-prompt, /resolve, /retro, /review, /rollback, /solve, /teardown, /upgrade, /verify), ask the user to clarify before proceeding
 
 ## Rule 1: PR-First Workflow
 - Never commit directly to `main`
@@ -140,16 +140,18 @@ terminates with a quality check via one of three mechanisms:
 - **Strategy A skills** (/bootstrap, /resolve, /review, /deploy, /spec, /upgrade): the skill's
   epilogue state (`.claude/patterns/skill-epilogue.md` Strategy A) spawns
   an observer agent when diffs exist.
-- **Strategy B skills** (/audit, /solve, /iterate, /retro, /rollback,
+- **Strategy B skills** (/audit, /solve, /iterate, /observe, /retro, /rollback,
   /teardown): the skill's epilogue state (Strategy B) performs an inline
   execution audit and Path 2 friction evaluation.
+- **Manual observation** (/observe): Use `/observe --file <path> --symptom "<desc>"`
+  to manually evaluate and file a template observation outside of automated flows.
 
-No manual note-taking is required. When fixing bugs outside of a skill
-context (ad-hoc requests), evaluate whether the root cause is in a
-template file and follow `.claude/patterns/observe.md` if so.
+No manual note-taking is required during skill execution. For ad-hoc fixes
+outside of a skill context, use `/observe` to evaluate and file template
+observations.
 
 ## Rule 13: Skill Execution Pattern
-All 15 lifecycle skills use state machines with JIT (Just-In-Time) dispatch (the utility skill /optimize-prompt is standalone). Each skill's command file (`.claude/commands/<skill>.md`) contains a dispatch table pointing to state files at `.claude/patterns/<skill>/state-*.md`. Read only one state file at a time — never read ahead.
+All 16 lifecycle skills use state machines with JIT (Just-In-Time) dispatch (the utility skill /optimize-prompt is standalone). Each skill's command file (`.claude/commands/<skill>.md`) contains a dispatch table pointing to state files at `.claude/patterns/<skill>/state-*.md`. Read only one state file at a time — never read ahead.
 - Each state file has 6 required sections: PRECONDITIONS, ACTIONS, POSTCONDITIONS, VERIFY, STATE TRACKING, NEXT
 - `.claude/patterns/state-registry.json` maps every skill's states to postcondition checks, enforced at runtime by `.claude/hooks/state-completion-gate.sh`
 - Context files (`.runs/<skill>-context.json`) track execution state with base schema: `{skill, branch, timestamp, completed_states}`

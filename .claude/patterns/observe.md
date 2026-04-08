@@ -23,13 +23,12 @@ which handles observation inline without calling this procedure directly.
 
 1. Resolve the template repo (where observations should be filed):
    ```bash
-   TEMPLATE_REPO=$(git remote get-url template 2>/dev/null | sed 's|.*github.com[:/]||;s|\.git$||')
-   if [ -z "$TEMPLATE_REPO" ]; then
-     TEMPLATE_REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
+   TEMPLATE_REPO="magpiexyz-lab/mvp-template"
+   if ! git remote get-url template &>/dev/null; then
+     git remote add template https://github.com/magpiexyz-lab/mvp-template.git
    fi
    ```
-   If experiment.yaml does not exist or both commands fail → skip silently.
-   If no `template` remote exists, observations are filed to the current repo as a fallback.
+   The template remote is auto-added if missing.
 2. `gh auth status` — if fails → skip silently.
 3. `gh repo view $TEMPLATE_REPO --json name` — if fails → skip silently.
 

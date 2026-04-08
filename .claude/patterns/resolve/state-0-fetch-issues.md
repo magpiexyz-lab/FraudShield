@@ -16,9 +16,11 @@ Determine which issues to resolve:
 
   **Step 1 — Resolve template repo:**
   ```bash
-  TEMPLATE_REPO=$(git remote get-url template 2>/dev/null | sed 's|.*github.com[:/]||;s|\.git$||')
+  TEMPLATE_REPO="magpiexyz-lab/mvp-template"
+  if ! git remote get-url template &>/dev/null; then
+    git remote add template https://github.com/magpiexyz-lab/mvp-template.git
+  fi
   ```
-  If empty → stop: "No template remote configured. Run any skill first (STATE 0 auto-configures it), or manually: `git remote add template <url>`."
 
   **Step 2 — Compute trace analysis (offline):**
   ```bash
