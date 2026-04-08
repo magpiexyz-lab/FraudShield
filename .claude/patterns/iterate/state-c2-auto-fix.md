@@ -109,6 +109,38 @@ Read `campaign_age_days` from `.runs/iterate-check-context.json`. For each issue
 
 ---
 
+#### Issue: `campaign_paused`
+
+Read `phase` from `.runs/iterate-check-context.json`. If `phase` is `1`, follow the Phase 1 protocol below. If `phase` is `2`, `null`, or absent, follow the "NOT Phase 1" branch.
+
+**If Phase 1 protocol (phase == 1):**
+
+Check ad approval status first:
+1. Navigate to campaign **Ads** tab via Chrome MCP
+2. Check if ALL ads have status "Approved" (not "Under review", "Disapproved", etc.)
+
+**If all ads approved AND campaign age >= 48 hours:**
+- Unpause the campaign via Chrome MCP: Campaign Settings > Status > Enabled
+- Notify the user:
+  > "All ads approved. Campaign unpaused and now active. Monitor with `/iterate --check` on Days 1 and 3."
+- Record: "Campaign unpaused -- all ads approved after {age} hours"
+
+**If some ads still disapproved or in review:**
+- Do NOT unpause
+- Notify the user:
+  > "Campaign still paused -- {N} ad(s) are still {status}. Re-run `/iterate --check` tomorrow. Most ads are approved within 24-48 hours. If still disapproved after 48 hours, review and adjust ad copy in Google Ads, or contact platform support."
+- Record: "Campaign remains paused -- {N} ads not yet approved"
+
+**If campaign age < 48 hours:**
+- This is expected during Phase 1 Day -2/Day -1 protocol
+- Record: "Campaign paused (Phase 1 protocol, age {age}h < 48h) -- no action needed"
+
+**If NOT Phase 1 (user-initiated pause or unknown):**
+- Do NOT auto-unpause — the user may have paused intentionally
+- Record: "Campaign paused (not Phase 1 protocol) -- skipping auto-fix. Resume manually in Google Ads if intended."
+
+---
+
 #### Issue: `budget_anomaly`
 
 **If campaign age <= 2 days AND spend > 50% of total budget:**
@@ -191,6 +223,11 @@ Rules:
    - "Partially applied": read error details, log them (expired gclids are expected, not errors)
 
 If Chrome MCP cannot handle file upload dialog, fallback: copy CSV content → use "paste" upload option in the Google Ads UI.
+
+After upload (success or failure), clean up the CSV file:
+```bash
+rm -f /tmp/gclid-import-*.csv
+```
 
 **Step 5: Update import timestamp**
 

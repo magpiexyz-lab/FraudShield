@@ -8,7 +8,7 @@ Two strategies, dispatched by evidence type:
 | Strategy | Skills | When |
 |----------|--------|------|
 | **A — Code Observation** | `/bootstrap`, `/resolve`, `/review`, `/deploy`, `/spec`, `/upgrade` | Skill produces diffs or modifies template files → spawn observer agent |
-| **B — Execution Audit** | `/audit`, `/solve`, `/iterate`, `/observe`, `/retro`, `/rollback`, `/teardown` | Analysis-only, no diffs → inline friction check |
+| **B — Execution Audit** | `/audit`, `/solve`, `/iterate`, `/observe` (observe-cmd), `/retro`, `/rollback`, `/teardown` | Analysis-only, no diffs → inline friction check |
 
 **Skip for:**
 - Skills that embed `/verify` (`/change`, `/distribute`) — verify.md STATE 6 handles observation

@@ -7,15 +7,23 @@
 
 1. **project_name source match:**
    - Read `name` from experiment.yaml
-   - Grep `src/lib/analytics.ts` and `src/lib/analytics-server.ts` for `PROJECT_NAME` constant
+   - Grep analytics files for `PROJECT_NAME` constant: always check `src/lib/analytics-server.ts`; check `src/lib/analytics.ts` only when it exists (web-app only — service/cli have no client analytics file)
    - Check if the constant value matches the experiment.yaml name
    - If match: write `project_name_verified: true, project_name_mismatch: false`
    - If mismatch or "TODO": write `project_name_verified: true, project_name_mismatch: true` — do NOT stop, State 3 will fix it
    - Check command:
      ```bash
      EXPECTED=$(python3 -c "import yaml; print(yaml.safe_load(open('experiment/experiment.yaml')).get('name', ''))")
-     grep -q "PROJECT_NAME = \"$EXPECTED\"" src/lib/analytics.ts 2>/dev/null && \
-     grep -q "PROJECT_NAME = \"$EXPECTED\"" src/lib/analytics-server.ts 2>/dev/null
+     if [ ! -f src/lib/analytics-server.ts ]; then
+       echo "STOP: Analytics library files not found. Run /bootstrap first to scaffold analytics support, then re-run /distribute."
+       exit 1
+     fi
+     MATCH=true
+     if [ -f src/lib/analytics.ts ]; then
+       grep -q "PROJECT_NAME = \"$EXPECTED\"" src/lib/analytics.ts 2>/dev/null || MATCH=false
+     fi
+     grep -q "PROJECT_NAME = \"$EXPECTED\"" src/lib/analytics-server.ts 2>/dev/null || MATCH=false
+     $MATCH
      ```
 
 2. **Live analytics verification:**

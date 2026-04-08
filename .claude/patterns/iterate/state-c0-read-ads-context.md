@@ -30,7 +30,7 @@
 ### Compute campaign age
 
 Calculate `campaign_age_days`:
-- If `.runs/distribute-context.json` exists, read its `timestamp` field and compute days elapsed from that date to today
+- If `.runs/distribute-context.json` exists, read its `timestamp` field and compute days elapsed from that date to today. Also read its `phase` field (1 or 2) to pass to the context file
 - Otherwise, ask the user: "When did you launch the campaign? (provide date or number of days ago)"
 
 ### Verify Chrome MCP availability
@@ -50,7 +50,7 @@ If no `mcp__claude-in-chrome__*` tools are returned, STOP and show the setup gui
 
 ```bash
 rm -f .runs/observe-result.json
-bash .claude/scripts/init-context.sh iterate-check "{\"mode\":\"check\",\"channel\":\"<channel from ads.yaml>\",\"campaign_name\":\"<campaign_name>\",\"campaign_id\":\"<campaign_id>\",\"campaign_age_days\":<N>,\"budget_total_cents\":<N>,\"budget_daily_cents\":<N>,\"max_cpc_cents\":<N>,\"completed_states\":[\"c0\"]}"
+bash .claude/scripts/init-context.sh iterate-check "{\"mode\":\"check\",\"channel\":\"<channel from ads.yaml>\",\"campaign_name\":\"<campaign_name>\",\"campaign_id\":\"<campaign_id>\",\"campaign_age_days\":<N>,\"phase\":<1 or 2 from distribute-context.json, or null if unavailable>,\"budget_total_cents\":<N>,\"budget_daily_cents\":<N>,\"max_cpc_cents\":<N>,\"completed_states\":[\"c0\"]}"
 ```
 
 Replace all `<placeholder>` values with actual data read from ads.yaml and experiment.yaml. The base fields (`skill`, `branch`, `timestamp`, `run_id`) are provided automatically by init-context.sh. The `completed_states:["c0"]` override replaces the default `[0]` to use iterate-check's string state IDs.

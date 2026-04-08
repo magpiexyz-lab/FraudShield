@@ -28,6 +28,7 @@ Read `.runs/iterate-check-context.json`, `.runs/iterate-check-health.json`, and 
 [For each issue:]
 - **[issue_type]**: [action_taken -- auto-fixed / needs manual intervention / recommendation]
   [description of what was done or recommended]
+  [If issue_type is campaign_paused: add context -- "This is expected during Phase 1 Day -2/-1 protocol" when phase == 1 AND campaign age < 48h, or "Campaign was unpaused after ad approval" when auto-fixed, or "Ads still under review -- re-run /iterate --check tomorrow" when phase == 1 AND age >= 48h AND ads not approved, or "Campaign paused by user -- resume manually if intended" when not Phase 1]
 
 [If no issues:]
 - No issues found. Campaign is running as expected.

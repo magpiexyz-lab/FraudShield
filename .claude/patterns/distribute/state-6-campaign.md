@@ -546,7 +546,7 @@ Read `phase` from `.runs/distribute-context.json`.
 >
 > **Day -2 (today):** Campaign created and paused. Ads are being reviewed by Google.
 > **Day -1 (tomorrow):** Run `/iterate --check` to verify ad approval status. If any ads are disapproved, it will auto-fix them.
-> **Day 0 ({recommended_unpause_date}):** Run `/iterate --check` — if all ads are approved, it will unpause the campaign automatically.
+> **Day 0 ({recommended_unpause_date}):** Run `/iterate --check` — if all ads are approved, it will unpause the campaign automatically. If ads are still disapproved or in review, re-run `/iterate --check` the next day. Most ads are approved within 24-48 hours. If still disapproved after 48 hours, review and adjust ad copy in the ad platform dashboard, or contact platform support.
 >
 > **During Phase 1 (Days 1-5):**
 > 1. Run `/iterate --check` on Days 1 and 3 to monitor campaign performance.

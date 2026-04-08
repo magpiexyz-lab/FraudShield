@@ -26,6 +26,9 @@ If HTTP 200 -> proceed to Step 5e. If not -> report to the user:
 Skip Step 5d (no services to auto-fix for static surfaces).
 
 For all other archetypes:
+
+The default health endpoint is `/api/health` (created by bootstrap for web-app and service archetypes). If the deployed app uses a non-standard health endpoint, read the framework stack file for the actual route convention.
+
 ```bash
 curl -s <canonical_url>/api/health
 ```
@@ -70,7 +73,7 @@ If still failing after 2 fix rounds -> report precise per-service diagnosis with
 
 **VERIFY:**
 ```bash
-test -f .runs/deploy-health-4a.json
+python3 -c "import json; d=json.load(open('.runs/deploy-health-4a.json')); assert isinstance(d.get('health_check_passed'), bool), 'health_check_passed not bool'; assert isinstance(d.get('auto_fix_rounds'), int), 'auto_fix_rounds not int'; assert isinstance(d.get('per_service_results'), dict), 'per_service_results not dict'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

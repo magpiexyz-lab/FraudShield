@@ -234,7 +234,7 @@ verify_extended_checks() {
     build-info-collector|security-defender|security-attacker|behavior-verifier|performance-reporter|accessibility-scanner|spec-reviewer)
       _verify_phase1_agent_checks ;;
     design-consistency-checker) _verify_consistency_checker_checks ;;
-    *) echo "WARN: agent-state-gate: unknown agent type '$SUBAGENT_TYPE' for verify — skipping extended checks" >&2 ;;
+    *) ERRORS+=("Unknown agent type '$SUBAGENT_TYPE' for verify. Add a handler to agent-state-gate.sh before using this agent.") ;;
   esac
 }
 
