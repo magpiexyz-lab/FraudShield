@@ -51,6 +51,7 @@ Collect all env vars and set them using the hosting provider's method:
    Additional variables (when `stack.email` is present):
    - `RESEND_API_KEY` — ask the user (from resend.com -> API Keys)
    - `CRON_SECRET` — generate with `openssl rand -base64 24`
+   - `RESEND_FROM` — set to `noreply@<domain>` where `<domain>` is `deploy.domain` from experiment.yaml; fallback to `draftlabs.org`
 
    Additional variables (external service credentials from bootstrap):
    - Read `.env.example` and collect all env var keys

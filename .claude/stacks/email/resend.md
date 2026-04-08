@@ -9,11 +9,12 @@ files:  # conditional: requires framework/nextjs, database/supabase, auth/supaba
   - src/app/api/email/nudge/route.ts
   - vercel.json
 env:
-  server: [RESEND_API_KEY, CRON_SECRET]
+  server: [RESEND_API_KEY, CRON_SECRET, RESEND_FROM]
   client: []
 ci_placeholders:
   RESEND_API_KEY: re_placeholder_key
   CRON_SECRET: placeholder-cron-secret
+  RESEND_FROM: noreply@placeholder.example.com
 clean:
   files: []
   dirs: []
@@ -25,7 +26,7 @@ Transactional email for retention: welcome email after signup + 24h activation n
 
 1. Sign up at [resend.com](https://resend.com) and go to **API Keys** → create a new key
 2. Add the key to `.env.local`: `RESEND_API_KEY=re_...`
-3. Domain verification is optional for MVP — use `onboarding@resend.dev` as the sender address for testing (Resend provides this sandbox domain). For production, verify your domain in Resend → Domains.
+3. **Domain verification** — optional for local testing (uses `onboarding@resend.dev` sandbox). For production: verify your domain in Resend → Domains, add DNS records (DKIM, SPF, Return-Path). `/deploy` sets `RESEND_FROM=noreply@<domain>` automatically.
 
 ## Packages
 
@@ -53,7 +54,7 @@ function getResend(): Resend {
 }
 
 
-const FROM_ADDRESS = "onboarding@resend.dev";
+const FROM_ADDRESS = process.env.RESEND_FROM || "onboarding@resend.dev";
 
 export async function sendWelcomeEmail(to: string, name: string, ctaUrl: string) {
   if (process.env.DEMO_MODE === "true" && process.env.VERCEL === "1") {
@@ -230,6 +231,20 @@ Welcome and nudge email sends fire server-side events via `trackServerEvent()`. 
 |----------|-------|-------------|
 | `RESEND_API_KEY` | Server | Resend API key from resend.com → API Keys |
 | `CRON_SECRET` | Server | Vercel Cron secret — auto-sent as Bearer token to cron endpoints |
+| `RESEND_FROM` | Server | Sender address for transactional emails. Set by `/deploy` to `noreply@<domain>`. Defaults to `onboarding@resend.dev` (sandbox) when absent. |
+
+## Email Sender Domain
+
+Both pipelines use the same sender domain when `stack.email: resend` is enabled:
+
+| Pipeline | Sender | Configured By |
+|----------|--------|---------------|
+| Auth emails (confirmation, reset, magic link) | `noreply@<domain>` | `/deploy` Agent A — Supabase SMTP config |
+| Transactional emails (welcome, nudge) | `noreply@<domain>` | `/deploy` state-3b — `RESEND_FROM` env var |
+
+`<domain>` = `deploy.domain` from experiment.yaml; fallback `draftlabs.org`.
+
+**Prerequisite:** Verify domain in Resend Dashboard → Domains (one-time, team-level setup).
 
 ## Without Auth or Database
 

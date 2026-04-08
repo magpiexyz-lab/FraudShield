@@ -9,7 +9,7 @@
 # When you're done (either way), run: make validate → /bootstrap
 
 # --- 1. Identity ---
-name: TODO                  # Lowercase slug, hyphens only (e.g., "quick-bill"). Used in analytics.
+name: my-experiment          # Lowercase slug, hyphens only (e.g., "quick-bill"). Used in analytics.
 # type: web-app               # Product archetype (default: web-app). See .claude/archetypes/
 # level: 2                    # Experiment scope: 1 (Pitch), 2 (Prototype), 3 (Product).
                                # /spec sets this automatically. Manual: omit to let /bootstrap infer from stack.
@@ -151,3 +151,4 @@ stack:
 deploy:
   url: null
   repo: null
+  domain: null               # Parent domain for hosting + email. Default: draftlabs.org

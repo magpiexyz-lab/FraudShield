@@ -219,3 +219,4 @@ target_geo: [US, GB, CA, AU, NZ]   # English-speaking Five Eyes nations. Used by
 deploy:
   url: null
   repo: null
+  domain: null               # <name>.<domain> for hosting, noreply@<domain> for email. Default: draftlabs.org
