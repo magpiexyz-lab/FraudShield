@@ -422,9 +422,9 @@ def _find_preconditions_text(content: str) -> str | None:
     - Old: single "## Step 1:" section
     - JIT: multiple state files with VALIDATE_*, ANALYTICS_*, or PREREQUISITES names
     """
-    # Old format: ## Step 1: ... ## Step 2:
+    # Old format: ## Step 1: ... ## Step 2: (anchored to reject ### or deeper)
     old_match = re.search(
-        r"## Step 1:.*?\n(.*?)(?=\n## Step 2:|\Z)",
+        r"(?m)^## Step 1:.*?\n(.*?)(?=\n## Step 2:|\Z)",
         content,
         re.DOTALL,
     )
