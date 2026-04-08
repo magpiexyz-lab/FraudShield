@@ -34,7 +34,13 @@ The user decides next steps:
 
 **VERIFY:**
 ```bash
-test -f .runs/solve-trace.json && test -f .runs/solve-context.json
+python3 -c "
+import json
+st = json.load(open('.runs/solve-trace.json'))
+ctx = json.load(open('.runs/solve-context.json'))
+assert st.get('run_id') == ctx.get('run_id'), 'run_id mismatch'
+assert st.get('output'), 'output empty'
+" && echo "OK" || echo "FAIL"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

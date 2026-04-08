@@ -16,7 +16,9 @@ Pass the problem statement verbatim -- do not reinterpret or narrow it.
   ```bash
   python3 -c "
   import json
+  ctx = json.load(open('.runs/solve-context.json'))
   trace = {
+      'run_id': ctx['run_id'],
       'mode': '<light|full>',
       'problem_decomposition': '<problem statement and scope>',
       'constraint_enumeration': '<constraints identified>',
@@ -31,11 +33,17 @@ Pass the problem statement verbatim -- do not reinterpret or narrow it.
 **POSTCONDITIONS:**
 - Solution analysis completed per solve-reasoning.md
 - Output formatted per solve-reasoning.md Phase 6 (full mode) or Step 5 (light mode)
-- `.runs/solve-trace.json` exists with required fields
+- `.runs/solve-trace.json` exists with required fields and `run_id` matching `solve-context.json`
 
 **VERIFY:**
 ```bash
-test -f .runs/solve-trace.json
+python3 -c "
+import json
+d = json.load(open('.runs/solve-trace.json'))
+ctx = json.load(open('.runs/solve-context.json'))
+assert d.get('run_id') == ctx.get('run_id'), 'run_id mismatch'
+assert d.get('mode') in ('light', 'full'), 'invalid mode'
+" && echo "OK" || echo "FAIL"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
