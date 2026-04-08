@@ -28,7 +28,7 @@ print('Wrote .runs/bootstrap-build-validated.json')
 
 **POSTCONDITIONS:**
 - `npm run build` passes (exit code 0)
-- All pages/endpoints/commands exist per archetype
+- All pages/endpoints/commands exist per archetype <!-- enforced by agent behavior, not VERIFY gate -->
 - `.runs/bootstrap-build-validated.json` written
 
 **VERIFY:**

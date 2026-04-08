@@ -179,19 +179,25 @@ failures) — observe.md's trigger evaluation excludes these.
   Populate `smoke_test` and `behavior_verification` from Steps 5d.6-5d.8 results. If the steps were skipped (no `playwright.config.ts` or no auth stack), set `ran: false` and omit the detail fields. The `behavior_verification.failures` array should contain the behavior IDs and brief descriptions from the verifier agent's trace. For CLI or detached-surface deployments, `provision_scan_completed` reflects all *applicable* checks — some checks (e.g., P2 health endpoint) are skipped with `skip:not-applicable` for static surfaces that have no `/api/health` endpoint.
 
 **POSTCONDITIONS:**
-- Health check executed against canonical_url
-- Auto-fix attempted if health check failed (max 2 rounds)
-- Provision scan completed
-- Production smoke test executed (if `playwright.config.ts` exists)
-- Production test user created (if auth + supabase stack present)
-- Production behavior verification executed (if smoke test ran)
-- Template observations filed (if applicable)
+- Health check executed against canonical_url <!-- enforced by agent behavior, not VERIFY gate -->
+- Auto-fix attempted if health check failed (max 2 rounds) <!-- enforced by agent behavior, not VERIFY gate -->
+- Provision scan completed <!-- enforced by agent behavior, not VERIFY gate -->
+- Production smoke test executed (if `playwright.config.ts` exists) <!-- enforced by agent behavior, not VERIFY gate -->
+- Production test user created (if auth + supabase stack present) <!-- enforced by agent behavior, not VERIFY gate -->
+- Production behavior verification executed (if smoke test ran) <!-- enforced by agent behavior, not VERIFY gate -->
+- Template observations filed (if applicable) <!-- enforced by agent behavior, not VERIFY gate -->
 - `.runs/deploy-health.json` exists
-- `.runs/prod-test-credentials.json` exists (if test user created)
+- `.runs/prod-test-credentials.json` exists (if test user created) <!-- enforced by agent behavior, not VERIFY gate -->
 
 **VERIFY:**
 ```bash
-test -f .runs/deploy-health.json
+python3 -c "
+import json
+d = json.load(open('.runs/deploy-health.json'))
+assert isinstance(d.get('health_check_passed'), bool), 'health_check_passed not bool'
+assert isinstance(d.get('auto_fix_rounds'), int), 'auto_fix_rounds not int'
+assert d.get('provision_scan_completed') is not None, 'provision_scan_completed missing'
+"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

@@ -61,11 +61,11 @@ bash .claude/scripts/init-context.sh retro
 ```
 
 **POSTCONDITIONS:**
-- `experiment/experiment.yaml` has been read
-- `experiment/EVENTS.yaml` has been read
-- Git activity and app scope data collected
-- Iterate manifest and Q-score history read (if available)
-- Summary presented to user
+- `experiment/experiment.yaml` has been read <!-- enforced by agent behavior, not VERIFY gate -->
+- `experiment/EVENTS.yaml` has been read <!-- enforced by agent behavior, not VERIFY gate -->
+- Git activity and app scope data collected <!-- enforced by agent behavior, not VERIFY gate -->
+- Iterate manifest and Q-score history read (if available) <!-- enforced by agent behavior, not VERIFY gate -->
+- Summary presented to user <!-- enforced by agent behavior, not VERIFY gate -->
 - `.runs/retro-context.json` exists
 
 **VERIFY:**

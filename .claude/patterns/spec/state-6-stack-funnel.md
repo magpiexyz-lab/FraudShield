@@ -158,11 +158,22 @@ If the user requests changes, revise the YAML and present it again. Repeat until
 
 **POSTCONDITIONS:**
 - Complete experiment.yaml assembled with all 7 sections
-- User approved the specification
+- User approved the specification <!-- enforced by agent behavior, not VERIFY gate -->
 
 **VERIFY:**
 ```bash
-grep -q 'stack:' experiment/experiment.yaml && grep -q 'funnel:' experiment/experiment.yaml
+python3 -c "
+import yaml
+d = yaml.safe_load(open('experiment/experiment.yaml'))
+assert d.get('name'), 'name missing'
+assert d.get('type'), 'type missing'
+assert d.get('thesis'), 'thesis missing'
+assert d.get('behaviors'), 'behaviors missing'
+gp = d.get('golden_path') or d.get('endpoints') or d.get('commands')
+assert gp, 'no golden_path/endpoints/commands'
+assert d.get('stack'), 'stack missing'
+assert d.get('funnel'), 'funnel missing'
+"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

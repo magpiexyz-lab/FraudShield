@@ -71,17 +71,17 @@ bash .claude/scripts/init-context.sh deploy '{"deploy_mode":"initial","added_ser
 - `added_services`, `removed_services`, `unchanged_services`: populate from step 3b diff results (empty arrays for initial mode)
 
 **POSTCONDITIONS:**
-- `package.json` exists
-- On `main` branch with clean working tree
-- `npm run build` succeeds
-- experiment.yaml read and parsed
-- Archetype file read and surface type resolved
-- All prerequisite checks passed (or appropriate stops issued)
+- `package.json` exists <!-- enforced by agent behavior, not VERIFY gate -->
+- On `main` branch with clean working tree <!-- enforced by agent behavior, not VERIFY gate -->
+- `npm run build` succeeds <!-- enforced by agent behavior, not VERIFY gate -->
+- experiment.yaml read and parsed <!-- enforced by agent behavior, not VERIFY gate -->
+- Archetype file read and surface type resolved <!-- enforced by agent behavior, not VERIFY gate -->
+- All prerequisite checks passed (or appropriate stops issued) <!-- enforced by agent behavior, not VERIFY gate -->
 - `.runs/deploy-context.json` exists
 
 **VERIFY:**
 ```bash
-test -f .runs/deploy-context.json
+python3 -c "import json; d=json.load(open('.runs/deploy-context.json')); assert d.get('deploy_mode') in ('initial','update'), 'deploy_mode=%s' % d.get('deploy_mode')"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

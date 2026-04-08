@@ -1,6 +1,6 @@
 {
   "verify": {
-    "0": "test -f .runs/verify-context.json && test -f .runs/fix-log.md && test -d .runs/agent-traces",
+    "0": "test -f .runs/verify-context.json && test -f .runs/fix-log.md && test -d .runs/agent-traces && python3 -c \"import json; assert json.load(open('.runs/verify-context.json')).get('skill'), 'skill field empty in verify-context.json'\"",
     "1": "test -f .runs/build-result.json && python3 -c \"import json; assert json.load(open('.runs/build-result.json'))['exit_code'] == 0\"",
     "2": "ls .runs/agent-traces/*.json >/dev/null 2>&1",
     "3a": "ls .runs/agent-traces/design-critic-*.json >/dev/null 2>&1",
@@ -9,7 +9,7 @@
     "4": "python3 -c \"import json; d=json.load(open('.runs/security-merge.json')); assert 'run_id' in d, 'run_id missing'; has_source=d.get('source')=='no-security-agents'; assert has_source or (isinstance(d.get('issues'), list) and isinstance(d.get('merged_issues'), int)), 'full-scope merge missing issues or merged_issues'\"",
     "5": "python3 -c \"import json; d=json.load(open('.runs/e2e-result.json')); assert d.get('skipped') is True or d.get('passed') is not None, 'neither skipped nor passed field present'; assert d.get('skipped') or isinstance(d.get('attempts'), int), 'not skipped but attempts missing'\"",
     "6": "true",
-    "7a": "head -1 .runs/verify-report.md | grep -q '^---$'",
+    "7a": "head -1 .runs/verify-report.md | grep -q '^---$' && python3 -c \"c=open('.runs/verify-report.md').read(); fm=c.split('---')[1] if c.count('---')>=2 else ''; missing=[f for f in ['overall_verdict:','hard_gate_failure:','process_violation:','agents_expected:','agents_completed:'] if f not in fm]; assert not missing, 'verify-report frontmatter missing: %s' % missing\"",
     "7b": {
       "verify": "head -1 .runs/verify-report.md | grep -q '^---$' && tail -1 .runs/verify-history.jsonl | python3 -c 'import json,sys,os,glob; e=json.loads(sys.stdin.read()); ds=e.get(\"dimension_scores\",{}); assert not(ds.get(\"Q_build\",0)>0) or (os.path.exists(\".runs/build-result.json\") and json.load(open(\".runs/build-result.json\")).get(\"exit_code\")==0), \"Q_build>0 but build failed\"; assert not(ds.get(\"Q_security\",0)>0) or glob.glob(\".runs/agent-traces/security-*.json\"), \"Q_security>0 but no security traces\"; assert not(ds.get(\"Q_design\",0)>0) or os.path.exists(\".runs/agent-traces/design-critic.json\"), \"Q_design>0 but no design-critic trace\"; hgf=e.get(\"hard_gate_failure\",False); [(lambda p,vk,vv,ex=None: (lambda t: (lambda n: None if not n or hgf else (_ for _ in ()).throw(AssertionError(p+\" requires hard_gate_failure=true\")))(t.get(vk) in vv or t.get(\"recovery\",False) or any(t.get(ek,0)>ev for ek,ev in (ex or []))))(json.load(open(p))) if os.path.exists(p) else None)(p,vk,vv,ex) for p,vk,vv,ex in [(\".runs/agent-traces/design-critic.json\",\"verdict\",[\"unresolved\"],None),(\".runs/agent-traces/ux-journeyer.json\",\"verdict\",[\"blocked\"],[(\"unresolved_dead_ends\",0)]),(\".runs/agent-traces/security-fixer.json\",\"verdict\",[\"partial\"],[(\"unresolved_critical\",0)])]]'"
     },
@@ -19,7 +19,7 @@
     "0": "test -f .runs/bootstrap-context.json && git branch --show-current | grep -q 'feat/bootstrap'",
     "1": "test -f experiment/experiment.yaml && grep -q 'name:' experiment/experiment.yaml && test -f experiment/EVENTS.yaml && grep -q 'events:' experiment/EVENTS.yaml",
     "2": "python3 -c \"import json; d=json.load(open('.runs/bootstrap-archetype-trace.json')); assert d.get('archetype'), 'archetype field empty'\"",
-    "3": "python3 -c \"import json; d=json.load(open('.runs/bootstrap-validation-trace.json')); assert d.get('experiment_valid') is not None, 'experiment_valid missing'\"",
+    "3": "python3 -c \"import json; d=json.load(open('.runs/bootstrap-validation-trace.json')); assert d.get('experiment_valid') is True, 'experiment_valid is %s' % d.get('experiment_valid')\"",
     "3a": "python3 -c \"import json; d=json.load(open('.runs/gate-verdicts/bg1.json')); assert d.get('verdict')=='PASS', 'BG1 verdict is %s' % d.get('verdict'); assert d.get('timestamp','')!='', 'timestamp empty'; assert d.get('branch','')!='', 'branch empty'\"",
     "3b": "python3 -c \"import json; assert json.load(open('.runs/bootstrap-context.json')).get('duplicate_check_done') == True, 'duplicate_check_done not set'\"",
     "4": "python3 -c \"import json; d=json.load(open('.runs/bootstrap-preconditions.json')); assert 'node_available' in d, 'node_available missing'\"",
@@ -29,13 +29,13 @@
     "8": "python3 -c \"import json; assert json.load(open('.runs/bootstrap-context.json')).get('preflight_passed') == True, 'preflight_passed not set'\"",
     "9": "python3 -c \"import json; d=json.load(open('package.json')); assert 'dependencies' in d, 'dependencies missing'\" && test -d node_modules && test -n \"$(ls -A node_modules)\"",
     "10": "test -f .runs/current-visual-brief.md && grep -q 'theme\\|palette\\|font\\|color' .runs/current-visual-brief.md",
-    "11": "ls src/lib/*.ts >/dev/null 2>&1 && (test ! -f .runs/image-manifest.json || python3 -c \"import json; m=json.load(open('.runs/image-manifest.json')); s=m.get('status'); assert s in ('complete','placeholders','skipped'), f'bad status: {s}'; ic=len(m.get('images',[])); assert s!='complete' or ic>=7, f'expected >=7 images, got {ic}'\")",
+    "11": "python3 -c \"import json,os,glob; a=json.load(open('.runs/bootstrap-context.json')).get('archetype','web-app'); assert len(glob.glob('src/lib/*.ts'))>=1, 'no .ts in src/lib/'; assert (a!='web-app' or os.path.isfile('src/app/layout.tsx')), 'web-app missing layout.tsx'; assert (a!='service' or os.path.isdir('src/app/api')), 'service missing api/'; assert (a!='cli' or any(os.path.isfile(f) for f in ['src/index.ts','src/cli.ts'])), 'cli missing entry'\" && (test ! -f .runs/image-manifest.json || python3 -c \"import json; m=json.load(open('.runs/image-manifest.json')); s=m.get('status'); assert s in ('complete','placeholders','skipped'), f'bad status: {s}'; ic=len(m.get('images',[])); assert s!='complete' or ic>=7, f'expected >=7 images, got {ic}'\")",
     "12": "python3 -c \"import json; d=json.load(open('.runs/gate-verdicts/bg2.5.json')); assert d.get('verdict')=='PASS', 'BG2.5 verdict is %s' % d.get('verdict'); assert d.get('timestamp','')!='', 'timestamp empty'\"",
     "13": "npm run build --silent && test -f .runs/bootstrap-build-validated.json",
     "13a": "python3 -c \"import json; d=json.load(open('.runs/bootstrap-design-validated.json')); assert all(v in (True, 'skipped') for v in d.values()), f'failed checks: {d}'\"",
     "13b": "grep -q 'phase2-wire' .runs/current-plan.md",
     "13c": "python3 -c \"import json; d=json.load(open('.runs/gate-verdicts/bg2.json')); assert d.get('verdict')=='PASS', 'BG2 verdict is %s' % d.get('verdict'); assert d.get('timestamp','')!='', 'timestamp empty'\"",
-    "14": "python3 -c \"import json; d=json.load(open('.runs/bootstrap-wire-trace.json')); assert 'checkpoint' in d, 'checkpoint missing'\"",
+    "14": "python3 -c \"import json; d=json.load(open('.runs/bootstrap-wire-trace.json')); assert 'checkpoint' in d, 'checkpoint missing'; a=json.load(open('.runs/bootstrap-context.json')).get('archetype','web-app'); assert a!='web-app' or isinstance(d.get('pages_wired'),list), 'web-app missing pages_wired'; assert a!='service' or isinstance(d.get('api_routes_wired'),list), 'service missing api_routes_wired'; assert a!='cli' or isinstance(d.get('commands_wired'),list), 'cli missing commands_wired'\"",
     "15": "python3 -c \"import json; d=json.load(open('.runs/bootstrap-scan.json')); assert isinstance(d.get('critical'), list), 'critical not a list'; assert isinstance(d.get('on_touch'), list), 'on_touch not a list'; assert isinstance(d.get('skip'), list), 'skip not a list'; assert isinstance(d.get('already_covered'), list), 'already_covered not a list'\"",
     "16": "python3 -c \"import json; d=json.load(open('.runs/bootstrap-modules-trace.json')); assert isinstance(d.get('modules_completed'), list), 'modules_completed not a list'; assert isinstance(d.get('build_passing'), bool), 'build_passing not a bool'; assert d['build_passing'], 'build not passing after unit test generation'\"",
     "17": "test -f experiment/on-touch.yaml && test -s experiment/on-touch.yaml && python3 -c \"import json; d=json.load(open('.runs/bootstrap-on-touch-trace.json')); assert isinstance(d.get('on_touch_count'), int), 'on_touch_count not int'; assert d.get('file')=='experiment/on-touch.yaml', 'file field mismatch'\"",
@@ -65,8 +65,8 @@
         {"path": "procedures/plan-validation.md", "artifact": ".runs/plan-validation.json"}
       ]
     },
-    "7": "test -f .runs/current-plan.md && grep -q 'checkpoint:' .runs/current-plan.md",
-    "8": "grep -q 'Process Checklist' .runs/current-plan.md",
+    "7": "test -f .runs/current-plan.md && grep -q 'checkpoint:' .runs/current-plan.md && python3 -c \"c=open('.runs/current-plan.md').read(); fm=c.split('---')[1] if c.startswith('---') and c.count('---')>=2 else ''; missing=[f for f in ['skill:','type:','scope:'] if f not in fm]; assert not missing, 'frontmatter missing: %s' % missing\"",
+    "8": "grep -q 'Process Checklist' .runs/current-plan.md && grep -q 'checkpoint: phase2-step5' .runs/current-plan.md",
     "9": "grep -q 'checkpoint: phase2-step6' .runs/current-plan.md && python3 -c \"import json; pt=json.load(open('.runs/change-context.json')).get('preliminary_type',''); assert pt!='Feature' or '  - id:' in open('experiment/experiment.yaml').read(), 'Feature requires behaviors'\"",
     "10": "grep -q 'checkpoint: phase2-step7' .runs/current-plan.md && python3 -c \"import json,glob,os; ts=glob.glob('.runs/agent-traces/implementer-*.json')+glob.glob('.runs/agent-traces/visual-implementer-*.json'); bad=[t for t in ts if json.load(open(t)).get('status')=='complete' and not json.load(open(t)).get('worktree_merged')]; assert not bad,'Unmerged: '+','.join(bad); assert not(len(ts)>=2 and not os.path.exists('.runs/consistency-scan-result.json')),'2+ implementers but no consistency-scan-result.json'\"",
     "11": "head -1 .runs/verify-report.md | grep -q '^---$' && grep -q 'checkpoint: phase2-step8' .runs/current-plan.md",
@@ -113,14 +113,14 @@
     "6": "grep -q 'campaign_id' experiment/ads.yaml 2>/dev/null && python3 -c \"import json; s=set(json.load(open('.runs/distribute-step-check.json')).get('steps_completed',[])); required={'6a','6e','6j','6f'}; assert required.issubset(s), f'missing steps: {required - s}'\" && python3 -c \"import json; d=json.load(open('.runs/distribute-campaign-audit.json')); assert d.get('all_passed')==True or d.get('manual_creation')==True, 'campaign audit not passed'\""
   },
   "deploy": {
-    "0": "test -f .runs/deploy-context.json",
+    "0": "python3 -c \"import json; d=json.load(open('.runs/deploy-context.json')); assert d.get('deploy_mode') in ('initial','update'), 'deploy_mode=%s' % d.get('deploy_mode')\"",
     "1": "python3 -c \"import json; d=json.load(open('.runs/deploy-config.json')); assert isinstance(d.get('hosting_gathered'), bool), 'hosting_gathered not bool'; assert isinstance(d.get('database_gathered'), bool), 'database_gathered not bool'; assert isinstance(d.get('external_services'), list), 'external_services not a list'\"",
     "2": "python3 -c \"import json; assert json.load(open('.runs/deploy-context.json')).get('approved') == True, 'approved not set'\"",
     "3a": "python3 -c \"import json; d=json.load(open('.runs/deploy-provision-3a.json')); assert isinstance(d.get('database_provisioned'), bool), 'database_provisioned not bool'; assert 'supabase_ref' in d, 'supabase_ref missing'; assert isinstance(d.get('oauth_credentials_collected'), bool), 'oauth_credentials_collected not bool'\"",
     "3b": "python3 -c \"import json; d=json.load(open('.runs/deploy-provision-3b.json')); assert isinstance(d.get('hosting_created'), bool), 'hosting_created not bool'; assert isinstance(d.get('env_vars_set'), bool), 'env_vars_set not bool'; assert 'canonical_url' in d, 'canonical_url missing'; assert isinstance(d.get('domain_added'), bool), 'domain_added not bool'\"",
     "3c": "python3 -c \"import json; d=json.load(open('.runs/deploy-provision.json')); assert isinstance(d.get('hosting_created'), bool), 'hosting_created not bool'; assert d.get('canonical_url','')!='', 'canonical_url empty'; assert isinstance(d.get('agents_completed'), list), 'agents_completed not a list'\"",
     "4a": "python3 -c \"import json; d=json.load(open('.runs/deploy-health-4a.json')); assert isinstance(d.get('health_check_passed'), bool), 'health_check_passed not bool'; assert isinstance(d.get('auto_fix_rounds'), int), 'auto_fix_rounds not int'; assert isinstance(d.get('per_service_results'), dict), 'per_service_results not dict'\"",
-    "4b": "test -f .runs/deploy-health.json && python3 -c \"import json; d=json.load(open('.runs/deploy-health.json')); assert 'health_check_passed' in d\"",
+    "4b": "python3 -c \"import json; d=json.load(open('.runs/deploy-health.json')); assert isinstance(d.get('health_check_passed'), bool), 'health_check_passed not bool'; assert isinstance(d.get('auto_fix_rounds'), int), 'auto_fix_rounds not int'; assert d.get('provision_scan_completed') is not None, 'provision_scan_completed missing'\"",
     "5": "python3 -c \"import json; d=json.load(open('.runs/deploy-manifest.json')); assert d.get('name'), 'name empty'; assert d.get('canonical_url'), 'canonical_url empty'; assert d.get('deploy_mode') in ('initial','update'), 'deploy_mode=%s' % d.get('deploy_mode'); assert d.get('deployed_at'), 'deployed_at empty'; h=d.get('hosting',{}); assert h.get('provider'), 'hosting.provider empty'\"",
     "6": "python3 -c \"import json; d=json.load(open('.runs/observe-result.json')); assert d['skill']=='deploy'\""
   },
@@ -139,7 +139,7 @@
     "3": "python3 -c \"import yaml; d=yaml.safe_load(open('experiment/experiment.yaml')); bs=d.get('behaviors',[]); assert isinstance(bs, list) and len(bs)>0, 'no behaviors'; assert all(b.get('id') and b.get('hypothesis_id') for b in bs), 'behavior missing required fields'\"",
     "4": "python3 -c \"import yaml; d=yaml.safe_load(open('experiment/experiment.yaml')); gp=d.get('golden_path') or d.get('endpoints') or d.get('commands'); assert isinstance(gp, list) and len(gp)>0, 'no golden_path/endpoints/commands'\"",
     "5": "python3 -c \"import yaml; d=yaml.safe_load(open('experiment/experiment.yaml')); vs=d.get('variants',[]); assert isinstance(vs, list) and len(vs)>0, 'no variants'; assert all(v.get('slug') for v in vs), 'variant missing slug'\"",
-    "6": "grep -q 'stack:' experiment/experiment.yaml && grep -q 'funnel:' experiment/experiment.yaml",
+    "6": "python3 -c \"import yaml; d=yaml.safe_load(open('experiment/experiment.yaml')); assert d.get('name'), 'name missing'; assert d.get('type'), 'type missing'; assert d.get('thesis'), 'thesis missing'; assert d.get('behaviors'), 'behaviors missing'; gp=d.get('golden_path') or d.get('endpoints') or d.get('commands'); assert gp, 'no golden_path/endpoints/commands'; assert d.get('stack'), 'stack missing'; assert d.get('funnel'), 'funnel missing'\"",
     "7": "python3 -c \"import json,yaml; yaml.safe_load(open('experiment/experiment.yaml')); m=json.load(open('.runs/spec-manifest.json')); assert m.get('created_at'), 'created_at empty'; assert isinstance(m.get('hypotheses'), list) and len(m['hypotheses'])>0, 'no hypotheses'; assert isinstance(m.get('behaviors'), list) and len(m['behaviors'])>0, 'no behaviors'\"",
     "8": "python3 -c \"import json; d=json.load(open('.runs/observe-result.json')); assert d['skill']=='spec'\""
   },

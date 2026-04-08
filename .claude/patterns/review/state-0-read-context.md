@@ -43,10 +43,10 @@
   If no hot spots, skip this instruction.
 
 **POSTCONDITIONS:**
-- `CLAUDE.md`, `experiment/EVENTS.yaml`, `scripts/check-inventory.md`, `experiment/experiment.example.yaml` have been read
-- `observation_backlog` is set (possibly empty)
-- `prior_precision` is set (possibly empty)
-- Observation hot spots computed (possibly none)
+- `CLAUDE.md`, `experiment/EVENTS.yaml`, `scripts/check-inventory.md`, `experiment/experiment.example.yaml` have been read <!-- enforced by agent behavior, not VERIFY gate -->
+- `observation_backlog` is set (possibly empty) <!-- enforced by agent behavior, not VERIFY gate -->
+- `prior_precision` is set (possibly empty) <!-- enforced by agent behavior, not VERIFY gate -->
+- Observation hot spots computed (possibly none) <!-- enforced by agent behavior, not VERIFY gate -->
 - `.runs/review-context.json` exists with state tracking initialized
 
 Clean stale epilogue artifacts and create the context file to initialize state tracking:

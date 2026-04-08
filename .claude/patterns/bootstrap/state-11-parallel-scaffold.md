@@ -215,28 +215,31 @@ Check off in `.runs/current-plan.md` for each completed B2 subagent:
 - `- [x] scaffold-landing completed` (or mark N/A if surface=none)
 
 **POSTCONDITIONS:**
-- All subagents returned completion reports
+- All subagents returned completion reports <!-- enforced by agent behavior, not VERIFY gate -->
 - `src/lib/` contains >=1 `.ts` file
-- Page/route files created per archetype
-- Externals classification available
-- Landing page created (if surface != none)
+- Page/route files created per archetype (web-app: layout.tsx; service: api/; cli: index.ts)
+- Externals classification available <!-- enforced by agent behavior, not VERIFY gate -->
+- Landing page created (if surface != none) <!-- enforced by agent behavior, not VERIFY gate -->
 
 **VERIFY:**
 ```bash
-ls src/lib/*.ts && echo "libs OK" || echo "libs FAIL"
-# Archetype-specific (run the line matching the experiment.yaml type):
-# web-app: test -f src/app/layout.tsx && echo "web-app OK"
-# service: ls src/app/api/ && echo "service OK"
-# cli: test -f src/index.ts && echo "cli OK"
-# Image manifest validation (non-blocking for missing manifest)
-test ! -f .runs/image-manifest.json && echo "images N/A" || python3 -c "
+python3 -c "
+import json, os, glob
+a = json.load(open('.runs/bootstrap-context.json')).get('archetype', 'web-app')
+assert len(glob.glob('src/lib/*.ts')) >= 1, 'no .ts in src/lib/'
+if a == 'web-app':
+    assert os.path.isfile('src/app/layout.tsx'), 'web-app missing layout.tsx'
+elif a == 'service':
+    assert os.path.isdir('src/app/api'), 'service missing api/'
+elif a == 'cli':
+    assert any(os.path.isfile(f) for f in ['src/index.ts', 'src/cli.ts']), 'cli missing entry'
+" && (test ! -f .runs/image-manifest.json || python3 -c "
 import json; m=json.load(open('.runs/image-manifest.json'))
 s=m.get('status')
 assert s in ('complete','placeholders','skipped'), f'bad status: {s}'
 ic=len(m.get('images',[]))
 assert s!='complete' or ic>=7, f'expected >=7 images, got {ic}'
-print(f'images OK (status={s}, count={ic})')
-"
+")
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

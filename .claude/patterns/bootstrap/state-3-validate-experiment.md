@@ -44,18 +44,18 @@
   ```
 
 **POSTCONDITIONS:**
-- All required fields present and non-empty
-- `name` matches `^[a-z][a-z0-9-]*$`
-- No TODO values remain
-- Archetype-specific fields validated
-- Stack dependency rules satisfied (payment->auth+db, email->auth+db)
-- Quality/testing dependency satisfied if applicable
-- Variant structure valid if applicable
+- All required fields present and non-empty <!-- enforced by agent behavior, not VERIFY gate -->
+- `name` matches `^[a-z][a-z0-9-]*$` <!-- enforced by agent behavior, not VERIFY gate -->
+- No TODO values remain <!-- enforced by agent behavior, not VERIFY gate -->
+- Archetype-specific fields validated <!-- enforced by agent behavior, not VERIFY gate -->
+- Stack dependency rules satisfied (payment->auth+db, email->auth+db) <!-- enforced by agent behavior, not VERIFY gate -->
+- Quality/testing dependency satisfied if applicable <!-- enforced by agent behavior, not VERIFY gate -->
+- Variant structure valid if applicable <!-- enforced by agent behavior, not VERIFY gate -->
 - `.runs/bootstrap-validation-trace.json` exists with `experiment_valid` field
 
 **VERIFY:**
 ```bash
-python3 -c "import json; d=json.load(open('.runs/bootstrap-validation-trace.json')); assert d.get('experiment_valid') is not None, 'experiment_valid missing'"
+python3 -c "import json; d=json.load(open('.runs/bootstrap-validation-trace.json')); assert d.get('experiment_valid') is True, 'experiment_valid is %s' % d.get('experiment_valid')"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

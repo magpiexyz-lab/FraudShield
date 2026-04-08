@@ -54,15 +54,16 @@ Before proceeding to Step 5, execute the process gate:
 - **G3 Spec Gate**: Spawn the `gate-keeper` agent (`subagent_type: gate-keeper`). Pass: "Execute G3 Spec Gate for type [classification]. Verify: current-plan.md has `## Process Checklist`, checkpoint is at phase2-step5 or later. For Feature that adds NEW behaviors (behavior IDs not previously in experiment.yaml): experiment.yaml behaviors updated. For Feature that refines EXISTING behavior implementations without adding new behaviors: current-plan.md notes which existing behaviors are being refined (experiment.yaml update not required). For Upgrade: .env.example updated if needed. For Production quality: stack.testing present." If gate-keeper returns BLOCK, fix blocking items.
 
 **POSTCONDITIONS:**
-- Procedure file read (if applicable for type)
-- `verify.md` read — scope table and agent list extracted
+- Procedure file read (if applicable for type) <!-- enforced by agent behavior, not VERIFY gate -->
+- `verify.md` read — scope table and agent list extracted <!-- enforced by agent behavior, not VERIFY gate -->
 - `## Process Checklist` appended to `.runs/current-plan.md`
 - Checkpoint updated to `phase2-step5`
-- G3 Spec Gate passed
+- G3 Spec Gate passed <!-- enforced by agent behavior, not VERIFY gate -->
 
 **VERIFY:**
 ```bash
-grep -q 'Process Checklist' .runs/current-plan.md
+grep -q 'Process Checklist' .runs/current-plan.md && \
+grep -q 'checkpoint: phase2-step5' .runs/current-plan.md
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

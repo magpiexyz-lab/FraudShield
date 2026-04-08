@@ -60,12 +60,18 @@ If the user replied **"approve and clear"** or **"2"**:
   3. STOP — do NOT proceed to Phase 2.
 
 **POSTCONDITIONS:**
-- User has explicitly approved the plan (option 1 or 2)
+- User has explicitly approved the plan (option 1 or 2) <!-- enforced by agent behavior, not VERIFY gate -->
 - Plan saved to `.runs/current-plan.md` with YAML frontmatter
 
 **VERIFY:**
 ```bash
-test -f .runs/current-plan.md && grep -q 'checkpoint:' .runs/current-plan.md
+test -f .runs/current-plan.md && grep -q 'checkpoint:' .runs/current-plan.md && \
+python3 -c "
+c = open('.runs/current-plan.md').read()
+fm = c.split('---')[1] if c.startswith('---') and c.count('---') >= 2 else ''
+missing = [f for f in ['skill:', 'type:', 'scope:'] if f not in fm]
+assert not missing, 'frontmatter missing: %s' % missing
+"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

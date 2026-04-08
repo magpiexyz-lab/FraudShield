@@ -71,8 +71,8 @@ if not missing and not incomplete: print('  All scaffold agents completed with t
 ```
 
 **POSTCONDITIONS:**
-- Content quality checks pass (web-app) or skipped (service/cli)
-- SEO baseline verified (web-app) or skipped (service/cli)
+- Content quality checks pass (web-app) or skipped (service/cli) <!-- enforced by agent behavior, not VERIFY gate -->
+- SEO baseline verified (web-app) or skipped (service/cli) <!-- enforced by agent behavior, not VERIFY gate -->
 - Checkpoint updated to `phase2-wire`
 
 **VERIFY:**

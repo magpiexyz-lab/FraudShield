@@ -52,14 +52,25 @@ Verify scaffold-wire trace: `test -f .runs/agent-traces/scaffold-wire.json && py
   ```
 
 **POSTCONDITIONS:**
-- API routes created (if mutation behaviors exist)
-- Wire integration complete
+- API routes created (if mutation behaviors exist) <!-- enforced by agent behavior, not VERIFY gate -->
+- Wire integration complete <!-- enforced by agent behavior, not VERIFY gate -->
 - Checkpoint updated to `awaiting-verify`
 - `.runs/bootstrap-wire-trace.json` exists with wiring details
 
 **VERIFY:**
 ```bash
-python3 -c "import json; d=json.load(open('.runs/bootstrap-wire-trace.json')); assert 'checkpoint' in d, 'checkpoint missing'"
+python3 -c "
+import json
+d = json.load(open('.runs/bootstrap-wire-trace.json'))
+assert 'checkpoint' in d, 'checkpoint missing'
+a = json.load(open('.runs/bootstrap-context.json')).get('archetype', 'web-app')
+if a == 'web-app':
+    assert isinstance(d.get('pages_wired'), list), 'web-app missing pages_wired'
+elif a == 'service':
+    assert isinstance(d.get('api_routes_wired'), list), 'service missing api_routes_wired'
+elif a == 'cli':
+    assert isinstance(d.get('commands_wired'), list), 'cli missing commands_wired'
+"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
