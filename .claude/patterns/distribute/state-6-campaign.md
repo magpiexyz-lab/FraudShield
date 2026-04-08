@@ -10,7 +10,7 @@ Campaign metadata (`campaign_id`, `campaign_url`) is committed to the feature br
 
 ### 6a: Check for existing campaign
 
-1. If `experiment/ads.yaml` has a `campaign_id` field → campaign already created (idempotent), skip to **6i**
+1. If `experiment/ads.yaml` has a `campaign_id` field → campaign already created (idempotent), skip to **6j**
 2. If not → proceed to **6b**
 
 ### 6b: Verify Chrome MCP availability
@@ -66,6 +66,36 @@ If phase is 2, or channel is not `google-ads`:
 
 Read all settings from `experiment/ads.yaml`. Then execute the following steps via Chrome MCP, interacting with the Google Ads UI:
 
+**Initialize evidence file** before starting any steps:
+
+```bash
+python3 -c "
+import json, os, datetime
+os.makedirs('.runs', exist_ok=True)
+json.dump({'entries': [], 'initialized_at': datetime.datetime.now(datetime.UTC).strftime('%Y-%m-%dT%H:%M:%SZ')}, open('.runs/distribute-campaign-evidence.json', 'w'), indent=2)
+print('Evidence file initialized')
+"
+```
+
+After completing each sub-step below, record what you observed on the page by running:
+
+```bash
+python3 -c "
+import json, datetime
+f = '.runs/distribute-campaign-evidence.json'
+data = json.load(open(f))
+data['entries'].append({
+    'step': '<STEP_KEY>',
+    'action': '<what you did>',
+    'evidence': '<what you literally observed on the page>',
+    'timestamp': datetime.datetime.now(datetime.UTC).strftime('%Y-%m-%dT%H:%M:%SZ')
+})
+json.dump(data, open(f, 'w'), indent=2)
+"
+```
+
+Replace `<STEP_KEY>`, `<action>`, and `<evidence>` with the actual values for each sub-step. The `> **Record evidence:**` callouts below specify the key and expected content.
+
 **Step 0: Ensure Conversion Action exists**
 
 Before creating the campaign, verify the sub-account has the required conversion action for offline import:
@@ -87,6 +117,8 @@ Before creating the campaign, verify the sub-account has the required conversion
 
 This step is idempotent — on re-runs, Step 0 checks first and skips if the action exists. The action is per sub-account (not per campaign) because Google Ads uses the gclid to auto-attribute conversions to the correct campaign.
 
+> **Record evidence:** step=`conversion_action`, action="Checked/created conversion action", evidence="<what you saw: e.g., 'MVP Signup conversion action found in list' or 'Created MVP Signup conversion action, verified it appears in list'>"
+
 **Step 1: Start new campaign**
 - Click "+ New campaign" button
 - Select "Create a campaign without a goal's guidance" (to avoid Smart Campaign defaults)
@@ -103,9 +135,15 @@ This step is idempotent — on re-runs, Step 0 checks first and skips if the act
 - Bidding: Select "Manual CPC" — uncheck "Help increase conversions with Enhanced CPC"
 - Set default max CPC bid to `${max_cpc_cents / 100}`
 
+> **Record evidence (2 entries):**
+> - step=`campaign_settings`, action="Set bidding to Manual CPC, disabled Enhanced CPC", evidence="<what you saw: e.g., 'Bidding section shows Manual CPC selected, Enhanced CPC checkbox unchecked, max CPC set to $X.XX'>"
+> - step=`network_settings`, action="Unchecked Search Partners and Display Network", evidence="<what you saw: e.g., 'Networks section shows only Google Search checked, Search partners unchecked, Display Network unchecked'>"
+
 **Step 3: Ad group**
 - Ad group name: `{campaign_name}-ag1`
 - Add all keywords from ads.yaml `keywords.phrase` list (one per line, each wrapped in quotes for Phrase Match: `"keyword here"`)
+
+> **Record evidence:** step=`keywords`, action="Added keywords from ads.yaml", evidence="<what you saw: e.g., 'Added 8 keywords in phrase match, keyword list shows: invoice for freelancers, get paid faster freelancer, ...'>" Include the count and match type.
 
 **Step 4: Create RSAs**
 - For each RSA defined in ads.yaml `creatives` section:
@@ -115,17 +153,25 @@ This step is idempotent — on re-runs, Step 0 checks first and skips if the act
   - Click "Done"
 - Repeat for second RSA if defined
 
+> **Record evidence (2 entries):**
+> - step=`rsa_1`, action="Created first RSA", evidence="<what you saw: e.g., 'RSA 1 created with 5 headlines (H1 pinned pos 1, H2 pinned pos 2), 2 descriptions, ad saved'>"
+> - step=`rsa_2`, action="Created second RSA", evidence="<what you saw: e.g., 'RSA 2 created with 5 headlines (H1 pinned pos 1, H2 pinned pos 2), 2 descriptions, ad saved'>" If only 1 RSA was defined in ads.yaml, record step=`rsa_2` with evidence="Only 1 RSA defined in ads.yaml, skipped".
+
 **Step 5: Add negative keywords**
 - Navigate to Keywords → Negative keywords
 - Click "+" to add
 - Add all terms from ads.yaml `negative_keywords` list (one per line)
 - Save at campaign level
 
+> **Record evidence:** step=`negative_keywords`, action="Added negative keywords", evidence="<what you saw: e.g., 'Added 52 negative keywords at campaign level, list includes: enterprise invoicing, accounting software, ...'>" Include the count.
+
 **Step 6: Review and create**
 - Review the campaign summary page
 - **Do NOT click "Publish" yet** — the campaign must be in PAUSED status
 - Click "Create campaign" or "Save" (campaign is created as paused/draft)
 - If Google Ads auto-enables it, immediately pause it
+
+> **Record evidence:** step=`campaign_status`, action="Verified campaign is paused", evidence="<what you saw: e.g., 'Campaign status shows Paused on dashboard, confirmed not auto-enabled'>"
 
 **Step 7: Record campaign metadata**
 - From the campaign dashboard, read the campaign ID (visible in the URL: `campaignId=XXXXXXXXXX`)
@@ -212,6 +258,191 @@ Google Search ads support optional Image Assets displayed alongside the text ad.
 - Retry from the failed step (up to 2 retries per step)
 - If still failing after retries: STOP and ask the user to resolve the issue in Chrome, then re-run `/distribute` (Step 6a idempotency check will skip already-completed work)
 
+**Manual creation fallback:** If Chrome MCP fails completely (no MCP tools available, persistent crashes, or user prefers to create manually):
+
+1. Tell the user:
+   > Chrome MCP automation failed. You can create the campaign manually in Google Ads using the settings in `experiment/ads.yaml`.
+   > After creating the campaign, provide me with:
+   > - The campaign ID (from the URL: `campaignId=XXXXXXXXXX`)
+   > - The campaign dashboard URL
+
+2. When the user provides the campaign_id and URL:
+   - Add to `experiment/ads.yaml`:
+     ```yaml
+     campaign_id: "<provided campaign_id>"
+     campaign_url: "<provided dashboard_url>"
+     manual_creation: true
+     ```
+   - Create a minimal evidence file:
+     ```bash
+     python3 -c "
+     import json, datetime
+     json.dump({
+         'entries': [],
+         'manual_creation': True,
+         'initialized_at': datetime.datetime.now(datetime.UTC).strftime('%Y-%m-%dT%H:%M:%SZ'),
+         'reason': 'Chrome MCP automation failed, user created campaign manually'
+     }, open('.runs/distribute-campaign-evidence.json', 'w'), indent=2)
+     "
+     ```
+   - Proceed to **6j** (the manual_creation path will ask user to verbally confirm settings).
+
+### 6j: Campaign audit
+
+Read `.runs/distribute-campaign-evidence.json` and cross-check against `experiment/ads.yaml`.
+
+**If `manual_creation: true` in ads.yaml:** Skip automated evidence checks. Instead, present the following confirmation checklist to the user:
+
+> **Manual Campaign Audit -- please confirm each setting:**
+> 1. Bidding strategy is Manual CPC (not Maximize Clicks or Smart)? (y/n)
+> 2. Enhanced CPC is OFF? (y/n)
+> 3. Networks: Search only (no Search Partners, no Display Network)? (y/n)
+> 4. All keywords from ads.yaml are present with correct match type? (y/n)
+> 5. Both RSAs are created with pinned headlines? (y/n)
+> 6. Negative keywords are added at campaign level? (y/n)
+> 7. Campaign status is PAUSED? (y/n)
+
+Record all responses. If any is "n": STOP and ask user to fix in Google Ads UI, then re-confirm. Write audit result:
+
+```bash
+python3 -c "
+import json, datetime
+# Set all_passed to False if any response was 'n'
+audit = {
+    'manual_creation': True,
+    'all_passed': True,
+    'checked_at': datetime.datetime.now(datetime.UTC).strftime('%Y-%m-%dT%H:%M:%SZ'),
+    'checks': [
+        {'name': 'manual_confirmation', 'expected': 'all_yes', 'actual': 'all_yes', 'pass': True}
+    ]
+}
+json.dump(audit, open('.runs/distribute-campaign-audit.json', 'w'), indent=2)
+"
+```
+
+**If automated (not manual_creation):** Perform the following checks.
+
+Read the evidence file:
+```bash
+python3 -c "
+import json
+evidence = json.load(open('.runs/distribute-campaign-evidence.json'))
+entries = evidence.get('entries', [])
+print(f'Evidence entries: {len(entries)}')
+for e in entries:
+    print(f'  {e[\"step\"]}: {e[\"evidence\"][:80]}')
+"
+```
+
+**Required checks (8 total):**
+
+| # | Check Name | Evidence Key | Expected | Cross-check with ads.yaml |
+|---|-----------|-------------|----------|--------------------------|
+| 1 | conversion_action | `conversion_action` | non-empty evidence | -- |
+| 2 | campaign_settings | `campaign_settings` | evidence mentions "Manual CPC" | `budget.bidding_strategy == manual_cpc` |
+| 3 | network_settings | `network_settings` | evidence mentions "Search only" or unchecked Partners/Display | -- |
+| 4 | keywords_count | `keywords` | evidence count > 0 | count matches `len(keywords.phrase)` from ads.yaml |
+| 5 | rsa_1 | `rsa_1` | non-empty evidence | -- |
+| 6 | rsa_2 | `rsa_2` | non-empty evidence | -- |
+| 7 | negative_keywords | `negative_keywords` | evidence count > 0 | -- |
+| 8 | campaign_status | `campaign_status` | evidence mentions "Paused" | -- |
+
+Write the audit result:
+
+```bash
+python3 -c "
+import json, datetime, re, yaml
+
+evidence = json.load(open('.runs/distribute-campaign-evidence.json'))
+entries = {e['step']: e for e in evidence.get('entries', [])}
+ads = yaml.safe_load(open('experiment/ads.yaml')) or {}
+
+required_keys = [
+    'conversion_action', 'campaign_settings', 'network_settings',
+    'keywords', 'rsa_1', 'rsa_2', 'negative_keywords', 'campaign_status'
+]
+
+checks = []
+
+# Check: all 8 evidence entries exist with non-empty evidence
+for key in required_keys:
+    entry = entries.get(key, {})
+    has_evidence = bool(entry.get('evidence', '').strip())
+    checks.append({
+        'name': f'evidence_exists_{key}',
+        'expected': 'non-empty evidence',
+        'actual': entry.get('evidence', '')[:120] if has_evidence else 'MISSING',
+        'pass': has_evidence
+    })
+
+# Cross-check: keyword count
+kw_entry = entries.get('keywords', {})
+if kw_entry.get('evidence'):
+    ads_kw_count = len(ads.get('keywords', {}).get('phrase', []))
+    nums = re.findall(r'(\d+)\s*keyword', kw_entry['evidence'].lower())
+    evidence_count = int(nums[0]) if nums else -1
+    checks.append({
+        'name': 'keywords_count_match',
+        'expected': f'{ads_kw_count} keywords from ads.yaml',
+        'actual': f'{evidence_count} keywords from evidence',
+        'pass': evidence_count == ads_kw_count or evidence_count == -1
+    })
+
+# Cross-check: bidding strategy
+cs_entry = entries.get('campaign_settings', {})
+if cs_entry.get('evidence'):
+    expects_manual = ads.get('budget', {}).get('bidding_strategy', '') == 'manual_cpc' or ads.get('playbook', {}).get('bidding_strategy', '') == 'manual_cpc'
+    evidence_says_manual = 'manual cpc' in cs_entry['evidence'].lower()
+    checks.append({
+        'name': 'bidding_strategy_match',
+        'expected': 'manual_cpc' if expects_manual else ads.get('budget', {}).get('bidding_strategy', 'unknown'),
+        'actual': 'manual_cpc' if evidence_says_manual else cs_entry['evidence'][:80],
+        'pass': not expects_manual or evidence_says_manual
+    })
+
+# Cross-check: campaign status = paused
+status_entry = entries.get('campaign_status', {})
+if status_entry.get('evidence'):
+    checks.append({
+        'name': 'campaign_paused',
+        'expected': 'paused',
+        'actual': status_entry['evidence'][:80],
+        'pass': 'paus' in status_entry['evidence'].lower()
+    })
+
+all_passed = all(c['pass'] for c in checks)
+audit = {
+    'checked_at': datetime.datetime.now(datetime.UTC).strftime('%Y-%m-%dT%H:%M:%SZ'),
+    'all_passed': all_passed,
+    'checks': checks,
+    'evidence_file': '.runs/distribute-campaign-evidence.json',
+    'ads_yaml': 'experiment/ads.yaml'
+}
+json.dump(audit, open('.runs/distribute-campaign-audit.json', 'w'), indent=2)
+status = 'PASSED' if all_passed else 'FAILED'
+passed_count = sum(1 for c in checks if c['pass'])
+print(f'AUDIT: {status} -- {passed_count}/{len(checks)} checks passed')
+if not all_passed:
+    for c in checks:
+        if not c['pass']:
+            name, exp, act = c['name'], c['expected'], c['actual']
+            print(f'  FAILED: {name} -- expected: {exp}, actual: {act}')
+"
+```
+
+If `all_passed` is False:
+
+> **Campaign audit FAILED.** The following checks did not pass:
+> {list each failed check with name, expected, actual}
+>
+> Please fix these in the Google Ads UI, then re-run `/distribute` -- step 6a will detect the existing campaign and skip to 6j for re-audit.
+
+**STOP and wait for user.** Do not proceed to 6f until audit passes.
+
+If `all_passed` is True:
+
+> Campaign audit passed ({N}/{N} checks). Proceeding to launch protocol.
+
 ### 6f: Phase 1 launch protocol
 
 Read `phase` from `.runs/distribute-context.json`. If phase is 1:
@@ -220,8 +451,8 @@ Read `phase` from `.runs/distribute-context.json`. If phase is 1:
 2. Compute the recommended unpause date (48 hours from campaign creation):
    ```bash
    UNPAUSE_DATE=$(python3 -c "
-   from datetime import datetime, timedelta
-   unpause = datetime.utcnow() + timedelta(hours=48)
+   import datetime
+   unpause = datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=48)
    print(unpause.strftime('%Y-%m-%d %H:%M UTC'))
    ")
    echo "Recommended unpause: $UNPAUSE_DATE"
@@ -306,8 +537,21 @@ ads = {}
 if os.path.exists('experiment/ads.yaml'):
     import yaml
     ads = yaml.safe_load(open('experiment/ads.yaml')) or {}
-if ads.get('campaign_id'):
-    steps.extend(['6b','6c','6d','6e','6f','6g'])
+manual = ads.get('manual_creation', False)
+has_evidence = os.path.exists('.runs/distribute-campaign-evidence.json')
+if ads.get('campaign_id') and (has_evidence or manual):
+    steps.extend(['6b','6c','6d','6e'])
+elif ads.get('campaign_id'):
+    # campaign_id exists but no evidence file and not manual -- evidence required
+    steps.extend(['6b','6c','6d'])
+audit_file = '.runs/distribute-campaign-audit.json'
+if os.path.exists(audit_file):
+    audit = json.load(open(audit_file))
+    if audit.get('all_passed') or audit.get('manual_creation'):
+        steps.append('6j')
+if ads.get('launch_protocol') or ads.get('campaign_id'):
+    steps.append('6f')
+steps.append('6g')
 pr = subprocess.run(['gh','pr','view','--json','number'], capture_output=True, text=True)
 if pr.returncode == 0:
     steps.append('6h')
@@ -320,7 +564,8 @@ json.dump({
     'key_outputs': {
         'campaign_id': str(ads.get('campaign_id', '')),
         'image_assets_uploaded': str(ads.get('image_assets_uploaded', 'false')),
-        'phase': json.load(open('.runs/distribute-context.json')).get('phase', 0) if os.path.exists('.runs/distribute-context.json') else 0
+        'phase': json.load(open('.runs/distribute-context.json')).get('phase', 0) if os.path.exists('.runs/distribute-context.json') else 0,
+        'audit_passed': str(os.path.exists(audit_file) and (json.load(open(audit_file)).get('all_passed', False) or json.load(open(audit_file)).get('manual_creation', False))) if os.path.exists(audit_file) else 'false'
     }
 }, open('.runs/distribute-step-check.json', 'w'), indent=2)
 print('SELF-CHECK: wrote .runs/distribute-step-check.json with', len(steps), 'steps')
@@ -331,12 +576,13 @@ This checkpoint is mandatory. Do not skip it.
 
 **POSTCONDITIONS:**
 - Campaign created via Chrome MCP with campaign_id/campaign_url in ads.yaml, OR existing campaign detected and skipped
+- Campaign audit passed (`.runs/distribute-campaign-audit.json` with `all_passed: true`) or manual_creation path confirmed
 - PR auto-merged to main (or intentionally skipped with reason)
-- `.runs/distribute-step-check.json` exists with at least 1 completed step
+- `.runs/distribute-step-check.json` exists with steps 6a, 6e, 6j, 6f completed
 
 **VERIFY:**
 ```bash
-(grep -q 'campaign_id' experiment/ads.yaml 2>/dev/null || grep -q 'manual_creation' experiment/ads.yaml 2>/dev/null || test -f experiment/ads.yaml) && python3 -c "import json; d=json.load(open('.runs/distribute-step-check.json')); assert len(d.get('steps_completed',[])) > 0"
+grep -q 'campaign_id' experiment/ads.yaml 2>/dev/null && python3 -c "import json; s=set(json.load(open('.runs/distribute-step-check.json')).get('steps_completed',[])); required={'6a','6e','6j','6f'}; assert required.issubset(s), f'missing steps: {required - s}'" && python3 -c "import json; d=json.load(open('.runs/distribute-campaign-audit.json')); assert d.get('all_passed')==True or d.get('manual_creation')==True, 'campaign audit not passed'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

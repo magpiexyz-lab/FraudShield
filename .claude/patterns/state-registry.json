@@ -110,7 +110,7 @@
     "3": "test -f .runs/verify-report.md && (grep -q 'utm_source' src/app/page.tsx 2>/dev/null || grep -q 'utm_source' site/index.html 2>/dev/null) && python3 -c \"import json; d=json.load(open('.runs/distribute-impl-step-check.json')); assert len(d.get('steps_completed',[])) > 0\"",
     "4": "test -f experiment/ads.yaml && head -1 experiment/ads.yaml | grep -q 'channel'",
     "5": "python3 -c \"import json; assert json.load(open('.runs/distribute-context.json')).get('approved') == True\"",
-    "6": "(grep -q 'campaign_id' experiment/ads.yaml 2>/dev/null || grep -q 'manual_creation' experiment/ads.yaml 2>/dev/null || test -f experiment/ads.yaml) && python3 -c \"import json; d=json.load(open('.runs/distribute-step-check.json')); assert len(d.get('steps_completed',[])) > 0\""
+    "6": "grep -q 'campaign_id' experiment/ads.yaml 2>/dev/null && python3 -c \"import json; s=set(json.load(open('.runs/distribute-step-check.json')).get('steps_completed',[])); required={'6a','6e','6j','6f'}; assert required.issubset(s), f'missing steps: {required - s}'\" && python3 -c \"import json; d=json.load(open('.runs/distribute-campaign-audit.json')); assert d.get('all_passed')==True or d.get('manual_creation')==True, 'campaign audit not passed'\""
   },
   "deploy": {
     "0": "test -f .runs/deploy-context.json",
