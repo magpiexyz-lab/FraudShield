@@ -128,13 +128,7 @@ Only include agents that were spawned (per scope). Mark others as "skipped — o
 
 **VERIFY:**
 ```bash
-head -1 .runs/verify-report.md | grep -q '^---$' && \
-python3 -c "
-c = open('.runs/verify-report.md').read()
-fm = c.split('---')[1] if c.count('---') >= 2 else ''
-missing = [f for f in ['overall_verdict:', 'hard_gate_failure:', 'process_violation:', 'agents_expected:', 'agents_completed:'] if f not in fm]
-assert not missing, 'verify-report frontmatter missing: %s' % missing
-"
+head -1 .runs/verify-report.md | grep -q '^---$' && python3 -c "c=open('.runs/verify-report.md').read(); fm=c.split('---')[1] if c.count('---')>=2 else ''; missing=[f for f in ['overall_verdict:','hard_gate_failure:','process_violation:','agents_expected:','agents_completed:'] if f not in fm]; assert not missing, 'verify-report frontmatter missing: %s' % missing"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

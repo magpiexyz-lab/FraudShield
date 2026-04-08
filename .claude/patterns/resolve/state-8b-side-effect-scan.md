@@ -37,7 +37,7 @@ the fix was not designed for them).
 
 **VERIFY:**
 ```bash
-test -f .runs/resolve-side-effects.json
+python3 -c "import json; d=json.load(open('.runs/resolve-side-effects.json')); assert isinstance(d.get('comments_posted'), list), 'comments_posted not a list'; assert isinstance(d.get('potentially_resolved'), list), 'potentially_resolved not a list'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

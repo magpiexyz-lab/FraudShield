@@ -45,7 +45,7 @@ Scan the bootstrapped codebase to classify modules for unit test generation.
 
 **VERIFY:**
 ```bash
-test -f .runs/bootstrap-scan.json
+python3 -c "import json; d=json.load(open('.runs/bootstrap-scan.json')); assert isinstance(d.get('critical'), list), 'critical not a list'; assert isinstance(d.get('on_touch'), list), 'on_touch not a list'; assert isinstance(d.get('skip'), list), 'skip not a list'; assert isinstance(d.get('already_covered'), list), 'already_covered not a list'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

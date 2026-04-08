@@ -158,7 +158,7 @@ Next: Run /bootstrap to scaffold the app, or edit experiment/experiment.yaml to 
 **POSTCONDITIONS:**
 - `experiment/experiment.yaml` written and valid YAML
 - `.runs/spec-manifest.json` written and valid JSON
-- Q-score computed and appended to `.runs/verify-history.jsonl`
+- Q-score computed and appended to `.runs/verify-history.jsonl` <!-- enforced by agent behavior, not VERIFY gate -->
 - Observation check completed (if applicable)
 - Summary printed to user
 

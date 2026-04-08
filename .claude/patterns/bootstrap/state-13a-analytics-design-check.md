@@ -65,10 +65,7 @@ print('Wrote .runs/bootstrap-design-validated.json')
 
 **VERIFY:**
 ```bash
-python3 -c "
-import json; d=json.load(open('.runs/bootstrap-design-validated.json'))
-assert all(v in (True, 'skipped') for v in d.values()), f'failed checks: {d}'
-"
+python3 -c "import json; d=json.load(open('.runs/bootstrap-design-validated.json')); assert all(v in (True, 'skipped') for v in d.values()), f'failed checks: {d}'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

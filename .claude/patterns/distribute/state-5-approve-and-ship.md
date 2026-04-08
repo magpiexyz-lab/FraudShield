@@ -68,7 +68,7 @@ git push -u origin HEAD
 
 **VERIFY:**
 ```bash
-python3 -c "import json; assert json.load(open('.runs/distribute-context.json')).get('approved') == True, 'approved not set'"
+python3 -c "import json; assert json.load(open('.runs/distribute-context.json')).get('approved') == True"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

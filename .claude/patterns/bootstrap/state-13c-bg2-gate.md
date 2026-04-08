@@ -26,11 +26,7 @@ Check off in `.runs/current-plan.md`: `- [x] BG2 Orchestration Gate passed`
 
 **VERIFY:**
 ```bash
-python3 -c "
-import json; d=json.load(open('.runs/gate-verdicts/bg2.json'))
-assert d.get('verdict')=='PASS', 'BG2 verdict is %s' % d.get('verdict')
-assert d.get('timestamp','')!='', 'timestamp empty'
-"
+python3 -c "import json; d=json.load(open('.runs/gate-verdicts/bg2.json')); assert d.get('verdict')=='PASS', 'BG2 verdict is %s' % d.get('verdict'); assert d.get('timestamp','')!='', 'timestamp empty'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

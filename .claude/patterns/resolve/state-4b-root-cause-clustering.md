@@ -46,7 +46,7 @@ Present in diagnosis report:
 
 **VERIFY:**
 ```bash
-test -f .runs/resolve-clusters.json
+python3 -c "import json; d=json.load(open('.runs/resolve-clusters.json')); cs=d.get('clusters',[]); assert isinstance(cs, list), 'clusters not a list'; assert isinstance(d.get('uncorrelated'), list), 'uncorrelated not a list'; [c.get('root_cause') or (_ for _ in ()).throw(AssertionError('cluster missing root_cause')) for c in cs]"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

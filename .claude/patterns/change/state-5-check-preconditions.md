@@ -50,7 +50,7 @@
 
 **VERIFY:**
 ```bash
-echo "Preconditions passed — proceeding to Phase 1 planning"
+python3 -c "import json; ctx=json.load(open('.runs/change-context.json')); assert isinstance(ctx.get('preconditions_checked'), list), 'preconditions_checked missing'"
 ```
 
 **STATE TRACKING:** After postconditions pass, update context and mark this state complete:

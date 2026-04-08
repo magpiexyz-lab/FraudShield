@@ -103,7 +103,7 @@ If no behaviors have `actor: system` or `actor: cron`: "None defined — all beh
 
 **VERIFY:**
 ```bash
-test -f .runs/current-plan.md
+test -f .runs/current-plan.md && test -s .runs/current-plan.md && grep -q 'Behaviors' .runs/current-plan.md
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

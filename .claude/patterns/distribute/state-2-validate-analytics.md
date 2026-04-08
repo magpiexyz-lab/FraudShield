@@ -78,11 +78,7 @@ json.dump(p, open('.runs/distribute-preconditions.json', 'w'), indent=2)
 
 **VERIFY:**
 ```bash
-python3 -c "
-import json; p=json.load(open('.runs/distribute-preconditions.json'))
-assert p.get('project_name_verified') is not None, 'project_name check skipped'
-assert p.get('analytics_live'), 'live analytics not verified'
-"
+python3 -c "import json; p=json.load(open('.runs/distribute-preconditions.json')); assert p.get('project_name_verified') is not None; assert p.get('analytics_live')"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

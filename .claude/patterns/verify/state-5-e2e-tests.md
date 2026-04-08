@@ -73,7 +73,7 @@
 
 **VERIFY:**
 ```bash
-test -f .runs/e2e-result.json
+python3 -c "import json; d=json.load(open('.runs/e2e-result.json')); assert d.get('skipped') is True or d.get('passed') is not None, 'neither skipped nor passed field present'; assert d.get('skipped') or isinstance(d.get('attempts'), int), 'not skipped but attempts missing'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

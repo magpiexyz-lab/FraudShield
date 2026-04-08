@@ -223,23 +223,7 @@ Check off in `.runs/current-plan.md` for each completed B2 subagent:
 
 **VERIFY:**
 ```bash
-python3 -c "
-import json, os, glob
-a = json.load(open('.runs/bootstrap-context.json')).get('archetype', 'web-app')
-assert len(glob.glob('src/lib/*.ts')) >= 1, 'no .ts in src/lib/'
-if a == 'web-app':
-    assert os.path.isfile('src/app/layout.tsx'), 'web-app missing layout.tsx'
-elif a == 'service':
-    assert os.path.isdir('src/app/api'), 'service missing api/'
-elif a == 'cli':
-    assert any(os.path.isfile(f) for f in ['src/index.ts', 'src/cli.ts']), 'cli missing entry'
-" && (test ! -f .runs/image-manifest.json || python3 -c "
-import json; m=json.load(open('.runs/image-manifest.json'))
-s=m.get('status')
-assert s in ('complete','placeholders','skipped'), f'bad status: {s}'
-ic=len(m.get('images',[]))
-assert s!='complete' or ic>=7, f'expected >=7 images, got {ic}'
-")
+python3 -c "import json,os,glob; a=json.load(open('.runs/bootstrap-context.json')).get('archetype','web-app'); assert len(glob.glob('src/lib/*.ts'))>=1, 'no .ts in src/lib/'; assert (a!='web-app' or os.path.isfile('src/app/layout.tsx')), 'web-app missing layout.tsx'; assert (a!='service' or os.path.isdir('src/app/api')), 'service missing api/'; assert (a!='cli' or any(os.path.isfile(f) for f in ['src/index.ts','src/cli.ts'])), 'cli missing entry'" && (test ! -f .runs/image-manifest.json || python3 -c "import json; m=json.load(open('.runs/image-manifest.json')); s=m.get('status'); assert s in ('complete','placeholders','skipped'), f'bad status: {s}'; ic=len(m.get('images',[])); assert s!='complete' or ic>=7, f'expected >=7 images, got {ic}'")
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

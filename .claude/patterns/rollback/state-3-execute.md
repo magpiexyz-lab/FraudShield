@@ -67,7 +67,7 @@ python3 .claude/scripts/write-q-score.py \
 
 **VERIFY:**
 ```bash
-test -f .runs/rollback-result.json
+python3 -c "import json; d=json.load(open('.runs/rollback-result.json')); assert d.get('rollback_executed') is not None, 'rollback_executed missing'; assert d.get('health_check_passed') is not None, 'health_check_passed missing'; assert d.get('method') in ('cli','manual'), 'method must be cli or manual'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

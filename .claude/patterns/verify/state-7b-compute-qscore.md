@@ -139,26 +139,7 @@
 
 **VERIFY:**
 ```bash
-head -1 .runs/verify-report.md | grep -q '^---$' && tail -1 .runs/verify-history.jsonl | python3 -c "
-import json, sys, os, glob
-e = json.loads(sys.stdin.read())
-ds = e.get('dimension_scores', {})
-assert not(ds.get('Q_build', 0) > 0) or (os.path.exists('.runs/build-result.json') and json.load(open('.runs/build-result.json')).get('exit_code') == 0), 'Q_build>0 but build failed'
-assert not(ds.get('Q_security', 0) > 0) or glob.glob('.runs/agent-traces/security-*.json'), 'Q_security>0 but no security traces'
-assert not(ds.get('Q_design', 0) > 0) or os.path.exists('.runs/agent-traces/design-critic.json'), 'Q_design>0 but no design-critic trace'
-hgf = e.get('hard_gate_failure', False)
-def chk(path, vkey, vvals, extras=None):
-    if not os.path.exists(path): return
-    t = json.load(open(path))
-    needs_hgf = t.get(vkey) in vvals or t.get('recovery', False)
-    if extras:
-        for ek, ev in extras:
-            if t.get(ek, 0) > ev: needs_hgf = True
-    assert not needs_hgf or hgf, path + ' requires hard_gate_failure=true (verdict=%s recovery=%s)' % (t.get(vkey), t.get('recovery'))
-chk('.runs/agent-traces/design-critic.json', 'verdict', ['unresolved'])
-chk('.runs/agent-traces/ux-journeyer.json', 'verdict', ['blocked'], [('unresolved_dead_ends', 0)])
-chk('.runs/agent-traces/security-fixer.json', 'verdict', ['partial'], [('unresolved_critical', 0)])
-"
+head -1 .runs/verify-report.md | grep -q '^---$' && tail -1 .runs/verify-history.jsonl | python3 -c 'import json,sys,os,glob; e=json.loads(sys.stdin.read()); ds=e.get("dimension_scores",{}); assert not(ds.get("Q_build",0)>0) or (os.path.exists(".runs/build-result.json") and json.load(open(".runs/build-result.json")).get("exit_code")==0), "Q_build>0 but build failed"; assert not(ds.get("Q_security",0)>0) or glob.glob(".runs/agent-traces/security-*.json"), "Q_security>0 but no security traces"; assert not(ds.get("Q_design",0)>0) or os.path.exists(".runs/agent-traces/design-critic.json"), "Q_design>0 but no design-critic trace"; hgf=e.get("hard_gate_failure",False); [(lambda p,vk,vv,ex=None: (lambda t: (lambda n: None if not n or hgf else (_ for _ in ()).throw(AssertionError(p+" requires hard_gate_failure=true")))(t.get(vk) in vv or t.get("recovery",False) or any(t.get(ek,0)>ev for ek,ev in (ex or []))))(json.load(open(p))) if os.path.exists(p) else None)(p,vk,vv,ex) for p,vk,vv,ex in [(".runs/agent-traces/design-critic.json","verdict",["unresolved"],None),(".runs/agent-traces/ux-journeyer.json","verdict",["blocked"],[("unresolved_dead_ends",0)]),(".runs/agent-traces/security-fixer.json","verdict",["partial"],[("unresolved_critical",0)])]]'
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

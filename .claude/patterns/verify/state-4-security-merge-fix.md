@@ -100,7 +100,7 @@ After each fix, append to `.runs/fix-log.md`.
 
 **VERIFY:**
 ```bash
-test -f .runs/security-merge.json
+python3 -c "import json; d=json.load(open('.runs/security-merge.json')); assert 'run_id' in d, 'run_id missing'; has_source=d.get('source')=='no-security-agents'; assert has_source or (isinstance(d.get('issues'), list) and isinstance(d.get('merged_issues'), int)), 'full-scope merge missing issues or merged_issues'"
 ```
 
 > **Hook-enforced:** `agent-state-gate.sh` validates STATE 4 postconditions before allowing observer to spawn.

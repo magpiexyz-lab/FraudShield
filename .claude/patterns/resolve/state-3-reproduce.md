@@ -91,7 +91,7 @@ issues.
 
 **VERIFY:**
 ```bash
-test -f .runs/resolve-reproduction.json
+python3 -c "import json; d=json.load(open('.runs/resolve-reproduction.json')); rs=d.get('reproductions',[]); assert isinstance(rs, list) and len(rs)>0, 'reproductions empty'; r=rs[0]; assert 'divergence_point' in r, 'divergence_point missing'; assert 'expected' in r, 'expected missing'; assert 'actual' in r, 'actual missing'; b=d.get('pre_fix_baseline',{}); assert 'frontmatter' in b and 'semantics' in b and 'consistency' in b, 'pre_fix_baseline incomplete'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

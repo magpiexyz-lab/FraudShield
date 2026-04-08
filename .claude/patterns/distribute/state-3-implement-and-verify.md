@@ -212,7 +212,7 @@ This checkpoint is mandatory. Do not skip it.
 
 **VERIFY:**
 ```bash
-test -f .runs/verify-report.md && (grep -q 'utm_source' src/app/page.tsx 2>/dev/null || grep -q 'utm_source' site/index.html 2>/dev/null) && python3 -c "import json; d=json.load(open('.runs/distribute-impl-step-check.json')); assert len(d.get('steps_completed',[])) > 0"
+test -f .runs/verify-report.md && (grep -q 'utm_source' src/app/page.tsx 2>/dev/null || grep -q 'utm_source' site/index.html 2>/dev/null) && python3 -c "import json; d=json.load(open('.runs/distribute-impl-step-check.json')); assert len(d.get('steps_completed',[])) > 0" && grep -q 'feedback_submitted' experiment/EVENTS.yaml
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

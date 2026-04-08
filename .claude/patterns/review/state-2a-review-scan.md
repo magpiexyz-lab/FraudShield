@@ -179,7 +179,7 @@ After all 3 return: collect up to 15 findings, deduplicate.
 
 **VERIFY:**
 ```bash
-test -f .runs/review-findings.json
+python3 -c "import json; d=json.load(open('.runs/review-findings.json')); fs=d.get('findings',[]); assert isinstance(fs, list), 'findings not a list'; tc=d.get('total_count'); assert isinstance(tc, int) and tc>=0, 'total_count invalid'; assert tc==len(fs), 'total_count=%d but len(findings)=%d' % (tc, len(fs)); [f.get('severity') in ('HIGH','MEDIUM','LOW') or (_ for _ in ()).throw(AssertionError('finding %s has bad severity: %s' % (f.get('title','?'), f.get('severity')))) for f in fs]"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

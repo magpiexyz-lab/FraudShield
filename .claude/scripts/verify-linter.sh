@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # verify-linter.sh — Detect VERIFY-postcondition drift in state files.
 # Checks: artifact coverage, state-file/registry divergence, unjustified true VERIFY.
-# Exit 0 if clean (DIVERGED is warning-only), exit 1 if UNCOVERED or UNJUSTIFIED_TRUE.
+# Exit 0 if clean, exit 1 if UNCOVERED, UNJUSTIFIED_TRUE, or DIVERGED.
 
 set -euo pipefail
 
@@ -209,8 +209,9 @@ for skill, states in registry.items():
                     )
 
         # --- Check 2: State file / registry divergence ---
+        # Skip divergence check for VERIFY=true entries (state files have prose justifications)
         file_verify = extract_verify_from_file(file_text)
-        if commands_diverge(file_verify, verify_cmd):
+        if verify_cmd.strip() != "true" and commands_diverge(file_verify, verify_cmd):
             file_summary = normalize_verify(file_verify)[:60].replace('\n', ' | ')
             reg_summary = normalize_verify(verify_cmd)[:60].replace('\n', ' | ')
             diverged.append(
@@ -253,7 +254,7 @@ if unjustified_true:
 
 print(f"Summary: {len(uncovered)} uncovered, {len(diverged)} diverged, {len(unjustified_true)} unjustified_true")
 
-# Exit code: 1 if UNCOVERED or UNJUSTIFIED_TRUE, 0 otherwise
-if uncovered or unjustified_true:
+# Exit code: 1 if UNCOVERED, UNJUSTIFIED_TRUE, or DIVERGED, 0 otherwise
+if uncovered or unjustified_true or diverged:
     sys.exit(1)
 PYTHON_SCRIPT

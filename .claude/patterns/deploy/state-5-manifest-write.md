@@ -182,7 +182,7 @@ python3 .claude/scripts/write-q-score.py \
 **POSTCONDITIONS:**
 - Deployment summary printed to user
 - `.runs/deploy-manifest.json` written with all resource details
-- Q-score computed and appended to `.runs/verify-history.jsonl`
+- Q-score computed and appended to `.runs/verify-history.jsonl` <!-- enforced by agent behavior, not VERIFY gate -->
 
 **VERIFY:**
 ```bash

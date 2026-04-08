@@ -56,13 +56,7 @@ After filing the retro, guide the user:
 
 **VERIFY:**
 ```bash
-python3 -c "
-import json, os
-ctx = json.load(open('.runs/retro-context.json'))
-# STATE 3 is valid if the issue was filed or user explicitly skipped
-assert ctx.get('issue_filed') or ctx.get('issue_skipped'), 'retro issue not filed and not skipped — check gh issue create output'
-print('STATE 3 VERIFY OK')
-"
+python3 -c "import json; ctx=json.load(open('.runs/retro-context.json')); assert ctx.get('issue_filed') or ctx.get('issue_skipped'), 'retro issue not filed and not skipped'"
 ```
 
 > **Note:** The ACTIONS must set `issue_filed: true` (with `issue_url`) or `issue_skipped: true` in `retro-context.json` before the VERIFY runs.

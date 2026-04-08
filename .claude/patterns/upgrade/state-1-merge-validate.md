@@ -98,7 +98,7 @@ Write `.runs/upgrade-diff-report.json`:
 
 **VERIFY:**
 ```bash
-test -f .runs/upgrade-diff-report.json
+python3 -c "import json; d=json.load(open('.runs/upgrade-diff-report.json')); assert d.get('merge_status') in ('clean','conflict','dry-run'), 'merge_status invalid: %s' % d.get('merge_status'); assert isinstance(d.get('conflicts'), list), 'conflicts not list'; assert isinstance(d.get('orphans'), list), 'orphans not list'; assert isinstance(d.get('missing'), list), 'missing not list'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

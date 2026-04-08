@@ -38,7 +38,7 @@ Skip if: trivial fix (typo) unlikely to recur.
 
 **VERIFY:**
 ```bash
-test -f .runs/patterns-saved.json
+python3 -c "import json; d=json.load(open('.runs/patterns-saved.json')); assert isinstance(d.get('patterns_saved'), list), 'patterns_saved not a list'; assert 'skipped_reason' in d, 'skipped_reason missing'; assert len(d['patterns_saved'])>0 or d['skipped_reason'], 'no patterns saved and no skip reason'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

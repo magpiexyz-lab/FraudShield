@@ -229,7 +229,7 @@ def _extract_advance_state_calls(filepath):
             if stripped.startswith("#"):
                 continue
             m = re.search(
-                r'advance-state\.sh\s+([a-z][-a-z]*)\s+([a-z0-9_]+)',
+                r'(?:bash\s+\S*/|\./)advance-state\.sh\s+([a-z][-a-z]*)\s+([a-z0-9_]+)',
                 stripped,
             )
             if m:
@@ -353,3 +353,33 @@ class TestPostconditionSyntax:
                 if "calls" in entry and not isinstance(entry["calls"], list):
                     errors.append(f"{skill}.{state_id}: 'calls' not list")
         assert not errors, "\n".join(errors)
+
+
+# ---------------------------------------------------------------------------
+# Verify-linter integration (VERIFY-POSTCONDITIONS drift detection)
+# ---------------------------------------------------------------------------
+
+
+class TestVerifyLinterClean:
+    """verify-linter.sh must report 0 uncovered, 0 diverged, 0 unjustified_true."""
+
+    def test_verify_linter_passes(self):
+        import subprocess
+
+        repo_root = os.path.join(os.path.dirname(__file__), "..")
+        linter = os.path.join(repo_root, ".claude", "scripts", "verify-linter.sh")
+        result = subprocess.run(
+            ["bash", linter],
+            capture_output=True,
+            text=True,
+            cwd=repo_root,
+        )
+        assert result.returncode == 0, (
+            f"verify-linter.sh failed (exit {result.returncode}):\n"
+            f"{result.stdout}\n{result.stderr}"
+        )
+        assert "0 uncovered" in result.stdout, f"Expected 0 uncovered:\n{result.stdout}"
+        assert "0 diverged" in result.stdout, f"Expected 0 diverged:\n{result.stdout}"
+        assert "0 unjustified_true" in result.stdout, (
+            f"Expected 0 unjustified_true:\n{result.stdout}"
+        )

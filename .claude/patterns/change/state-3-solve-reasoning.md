@@ -88,20 +88,7 @@ json.dump(trace, open('.runs/solve-trace.json', 'w'), indent=2)
 
 **VERIFY:**
 ```bash
-python3 -c "
-import json
-ctx = json.load(open('.runs/change-context.json'))
-sd = ctx.get('solve_depth')
-assert sd in ('light', 'full'), 'solve_depth=%s' % sd
-pt = ctx.get('preliminary_type', '')
-aa = ctx.get('affected_areas', 0)
-if pt in ('Feature', 'Upgrade') and isinstance(aa, int) and aa >= 3:
-    assert sd == 'full', 'Formula requires full (type=%s, areas=%s) but got %s' % (pt, aa, sd)
-st = json.load(open('.runs/solve-trace.json'))
-required = ['mode', 'problem_decomposition', 'constraint_enumeration', 'solution_design', 'self_check', 'output']
-missing = [k for k in required if k not in st]
-assert not missing, 'solve-trace.json missing keys: %s' % missing
-"
+python3 -c "import json; ctx=json.load(open('.runs/change-context.json')); sd=ctx.get('solve_depth'); assert sd in ('light','full'), 'solve_depth=%s' % sd; pt=ctx.get('preliminary_type',''); aa=ctx.get('affected_areas',0); assert not (pt in ('Feature','Upgrade') and isinstance(aa,int) and aa>=3 and sd!='full'), 'Formula requires full (type=%s,areas=%s) but got %s' % (pt,aa,sd); st=json.load(open('.runs/solve-trace.json')); required=['mode','problem_decomposition','constraint_enumeration','solution_design','self_check','output']; missing=[k for k in required if k not in st]; assert not missing,'solve-trace.json missing: %s'%missing"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

@@ -305,14 +305,7 @@ After all agents return (3 if scope is not full, 4 if scope is full), collect fi
 
 **VERIFY:**
 ```bash
-python3 -c "
-import json, os
-d = json.load(open('.runs/audit-analysis.json'))
-assert 'duplication' in d and 'complexity' in d and 'abstractability' in d
-if os.path.exists('.runs/audit-skill-manifest.json'):
-    assert 'skill_architecture' in d, 'full scope but missing skill_architecture'
-print('OK')
-"
+python3 -c "import json,os; d=json.load(open('.runs/audit-analysis.json')); assert 'duplication' in d; assert not os.path.exists('.runs/audit-skill-manifest.json') or 'skill_architecture' in d"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

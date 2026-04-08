@@ -111,7 +111,7 @@ proceeding to Phase 3.** The user may adjust fix plans or scope.
 
 **VERIFY:**
 ```bash
-test -f .runs/resolve-challenge.json
+python3 -c "import json; d=json.load(open('.runs/resolve-challenge.json')); assert isinstance(d.get('challenges'),list) and len(d['challenges'])>0, 'challenges empty'; c=d['challenges'][0]; assert 'label' in c, 'label missing'; cr=d.get('critic_rounds'); ta=d.get('round_1_type_a_count',0); assert cr is not None, 'critic_rounds missing'; assert not (ta > 0 and cr < 2), 'round_1_type_a_count=%d but critic_rounds=%d — round 2 required when TYPE A > 0' % (ta, cr)"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

@@ -66,16 +66,7 @@
 
 **VERIFY:**
 ```bash
-python3 -c "
-import json, os
-d = json.load(open('.runs/exploration-trace.json'))
-required = ['archetype', 'archetype_constraints', 'stacks_read', 'affected_files', 'affected_imports', 'exploration_steps_completed']
-missing = [k for k in required if k not in d]
-assert not missing, 'exploration-trace.json missing keys: %s' % missing
-assert isinstance(d['affected_files'], list), 'affected_files must be a list'
-bad = [f for f in d['affected_files'] if f and not os.path.exists(f)]
-assert not bad, 'affected_files not on disk: %s' % bad
-"
+python3 -c "import json,os; d=json.load(open('.runs/exploration-trace.json')); required=['archetype','archetype_constraints','stacks_read','affected_files','affected_imports','exploration_steps_completed']; missing=[k for k in required if k not in d]; assert not missing,'exploration-trace.json missing: %s'%missing; bad=[f for f in d['affected_files'] if f and not os.path.exists(f)]; assert not bad,'affected_files not on disk: %s'%bad; ctx=json.load(open('.runs/change-context.json')); assert ctx.get('preliminary_type') is not None; assert isinstance(ctx.get('affected_areas'),int)"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

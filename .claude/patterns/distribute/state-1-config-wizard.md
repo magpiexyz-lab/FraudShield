@@ -37,12 +37,7 @@ json.dump(p, open('.runs/distribute-preconditions.json', 'w'), indent=2)
 
 **VERIFY:**
 ```bash
-python3 -c "
-import json; p=json.load(open('.runs/distribute-preconditions.json'))
-assert p.get('channel'), 'no channel'
-assert p.get('policy_checked'), 'policy check skipped'
-assert p.get('analytics_configured'), 'analytics not configured'
-"
+python3 -c "import json; p=json.load(open('.runs/distribute-preconditions.json')); assert p.get('channel'); assert p.get('policy_checked'); assert p.get('analytics_configured')"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

@@ -61,7 +61,7 @@ After each agent returns, use [Trace State Detection](../verify.md#trace-state-d
 
 **VERIFY:**
 ```bash
-ls .runs/agent-traces/*.json
+ls .runs/agent-traces/*.json >/dev/null 2>&1
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

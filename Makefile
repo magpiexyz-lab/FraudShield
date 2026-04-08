@@ -4,7 +4,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help validate distribute verify-local test-e2e deploy setup-prod migrate clean clean-all supabase-start supabase-stop
+.PHONY: help validate distribute verify-local test-e2e deploy setup-prod migrate clean clean-all supabase-start supabase-stop sync-verify
 
 help: ## Show this help message
 	@echo "Usage: make <command>"
@@ -21,6 +21,9 @@ help: ## Show this help message
 	@echo "  /verify          Run E2E tests and fix failures"
 	@echo "  /deploy          Deploy to Vercel + Supabase (first-time setup)"
 	@echo "  /review          Automated review-fix loop (maintainers only)"
+
+sync-verify: ## Sync VERIFY commands from state-registry.json to state files
+	@bash .claude/scripts/sync-verify-to-state-files.sh
 
 validate: ## Check experiment.yaml for valid YAML, TODOs, name format, and structure
 	@echo "Validating experiment/experiment.yaml..."

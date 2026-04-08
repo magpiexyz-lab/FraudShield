@@ -76,7 +76,7 @@ After the agent returns, partition findings:
 
 **VERIFY:**
 ```bash
-test -f .runs/review-adversarial.json
+python3 -c "import json; d=json.load(open('.runs/review-adversarial.json')); assert isinstance(d.get('confirmed'), list), 'confirmed missing or not list'; assert isinstance(d.get('disputed'), list), 'disputed missing or not list'; assert isinstance(d.get('needs_evidence'), list), 'needs_evidence missing or not list'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

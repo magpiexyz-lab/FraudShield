@@ -40,7 +40,7 @@ Proceed with rollback?
 
 **VERIFY:**
 ```bash
-test -f .runs/rollback-plan.json
+python3 -c "import json; d=json.load(open('.runs/rollback-plan.json')); assert d.get('provider'), 'provider empty'; assert d.get('target_url'), 'target_url empty'; assert d.get('action'), 'action empty'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

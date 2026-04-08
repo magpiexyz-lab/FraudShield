@@ -66,8 +66,7 @@
 
 **VERIFY:**
 ```bash
-test -f .runs/verify-context.json && test -f .runs/fix-log.md && test -d .runs/agent-traces && \
-python3 -c "import json; assert json.load(open('.runs/verify-context.json')).get('skill'), 'skill field empty in verify-context.json'"
+test -f .runs/verify-context.json && test -f .runs/fix-log.md && test -d .runs/agent-traces && python3 -c "import json; assert json.load(open('.runs/verify-context.json')).get('skill'), 'skill field empty in verify-context.json'"
 ```
 
 > **Hook-enforced:** `agent-state-gate.sh` validates these postconditions before allowing the next state's agents to spawn.

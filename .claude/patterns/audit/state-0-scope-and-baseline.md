@@ -180,10 +180,11 @@ for f in d.get('findings', []):
 
 Store prior findings as `prior_findings` for delta comparison in Step 2.
 
-Clean stale epilogue artifacts and create context file to initialize state tracking:
+Clean stale epilogue artifacts and create context file to initialize state tracking.
+Substitute the parsed scope value (e.g., `full`, `hooks`, `commands`, `patterns`, `agents`, or `stacks`) into the command:
 ```bash
 rm -f .runs/observe-result.json
-bash .claude/scripts/init-context.sh audit
+bash .claude/scripts/init-context.sh audit '{"scope":"<parsed scope value>"}'
 ```
 
 **POSTCONDITIONS:**
@@ -192,12 +193,12 @@ bash .claude/scripts/init-context.sh audit
 - Baseline metrics collected (file inventory, largest files, duplication signals, references, functions)
 - Validator health baseline collected
 - Prior audit findings loaded (if any)
-- Skill manifest generated (`.runs/audit-skill-manifest.json`) if scope is `full`
+- Skill manifest generated (`.runs/audit-skill-manifest.json`) if scope is `full` <!-- conditional: checked via scope field in audit-context.json -->
 - `.runs/audit-context.json` exists
 
 **VERIFY:**
 ```bash
-test -f .runs/audit-context.json
+test -f .runs/audit-context.json && python3 -c "import json,os; ctx=json.load(open('.runs/audit-context.json')); assert ctx.get('scope','')!='full' or os.path.exists('.runs/audit-skill-manifest.json'), 'full scope but manifest missing'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

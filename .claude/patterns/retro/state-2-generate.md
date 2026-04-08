@@ -27,7 +27,7 @@ Show the full retro to the user before filing.
 
 **VERIFY:**
 ```bash
-test -f .runs/retro-interview.json && test -f .runs/retro-context.json
+python3 -c "import json; d=json.load(open('.runs/retro-interview.json')); assert isinstance(d.get('answers'), dict), 'answers missing or not dict'" && test -f .runs/retro-context.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

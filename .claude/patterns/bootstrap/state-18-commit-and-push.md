@@ -70,9 +70,7 @@ Check off in `.runs/current-plan.md`: `- [x] BG4 PR Gate passed`
 
 **VERIFY:**
 ```bash
-git status --porcelain | grep -v '??' | wc -l | xargs test 0 -eq && echo "Clean" || echo "Uncommitted changes"
-git log -1 --oneline | grep -q "Bootstrap MVP scaffold" && echo "Commit OK" || echo "Commit FAIL"
-test -f .runs/observe-result.json && echo "Observation OK" || echo "Observation FAIL"
+python3 -c "import json; g=json.load(open('.runs/gate-verdicts/bg4.json')); assert g.get('verdict')=='PASS', 'BG4 verdict is %s' % g.get('verdict'); d=json.load(open('.runs/observe-result.json')); assert d.get('skill')=='bootstrap', 'skill is %s' % d.get('skill'); assert d.get('timestamp','')!='', 'observe timestamp empty'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

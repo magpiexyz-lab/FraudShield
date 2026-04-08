@@ -45,7 +45,7 @@ Follow-up: "What was the actual result vs the target in your thesis: [thesis]?"
 
 **VERIFY:**
 ```bash
-test -f .runs/retro-interview.json
+python3 -c "import json; d=json.load(open('.runs/retro-interview.json')); assert d.get('questions_answered')==4, 'questions_answered=%s, expected 4' % d.get('questions_answered'); assert isinstance(d.get('answers'), dict) and len(d['answers'])>0, 'answers empty'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

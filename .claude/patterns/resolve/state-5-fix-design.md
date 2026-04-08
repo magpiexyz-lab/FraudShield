@@ -113,7 +113,7 @@ Record: `root_cause`, `fix_plan` (per-file changes), `proposed_checks` (if any),
 
 **VERIFY:**
 ```bash
-test -f .runs/solve-trace.json
+python3 -c "import json; st=json.load(open('.runs/solve-trace.json')); required=['mode','problem_decomposition','constraint_enumeration','solution_design','self_check','output']; missing=[k for k in required if k not in st]; assert not missing, 'solve-trace.json missing: %s' % missing"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

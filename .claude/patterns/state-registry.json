@@ -107,7 +107,7 @@
     "0": "test -f .runs/distribute-context.json && python3 -c \"import json; ctx=json.load(open('.runs/distribute-context.json')); assert 'phase' in ctx, 'phase missing'; assert ctx['phase'] in (1,2), 'phase must be 1 or 2'\" && python3 -c \"import json; p=json.load(open('.runs/distribute-preconditions.json')); assert p.get('deployed_url')\"",
     "1": "python3 -c \"import json; p=json.load(open('.runs/distribute-preconditions.json')); assert p.get('channel'); assert p.get('policy_checked'); assert p.get('analytics_configured')\"",
     "2": "python3 -c \"import json; p=json.load(open('.runs/distribute-preconditions.json')); assert p.get('project_name_verified') is not None; assert p.get('analytics_live')\"",
-    "3": "test -f .runs/verify-report.md && (grep -q 'utm_source' src/app/page.tsx 2>/dev/null || grep -q 'utm_source' site/index.html 2>/dev/null) && python3 -c \"import json; d=json.load(open('.runs/distribute-impl-step-check.json')); assert len(d.get('steps_completed',[])) > 0\"",
+    "3": "test -f .runs/verify-report.md && (grep -q 'utm_source' src/app/page.tsx 2>/dev/null || grep -q 'utm_source' site/index.html 2>/dev/null) && python3 -c \"import json; d=json.load(open('.runs/distribute-impl-step-check.json')); assert len(d.get('steps_completed',[])) > 0\" && grep -q 'feedback_submitted' experiment/EVENTS.yaml",
     "4": "python3 -c \"import yaml; d=yaml.safe_load(open('experiment/ads.yaml')); assert d.get('channel'), 'channel empty'; ags=d.get('ad_groups') or d.get('ads') or [d]; assert any(a.get('headlines') or a.get('descriptions') for a in (ags if isinstance(ags,list) else [ags])), 'no headlines or descriptions'; assert 'utm_source' in str(d) or 'utm_' in str(d), 'no UTM parameters'; sl=d.get('sitelinks'); assert sl is None or isinstance(sl, list), 'sitelinks must be a list'\"",
     "5": "python3 -c \"import json; assert json.load(open('.runs/distribute-context.json')).get('approved') == True\"",
     "6": "grep -q 'campaign_id' experiment/ads.yaml 2>/dev/null && python3 -c \"import json; s=set(json.load(open('.runs/distribute-step-check.json')).get('steps_completed',[])); required={'6a','6e','6j','6f'}; assert required.issubset(s), f'missing steps: {required - s}'\" && python3 -c \"import json; d=json.load(open('.runs/distribute-campaign-audit.json')); assert d.get('all_passed')==True or d.get('manual_creation')==True, 'campaign audit not passed'\""
@@ -191,7 +191,7 @@
     "2": "python3 -c \"import json; d=json.load(open('.runs/observe-result.json')); assert d['skill']=='observe'\""
   },
   "audit": {
-    "0": "test -f .runs/audit-context.json",
+    "0": "test -f .runs/audit-context.json && python3 -c \"import json,os; ctx=json.load(open('.runs/audit-context.json')); assert ctx.get('scope','')!='full' or os.path.exists('.runs/audit-skill-manifest.json'), 'full scope but manifest missing'\"",
     "1": "python3 -c \"import json,os; d=json.load(open('.runs/audit-analysis.json')); assert 'duplication' in d; assert not os.path.exists('.runs/audit-skill-manifest.json') or 'skill_architecture' in d\"",
     "2": "python3 -c \"import json; d=json.load(open('.runs/audit-analysis.json')); assert 'duplication' in d and 'complexity' in d and 'abstractability' in d, 'missing dimensions'; assert isinstance(d.get('total_findings'), int), 'total_findings not int'\"",
     "3": "python3 -c \"import json; d=json.load(open('.runs/observe-result.json')); assert d['skill']=='audit'\""

@@ -56,7 +56,7 @@
 
 **VERIFY:**
 ```bash
-test -f .runs/review-baseline.json
+python3 -c "import json; d=json.load(open('.runs/review-baseline.json')); assert isinstance(d.get('baseline_errors'), int), 'baseline_errors not int'; assert isinstance(d.get('health_clean'), bool), 'health_clean not bool'; mi=d.get('max_iterations'); assert isinstance(mi, int) and mi>=0, 'max_iterations invalid'; mf=d.get('max_findings_per_dimension'); assert isinstance(mf, int) and mf>=0, 'max_findings_per_dimension invalid'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

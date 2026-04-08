@@ -31,7 +31,7 @@
 
 **VERIFY:**
 ```bash
-test -f .runs/resolve-validation.json
+python3 -c "import json; d=json.load(open('.runs/resolve-validation.json')); assert 'regressions' in d, 'regressions field missing'; assert d['regressions']==False, 'regressions detected'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

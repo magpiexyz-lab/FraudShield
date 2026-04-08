@@ -29,7 +29,7 @@ If the Fix Log has entries:
 
 **VERIFY:**
 ```bash
-test -f .runs/patterns-saved.json
+python3 -c "import json; d=json.load(open('.runs/patterns-saved.json')); assert isinstance(d.get('saved'), int), 'saved not int'; assert isinstance(d.get('total'), int), 'total not int'; assert isinstance(d.get('saved_to_files'), list), 'saved_to_files not list'; assert d['saved'] + d.get('skipped', 0) <= d['total'], 'saved+skipped > total'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

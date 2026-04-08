@@ -58,15 +58,7 @@ contents at the top.
 
 **VERIFY:**
 ```bash
-python3 -c "
-import json
-d = json.load(open('.runs/plan-validation.json'))
-checks = ['route_conflict', 'schema_conflict', 'import_availability', 'component_reuse', 'analytics_naming']
-missing = [c for c in checks if c not in d]
-assert not missing, 'plan-validation.json missing checks: %s' % missing
-no_checked = [c for c in checks if d[c].get('checked') is None]
-assert not no_checked, 'plan-validation.json checks without checked field: %s' % no_checked
-"
+python3 -c "import json; d=json.load(open('.runs/plan-validation.json')); checks=['route_conflict','schema_conflict','import_availability','component_reuse','analytics_naming']; missing=[c for c in checks if c not in d]; assert not missing,'plan-validation.json missing: %s'%missing; no_checked=[c for c in checks if d[c].get('checked') is None]; assert not no_checked,'checks without checked field: %s'%no_checked"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
