@@ -27,17 +27,15 @@ no `src/app/` directory, and no `src/components/` directory. The `hosting`,
 
 ## Funnel
 
-Events are defined in experiment/EVENTS.yaml with `funnel_stage` tags. Filter by `requires` and `archetypes` fields based on experiment stack. The `command_run` event has `archetypes: [cli]` — include it for CLI experiments.
+Events are defined in experiment/EVENTS.yaml with `funnel_stage` tags. Event names are project-specific — /spec generates them from behaviors and hypotheses. Filter by `requires` and `archetypes` fields based on experiment stack. CLI-specific events should have `archetypes: [cli]`.
 
-When a surface is configured (default: `detached`), `visit_landing` fires on the surface — providing a complete acquisition → activation → retention funnel.
+When a surface is configured (default: `detached`), the surface fires a reach-stage event — providing a complete acquisition → activation → retention funnel.
 
-Surface events (fired by the HTML marketing page, not the CLI):
-1. `visit_landing` (reach) — user loads the detached marketing page
-
-Product events (suggestions, not requirements):
-1. `command_run` (reach, `archetypes: [cli]`) — user executes a command
-2. `activate` (activate) — user completes the core action for the first time
-3. `retain_return` (retain) — user runs the CLI again after 24+ hours since last use
+Expected funnel stages:
+1. **reach** — user loads the detached marketing page (surface event, inline snippet)
+2. **reach** — user executes a CLI command (product event, `archetypes: [cli]`)
+3. **activate** — user completes the core action for the first time (server-side event)
+4. **retain** — user runs the CLI again after 24+ hours since last use (server-side event)
 
 Surface events use an inline analytics snippet (see analytics stack file and surface stack file). Product events use opt-in `trackServerEvent()` from the server analytics library. Analytics must be opt-in — check for a consent flag or environment variable before sending any telemetry. See the analytics stack file's CLI Opt-In Consent section (`.claude/stacks/analytics/<value>.md`) for the implementation pattern, environment variable names, and guard function.
 

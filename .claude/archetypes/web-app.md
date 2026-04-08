@@ -28,14 +28,13 @@ Pages are React components rendered in the browser. The landing page
 
 Events are defined in experiment/EVENTS.yaml with `funnel_stage` tags. Filter by `requires` and `archetypes` fields based on experiment stack.
 
-Standard web funnel events:
-1. `visit_landing` (reach) — user loads the landing page
-2. `signup_start` (demand) — user begins the signup flow
-3. `signup_complete` (demand) — user finishes signup
-4. `activate` (activate) — user completes the core action for the first time
-5. `retain_return` (retain) — user returns after initial activation
+Expected funnel stages (event names are project-specific, defined in experiment/EVENTS.yaml):
+1. **reach** — user loads the landing page
+2. **demand** — user begins and completes the signup flow
+3. **activate** — user completes the core action for the first time
+4. **retain** — user returns after initial activation
 
-Payment events (`pay_start`, `pay_success`) have `requires: [payment]` in experiment/EVENTS.yaml and are included when `stack.payment` is present in experiment.yaml.
+When `stack.payment` is present, monetize-stage events (with `requires: [payment]`) are also included.
 
 ## Conventions
 

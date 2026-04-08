@@ -40,17 +40,14 @@ live under `/api/*`.
 
 ## Funnel
 
-Events are defined in experiment/EVENTS.yaml with `funnel_stage` tags. Filter by `requires` and `archetypes` fields based on experiment stack. The `api_call` event has `archetypes: [service]` — include it for service experiments.
+Events are defined in experiment/EVENTS.yaml with `funnel_stage` tags. Event names are project-specific — /spec generates them from behaviors and hypotheses. Filter by `requires` and `archetypes` fields based on experiment stack. Service-specific events should have `archetypes: [service]`.
 
-When a surface is configured (default: `co-located`), `visit_landing` fires on the surface — providing a complete acquisition → activation → retention funnel.
+When a surface is configured (default: `co-located`), the surface fires a reach-stage event — providing a complete acquisition → activation → retention funnel.
 
-Surface events (fired by the HTML surface page, not the API):
-1. `visit_landing` (reach) — user loads the surface page at the root URL
-
-Product events (suggestions, not requirements):
-1. `api_call` (reach, `archetypes: [service]`) — a request hits an endpoint
-2. `activate` (activate) — user completes the core action via the API
-3. `retain_return` (retain) — user makes a request after 24+ hours since last call
+Expected funnel stages:
+1. **reach** — user loads the surface page (surface event, inline snippet)
+2. **activate** — user completes the core action via the API (server-side event)
+3. **retain** — user makes a request after 24+ hours since last call (server-side event)
 
 Surface events use an inline analytics snippet (see analytics stack file and surface stack file). Product events use `trackServerEvent()` from the server analytics library.
 
