@@ -192,7 +192,7 @@ The user decides which prompts to run — copy-paste any prompt into a new Claud
 
 **VERIFY:**
 ```bash
-if [ -f .runs/audit-context.json ]; then echo "OK"; else echo "FAIL"; fi
+python3 -c "import json; d=json.load(open('.runs/audit-analysis.json')); assert 'duplication' in d and 'complexity' in d and 'abstractability' in d, 'missing dimensions'; assert isinstance(d.get('total_findings'), int), 'total_findings not int'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

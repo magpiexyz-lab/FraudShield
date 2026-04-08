@@ -102,7 +102,7 @@ After migration, update `.runs/iterate-cross-data.json`:
 
 **VERIFY:**
 ```bash
-test -f .runs/iterate-cross-data.json && echo "OK" || echo "FAIL"
+python3 -c "import json; d=json.load(open('.runs/iterate-cross-data.json')); ms=d.get('mvps',[]); assert isinstance(ms, list) and len(ms)>0, 'mvps empty'; bad=[m['name'] for m in ms if not m.get('has_funnel_stage')]; assert not bad, 'MVPs missing funnel_stage: %s' % bad"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

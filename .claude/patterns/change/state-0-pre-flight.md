@@ -29,7 +29,7 @@ bash .claude/scripts/init-context.sh change '{"preliminary_type":null,"affected_
 
 **VERIFY:**
 ```bash
-test -f package.json && test -f experiment/EVENTS.yaml && test -f .runs/change-context.json && echo "OK" || echo "FAIL"
+test -f .runs/change-context.json && test -f package.json && test -f experiment/EVENTS.yaml
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

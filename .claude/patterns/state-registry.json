@@ -27,7 +27,7 @@
     "6": "true",
     "7": "test -f .runs/current-plan.md && grep -q 'Process Checklist' .runs/current-plan.md",
     "8": "python3 -c \"import json; assert json.load(open('.runs/bootstrap-context.json')).get('preflight_passed') == True, 'preflight_passed not set'\"",
-    "9": "python3 -c \"import json; d=json.load(open('package.json')); assert 'dependencies' in d, 'dependencies missing from package.json'\" && test -d node_modules",
+    "9": "python3 -c \"import json; d=json.load(open('package.json')); assert 'dependencies' in d, 'dependencies missing'\" && test -d node_modules && test -n \"$(ls -A node_modules)\"",
     "10": "test -f .runs/current-visual-brief.md && grep -q 'theme\\|palette\\|font\\|color' .runs/current-visual-brief.md",
     "11": "ls src/lib/*.ts >/dev/null 2>&1 && (test ! -f .runs/image-manifest.json || python3 -c \"import json; m=json.load(open('.runs/image-manifest.json')); s=m.get('status'); assert s in ('complete','placeholders','skipped'), f'bad status: {s}'; ic=len(m.get('images',[])); assert s!='complete' or ic>=7, f'expected >=7 images, got {ic}'\")",
     "12": "python3 -c \"import json; d=json.load(open('.runs/gate-verdicts/bg2.5.json')); assert d.get('verdict')=='PASS', 'BG2.5 verdict is %s' % d.get('verdict'); assert d.get('timestamp','')!='', 'timestamp empty'\"",
@@ -108,7 +108,7 @@
     "1": "python3 -c \"import json; p=json.load(open('.runs/distribute-preconditions.json')); assert p.get('channel'); assert p.get('policy_checked'); assert p.get('analytics_configured')\"",
     "2": "python3 -c \"import json; p=json.load(open('.runs/distribute-preconditions.json')); assert p.get('project_name_verified') is not None; assert p.get('analytics_live')\"",
     "3": "test -f .runs/verify-report.md && (grep -q 'utm_source' src/app/page.tsx 2>/dev/null || grep -q 'utm_source' site/index.html 2>/dev/null) && python3 -c \"import json; d=json.load(open('.runs/distribute-impl-step-check.json')); assert len(d.get('steps_completed',[])) > 0\"",
-    "4": "test -f experiment/ads.yaml && head -1 experiment/ads.yaml | grep -q 'channel'",
+    "4": "python3 -c \"import yaml; d=yaml.safe_load(open('experiment/ads.yaml')); assert d.get('channel'), 'channel empty'; ags=d.get('ad_groups') or d.get('ads') or [d]; assert any(a.get('headlines') or a.get('descriptions') for a in (ags if isinstance(ags,list) else [ags])), 'no headlines or descriptions'; assert 'utm_source' in str(d) or 'utm_' in str(d), 'no UTM parameters'; sl=d.get('sitelinks'); assert sl is None or isinstance(sl, list), 'sitelinks must be a list'\"",
     "5": "python3 -c \"import json; assert json.load(open('.runs/distribute-context.json')).get('approved') == True\"",
     "6": "grep -q 'campaign_id' experiment/ads.yaml 2>/dev/null && python3 -c \"import json; s=set(json.load(open('.runs/distribute-step-check.json')).get('steps_completed',[])); required={'6a','6e','6j','6f'}; assert required.issubset(s), f'missing steps: {required - s}'\" && python3 -c \"import json; d=json.load(open('.runs/distribute-campaign-audit.json')); assert d.get('all_passed')==True or d.get('manual_creation')==True, 'campaign audit not passed'\""
   },
@@ -135,10 +135,10 @@
   "spec": {
     "0": "test -f .runs/spec-context.json",
     "1": "python3 -c \"import json; d=json.load(open('.runs/spec-research.json')); dims=d.get('dimensions',[]); assert isinstance(dims, list) and len(dims)==4, 'expected 4 dimensions, got %d' % len(dims); assert all(x.get('verdict') in ('pass','caution','fail') for x in dims), 'invalid verdict in dimensions'; assert all(x.get('confidence') in ('high','medium','low') for x in dims), 'invalid confidence in dimensions'; assert isinstance(d.get('passed_count'), int), 'passed_count not int'\"",
-    "2": "grep -q 'hypotheses:' experiment/experiment.yaml 2>/dev/null || grep -q 'category:' experiment/experiment.yaml 2>/dev/null",
-    "3": "grep -q 'behaviors:' experiment/experiment.yaml 2>/dev/null || grep -q 'hypothesis_id:' experiment/experiment.yaml 2>/dev/null",
-    "4": "grep -q 'golden_path:' experiment/experiment.yaml 2>/dev/null || grep -q 'endpoints:' experiment/experiment.yaml 2>/dev/null || grep -q 'commands:' experiment/experiment.yaml 2>/dev/null",
-    "5": "grep -q 'variants:' experiment/experiment.yaml 2>/dev/null || grep -q 'slug:' experiment/experiment.yaml 2>/dev/null",
+    "2": "python3 -c \"import yaml; d=yaml.safe_load(open('experiment/experiment.yaml')); hs=d.get('hypotheses',[]); assert isinstance(hs, list) and len(hs)>0, 'no hypotheses'; assert all(h.get('id') and h.get('category') and h.get('statement') for h in hs), 'hypothesis missing required fields'\"",
+    "3": "python3 -c \"import yaml; d=yaml.safe_load(open('experiment/experiment.yaml')); bs=d.get('behaviors',[]); assert isinstance(bs, list) and len(bs)>0, 'no behaviors'; assert all(b.get('id') and b.get('hypothesis_id') for b in bs), 'behavior missing required fields'\"",
+    "4": "python3 -c \"import yaml; d=yaml.safe_load(open('experiment/experiment.yaml')); gp=d.get('golden_path') or d.get('endpoints') or d.get('commands'); assert isinstance(gp, list) and len(gp)>0, 'no golden_path/endpoints/commands'\"",
+    "5": "python3 -c \"import yaml; d=yaml.safe_load(open('experiment/experiment.yaml')); vs=d.get('variants',[]); assert isinstance(vs, list) and len(vs)>0, 'no variants'; assert all(v.get('slug') for v in vs), 'variant missing slug'\"",
     "6": "grep -q 'stack:' experiment/experiment.yaml && grep -q 'funnel:' experiment/experiment.yaml",
     "7": "python3 -c \"import json,yaml; yaml.safe_load(open('experiment/experiment.yaml')); m=json.load(open('.runs/spec-manifest.json')); assert m.get('created_at'), 'created_at empty'; assert isinstance(m.get('hypotheses'), list) and len(m['hypotheses'])>0, 'no hypotheses'; assert isinstance(m.get('behaviors'), list) and len(m['behaviors'])>0, 'no behaviors'\"",
     "8": "python3 -c \"import json; d=json.load(open('.runs/observe-result.json')); assert d['skill']=='spec'\""

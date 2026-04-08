@@ -31,7 +31,7 @@ bash .claude/scripts/init-context.sh rollback
 
 **VERIFY:**
 ```bash
-test -f .runs/rollback-context.json && echo "OK" || echo "FAIL"
+test -f .runs/rollback-context.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

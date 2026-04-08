@@ -162,7 +162,7 @@ Replace placeholder data with actual values from Google Ads and PostHog.
 
 **VERIFY:**
 ```bash
-test -f .runs/iterate-cross-data.json && echo "OK" || echo "FAIL"
+python3 -c "import json; d=json.load(open('.runs/iterate-cross-data.json')); ms=d.get('mvps',[]); assert isinstance(ms, list) and len(ms)>0, 'mvps empty'; m=ms[0]; assert m.get('name'), 'first mvp name empty'; ga=m.get('google_ads',{}); assert 'impressions' in ga and 'clicks' in ga and 'spend' in ga, 'google_ads missing keys'; ph=m.get('posthog',{}); assert 'reach' in ph and 'demand' in ph, 'posthog missing funnel stages'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

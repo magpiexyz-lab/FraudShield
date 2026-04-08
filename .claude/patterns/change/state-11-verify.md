@@ -52,7 +52,7 @@ Update checkpoint in `.runs/current-plan.md` frontmatter to `phase2-step8`.
 
 **VERIFY:**
 ```bash
-grep -q 'checkpoint: phase2-step8' .runs/current-plan.md && echo "OK" || echo "FAIL"
+head -1 .runs/verify-report.md | grep -q '^---$' && grep -q 'checkpoint: phase2-step8' .runs/current-plan.md
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

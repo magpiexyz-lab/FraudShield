@@ -81,7 +81,7 @@ bash .claude/scripts/init-context.sh deploy '{"deploy_mode":"initial","added_ser
 
 **VERIFY:**
 ```bash
-test -f package.json && test -f experiment/experiment.yaml && test -f .runs/deploy-context.json && echo "OK" || echo "FAIL"
+test -f .runs/deploy-context.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

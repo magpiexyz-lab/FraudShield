@@ -37,13 +37,7 @@ Pass the problem statement verbatim -- do not reinterpret or narrow it.
 
 **VERIFY:**
 ```bash
-python3 -c "
-import json
-d = json.load(open('.runs/solve-trace.json'))
-ctx = json.load(open('.runs/solve-context.json'))
-assert d.get('run_id') == ctx.get('run_id'), 'run_id mismatch'
-assert d.get('mode') in ('light', 'full'), 'invalid mode'
-" && echo "OK" || echo "FAIL"
+python3 -c "import json; d=json.load(open('.runs/solve-trace.json')); assert d.get('mode') in ('light','full'), 'mode must be light or full'; required=['problem_decomposition','constraint_enumeration','solution_design','self_check','output']; missing=[k for k in required if not d.get(k)]; assert not missing, 'empty fields: %s' % missing; ctx=json.load(open('.runs/solve-context.json')); assert d.get('run_id')==ctx.get('run_id'), 'run_id mismatch: trace=%s context=%s' % (d.get('run_id'), ctx.get('run_id'))"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

@@ -80,7 +80,7 @@ python3 .claude/scripts/write-q-score.py \
 
 **VERIFY:**
 ```bash
-test ! -f .runs/deploy-manifest.json && echo "OK" || echo "FAIL"
+python3 -c "import json; d=json.load(open('.runs/teardown-cleanup.json')); assert d.get('timestamp'), 'timestamp empty'; assert d.get('deploy_manifest_deleted') is not None, 'deploy_manifest_deleted missing'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

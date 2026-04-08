@@ -89,7 +89,7 @@ Column definitions:
 
 **VERIFY:**
 ```bash
-test -f .runs/iterate-cross-scores.json && echo "OK" || echo "FAIL"
+python3 -c "import json; d=json.load(open('.runs/iterate-cross-scores.json')); ms=d.get('mvps',[]); assert isinstance(ms, list) and len(ms)>0, 'mvps empty'; scored=[m for m in ms if m.get('traction_score') is not None]; gated=[m for m in ms if m.get('hard_gate')]; assert len(scored)+len(gated)==len(ms), 'some MVPs have neither score nor gate'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

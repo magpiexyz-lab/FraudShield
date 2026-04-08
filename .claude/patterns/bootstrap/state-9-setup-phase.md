@@ -45,7 +45,7 @@ Verify scaffold-setup trace: `test -f .runs/agent-traces/scaffold-setup.json && 
 
 **VERIFY:**
 ```bash
-test -f package.json && test -d node_modules && echo "OK" || echo "FAIL"
+python3 -c "import json; d=json.load(open('package.json')); assert 'dependencies' in d, 'dependencies missing'" && test -d node_modules && test -n "$(ls -A node_modules)"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

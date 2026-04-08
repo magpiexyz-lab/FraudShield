@@ -17,7 +17,7 @@ Read these two context files:
 
 **VERIFY:**
 ```bash
-test -f experiment/experiment.yaml && test -f experiment/EVENTS.yaml && echo "OK" || echo "FAIL"
+test -f experiment/experiment.yaml && grep -q 'name:' experiment/experiment.yaml && test -f experiment/EVENTS.yaml && grep -q 'events:' experiment/EVENTS.yaml
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

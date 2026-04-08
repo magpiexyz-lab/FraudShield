@@ -250,7 +250,7 @@ Replace all placeholder values with actual data from the fix actions performed.
 
 **VERIFY:**
 ```bash
-test -f .runs/iterate-check-fixes.json && echo "OK" || echo "FAIL"
+python3 -c "import json; d=json.load(open('.runs/iterate-check-fixes.json')); assert d.get('campaign_name'), 'campaign_name empty'; assert d.get('fixed_at'), 'fixed_at empty'; assert isinstance(d.get('issues_found'), int), 'issues_found not int'; assert isinstance(d.get('fixes_applied'), int), 'fixes_applied not int'; assert isinstance(d.get('details'), list), 'details not a list'; assert d['fixes_applied'] <= d['issues_found'], 'fixes_applied > issues_found'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

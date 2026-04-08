@@ -283,7 +283,7 @@ Present the full config for review.
 
 **VERIFY:**
 ```bash
-test -f experiment/ads.yaml && head -1 experiment/ads.yaml | grep -q 'channel'
+python3 -c "import yaml; d=yaml.safe_load(open('experiment/ads.yaml')); assert d.get('channel'), 'channel empty'; ags=d.get('ad_groups') or d.get('ads') or [d]; assert any(a.get('headlines') or a.get('descriptions') for a in (ags if isinstance(ags,list) else [ags])), 'no headlines or descriptions'; assert 'utm_source' in str(d) or 'utm_' in str(d), 'no UTM parameters'; sl=d.get('sitelinks'); assert sl is None or isinstance(sl, list), 'sitelinks must be a list'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

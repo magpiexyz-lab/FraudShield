@@ -14,7 +14,7 @@ Follow the branch setup procedure in `.claude/patterns/branch.md`. Use branch pr
 
 **VERIFY:**
 ```bash
-git branch --show-current | grep -q 'change/' && echo "OK" || echo "FAIL"
+git branch --show-current | grep -q 'change/'
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

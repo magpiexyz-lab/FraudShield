@@ -38,7 +38,7 @@ bash .claude/scripts/init-context.sh solve
 
 **VERIFY:**
 ```bash
-test -f .runs/solve-context.json && echo "OK" || echo "FAIL"
+test -f .runs/solve-context.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

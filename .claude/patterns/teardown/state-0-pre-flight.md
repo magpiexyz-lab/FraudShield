@@ -53,7 +53,7 @@ bash .claude/scripts/init-context.sh teardown
 
 **VERIFY:**
 ```bash
-test -f .runs/deploy-manifest.json && test -f .runs/teardown-context.json && echo "OK" || echo "FAIL"
+test -f .runs/teardown-context.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

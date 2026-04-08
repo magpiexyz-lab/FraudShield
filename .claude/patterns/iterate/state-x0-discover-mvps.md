@@ -105,7 +105,7 @@ Replace the `mvps` list with actual data collected from Chrome MCP. The base fie
 
 **VERIFY:**
 ```bash
-test -f .runs/iterate-cross-context.json && echo "OK" || echo "FAIL"
+test -f .runs/iterate-cross-context.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

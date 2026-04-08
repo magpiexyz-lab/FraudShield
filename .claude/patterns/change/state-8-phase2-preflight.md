@@ -62,7 +62,7 @@ Before proceeding to Step 5, execute the process gate:
 
 **VERIFY:**
 ```bash
-grep -q '## Process Checklist' .runs/current-plan.md && echo "OK" || echo "FAIL"
+grep -q 'Process Checklist' .runs/current-plan.md
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

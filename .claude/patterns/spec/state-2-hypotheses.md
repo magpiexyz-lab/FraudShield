@@ -102,7 +102,7 @@ Hypotheses:
 
 **VERIFY:**
 ```bash
-grep -q 'hypotheses:' experiment/experiment.yaml 2>/dev/null || grep -q 'category:' experiment/experiment.yaml 2>/dev/null
+python3 -c "import yaml; d=yaml.safe_load(open('experiment/experiment.yaml')); hs=d.get('hypotheses',[]); assert isinstance(hs, list) and len(hs)>0, 'no hypotheses'; assert all(h.get('id') and h.get('category') and h.get('statement') for h in hs), 'hypothesis missing required fields'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

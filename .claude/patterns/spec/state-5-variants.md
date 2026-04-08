@@ -64,7 +64,7 @@ Variants:
 
 **VERIFY:**
 ```bash
-grep -q 'variants:' experiment/experiment.yaml 2>/dev/null || grep -q 'slug:' experiment/experiment.yaml 2>/dev/null
+python3 -c "import yaml; d=yaml.safe_load(open('experiment/experiment.yaml')); vs=d.get('variants',[]); assert isinstance(vs, list) and len(vs)>0, 'no variants'; assert all(v.get('slug') for v in vs), 'variant missing slug'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

@@ -25,7 +25,7 @@ bash .claude/scripts/init-context.sh bootstrap
 
 **VERIFY:**
 ```bash
-git branch --show-current | grep -q 'feat/bootstrap' && echo "OK" || echo "FAIL"
+test -f .runs/bootstrap-context.json && git branch --show-current | grep -q 'feat/bootstrap'
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

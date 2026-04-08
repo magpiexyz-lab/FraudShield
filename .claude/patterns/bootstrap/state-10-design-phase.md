@@ -32,7 +32,7 @@ Verify scaffold-init trace: `test -f .runs/agent-traces/scaffold-init.json && py
 
 **VERIFY:**
 ```bash
-test -f .runs/current-visual-brief.md && echo "OK" || echo "FAIL"
+test -f .runs/current-visual-brief.md && grep -q 'theme\|palette\|font\|color' .runs/current-visual-brief.md
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

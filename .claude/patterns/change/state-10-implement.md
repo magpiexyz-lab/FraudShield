@@ -110,7 +110,7 @@ ts = glob.glob('.runs/agent-traces/implementer-*.json') + glob.glob('.runs/agent
 bad = [t for t in ts if json.load(open(t)).get('status') == 'complete' and not json.load(open(t)).get('worktree_merged')]
 assert not bad, 'Unmerged: ' + ','.join(bad)
 assert not (len(ts) >= 2 and not os.path.exists('.runs/consistency-scan-result.json')), '2+ implementers but no consistency-scan-result.json'
-" && echo "OK" || echo "FAIL"
+"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

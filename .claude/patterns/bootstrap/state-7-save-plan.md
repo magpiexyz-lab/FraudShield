@@ -68,7 +68,7 @@ If the user replied **"approve and clear"** or **"2"**:
 
 **VERIFY:**
 ```bash
-test -f .runs/current-plan.md && grep -q '## Process Checklist' .runs/current-plan.md && echo "OK" || echo "FAIL"
+test -f .runs/current-plan.md && grep -q 'Process Checklist' .runs/current-plan.md
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

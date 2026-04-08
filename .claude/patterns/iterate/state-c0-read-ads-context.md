@@ -63,7 +63,7 @@ Replace all `<placeholder>` values with actual data read from ads.yaml and exper
 
 **VERIFY:**
 ```bash
-test -f .runs/iterate-check-context.json && echo "OK" || echo "FAIL"
+test -f .runs/iterate-check-context.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

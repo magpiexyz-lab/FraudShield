@@ -46,7 +46,7 @@ bash .claude/scripts/init-context.sh iterate
 
 **VERIFY:**
 ```bash
-test -f .runs/iterate-context.json && echo "OK" || echo "FAIL"
+test -f .runs/iterate-context.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

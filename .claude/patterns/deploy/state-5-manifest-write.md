@@ -186,7 +186,7 @@ python3 .claude/scripts/write-q-score.py \
 
 **VERIFY:**
 ```bash
-test -f .runs/deploy-manifest.json && echo "OK" || echo "FAIL"
+python3 -c "import json; d=json.load(open('.runs/deploy-manifest.json')); assert d.get('name'), 'name empty'; assert d.get('canonical_url'), 'canonical_url empty'; assert d.get('deploy_mode') in ('initial','update'), 'deploy_mode=%s' % d.get('deploy_mode'); assert d.get('deployed_at'), 'deployed_at empty'; h=d.get('hosting',{}); assert h.get('provider'), 'hosting.provider empty'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

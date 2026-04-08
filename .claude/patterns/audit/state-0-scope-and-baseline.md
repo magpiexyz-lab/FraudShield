@@ -197,7 +197,7 @@ bash .claude/scripts/init-context.sh audit
 
 **VERIFY:**
 ```bash
-test -f .runs/audit-context.json && echo "OK" || echo "FAIL"
+test -f .runs/audit-context.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

@@ -16,7 +16,7 @@ If gate-keeper returns BLOCK, stop and report — do NOT proceed until validatio
 
 **VERIFY:**
 ```bash
-test -f .runs/gate-verdicts/bg1.json && echo "BG1 verdict file exists" || echo "BG1 verdict file missing"
+python3 -c "import json; d=json.load(open('.runs/gate-verdicts/bg1.json')); assert d.get('verdict')=='PASS', 'BG1 verdict is %s' % d.get('verdict'); assert d.get('timestamp','')!='', 'timestamp empty'; assert d.get('branch','')!='', 'branch empty'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

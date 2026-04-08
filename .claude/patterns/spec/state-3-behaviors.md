@@ -54,7 +54,7 @@ For system or scheduled behaviors, add `actor` and `trigger`:
 
 **VERIFY:**
 ```bash
-grep -q 'behaviors:' experiment/experiment.yaml 2>/dev/null || grep -q 'hypothesis_id:' experiment/experiment.yaml 2>/dev/null
+python3 -c "import yaml; d=yaml.safe_load(open('experiment/experiment.yaml')); bs=d.get('behaviors',[]); assert isinstance(bs, list) and len(bs)>0, 'no behaviors'; assert all(b.get('id') and b.get('hypothesis_id') for b in bs), 'behavior missing required fields'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

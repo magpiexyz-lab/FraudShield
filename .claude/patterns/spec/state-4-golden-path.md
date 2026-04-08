@@ -65,7 +65,7 @@ golden_path:
 
 **VERIFY:**
 ```bash
-grep -q 'golden_path:' experiment/experiment.yaml 2>/dev/null || grep -q 'endpoints:' experiment/experiment.yaml 2>/dev/null || grep -q 'commands:' experiment/experiment.yaml 2>/dev/null
+python3 -c "import yaml; d=yaml.safe_load(open('experiment/experiment.yaml')); gp=d.get('golden_path') or d.get('endpoints') or d.get('commands'); assert isinstance(gp, list) and len(gp)>0, 'no golden_path/endpoints/commands'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

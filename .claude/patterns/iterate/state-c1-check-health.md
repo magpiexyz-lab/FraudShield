@@ -112,7 +112,7 @@ Replace all placeholder values with actual data collected from Chrome MCP.
 
 **VERIFY:**
 ```bash
-test -f .runs/iterate-check-health.json && echo "OK" || echo "FAIL"
+python3 -c "import json; d=json.load(open('.runs/iterate-check-health.json')); assert d.get('campaign_name'), 'campaign_name empty'; assert d.get('checked_at'), 'checked_at empty'; m=d.get('metrics',{}); assert 'impressions' in m and 'clicks' in m, 'metrics missing impressions or clicks'; assert isinstance(d.get('checks'), list), 'checks not a list'; assert d.get('overall_status') in ('healthy','issues_found'), 'overall_status=%s' % d.get('overall_status')"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

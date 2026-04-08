@@ -151,7 +151,7 @@ Replace placeholder data with actual computed values.
 
 **VERIFY:**
 ```bash
-test -f .runs/iterate-cross-scores.json && echo "OK" || echo "FAIL"
+python3 -c "import json; d=json.load(open('.runs/iterate-cross-scores.json')); assert d.get('industry_avg_ctr',0)>0, 'industry_avg_ctr missing'; ms=d.get('mvps',[]); assert isinstance(ms, list) and len(ms)>0, 'mvps empty'; [None for m in ms if m.get('hard_gate') is None and m.get('traction_score') is None and (_ for _ in ()).throw(AssertionError('%s has neither hard_gate nor traction_score' % m.get('name','')))]"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

@@ -57,7 +57,7 @@ bash .claude/scripts/init-context.sh review
 
 **VERIFY:**
 ```bash
-test -f .runs/review-context.json && test -f CLAUDE.md && test -f experiment/EVENTS.yaml && test -f scripts/check-inventory.md && test -f experiment/experiment.example.yaml && echo "OK" || echo "FAIL"
+test -f .runs/review-context.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

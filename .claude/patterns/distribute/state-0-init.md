@@ -52,7 +52,7 @@ If surface ≠ `none`:
 
 **VERIFY:**
 ```bash
-if [ ! -f .runs/distribute-context.json ]; then echo "OK"; else git branch --show-current | grep -q 'chore/distribute' && python3 -c "import json; p=json.load(open('.runs/distribute-preconditions.json')); assert p.get('deployed_url'), 'no deployed_url'" && echo "OK" || echo "FAIL"; fi
+test -f .runs/distribute-context.json && python3 -c "import json; ctx=json.load(open('.runs/distribute-context.json')); assert 'phase' in ctx, 'phase missing'; assert ctx['phase'] in (1,2), 'phase must be 1 or 2'" && python3 -c "import json; p=json.load(open('.runs/distribute-preconditions.json')); assert p.get('deployed_url')"
 ```
 
 **STATE TRACKING:** After postconditions pass (surface ≠ none only), mark this state complete:

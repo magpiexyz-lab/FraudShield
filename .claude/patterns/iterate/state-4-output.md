@@ -140,7 +140,7 @@ Based on the measurement window and current progress, provide a concrete schedul
 
 **VERIFY:**
 ```bash
-test -f .runs/iterate-manifest.json && echo "OK" || echo "FAIL"
+python3 -c "import json; d=json.load(open('.runs/iterate-manifest.json')); assert d.get('experiment_id'), 'experiment_id empty'; assert isinstance(d.get('round'), int) and d['round']>=1, 'round invalid'; assert d.get('verdict') in ('SCALE','KILL','PIVOT','REFINE','TOO_EARLY'), 'verdict=%s' % d.get('verdict'); assert d.get('analyzed_at'), 'analyzed_at empty'; assert isinstance(d.get('recommendations'), list), 'recommendations not a list'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

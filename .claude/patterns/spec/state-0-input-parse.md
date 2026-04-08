@@ -85,7 +85,7 @@ bash .claude/scripts/init-context.sh spec
 
 **VERIFY:**
 ```bash
-test -f .runs/spec-context.json && echo "OK" || echo "FAIL"
+test -f .runs/spec-context.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

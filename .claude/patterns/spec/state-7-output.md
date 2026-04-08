@@ -164,7 +164,7 @@ Next: Run /bootstrap to scaffold the app, or edit experiment/experiment.yaml to 
 
 **VERIFY:**
 ```bash
-test -f experiment/experiment.yaml && test -f .runs/spec-manifest.json && echo "OK" || echo "FAIL"
+python3 -c "import json,yaml; yaml.safe_load(open('experiment/experiment.yaml')); m=json.load(open('.runs/spec-manifest.json')); assert m.get('created_at'), 'created_at empty'; assert isinstance(m.get('hypotheses'), list) and len(m['hypotheses'])>0, 'no hypotheses'; assert isinstance(m.get('behaviors'), list) and len(m['behaviors'])>0, 'no behaviors'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
