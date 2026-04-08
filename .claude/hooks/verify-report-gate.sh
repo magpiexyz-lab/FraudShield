@@ -54,42 +54,19 @@ if [[ -f "$PROJECT_DIR/.runs/verify-context.json" ]]; then
   fi
 
   # Check 9: design-critic hard gate
-  DC_TRACE="$TRACE_DIR/design-critic.json"
-  if [[ -f "$DC_TRACE" ]]; then
-    DC_VERDICT=$(read_json_field "$DC_TRACE" "verdict")
-    DC_RECOVERY=$(read_json_field "$DC_TRACE" "recovery")
-    if [[ "$DC_VERDICT" == "unresolved" || "$DC_RECOVERY" == "True" ]]; then
-      if ! echo "$CONTENT" | grep -q 'hard_gate_failure: *true'; then
-        ERRORS+=("design-critic verdict=$DC_VERDICT recovery=$DC_RECOVERY requires hard_gate_failure: true in report frontmatter")
-      fi
-    fi
-  fi
+  check_hard_gate_trace "design-critic" "$TRACE_DIR" \
+    '"$F_verdict" == "unresolved" || "$F_recovery" == "True"' \
+    verdict recovery
 
   # Check 10: ux-journeyer hard gate
-  UX_TRACE="$TRACE_DIR/ux-journeyer.json"
-  if [[ -f "$UX_TRACE" ]]; then
-    UX_VERDICT=$(read_json_field "$UX_TRACE" "verdict")
-    UX_UDE=$(read_json_field "$UX_TRACE" "unresolved_dead_ends")
-    UX_RECOVERY=$(read_json_field "$UX_TRACE" "recovery")
-    if [[ "$UX_VERDICT" == "blocked" || "$UX_UDE" -gt 0 || "$UX_RECOVERY" == "True" ]]; then
-      if ! echo "$CONTENT" | grep -q 'hard_gate_failure: *true'; then
-        ERRORS+=("ux-journeyer verdict=$UX_VERDICT unresolved_dead_ends=$UX_UDE recovery=$UX_RECOVERY requires hard_gate_failure: true in report frontmatter")
-      fi
-    fi
-  fi
+  check_hard_gate_trace "ux-journeyer" "$TRACE_DIR" \
+    '"$F_verdict" == "blocked" || "$F_unresolved_dead_ends" -gt 0 || "$F_recovery" == "True"' \
+    verdict unresolved_dead_ends recovery
 
   # Check 11: security-fixer hard gate
-  SF_TRACE="$TRACE_DIR/security-fixer.json"
-  if [[ -f "$SF_TRACE" ]]; then
-    SF_VERDICT=$(read_json_field "$SF_TRACE" "verdict")
-    SF_UC=$(read_json_field "$SF_TRACE" "unresolved_critical")
-    SF_RECOVERY=$(read_json_field "$SF_TRACE" "recovery")
-    if [[ ("$SF_VERDICT" == "partial" && "$SF_UC" -gt 0) || "$SF_RECOVERY" == "True" ]]; then
-      if ! echo "$CONTENT" | grep -q 'hard_gate_failure: *true'; then
-        ERRORS+=("security-fixer verdict=$SF_VERDICT unresolved_critical=$SF_UC recovery=$SF_RECOVERY requires hard_gate_failure: true in report frontmatter")
-      fi
-    fi
-  fi
+  check_hard_gate_trace "security-fixer" "$TRACE_DIR" \
+    '("$F_verdict" == "partial" && "$F_unresolved_critical" -gt 0) || "$F_recovery" == "True"' \
+    verdict unresolved_critical recovery
 
   # Check 13: design-consistency-checker trace required for full/visual + web-app
   if [[ "$SCOPE" =~ ^(full|visual)$ ]] && [[ "$ARCH" == "web-app" ]]; then

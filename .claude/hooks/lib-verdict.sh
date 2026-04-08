@@ -149,3 +149,42 @@ check_block_verdicts() {
     fi
   done
 }
+
+# --- check_hard_gate_trace ---
+# Checks a single agent's hard gate trace file.
+# Reads specified fields, evaluates an agent-specific condition, and appends
+# to global ERRORS if the condition fires but hard_gate_failure is not set.
+# Uses caller's $CONTENT and $ERRORS (global).
+# $1: agent name (e.g., "design-critic")
+# $2: trace directory path
+# $3: condition expression (bash [[ ]] body, referencing field values as $F_<fieldname>)
+# $4+: field names to read from trace JSON
+# Usage: check_hard_gate_trace "design-critic" "$TRACE_DIR" \
+#          '"$F_verdict" == "unresolved" || "$F_recovery" == "True"' \
+#          verdict recovery
+check_hard_gate_trace() {
+  local agent="$1" trace_dir="$2" condition="$3"
+  shift 3
+  local field_names=("$@")
+
+  local trace_file="$trace_dir/${agent}.json"
+  [[ ! -f "$trace_file" ]] && return 0
+
+  # Read fields and build error detail string
+  local msg_parts=""
+  for fname in "${field_names[@]}"; do
+    local val
+    val=$(read_json_field "$trace_file" "$fname")
+    # shellcheck disable=SC2086
+    declare "F_${fname}=${val}"
+    msg_parts+=" ${fname}=${val}"
+  done
+
+  # Evaluate agent-specific condition (args are hardcoded by callers, not user input)
+  # shellcheck disable=SC2294
+  if eval "[[ $condition ]]"; then
+    if ! echo "$CONTENT" | grep -q 'hard_gate_failure: *true'; then
+      ERRORS+=("${agent}${msg_parts} requires hard_gate_failure: true in report frontmatter")
+    fi
+  fi
+}
