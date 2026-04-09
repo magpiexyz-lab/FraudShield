@@ -310,7 +310,7 @@ Before enabling the campaign:
 ## Setup Instructions
 
 ### One-Time MCC Setup
-1. **Create Google Ads MCC** (Manager Account) — see `docs/google-ads-setup.md` for details
+1. **Create Google Ads MCC** (Manager Account) — see `.claude/procedures/google-ads-setup.md` for details
 
 ### Per-Member Setup (one-time per team member)
 1. **Create a subaccount** — in the MCC, click "+ New Google Ads account" → name it `{member-name}-ads`. Billing is inherited from the MCC — do not add a separate payment method
@@ -319,7 +319,7 @@ Before enabling the campaign:
 
 ### Per-Campaign Setup (do this for each MVP)
 1. **Switch to the member's subaccount** — click the subaccount name in the MCC account list to enter it
-2. **Create conversion actions** — see `docs/google-ads-setup.md` Step 6 for detailed steps
+2. **Create conversion actions** — see `.claude/procedures/google-ads-setup.md` Step 6 for detailed steps
 3. **Configure analytics destination** — see analytics stack file for provider-specific instructions
 4. **Map events** — `activate` event → the conversion action from step 2
 

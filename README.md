@@ -248,7 +248,7 @@ For more issues, see [docs/troubleshooting.md](docs/troubleshooting.md).
 - [docs/prerequisites.md](docs/prerequisites.md) — Full setup instructions
 - [docs/troubleshooting.md](docs/troubleshooting.md) — All known issues
 - [docs/technical-reference.md](docs/technical-reference.md) — Project structure, migrations, stack and archetype reference
-- [docs/google-ads-setup.md](docs/google-ads-setup.md) — Google Ads setup for `/distribute`
+- [.claude/procedures/google-ads-setup.md](.claude/procedures/google-ads-setup.md) — Google Ads setup for `/distribute`
 - [docs/CONVENTIONS.md](docs/CONVENTIONS.md) — Implementation patterns established during bootstrap
 
 ## Contributing

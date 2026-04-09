@@ -33,6 +33,8 @@ def main():
     for cf in ctx_files:
         try:
             d = json.load(open(cf))
+            if d.get('completed'):
+                continue  # Skip completed skills — their gates no longer apply
             ts = d.get('timestamp', '')
             if ts > best_ts:
                 best_ts = ts
