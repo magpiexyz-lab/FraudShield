@@ -74,7 +74,7 @@ When `deploy_mode == "update"`:
 
 **VERIFY:**
 ```bash
-test -f .runs/deploy-config.json
+python3 -c "import json; d=json.load(open('.runs/deploy-config.json')); assert isinstance(d.get('hosting_gathered'), bool), 'hosting_gathered not bool'; assert isinstance(d.get('database_gathered'), bool), 'database_gathered not bool'; assert isinstance(d.get('external_services'), list), 'external_services not a list'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

@@ -50,7 +50,7 @@ and Secret (or **skip**). Store as `oauth_credentials: { provider: { client_id, 
 
 **VERIFY:**
 ```bash
-test -f .runs/deploy-provision-3a.json
+python3 -c "import json; d=json.load(open('.runs/deploy-provision-3a.json')); assert isinstance(d.get('database_provisioned'), bool), 'database_provisioned not bool'; assert 'supabase_ref' in d, 'supabase_ref missing'; assert isinstance(d.get('oauth_credentials_collected'), bool), 'oauth_credentials_collected not bool'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

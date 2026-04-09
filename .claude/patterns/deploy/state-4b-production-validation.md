@@ -191,13 +191,7 @@ failures) — observe.md's trigger evaluation excludes these.
 
 **VERIFY:**
 ```bash
-python3 -c "
-import json
-d = json.load(open('.runs/deploy-health.json'))
-assert isinstance(d.get('health_check_passed'), bool), 'health_check_passed not bool'
-assert isinstance(d.get('auto_fix_rounds'), int), 'auto_fix_rounds not int'
-assert d.get('provision_scan_completed') is not None, 'provision_scan_completed missing'
-"
+python3 -c "import json; d=json.load(open('.runs/deploy-health.json')); assert isinstance(d.get('health_check_passed'), bool), 'health_check_passed not bool'; assert isinstance(d.get('auto_fix_rounds'), int), 'auto_fix_rounds not int'; assert d.get('provision_scan_completed') is not None, 'provision_scan_completed missing'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

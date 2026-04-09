@@ -72,7 +72,7 @@ Wait for the user to revise, override, or abandon.
 
 **VERIFY:**
 ```bash
-test -f .runs/spec-research.json
+python3 -c "import json; d=json.load(open('.runs/spec-research.json')); dims=d.get('dimensions',[]); assert isinstance(dims, list) and len(dims)==4, 'expected 4 dimensions, got %d' % len(dims); assert all(x.get('verdict') in ('pass','caution','fail') for x in dims), 'invalid verdict in dimensions'; assert all(x.get('confidence') in ('high','medium','low') for x in dims), 'invalid confidence in dimensions'; assert isinstance(d.get('passed_count'), int), 'passed_count not int'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
