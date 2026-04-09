@@ -1,6 +1,7 @@
 ---
 description: "Transform an idea into a complete Level 3 experiment.yaml with hypotheses, behaviors, variants, and stack."
 type: code-writing
+reads: []
 writes: [experiment/EVENTS.yaml]
 stack_categories: []
 requires_approval: true
