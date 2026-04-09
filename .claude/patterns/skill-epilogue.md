@@ -49,8 +49,7 @@ fi
 # .runs/fix-log.md — created during skill execution when retries/failures occur
 
 # c. Generate template file list (canonical source: .claude/template-owned-dirs.txt)
-cat .claude/template-owned-dirs.txt | xargs find -type f 2>/dev/null | sort
-# Plus: Makefile, CLAUDE.md
+cat .claude/template-owned-dirs.txt | grep -v '^#' | grep -v '^$' | xargs -I{} find {} -type f 2>/dev/null | sort
 ```
 
 ## Step 2: Write epilogue context

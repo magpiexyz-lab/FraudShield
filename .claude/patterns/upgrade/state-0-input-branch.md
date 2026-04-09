@@ -25,10 +25,33 @@ Fetch template:
 git fetch template
 ```
 
+### Resolve sync base
+
+Determine the last-synced template commit for orphan detection:
+```bash
+if [ -f .claude/template-sync-meta.json ]; then
+  SYNC_BASE=$(python3 -c "import json; print(json.load(open('.claude/template-sync-meta.json'))['last_synced_commit'])")
+else
+  # First overwrite-based upgrade: fall back to merge-base (works because prior upgrades used --merge)
+  SYNC_BASE=$(git merge-base HEAD template/main 2>/dev/null || echo "")
+fi
+```
+
 Clean stale artifacts and create context file:
 ```bash
 rm -f .runs/upgrade-*.json .runs/observe-result.json
 bash .claude/scripts/init-context.sh upgrade '{"dry_run":false}'
+```
+
+Store sync_base and dry_run in the context file:
+```bash
+python3 -c "
+import json
+d = json.load(open('.runs/upgrade-context.json'))
+d['sync_base'] = '$SYNC_BASE'
+d['dry_run'] = False
+json.dump(d, open('.runs/upgrade-context.json', 'w'), indent=2)
+"
 ```
 
 If `--dry-run` was specified, update the context file:
@@ -37,7 +60,7 @@ python3 -c "
 import json
 d = json.load(open('.runs/upgrade-context.json'))
 d['dry_run'] = True
-json.dump(d, open('.runs/upgrade-context.json', 'w'))
+json.dump(d, open('.runs/upgrade-context.json', 'w'), indent=2)
 "
 ```
 

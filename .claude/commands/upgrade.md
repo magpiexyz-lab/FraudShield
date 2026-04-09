@@ -1,5 +1,5 @@
 ---
-description: "Handle template rebase: merge, validate structural consistency, reconcile stale memory, and open a PR."
+description: "Handle template sync: overwrite template-owned files, validate structural consistency, reconcile stale memory, and open a PR."
 type: code-writing
 reads:
   - CLAUDE.md
@@ -22,7 +22,7 @@ Read each STATE's file **only when transitioning to that state**. Do NOT read ah
 | STATE | Name | Phase | File |
 |-------|------|-------|------|
 | 0 | INPUT_BRANCH_SETUP | Setup | [state-0-input-branch.md](../patterns/upgrade/state-0-input-branch.md) |
-| 1 | MERGE_VALIDATE | Validate | [state-1-merge-validate.md](../patterns/upgrade/state-1-merge-validate.md) |
+| 1 | OVERWRITE_VALIDATE | Validate | [state-1-merge-validate.md](../patterns/upgrade/state-1-merge-validate.md) |
 | 2 | MEMORY_RECONCILE | Reconcile | [state-2-memory-reconcile.md](../patterns/upgrade/state-2-memory-reconcile.md) |
 | 3 | COMMIT_PR | Commit | [state-3-commit-pr.md](../patterns/upgrade/state-3-commit-pr.md) |
 
@@ -30,6 +30,6 @@ Begin at STATE 0. Read [state-0-input-branch.md](../patterns/upgrade/state-0-inp
 
 ## Do NOT
 - Auto-delete any files without explicit user confirmation
-- Skip diagnostic steps (States 1-2) when merge conflicts occur — the report is valuable even without a successful merge
+- Skip diagnostic steps (States 1-2) — the structural diff report is always valuable
 - Modify project-owned files under `.claude/` that are outside the template-owned directory allowlist
 - Use the standard PR template — upgrade PRs use a dedicated report format

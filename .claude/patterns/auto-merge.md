@@ -49,29 +49,9 @@ is satisfied.
 ```bash
 FEATURE_BRANCH=$(git branch --show-current)
 
-# Detect active skill from context files
-ACTIVE_SKILL=$(python3 -c "
-import json, glob, os
-best_skill, best_ts = '', ''
-for cf in glob.glob('.runs/*-context.json'):
-    if 'epilogue' in cf: continue
-    try:
-        d = json.load(open(cf))
-        ts = d.get('timestamp', '')
-        if ts > best_ts:
-            best_ts = ts
-            best_skill = d.get('skill', '')
-    except: pass
-print(best_skill)
-" 2>/dev/null || echo "")
-
-# /upgrade needs --merge to preserve two-parent ancestry for git merge-base.
-# All other skills use --squash for clean single-commit history.
-if [ "$ACTIVE_SKILL" = "upgrade" ]; then
-  gh pr merge --merge --delete-branch
-else
-  gh pr merge --squash --delete-branch
-fi
+# All skills use --squash for clean single-commit history.
+# /upgrade tracks sync state via .claude/template-sync-meta.json instead of merge ancestry.
+gh pr merge --squash --delete-branch
 ```
 
 If `gh pr merge` fails:

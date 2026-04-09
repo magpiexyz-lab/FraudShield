@@ -1,4 +1,4 @@
-# STATE 1: MERGE_VALIDATE
+# STATE 1: OVERWRITE_VALIDATE
 
 **PRECONDITIONS:**
 - State 0 complete (`.runs/upgrade-context.json` exists, on `chore/upgrade-template` branch)
@@ -6,62 +6,66 @@
 
 **ACTIONS:**
 
-Read `.runs/upgrade-context.json` to check the `dry_run` flag.
+Read `.runs/upgrade-context.json` to get the `dry_run` flag and `sync_base`.
 
-### Merge step
+### Read template-owned paths
 
-If `dry_run == false`:
+Read the canonical list of template-owned paths:
 ```bash
-git merge template/main --no-edit
+TEMPLATE_PATHS=$(cat .claude/template-owned-dirs.txt | grep -v '^#' | grep -v '^$' | tr '\n' ' ')
 ```
-- On success: `merge_status = "clean"`
-- On conflict: capture the conflict file list from stderr/stdout, then abort:
-  ```bash
-  git diff --name-only --diff-filter=U > /tmp/upgrade-conflicts.txt 2>/dev/null
-  git merge --abort
-  ```
-  Set `merge_status = "conflict"`.
 
-If `dry_run == true`: skip merge, set `merge_status = "dry-run"`.
+### Pre-compute changed files
+
+Compute which template-owned files actually differ between HEAD and template/main:
+```bash
+CHANGED=$(git diff --name-only HEAD template/main -- $TEMPLATE_PATHS)
+```
+
+If `CHANGED` is empty, set `sync_status = "up-to-date"` and skip to Output.
+
+If `dry_run == true`, set `sync_status = "dry-run"` and skip to Output (but still compute the full diff report).
+
+### Overwrite changed files
+
+If `dry_run == false` and changed files exist:
+```bash
+echo "$CHANGED" | xargs git checkout template/main --
+```
+
+This stages the changes directly. No conflicts are possible — overwrite is unconditional.
+
+Set `sync_status = "synced"`.
 
 ### Orphan detection
 
-Detect files the template has removed since the last sync but that still exist in the project:
+Orphans are files the template REMOVED since the last sync that still exist locally.
+
 ```bash
-MERGE_BASE=$(git merge-base HEAD template/main)
-# Files the template REMOVED since last sync
-REMOVED=$(git diff --diff-filter=D --name-only $MERGE_BASE..template/main -- .claude/)
-# Check if project still has these removed files
-for f in $REMOVED; do test -f "$f" && echo "ORPHAN: $f"; done
+SYNC_BASE=$(python3 -c "import json; print(json.load(open('.runs/upgrade-context.json')).get('sync_base',''))")
+
+if [ -n "$SYNC_BASE" ]; then
+  # Files the template removed since last sync
+  REMOVED=$(git diff --diff-filter=D --name-only $SYNC_BASE..template/main -- $TEMPLATE_PATHS)
+  # Check which removed files still exist locally
+  ORPHANS=""
+  for f in $REMOVED; do
+    test -f "$f" && ORPHANS="$ORPHANS $f"
+  done
+fi
 ```
 
-### Structural diff — template-owned directories only
+If `dry_run == false` and orphans exist:
+- Present the list to the user:
+  ```
+  The following template files were removed upstream but still exist locally:
+    - .claude/patterns/old-file.md
+  Delete these files? (Confirm each or all)
+  ```
+- Only delete files the user explicitly confirms
+- Stage confirmed deletions with `git rm`
 
-Only compare files within these template-owned directories (allowlist):
-- `.claude/commands/`
-- `.claude/patterns/`
-- `.claude/stacks/`
-- `.claude/archetypes/`
-- `.claude/hooks/`
-- `.claude/scripts/`
-- `.claude/agents/`
-- `.claude/procedures/`
-- `.claude/orchestration/`
-
-Files outside these directories within `.claude/` (e.g., `agent-memory/`, `template-meta.json`) are project-owned — do not touch them.
-
-For each template-owned directory, compare the file listing between the project and `template/main`:
-```bash
-# List files template has in this directory
-git ls-tree -r --name-only template/main -- .claude/commands/ .claude/patterns/ .claude/stacks/ .claude/archetypes/ .claude/hooks/ .claude/scripts/ .claude/agents/ .claude/procedures/ .claude/orchestration/
-```
-
-Categorize each file:
-- **Orphan**: template removed the file (in `$REMOVED` list above), project still has it → flag for auto-deletion with user confirmation
-- **Missing**: template has the file, project doesn't, and merge didn't add it → flag as error
-- **Content differs**: both have the file, content is different → show a brief diff summary, report only (likely project customization)
-
-### Config reconciliation
+### Config drift detection
 
 Compare `.gitignore` line-by-line against the template version:
 ```bash
@@ -79,17 +83,17 @@ Report only — do not auto-modify `.gitignore`.
 Write `.runs/upgrade-diff-report.json`:
 ```json
 {
-  "merge_status": "clean",
-  "conflicts": [],
-  "orphans": [".claude/old/removed-file.md"],
-  "missing": [],
-  "content_diffs": [{"file": ".claude/patterns/verify.md", "summary": "15 lines changed"}],
+  "sync_status": "synced",
+  "files_synced": ["list of files checked out from template"],
+  "orphans": ["list of orphaned files detected"],
+  "orphans_deleted": ["list of orphans user confirmed for deletion"],
   "config_drift": {
     "gitignore": {
-      "project_additions": ["/my-custom-dir/"],
-      "template_additions": ["/.runs/"]
+      "project_additions": [],
+      "template_additions": []
     }
-  }
+  },
+  "template_commit": "<sha of template/main>"
 }
 ```
 
@@ -98,7 +102,7 @@ Write `.runs/upgrade-diff-report.json`:
 
 **VERIFY:**
 ```bash
-python3 -c "import json; d=json.load(open('.runs/upgrade-diff-report.json')); assert d.get('merge_status') in ('clean','conflict','dry-run'), 'merge_status invalid: %s' % d.get('merge_status'); assert isinstance(d.get('conflicts'), list), 'conflicts not list'; assert isinstance(d.get('orphans'), list), 'orphans not list'; assert isinstance(d.get('missing'), list), 'missing not list'"
+python3 -c "import json; d=json.load(open('.runs/upgrade-diff-report.json')); assert d.get('sync_status') in ('synced','up-to-date','dry-run'), 'sync_status invalid: %s' % d.get('sync_status'); assert isinstance(d.get('files_synced'), list), 'files_synced not list'; assert isinstance(d.get('orphans'), list), 'orphans not list'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

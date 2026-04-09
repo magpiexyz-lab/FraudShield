@@ -12,8 +12,8 @@ Read `.runs/observe-context.json` for `template_file`, `symptom`, and `narrative
 
 1. Verify the file exists on disk. If not: report "File not found: <path>" and write
    filing result with `verdict: "error"`, then proceed to STATE 2.
-2. Verify the file is under a directory listed in `.claude/template-owned-dirs.txt`
-   (or is `Makefile` or `CLAUDE.md`). If not: report "File <path> is not a
+2. Verify the file is listed in (or under a path in) `.claude/template-owned-dirs.txt`.
+   If not: report "File <path> is not a
    template-owned file" and write filing result with `verdict: "no-template-issues"`,
    then proceed to STATE 2.
 

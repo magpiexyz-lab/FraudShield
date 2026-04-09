@@ -64,8 +64,7 @@ print(f'Collected diffs for {len(diffs)} files -> .runs/observer-diffs.txt')
    Pass ONLY: content of `.runs/observer-diffs.txt` + Fix Log summaries + template file list.
    Do NOT include experiment.yaml content, project name, or feature descriptions.
    Get template file list (from build-info-collector, or generate now:
-   run `find .claude/stacks .claude/commands .claude/patterns scripts -type f 2>/dev/null`
-   and add `Makefile` and `CLAUDE.md`).
+   run `cat .claude/template-owned-dirs.txt | grep -v '^#' | grep -v '^$' | xargs -I{} find {} -type f 2>/dev/null`).
 3. Report the observer's result.
 4. Verify `.runs/agent-traces/observer.json` exists; if agent returned output but trace is missing, write a recovery trace with `"recovery":true`.
 
