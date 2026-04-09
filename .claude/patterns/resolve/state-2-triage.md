@@ -32,6 +32,17 @@ Classify each issue into one of 10 types:
 |------|----------|
 | Architectural | Issue describes changes to CLAUDE.md structure, state-registry.json, state machine flow, skill contracts, or cross-skill systemic concerns. Requires design-level analysis beyond auto-fix scope. |
 
+**Architectural Smell Test** — evaluate for EVERY issue before assigning a type:
+
+1. Does the root cause involve a pattern or mechanism used by more than one skill?
+2. Does the suggested fix have 2+ fundamentally different design options?
+3. Would fixing this in one file leave the same problem latent in other skills?
+4. Does the issue touch state-registry.json, CLAUDE.md structure, or skill contracts?
+
+If ANY answer is YES → classify as Architectural (defer to /solve).
+Principle: err on the side of deferring — false Architectural classifications
+are cheap (one /solve run), false Bug classifications risk incomplete fixes.
+
 For architectural issues, post a comment and leave the issue open (do NOT close):
 ```bash
 gh issue comment <N> --body "**Deferred: Architectural Issue**
