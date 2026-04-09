@@ -177,6 +177,28 @@ for w in weak:
   fi
 fi
 
+# --- Check 18: Verify gate-keeper spawn prompts include Verify criteria ---
+echo -n "Check 18: gate-keeper prompts include Verify criteria... "
+GATE_MISSING=0
+for f in .claude/patterns/bootstrap/state-*.md .claude/patterns/*/state-*.md; do
+  [ -f "$f" ] || continue
+  while IFS= read -r line; do
+    if echo "$line" | grep -qi 'gate-keeper.*Pass:' && ! echo "$line" | grep -qi 'Verify:'; then
+      echo ""
+      echo "  WARN: $f: gate-keeper prompt missing 'Verify:' criteria"
+      echo "    $line"
+      GATE_MISSING=$((GATE_MISSING + 1))
+    fi
+  done < "$f"
+done
+if [ "$GATE_MISSING" -gt 0 ]; then
+  echo ""
+  echo "  $GATE_MISSING gate-keeper prompt(s) missing Verify criteria (non-blocking)."
+  WARNINGS=$((WARNINGS + GATE_MISSING))
+else
+  echo "ok"
+fi
+
 echo ""
 if [ "$WARNINGS" -gt 0 ]; then
   echo "WARNINGS: $WARNINGS weak postcondition(s) detected (non-blocking)."

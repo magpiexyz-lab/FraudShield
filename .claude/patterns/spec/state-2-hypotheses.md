@@ -53,7 +53,7 @@ Each hypothesis must have:
 ```
 
 ### Rules
-- Research-type hypotheses from Step 2 are included with `status: resolved` and their verdicts
+- Research-type hypotheses from Step 2 are included with `status: resolved` and their verdicts. They must use `h-NN` IDs continuing the sequence after pending hypotheses (e.g., if pending hypotheses are h-01 through h-06, research hypotheses start at h-07). Assign the closest valid funnel category: market/problem research → `demand`, competition/ICP research → `reach`. The `research_<dimension>` IDs from STATE 1 are for the research artifact only — they are renumbered when added to the hypotheses list.
 - Every hypothesis MUST have a `metric:` object with numeric `threshold`, `formula` using `<object>_<action>` snake_case event names (these become EVENTS.yaml entries in STATE 6), and an `operator` — no vague language
 - Filter: only include hypotheses where `experiment_level <= selected level`
 - Counts below are for **pending** hypotheses only (require building product + real user data). The 4 resolved research hypotheses from Step 2 are separate and don't count toward these minimums.

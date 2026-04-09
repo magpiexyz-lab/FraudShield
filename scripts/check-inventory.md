@@ -1,7 +1,7 @@
 # Check Inventory
 
 Scannable reference listing all automated checks by name, grouped by validator.
-82 active checks consolidated into 78 inventory rows.
+83 active checks consolidated into 79 inventory rows.
 Checks 3 and 7 are archetype-aware — they read `required_experiment_fields` and `excluded_stacks` from archetype frontmatter.
 
 Last updated: 2026-03-30
@@ -93,7 +93,7 @@ better enforced by the scoped LLM review (`scripts/scoped-review-prompt.md`).
 
 ## consistency-check.sh
 
-18 active checks consolidated into 10 rows. Three checks removed (scripts #8, #11, #12). Checks #3 and #13 scan commands, agents, and procedures.
+19 active checks consolidated into 11 rows. Three checks removed (scripts #8, #11, #12). Checks #3 and #13 scan commands, agents, and procedures.
 
 | Name | Description | Scripts |
 |------|-------------|---------|
@@ -107,6 +107,7 @@ better enforced by the scoped LLM review (`scripts/scoped-review-prompt.md`).
 | Verify STATE_ID regex character class matches across hooks | state-completion-gate.sh and phase-boundary-gate.sh must use the same character class for STATE_ID extraction from advance-state.sh commands | #15 |
 | Verify verify.md STATE 5 branches on testing framework type | state-5-e2e-tests.md must reference both playwright and vitest test runners, not hardcode a single framework | #16 |
 | Warn on weak non-STATE-0 postconditions | Non-STATE-0 entries in state-registry.json using `test -f` without `python3` or `grep` content validation get a WARN (non-blocking) | #17 |
+| Warn on gate-keeper prompts missing Verify criteria | Gate-keeper spawn instructions must include explicit `Verify:` criteria — prompts without verification instructions get a WARN (non-blocking) | #18 |
 
 ## Cross-validator overlaps
 

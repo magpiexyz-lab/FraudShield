@@ -68,6 +68,34 @@ This file signals to `agent-state-gate.sh` that the observer is being
 spawned from a skill epilogue (not from verify.md), enabling the relaxed
 prerequisite path.
 
+## Step 2.5: Write evidence check artifact
+
+Before evaluating the fast-path, record proof that the evidence scan was performed:
+
+```bash
+python3 -c "
+import json, os, glob, datetime
+fix_log_lines = 0
+if os.path.exists('.runs/fix-log.md'):
+    with open('.runs/fix-log.md') as f:
+        fix_log_lines = max(0, len(f.readlines()) - 1)  # exclude header
+trace_fixes = 0
+for tf in glob.glob('.runs/agent-traces/*.json'):
+    try:
+        data = json.load(open(tf))
+        if isinstance(data.get('fixes'), list) and len(data['fixes']) > 0:
+            trace_fixes += 1
+    except: pass
+json.dump({
+    'fix_log_entries': fix_log_lines,
+    'trace_fixes_found': trace_fixes,
+    'checked_at': datetime.datetime.now(datetime.timezone.utc).isoformat()
+}, open('.runs/observe-evidence-check.json', 'w'), indent=2)
+"
+```
+
+This artifact proves the evidence scan ran, even when the verdict is clean.
+
 ## Step 3: Fast-path evaluation
 
 If `.runs/observer-diffs.txt` is empty AND `.runs/fix-log.md` has no entries

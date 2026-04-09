@@ -35,6 +35,29 @@ python3 .claude/scripts/write-q-score.py \
 
 Idempotency guard: if `.runs/observe-result.json` already exists, skip this section.
 
+Write evidence check artifact (proves the scan ran):
+```bash
+python3 -c "
+import json, os, glob, datetime
+fix_log_lines = 0
+if os.path.exists('.runs/fix-log.md'):
+    with open('.runs/fix-log.md') as f:
+        fix_log_lines = max(0, len(f.readlines()) - 1)
+trace_fixes = 0
+for tf in glob.glob('.runs/agent-traces/*.json'):
+    try:
+        data = json.load(open(tf))
+        if isinstance(data.get('fixes'), list) and len(data['fixes']) > 0:
+            trace_fixes += 1
+    except: pass
+json.dump({
+    'fix_log_entries': fix_log_lines,
+    'trace_fixes_found': trace_fixes,
+    'checked_at': datetime.datetime.now(datetime.timezone.utc).isoformat()
+}, open('.runs/observe-evidence-check.json', 'w'), indent=2)
+"
+```
+
 Check if observation evidence exists:
 1. `.runs/fix-log.md` has entries beyond the header (more than 2 lines), OR
 2. Any `.runs/agent-traces/*.json` file has a non-empty `fixes` array
@@ -70,7 +93,7 @@ Check off in `.runs/current-plan.md`: `- [x] BG4 PR Gate passed`
 
 **VERIFY:**
 ```bash
-python3 -c "import json; g=json.load(open('.runs/gate-verdicts/bg4.json')); assert g.get('verdict')=='PASS', 'BG4 verdict is %s' % g.get('verdict'); d=json.load(open('.runs/observe-result.json')); assert d.get('skill')=='bootstrap', 'skill is %s' % d.get('skill'); assert d.get('timestamp','')!='', 'observe timestamp empty'"
+python3 -c "import json; g=json.load(open('.runs/gate-verdicts/bg4.json')); assert g.get('verdict')=='PASS', 'BG4 verdict is %s' % g.get('verdict'); e=json.load(open('.runs/observe-evidence-check.json')); assert e.get('checked_at','')!='', 'evidence check not performed'; d=json.load(open('.runs/observe-result.json')); assert d.get('skill')=='bootstrap', 'skill is %s' % d.get('skill'); assert d.get('timestamp','')!='', 'observe timestamp empty'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

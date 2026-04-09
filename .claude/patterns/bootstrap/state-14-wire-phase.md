@@ -38,11 +38,11 @@ Verify scaffold-wire trace: `test -f .runs/agent-traces/scaffold-wire.json && py
   arch = yaml.safe_load(open('experiment/experiment.yaml')).get('type', 'web-app')
   trace = {'checkpoint': 'awaiting-verify'}
   if arch == 'web-app':
-      trace['pages_wired'] = [os.path.dirname(f).split('/')[-1] for f in glob.glob('src/app/*/page.tsx')]
-      trace['api_routes_wired'] = [os.path.dirname(f).split('/')[-1] for f in glob.glob('src/app/api/*/route.ts')]
+      trace['pages_wired'] = [os.path.relpath(os.path.dirname(f), 'src/app') for f in glob.glob('src/app/**/page.tsx', recursive=True) if '/api/' not in f]
+      trace['api_routes_wired'] = [os.path.relpath(os.path.dirname(f), 'src/app/api') for f in glob.glob('src/app/api/**/route.ts', recursive=True)]
   elif arch == 'service':
       trace['pages_wired'] = []
-      trace['api_routes_wired'] = [os.path.dirname(f).split('/')[-1] for f in glob.glob('src/app/api/*/route.ts')]
+      trace['api_routes_wired'] = [os.path.relpath(os.path.dirname(f), 'src/app/api') for f in glob.glob('src/app/api/**/route.ts', recursive=True)]
   elif arch == 'cli':
       trace['pages_wired'] = []
       trace['api_routes_wired'] = []
