@@ -158,7 +158,16 @@ Each per-page agent prompt:
 
 **Per-page subagents (one per golden_path page, excluding landing):**
 - subagent_type: scaffold-pages
-- prompt per page: See scaffold-pages two-phase instructions above.
+- prompt per page: Tell the subagent to:
+  1. Read `.claude/procedures/scaffold-pages.md` and execute all steps
+  2. Create SINGLE page: `<page_name>` at route `<route>`.
+     Write ONLY to `src/app/<page_name>/` -- do NOT write to `src/components/` or `src/lib/`
+     Write trace as `scaffold-pages-<page_name>.json`
+  3. Read context files: `experiment/experiment.yaml`, `experiment/EVENTS.yaml`,
+     `.runs/current-plan.md`, archetype file,
+     framework/UI stack files, `.claude/patterns/design.md`,
+     `.runs/current-visual-brief.md`, `.runs/image-manifest.json`
+  4. Follow CLAUDE.md Rules 3, 4, 6, 7, 9
 
 **Landing subagent (if surface != none):**
 - subagent_type: scaffold-landing
