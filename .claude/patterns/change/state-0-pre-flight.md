@@ -11,6 +11,30 @@
 - Verify `package.json` exists. If not, stop and tell the user: "No app found. Run `/bootstrap` first, or if you already have a bootstrap PR open, merge it before running `/change`."
 - Verify `experiment/EVENTS.yaml` exists. If not, stop and tell the user: "experiment/EVENTS.yaml not found. This file defines all analytics events and is required. Restore it from your template repo or re-create it following the format in the experiment/EVENTS.yaml section of the template."
 - Run `python3 scripts/validate-experiment.py` to verify experiment.yaml structural consistency (valid references, required fields, golden_path integrity). If validation fails, stop and tell the user: "experiment.yaml has structural issues. Run `make validate` to see details, then fix them before running `/change`."
+### Worktree Isolation
+
+Enter an isolated worktree so concurrent `/change` runs don't collide on `.runs/`:
+
+1. Clean stale worktrees from failed prior runs:
+```bash
+for wt in $(git worktree list --porcelain | grep '^worktree ' | awk '{print $2}' | grep '\.claude/worktrees/change-'); do
+  if [[ -d "$wt" ]]; then
+    AGE_SEC=$(( $(date +%s) - $(stat -f %m "$wt" 2>/dev/null || stat -c %Y "$wt" 2>/dev/null || echo 0) ))
+    if [[ $AGE_SEC -gt 86400 ]]; then
+      git worktree remove --force "$wt" 2>/dev/null || true
+    fi
+  fi
+done
+```
+
+2. Call the `EnterWorktree` tool with name `"change-<current-timestamp>"` (e.g., `change-2026-04-09T14-30-00Z`)
+3. If EnterWorktree succeeds:
+   - Run `mkdir -p .runs` (fresh worktree has no `.runs/`)
+   - Run `npm ci` to install dependencies (worktree has no `node_modules/`)
+4. If EnterWorktree fails (e.g., already in a worktree): continue normally in the current directory
+
+Remember whether you entered a worktree — STATE 12 needs this to know whether to call ExitWorktree.
+
 - Run `npm run build` to confirm the project compiles before making changes (unless `$ARGUMENTS` describes a fix). If the build fails and the change is not a build fix: stop and tell the user: "The app has build errors that need to be fixed first. Run `/change fix build errors` to address them."
 - **G1 Pre-flight Gate**: Spawn the `gate-keeper` agent (`subagent_type: gate-keeper`). Pass: "Execute G1 Pre-flight Gate. Verify: package.json exists, experiment/EVENTS.yaml exists, build passes (unless fix type), $ARGUMENTS is non-empty." If gate-keeper returns BLOCK, stop and report blocking items to user.
 
@@ -26,6 +50,7 @@ bash .claude/scripts/init-context.sh change '{"preliminary_type":null,"affected_
 - Build passes (unless change is a fix)
 - G1 Pre-flight Gate passed
 - `.runs/change-context.json` exists
+- Worktree entered (or skipped with reason recorded)
 
 **VERIFY:**
 ```bash

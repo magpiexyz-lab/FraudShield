@@ -68,6 +68,21 @@ user to merge manually.
 If auto-merge succeeded: "Resolve PR auto-merged to main. Issues closed."
 If auto-merge skipped: "Resolve PR created but not auto-merged (<reason>). Merge manually."
 
+### Worktree Cleanup
+
+If you entered a worktree in STATE 0:
+
+1. Copy Q-score back to main checkout:
+```bash
+MAIN_DIR=$(git worktree list | head -1 | awk '{print $1}')
+mkdir -p "$MAIN_DIR/.runs"
+tail -1 .runs/verify-history.jsonl >> "$MAIN_DIR/.runs/verify-history.jsonl" 2>/dev/null || true
+```
+
+2. Call the `ExitWorktree` tool with `action: "remove"` and `discard_changes: true` to return to the main checkout and delete the worktree. This is safe because all commits have been pushed to the remote and the PR has been created.
+
+If you did NOT enter a worktree (EnterWorktree failed in STATE 0): skip this section.
+
 **POSTCONDITIONS:**
 - All changes committed
 - PR opened with full template sections

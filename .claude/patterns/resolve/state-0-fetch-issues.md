@@ -60,6 +60,28 @@ Determine which issues to resolve:
 
 Store the fetched issues as `issue_list`.
 
+### Worktree Isolation
+
+Enter an isolated worktree so concurrent `/resolve` runs don't collide on `.runs/`:
+
+1. Clean stale worktrees from failed prior runs:
+```bash
+for wt in $(git worktree list --porcelain | grep '^worktree ' | awk '{print $2}' | grep '\.claude/worktrees/resolve-'); do
+  if [[ -d "$wt" ]]; then
+    AGE_SEC=$(( $(date +%s) - $(stat -f %m "$wt" 2>/dev/null || stat -c %Y "$wt" 2>/dev/null || echo 0) ))
+    if [[ $AGE_SEC -gt 86400 ]]; then
+      git worktree remove --force "$wt" 2>/dev/null || true
+    fi
+  fi
+done
+```
+
+2. Call the `EnterWorktree` tool with name `"resolve-<current-timestamp>"` (e.g., `resolve-2026-04-09T14-30-00Z`)
+3. If EnterWorktree succeeds: run `mkdir -p .runs` (fresh worktree has no `.runs/`)
+4. If EnterWorktree fails (e.g., already in a worktree): continue normally in the current directory
+
+Remember whether you entered a worktree — STATE 11 needs this to know whether to call ExitWorktree.
+
 Clean stale epilogue artifacts and create context file to initialize state tracking:
 ```bash
 rm -f .runs/observe-result.json

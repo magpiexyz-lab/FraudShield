@@ -22,13 +22,24 @@ Verify all of these before proceeding. If any check fails, stop and report the e
 
 Run `git diff --quiet && git diff --cached --quiet`. If either fails (there are uncommitted changes): stop and tell the user: "You have uncommitted changes. Please commit or stash them first." Show `git status --short` output.
 
+## Worktree Detection
+
+Check if running inside a git worktree:
+```bash
+if [[ "$(git rev-parse --git-common-dir)" != "$(git rev-parse --git-dir)" ]]; then
+  IN_WORKTREE=true
+else
+  IN_WORKTREE=false
+fi
+```
+
 ## Switch to Default Branch and Pull Latest
 
 1. Detect the default branch: `git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@'`. If empty, assume `main` and warn: "Could not detect default branch — assuming 'main'. Run `git remote set-head origin --auto` to fix." Then verify the assumed branch exists: `git show-ref --verify --quiet refs/heads/main`. If it fails, stop and tell the user: "Default branch detection failed and `main` does not exist. Run `git remote set-head origin --auto` to configure the default branch, then retry."
 
-2. If the current branch (from `git branch --show-current`) is not the default branch, run `git checkout <default-branch>`.
+2. If `IN_WORKTREE` is false AND the current branch (from `git branch --show-current`) is not the default branch, run `git checkout <default-branch>`. If `IN_WORKTREE` is true: skip this step — the worktree's HEAD is already at the correct commit (EnterWorktree creates the worktree from the latest HEAD).
 
-3. Pull latest: run `git pull --ff-only`. If that fails, try `git pull --rebase`. If rebase also fails, run `git rebase --abort` and stop: "Could not update the default branch. Run `git pull` manually and retry."
+3. If `IN_WORKTREE` is false: pull latest: run `git pull --ff-only`. If that fails, try `git pull --rebase`. If rebase also fails, run `git rebase --abort` and stop: "Could not update the default branch. Run `git pull` manually and retry." If `IN_WORKTREE` is true: skip this step.
 
 ## Create Feature Branch
 
