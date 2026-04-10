@@ -23,14 +23,23 @@ fi
 
 PROJECT_DIR="$(git rev-parse --show-toplevel 2>/dev/null || echo "${CLAUDE_PROJECT_DIR:-.}")"
 
-# Determine context file
+MANIFEST="$PROJECT_DIR/.runs/${SKILL}-manifest.json"
+
+# Determine context file — mode-aware for iterate --check/--cross
 if [[ "$SKILL" == "verify" ]]; then
   CTX="$PROJECT_DIR/.runs/verify-context.json"
+elif [[ -f "$MANIFEST" ]]; then
+  CTX_SKILL=$(python3 -c "
+import json
+m=json.load(open('$MANIFEST'))
+am=m.get('active_mode','')
+sk='$SKILL'
+print('%s-%s'%(sk,am) if am and am!='default' else sk)
+" 2>/dev/null || echo "$SKILL")
+  CTX="$PROJECT_DIR/.runs/${CTX_SKILL}-context.json"
 else
   CTX="$PROJECT_DIR/.runs/${SKILL}-context.json"
 fi
-
-MANIFEST="$PROJECT_DIR/.runs/${SKILL}-manifest.json"
 
 if [[ ! -f "$CTX" ]]; then
   echo "ERROR: lifecycle-finalize.sh — $CTX not found" >&2

@@ -15,24 +15,18 @@ modifies_specs: false
 ---
 Deploy the app to production by creating cloud infrastructure and deploying via CLI.
 
-## JIT State Dispatch
+## Lifecycle
 
-Read each STATE's file **only when transitioning to that state**. Do NOT read ahead. Complete the VERIFY check before reading the next state. This ensures you hold only one state's instructions in working memory at a time.
-
-| STATE | Name | Phase | File |
-|-------|------|-------|------|
-| 0 | PRE_FLIGHT | Plan | [state-0-pre-flight.md](../patterns/deploy/state-0-pre-flight.md) |
-| 1 | CONFIG_GATHER | Plan | [state-1-config-gather.md](../patterns/deploy/state-1-config-gather.md) |
-| 2 | USER_APPROVAL | Plan | [state-2-user-approval.md](../patterns/deploy/state-2-user-approval.md) |
-| 3a | PROVISION_DB | Implement | [state-3a-provision-db.md](../patterns/deploy/state-3a-provision-db.md) |
-| 3b | PROVISION_HOST | Implement | [state-3b-provision-host.md](../patterns/deploy/state-3b-provision-host.md) |
-| 3c | DEPLOY_SERVICES | Implement | [state-3c-deploy-services.md](../patterns/deploy/state-3c-deploy-services.md) |
-| 4a | HEALTH_FIX | Implement | [state-4a-health-fix.md](../patterns/deploy/state-4a-health-fix.md) |
-| 4b | PROD_VALIDATION | Implement | [state-4b-production-validation.md](../patterns/deploy/state-4b-production-validation.md) |
-| 5 | MANIFEST_WRITE | Implement | [state-5-manifest-write.md](../patterns/deploy/state-5-manifest-write.md) |
-| 6 | SKILL_EPILOGUE | Implement | [state-6-skill-epilogue.md](../patterns/deploy/state-6-skill-epilogue.md) |
-
-Begin at STATE 0. Read [state-0-pre-flight.md](../patterns/deploy/state-0-pre-flight.md) now.
+1. Run `bash .claude/scripts/lifecycle-init.sh deploy`
+2. State execution loop:
+   a. Run: `NEXT=$(bash .claude/scripts/lifecycle-next.sh deploy)`
+   b. If NEXT is "FINALIZE" → go to step 3
+   c. If NEXT does not start with "/" → STOP with error (print NEXT for diagnosis)
+   d. Read the state file at $NEXT and execute its ACTIONS section
+   e. After ACTIONS complete, run the state's STATE TRACKING command
+      (the `bash .claude/scripts/advance-state.sh` call in the state file)
+   f. Return to step 2a
+3. Run `bash .claude/scripts/lifecycle-finalize.sh deploy`
 
 ## Do NOT
 

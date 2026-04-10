@@ -17,23 +17,30 @@ fi
 
 PROJECT_DIR="$(git rev-parse --show-toplevel 2>/dev/null || echo "${CLAUDE_PROJECT_DIR:-.}")"
 
-# Determine context file — verify uses verify-context.json
-if [[ "$SKILL" == "verify" ]]; then
-  CTX="$PROJECT_DIR/.runs/verify-context.json"
-else
-  CTX="$PROJECT_DIR/.runs/${SKILL}-context.json"
-fi
-
 MANIFEST="$PROJECT_DIR/.runs/${SKILL}-manifest.json"
 
 # --- Check prerequisites ---
-if [[ ! -f "$CTX" ]]; then
-  echo "NO_CONTEXT"
+if [[ ! -f "$MANIFEST" ]]; then
+  echo "NO_MANIFEST"
   exit 0
 fi
 
-if [[ ! -f "$MANIFEST" ]]; then
-  echo "NO_MANIFEST"
+# Determine context file — mode-aware for iterate --check/--cross
+if [[ "$SKILL" == "verify" ]]; then
+  CTX="$PROJECT_DIR/.runs/verify-context.json"
+else
+  CTX_SKILL=$(python3 -c "
+import json
+m=json.load(open('$MANIFEST'))
+am=m.get('active_mode','')
+sk='$SKILL'
+print('%s-%s'%(sk,am) if am and am!='default' else sk)
+" 2>/dev/null || echo "$SKILL")
+  CTX="$PROJECT_DIR/.runs/${CTX_SKILL}-context.json"
+fi
+
+if [[ ! -f "$CTX" ]]; then
+  echo "NO_CONTEXT"
   exit 0
 fi
 

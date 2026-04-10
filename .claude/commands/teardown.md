@@ -13,20 +13,18 @@ modifies_specs: false
 ---
 Tear down the cloud infrastructure created by `/deploy`.
 
-## JIT State Dispatch
+## Lifecycle
 
-Read each STATE's file **only when transitioning to that state**. Do NOT read ahead. Complete the VERIFY check before reading the next state. This ensures you hold only one state's instructions in working memory at a time.
-
-| STATE | Name | Phase | File |
-|-------|------|-------|------|
-| 0 | PRE_FLIGHT | Plan | [state-0-pre-flight.md](../patterns/teardown/state-0-pre-flight.md) |
-| 1 | USER_CONFIRMATION | Plan | [state-1-user-confirmation.md](../patterns/teardown/state-1-user-confirmation.md) |
-| 2 | DESTROY_RESOURCES | Implement | [state-2-destroy-resources.md](../patterns/teardown/state-2-destroy-resources.md) |
-| 3 | VERIFY_DELETION | Implement | [state-3-verify-deletion.md](../patterns/teardown/state-3-verify-deletion.md) |
-| 4 | CLEANUP | Implement | [state-4-cleanup.md](../patterns/teardown/state-4-cleanup.md) |
-| 5 | SKILL_EPILOGUE | Implement | [state-5-skill-epilogue.md](../patterns/teardown/state-5-skill-epilogue.md) |
-
-Begin at STATE 0. Read [state-0-pre-flight.md](../patterns/teardown/state-0-pre-flight.md) now.
+1. Run `bash .claude/scripts/lifecycle-init.sh teardown`
+2. State execution loop:
+   a. Run: `NEXT=$(bash .claude/scripts/lifecycle-next.sh teardown)`
+   b. If NEXT is "FINALIZE" → go to step 3
+   c. If NEXT does not start with "/" → STOP with error (print NEXT for diagnosis)
+   d. Read the state file at $NEXT and execute its ACTIONS section
+   e. After ACTIONS complete, run the state's STATE TRACKING command
+      (the `bash .claude/scripts/advance-state.sh` call in the state file)
+   f. Return to step 2a
+3. Run `bash .claude/scripts/lifecycle-finalize.sh teardown`
 
 ## Do NOT
 

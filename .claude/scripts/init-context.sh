@@ -57,13 +57,13 @@ BRANCH="$(git branch --show-current)"
 if [[ -z "$EXTRA" || "$EXTRA" == "{}" ]]; then
   # Pure bash — no python3 needed
   cat > "$CTX" << CTXEOF
-{"skill":"$SKILL","branch":"$BRANCH","timestamp":"$TS","run_id":"$SKILL-$TS","completed_states":[0]}
+{"skill":"$SKILL","branch":"$BRANCH","timestamp":"$TS","run_id":"$SKILL-$TS","completed_states":[]}
 CTXEOF
 else
   # Merge base + extra via python3 (extra passed through stdin to avoid shell quoting issues)
   printf '%s' "$EXTRA" | python3 -c "
 import json, sys
-base = {'skill': '$SKILL', 'branch': '$BRANCH', 'timestamp': '$TS', 'run_id': '$SKILL-$TS', 'completed_states': [0]}
+base = {'skill': '$SKILL', 'branch': '$BRANCH', 'timestamp': '$TS', 'run_id': '$SKILL-$TS', 'completed_states': []}
 extra = json.loads(sys.stdin.read())
 base.update(extra)
 json.dump(base, open('$CTX', 'w'))

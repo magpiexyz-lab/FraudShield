@@ -17,68 +17,27 @@ Review the experiment's progress and recommend what to do next.
 
 Parse `$ARGUMENTS` for mode flags:
 
-| Flag | Mode | Description |
-|------|------|-------------|
-| _(empty)_ | default | Funnel analysis (states 0-5) |
-| `--check` | check | Ads campaign health check via Chrome MCP (states c0-c3) |
-| `--cross` | cross | Cross-MVP Traction Score evaluation (states x0-x5) |
+| Flag | Mode |
+|------|------|
+| _(none)_ | default |
+| `--check` | check |
+| `--cross` | cross |
 
-**If `$ARGUMENTS` contains `--cross`**, use the Cross Mode dispatch table below.
+## Lifecycle
 
-### Cross Mode JIT State Dispatch
-
-Read each STATE's file **only when transitioning to that state**. Do NOT read ahead. Complete the VERIFY check before reading the next state. This ensures you hold only one state's instructions in working memory at a time.
-
-| STATE | Name | Phase | File |
-|-------|------|-------|------|
-| x0 | DISCOVER_MVPS | Plan | [state-x0-discover-mvps.md](../patterns/iterate/state-x0-discover-mvps.md) |
-| x1 | GATHER_ALL_DATA | Plan | [state-x1-gather-all-data.md](../patterns/iterate/state-x1-gather-all-data.md) |
-| x2 | MIGRATE_EVENTS | Plan | [state-x2-migrate-events.md](../patterns/iterate/state-x2-migrate-events.md) |
-| x3 | COMPUTE_SCORES | Plan | [state-x3-compute-scores.md](../patterns/iterate/state-x3-compute-scores.md) |
-| x4 | RANK_AND_RECOMMEND | Implement | [state-x4-rank-recommend.md](../patterns/iterate/state-x4-rank-recommend.md) |
-| x5 | SKILL_EPILOGUE | Implement | [state-x5-skill-epilogue.md](../patterns/iterate/state-x5-skill-epilogue.md) |
-
-Begin at STATE x0. Read [state-x0-discover-mvps.md](../patterns/iterate/state-x0-discover-mvps.md) now.
-
-**STOP here -- do not continue to the check or default dispatch tables below.**
-
----
-
-**If `$ARGUMENTS` contains `--check`**, use the Check Mode dispatch table below.
-
-### Check Mode JIT State Dispatch
-
-Read each STATE's file **only when transitioning to that state**. Do NOT read ahead. Complete the VERIFY check before reading the next state. This ensures you hold only one state's instructions in working memory at a time.
-
-| STATE | Name | Phase | File |
-|-------|------|-------|------|
-| c0 | READ_ADS_CONTEXT | Plan | [state-c0-read-ads-context.md](../patterns/iterate/state-c0-read-ads-context.md) |
-| c1 | CHECK_HEALTH | Plan | [state-c1-check-health.md](../patterns/iterate/state-c1-check-health.md) |
-| c2 | AUTO_FIX | Implement | [state-c2-auto-fix.md](../patterns/iterate/state-c2-auto-fix.md) |
-| c3 | REPORT | Implement | [state-c3-report.md](../patterns/iterate/state-c3-report.md) |
-
-Begin at STATE c0. Read [state-c0-read-ads-context.md](../patterns/iterate/state-c0-read-ads-context.md) now.
-
-**STOP here -- do not continue to the default dispatch table below.**
-
----
-
-**If `$ARGUMENTS` does NOT contain `--check` or `--cross`**, proceed with the default funnel analysis below.
-
-## JIT State Dispatch
-
-Read each STATE's file **only when transitioning to that state**. Do NOT read ahead. Complete the VERIFY check before reading the next state. This ensures you hold only one state's instructions in working memory at a time.
-
-| STATE | Name | Phase | File |
-|-------|------|-------|------|
-| 0 | READ_CONTEXT | Plan | [state-0-read-context.md](../patterns/iterate/state-0-read-context.md) |
-| 1 | GATHER_DATA | Plan | [state-1-gather-data.md](../patterns/iterate/state-1-gather-data.md) |
-| 2 | COMPUTE_VERDICTS | Plan | [state-2-compute-verdicts.md](../patterns/iterate/state-2-compute-verdicts.md) |
-| 3 | DECISION | Plan | [state-3-decision.md](../patterns/iterate/state-3-decision.md) |
-| 4 | OUTPUT | Implement | [state-4-output.md](../patterns/iterate/state-4-output.md) |
-| 5 | SKILL_EPILOGUE | Implement | [state-5-skill-epilogue.md](../patterns/iterate/state-5-skill-epilogue.md) |
-
-Begin at STATE 0. Read [state-0-read-context.md](../patterns/iterate/state-0-read-context.md) now.
+1. Initialize based on detected mode:
+   - If `--check`: Run `bash .claude/scripts/lifecycle-init.sh iterate '{"mode":"check"}'`
+   - If `--cross`: Run `bash .claude/scripts/lifecycle-init.sh iterate '{"mode":"cross"}'`
+   - Otherwise: Run `bash .claude/scripts/lifecycle-init.sh iterate`
+2. State execution loop:
+   a. Run: `NEXT=$(bash .claude/scripts/lifecycle-next.sh iterate)`
+   b. If NEXT is "FINALIZE" → go to step 3
+   c. If NEXT does not start with "/" → STOP with error (print NEXT for diagnosis)
+   d. Read the state file at $NEXT and execute its ACTIONS section
+   e. After ACTIONS complete, run the state's STATE TRACKING command
+      (the `bash .claude/scripts/advance-state.sh` call in the state file)
+   f. Return to step 2a
+3. Run `bash .claude/scripts/lifecycle-finalize.sh iterate`
 
 ## Do NOT
 - Write code or modify source files — this skill is analysis only

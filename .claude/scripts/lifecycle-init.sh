@@ -197,6 +197,10 @@ if "modes" in data and extra_str:
     except (json.JSONDecodeError, TypeError):
         pass
 
+# Default to "default" mode when modes present but no mode specified
+if "modes" in data and "active_mode" not in data and "default" in data["modes"]:
+    data["active_mode"] = "default"
+
 # --- Write manifest ---
 with open(manifest_path, "w") as f:
     json.dump(data, f, indent=2)
@@ -229,4 +233,10 @@ except: print('')
 fi
 
 # --- Step 5: Call init-context.sh ---
-bash "$PROJECT_DIR/.claude/scripts/init-context.sh" "$SKILL" "$EXTRA"
+# Mode-aware: iterate --check → init-context.sh iterate-check (not iterate)
+CTX_SKILL="$SKILL"
+if [[ -n "$EXTRA" ]]; then
+  MODE=$(python3 -c "import json; d=json.loads('''$EXTRA'''); m=d.get('mode',''); print(m if m and m!='default' else '')" 2>/dev/null || echo "")
+  [[ -n "$MODE" ]] && CTX_SKILL="${SKILL}-${MODE}"
+fi
+bash "$PROJECT_DIR/.claude/scripts/init-context.sh" "$CTX_SKILL" "$EXTRA"
