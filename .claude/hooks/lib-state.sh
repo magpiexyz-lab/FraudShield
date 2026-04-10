@@ -100,6 +100,38 @@ print(best_skill)
 " 2>/dev/null || echo ""
 }
 
+# --- detect_skill_for_branch ---
+# Like detect_active_skill_for_branch but does NOT filter completed contexts.
+# Use for PR gates where the skill has already finished all states and
+# advance-state.sh has set completed: true before PR creation.
+# Returns "" if no matching context found.
+# Usage: SKILL=$(detect_skill_for_branch "$BRANCH")
+detect_skill_for_branch() {
+  local branch="$1"
+  local project_dir="${CLAUDE_PROJECT_DIR:-.}"
+  python3 -c "
+import json, glob, os
+branch = '$branch'
+project = '$project_dir'
+best_skill = ''
+best_ts = ''
+for f in glob.glob(os.path.join(project, '.runs', '*-context.json')):
+    if 'epilogue-context' in f:
+        continue
+    try:
+        d = json.load(open(f))
+        if d.get('branch') != branch:
+            continue
+        ts = d.get('timestamp', '')
+        if ts > best_ts:
+            best_ts = ts
+            best_skill = d.get('skill', '')
+    except:
+        continue
+print(best_skill)
+" 2>/dev/null || echo ""
+}
+
 # --- get_observation_gate ---
 # Reads observation_gates metadata from state-registry.json for a skill.
 # Returns the value of a specific field, or "" if not found.
