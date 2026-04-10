@@ -359,7 +359,72 @@ for e in entries:
 "
 ```
 
-**Required checks (8 total):**
+#### Chrome MCP Read-Back Verification
+
+**Skip if `manual_creation: true`** — manual path uses 6j's y/n checklist + 6k table instead.
+
+After reading the evidence file, navigate to the live campaign in Google Ads via Chrome MCP and read back the actual saved settings. This catches discrepancies between what the agent set and what Google Ads actually saved (e.g., Google defaulting to Maximize Clicks despite selecting Manual CPC).
+
+Use `campaign_url` from `experiment/ads.yaml` as the starting point.
+
+**Wait-and-retry strategy:** After each navigation, call `mcp__claude-in-chrome__read_page` with `filter: "all"`. If the accessibility tree contains loading indicators (spinner elements, "Loading..." text, skeleton placeholders), wait 3 seconds via `mcp__claude-in-chrome__javascript_tool` (`await new Promise(r => setTimeout(r, 3000))`) and retry `read_page`. Max 3 retries per page. If still loading after 3 retries → mark that page as `inconclusive`.
+
+**Page 1: Campaign Settings**
+
+1. Navigate to campaign Settings page (click "Settings" in left nav or navigate via campaign_url)
+2. Read the accessibility tree via `mcp__claude-in-chrome__read_page` with `filter: "all"`
+3. Extract 4 settings:
+   - **Bidding strategy**: Find Bidding section → combobox/listbox/dropdown selected value, or text following the "Bid strategy type" label. Expected: contains "Manual CPC" (not "Maximize clicks", not "Maximize conversions")
+   - **Enhanced CPC**: Within the Bidding section, find checkbox labeled "Enhanced CPC" or "Help increase conversions with Enhanced CPC". Read its `checked` state. Expected: `false` (unchecked)
+   - **Daily budget**: Find Budget section → read input or text value showing daily budget amount. Expected: matches `budget.daily_budget_cents / 100` from ads.yaml
+   - **Networks**: Find Networks section → locate "Search partners" and "Display Network" checkbox elements. Read both `checked` states. Expected: both `false` (unchecked)
+
+**Page 2: Ad Group**
+
+1. Navigate to Ad groups tab → click into `{campaign_name}-ag1` (the ad group created in Step 3 of 6e)
+2. Read the accessibility tree
+3. Extract:
+   - **Default max CPC**: Find "Default max. CPC" or "Max. CPC bid" input/text value. Expected: matches `guardrails.max_cpc_cents / 100` from ads.yaml
+
+**Page 3: Keywords Tab**
+
+1. Navigate to Keywords tab within the campaign
+2. Read the accessibility tree
+3. Extract:
+   - **Keywords match type**: Read the "Match type" column for the listed keywords. Expected: all show "Phrase match"
+
+**Fallback per element:** If `read_page` can't locate a target element via structural parsing, try `mcp__claude-in-chrome__find` with a natural language query (e.g., "bidding strategy dropdown", "Enhanced CPC checkbox"), then `mcp__claude-in-chrome__get_page_text` as last resort for substring search.
+
+**If any Chrome MCP call fails** (tool error, tab closed, connection lost): stop the read-back, set `readback.status` to `"inconclusive"` with reason, and continue to the evidence-based checks below. Read-back failure does NOT block the audit — it degrades to requiring 6k human confirmation with a warning banner.
+
+**Record read-back results** by running:
+
+```bash
+python3 -c "
+import json, datetime
+# Replace the values below with actual read-back results from Chrome MCP
+readback = {
+    'status': '<completed|inconclusive>',
+    'inconclusive_reason': None,  # or string reason if inconclusive
+    'completed_at': datetime.datetime.now(datetime.UTC).strftime('%Y-%m-%dT%H:%M:%SZ'),
+    'settings': {
+        'bidding_strategy': {'expected': 'Manual CPC', 'actual': '<ACTUAL_VALUE>', 'pass': True},
+        'enhanced_cpc': {'expected': False, 'actual': False, 'pass': True},
+        'daily_budget': {'expected': '<EXPECTED>', 'actual': '<ACTUAL>', 'pass': True},
+        'networks': {'expected': {'search_partners': False, 'display_network': False}, 'actual': {'search_partners': False, 'display_network': False}, 'pass': True},
+        'max_cpc': {'expected': '<EXPECTED>', 'actual': '<ACTUAL>', 'pass': True},
+        'keywords_match_type': {'expected': 'Phrase match', 'actual': '<ACTUAL>', 'pass': True}
+    },
+    'all_readback_passed': True  # or False, or None if inconclusive
+}
+json.dump(readback, open('.runs/distribute-campaign-readback-tmp.json', 'w'), indent=2)
+print(f'Read-back: {readback[\"status\"]} — {sum(1 for s in readback[\"settings\"].values() if s.get(\"pass\"))} / {len(readback[\"settings\"])} settings verified')
+"
+```
+
+> **Record evidence:** step=`readback_verification`, action="Read back campaign settings via Chrome MCP", evidence="<summary of all 6 settings read and their values, e.g., 'Read 3 pages: Settings (bidding=Manual CPC, eCPC=OFF, budget=$20.00, networks=Search only), Ad group (max CPC=$2.50), Keywords (all Phrase match). 6/6 settings match ads.yaml.'>"
+
+**Required evidence checks (8 total, plus 6 readback checks when read-back completes):**
 
 | # | Check Name | Evidence Key | Expected | Cross-check with ads.yaml |
 |---|-----------|-------------|----------|--------------------------|
@@ -377,7 +442,7 @@ Write the audit result:
 
 ```bash
 python3 -c "
-import json, datetime, re, yaml
+import json, datetime, re, yaml, os
 
 evidence = json.load(open('.runs/distribute-campaign-evidence.json'))
 entries = {e['step']: e for e in evidence.get('entries', [])}
@@ -448,13 +513,97 @@ if sitelinks:  # non-empty list
         'pass': has_sl_evidence
     })
 
+# --- Read-back cross-checks (only when readback completed) ---
+readback = {}
+readback_completed = False
+rb_file = '.runs/distribute-campaign-readback-tmp.json'
+if os.path.exists(rb_file):
+    readback = json.load(open(rb_file))
+
+if readback.get('status') == 'completed':
+    rb_settings = readback.get('settings', {})
+    readback_completed = True
+
+    # Readback check 1: Bidding strategy
+    rb_bid = rb_settings.get('bidding_strategy', {})
+    expects_manual = ads.get('budget', {}).get('bidding_strategy', '') == 'manual_cpc' or ads.get('playbook', {}).get('bidding_strategy', '') == 'manual_cpc'
+    actual_manual = 'manual cpc' in str(rb_bid.get('actual', '')).lower()
+    checks.append({
+        'name': 'readback_bidding_strategy',
+        'expected': 'Manual CPC' if expects_manual else 'unknown',
+        'actual': str(rb_bid.get('actual', 'NOT_READ')),
+        'pass': not expects_manual or actual_manual
+    })
+
+    # Readback check 2: Enhanced CPC
+    rb_ecpc = rb_settings.get('enhanced_cpc', {})
+    checks.append({
+        'name': 'readback_enhanced_cpc',
+        'expected': 'OFF (unchecked)',
+        'actual': 'OFF' if rb_ecpc.get('actual') == False else 'ON',
+        'pass': rb_ecpc.get('actual') == False
+    })
+
+    # Readback check 3: Daily budget
+    rb_budget = rb_settings.get('daily_budget', {})
+    expected_budget = ads.get('budget', {}).get('daily_budget_cents', 0) / 100
+    actual_str = str(rb_budget.get('actual', ''))
+    try:
+        actual_budget = float(actual_str.replace('$','').replace(',',''))
+    except ValueError:
+        actual_budget = -1
+    checks.append({
+        'name': 'readback_daily_budget',
+        'expected': f'${expected_budget:.2f}',
+        'actual': actual_str,
+        'pass': abs(actual_budget - expected_budget) < 0.02
+    })
+
+    # Readback check 4: Networks
+    rb_nets = rb_settings.get('networks', {})
+    actual_nets = rb_nets.get('actual', {})
+    sp = actual_nets.get('search_partners')
+    dn = actual_nets.get('display_network')
+    checks.append({
+        'name': 'readback_networks',
+        'expected': 'Search Partners OFF, Display Network OFF',
+        'actual': 'SP=%s, DN=%s' % (sp, dn),
+        'pass': sp == False and dn == False
+    })
+
+    # Readback check 5: Max CPC
+    rb_cpc = rb_settings.get('max_cpc', {})
+    expected_cpc = ads.get('guardrails', {}).get('max_cpc_cents', 0) / 100
+    actual_cpc_str = str(rb_cpc.get('actual', ''))
+    try:
+        actual_cpc = float(actual_cpc_str.replace('$','').replace(',',''))
+    except ValueError:
+        actual_cpc = -1
+    checks.append({
+        'name': 'readback_max_cpc',
+        'expected': f'${expected_cpc:.2f}',
+        'actual': actual_cpc_str,
+        'pass': abs(actual_cpc - expected_cpc) < 0.02
+    })
+
+    # Readback check 6: Match type
+    rb_match = rb_settings.get('keywords_match_type', {})
+    checks.append({
+        'name': 'readback_match_type',
+        'expected': 'Phrase match',
+        'actual': str(rb_match.get('actual', 'NOT_READ')),
+        'pass': 'phrase' in str(rb_match.get('actual', '')).lower()
+    })
+
 all_passed = all(c['pass'] for c in checks)
 audit = {
     'checked_at': datetime.datetime.now(datetime.UTC).strftime('%Y-%m-%dT%H:%M:%SZ'),
     'all_passed': all_passed,
     'checks': checks,
     'evidence_file': '.runs/distribute-campaign-evidence.json',
-    'ads_yaml': 'experiment/ads.yaml'
+    'ads_yaml': 'experiment/ads.yaml',
+    'readback': readback if readback.get('status') else None,
+    'readback_completed': readback_completed
 }
 json.dump(audit, open('.runs/distribute-campaign-audit.json', 'w'), indent=2)
 status = 'PASSED' if all_passed else 'FAILED'
@@ -479,7 +628,58 @@ If `all_passed` is False:
 
 If `all_passed` is True:
 
-> Campaign audit passed ({N}/{N} checks). Proceeding to launch protocol.
+> Campaign audit passed ({N}/{N} checks). Proceeding to pre-launch review.
+
+### 6k: Pre-launch settings review
+
+Read `phase` from `.runs/distribute-context.json`. **This step runs for all phases.**
+
+After the automated audit passes (evidence checks + Chrome MCP read-back), present a visual settings summary for the user to verify against the live Google Ads dashboard. This is the final human defense-in-depth layer — it catches edge cases that automated read-back might miss (e.g., settings that render differently than expected in the accessibility tree).
+
+Read the audit file. If `readback_completed` is `false` and `manual_creation` is not `true`, prepend a warning:
+
+> **Warning:** Automated read-back verification could not complete. Your manual confirmation below is the only verification that campaign settings match ads.yaml. Please check each setting carefully.
+
+Read critical settings from `experiment/ads.yaml` and display:
+
+> **Pre-Launch Settings Review**
+>
+> Please open your campaign dashboard and verify these critical settings match what Google Ads actually saved:
+>
+> **Campaign URL:** {campaign_url from ads.yaml}
+>
+> | # | Setting | Expected Value | Where to Check |
+> |---|---------|---------------|----------------|
+> | 1 | Bidding strategy | **Manual CPC** | Settings > Bidding |
+> | 2 | Enhanced CPC | **OFF** | Settings > Bidding > Enhanced CPC checkbox |
+> | 3 | Max CPC | **${max_cpc_cents / 100}** | Ad group > Default max CPC |
+> | 4 | Daily budget | **${daily_budget_cents / 100}/day** | Settings > Budget |
+> | 5 | Networks | **Google Search only** | Settings > Networks (Search Partners OFF, Display OFF) |
+> | 6 | Locations | **{target_geo}** | Settings > Locations |
+> | 7 | Keywords | **{N} keywords, Phrase Match** | Keywords tab |
+> | 8 | Campaign status | **Paused** | Campaign dashboard |
+>
+> Reply **confirmed** after checking, or tell me what needs to be fixed.
+
+**STOP.** Do not proceed until the user replies **confirmed** (or equivalent affirmative).
+
+If the user reports a mismatch:
+1. Guide them to fix it in the Google Ads UI (provide the specific navigation path from the "Where to Check" column)
+2. After they fix it, re-present the table for re-confirmation
+3. Do not proceed until all settings are confirmed correct
+
+Record the confirmation:
+```bash
+python3 -c "
+import json, datetime
+audit_file = '.runs/distribute-campaign-audit.json'
+audit = json.load(open(audit_file))
+audit['user_confirmed'] = True
+audit['confirmed_at'] = datetime.datetime.now(datetime.UTC).strftime('%Y-%m-%dT%H:%M:%SZ')
+json.dump(audit, open(audit_file, 'w'), indent=2)
+print('Pre-launch review confirmed by user')
+"
+```
 
 ### 6f: Phase 1 launch protocol
 
@@ -587,6 +787,8 @@ if os.path.exists(audit_file):
     audit = json.load(open(audit_file))
     if audit.get('all_passed') or audit.get('manual_creation'):
         steps.append('6j')
+    if audit.get('user_confirmed'):
+        steps.append('6k')
 if ads.get('launch_protocol') or ads.get('campaign_id'):
     steps.append('6f')
 steps.append('6g')
@@ -604,7 +806,8 @@ json.dump({
         'image_assets_uploaded': str(ads.get('image_assets_uploaded', 'false')),
         'sitelink_assets_created': str(bool(ads.get('sitelinks', []))),
         'phase': json.load(open('.runs/distribute-context.json')).get('phase', 0) if os.path.exists('.runs/distribute-context.json') else 0,
-        'audit_passed': str(os.path.exists(audit_file) and (json.load(open(audit_file)).get('all_passed', False) or json.load(open(audit_file)).get('manual_creation', False))) if os.path.exists(audit_file) else 'false'
+        'audit_passed': str(os.path.exists(audit_file) and (json.load(open(audit_file)).get('all_passed', False) or json.load(open(audit_file)).get('manual_creation', False))) if os.path.exists(audit_file) else 'false',
+        'readback_completed': str(json.load(open(audit_file)).get('readback_completed', False)) if os.path.exists(audit_file) else 'false'
     }
 }, open('.runs/distribute-step-check.json', 'w'), indent=2)
 print('SELF-CHECK: wrote .runs/distribute-step-check.json with', len(steps), 'steps')
@@ -616,12 +819,14 @@ This checkpoint is mandatory. Do not skip it.
 **POSTCONDITIONS:**
 - Campaign created via Chrome MCP with campaign_id/campaign_url in ads.yaml, OR existing campaign detected and skipped
 - Campaign audit passed (`.runs/distribute-campaign-audit.json` with `all_passed: true`) or manual_creation path confirmed
+- Chrome MCP read-back completed (`.runs/distribute-campaign-audit.json` with `readback_completed: true`) or manual_creation path
+- User confirmed pre-launch settings review (`.runs/distribute-campaign-audit.json` with `user_confirmed: true`)
 - PR auto-merged to main (or intentionally skipped with reason)
-- `.runs/distribute-step-check.json` exists with steps 6a, 6e, 6j, 6f completed
+- `.runs/distribute-step-check.json` exists with steps 6a, 6e, 6j, 6k, 6f completed
 
 **VERIFY:**
 ```bash
-grep -q 'campaign_id' experiment/ads.yaml 2>/dev/null && python3 -c "import json; s=set(json.load(open('.runs/distribute-step-check.json')).get('steps_completed',[])); required={'6a','6e','6j','6f'}; assert required.issubset(s), f'missing steps: {required - s}'" && python3 -c "import json; d=json.load(open('.runs/distribute-campaign-audit.json')); assert d.get('all_passed')==True or d.get('manual_creation')==True, 'campaign audit not passed'"
+grep -q 'campaign_id' experiment/ads.yaml 2>/dev/null && python3 -c "import json; s=set(json.load(open('.runs/distribute-step-check.json')).get('steps_completed',[])); required={'6a','6e','6j','6k','6f'}; assert required.issubset(s), f'missing steps: {required - s}'" && python3 -c "import json; d=json.load(open('.runs/distribute-campaign-audit.json')); assert d.get('all_passed')==True or d.get('manual_creation')==True, 'campaign audit not passed'; assert d.get('user_confirmed')==True, 'user has not confirmed pre-launch settings review'" && python3 -c "import json; d=json.load(open('.runs/distribute-campaign-audit.json')); m=d.get('manual_creation',False); assert d.get('readback_completed')==True or m==True, 'readback not completed and not manual creation'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
