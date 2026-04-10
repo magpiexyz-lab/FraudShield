@@ -8,7 +8,7 @@
 set -euo pipefail
 SKILL="$1"
 STATE_NUM="$2"
-PROJECT_DIR="${CLAUDE_PROJECT_DIR:-.}"
+PROJECT_DIR="$(git rev-parse --show-toplevel 2>/dev/null || echo "${CLAUDE_PROJECT_DIR:-.}")"
 
 # Determine context file — verify uses verify-context.json, others use <skill>-context.json
 if [[ "$SKILL" == "verify" ]]; then
@@ -46,7 +46,7 @@ except ValueError:
 if state not in cs: cs.append(state)
 d['completed_states']=cs
 # Mark context as completed when all required states are present
-reg_path = os.path.join('${CLAUDE_PROJECT_DIR:-.}', '.claude/patterns/state-registry.json')
+reg_path = os.path.join('$PROJECT_DIR', '.claude/patterns/state-registry.json')
 if os.path.exists(reg_path):
     reg = json.load(open(reg_path))
     req = reg.get('agent_gates', {}).get('$SKILL', {}).get('_required_states', [])

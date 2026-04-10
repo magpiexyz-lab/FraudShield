@@ -11,7 +11,7 @@ set -euo pipefail
 SKILL="${1:-}"
 EXTRA="${2:-}"
 
-PROJECT_DIR="${CLAUDE_PROJECT_DIR:-.}"
+PROJECT_DIR="$(git rev-parse --show-toplevel 2>/dev/null || echo "${CLAUDE_PROJECT_DIR:-.}")"
 
 # File-reference: @path reads extra JSON from file (resolve relative to PROJECT_DIR)
 if [[ -n "$EXTRA" && "$EXTRA" == @* ]]; then

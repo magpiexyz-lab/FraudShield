@@ -18,6 +18,23 @@ get_branch() {
   echo "$CURRENT_BRANCH"
 }
 
+# --- get_project_dir ---
+# Returns the git working tree root. In a worktree, this is the worktree path,
+# not the main repo root. Falls back to CLAUDE_PROJECT_DIR or "." if git fails.
+# Caches in _PROJECT_DIR_CACHE on first call (same pattern as get_branch).
+get_project_dir() {
+  if [[ -z "${_PROJECT_DIR_CACHE+x}" ]]; then
+    local toplevel
+    toplevel=$(git rev-parse --show-toplevel 2>/dev/null)
+    _PROJECT_DIR_CACHE="${toplevel:-${CLAUDE_PROJECT_DIR:-.}}"
+  fi
+  echo "$_PROJECT_DIR_CACHE"
+}
+
+# Override CLAUDE_PROJECT_DIR so all downstream code (hooks, lib modules,
+# Python subprocesses) uses the worktree-aware path. No-op when not in a worktree.
+export CLAUDE_PROJECT_DIR="$(get_project_dir)"
+
 # --- deny ---
 # Outputs reason to stderr and exits 2 to block the tool call.
 # Claude Code hook protocol: exit 0 = allow, exit non-zero = block.

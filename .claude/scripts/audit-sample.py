@@ -19,10 +19,18 @@ import argparse
 import json
 import os
 import random
+import subprocess
 import sys
 from datetime import datetime, timezone
 
-RUNS_DIR = os.environ.get("CLAUDE_PROJECT_DIR", ".") + "/.runs"
+try:
+    _project = subprocess.check_output(
+        ['git', 'rev-parse', '--show-toplevel'],
+        stderr=subprocess.DEVNULL
+    ).decode().strip()
+except Exception:
+    _project = os.environ.get("CLAUDE_PROJECT_DIR", ".")
+RUNS_DIR = _project + "/.runs"
 STATE_FILE = os.path.join(RUNS_DIR, "audit-sample-state.json")
 
 DEFAULT_STATE = {

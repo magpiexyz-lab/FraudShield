@@ -14,10 +14,17 @@ import glob
 import json
 import os
 import re
+import subprocess
 import sys
 from datetime import datetime, timezone
 
-PROJECT_DIR = os.environ.get("CLAUDE_PROJECT_DIR", ".")
+try:
+    PROJECT_DIR = subprocess.check_output(
+        ['git', 'rev-parse', '--show-toplevel'],
+        stderr=subprocess.DEVNULL
+    ).decode().strip()
+except Exception:
+    PROJECT_DIR = os.environ.get("CLAUDE_PROJECT_DIR", ".")
 RUNS_DIR = os.path.join(PROJECT_DIR, ".runs")
 REGISTRY_PATH = os.path.join(PROJECT_DIR, ".claude/patterns/state-registry.json")
 
