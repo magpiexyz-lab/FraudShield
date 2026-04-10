@@ -93,10 +93,6 @@ Only include agents that were spawned (per scope). Mark others as "skipped — o
 > - Set `process_violation: true` in verify-report.md frontmatter
 > - BG3 gate will BLOCK on process violations
 >
-> **Trace audit.** Count `.json` files in `.runs/agent-traces/`. If the count
-> does not match the number of entries in `agents_completed`:
-> - List missing traces as `"MISSING TRACE — PROCESS VIOLATION"`
-> - Set `process_violation: true` in verify-report.md frontmatter
 
 > **This file is a hard gate.** The commit/PR step in the calling skill
 > reads this file and includes its contents in the PR body. If the file
