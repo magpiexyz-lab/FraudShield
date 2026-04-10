@@ -1,7 +1,7 @@
 # STATE 10: SKILL_EPILOGUE
 
 **PRECONDITIONS:**
-- Patterns saved (STATE 9 POSTCONDITIONS met)
+- External stack graduation evaluated (STATE 9a POSTCONDITIONS met)
 
 **ACTIONS:**
 

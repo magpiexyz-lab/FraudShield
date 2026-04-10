@@ -43,6 +43,7 @@ Read each STATE's file **only when transitioning to that state**. Do NOT read ah
 | 8 | FINAL_VALIDATION | Fix | [state-8-final-validation.md](../patterns/resolve/state-8-final-validation.md) |
 | 8b | SIDE_EFFECT_SCAN | Fix | [state-8b-side-effect-scan.md](../patterns/resolve/state-8b-side-effect-scan.md) |
 | 9 | SAVE_PATTERNS | Fix | [state-9-save-patterns.md](../patterns/resolve/state-9-save-patterns.md) |
+| 9a | GRADUATE_EXTERNAL_STACK | Fix | [state-9a-graduate-external.md](../patterns/resolve/state-9a-graduate-external.md) |
 | 10 | SKILL_EPILOGUE | Fix | [state-10-skill-epilogue.md](../patterns/resolve/state-10-skill-epilogue.md) |
 | 11 | COMMIT_PR | Fix | [state-11-commit-pr.md](../patterns/resolve/state-11-commit-pr.md) |
 
@@ -51,7 +52,7 @@ Begin at STATE 0. Read [state-0-fetch-issues.md](../patterns/resolve/state-0-fet
 ## Do NOT
 
 - Modify experiment.yaml or other spec files
-- Add new features or pages
+- Add new features or pages (exception: creating permanent external stack files in STATE 9a is a recurrence-prevention fix)
 - Fix things not described in the issues
 - Install or remove packages
 - Commit to main directly

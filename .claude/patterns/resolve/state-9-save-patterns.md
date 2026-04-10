@@ -46,4 +46,4 @@ python3 -c "import json; d=json.load(open('.runs/patterns-saved.json')); assert 
 bash .claude/scripts/advance-state.sh resolve 9
 ```
 
-**NEXT:** Read [state-10-skill-epilogue.md](state-10-skill-epilogue.md) to continue.
+**NEXT:** Read [state-9a-graduate-external.md](state-9a-graduate-external.md) to continue.
