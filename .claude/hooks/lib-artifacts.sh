@@ -162,7 +162,7 @@ check_artifact_presence() {
 
 # --- check_cross_artifact_consistency ---
 # Cross-artifact consistency checks for verify-report-gate.
-# Covers Checks 12, 14, 16-19: verdict matching, fix counts, frontmatter, Q-score.
+# Covers Checks 12, 14, 16-18: verdict matching, fix counts, frontmatter.
 # Returns JSON {"errors":[...],"warnings":[...]} — caller uses _parse_check_result.
 # $1: project directory  $2: report content
 # Usage: RESULT=$(check_cross_artifact_consistency "$PROJECT_DIR" "$CONTENT")

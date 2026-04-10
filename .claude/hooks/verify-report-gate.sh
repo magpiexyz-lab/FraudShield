@@ -77,7 +77,7 @@ if [[ -f "$PROJECT_DIR/.runs/verify-context.json" ]]; then
 fi
 
 # ═══════════════════════════════════════════════════════════════════
-# === Section C: Cross-Artifact Consistency (Checks 12, 14, 16-19) ===
+# === Section C: Cross-Artifact Consistency (Checks 12, 14, 16-18) ===
 # ═══════════════════════════════════════════════════════════════════
 
 if [[ -n "$CONTENT" ]]; then
