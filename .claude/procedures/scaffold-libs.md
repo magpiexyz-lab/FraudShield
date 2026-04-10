@@ -11,15 +11,16 @@
 
 ## Instructions
 
-Create the library files specified in each stack file's "Files to Create" section:
+Create ONLY the `src/lib/` files (and `src/middleware.ts` when `stack.auth` is present) from each stack file's "Files to Create" section. Skip files outside these paths — pages are owned by scaffold-pages, infrastructure routes and components by scaffold-wire.
 
 1. **Analytics library** (if `stack.analytics` is present): create from the analytics stack file.
 
 2. **Database clients** (if `stack.database` is present): create from the database stack file.
 
 3. **Auth files** (if `stack.auth` is present): create from the auth stack file using the correct conditional path:
-   - If `stack.database` matches the auth provider (e.g., both `supabase`): auth shares the database client files — only create auth-specific pages (signup, login)
-   - If `stack.database` is absent or a different provider: create standalone auth library files from the "Standalone Client" section (e.g., `supabase-auth.ts` instead of `supabase.ts`)
+   - If `stack.database` matches the auth provider (e.g., both `supabase`): auth shares the database client files — create only `src/middleware.ts` (from the auth stack file's "Middleware" section)
+   - If `stack.database` is absent or a different provider: create standalone auth library files from the "Standalone Client" section (e.g., `supabase-auth.ts`, `supabase-auth-server.ts`) AND `src/middleware.ts`
+   - Do NOT create auth pages (signup, login), auth infrastructure (auth/callback, auth/reset-password), or components (nav-bar) — those are created by scaffold-pages and scaffold-wire respectively
 
 4. **Auth before payment ordering**: if both `stack.auth` and `stack.payment` are present, create auth library files first — payment templates reference `user.id` which requires auth.
 

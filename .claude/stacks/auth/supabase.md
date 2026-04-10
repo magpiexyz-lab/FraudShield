@@ -4,14 +4,17 @@ packages:
   runtime: ["@supabase/supabase-js", "@supabase/ssr"]
   dev: []
 files:
-  - src/app/auth/callback/route.ts
-  - src/app/auth/reset-password/page.tsx
-  - src/app/signup/page.tsx  # conditional: only if "signup" in experiment.yaml pages
-  - src/app/login/page.tsx  # conditional: only if "login" in experiment.yaml pages
-  - src/components/nav-bar.tsx
-  - src/middleware.ts
-  - src/lib/supabase-auth.ts  # conditional: only when stack.database is NOT supabase
-  - src/lib/supabase-auth-server.ts  # conditional: only when stack.database is NOT supabase
+  # --- scaffold-wire creates (auth infrastructure, STATE 14) ---
+  - src/app/auth/callback/route.ts          # always; scaffold-wire
+  - src/app/auth/reset-password/page.tsx     # always; scaffold-wire
+  - src/components/nav-bar.tsx               # always; scaffold-wire
+  # --- scaffold-pages creates (user-facing pages, STATE 11 B2) ---
+  - src/app/signup/page.tsx                  # only if "signup" in golden_path; scaffold-pages
+  - src/app/login/page.tsx                   # only if "login" in golden_path; scaffold-pages
+  # --- scaffold-libs creates (library + middleware, STATE 11 B1) ---
+  - src/middleware.ts                        # always; scaffold-libs
+  - src/lib/supabase-auth.ts                 # only when stack.database is NOT supabase; scaffold-libs
+  - src/lib/supabase-auth-server.ts          # only when stack.database is NOT supabase; scaffold-libs
 env:
   server: []
   client: [NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY]
@@ -140,7 +143,7 @@ import { createAuthClient as createClient } from "@/lib/supabase-auth";
 ```
 The rest of the component code remains identical — only the import changes.
 
-### `src/app/signup/page.tsx` — Signup page (if `signup` is in experiment.yaml pages)
+### `src/app/signup/page.tsx` — Signup page (if `signup` is in golden_path)
 
 When `stack.analytics` is absent: remove the `@/lib/events` import and all `trackSignupStart()`/`trackSignupComplete()` calls from the template below. The signup flow works without analytics.
 
@@ -268,7 +271,7 @@ The `handleOAuthLogin` function (in the "OAuth / Social Login" section below) an
 
 When `stack.auth_providers` is absent, do not add OAuth buttons — email/password only.
 
-### `src/app/login/page.tsx` — Login page (if `login` is in experiment.yaml pages)
+### `src/app/login/page.tsx` — Login page (if `login` is in golden_path)
 
 Follows the same structure as the signup page above, with these differences:
 - Calls `supabase.auth.signInWithPassword()` instead of `signUp()`
@@ -466,7 +469,7 @@ export function NavBar() {
         APP_NAME
       </Link>
       <div className="flex items-center gap-2">
-        {/* Bootstrap adds page links here from experiment.yaml pages */}
+        {/* Bootstrap adds page links here from golden_path */}
         {loading ? (
           <Button variant="outline" disabled className="min-w-[70px]">
             &nbsp;
@@ -598,7 +601,7 @@ export const config = {
 ```
 
 Notes:
-- `publicPaths` should be updated by bootstrap to include all non-authenticated pages from experiment.yaml (landing page variants, marketing pages)
+- `publicPaths` should be updated by bootstrap to include all non-authenticated pages from golden_path (landing page variants, marketing pages)
 - API routes are excluded — they use server-side auth checks in route handlers instead. **Do not add middleware auth for `/api/` routes.** Middleware and API route handlers create separate Supabase clients from the same request cookies. Supabase refresh tokens are single-use: if the access token expires, middleware consumes the refresh token, and the API route handler's subsequent refresh attempt fails silently (returns 401). API routes must handle auth independently via `createServerSupabaseClient()` + `getUser()`.
 - The `matcher` config excludes static assets for performance
 - Redirects to `/login?next=<path>` so the login page can redirect back after auth

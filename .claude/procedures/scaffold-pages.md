@@ -32,7 +32,7 @@ The `src/lib/events.ts` file exists when this agent runs — import typed wrappe
 - Ensure layout.tsx `metadata` export uses messaging.md Section E derivation: `title` = meta title, `description` = meta description, `openGraph` = `{ title, description }`
 
 #### Pages (Step 4)
-For each entry in experiment.yaml `pages`:
+For each page derived from experiment.yaml `golden_path`:
 - If `name` is `landing` → create the root page
 - Otherwise → create a page at the appropriate route
 - Every page file must:
@@ -52,7 +52,7 @@ For each entry in experiment.yaml `pages`:
     fires `visit_landing` with `variant` property. `generateStaticParams()`
     for all variant routes. Returns `notFound()` for unknown slugs.
   If no `variants`, skip entirely — the landing-page subagent creates `src/app/page.tsx`.
-- **Auth pages (if listed)**: signup/login forms using auth provider UI (see auth stack file).
+- **Auth pages (if listed in golden_path)**: signup/login form pages using auth provider UI templates from the auth stack file. Create only the page files (`signup/page.tsx`, `login/page.tsx`) — auth infrastructure (callback, reset-password, nav-bar) is created by scaffold-wire.
   Fire the corresponding experiment/EVENTS.yaml events at their specified triggers.
   If `stack.auth_providers` is present in experiment.yaml: add OAuth login buttons for each
   listed provider below the email/password form, using the OAuth button template and

@@ -26,6 +26,7 @@ You wire the backend: API routes with input validation, database schema with acc
 - Execute Steps 5 through 8b of wire.md ONLY
 - Do NOT run Step 8 (verify.md) or Step 9 (PR) — the bootstrap lead handles those
 - Do NOT recreate packages, library files, or pages — they already exist
+- EXCEPTION: when `stack.auth` is present, create auth infrastructure files that no other agent owns: `src/app/auth/callback/route.ts`, `src/app/auth/reset-password/page.tsx`, and `src/components/nav-bar.tsx` (see auth stack file for templates)
 - Every API route: zod input validation, proper HTTP status codes, rate limiting on auth/payment routes
 - If a file you need to create already exists: stop and report the conflict. Do not overwrite.
 - Database: RLS policies on all tables, never trust the client

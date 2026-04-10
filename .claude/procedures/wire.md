@@ -42,6 +42,16 @@ These routes must:
 - Implement the complete integration logic (OAuth flow, API calls, etc.) when env vars are present
 - Read the external stack file (`.claude/stacks/external/<service-slug>.md`) for API patterns and code templates
 
+### Step 5b: Auth infrastructure files (if `stack.auth` is present)
+
+Create auth infrastructure files not owned by scaffold-libs or scaffold-pages:
+
+1. **Auth callback route** (`src/app/auth/callback/route.ts`): from auth stack file's callback handler template. Use shared-client or standalone-client variant based on whether `stack.database` matches the auth provider.
+2. **Reset password page** (`src/app/auth/reset-password/page.tsx`): from auth stack file's reset password template.
+3. **Auth-aware nav bar** (`src/components/nav-bar.tsx`): from auth stack file's NavBar template. Replace `APP_NAME` with experiment.yaml `name`. Add nav links for each golden_path page (excluding landing and auth routes).
+
+These files depend on auth library files (scaffold-libs, B1) and are referenced by pages (scaffold-pages, B2). Creating them in the wire phase ensures all dependencies exist.
+
 ### Step 6: Database schema (if needed)
 If `stack.database` is present and experiment.yaml behaviors require persistent data:
 - Follow the schema management approach from the database stack file
