@@ -17,35 +17,7 @@ Pass context:
 
 Wait for the agent to complete. Include the scanner's output table in the Step 6 summary under a **Provision Scan** heading. If any check FAILs, list them as action items — the health check + auto-fix (5c-5d) already attempted remediation, so these are residual issues for the user to address.
 
-### 5d.6: Production Smoke Test (conditional)
-
-**Gate:** Skip this step if `playwright.config.ts` does not exist in the project root (testing stack not present).
-
-Run smoke tests and behavior tests against the live production URL:
-
-```bash
-npx playwright install chromium --with-deps 2>/dev/null || true
-SPEC_FILES="e2e/smoke.spec.ts"
-test -f e2e/behaviors.spec.ts && SPEC_FILES="$SPEC_FILES e2e/behaviors.spec.ts"
-E2E_BASE_URL=<canonical_url> npx playwright test $SPEC_FILES \
-  --project=chromium --global-setup="" --global-teardown=""
-```
-
-- `SPEC_FILES` includes `behaviors.spec.ts` only if it exists (existence gate avoids "No tests found" errors for projects without behaviors)
-- `E2E_BASE_URL` points Playwright at the live deployment (conditional `webServer` in config skips local dev server)
-- `--project=chromium` runs Desktop Chrome only (production smoke prioritizes speed)
-- `--global-setup="" --global-teardown=""` disables local Supabase test user lifecycle (same pattern as preview-smoke CI job)
-
-**On success:** Record `smoke_test: { ran: true, passed: true }` for the health artifact.
-**On failure:** Record `smoke_test: { ran: true, passed: false, error: "<summary>" }`. Do NOT enter auto-fix loop — smoke failures after a successful health check indicate front-end rendering issues, not infrastructure problems. Report to user:
-
-> Production smoke test failed. The health check passed (APIs work) but page rendering has issues.
-> Review the Playwright report at `playwright-report/index.html`.
-> Fix the issue, merge to `main`, then re-run `/deploy`. Or run `/rollback` to revert.
-
-Continue to Step 5d.7 regardless of smoke test result (behavior verification may still provide useful signal).
-
-### 5d.7: Auto-create Production Test User (conditional)
+### 5d.6: Auto-create Production Test User (conditional)
 
 **Gate:** Skip if `stack.auth` is absent in experiment.yaml OR `stack.database` is not `supabase`.
 
@@ -102,9 +74,37 @@ Create a dedicated test user for production behavior verification. The test user
 > Could not create production test user. Behavior verification skipped.
 > To verify manually: ask Claude to run Playwright against the production URL with test credentials.
 
+### 5d.7: Production Smoke Test (conditional)
+
+**Gate:** Skip this step if `playwright.config.ts` does not exist in the project root (testing stack not present).
+
+Run smoke tests and behavior tests against the live production URL:
+
+```bash
+npx playwright install chromium --with-deps 2>/dev/null || true
+SPEC_FILES="e2e/smoke.spec.ts"
+test -f e2e/behaviors.spec.ts && SPEC_FILES="$SPEC_FILES e2e/behaviors.spec.ts"
+E2E_BASE_URL=<canonical_url> npx playwright test $SPEC_FILES \
+  --project=chromium --global-setup="" --global-teardown=""
+```
+
+- `SPEC_FILES` includes `behaviors.spec.ts` only if it exists (existence gate avoids "No tests found" errors for projects without behaviors)
+- `E2E_BASE_URL` points Playwright at the live deployment (conditional `webServer` in config skips local dev server)
+- `--project=chromium` runs Desktop Chrome only (production smoke prioritizes speed)
+- `--global-setup="" --global-teardown=""` disables local Supabase test user lifecycle (same pattern as preview-smoke CI job)
+
+**On success:** Record `smoke_test: { ran: true, passed: true }` for the health artifact.
+**On failure:** Record `smoke_test: { ran: true, passed: false, error: "<summary>" }`. Do NOT enter auto-fix loop — smoke failures after a successful health check indicate front-end rendering issues, not infrastructure problems. Report to user:
+
+> Production smoke test failed. The health check passed (APIs work) but page rendering has issues.
+> Review the Playwright report at `playwright-report/index.html`.
+> Fix the issue, merge to `main`, then re-run `/deploy`. Or run `/rollback` to revert.
+
+Continue to Step 5d.8 regardless of smoke test result (behavior verification may still provide useful signal).
+
 ### 5d.8: Production Behavior Verification (conditional)
 
-**Gate:** For web-app: skip if Step 5d.6 (smoke test) was skipped (no `playwright.config.ts`). For service: proceed if `golden_path` or `endpoints` exist in experiment.yaml (behavior-verifier supports service archetype without Playwright). For cli: skip — CLI archetypes do not support production mode (they test the local binary; see behavior-verifier procedure). For all non-skipped archetypes: skip if Step 5d.7 failed AND the app requires auth (auth-gated behaviors need a logged-in user). If no auth stack, behavior verification can still run for anonymous behaviors.
+**Gate:** For web-app: skip if Step 5d.7 (smoke test) was skipped (no `playwright.config.ts`). For service: proceed if `golden_path` or `endpoints` exist in experiment.yaml (behavior-verifier supports service archetype without Playwright). For cli: skip — CLI archetypes do not support production mode (they test the local binary; see behavior-verifier procedure). For all non-skipped archetypes: skip if Step 5d.6 failed AND the app requires auth (auth-gated behaviors need a logged-in user). If no auth stack, behavior verification can still run for anonymous behaviors.
 
 Spawn the `behavior-verifier` agent (`subagent_type: behavior-verifier`) with production mode context:
 

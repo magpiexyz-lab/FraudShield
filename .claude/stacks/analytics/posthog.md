@@ -289,6 +289,11 @@ When creating a new analytics stack file, document the equivalent endpoint patte
 - Verify `project_name` and `project_owner` values match experiment.yaml in both files
 - If any values are wrong, fix both analytics files before auditing pages/routes
 
+## Known Issues
+
+### Never include PII in analytics event properties
+Do not send personally identifiable information (email, name, phone number, IP address) as event properties. PostHog stores event data indefinitely and may be subject to GDPR/CCPA data subject requests. Use non-PII identifiers instead: `utm_source`, `plan_type`, `user_role` (generic, not the user's name). For user identification, use `identify(userId)` with the opaque user ID — PostHog links events to users internally without exposing PII in the event stream.
+
 ## PR Instructions
 - No PostHog env vars needed — credentials are hardcoded in the analytics libraries
 - Verify events are flowing: open the app, perform an action, then check PostHog → Activity → Live Events

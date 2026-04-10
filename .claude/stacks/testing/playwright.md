@@ -252,7 +252,7 @@ export function getTestCredentials() {
 export async function login(page: Page, email: string, password: string) {
   await page.goto("/login");
   await page.getByLabel(/email/i).fill(email);
-  await page.locator("#password").fill(password);
+  await page.locator('input[type="password"]').fill(password);
   await page.locator("form").getByRole("button", { name: /log in|sign in/i }).click();
   await page.waitForURL((url) => !url.pathname.includes("/login"));
 }
@@ -880,13 +880,22 @@ Add this job to `.github/workflows/ci.yml` after the `e2e` job. It runs page-loa
 When asserting text that appears in multiple page sections (e.g., a pricing string like "$297" in hero, features, and pricing sections), `getByText()` in strict mode fails because it resolves to multiple elements. Scope the locator to a specific section or use `.first()` — e.g., `page.getByText("$297").first()`.
 
 ### Strict-mode violations with password input and show/hide toggle
-When locating a password input on pages with a show/hide visibility toggle, `getByLabel(/password/i)` matches both the input and the toggle button's aria-label. Use `page.locator("#password")` instead to target the input element directly.
+When locating a password input on pages with a show/hide visibility toggle, `getByLabel(/password/i)` matches both the input and the toggle button's aria-label. Use `page.locator('input[type="password"]')` instead — it targets the input element by HTML type attribute, which is stable regardless of `id` attribute changes or aria-label conflicts. Avoid `page.locator("#password")` because the `id` attribute may be renamed by design-critic agents or during markup refactoring.
 
 ### Mobile-hidden labels cause strict-mode violations
 When a UI element uses responsive visibility classes (e.g., `hidden sm:inline`), its text is absent in the Mobile Chrome (Pixel 5) viewport. `getByText()` and `getByRole()` with name matching will fail on mobile because the element is not rendered. Use an always-visible alternative: prefer `getByLabel()` targeting the associated form input, or `getByRole()` targeting an element that is visible at all viewport sizes. Never use `getByText()` on text that is conditionally hidden via responsive classes.
 
 ### shadcn CardTitle renders as div, not heading
 `shadcn/ui` `CardTitle` renders as a `<div>` by default, not a heading element. `getByRole('heading', { name: ... })` will not match it. Use `getByText('Card Title Text')` or a `data-testid` attribute instead.
+
+### DEMO_MODE redirects bypass expected UI assertions
+When `DEMO_MODE` is active, pages that normally show a UI element after an action (e.g., a success message after signup) may instead redirect immediately to another page. Tests asserting on the message will fail even though the action succeeded. Use `waitForURL` as an alternative assertion: `await page.waitForURL(/\/expected-page/)` to verify the redirect occurred, or branch assertions with `if (process.env.NEXT_PUBLIC_DEMO_MODE === "true")`.
+
+### Stale dev server from another project on same port
+When another project's dev server is already running on the configured port (e.g., 3099), Playwright connects to it and runs tests against the wrong application. Tests either pass incorrectly or fail with confusing selector errors that don't reflect the actual app. Before running `npm run test:e2e`, verify no stale server occupies the port: `lsof -i :3099` (macOS/Linux) or `netstat -ano | findstr :3099` (Windows). Kill the stale process before starting tests. Playwright's `reuseExistingServer: !process.env.CI` setting intentionally reuses in dev but not in CI.
+
+### Windows compatibility for webServer command
+The `webServer.command` uses `` `PORT=${port} npm run dev` `` (POSIX shell syntax). On Windows, `cmd.exe` interprets `PORT=3099` as an executable name, not an environment variable assignment. If developing on Windows, install `cross-env` (`npm install -D cross-env`) and change the command to `` `cross-env PORT=${port} npm run dev` ``.
 
 ## PR Instructions
 - Install [Docker Desktop](https://www.docker.com/products/docker-desktop/) if not already installed

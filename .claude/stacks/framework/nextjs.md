@@ -120,6 +120,7 @@ The root `route.ts` is created only when surface is `co-located` (the default fo
 ## API Route Conventions
 - Route handlers in `src/app/api/<resource>/route.ts`
 - Validate all input with zod — always include `.max()` bounds on all string and array fields. Suggested defaults: short text fields `.max(200)`, long text fields `.max(5000)`, array fields `.max(50)`. Adjust per business logic. Without bounds, a single oversized request can exhaust memory or run up large inference costs.
+- Dynamic route segment params (e.g., `[id]` in `src/app/api/projects/[id]/route.ts`) must be validated before use. Parse `params` with zod: `z.object({ id: z.string().uuid() }).parse(await params)`. Reject non-UUID values with 400 before they reach database queries. This prevents malformed inputs (SQL-injection-style strings, excessively long values) from reaching the database layer.
 - Return `{ error: string }` with appropriate HTTP status codes on failure
 - Use try/catch, return user-friendly error messages
 
@@ -261,6 +262,13 @@ function verifySecret(provided: string, expected: string): boolean {
 
 ### When a page fails the checkNoHorizontalOverflow smoke test on Mobile Chrome
 Add `overflow-x-hidden` to the outermost wrapper `<div>` of the page component. Wide flex rows, animated elements, and shadcn Card grids are the most common cause of horizontal overflow on mobile viewports. This is the standard first fix; if overflow persists, audit for elements with fixed pixel widths or negative margins.
+
+### Place rate limiting after auth and API key checks in AI routes
+In API routes that call external AI services (Anthropic, OpenAI, etc.), run authentication and API key validation *before* `rateLimit()`. If rate limiting runs first:
+1. An unconfigured deployment (missing API key) returns 429 instead of the correct 503, hiding the real problem
+2. Unauthenticated requests consume rate-limit budget, returning 429 instead of 401 and masking the auth failure
+
+Correct order: `verifyAuth()` → `checkApiKey()` → `rateLimit()` → business logic.
 
 ## PR Instructions
 - No additional framework setup needed after merging — `npm install && npm run dev` is sufficient

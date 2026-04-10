@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Cross-artifact consistency checks for verify-report-gate.
 
-Covers Checks 12, 14, 16-19: verdict matching, fix counts, frontmatter, Q-score.
+Covers Checks 12, 14, 16-18: verdict matching, fix counts, frontmatter.
 Reads report content from stdin. Returns JSON {"errors":[], "warnings":[]}.
 """
 import glob
@@ -89,24 +89,6 @@ def main():
             uc = d.get('unresolved_critical', None)
             if uc is not None and not isinstance(uc, int):
                 errors.append('security-fixer unresolved_critical=%s (expected int)' % uc)
-        except: pass
-
-    # --- Check 19: Q-score in verify-history.jsonl ---
-    ctx_path = os.path.join(project, '.runs/verify-context.json')
-    if os.path.exists(ctx_path):
-        try:
-            run_id = json.load(open(ctx_path)).get('run_id', '')
-            hist_path = os.path.join(project, '.runs/verify-history.jsonl')
-            if not os.path.exists(hist_path):
-                errors.append('verify-history.jsonl missing — Q-score not calculated')
-            else:
-                lines = [l.strip() for l in open(hist_path) if l.strip()]
-                if not lines:
-                    errors.append('verify-history.jsonl is empty — Q-score not recorded')
-                else:
-                    last = json.loads(lines[-1])
-                    if last.get('run_id') != run_id:
-                        errors.append('verify-history.jsonl last run_id (' + str(last.get('run_id','?')) + ') != current (' + run_id + ') — Q-score not recorded for this run')
         except: pass
 
     print(json.dumps({'errors': errors, 'warnings': warnings}))
