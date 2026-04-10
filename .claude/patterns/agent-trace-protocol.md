@@ -53,3 +53,68 @@ Each agent defines its own verdict vocabulary:
 | observer | `"filed"`, `"commented"`, `"no observations"`, `"prerequisite-unavailable"` |
 | spec-reviewer | `"PASS"`, `"FAIL"` |
 | build-info-collector | `"collected"`, `"no-fixes"` |
+| resolve-challenger | `"N fixes sound, M challenged"` (summary) |
+| review-challenger | `"N confirmed, M disputed"` (summary) |
+| solve-critic | `"N TYPE A, M TYPE B, K TYPE C"` (summary) |
+
+## Adversarial Agent Extensions
+
+Adversarial agents challenge lead-agent conclusions and must write traces with
+additional fields to enable tamper-resistant cross-validation by merge gates.
+
+### Required Extension: `verdicts` array
+
+All adversarial agents include a `verdicts` array — one entry per challenged item.
+The adversarial-merge-gate.sh hook cross-references these entries against the lead's
+summary artifact to detect silent label overrides.
+
+### Context File Parameter
+
+Adversarial agents operate under skills other than `/verify` (e.g., `/resolve`,
+`/review`, `/change`). Use `--context` to specify the correct context file:
+
+```bash
+python3 scripts/init-trace.py resolve-challenger --context .runs/resolve-context.json
+```
+
+### Adversarial Trace Schemas
+
+**resolve-challenger.json**:
+```json
+{
+  "agent": "resolve-challenger",
+  "timestamp": "<ISO8601>",
+  "verdict": "<summary>",
+  "checks_performed": ["configuration_counterexample", "blast_radius_gap", "regression_vector"],
+  "verdicts": [{"issue": "<N>", "label": "<sound|challenged|needs-revision>", "challenge": "<text>", "evidence": "<text>"}],
+  "run_id": "<from context>"
+}
+```
+
+**review-challenger.json**:
+```json
+{
+  "agent": "review-challenger",
+  "timestamp": "<ISO8601>",
+  "verdict": "<summary>",
+  "checks_performed": ["cross_file", "edge_case", "user_journey"],
+  "verdicts": [{"finding": "<title>", "label": "<confirmed|disputed|needs-evidence>", "counterexample": "<text>", "evidence": "<text>"}],
+  "run_id": "<from context>"
+}
+```
+
+**solve-critic.json**:
+```json
+{
+  "agent": "solve-critic",
+  "timestamp": "<ISO8601>",
+  "verdict": "<summary>",
+  "checks_performed": ["type_a_analysis", "type_b_analysis", "type_c_analysis"],
+  "round": 1,
+  "type_a_count": 0,
+  "type_b_count": 0,
+  "type_c_count": 0,
+  "concerns": [{"type": "<A|B|C>", "description": "<text>", "evidence": "<text>", "fix": "<text or null>"}],
+  "run_id": "<from context>"
+}
+```

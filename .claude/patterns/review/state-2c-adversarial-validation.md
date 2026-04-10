@@ -5,51 +5,25 @@
 
 **ACTIONS:**
 
-Launch a single serial Explore subagent ("Adversarial Agent D") to challenge
-each filtered finding before committing to fixes. Include in the agent prompt:
+Spawn the `review-challenger` Named agent (`subagent_type: review-challenger`).
 
+Pass in the agent prompt:
 - All filtered findings from state 2b (full Finding Format)
 - The `observation_backlog` from State 0 (if non-empty)
-- Instructions — **Counterexample Construction**:
 
-  For each finding, attempt to **construct a proof that the finding is false**.
-  The default label is "confirmed" — you must produce positive evidence to dispute.
+The agent definition at `.claude/agents/review-challenger.md` contains the full
+counterexample construction protocol (Dimensions A, B, C + auto-confirm rule).
 
-  **Dimension A (cross-file) findings:**
-  1. Read both cited files
-  2. Quote the exact lines alleged to contradict (with line numbers)
-  3. Check: do these lines apply in the same context? (e.g., one may be inside
-     a conditional that excludes the other's scenario)
-  4. If no real contradiction when context is considered -> "disputed"
+After the agent returns:
+1. Read the agent's trace at `.runs/agent-traces/review-challenger.json`
+2. For each finding, transcribe the trace's `verdicts[i].label` to `agent_classification`
+3. Set `final_classification = agent_classification` by default
+4. If overriding (setting a different `final_classification`), record the rationale
 
-  **Dimension B (edge case) findings:**
-  1. Identify which fixture(s) match the claimed configuration (use fixture names
-     from the dimension agent's report)
-  2. Read the fixture's `assertions` section — does it expect this behavior?
-  3. Read the specific conditional branch in the cited skill/stack file
-  4. If the conditional already handles the case -> "disputed", quoting the code
-  5. If no fixture covers this config -> note "no fixture coverage" (stays "confirmed")
+When any `agent_classification != final_classification`, display both classifications
+and the rationale at the STOP gate.
 
-  **Dimension C (user journey) findings:**
-  1. Trace the specific journey step claimed to be a dead-end
-  2. Read the skill file at the cited step
-  3. Check: is there a recovery path, error message, or next-step instruction
-     the dimension agent missed?
-  4. If a recovery path exists -> "disputed", quoting the path
-
-  **Auto-confirm rule** (unchanged): finding matching an open observation's
-  root cause -> "confirmed" without counterexample construction.
-
-Output format — one entry per finding:
-```
-### Finding N: <title>
-- **Label**: confirmed | disputed | needs-evidence
-- **Counterexample**: <what you tried to prove and whether it succeeded>
-- **Evidence**: <exact quotes with file:line references>
-- **Observation match**: #<number> | none
-```
-
-After the agent returns, partition findings:
+Partition findings:
 - **confirmed**: full priority in fix phase
 - **needs-evidence**: lower priority (sorted after confirmed in fix queue)
 - **disputed**: removed from fix queue; record finding signature + one-line rationale for the PR body
@@ -60,9 +34,16 @@ After the agent returns, partition findings:
   python3 -c "
   import json
   adversarial = {
-      'confirmed': [],    # list of finding titles
-      'disputed': [],     # list of {title, rationale}
-      'needs_evidence': []
+      'confirmed': [
+          # Per-item objects with provenance:
+          # {'finding': '<title>', 'agent_classification': 'confirmed', 'final_classification': 'confirmed'}
+      ],
+      'disputed': [
+          # {'finding': '<title>', 'agent_classification': 'disputed', 'final_classification': 'disputed', 'rationale': '<text>'}
+      ],
+      'needs_evidence': [
+          # {'finding': '<title>', 'agent_classification': 'needs-evidence', 'final_classification': 'needs-evidence'}
+      ]
   }
   json.dump(adversarial, open('.runs/review-adversarial.json', 'w'), indent=2)
   "
@@ -76,7 +57,7 @@ After the agent returns, partition findings:
 
 **VERIFY:**
 ```bash
-python3 -c "import json; d=json.load(open('.runs/review-adversarial.json')); assert isinstance(d.get('confirmed'), list), 'confirmed missing or not list'; assert isinstance(d.get('disputed'), list), 'disputed missing or not list'; assert isinstance(d.get('needs_evidence'), list), 'needs_evidence missing or not list'"
+python3 .claude/scripts/verify-review-adversarial.py  # review-adversarial.json, review-challenger.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

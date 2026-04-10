@@ -286,10 +286,70 @@ bootstrap_extended_checks() {
 # ══════════════════════════════════════════════════════════════════════
 
 change_extended_checks() {
-  if [[ "$SUBAGENT_TYPE" == "implementer" || "$SUBAGENT_TYPE" == "visual-implementer" ]]; then
-    local VERDICTS_DIR="$PROJECT_DIR/.runs/gate-verdicts"
-    check_verdict_gates "g3" "$VERDICTS_DIR" "$(get_branch)"
-  fi
+  case "$SUBAGENT_TYPE" in
+    implementer|visual-implementer)
+      local VERDICTS_DIR="$PROJECT_DIR/.runs/gate-verdicts"
+      check_verdict_gates "g3" "$VERDICTS_DIR" "$(get_branch)"
+      ;;
+    solve-critic)
+      if [[ ! -f "$PROJECT_DIR/.runs/change-context.json" ]]; then
+        ERRORS+=("change-context.json missing -- STATE 0 incomplete")
+      fi
+      ;;
+  esac
+}
+
+# ══════════════════════════════════════════════════════════════════════
+# Extended checks: resolve
+# ══════════════════════════════════════════════════════════════════════
+
+resolve_extended_checks() {
+  case "$SUBAGENT_TYPE" in
+    resolve-challenger)
+      if [[ ! -f "$PROJECT_DIR/.runs/resolve-context.json" ]]; then
+        ERRORS+=("resolve-context.json missing -- STATE 0 incomplete")
+      fi
+      if [[ ! -f "$PROJECT_DIR/.runs/solve-trace.json" ]]; then
+        ERRORS+=("solve-trace.json missing -- STATE 5 (solve-reasoning) not complete")
+      fi
+      ;;
+    solve-critic)
+      if [[ ! -f "$PROJECT_DIR/.runs/solve-trace.json" ]]; then
+        ERRORS+=("solve-trace.json missing -- solve-reasoning not complete")
+      fi
+      ;;
+    *) ;;
+  esac
+}
+
+# ══════════════════════════════════════════════════════════════════════
+# Extended checks: review
+# ══════════════════════════════════════════════════════════════════════
+
+review_extended_checks() {
+  case "$SUBAGENT_TYPE" in
+    review-challenger)
+      if [[ ! -f "$PROJECT_DIR/.runs/review-context.json" ]]; then
+        ERRORS+=("review-context.json missing -- STATE 0 incomplete")
+      fi
+      ;;
+    *) ;;
+  esac
+}
+
+# ══════════════════════════════════════════════════════════════════════
+# Extended checks: solve
+# ══════════════════════════════════════════════════════════════════════
+
+solve_extended_checks() {
+  case "$SUBAGENT_TYPE" in
+    solve-critic)
+      if [[ ! -f "$PROJECT_DIR/.runs/solve-context.json" ]]; then
+        ERRORS+=("solve-context.json missing -- STATE 0 incomplete")
+      fi
+      ;;
+    *) ;;
+  esac
 }
 
 # ── Run extended checks based on active skill ──
@@ -299,6 +359,12 @@ elif [[ "$ACTIVE_SKILL" == "bootstrap" ]]; then
   bootstrap_extended_checks
 elif [[ "$ACTIVE_SKILL" == "change" ]]; then
   change_extended_checks
+elif [[ "$ACTIVE_SKILL" == "resolve" ]]; then
+  resolve_extended_checks
+elif [[ "$ACTIVE_SKILL" == "review" ]]; then
+  review_extended_checks
+elif [[ "$ACTIVE_SKILL" == "solve" ]]; then
+  solve_extended_checks
 fi
 
 # ── Cross-skill agent checks (run regardless of active skill) ──

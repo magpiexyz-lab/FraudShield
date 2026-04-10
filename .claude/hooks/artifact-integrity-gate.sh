@@ -90,7 +90,8 @@ elif is_agent_trace:
         "observer", "spec-reviewer", "design-critic", "design-consistency-checker",
         "ux-journeyer", "security-fixer", "security-attacker", "security-defender",
         "behavior-verifier", "performance-reporter", "accessibility-scanner",
-        "build-info-collector", "pattern-classifier"
+        "build-info-collector", "pattern-classifier",
+        "resolve-challenger", "review-challenger", "solve-critic"
     }
     # Match by prefix for per-page traces like design-critic-landing
     is_verdict_agent = basename in verdict_agents or any(
