@@ -50,7 +50,7 @@
 
 **VERIFY:**
 ```bash
-python3 -c "import json; ctx=json.load(open('.runs/change-context.json')); assert isinstance(ctx.get('preconditions_checked'), list), 'preconditions_checked missing'"
+python3 -c "import json; ctx=json.load(open('.runs/change-context.json')); assert isinstance(ctx.get('preconditions_checked'), list) and len(ctx['preconditions_checked'])>0, 'preconditions_checked missing or empty'"
 ```
 
 **STATE TRACKING:** After postconditions pass, update context and mark this state complete:

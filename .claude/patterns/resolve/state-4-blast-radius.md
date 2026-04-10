@@ -37,7 +37,7 @@ The bug pattern found in Step 3 may exist in other template files:
 
 **VERIFY:**
 ```bash
-python3 -c "import json; ctx=json.load(open('.runs/resolve-context.json')); assert isinstance(ctx.get('blast_radius'), list), 'blast_radius missing'"
+python3 -c "import json; ctx=json.load(open('.runs/resolve-context.json')); assert isinstance(ctx.get('blast_radius'), list), 'blast_radius missing'; assert all(isinstance(f, str) for f in ctx['blast_radius']), 'blast_radius items must be strings'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

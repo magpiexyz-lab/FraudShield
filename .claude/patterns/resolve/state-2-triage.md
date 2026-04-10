@@ -108,7 +108,7 @@ proceeding to Phase 2.** The user may reclassify issues or remove them from scop
 
 **VERIFY:**
 ```bash
-python3 -c "import json; d=json.load(open('.runs/resolve-triage.json')); assert isinstance(d.get('issues'), list), 'issues missing'"
+python3 -c "import json; d=json.load(open('.runs/resolve-triage.json')); assert isinstance(d.get('issues'), list) and len(d['issues'])>0, 'issues missing or empty'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

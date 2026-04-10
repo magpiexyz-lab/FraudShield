@@ -68,7 +68,7 @@ Set `action_taken` to:
 
 **VERIFY:**
 ```bash
-python3 -c "import json; d=json.load(open('.runs/upgrade-memory-report.json')); assert isinstance(d.get('memories_checked'), int), 'memories_checked not int'; assert isinstance(d.get('stale_entries'), list), 'stale_entries not list'; assert d.get('action_taken') in ('reported','user-confirmed-deletions'), 'action_taken invalid: %s' % d.get('action_taken')"
+python3 -c "import json; d=json.load(open('.runs/upgrade-memory-report.json')); assert isinstance(d.get('memories_checked'), int) and d['memories_checked']>=0, 'memories_checked invalid'; assert isinstance(d.get('stale_entries'), list), 'stale_entries not list'; assert all(isinstance(e, (str,dict)) for e in d['stale_entries']), 'stale_entries items invalid'; assert d.get('action_taken') in ('reported','user-confirmed-deletions'), 'action_taken invalid: %s' % d.get('action_taken')"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

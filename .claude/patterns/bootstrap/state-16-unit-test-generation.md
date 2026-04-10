@@ -50,7 +50,7 @@ For each CRITICAL module **in dependency order, sequentially**:
 
 **VERIFY:**
 ```bash
-python3 -c "import json; d=json.load(open('.runs/bootstrap-modules-trace.json')); assert isinstance(d.get('modules_completed'), list), 'modules_completed not a list'; assert isinstance(d.get('build_passing'), bool), 'build_passing not a bool'; assert d['build_passing'], 'build not passing after unit test generation'"
+python3 -c "import json; d=json.load(open('.runs/bootstrap-modules-trace.json')); s=json.load(open('.runs/bootstrap-scan.json')); c=s.get('critical',[]); m=d.get('modules_completed',[]); assert len(m)==len(c), 'count: %d completed vs %d critical'%(len(m),len(c)); assert set(x['name'] for x in m)==set(x['module'] for x in c), 'module name mismatch'; assert all(x.get('tests_added',0)>=1 for x in m), 'module with 0 tests_added'; assert d.get('build_passing') is True, 'build not passing'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

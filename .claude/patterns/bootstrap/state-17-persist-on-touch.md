@@ -37,7 +37,7 @@ Each entry includes `source: bootstrap` to distinguish from future on-touch entr
 
 **VERIFY:**
 ```bash
-test -f experiment/on-touch.yaml && test -s experiment/on-touch.yaml && python3 -c "import json; d=json.load(open('.runs/bootstrap-on-touch-trace.json')); assert isinstance(d.get('on_touch_count'), int), 'on_touch_count not int'; assert d.get('file')=='experiment/on-touch.yaml', 'file field mismatch'"
+test -f experiment/on-touch.yaml && test -s experiment/on-touch.yaml && python3 -c "import json; d=json.load(open('.runs/bootstrap-on-touch-trace.json')); assert isinstance(d.get('on_touch_count'), int) and d['on_touch_count']>=0, 'on_touch_count not valid int'; assert d.get('file')=='experiment/on-touch.yaml', 'file field mismatch'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

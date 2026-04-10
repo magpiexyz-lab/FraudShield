@@ -38,7 +38,7 @@ Wait for the agent to complete. Include the scanner's output table in the Step 5
 
 **VERIFY:**
 ```bash
-python3 -c "import json; d=json.load(open('.runs/teardown-verification.json')); assert d.get('scan_completed') is not None, 'scan_completed missing'; assert isinstance(d.get('remaining_resources'), list), 'remaining_resources not list'; assert d.get('fully_deleted') is not None, 'fully_deleted missing'"
+python3 -c "import json; d=json.load(open('.runs/teardown-verification.json')); assert d.get('scan_completed') is not None, 'scan_completed missing'; assert isinstance(d.get('remaining_resources'), list), 'remaining_resources not list'; assert all(isinstance(r, (str,dict)) for r in d['remaining_resources']), 'remaining_resources items invalid'; assert d.get('fully_deleted') is not None, 'fully_deleted missing'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

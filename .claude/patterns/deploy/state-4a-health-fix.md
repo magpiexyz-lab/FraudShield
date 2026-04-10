@@ -73,7 +73,7 @@ If still failing after 2 fix rounds -> report precise per-service diagnosis with
 
 **VERIFY:**
 ```bash
-python3 -c "import json; d=json.load(open('.runs/deploy-health-4a.json')); assert isinstance(d.get('health_check_passed'), bool), 'health_check_passed not bool'; assert isinstance(d.get('auto_fix_rounds'), int), 'auto_fix_rounds not int'; assert isinstance(d.get('per_service_results'), dict), 'per_service_results not dict'"
+python3 -c "import json; d=json.load(open('.runs/deploy-health-4a.json')); assert isinstance(d.get('health_check_passed'), bool), 'health_check_passed not bool'; assert isinstance(d.get('auto_fix_rounds'), int) and d['auto_fix_rounds']>=0, 'auto_fix_rounds invalid'; assert isinstance(d.get('per_service_results'), dict) and len(d['per_service_results'])>0, 'per_service_results empty'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

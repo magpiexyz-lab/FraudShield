@@ -110,7 +110,7 @@ Whether funnel numbers came from auto-query (1a) or manual input (1b), also ask 
 
 **VERIFY:**
 ```bash
-python3 -c "import json; d=json.load(open('.runs/iterate-data.json')); assert isinstance(d.get('funnel_data'), dict), 'funnel_data not a dict'; assert isinstance(d.get('qualitative_data'), list), 'qualitative_data not a list'; assert d.get('data_source') in ('auto-query','manual'), 'data_source=%s' % d.get('data_source')"
+python3 -c "import json; d=json.load(open('.runs/iterate-data.json')); assert isinstance(d.get('funnel_data'), dict) and len(d['funnel_data'])>0, 'funnel_data empty'; assert isinstance(d.get('qualitative_data'), list), 'qualitative_data not a list'; assert d.get('data_source') in ('auto-query','manual'), 'data_source=%s' % d.get('data_source')"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

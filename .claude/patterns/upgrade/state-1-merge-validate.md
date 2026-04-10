@@ -102,7 +102,7 @@ Write `.runs/upgrade-diff-report.json`:
 
 **VERIFY:**
 ```bash
-python3 -c "import json; d=json.load(open('.runs/upgrade-diff-report.json')); assert d.get('sync_status') in ('synced','up-to-date','dry-run'), 'sync_status invalid: %s' % d.get('sync_status'); assert isinstance(d.get('files_synced'), list), 'files_synced not list'; assert isinstance(d.get('orphans'), list), 'orphans not list'"
+python3 -c "import json; d=json.load(open('.runs/upgrade-diff-report.json')); assert d.get('sync_status') in ('synced','up-to-date','dry-run'), 'sync_status invalid: %s' % d.get('sync_status'); assert isinstance(d.get('files_synced'), list), 'files_synced not list'; assert all(isinstance(f, str) for f in d['files_synced']), 'files_synced items not strings'; assert isinstance(d.get('orphans'), list), 'orphans not list'; assert all(isinstance(o, str) for o in d['orphans']), 'orphans items not strings'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

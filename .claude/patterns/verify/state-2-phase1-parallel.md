@@ -61,7 +61,7 @@ After each agent returns, use [Trace State Detection](../verify.md#trace-state-d
 
 **VERIFY:**
 ```bash
-ls .runs/agent-traces/*.json >/dev/null 2>&1
+ls .runs/agent-traces/*.json >/dev/null 2>&1 && python3 -c "import glob; traces=glob.glob('.runs/agent-traces/*.json'); assert len(traces)>=1, 'no agent traces found: expected at least 1'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

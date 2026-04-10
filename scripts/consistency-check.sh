@@ -199,6 +199,50 @@ else
   echo "ok"
 fi
 
+# 19. Non-STATE-0 VERIFY commands must include content assertions, not just isinstance/type checks
+echo -n "Check 19: VERIFY commands include content assertions... "
+if [ -f "$REGISTRY" ]; then
+  WEAK_TYPE=$(python3 -c "
+import json, re, sys
+data = json.load(open('$REGISTRY'))
+skip = {'observation_gates', 'agent_gates'}
+s0 = {'0', 'c0', 'x0'}
+content_patterns = [
+    r'len\(', r'>=', r'<=', r'>\s*0', r'==\s', r'!=',
+    r'is True', r'is False', r'is not None',
+    r'\ball\(', r'\bany\(', r'\bnot in\b', r'\bin [a-z\[\(]',
+    r'\.get\([^)]+\)\s*[><=!]'
+]
+weak = []
+for skill, states in data.items():
+    if skill in skip or not isinstance(states, dict): continue
+    for sid, pc in states.items():
+        if sid in s0: continue
+        verify_cmd = pc
+        if isinstance(pc, dict):
+            verify_cmd = pc.get('verify', '')
+        if not isinstance(verify_cmd, str): continue
+        if 'isinstance(' not in verify_cmd: continue
+        if verify_cmd == 'true': continue
+        has_content = any(re.search(p, verify_cmd) for p in content_patterns)
+        if not has_content:
+            weak.append(f'{skill}[{sid}]')
+for w in weak:
+    print(w)
+" 2>/dev/null)
+  if [ -n "$WEAK_TYPE" ]; then
+    echo ""
+    echo "  FAIL: state-registry.json — VERIFY commands use isinstance() without content assertions:"
+    echo "$WEAK_TYPE" | sed 's/^/    /'
+    echo "  Add content checks (len()>0, >=0, is True, all(), etc.) alongside isinstance() checks."
+    ERRORS=$((ERRORS + 1))
+  else
+    echo "ok"
+  fi
+else
+  echo "skip (no registry)"
+fi
+
 echo ""
 if [ "$WARNINGS" -gt 0 ]; then
   echo "WARNINGS: $WARNINGS weak postcondition(s) detected (non-blocking)."

@@ -80,7 +80,7 @@ State which condition triggered your decision before proceeding.
 
 **VERIFY:**
 ```bash
-python3 -c "import json; d=json.load(open('.runs/review-loop-decision.json')); assert isinstance(d.get('iteration'), int), 'iteration missing or not int'; assert isinstance(d.get('yield_rate'), (int, float)), 'yield_rate missing or not numeric'; assert d.get('termination_condition'), 'termination_condition empty'; assert isinstance(d.get('continue'), bool), 'continue missing or not bool'"
+python3 -c "import json; d=json.load(open('.runs/review-loop-decision.json')); assert isinstance(d.get('iteration'), int) and d['iteration']>=1, 'iteration missing or <1'; assert isinstance(d.get('yield_rate'), (int, float)), 'yield_rate missing or not numeric'; assert d.get('termination_condition'), 'termination_condition empty'; assert isinstance(d.get('continue'), bool), 'continue missing or not bool'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

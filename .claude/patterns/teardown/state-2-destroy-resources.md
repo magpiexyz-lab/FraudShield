@@ -108,7 +108,7 @@ For each service in `external_services`:
 
 **VERIFY:**
 ```bash
-python3 -c "import json; d=json.load(open('.runs/teardown-result.json')); assert isinstance(d.get('resources_attempted'), list), 'resources_attempted not list'; assert isinstance(d.get('successes'), int), 'successes not int'; assert isinstance(d.get('failures'), int), 'failures not int'"
+python3 -c "import json; d=json.load(open('.runs/teardown-result.json')); assert isinstance(d.get('resources_attempted'), list) and len(d['resources_attempted'])>0, 'resources_attempted empty'; assert isinstance(d.get('successes'), int) and d['successes']>=0, 'successes invalid'; assert isinstance(d.get('failures'), int) and d['failures']>=0, 'failures invalid'; assert d['successes']+d['failures']==len(d['resources_attempted']), 'successes+failures != resources count'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

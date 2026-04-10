@@ -83,7 +83,7 @@ If auto-merge skipped: "Review PR created but not auto-merged (<reason>). Merge 
 
 **VERIFY:**
 ```bash
-python3 -c "import json; rc=json.load(open('.runs/review-complete.json')); assert rc.get('timestamp'), 'review-complete timestamp empty'; assert isinstance(rc.get('findings_fixed'), int), 'findings_fixed missing'; ob=json.load(open('.runs/observe-result.json')); assert ob.get('skill')=='review', 'observe skill != review'; assert ob.get('verdict') in ('clean','filed','no-template-issues','incomplete'), 'observe verdict invalid'"
+python3 -c "import json; rc=json.load(open('.runs/review-complete.json')); assert rc.get('timestamp'), 'review-complete timestamp empty'; assert isinstance(rc.get('findings_fixed'), int) and rc['findings_fixed']>=0, 'findings_fixed invalid'; ob=json.load(open('.runs/observe-result.json')); assert ob.get('skill')=='review', 'observe skill != review'; assert ob.get('verdict') in ('clean','filed','no-template-issues','incomplete'), 'observe verdict invalid'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

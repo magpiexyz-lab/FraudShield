@@ -172,7 +172,7 @@ Note: projects with Stripe require two production deploys during first-time setu
 
 **VERIFY:**
 ```bash
-python3 -c "import json; d=json.load(open('.runs/deploy-provision.json')); assert isinstance(d.get('hosting_created'), bool), 'hosting_created not bool'; assert d.get('canonical_url','')!='', 'canonical_url empty'; assert isinstance(d.get('agents_completed'), list), 'agents_completed not a list'"
+python3 -c "import json; d=json.load(open('.runs/deploy-provision.json')); assert d.get('hosting_created') is True, 'hosting_created not True'; assert d.get('canonical_url','')!='', 'canonical_url empty'; assert isinstance(d.get('agents_completed'), list) and len(d['agents_completed'])>0, 'agents_completed empty or missing'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

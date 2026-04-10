@@ -37,7 +37,7 @@ the fix was not designed for them).
 
 **VERIFY:**
 ```bash
-python3 -c "import json; d=json.load(open('.runs/resolve-side-effects.json')); assert isinstance(d.get('comments_posted'), list), 'comments_posted not a list'; assert isinstance(d.get('potentially_resolved'), list), 'potentially_resolved not a list'"
+python3 -c "import json; d=json.load(open('.runs/resolve-side-effects.json')); assert isinstance(d.get('comments_posted'), list), 'comments_posted not a list'; assert all(isinstance(c, (str,dict)) for c in d['comments_posted']), 'comments_posted items invalid'; assert isinstance(d.get('potentially_resolved'), list), 'potentially_resolved not a list'; assert all(isinstance(i, (str,int,dict)) for i in d['potentially_resolved']), 'potentially_resolved items invalid'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

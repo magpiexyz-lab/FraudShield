@@ -59,7 +59,7 @@ Verify scaffold-wire trace: `test -f .runs/agent-traces/scaffold-wire.json && py
 
 **VERIFY:**
 ```bash
-python3 -c "import json; d=json.load(open('.runs/bootstrap-wire-trace.json')); assert 'checkpoint' in d, 'checkpoint missing'; a=json.load(open('.runs/bootstrap-context.json')).get('archetype','web-app'); assert a!='web-app' or isinstance(d.get('pages_wired'),list), 'web-app missing pages_wired'; assert a!='service' or isinstance(d.get('api_routes_wired'),list), 'service missing api_routes_wired'; assert a!='cli' or isinstance(d.get('commands_wired'),list), 'cli missing commands_wired'"
+python3 -c "import json; d=json.load(open('.runs/bootstrap-wire-trace.json')); assert 'checkpoint' in d, 'checkpoint missing'; a=json.load(open('.runs/bootstrap-context.json')).get('archetype','web-app'); assert a!='web-app' or (isinstance(d.get('pages_wired'),list) and len(d['pages_wired'])>0), 'web-app: pages_wired empty or missing'; assert a!='service' or (isinstance(d.get('api_routes_wired'),list) and len(d['api_routes_wired'])>0), 'service: api_routes_wired empty or missing'; assert a!='cli' or (isinstance(d.get('commands_wired'),list) and len(d['commands_wired'])>0), 'cli: commands_wired empty or missing'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

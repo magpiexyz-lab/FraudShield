@@ -141,7 +141,7 @@ If the user provided per-variant metrics in STATE 1, present a comparison:
 
 **VERIFY:**
 ```bash
-python3 -c "import json; d=json.load(open('.runs/iterate-verdicts.json')); assert isinstance(d.get('dimension_scores'), dict), 'dimension_scores not a dict'; assert d.get('bottleneck'), 'bottleneck empty'; assert isinstance(d.get('hypothesis_verdicts'), list), 'hypothesis_verdicts not a list'"
+python3 -c "import json; d=json.load(open('.runs/iterate-verdicts.json')); assert isinstance(d.get('dimension_scores'), dict) and len(d['dimension_scores'])>0, 'dimension_scores empty'; assert d.get('bottleneck'), 'bottleneck empty'; assert isinstance(d.get('hypothesis_verdicts'), list), 'hypothesis_verdicts not a list'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

@@ -113,7 +113,7 @@ because they were outside the per-page file boundary).
 
 **VERIFY:**
 ```bash
-ls .runs/agent-traces/design-critic-*.json >/dev/null 2>&1
+ls .runs/agent-traces/design-critic-*.json >/dev/null 2>&1 && python3 -c "import json,glob; fs=glob.glob('.runs/agent-traces/design-critic-*.json'); assert len(fs)>=1, 'no design-critic traces'; d=json.load(open(fs[0])); assert 'exit_code' in d or 'verdict' in d, 'design-critic trace missing exit_code or verdict'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

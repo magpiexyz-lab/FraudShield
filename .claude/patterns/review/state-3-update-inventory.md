@@ -18,7 +18,7 @@ If new validator checks were implemented in State 2e:
 
 **VERIFY:**
 ```bash
-python3 -c "import json; d=json.load(open('.runs/review-complete.json')); assert d.get('timestamp'), 'timestamp empty'; assert isinstance(d.get('iterations'), int) and d['iterations'] >= 1, 'iterations invalid'; assert isinstance(d.get('findings_fixed'), int), 'findings_fixed missing'; assert isinstance(d.get('findings_disputed'), int), 'findings_disputed missing'; assert isinstance(d.get('final_errors'), int), 'final_errors missing'"
+python3 -c "import json; d=json.load(open('.runs/review-complete.json')); assert d.get('timestamp'), 'timestamp empty'; assert isinstance(d.get('iterations'), int) and d['iterations'] >= 1, 'iterations invalid'; assert isinstance(d.get('findings_fixed'), int) and d['findings_fixed']>=0, 'findings_fixed invalid'; assert isinstance(d.get('findings_disputed'), int) and d['findings_disputed']>=0, 'findings_disputed invalid'; assert isinstance(d.get('final_errors'), int) and d['final_errors']>=0, 'final_errors invalid'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
