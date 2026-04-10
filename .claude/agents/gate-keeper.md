@@ -90,6 +90,7 @@ After outputting the markdown verdict table, persist the verdict to disk:
 
 ```bash
 mkdir -p .runs/gate-verdicts
+bash .claude/scripts/archive-gate-verdict.sh <gate-id>
 cat > .runs/gate-verdicts/<gate-id>.json << 'VEOF'
 {
   "gate": "<ID>",

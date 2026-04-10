@@ -27,6 +27,7 @@ Phase A runs AFTER scaffold-init completes (STATE 10) to ensure design tokens ex
 After creating all Phase A files, write the Phase A sentinel. Include variant files in the list when `variants` is present in experiment.yaml:
 ```bash
 mkdir -p .runs/gate-verdicts
+bash .claude/scripts/archive-gate-verdict.sh phase-a-sentinel
 CORE_FILES='["src/app/layout.tsx","src/app/not-found.tsx","src/app/error.tsx","src/app/icon.tsx","src/app/opengraph-image.tsx","src/app/sitemap.ts","src/app/robots.ts","public/llms.txt"'
 if grep -q '^variants:' experiment/experiment.yaml 2>/dev/null; then
   CORE_FILES+=',"src/lib/variants.ts","src/app/page.tsx","src/app/v/[variant]/page.tsx"'

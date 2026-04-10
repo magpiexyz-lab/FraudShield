@@ -61,3 +61,21 @@ Hooks enforce two freshness constraints:
 All verdict files live in `.runs/gate-verdicts/`. This directory is cleaned
 at the start of each skill run (e.g., bootstrap STATE 0 runs
 `rm -rf .runs/gate-verdicts`).
+
+## Verdict History
+
+When a gate is re-run (e.g., after fixing a BLOCK), the existing verdict file
+is archived before overwrite:
+
+```
+.runs/gate-verdicts/history/<gate-id>-attempt-<N>.json
+```
+
+- N starts at 1 and increments for each archived attempt.
+- The archive step runs automatically via `archive-gate-verdict.sh`, called
+  from the gate-keeper verdict write contract.
+- History accumulates across re-runs within a single skill invocation.
+- Bootstrap STATE 0 cleans the entire `.runs/gate-verdicts/` directory
+  (including `history/`), so history does not persist across bootstrap runs.
+- `.runs/` is gitignored — verdict history is ephemeral and per-machine.
+- Existing consumers use `*.json` globs that do not descend into `history/`.
