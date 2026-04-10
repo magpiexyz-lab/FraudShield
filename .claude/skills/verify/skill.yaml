@@ -1,0 +1,51 @@
+states: ["0","1","2","3a","3b","3c","4","5","6","7a","7b","8"]
+agents:
+  build-info-collector:
+    after: ["1"]
+    mode: "foreground"
+  security-defender:
+    after: ["1"]
+    mode: "foreground"
+    requires_traces: [build-info-collector]
+  security-attacker:
+    after: ["1"]
+    mode: "foreground"
+    requires_traces: [build-info-collector]
+  behavior-verifier:
+    after: ["1"]
+    mode: "foreground"
+    requires_traces: [build-info-collector]
+  performance-reporter:
+    after: ["1"]
+    mode: "foreground"
+    requires_traces: [build-info-collector]
+  accessibility-scanner:
+    after: ["1"]
+    mode: "foreground"
+    requires_traces: [build-info-collector]
+  spec-reviewer:
+    after: ["1"]
+    mode: "foreground"
+    requires_traces: [build-info-collector]
+  design-critic:
+    after: ["1"]
+    requires_archetype: web-app
+    requires_traces: [build-info-collector]
+    scope_condition:
+      scope: full
+      requires_traces: [security-defender, security-attacker, behavior-verifier]
+  design-consistency-checker:
+    after: ["1"]
+    requires_archetype: web-app
+    requires_traces: [build-info-collector]
+  ux-journeyer:
+    after: ["1"]
+    requires_archetype: web-app
+    requires_traces: [design-critic, design-consistency-checker]
+  security-fixer:
+    after: ["3a"]
+    requires_traces: [build-info-collector]
+  observer:
+    after: ["4"]
+  pattern-classifier:
+    after: ["6"]

@@ -1,0 +1,9 @@
+modes:
+  default:
+    states: ["0","1","2","3","4","5"]
+  check:
+    trigger: "--check"
+    states: ["c0","c1","c2","c3"]
+  cross:
+    trigger: "--cross"
+    states: ["x0","x1","x2","x3","x4","x5"]

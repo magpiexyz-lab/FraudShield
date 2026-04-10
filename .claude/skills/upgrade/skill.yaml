@@ -1,0 +1,2 @@
+branch: "chore/upgrade-{slug}"
+states: ["0", "1", "2", "3"]
