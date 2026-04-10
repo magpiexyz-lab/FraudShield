@@ -138,43 +138,37 @@ Output:
 
 For each alternative: name the tradeoff axis where it wins.
 
-### Phase 5 — Critic Loop (1 agent, max 2 rounds)
+### Phase 5 — Critic Loop (1 Named agent, max 2 rounds)
 
-Launch 1 Opus agent as an adversarial critic.
+Spawn the `solve-critic` Named agent (`subagent_type: solve-critic`).
+
+The caller MUST include `--context <file>` in the agent prompt to specify the
+context file for run_id correlation:
+- `/resolve`: `--context .runs/resolve-context.json`
+- `/change`: `--context .runs/change-context.json`
+- `/solve`: `--context .runs/solve-context.json`
 
 **Critic receives**: the recommended solution + problem statement + constraint space + Phase 3 self-answered gaps.
 **Critic does NOT receive**: the reasoning chain from Phases 1-4.
 
-**Critic instructions**:
-> You are reviewing a proposed solution. Your job is to find flaws.
->
-> **Self-answered gaps**: The following research gaps were answered by the AI
-> without user input. Challenge each self-answer for circular reasoning or
-> ungrounded assumptions. If a self-answer is tagged LOW confidence, scrutinize
-> it more heavily.
->
-> For each concern, classify it:
->
-> - **TYPE A — Fixable design flaw**: The solution has a gap or error that can
->   be fixed without changing the approach. Default to this when uncertain.
-> - **TYPE B — Immutable constraint**: The solution conflicts with a hard
->   constraint that cannot be changed. You MUST name the specific constraint.
-> - **TYPE C — Needs user domain knowledge**: The solution makes an assumption
->   that only the user can validate.
->
-> For each concern: type, description, evidence, and (for TYPE A) suggested fix.
+The critic protocol (TYPE A/B/C classification, output format) is defined in
+`.claude/agents/solve-critic.md`. The agent writes its own trace to
+`.runs/agent-traces/solve-critic.json` — this trace is independent of the lead
+agent and cannot be modified by it.
 
 **Convergence rules**:
 - **Round 1**: If 0 TYPE A concerns → early exit (solution converged). Otherwise: fix all TYPE A concerns → round 2.
-- **Round 2**: Any remaining TYPE A → package as caveats in output. Stop. Do not iterate further.
+- **Round 2**: Re-spawn solve-critic with round 2 instructions. The agent overwrites its trace with `round: 2` and updated counts. Any remaining TYPE A → package as caveats in output. Stop.
 
 **Artifact tracking:** After the critic loop completes, the caller must record:
 - `critic_rounds`: number of rounds actually executed (1 or 2)
 - `round_1_type_a_count`: number of TYPE A concerns from round 1
 
 These fields enable postcondition verification that round 2 was executed when required.
-Store in the caller's challenge artifact (e.g., `resolve-challenge.json`), NOT in
-the shared `solve-trace.json`.
+Store in the caller's challenge artifact (e.g., `resolve-challenge.json`,
+`change-challenge.json`), NOT in the shared `solve-trace.json`.
+The adversarial-merge-gate.sh hook cross-references these fields against the
+solve-critic trace to detect silent overrides.
 
 ### Phase 6 — Output
 

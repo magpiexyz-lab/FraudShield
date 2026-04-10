@@ -4,9 +4,14 @@
 Usage:
     python3 scripts/init-trace.py <agent-name>
     python3 scripts/init-trace.py <agent-name> <trace-filename>
+    python3 scripts/init-trace.py <agent-name> --context <context-file>
+    python3 scripts/init-trace.py <agent-name> --context <context-file> <trace-filename>
 
 Args:
     agent-name:     Required. E.g. "design-critic"
+    --context:      Optional. Path to context JSON file for run_id.
+                    Defaults to ".runs/verify-context.json".
+                    Use for cross-skill agents: --context .runs/resolve-context.json
     trace-filename: Optional. Defaults to "<agent-name>.json".
                     Use for per-page traces: "design-critic-landing.json"
 
@@ -23,11 +28,20 @@ if len(sys.argv) < 2:
     sys.exit(1)
 
 agent = sys.argv[1]
-trace_file = sys.argv[2] if len(sys.argv) > 2 else f"{agent}.json"
+context_file = ".runs/verify-context.json"
+trace_file = f"{agent}.json"
+i = 2
+while i < len(sys.argv):
+    if sys.argv[i] == "--context" and i + 1 < len(sys.argv):
+        context_file = sys.argv[i + 1]
+        i += 2
+    else:
+        trace_file = sys.argv[i]
+        i += 1
 
 run_id = ""
 try:
-    with open(".runs/verify-context.json") as f:
+    with open(context_file) as f:
         run_id = json.load(f).get("run_id", "")
 except Exception:
     pass

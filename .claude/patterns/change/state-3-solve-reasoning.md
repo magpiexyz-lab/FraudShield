@@ -79,16 +79,44 @@ json.dump(trace, open('.runs/solve-trace.json', 'w'), indent=2)
 "
 ```
 
+### Write challenge artifact
+
+After completing the solve-reasoning pass, write `.runs/change-challenge.json`:
+
+If `solve_depth = "full"`:
+```bash
+python3 -c "
+import json
+challenge = {
+    'critic_rounds': 0,           # 1 or 2 — actual rounds executed
+    'round_1_type_a_count': 0,    # TYPE A concerns from round 1
+    'concerns': [
+        # {'type': '<A|B|C>', 'description': '<text>'}
+    ]
+}
+json.dump(challenge, open('.runs/change-challenge.json', 'w'), indent=2)
+"
+```
+
+If `solve_depth = "light"` (no critic ran):
+```bash
+python3 -c "
+import json
+json.dump({'critic_rounds': 0, 'round_1_type_a_count': 0, 'concerns': []}, open('.runs/change-challenge.json', 'w'), indent=2)
+"
+```
+
 **POSTCONDITIONS:**
 - `solve_depth` determined and stated with rationale
 - `solve_depth` persisted to `.runs/change-context.json` and matches formula
 - Solve-reasoning pass completed (light or full)
 - Output stored in working memory for plan generation
 - `.runs/solve-trace.json` exists with 5 required fields (`mode`, `problem_decomposition`, `constraint_enumeration`, `solution_design`, `self_check`, `output`)
+- `.runs/change-challenge.json` exists with `critic_rounds`, `round_1_type_a_count`, `concerns`
 
 **VERIFY:**
 ```bash
-python3 -c "import json; ctx=json.load(open('.runs/change-context.json')); sd=ctx.get('solve_depth'); assert sd in ('light','full'), 'solve_depth=%s' % sd; pt=ctx.get('preliminary_type',''); aa=ctx.get('affected_areas',0); assert not (pt in ('Feature','Upgrade') and isinstance(aa,int) and aa>=3 and sd!='full'), 'Formula requires full (type=%s,areas=%s) but got %s' % (pt,aa,sd); st=json.load(open('.runs/solve-trace.json')); required=['mode','problem_decomposition','constraint_enumeration','solution_design','self_check','output']; missing=[k for k in required if k not in st]; assert not missing,'solve-trace.json missing: %s'%missing"
+python3 .claude/scripts/verify-change-solve.py  # change-context.json, solve-trace.json, change-challenge.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

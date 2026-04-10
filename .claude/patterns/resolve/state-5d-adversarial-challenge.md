@@ -9,54 +9,49 @@ The adversarial challenge adapts based on `solve_depth`:
 
 #### Light mode adversarial challenge
 
-Launch a single Explore subagent to challenge each fix design:
+Spawn the `resolve-challenger` Named agent (`subagent_type: resolve-challenger`).
 
-Prompt includes: all fix plans from Step 5 (root cause, fix plan,
-blast radius, anti-pattern review).
-
-**Fix Challenge Protocol** — for each fix, attempt to construct a
-scenario where the fix is wrong or insufficient. Default label is
-"sound"; challenger must produce evidence to dispute.
-
-Three challenge vectors:
-
-1. **Configuration counterexample**: Find an experiment.yaml
-   configuration (archetype + stack) where the fix would break.
-   Read fixtures in `tests/fixtures/*.yaml` for concrete configs.
-
-2. **Blast radius gap**: Are there files NOT in the blast radius
-   that share the pattern? Grep more broadly than Step 4.
-
-3. **Regression vector**: Would this fix break existing validator
-   checks? Read `scripts/check-inventory.md` and identify checks
-   touching the same files.
-
-Output per fix:
-```
-### Fix for Issue #N
-- **Label**: sound | challenged | needs-revision
-- **Challenge**: <what was tried>
-- **Evidence**: <file:line quotes or fixture names>
-- **Revision**: <if not sound: specific change to fix plan>
-```
+Pass in the agent prompt: all fix plans from Step 5 (root cause, fix plan,
+blast radius, anti-pattern review). The agent definition at
+`.claude/agents/resolve-challenger.md` contains the full challenge protocol
+(3 vectors: configuration counterexample, blast radius gap, regression vector).
 
 After the agent returns:
+1. Read the agent's trace at `.runs/agent-traces/resolve-challenger.json`
+2. For each fix, transcribe the trace's `verdicts[i].label` to `agent_label`
+3. Set `final_label = agent_label` by default
+4. If overriding (setting a different `final_label`), provide `override_reason`
+
+Label handling:
 - **sound**: proceed as designed
 - **needs-revision**: incorporate revision, note in diagnosis report
 - **challenged**: present to user at STOP gate; let user decide
 
+When any `agent_label != final_label`, the STOP gate must display both labels,
+the override reason, and the raw agent output so the user can see the override.
+
 #### Full mode adversarial challenge
 
-Step 5d is replaced by solve-reasoning Phase 5 Critic Loop (already
-executed in Step 5b-full). The 3 domain-specific challenge vectors
-above (configuration counterexample, blast radius gap, regression
-vector) are injected into the Critic prompt as additional instructions.
+Spawn the `solve-critic` Named agent (`subagent_type: solve-critic`).
+Pass `--context .runs/resolve-context.json` in the agent prompt. Include the
+3 domain-specific challenge vectors (configuration counterexample, blast
+radius gap, regression vector) as additional instructions in the critic prompt.
 
-Critic output mapping:
+The solve-critic writes its trace to `.runs/agent-traces/solve-critic.json`.
+If round 2 is needed (TYPE A count > 0), re-spawn solve-critic with round 2
+instructions; the agent overwrites the trace with `round: 2`.
+
+Critic output mapping to report sections:
 - **TYPE A round 1** -> revision to `fix_plan` (already applied)
 - **TYPE A round 2** (unresolved) -> caveats in diagnosis report
 - **TYPE B** -> system constraints in diagnosis report
 - **TYPE C** -> merged into STOP gate questions (see below)
+
+**Full mode `agent_label` derivation** (per fix):
+- No TYPE A/B concerns targeting this fix -> `agent_label = "sound"`
+- TYPE A concerns targeting this fix, all resolved by round 2 -> `agent_label = "needs-revision"`
+- Unresolved TYPE A or any TYPE B targeting this fix -> `agent_label = "challenged"`
+- Only TYPE C targeting this fix -> `agent_label = "sound"` (TYPE C defers to user, does not dispute the fix)
 
 Present a diagnosis report for all actionable issues:
 
@@ -94,7 +89,15 @@ proceeding to Phase 3.** The user may adjust fix plans or scope.
   import json
   challenge = {
       'challenges': [
-          {'issue': 0, 'label': '<sound|challenged|needs-revision>', 'challenge': '<what was tried>', 'evidence': '<file:line or fixture>', 'revision': '<if not sound>'}
+          {
+              'issue': 0,
+              'agent_label': '<label from adversarial trace verdicts[i].label>',
+              'final_label': '<sound|challenged|needs-revision>',
+              'override_reason': '<if agent_label != final_label, explain why; empty string if labels match>',
+              'challenge': '<what was tried>',
+              'evidence': '<file:line or fixture>',
+              'revision': '<if not sound>'
+          }
       ],
       'critic_rounds': 0,           # 1 or 2 — actual rounds executed (see solve-reasoning.md)
       'round_1_type_a_count': 0     # TYPE A concerns from round 1
@@ -111,7 +114,7 @@ proceeding to Phase 3.** The user may adjust fix plans or scope.
 
 **VERIFY:**
 ```bash
-python3 -c "import json; d=json.load(open('.runs/resolve-challenge.json')); assert isinstance(d.get('challenges'),list) and len(d['challenges'])>0, 'challenges empty'; c=d['challenges'][0]; assert 'label' in c, 'label missing'; cr=d.get('critic_rounds'); ta=d.get('round_1_type_a_count',0); assert cr is not None, 'critic_rounds missing'; assert not (ta > 0 and cr < 2), 'round_1_type_a_count=%d but critic_rounds=%d — round 2 required when TYPE A > 0' % (ta, cr)"
+python3 .claude/scripts/verify-resolve-challenge.py  # resolve-challenge.json, resolve-challenger.json, solve-critic.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
