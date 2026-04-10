@@ -46,8 +46,9 @@ Each image type uses the optimal model. All models share one `FAL_KEY` via fal.a
 ```ts
 import { fal } from "@fal-ai/client";
 import { writeFile, mkdir } from "fs/promises";
-import { existsSync } from "fs";
+import { existsSync, readFileSync } from "fs";
 import { join } from "path";
+import { homedir } from "os";
 
 const MAX_RETRIES = 2;
 const BASE_DELAY_MS = 2000;
@@ -122,7 +123,18 @@ export interface ImageResult {
 // --- Internal ---
 
 function isDemoMode(): boolean {
-  return process.env.DEMO_MODE === "true" || !process.env.FAL_KEY;
+  if (process.env.DEMO_MODE === "true") return true;
+  if (process.env.FAL_KEY) return false;
+  // Check persistent key file (matches bootstrap preflight detection in state-8)
+  try {
+    const keyPath = join(homedir(), '.fal', 'key');
+    const key = readFileSync(keyPath, 'utf-8').trim();
+    if (key && !key.startsWith('placeholder')) {
+      process.env.FAL_KEY = key; // Bridge to env var for fal client
+      return false;
+    }
+  } catch { /* ~/.fal/key not readable */ }
+  return true;
 }
 
 async function sleep(ms: number): Promise<void> {
@@ -447,12 +459,13 @@ FAL_KEY=fal-...
 - No user input reaches image generation prompts -- prompts derive from experiment.yaml and visual brief only
 
 ## Demo Mode
-When `DEMO_MODE=true` or `FAL_KEY` is not set, all calls return SVG placeholders without hitting the API. This enables visual review and CI builds without credentials.
+When `DEMO_MODE=true` or `FAL_KEY` is not available, all calls return SVG placeholders without hitting the API. This enables visual review and CI builds without credentials. `FAL_KEY` is resolved from: (1) `process.env.FAL_KEY`, then (2) `~/.fal/key` persistent file. The first successful source is bridged to `process.env.FAL_KEY` for the fal SDK.
 
 ## PR Instructions
-- After merging, set `FAL_KEY` in your environment:
-  - Get your key from [fal.ai](https://fal.ai) > Dashboard > Keys
+- After merging, set `FAL_KEY` via any of these methods:
   - `export FAL_KEY=fal-...` in your shell or add to `.env.local`
+  - Or use the fal CLI (`~/.fal/key` is auto-detected)
+  - Get your key from [fal.ai](https://fal.ai) > Dashboard > Keys
 - For deployment: set `FAL_KEY` in your hosting provider's environment variables
   - Images are generated at bootstrap time and committed as static assets
   - The deployed app does NOT need `FAL_KEY` at runtime
