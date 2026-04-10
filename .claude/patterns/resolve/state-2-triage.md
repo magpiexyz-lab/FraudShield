@@ -43,7 +43,7 @@ If ANY answer is YES → classify as Architectural (defer to /solve).
 Principle: err on the side of deferring — false Architectural classifications
 are cheap (one /solve run), false Bug classifications risk incomplete fixes.
 
-For architectural issues, post a comment and leave the issue open (do NOT close):
+For architectural issues, post a comment and apply the `architecture` label:
 ```bash
 gh issue comment <N> --body "**Deferred: Architectural Issue**
 
@@ -52,6 +52,79 @@ This observation describes a template-architecture concern that requires first-p
 **Recommended next step:**
 \`/solve \"Issue #<N>: <title>\"\`"
 ```
+
+Apply the `architecture` label so future `/resolve` runs skip this issue:
+```bash
+# Create label if it doesn't exist (idempotent)
+gh label create "architecture" --description "Architectural issue deferred to /solve" --color "d4c5f9" 2>/dev/null || true
+gh issue edit <N> --add-label "architecture"
+```
+
+If `gh issue edit` fails: embed `**Label:** architecture (create this label for filtering)` in the defer comment body as fallback.
+
+### Architectural Consolidation (when 2+ architectural issues in this batch)
+
+If only 0 or 1 architectural issue: skip this section.
+
+If 2+ issues classified as Architectural in this triage batch:
+
+**Step 1 — Root-cause clustering:** Compare the architectural issues and group those
+sharing the same structural root cause. Same logic as STATE 4b: look for shared causal
+patterns (e.g., "3 issues all caused by missing cross-skill guard in state-registry.json"
+= 1 cluster). Unclustered issues remain as individual deferred items.
+
+**Step 2 — Create consolidated issue per cluster** (for each cluster of 2+ related issues):
+
+```bash
+gh issue create \
+  --label "architecture" \
+  --title "[Architecture] <root-cause-summary-in-imperative-form>" \
+  --body "$(cat <<'BODY'
+## Consolidated Architectural Issue
+
+**Root cause**: <1-2 sentence root cause hypothesis>
+**Cluster size**: <N> issues
+
+### Symptoms
+
+| # | Title | Severity | Symptom |
+|---|-------|----------|---------|
+| #A | <title> | high | <one-line symptom> |
+| #B | <title> | medium | <one-line symptom> |
+
+### Context for /solve
+
+<Why these are the same root cause, what design options exist,
+what constraints apply. This section is the input for
+`/solve "Issue #<this-number>: <title>"`.>
+
+### Original Issues
+- Closes #A
+- Closes #B
+
+---
+*Auto-consolidated by /resolve triage.*
+BODY
+)"
+```
+
+If `gh issue create` fails: fall back to leaving original issues open with their
+individual `architecture` labels and defer comments (graceful degradation — /solve
+processes them individually).
+
+**Step 3 — Close originals with cross-reference:**
+
+```bash
+gh issue close <A> --comment "Consolidated into #<consolidated>. Root cause: <summary>. Track resolution at #<consolidated>."
+gh issue close <B> --comment "Consolidated into #<consolidated>. Root cause: <summary>. Track resolution at #<consolidated>."
+```
+
+**Step 4 — Update triage artifact:** Replace original entries with consolidated entry
+in the `issues` array:
+- Remove original issue entries
+- Add: `{"number": <consolidated>, "type": "architectural", "severity": "<highest of cluster>", "action": "defer", "consolidated_from": [A, B]}`
+- Add `consolidated_count` field to the triage object
+- Unclustered architectural issues remain as-is
 
 **Non-actionable (handle now, skip Phase 2):**
 
@@ -77,8 +150,9 @@ Present a triage table:
 
 Severity levels: HIGH (breaks execution), MEDIUM (wrong output), LOW (cosmetic).
 
-If all issues are non-actionable or architectural (all closed or deferred in Step 2): report "All issues
-resolved as non-actionable or deferred — no Phase 2 diagnosis needed." Stop here.
+If all issues are non-actionable or architectural (all closed or deferred in this state): report "All issues
+resolved as non-actionable or deferred — no Phase 2 diagnosis needed." If architectural issues were consolidated,
+report the consolidated issue number(s) and recommend `/solve "Issue #<N>: <title>"` for each. Stop here.
 
 **STOP. Present the triage table to the user and wait for approval before
 proceeding to Phase 2.** The user may reclassify issues or remove them from scope.
@@ -90,10 +164,12 @@ proceeding to Phase 2.** The user may reclassify issues or remove them from scop
   triage = {
       'issues': [
           {'number': 0, 'type': '<bug|gap|inconsistency|regression|observation|architectural>', 'severity': '<high|medium|low>', 'action': '<fix|close|defer>'}
+          # Consolidated entries add: 'consolidated_from': [A, B]
       ],
       'actionable_count': 0,
       'closed_count': 0,
-      'deferred_count': 0
+      'deferred_count': 0,
+      'consolidated_count': 0  # number of consolidated issues created (0 if no consolidation)
   }
   json.dump(triage, open('.runs/resolve-triage.json', 'w'), indent=2)
   "

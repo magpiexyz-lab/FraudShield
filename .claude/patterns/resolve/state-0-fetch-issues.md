@@ -9,8 +9,8 @@
 Determine which issues to resolve:
 
 - If the user specified issue number(s): `gh issue view <N> --json number,title,body,labels,state,comments`
-- If the user said "resolve open issues": `gh issue list --state open --limit 20 --json number,title,body,labels`
-- If the user said "resolve observations": `gh issue list --label observation --state open --limit 20 --json number,title,body,labels`
+- If the user said "resolve open issues": `gh issue list --state open --search "-label:architecture" --limit 20 --json number,title,body,labels`
+- If the user said "resolve observations": `gh issue list --label observation --search "-label:architecture" --state open --limit 20 --json number,title,body,labels`
 
 - If the user said "--refine" or "refine":
 
@@ -31,7 +31,7 @@ Determine which issues to resolve:
 
   **Step 3 — Read GitHub observation issues:**
   ```bash
-  gh issue list --repo $TEMPLATE_REPO --label observation --state open \
+  gh issue list --repo $TEMPLATE_REPO --label observation --search "-label:architecture" --state open \
     --json number,title,body --limit 50
   ```
 
@@ -59,6 +59,16 @@ Determine which issues to resolve:
   Include `"mode": "refine"` and `trace_summary` from `.runs/refine-analysis.json` (dict keyed by `"<skill>/<state_id>"` with `{failure_rate, total, fails, team_members_affected, status}`).
 
 Store the fetched issues as `issue_list`.
+
+**If `issue_list` is empty after fetching** (all open issues have the `architecture` label
+and were excluded by the filter): report to the user:
+
+> All open issues are deferred as architectural. Use `/solve` to address them.
+> Run `/resolve #<N>` to force-process a specific architectural issue.
+
+Then write resolve-context.json with empty `issue_list`, advance state 0, and **TERMINAL** —
+skill ends. No triage needed, no PR, no further states. (The `_required_states` gate only
+applies when a PR is created; with 0 issues there is no PR.)
 
 ### Worktree Isolation
 
@@ -89,7 +99,7 @@ bash .claude/scripts/init-context.sh resolve '{"issue_list":[]}'
 ```
 
 **POSTCONDITIONS:**
-- `issue_list` is populated with at least one issue
+- `issue_list` is populated (may be empty if all issues are architecture-labeled — see early termination above)
 - `.runs/resolve-context.json` exists
 
 **VERIFY:**
