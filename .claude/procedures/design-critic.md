@@ -174,7 +174,7 @@ For any section rated below 8/10 in Layer 2, or any Layer 1/Layer 3 failure:
      - Problem: "composition competes with headline" → v1: "clean negative space, focal point lower-right"; v2: "soft bokeh background, subject small and offset"; v3: "atmospheric gradient, no strong subject"
    - Generate new candidates to `.runs/image-candidates/`:
      ```bash
-     npx tsx -e "import { generateImage } from './src/lib/image-gen'; const r = await generateImage({ type: '<type>', prompt: '<context-informed prompt>', width: <w>, height: <h>, filename: '<slot>-critic-<N>.webp', altText: '<alt>', outputDir: '.runs/image-candidates' }); console.log(JSON.stringify(r));"
+     DEMO_MODE= npx tsx -e "import { generateImage } from './src/lib/image-gen'; const r = await generateImage({ type: '<type>', prompt: '<context-informed prompt>', width: <w>, height: <h>, filename: '<slot>-critic-<N>.webp', altText: '<alt>', outputDir: '.runs/image-candidates' }); console.log(JSON.stringify(r));"
      ```
    - Try each new candidate in context (copy → build → screenshot → score)
    - Update `.runs/image-candidates.json` sidecar with new entries
