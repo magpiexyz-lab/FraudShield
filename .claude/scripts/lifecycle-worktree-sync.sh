@@ -11,9 +11,9 @@ set -euo pipefail
 MAIN_DIR=$(git worktree list | head -1 | awk '{print $1}')
 mkdir -p "$MAIN_DIR/.runs/agent-traces" "$MAIN_DIR/.runs/gate-verdicts"
 
-# .json: overwrite
-for f in .runs/*.json; do
-  [ -f "$f" ] && cp "$f" "$MAIN_DIR/$f"
+# All files except .jsonl: overwrite (covers .json, .md, .txt, etc.)
+for f in .runs/*; do
+  [ -f "$f" ] && [[ "$f" != *.jsonl ]] && cp "$f" "$MAIN_DIR/$f"
 done
 for f in .runs/agent-traces/*.json; do
   [ -f "$f" ] && cp "$f" "$MAIN_DIR/$f"
