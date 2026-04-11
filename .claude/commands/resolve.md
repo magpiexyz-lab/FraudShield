@@ -24,30 +24,18 @@ Resolve GitHub issues or refine template quality: $ARGUMENTS
 
 ARGUMENTS: $ARGUMENTS
 
-## JIT State Dispatch
+## Lifecycle
 
-Read each STATE's file **only when transitioning to that state**. Do NOT read ahead.
-
-| STATE | Name | Phase | File |
-|-------|------|-------|------|
-| 0 | FETCH_ISSUES | Triage | [state-0-fetch-issues.md](../patterns/resolve/state-0-fetch-issues.md) |
-| 1 | READ_CONTEXT | Triage | [state-1-read-context.md](../patterns/resolve/state-1-read-context.md) |
-| 2 | TRIAGE | Triage | [state-2-triage.md](../patterns/resolve/state-2-triage.md) |
-| 3 | REPRODUCE | Diagnose | [state-3-reproduce.md](../patterns/resolve/state-3-reproduce.md) |
-| 4 | BLAST_RADIUS | Diagnose | [state-4-blast-radius.md](../patterns/resolve/state-4-blast-radius.md) |
-| 4b | ROOT_CAUSE_CLUSTERING | Diagnose | [state-4b-root-cause-clustering.md](../patterns/resolve/state-4b-root-cause-clustering.md) |
-| 5 | FIX_DESIGN | Diagnose | [state-5-fix-design.md](../patterns/resolve/state-5-fix-design.md) |
-| 5d | ADVERSARIAL_CHALLENGE | Diagnose | [state-5d-adversarial-challenge.md](../patterns/resolve/state-5d-adversarial-challenge.md) |
-| 6 | BRANCH_SETUP | Fix | [state-6-branch-setup.md](../patterns/resolve/state-6-branch-setup.md) |
-| 7 | IMPLEMENT_FIXES | Fix | [state-7-implement-fixes.md](../patterns/resolve/state-7-implement-fixes.md) |
-| 8 | FINAL_VALIDATION | Fix | [state-8-final-validation.md](../patterns/resolve/state-8-final-validation.md) |
-| 8b | SIDE_EFFECT_SCAN | Fix | [state-8b-side-effect-scan.md](../patterns/resolve/state-8b-side-effect-scan.md) |
-| 9 | SAVE_PATTERNS | Fix | [state-9-save-patterns.md](../patterns/resolve/state-9-save-patterns.md) |
-| 9a | GRADUATE_EXTERNAL_STACK | Fix | [state-9a-graduate-external.md](../patterns/resolve/state-9a-graduate-external.md) |
-| 10 | SKILL_EPILOGUE | Fix | [state-10-skill-epilogue.md](../patterns/resolve/state-10-skill-epilogue.md) |
-| 11 | COMMIT_PR | Fix | [state-11-commit-pr.md](../patterns/resolve/state-11-commit-pr.md) |
-
-Begin at STATE 0. Read [state-0-fetch-issues.md](../patterns/resolve/state-0-fetch-issues.md) now.
+1. Run `bash .claude/scripts/lifecycle-init.sh resolve`
+2. State execution loop:
+   a. Run: `NEXT=$(bash .claude/scripts/lifecycle-next.sh resolve)`
+   b. If NEXT is "FINALIZE" → go to step 3
+   c. If NEXT does not start with "/" → STOP with error (print NEXT for diagnosis)
+   d. Read the state file at $NEXT and execute its ACTIONS section
+   e. After ACTIONS complete, run the state's STATE TRACKING command
+      (the `bash .claude/scripts/advance-state.sh` call in the state file)
+   f. Return to step 2a
+3. Run `bash .claude/scripts/lifecycle-finalize.sh resolve`
 
 ## Do NOT
 

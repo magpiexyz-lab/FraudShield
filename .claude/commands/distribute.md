@@ -30,21 +30,18 @@ Parse `$ARGUMENTS` for:
 
 If `$ARGUMENTS` contains no `--phase` flag, default to phase 1.
 
-## JIT State Dispatch
+## Lifecycle
 
-Read each STATE's file **only when transitioning to that state**. Do NOT read ahead.
-
-| STATE | Name | Phase | File |
-|-------|------|-------|------|
-| 0 | INIT | Setup | [state-0-init.md](../patterns/distribute/state-0-init.md) |
-| 1 | CONFIG_WIZARD | Setup | [state-1-config-wizard.md](../patterns/distribute/state-1-config-wizard.md) |
-| 2 | VALIDATE_ANALYTICS | Setup | [state-2-validate-analytics.md](../patterns/distribute/state-2-validate-analytics.md) |
-| 3 | IMPLEMENT_AND_VERIFY | Implement | [state-3-implement-and-verify.md](../patterns/distribute/state-3-implement-and-verify.md) |
-| 4 | GENERATE | Research | [state-4-generate.md](../patterns/distribute/state-4-generate.md) |
-| 5 | APPROVE_AND_SHIP | Config | [state-5-approve-and-ship.md](../patterns/distribute/state-5-approve-and-ship.md) |
-| 6 | CAMPAIGN | Launch | [state-6-campaign.md](../patterns/distribute/state-6-campaign.md) |
-
-Begin at STATE 0. Read [state-0-init.md](../patterns/distribute/state-0-init.md) now.
+1. Run `bash .claude/scripts/lifecycle-init.sh distribute`
+2. State execution loop:
+   a. Run: `NEXT=$(bash .claude/scripts/lifecycle-next.sh distribute)`
+   b. If NEXT is "FINALIZE" → go to step 3
+   c. If NEXT does not start with "/" → STOP with error (print NEXT for diagnosis)
+   d. Read the state file at $NEXT and execute its ACTIONS section
+   e. After ACTIONS complete, run the state's STATE TRACKING command
+      (the `bash .claude/scripts/advance-state.sh` call in the state file)
+   f. Return to step 2a
+3. Run `bash .claude/scripts/lifecycle-finalize.sh distribute`
 
 ## Do NOT
 
