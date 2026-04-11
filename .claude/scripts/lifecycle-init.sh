@@ -232,11 +232,15 @@ except: print('')
   git checkout -b "$BRANCH" 2>/dev/null || echo "WARN: lifecycle-init.sh — branch $BRANCH already exists or checkout failed" >&2
 fi
 
-# --- Step 5: Call init-context.sh ---
-# Mode-aware: iterate --check → init-context.sh iterate-check (not iterate)
+# --- Step 5: Create minimal context for lifecycle-next.sh dispatch ---
+# State-0's init-context.sh call creates the canonical context (single run_id source).
+# We only create a stub so lifecycle-next.sh can dispatch state 0.
 CTX_SKILL="$SKILL"
 if [[ -n "$EXTRA" ]]; then
   MODE=$(python3 -c "import json; d=json.loads('''$EXTRA'''); m=d.get('mode',''); print(m if m and m!='default' else '')" 2>/dev/null || echo "")
   [[ -n "$MODE" ]] && CTX_SKILL="${SKILL}-${MODE}"
 fi
-bash "$PROJECT_DIR/.claude/scripts/init-context.sh" "$CTX_SKILL" "$EXTRA"
+CTX="$PROJECT_DIR/.runs/${CTX_SKILL}-context.json"
+if [[ ! -f "$CTX" ]]; then
+  echo '{"completed_states":[]}' > "$CTX"
+fi

@@ -39,11 +39,7 @@ print('%s-%s'%(sk,am) if am and am!='default' else sk)
   CTX="$PROJECT_DIR/.runs/${CTX_SKILL}-context.json"
 fi
 
-if [[ ! -f "$CTX" ]]; then
-  echo "NO_CONTEXT"
-  exit 0
-fi
-
+# Missing context = no states completed yet (first dispatch before state-0 creates it)
 # --- Dispatch logic (Python for JSON + glob) ---
 PROJECT_DIR_ENV="$PROJECT_DIR" python3 - "$SKILL" "$CTX" "$MANIFEST" << 'PYEOF'
 import json, sys, os, glob
@@ -60,7 +56,7 @@ SKILL_DIR_MAP = {
     "observe": "observe-cmd",
 }
 
-ctx = json.load(open(ctx_path))
+ctx = json.load(open(ctx_path)) if os.path.isfile(ctx_path) else {"completed_states": []}
 manifest = json.load(open(manifest_path))
 
 # completed_states as string set for consistent comparison

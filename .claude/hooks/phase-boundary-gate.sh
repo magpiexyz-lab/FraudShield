@@ -74,8 +74,8 @@ fi
 if [[ "$TOOL_NAME" == "Bash" ]]; then
   COMMAND=$(read_payload_field "tool_input.command")
 
-  # Only fire on advance-state.sh calls
-  if [[ "$COMMAND" != *"advance-state.sh"* ]]; then
+  # Only fire on actual advance-state.sh invocations (not strings mentioning it)
+  if ! echo "$COMMAND" | grep -qE 'bash\s+\S*advance-state\.sh\s'; then
     exit 0
   fi
 

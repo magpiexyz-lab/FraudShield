@@ -245,6 +245,13 @@ def check_missing_states(skill):
     missing = required_set - completed
 
     if missing:
+        # If exactly 1 state missing and it's the last required state,
+        # this is the currently-executing epilogue state (audit runs before
+        # advance-state marks it complete). Treat as pass.
+        if len(missing) == 1 and str(required[-1]) in missing:
+            return {"name": "missing_states", "result": "pass",
+                    "detail": f"all pre-epilogue states completed ({len(required)-1}/{len(required)}), "
+                              f"epilogue state {sorted(missing)[0]} executing"}
         return {"name": "missing_states", "result": "fail",
                 "detail": f"missing states: {sorted(missing)} (completed: {sorted(completed)})"}
     return {"name": "missing_states", "result": "pass",
