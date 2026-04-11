@@ -28,10 +28,5 @@ Find the optimal solution to a problem using first-principles analysis, structur
    f. Return to step 3a
 4. Run `bash .claude/scripts/lifecycle-finalize.sh solve`
 5. If worktree was entered in step 1:
-   a. Copy artifacts back to main checkout:
-      ```bash
-      MAIN_DIR=$(git worktree list | head -1 | awk '{print $1}')
-      mkdir -p "$MAIN_DIR/.runs"
-      tail -1 .runs/verify-history.jsonl >> "$MAIN_DIR/.runs/verify-history.jsonl" 2>/dev/null || true
-      ```
+   a. Run `bash .claude/scripts/lifecycle-worktree-sync.sh`
    b. Call `ExitWorktree` with action `"remove"`

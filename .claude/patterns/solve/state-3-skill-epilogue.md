@@ -25,19 +25,4 @@ python3 -c "import json; d=json.load(open('.runs/observe-result.json')); assert 
 bash .claude/scripts/advance-state.sh solve 3
 ```
 
-### Worktree Cleanup
-
-If you entered a worktree in STATE 0:
-
-1. Copy Q-score back to main checkout:
-```bash
-MAIN_DIR=$(git worktree list | head -1 | awk '{print $1}')
-mkdir -p "$MAIN_DIR/.runs"
-tail -1 .runs/verify-history.jsonl >> "$MAIN_DIR/.runs/verify-history.jsonl" 2>/dev/null || true
-```
-
-2. Call the `ExitWorktree` tool with `action: "remove"` to return to the main checkout and delete the worktree.
-
-If you did NOT enter a worktree (EnterWorktree failed in STATE 0): skip this section.
-
 **NEXT:** TERMINAL -- user decides next action.
