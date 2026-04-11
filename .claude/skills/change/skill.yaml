@@ -8,7 +8,7 @@ agents:
   visual-implementer:
     after: ["9"]
   solve-critic:
-    after: ["3"]
+    after: ["2"]
 embed:
   - at: "11"
     skill: verify

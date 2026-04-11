@@ -48,14 +48,14 @@ When `solve_depth = "light"`: call `.claude/patterns/solve-reasoning.md` light m
 
 #### 5b-full) Full mode path
 
-When `solve_depth = "full"`: call `.claude/patterns/solve-reasoning.md` full mode (Phases 1-6).
+When `solve_depth = "full"`: call `.claude/patterns/solve-reasoning.md` full mode (Phases 1-4). Phase 5 (critic) executes in STATE 5d.
 
 - **Phase 1 agent customization**:
   - Agent 1 = divergence investigation (trace the assumption violation, git blame context)
   - Agent 2 = blast radius + prior fix art (grep for the causal pattern broadly, find past fixes for similar patterns)
   - Agent 3 = fix constraints (validator compatibility, archetype universality, backwards compatibility)
 - **Phase 3 gap resolution**: autonomous — AI self-answers research gaps using first-principles reasoning
-- **Phase 5 Critic**: receives domain-specific vectors (see Step 5c below)
+- **Phase 5 Critic** (STATE 5d): domain-specific vectors configured in Step 5c below, executed in STATE 5d
 - **Output mapping**:
   - "Recommended Solution" -> `root_cause` + `fix_plan`
   - "Constraint Space" -> hard constraints in diagnosis report
@@ -85,7 +85,7 @@ After solve-reasoning completes (either mode), apply template-specific validatio
 
 If validation rejects the solution:
 - **Light mode**: iterate once through solve-reasoning Step 4 (Self-Check)
-- **Full mode**: iterate once through Phase 5 critic round 2
+- **Full mode**: note the rejection in solve-trace.json; STATE 5d critic will evaluate
 
 Record: `root_cause`, `fix_plan` (per-file changes), `proposed_checks` (if any),
 `anti_pattern_review` (confirm none apply).

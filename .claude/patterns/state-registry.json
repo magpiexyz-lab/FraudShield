@@ -258,7 +258,7 @@
       "gate-keeper":        { "allow_unconditional": true },
       "implementer":        { "required_states": ["0","1","2","3","4","5","6","7","8","9"], "artifacts": [".runs/gate-verdicts/g3.json"], "_note": "required_states enforces ordering; g3.json artifact is the authoritative gate for plan approval" },
       "visual-implementer": { "required_states": ["0","1","2","3","4","5","6","7","8","9"], "artifacts": [".runs/gate-verdicts/g3.json"], "_note": "required_states enforces ordering; g3.json artifact is the authoritative gate for plan approval" },
-      "solve-critic":       { "required_states": ["0","1","2","3"], "deny_background": true, "required_checks": ["type_a_analysis","type_b_analysis","type_c_analysis"] }
+      "solve-critic":       { "required_states": ["0","1","2"], "deny_background": true, "required_checks": ["type_a_analysis","type_b_analysis","type_c_analysis"] }
     },
     "distribute": {
       "_required_states": ["0","1","2","3","4","5","6"]
