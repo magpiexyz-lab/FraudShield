@@ -35,14 +35,7 @@ python3 -c "
 import json, os
 f='$CTX'; d=json.load(open(f))
 cs=d.get('completed_states',[])
-state='$STATE_NUM'
-# Normalize: try int first, fall back to string (for states like '3a', '1_5')
-# Guard against PEP 515: int('1_5') silently returns 15
-try:
-    if '_' not in state:
-        state=int(state)
-except ValueError:
-    pass
+state=str('$STATE_NUM')
 if state not in cs: cs.append(state)
 d['completed_states']=cs
 # Mark context as completed when all required states are present
