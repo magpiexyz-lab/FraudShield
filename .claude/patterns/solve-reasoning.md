@@ -158,15 +158,21 @@ agent and cannot be modified by it.
 
 **Convergence rules**:
 - **Round 1**: If 0 TYPE A concerns → early exit (solution converged). Otherwise: fix all TYPE A concerns → round 2.
-- **Round 2**: Re-spawn solve-critic with round 2 instructions. The agent overwrites its trace with `round: 2` and updated counts. Any remaining TYPE A → package as caveats in output. Stop.
+- **Round 2**: Spawn a **new** solve-critic agent (use the Agent tool, NOT SendMessage to the round 1 agent). Wait for the agent to return its result before proceeding. The agent overwrites its trace with `round: 2` and updated counts. Any remaining TYPE A → package as caveats in output. Stop.
+
+**IMPORTANT**: Each critic round MUST complete (agent returns result) before the caller proceeds to Phase 6 or advances to the next state.
 
 **Artifact tracking:** After the critic loop completes, the caller must record:
 - `critic_rounds`: number of rounds actually executed (1 or 2)
 - `round_1_type_a_count`: number of TYPE A concerns from round 1
 
 These fields enable postcondition verification that round 2 was executed when required.
-Store in the caller's challenge artifact (e.g., `resolve-challenge.json`,
-`change-challenge.json`), NOT in the shared `solve-trace.json`.
+Store in the caller's challenge artifact:
+- `/resolve`: `.runs/resolve-challenge.json`
+- `/change`: `.runs/change-challenge.json`
+- `/solve`: `.runs/solve-challenge.json`
+
+Do NOT store in the shared `solve-trace.json`.
 The adversarial-merge-gate.sh hook cross-references these fields against the
 solve-critic trace to detect silent overrides.
 
