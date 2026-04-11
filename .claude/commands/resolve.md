@@ -26,16 +26,28 @@ ARGUMENTS: $ARGUMENTS
 
 ## Lifecycle
 
-1. Run `bash .claude/scripts/lifecycle-init.sh resolve`
-2. State execution loop:
+1. Enter worktree isolation:
+   a. Call `EnterWorktree` with name `"resolve-<current-timestamp>"`
+   b. If it succeeds: run `mkdir -p .runs`
+   c. If it fails: continue in current directory (no worktree)
+2. Run `bash .claude/scripts/lifecycle-init.sh resolve`
+3. State execution loop:
    a. Run: `NEXT=$(bash .claude/scripts/lifecycle-next.sh resolve)`
-   b. If NEXT is "FINALIZE" → go to step 3
+   b. If NEXT is "FINALIZE" → go to step 4
    c. If NEXT does not start with "/" → STOP with error (print NEXT for diagnosis)
    d. Read the state file at $NEXT and execute its ACTIONS section
    e. After ACTIONS complete, run the state's STATE TRACKING command
       (the `bash .claude/scripts/advance-state.sh` call in the state file)
-   f. Return to step 2a
-3. Run `bash .claude/scripts/lifecycle-finalize.sh resolve`
+   f. Return to step 3a
+4. Run `bash .claude/scripts/lifecycle-finalize.sh resolve`
+5. If worktree was entered in step 1:
+   a. Copy artifacts back to main checkout:
+      ```bash
+      MAIN_DIR=$(git worktree list | head -1 | awk '{print $1}')
+      mkdir -p "$MAIN_DIR/.runs"
+      tail -1 .runs/verify-history.jsonl >> "$MAIN_DIR/.runs/verify-history.jsonl" 2>/dev/null || true
+      ```
+   b. Call `ExitWorktree` with action `"remove"`
 
 ## Do NOT
 
