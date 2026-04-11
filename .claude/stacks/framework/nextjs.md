@@ -270,5 +270,8 @@ In API routes that call external AI services (Anthropic, OpenAI, etc.), run auth
 
 Correct order: `verifyAuth()` → `checkApiKey()` → `rateLimit()` → business logic.
 
+### When a let variable is always overwritten in the try block (no-useless-assignment)
+Declare the variable with a type annotation and no initial value: `let x: string;` instead of `let x = "placeholder";`. The `@typescript-eslint/no-useless-assignment` lint rule (from `tseslint.configs.recommended`) fires when the initial value is never read because every branch (try + catch) reassigns the variable before use. An initial value suggests a fallback that isn't actually used.
+
 ## PR Instructions
 - No additional framework setup needed after merging — `npm install && npm run dev` is sufficient
