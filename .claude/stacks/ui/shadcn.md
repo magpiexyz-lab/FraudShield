@@ -156,6 +156,16 @@ import { TooltipTrigger } from "@/components/ui/tooltip";
 
 The `render` prop replaces the trigger's default `<button>` wrapper with the provided element, passing through all trigger behavior (event handlers, aria attributes). Children of the trigger become children of the rendered element.
 
+**Opacity modifier values**: Tailwind v4 opacity modifiers (the `/N` suffix on color utilities) must use values defined in the default opacity scale: **5, 10, 15, 20, 25, 30, 40, 50, 60, 70, 75, 80, 90, 95**. Values outside this scale (e.g., `/8`, `/08`, `/12`) are silently dropped — the entire color declaration is removed with no error or warning, producing invisible borders, backgrounds, or text. This applies to all color utilities (`bg-*`, `text-*`, `border-*`, `ring-*`, `divide-*`, `outline-*`, `shadow-*`, etc.).
+
+```tsx
+// WRONG (8 is not a valid opacity step — color silently dropped):
+<div className="border border-white/08 bg-black/08">
+
+// CORRECT (10 is the nearest valid step):
+<div className="border border-white/10 bg-black/10">
+```
+
 ## Import Example
 ```tsx
 import { Button } from "@/components/ui/button";
