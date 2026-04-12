@@ -258,6 +258,189 @@ def check_missing_states(skill):
             "detail": f"all {len(required)} required states completed"}
 
 
+# --- Condition resolver for trace_schemas conditional fields ---
+CONDITION_RESOLVERS = {
+    "when_full": lambda t, c: t and t.get("mode") == "full",
+    "when_light": lambda t, c: t and t.get("mode") == "light",
+    "when_rounds_gt_1": lambda t, c: c and c.get("critic_rounds", 0) > 1,
+}
+
+
+def evaluate_condition(cond_key, trace_data, challenge_data):
+    """Evaluate a trace_schemas condition key against actual data."""
+    resolver = CONDITION_RESOLVERS.get(cond_key)
+    return resolver(trace_data, challenge_data) if resolver else False
+
+
+# --- Check (g): Trace schema conformance ---
+def check_trace_schema_conformance(skill):
+    registry = load_json(REGISTRY_PATH)
+    if not registry:
+        return {"name": "trace_schema_conformance", "result": "skip",
+                "detail": "cannot read state-registry.json"}
+
+    schema = registry.get("trace_schemas", {}).get(skill)
+    if not schema:
+        return {"name": "trace_schema_conformance", "result": "skip",
+                "detail": f"no trace_schemas entry for {skill}"}
+
+    violations = []
+
+    # Check trace_file fields
+    trace_file = schema.get("trace_file")
+    trace_data = None
+    if trace_file:
+        trace_data = load_json(os.path.join(RUNS_DIR, trace_file))
+        if not trace_data:
+            violations.append(f"{trace_file} missing or not valid JSON")
+        else:
+            for field in schema.get("required_fields", {}).get("always", []):
+                if not trace_data.get(field):
+                    violations.append(f"{trace_file}: {field} missing or empty")
+            for cond_key, fields in schema.get("required_fields", {}).items():
+                if cond_key == "always":
+                    continue
+                if evaluate_condition(cond_key, trace_data, None):
+                    for field in fields:
+                        if not trace_data.get(field):
+                            violations.append(f"{trace_file}: {field} missing or empty (required by {cond_key})")
+
+    # Check challenge_file fields
+    challenge_file = schema.get("challenge_file")
+    challenge_data = None
+    if challenge_file:
+        challenge_data = load_json(os.path.join(RUNS_DIR, challenge_file))
+        if challenge_data:
+            for field in schema.get("challenge_fields", {}).get("always", []):
+                if field not in challenge_data:
+                    violations.append(f"{challenge_file}: {field} missing")
+            for cond_key, fields in schema.get("challenge_fields", {}).items():
+                if cond_key == "always":
+                    continue
+                if evaluate_condition(cond_key, trace_data, challenge_data):
+                    for field in fields:
+                        if field not in challenge_data:
+                            violations.append(f"{challenge_file}: {field} missing (required by {cond_key})")
+
+    if violations:
+        return {"name": "trace_schema_conformance", "result": "fail",
+                "detail": f"{len(violations)} violation(s): {'; '.join(violations[:5])}"}
+    return {"name": "trace_schema_conformance", "result": "pass",
+            "detail": f"trace schema verified for {skill}"}
+
+
+# --- Check (h): Agent trace coverage ---
+def check_agent_trace_coverage(skill):
+    registry = load_json(REGISTRY_PATH)
+    if not registry:
+        return {"name": "agent_trace_coverage", "result": "skip",
+                "detail": "cannot read state-registry.json"}
+
+    schema = registry.get("trace_schemas", {}).get(skill)
+    if not schema:
+        return {"name": "agent_trace_coverage", "result": "skip",
+                "detail": f"no trace_schemas entry for {skill}"}
+
+    expected = schema.get("expected_agent_traces", {})
+    traces_dir = os.path.join(RUNS_DIR, "agent-traces")
+
+    # Resolve which agents are expected based on conditions
+    trace_file = schema.get("trace_file")
+    trace_data = load_json(os.path.join(RUNS_DIR, trace_file)) if trace_file else None
+    challenge_file = schema.get("challenge_file")
+    challenge_data = load_json(os.path.join(RUNS_DIR, challenge_file)) if challenge_file else None
+
+    required_agents = list(expected.get("always", []))
+    for cond_key, agents in expected.items():
+        if cond_key == "always":
+            continue
+        if evaluate_condition(cond_key, trace_data, challenge_data):
+            required_agents.extend(agents)
+
+    if not required_agents:
+        return {"name": "agent_trace_coverage", "result": "skip",
+                "detail": f"no expected agents for {skill} in current mode"}
+
+    missing = [a for a in required_agents
+               if not os.path.exists(os.path.join(traces_dir, f"{a}.json"))]
+
+    if missing:
+        return {"name": "agent_trace_coverage", "result": "fail",
+                "detail": f"missing agent traces: {missing}"}
+    return {"name": "agent_trace_coverage", "result": "pass",
+            "detail": f"{len(required_agents)} expected agent trace(s) verified"}
+
+
+# --- Check (i): Cross-artifact count consistency ---
+def check_cross_artifact_counts(skill):
+    registry = load_json(REGISTRY_PATH)
+    if not registry:
+        return {"name": "cross_artifact_counts", "result": "skip",
+                "detail": "cannot read state-registry.json"}
+
+    schema = registry.get("trace_schemas", {}).get(skill)
+    if not schema:
+        return {"name": "cross_artifact_counts", "result": "skip",
+                "detail": f"no trace_schemas entry for {skill}"}
+
+    challenge_file = schema.get("challenge_file")
+    if not challenge_file:
+        return {"name": "cross_artifact_counts", "result": "skip",
+                "detail": f"no challenge_file for {skill}"}
+
+    challenge = load_json(os.path.join(RUNS_DIR, challenge_file))
+    if not challenge:
+        return {"name": "cross_artifact_counts", "result": "skip",
+                "detail": f"{challenge_file} not found"}
+
+    violations = []
+    traces_dir = os.path.join(RUNS_DIR, "agent-traces")
+
+    # Cross-reference with solve-critic trace (if exists)
+    critic_path = os.path.join(traces_dir, "solve-critic.json")
+    critic = load_json(critic_path)
+    if critic and challenge.get("critic_rounds") is not None:
+        # critic_rounds must match trace round
+        trace_round = critic.get("round")
+        challenge_rounds = challenge.get("critic_rounds")
+        if trace_round is not None and trace_round != challenge_rounds:
+            violations.append(
+                f"critic_rounds mismatch: challenge={challenge_rounds}, trace round={trace_round}")
+
+        # Cross-reference type_a_count based on which round the trace reflects.
+        # Round 2 overwrites the trace, so trace always has the latest round's data.
+        if trace_round == 1:
+            # Round 1 only: trace has round 1 data, can verify round_1_type_a_count
+            r1_ta = challenge.get("round_1_type_a_count")
+            if r1_ta is not None and critic.get("type_a_count") is not None:
+                if r1_ta != critic["type_a_count"]:
+                    violations.append(
+                        f"round_1_type_a_count mismatch: challenge={r1_ta}, trace={critic['type_a_count']}")
+        elif trace_round == 2:
+            # Round 2: trace has round 2 data, can verify round_2_type_a_count
+            r2_ta = challenge.get("round_2_type_a_count")
+            if r2_ta is not None and critic.get("type_a_count") is not None:
+                if r2_ta != critic["type_a_count"]:
+                    violations.append(
+                        f"round_2_type_a_count mismatch: challenge={r2_ta}, trace={critic['type_a_count']}")
+            # Note: round_1_type_a_count CANNOT be verified here — round 1 trace was overwritten
+
+        # Internal consistency: concerns count must match type counts
+        concerns = critic.get("concerns", [])
+        ta = critic.get("type_a_count", 0)
+        tb = critic.get("type_b_count", 0)
+        tc = critic.get("type_c_count", 0)
+        if len(concerns) != ta + tb + tc:
+            violations.append(
+                f"concerns count={len(concerns)} != type_a({ta})+type_b({tb})+type_c({tc})")
+
+    if violations:
+        return {"name": "cross_artifact_counts", "result": "fail",
+                "detail": f"{len(violations)} mismatch(es): {'; '.join(violations)}"}
+    return {"name": "cross_artifact_counts", "result": "pass",
+            "detail": f"cross-artifact counts consistent for {skill}"}
+
+
 def main():
     parser = argparse.ArgumentParser(description="Layer 2: Cross-artifact semantic consistency")
     parser.add_argument("--skill", required=True, help="Skill name")
@@ -271,6 +454,9 @@ def main():
         check_checks_completeness(args.skill),
         check_gate_enforcement(args.skill),
         check_missing_states(args.skill),
+        check_trace_schema_conformance(args.skill),
+        check_agent_trace_coverage(args.skill),
+        check_cross_artifact_counts(args.skill),
     ]
 
     anomaly_count = sum(1 for c in checks if c["result"] == "fail")

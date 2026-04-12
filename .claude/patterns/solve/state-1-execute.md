@@ -22,6 +22,7 @@ Pass the problem statement verbatim -- do not reinterpret or narrow it.
       'mode': '<light|full>',
       'problem_decomposition': '<problem statement and scope>',
       'constraint_enumeration': '<constraints identified>',
+      'phase_3_gaps': '<Phase 3 gap questions, self-answers, and HIGH/LOW confidence tags (full mode); empty string for light mode>',
       'solution_design': '<chosen approach and rationale>',
       'self_check': '<revision pass results>',
       'output': '<recommended solution summary>'
@@ -37,7 +38,7 @@ Pass the problem statement verbatim -- do not reinterpret or narrow it.
 
 **VERIFY:**
 ```bash
-python3 -c "import json; d=json.load(open('.runs/solve-trace.json')); assert d.get('mode') in ('light','full'), 'mode must be light or full'; required=['problem_decomposition','constraint_enumeration','solution_design','self_check','output']; missing=[k for k in required if not d.get(k)]; assert not missing, 'empty fields: %s' % missing; ctx=json.load(open('.runs/solve-context.json')); assert d.get('run_id')==ctx.get('run_id'), 'run_id mismatch: trace=%s context=%s' % (d.get('run_id'), ctx.get('run_id'))"
+python3 -c "import json; d=json.load(open('.runs/solve-trace.json')); assert d.get('mode') in ('light','full'), 'mode must be light or full'; required=['problem_decomposition','constraint_enumeration','solution_design','self_check','output']; missing=[k for k in required if not d.get(k)]; assert not missing, 'empty fields: %s' % missing; assert 'phase_3_gaps' in d, 'phase_3_gaps field missing'; assert d['mode']!='full' or d.get('phase_3_gaps'), 'phase_3_gaps empty in full mode'; ctx=json.load(open('.runs/solve-context.json')); assert d.get('run_id')==ctx.get('run_id'), 'run_id mismatch: trace=%s context=%s' % (d.get('run_id'), ctx.get('run_id'))"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

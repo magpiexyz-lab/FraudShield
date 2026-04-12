@@ -165,8 +165,10 @@ agent and cannot be modified by it.
 **Artifact tracking:** After the critic loop completes, the caller must record:
 - `critic_rounds`: number of rounds actually executed (1 or 2)
 - `round_1_type_a_count`: number of TYPE A concerns from round 1
+- `round_2_type_a_count`: number of TYPE A concerns from round 2 (only when `critic_rounds > 1`)
 
-These fields enable postcondition verification that round 2 was executed when required.
+These fields enable postcondition verification that round 2 was executed when required
+and cross-artifact consistency checks between the challenge file and the critic trace.
 Store in the caller's challenge artifact:
 - `/resolve`: `.runs/resolve-challenge.json`
 - `/change`: `.runs/change-challenge.json`

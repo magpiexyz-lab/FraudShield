@@ -182,7 +182,7 @@
   },
   "solve": {
     "0": "test -f .runs/solve-context.json",
-    "1": "python3 -c \"import json; d=json.load(open('.runs/solve-trace.json')); assert d.get('mode') in ('light','full'), 'mode must be light or full'; required=['problem_decomposition','constraint_enumeration','solution_design','self_check','output']; missing=[k for k in required if not d.get(k)]; assert not missing, 'empty fields: %s' % missing; ctx=json.load(open('.runs/solve-context.json')); assert d.get('run_id')==ctx.get('run_id'), 'run_id mismatch: trace=%s context=%s' % (d.get('run_id'), ctx.get('run_id'))\"",
+    "1": "python3 -c \"import json; d=json.load(open('.runs/solve-trace.json')); assert d.get('mode') in ('light','full'), 'mode must be light or full'; required=['problem_decomposition','constraint_enumeration','solution_design','self_check','output']; missing=[k for k in required if not d.get(k)]; assert not missing, 'empty fields: %s' % missing; assert 'phase_3_gaps' in d, 'phase_3_gaps field missing'; assert d['mode']!='full' or d.get('phase_3_gaps'), 'phase_3_gaps empty in full mode'; ctx=json.load(open('.runs/solve-context.json')); assert d.get('run_id')==ctx.get('run_id'), 'run_id mismatch: trace=%s context=%s' % (d.get('run_id'), ctx.get('run_id'))\"",
     "2": "python3 -c \"import json; st=json.load(open('.runs/solve-trace.json')); assert st.get('mode') in ('light','full'), 'mode invalid'; assert st.get('output'), 'output empty'; ctx=json.load(open('.runs/solve-context.json')); assert ctx.get('skill')=='solve' or 'solve' in ctx.get('run_id',''), 'context not for solve skill'; assert st.get('run_id')==ctx.get('run_id'), 'run_id mismatch: trace=%s context=%s' % (st.get('run_id'), ctx.get('run_id'))\"",
     "3": "python3 -c \"import json; d=json.load(open('.runs/observe-result.json')); assert d['skill']=='solve'\""
   },
@@ -222,6 +222,25 @@
     "rollback":   { "strategy": "B", "gate_mechanism": "postcondition-only", "pr_checks": [] },
     "teardown":   { "strategy": "B", "gate_mechanism": "postcondition-only", "pr_checks": [] },
     "observe":    { "strategy": "B", "gate_mechanism": "postcondition-only", "pr_checks": [] }
+  },
+
+  "trace_schemas": {
+    "solve": {
+      "trace_file": "solve-trace.json",
+      "required_fields": {
+        "always": ["run_id", "mode", "problem_decomposition", "constraint_enumeration", "solution_design", "self_check", "output"],
+        "when_full": ["phase_3_gaps"]
+      },
+      "challenge_file": "solve-challenge.json",
+      "challenge_fields": {
+        "always": ["critic_rounds", "round_1_type_a_count"],
+        "when_rounds_gt_1": ["round_2_type_a_count"]
+      },
+      "expected_agent_traces": {
+        "always": [],
+        "when_full": ["solve-critic"]
+      }
+    }
   },
 
   "agent_gates": {

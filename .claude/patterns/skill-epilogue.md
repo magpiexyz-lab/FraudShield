@@ -226,13 +226,30 @@ python3 .claude/scripts/audit-sample.py --anomaly-count "$ANOMALIES" --q-score "
 ```
 
 Read the JSON output. If `trigger` is `true`:
-- Perform **inline** LLM reasoning over compliance anomalies (do NOT spawn a subagent)
+- Perform **inline** comparison-based evaluation (do NOT spawn a subagent):
 - For each failing check in `compliance-audit-result.json`:
-  - Assess: Is this a genuine process violation or an expected edge case?
-    (e.g., mtime skew from filesystem latency is expected; missing required checks is genuine)
-  - Record assessment
-- If genuine violations found, treat as friction for Step B3 Path 2 evaluation
-- Write findings to `observe-result.json` under `compliance_audit_notes` field
+  1. **Read the spec**: Load the relevant section from `state-registry.json`
+     - `trace_schema_conformance` failures: read `trace_schemas[<skill>]`
+     - `agent_trace_coverage` failures: read `trace_schemas[<skill>].expected_agent_traces`
+     - `cross_artifact_counts` failures: read both the challenge file and the agent trace
+     - `artifact_mtime` failures: compare trace timestamp against file mtime
+     - Other failures: use the check `detail` field as context
+  2. **Read the artifact**: Load the actual trace/challenge file named in the detail
+  3. **Compare**: Diff the spec against the artifact. Which fields are missing, empty, or inconsistent?
+  4. **Classify root cause**:
+     - **Template spec deficiency**: The state file or methodology doc does not instruct
+       the agent to produce the missing field. Evidence: search the state file for the
+       field name — if absent, the template never asked for it.
+     - **Execution omission**: The spec instructs the agent to produce the field, but
+       the agent did not. Evidence: the field name appears in the state file or
+       methodology doc but is absent from the artifact.
+     - **Expected edge case**: The mismatch is a known benign condition (e.g., mtime
+       skew from filesystem latency, epilogue state still executing).
+  5. **For template spec deficiencies**: Apply Conditions A/B/C from Step B3 to
+     determine whether to file an observation.
+- Record all assessments in `observe-result.json` under `compliance_audit_notes` field
+- If genuine violations found (template spec deficiency or execution omission),
+  treat as friction for Step B3 Path 2 evaluation
 
 If `trigger` is `false`:
 - Skip LLM audit, proceed to Step B3/B4
