@@ -30,14 +30,7 @@ fi
 MANIFEST="$PROJECT_DIR/.runs/${ACTIVE_SKILL}-manifest.json"
 
 if [[ ! -f "$MANIFEST" ]]; then
-  # Fallback to old hooks by branch prefix
-  if [[ "$BRANCH" == "feat/bootstrap" ]] || [[ "$BRANCH" =~ ^feat/bootstrap-[0-9]+$ ]]; then
-    echo "$PAYLOAD" | bash "$(dirname "$0")/bootstrap-commit-gate.sh"
-    exit $?
-  elif [[ "$BRANCH" =~ ^(change|feat|fix)/ ]] || [[ "$BRANCH" =~ ^chore/(distribute|review|upgrade) ]]; then
-    echo "$PAYLOAD" | bash "$(dirname "$0")/change-commit-gate.sh"
-    exit $?
-  fi
+  # No manifest = no active skill lifecycle — allow
   exit 0
 fi
 

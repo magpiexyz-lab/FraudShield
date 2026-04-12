@@ -1,6 +1,6 @@
 # STATE 3a: DESIGN_AGENTS
 
-**PRECONDITIONS:** All Phase 1 traces exist (hook-enforced by `agent-state-gate.sh`).
+**PRECONDITIONS:** All Phase 1 traces exist (hook-enforced by `skill-agent-gate.sh`).
 
 **ACTIONS:**
 
@@ -37,7 +37,7 @@ Spawn **one design-critic agent per page**, ALL as parallel foreground Agent cal
   src/app/<page>/<page>-content.tsx
   FILE_BOUNDARY_END
   ```
-  > **Hook-enforced:** `agent-state-gate.sh` validates that no shared paths appear between these markers. The hook will BLOCK the agent spawn if shared paths are detected.
+  > **Hook-enforced:** `skill-agent-gate.sh` validates that no shared paths appear between these markers. The hook will BLOCK the agent spawn if shared paths are detected.
 - Context digest summary
 - Instruction to write trace as `design-critic-<page_name>.json`
 - **Empty-boundary fast path**: If ALL files between `FILE_BOUNDARY_START` and `FILE_BOUNDARY_END`
@@ -104,7 +104,7 @@ because they were outside the per-page file boundary).
 4. Run `npm run build`. If build fails, fix (max 2 attempts).
 5. Append fixes to `.runs/fix-log.md`: `Fix (design-critic-shared): <file> — <desc>`
 
-> **Hook-enforced:** `agent-state-gate.sh` blocks `design-consistency-checker` spawn if per-page traces report shared-component issues but `design-critic-shared.json` does not exist.
+> **Hook-enforced:** `skill-agent-gate.sh` blocks `design-consistency-checker` spawn if per-page traces report shared-component issues but `design-critic-shared.json` does not exist.
 
 **POSTCONDITIONS:**
 - Per-page `design-critic-<page>.json` traces exist for all discovered pages (when scope is `full` or `visual` AND archetype is `web-app`)

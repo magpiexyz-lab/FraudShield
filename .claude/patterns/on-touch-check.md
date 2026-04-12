@@ -39,7 +39,7 @@ on_touch:
 
 ON-TOUCH entries are created during `/bootstrap` (STATE 17) for modules
 classified as low-risk and deferred from immediate unit test generation.
-See `.claude/patterns/bootstrap/state-17-persist-on-touch.md`.
+See `.claude/skills/bootstrap/state-17-persist-on-touch.md`.
 
 ## Parameterization by Change Type
 

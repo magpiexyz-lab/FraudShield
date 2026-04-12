@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # observe-commit-gate.sh — Claude Code PreToolUse hook for Bash commands.
 # Blocks final skill commits unless observation epilogue has been performed.
-# Data-driven: uses *-context.json + state-registry.json observation_gates
+# Data-driven: uses *-context.json + skill.yaml observation config
 # to determine which skills need observation enforcement.
 # Skills that embed /verify (change, distribute) are exempt —
 # verify-report.md proves STATE 6 auto-observe ran.

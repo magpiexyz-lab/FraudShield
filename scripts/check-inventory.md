@@ -89,7 +89,7 @@ better enforced by the scoped LLM review (`scripts/scoped-review-prompt.md`).
 | Verify agent tool consistency | implementer.md must have Edit/Write/Bash tools; spec-reviewer.md must not have Edit/Write and must disallow them |
 | Verify framework-archetype compatibility in bootstrap and change | Both bootstrap.md and change.md must validate that web-app requires nextjs and cli requires commander |
 | Verify settings.json hook paths resolve to existing files | Every hook `command` path in `.claude/settings.json` must point to an existing `.sh` file |
-| Verify agent-prompt-footer directive matches hook grep | Directive marker in `agent-prompt-footer.md` must appear as grep pattern in `agent-state-gate.sh` |
+| Verify agent-prompt-footer directive matches hook grep | Directive marker in `agent-prompt-footer.md` must appear as grep pattern in `skill-agent-gate.sh` |
 
 ## consistency-check.sh
 

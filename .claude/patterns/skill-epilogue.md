@@ -8,7 +8,7 @@ Two strategies, dispatched by evidence type:
 | Strategy | Skills | When |
 |----------|--------|------|
 | **A — Code Observation** | `/bootstrap`, `/resolve`, `/review`, `/deploy`, `/spec`, `/upgrade` | Skill produces diffs or modifies template files → spawn observer agent |
-| **B — Execution Audit** | `/audit`, `/solve`, `/iterate`, `/observe` (observe-cmd), `/retro`, `/rollback`, `/teardown` | Analysis-only, no diffs → inline friction check |
+| **B — Execution Audit** | `/audit`, `/solve`, `/iterate`, `/observe`, `/retro`, `/rollback`, `/teardown` | Analysis-only, no diffs → inline friction check |
 
 **Skip for:**
 - Skills that embed `/verify` (`/change`, `/distribute`) — verify.md STATE 6 handles observation
@@ -20,7 +20,7 @@ Two strategies, dispatched by evidence type:
 Before proceeding with observation, check that the skill completed all required states.
 
 Read `.runs/<skill>-context.json` and compare `completed_states` against
-`_required_states` from `state-registry.json` `agent_gates[<skill>]`.
+`states` from `.claude/skills/<skill>/skill.yaml`.
 
 If any required state is missing:
 - **HARD FAIL**: The skill cannot produce `verdict: "clean"`. Set a flag
@@ -64,7 +64,7 @@ Write `.runs/epilogue-context.json`:
 }
 ```
 
-This file signals to `agent-state-gate.sh` that the observer is being
+This file signals to `skill-agent-gate.sh` that the observer is being
 spawned from a skill epilogue (not from verify.md), enabling the relaxed
 prerequisite path.
 

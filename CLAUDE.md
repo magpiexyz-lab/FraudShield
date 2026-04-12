@@ -151,11 +151,11 @@ outside of a skill context, use `/observe` to evaluate and file template
 observations.
 
 ## Rule 13: Skill Execution Pattern
-All 16 lifecycle skills use state machines with JIT (Just-In-Time) dispatch (the utility skill /optimize-prompt is standalone). Each skill's command file (`.claude/commands/<skill>.md`) contains a dispatch table pointing to state files at `.claude/patterns/<skill>/state-*.md`. Read only one state file at a time — never read ahead.
+All 16 lifecycle skills use state machines with JIT (Just-In-Time) dispatch (the utility skill /optimize-prompt is standalone). Each skill is defined by `skill.yaml` (declarative config) and state files at `.claude/skills/<skill>/state-*.md`. The command file (`.claude/commands/<skill>.md`) is a thin dispatcher. Read only one state file at a time — never read ahead.
 - Each state file has 6 required sections: PRECONDITIONS, ACTIONS, POSTCONDITIONS, VERIFY, STATE TRACKING, NEXT
-- `.claude/patterns/state-registry.json` maps every skill's states to postcondition checks, enforced at runtime by `.claude/hooks/state-completion-gate.sh`
+- `.claude/patterns/state-registry.json` maps every skill's states to VERIFY commands, enforced at runtime by `.claude/hooks/state-completion-gate.sh`
 - Context files (`.runs/<skill>-context.json`) track execution state with base schema: `{skill, branch, timestamp, completed_states}`
-- To modify a skill's behavior, edit the corresponding state files (`.claude/patterns/<skill>/state-*.md`) — don't modify the orchestrator (`.claude/commands/<skill>.md`) without also updating state files and `state-registry.json`
+- To modify a skill's behavior, edit the corresponding state files (`.claude/skills/<skill>/state-*.md`) — don't modify the orchestrator (`.claude/commands/<skill>.md`) without also updating state files and `state-registry.json`
 - To add or remove states, update both the state file on disk and the registry entry — they must stay in sync
 - Never remove the VERIFY or STATE TRACKING sections from a state file
 - **VERIFY ownership:** `state-registry.json` owns all VERIFY commands. State files own prose (ACTIONS, POSTCONDITIONS, narrative). When modifying a VERIFY check, edit `state-registry.json` only, then run `make sync-verify` to propagate to state files. Never edit state file VERIFY code fences directly. Run `.claude/scripts/verify-linter.sh` to detect drift (DIVERGED is blocking). States with `"true"` VERIFY must include a `<!-- VERIFY=true: <reason> -->` comment in the state file.

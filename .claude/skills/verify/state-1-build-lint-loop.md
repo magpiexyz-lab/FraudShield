@@ -88,7 +88,7 @@ Do NOT commit code that fails build or lint. Do NOT skip this procedure.
 test -f .runs/build-result.json && python3 -c "import json; assert json.load(open('.runs/build-result.json'))['exit_code'] == 0"
 ```
 
-> **Hook-enforced:** `agent-state-gate.sh` validates `build-result.json` before allowing Phase 1 agents to spawn.
+> **Hook-enforced:** `skill-agent-gate.sh` validates `build-result.json` before allowing Phase 1 agents to spawn.
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
 ```bash

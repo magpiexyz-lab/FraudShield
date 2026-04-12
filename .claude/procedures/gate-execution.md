@@ -10,8 +10,8 @@
 2. **Gate-keeper writes verdict.** The agent evaluates each check item and writes
    a verdict file to `.runs/gate-verdicts/<gate-id>.json`.
 
-3. **Hooks read and enforce.** Pre-tool-use hooks (`bootstrap-commit-gate.sh`,
-   `agent-state-gate.sh`, `verify-pr-gate.sh`) read verdict files and block
+3. **Hooks read and enforce.** Pre-tool-use hooks (`skill-commit-gate.sh`,
+   `skill-agent-gate.sh`, `verify-pr-gate.sh`) read verdict files and block
    actions when verdicts are missing or not PASS.
 
 ## Verdict File Schema

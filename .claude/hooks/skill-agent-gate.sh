@@ -51,9 +51,8 @@ fi
 MANIFEST="$PROJECT_DIR/.runs/${ACTIVE_SKILL}-manifest.json"
 
 if [[ ! -f "$MANIFEST" ]]; then
-  # Fallback to old hook
-  echo "$PAYLOAD" | bash "$(dirname "$0")/agent-state-gate.sh"
-  exit $?
+  # No manifest = no active skill lifecycle — allow
+  exit 0
 fi
 
 export _SAG_MANIFEST="$MANIFEST" _SAG_AGENT="$SUBAGENT_TYPE"
@@ -66,9 +65,8 @@ print('yes' if os.environ['_SAG_AGENT'] in agents else 'no')
 unset _SAG_MANIFEST _SAG_AGENT
 
 if [[ "$AGENT_IN_MANIFEST" != "yes" ]]; then
-  # Agent not in manifest — fallback to old hook
-  echo "$PAYLOAD" | bash "$(dirname "$0")/agent-state-gate.sh"
-  exit $?
+  # Agent not declared in manifest — allow (manifest is authoritative in v2)
+  exit 0
 fi
 
 # ══════════════════════════════════════════════════════════════════════

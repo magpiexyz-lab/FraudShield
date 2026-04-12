@@ -29,9 +29,7 @@ Reference document for the skill framework. All migration PRs read this file for
 .claude/commands/<name>.md  # Thin dispatcher (Claude Code platform requirement, ~15 lines)
 ```
 
-After full migration, state files live inside the skill folder.
-During migration, `lifecycle-next.sh` checks both `.claude/skills/<name>/` and
-`.claude/patterns/<name>/` for backwards compatibility.
+State files live inside the skill folder.
 
 ---
 
@@ -201,9 +199,7 @@ Steps:
 2. Read .runs/<skill>-manifest.json → states list
 3. Find first state_id in states not in completed_states
    - For loop states: allow re-entry (check manifest loop field)
-4. Find state file: check .claude/skills/<skill>/state-<id>-*.md first,
-   then .claude/patterns/<skill>/state-<id>-*.md (migration compat)
-   Special: observe state files are in patterns/observe-cmd/
+4. Find state file: .claude/skills/<skill>/state-<id>-*.md
 5. Output file path, or "FINALIZE" if all states complete
 
 The LLM loop:

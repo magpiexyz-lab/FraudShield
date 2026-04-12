@@ -4,3 +4,7 @@ embed:
   - at: "3"
     skill: verify
     scope: campaign
+observation:
+  gate: commit-pr-gate
+  artifacts: [verify-report.md]
+  pr_checks: [frontmatter-validation, trace-completeness, agent-match, postcondition-rerun]

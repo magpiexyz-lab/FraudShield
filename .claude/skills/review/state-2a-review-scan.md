@@ -59,7 +59,7 @@ Files to read:
 - Glob `tests/fixtures/*.yaml` — read each test fixture
 - Glob `.claude/procedures/*.md` — read each procedure file
 - Glob `.claude/agents/*.md` — read each agent definition
-- Glob `.claude/patterns/verify/*.md` — read verify sub-state files
+- Glob `.claude/skills/verify/*.md` — read verify sub-state files
 - Glob `.claude/hooks/*.sh` — read each hook script
 
 After reading: for each potential finding, identify the test fixture(s) whose

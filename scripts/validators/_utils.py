@@ -27,7 +27,7 @@ OPTIONAL_CATEGORIES = {"database", "auth", "payment", "email"}
 def read_skill_with_states(skill_path: str) -> str:
     """Read a skill file and append content from its state files if they exist.
 
-    When skills are decomposed into state files (e.g., .claude/patterns/bootstrap/state-*.md),
+    When skills are decomposed into state files (e.g., .claude/skills/bootstrap/state-*.md),
     the semantic checks need to search both the orchestrator and the state files.
     """
     content = ""
@@ -36,7 +36,7 @@ def read_skill_with_states(skill_path: str) -> str:
             content = f.read()
     # Derive skill name from path: .claude/commands/<skill>.md -> <skill>
     skill_name = os.path.splitext(os.path.basename(skill_path))[0]
-    state_dir = f".claude/patterns/{skill_name}"
+    state_dir = f".claude/skills/{skill_name}"
     if os.path.isdir(state_dir):
         # Sort numerically by state number (state-0, state-1, ..., state-10, state-11)
         # not alphabetically (which would put state-10 before state-2)

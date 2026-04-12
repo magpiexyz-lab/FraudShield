@@ -44,5 +44,5 @@ Create ONLY the `src/lib/` files (and `src/middleware.ts` when `stack.auth` is p
    ```json
    {"agent": "scaffold-libs", "files_created": ["<list all files created>"], "status": "complete", "timestamp": "<ISO 8601>"}
    ```
-   This manifest gates Phase B2 agents via the agent-state-gate hook.
+   This manifest gates Phase B2 agents via the skill-agent-gate hook.
 

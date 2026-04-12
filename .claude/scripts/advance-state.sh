@@ -39,10 +39,24 @@ state=str('$STATE_NUM')
 if state not in cs: cs.append(state)
 d['completed_states']=cs
 # Mark context as completed when all required states are present
-reg_path = os.path.join('$PROJECT_DIR', '.claude/patterns/state-registry.json')
-if os.path.exists(reg_path):
-    reg = json.load(open(reg_path))
-    req = reg.get('agent_gates', {}).get('$SKILL', {}).get('_required_states', [])
+import re
+# Map mode-qualified skill names to their directory and mode
+_skill = '$SKILL'
+_MODE_MAP = {'iterate-check': ('iterate', 'check'), 'iterate-cross': ('iterate', 'cross')}
+_dir, _mode = _MODE_MAP.get(_skill, (_skill, None))
+skill_yaml_path = os.path.join('$PROJECT_DIR', '.claude/skills/%s/skill.yaml' % _dir)
+if os.path.exists(skill_yaml_path):
+    yt = open(skill_yaml_path).read()
+    req = []
+    if _mode:
+        # Parse modes.<mode>.states
+        mp = re.search(r'%s:\s*\n\s+.*?states:\s*\[([^\]]+)\]' % _mode, yt, re.DOTALL)
+        if mp:
+            req = [s.strip().strip('\"').strip(\"'\") for s in mp.group(1).split(',')]
+    else:
+        sm = re.search(r'^states:\s*\[([^\]]+)\]', yt, re.MULTILINE)
+        if sm:
+            req = [s.strip().strip('\"').strip(\"'\") for s in sm.group(1).split(',')]
     if req:
         cs_set = set(str(s) for s in cs)
         req_set = set(str(s) for s in req)

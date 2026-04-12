@@ -49,13 +49,6 @@ ctx_path = sys.argv[2]
 manifest_path = sys.argv[3]
 project_dir = os.environ.get("PROJECT_DIR_ENV", ".")
 
-# Directory mapping for state file lookup (v1 compat)
-SKILL_DIR_MAP = {
-    "iterate-check": "iterate",
-    "iterate-cross": "iterate",
-    "observe": "observe-cmd",
-}
-
 ctx = json.load(open(ctx_path)) if os.path.isfile(ctx_path) else {"completed_states": []}
 manifest = json.load(open(manifest_path))
 
@@ -77,24 +70,11 @@ loop_set = set(str(s) for s in manifest.get("loop", []))
 
 
 def find_state_file(sk, state_id):
-    """Find state file: v2 path first, then v1 compat path."""
-    directory = SKILL_DIR_MAP.get(sk, sk)
-
-    # v2: .claude/skills/<skill>/state-<id>-*.md
-    v2_pattern = os.path.join(project_dir, ".claude", "skills", sk,
-                              "state-%s-*.md" % state_id)
-    v2_matches = sorted(glob.glob(v2_pattern))
-    if v2_matches:
-        return v2_matches[0]
-
-    # v1: .claude/patterns/<directory>/state-<id>-*.md
-    v1_pattern = os.path.join(project_dir, ".claude", "patterns", directory,
-                              "state-%s-*.md" % state_id)
-    v1_matches = sorted(glob.glob(v1_pattern))
-    if v1_matches:
-        return v1_matches[0]
-
-    return None
+    """Find state file in .claude/skills/<skill>/."""
+    pattern = os.path.join(project_dir, ".claude", "skills", sk,
+                          "state-%s-*.md" % state_id)
+    matches = sorted(glob.glob(pattern))
+    return matches[0] if matches else None
 
 
 # --- Loop handling ---

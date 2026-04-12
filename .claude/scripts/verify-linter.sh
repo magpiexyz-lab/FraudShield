@@ -7,23 +7,23 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 REGISTRY="$REPO_ROOT/.claude/patterns/state-registry.json"
-PATTERNS_DIR="$REPO_ROOT/.claude/patterns"
+SKILLS_DIR="$REPO_ROOT/.claude/skills"
 
 if [[ ! -f "$REGISTRY" ]]; then
   echo "ERROR: state-registry.json not found at $REGISTRY" >&2
   exit 1
 fi
 
-python3 - "$REGISTRY" "$PATTERNS_DIR" <<'PYTHON_SCRIPT'
+python3 - "$REGISTRY" "$SKILLS_DIR" <<'PYTHON_SCRIPT'
 import json, sys, os, glob, re
 
 registry_path = sys.argv[1]
-patterns_dir = sys.argv[2]
+skills_dir = sys.argv[2]
 
 registry = json.load(open(registry_path))
 
 # Keys that are not skills (no state files)
-SKIP_KEYS = {"observation_gates", "agent_gates"}
+SKIP_KEYS = {"trace_schemas"}
 
 uncovered = []
 diverged = []
@@ -38,15 +38,13 @@ def extract_verify_cmd(value):
     return None
 
 def find_state_file(skill, state_id):
-    """Glob for .claude/patterns/<dir>/state-<id>-*.md.
-    Some skills store state files under a different directory name."""
+    """Glob for .claude/skills/<dir>/state-<id>-*.md."""
     SKILL_DIR_MAP = {
         "iterate-check": "iterate",
         "iterate-cross": "iterate",
-        "observe": "observe-cmd",
     }
     directory = SKILL_DIR_MAP.get(skill, skill)
-    pattern = os.path.join(patterns_dir, directory, f"state-{state_id}-*.md")
+    pattern = os.path.join(skills_dir, directory, f"state-{state_id}-*.md")
     matches = glob.glob(pattern)
     return matches[0] if matches else None
 

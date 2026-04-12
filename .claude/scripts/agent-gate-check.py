@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
-"""Agent gate detection and registry checks for agent-state-gate.sh.
+"""Agent gate detection and registry checks (defense-in-depth).
 
-Detects active skill from context files, loads state-registry.json,
+Detects active skill from context files, loads skill.yaml agent declarations,
 checks gate conditions (isolation, background, required_states, artifacts).
 Returns tab-separated: skill<TAB>warn on line 1, errors on subsequent lines.
+
+Primary enforcement is in skill-agent-gate.sh (manifest-driven).
+This script provides supplementary registry-based checks.
 """
 import glob
 import json
@@ -46,15 +49,17 @@ def main():
         print(json.dumps({'skill': '', 'errors': [], 'warn': ''}))
         sys.exit(0)
 
-    # 2. Load registry
+    # 2. Load agent gate config
+    # Primary enforcement is in skill-agent-gate.sh (manifest-driven).
+    # This script provides supplementary checks from state-registry.json agent_gates.
+    # After v2 migration, agent_gates is removed — gate checks are handled by
+    # manifest declarative checks + convention gate scripts (gates/*.sh).
     reg_path = os.path.join(project, '.claude', 'patterns', 'state-registry.json')
-    if not os.path.isfile(reg_path):
-        print(json.dumps({'skill': best_skill, 'errors': [], 'warn': 'registry missing'}))
-        sys.exit(0)
-
-    reg = json.load(open(reg_path))
-    agent_gates = reg.get('agent_gates', {})
-    skill_gates = agent_gates.get(best_skill, {})
+    skill_gates = {}
+    if os.path.isfile(reg_path):
+        reg = json.load(open(reg_path))
+        agent_gates = reg.get('agent_gates', {})
+        skill_gates = agent_gates.get(best_skill, {})
 
     # 3. Resolve gate config for this agent type
     gate = skill_gates.get(agent_type, skill_gates.get('_default', None))
@@ -62,10 +67,11 @@ def main():
     errors = []
     warn = ''
 
-    if gate is None:
+    if not skill_gates:
+        pass  # No agent_gates in registry (v2) — checks handled by manifest + convention gates
+    elif gate is None:
         if skill_gates:
             warn = f'unrecognized agent {agent_type} for skill {best_skill}'
-        # else: skill has no gates at all — silent allow
     elif gate.get('allow_unconditional'):
         pass  # always allow
     else:
