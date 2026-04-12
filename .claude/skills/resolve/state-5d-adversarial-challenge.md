@@ -12,7 +12,7 @@ The adversarial challenge adapts based on `solve_depth`:
 Spawn the `resolve-challenger` Named agent (`subagent_type: resolve-challenger`).
 
 Pass in the agent prompt: all fix plans from Step 5 (root cause, fix plan,
-blast radius, anti-pattern review). The agent definition at
+blast radius, prevention_analysis). The agent definition at
 `.claude/agents/resolve-challenger.md` contains the full challenge protocol
 (3 vectors: configuration counterexample, blast radius gap, regression vector).
 
@@ -33,9 +33,10 @@ the override reason, and the raw agent output so the user can see the override.
 #### Full mode adversarial challenge
 
 Spawn the `solve-critic` Named agent (`subagent_type: solve-critic`).
-Pass `--context .runs/resolve-context.json` in the agent prompt. Include the
-3 domain-specific challenge vectors (configuration counterexample, blast
-radius gap, regression vector) as additional instructions in the critic prompt.
+Pass `--context .runs/resolve-context.json` and `problem_type = "defect"` in the
+agent prompt. Include the 3 domain-specific challenge vectors (configuration
+counterexample, blast radius gap, regression vector) as additional instructions
+in the critic prompt.
 
 The solve-critic writes its trace to `.runs/agent-traces/solve-critic.json`.
 If round 2 is needed (TYPE A count > 0), re-spawn solve-critic with round 2
@@ -65,7 +66,7 @@ Present a diagnosis report for all actionable issues:
 **Fix plan:**
 - <file>: <what changes>
 **Proposed validator check:** <name> in <script> | none
-**Anti-pattern review:** None apply / <which one was close and why it doesn't apply>
+**Prevention:** root cause [addressed/not] | recurrence [none/guarded/unguarded] | scope [N instances, all covered]
 **Adversarial check:** sound | revised (<what changed>) | challenged (<summary>)
 ```
 

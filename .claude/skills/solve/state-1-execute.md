@@ -12,6 +12,9 @@ Pass the problem statement verbatim -- do not reinterpret or narrow it.
 - **Light mode**: Execute Steps 1-5 of solve-reasoning.md Light Mode directly in the lead agent. No subagents.
 - **Full mode**: Execute Phases 1-6 of solve-reasoning.md Full Mode. Uses 4 Opus subagents across 6 phases (parallel research, constraint enumeration, user injection, solution design, critic loop, output).
 
+If `solve-context.json` contains `problem_type = "defect"`, pass this to solve-reasoning
+to activate the prevention dimension.
+
 - **Write solve trace artifact** (`.runs/solve-trace.json`) using the contract from solve-reasoning.md:
   ```bash
   python3 -c "
@@ -27,6 +30,15 @@ Pass the problem statement verbatim -- do not reinterpret or narrow it.
       'self_check': '<revision pass results>',
       'output': '<recommended solution summary>'
   }
+  # Add prevention_analysis only when problem_type is defect
+  if ctx.get('problem_type') == 'defect':
+      trace['prevention_analysis'] = {
+          'problem_type': 'defect',
+          'root_cause_addressed': True,
+          'recurrence_risk': '<none|guarded|unguarded>',
+          'recurrence_guard': '<description or null>',
+          'scope': {'all_covered': True, 'instance_count': 0}
+      }
   json.dump(trace, open('.runs/solve-trace.json', 'w'), indent=2)
   "
   ```

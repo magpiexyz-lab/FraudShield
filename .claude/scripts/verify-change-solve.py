@@ -31,6 +31,18 @@ required = [
 missing = [k for k in required if k not in st]
 assert not missing, "solve-trace.json missing: %s" % missing
 
+# Prevention analysis: required when preliminary_type is Fix
+pt = ctx.get("preliminary_type", "")
+pa = st.get("prevention_analysis")
+if pt == "Fix":
+    assert pa is not None, "prevention_analysis required when preliminary_type=Fix"
+    assert isinstance(pa, dict), "prevention_analysis must be a dict"
+    for field in ("root_cause_addressed", "recurrence_risk", "scope"):
+        assert field in pa, "prevention_analysis missing %s" % field
+    assert pa["recurrence_risk"] in ("none", "guarded", "unguarded"), (
+        "recurrence_risk invalid: %s" % pa["recurrence_risk"]
+    )
+
 cc = json.load(open(".runs/change-challenge.json"))
 assert isinstance(cc.get("critic_rounds"), int), "critic_rounds missing or not int"
 assert isinstance(cc.get("concerns"), list), "concerns missing or not list"

@@ -38,6 +38,13 @@ areas appear independent (no shared state, no shared imports), suggest to the us
 "3+ affected areas trigger full mode, but these areas look independent. Re-run with
 `--light` if you want to skip deep analysis."
 
+### Prevention activation
+
+If `preliminary_type = "Fix"`: set `problem_type = "defect"` when calling solve-reasoning.
+This activates the prevention dimension (root cause + recurrence + scope checks).
+
+For all other preliminary_types: do not set `problem_type`.
+
 ### Light mode path
 
 CALL: `.claude/patterns/solve-reasoning.md` — execute light mode (Steps 1-5).
@@ -75,6 +82,15 @@ trace = {
     'self_check': '<revision pass results>',
     'output': '<recommended solution summary>'
 }
+# Add prevention_analysis only when preliminary_type is Fix
+if preliminary_type == 'Fix':
+    trace['prevention_analysis'] = {
+        'problem_type': 'defect',
+        'root_cause_addressed': True,
+        'recurrence_risk': '<none|guarded|unguarded>',
+        'recurrence_guard': '<description or null>',
+        'scope': {'all_covered': True, 'instance_count': 0}
+    }
 json.dump(trace, open('.runs/solve-trace.json', 'w'), indent=2)
 "
 ```

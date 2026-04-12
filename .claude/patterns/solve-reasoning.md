@@ -43,6 +43,18 @@ For each mechanism chosen in Step 3, ask:
 
 If any answer is yes: revise Steps 1-3 for that sub-problem. One revision pass max.
 
+If `problem_type = "defect"`:
+4. "Does this solution address the root cause, or just the symptom?"
+   If treating a symptom (suppressing errors, adding workarounds, handling edge cases
+   without addressing why they exist): revise Step 3.
+5. "Could this same class of problem recur? If yes, what prevents it?"
+   Identify a concrete prevention mechanism (test, guard, validator, type constraint)
+   or explain why prevention is not feasible.
+6. "Are there other instances of this same problem beyond the reported one?"
+   The solution must cover all known instances, not just the trigger case.
+
+If any answer reveals a gap: revise Step 3. Same one-revision-pass-max rule.
+
 ### Step 5: Output
 
 ```
@@ -59,6 +71,11 @@ If any answer is yes: revise Steps 1-3 for that sub-problem. One revision pass m
 
 ### Key Tradeoff
 [the most significant tradeoff made, and why it's acceptable]
+
+### Prevention Analysis (when problem_type = defect)
+- **Root cause addressed**: [yes/no — explain]
+- **Recurrence risk**: [none | guarded (<mechanism>) | unguarded (<why acceptable>)]
+- **Scope**: [all instances covered | N known instances, all addressed]
 ```
 
 ---
@@ -131,6 +148,16 @@ Using the constraint space from Phase 2 and self-answered gaps from Phase 3:
 2. Explain why it's strongest (fewest failure modes, most direct)
 3. Mark each mechanism's strength level: **strong** (direct, few failure modes), **moderate** (indirect or some failure modes), **weak** (workaround, many failure modes)
 4. If two mechanisms are close in strength: note both as Pareto alternatives
+
+5. **Prevention check** (when `problem_type = "defect"`):
+   - **Root cause**: For each mechanism — does it address root cause, or just the symptom?
+   - **Recurrence**: Could this class of problem recur? If yes: identify prevention
+     mechanism (test, guard, validator, type constraint) or explain why not feasible.
+   - **Scope**: Are there other instances beyond the reported one? Solution must
+     cover all known instances.
+   - Output: `prevention_analysis` — root_cause_addressed (bool),
+     recurrence_risk (none|guarded|unguarded), recurrence_guard (description or null),
+     scope (all_covered bool, instance_count int).
 
 Output:
 - **1 recommended solution** with ordered implementation checklist
@@ -206,6 +233,12 @@ Present the final output:
 - **TYPE C** (open questions): [list, or "None"]
 - **Caveats**: [unresolved TYPE A from round 2, if any, or "None"]
 
+## Prevention Analysis (when problem_type = defect)
+- **Root cause addressed**: [yes/no — explain how the solution targets the cause]
+- **Recurrence risk**: [none | guarded | unguarded]
+- **Recurrence guard**: [description of prevention mechanism, or N/A]
+- **Scope**: [N instances identified, all covered | single instance, no others found]
+
 ## Critic Convergence
 - Rounds completed: [1 or 2]
 - Round 1 TYPE A count: [N]
@@ -224,11 +257,12 @@ default, full when complexity warrants it.
 - **Default**: light
 - **Trigger full**: `blast_radius` confirmed >= 3 files OR `severity` = HIGH
 - **Input mapping**: `divergence_point`, `blast_radius`, `reproduction`, `severity` as constraints
-- **Light output mapping**: "Recommended Solution" -> `root_cause`, "Implementation Steps" -> `fix_plan`, "Constraints Respected" -> `anti_pattern_review`, "Key Tradeoff" -> diagnosis report
+- **Light output mapping**: "Recommended Solution" -> `root_cause`, "Implementation Steps" -> `fix_plan`, "Constraints Respected" -> constraint review, "Key Tradeoff" -> diagnosis report, "Prevention Analysis" -> `prevention_analysis` in solve-trace.json
 - **Full mode customization**:
   - Phase 1 agents: Agent 1 = divergence investigation, Agent 2 = blast radius + prior fix art, Agent 3 = fix constraints (validators, archetype universality)
   - Phase 5 Critic receives domain-specific vectors from Step 5b (configuration counterexample, blast radius gap, regression vector)
-- **Post-validation**: resolve.md Step 5 applies its own 5 fix requirements + 4 anti-patterns after solve-reasoning completes. If rejected: iterate once through self-check (light) or critic round 2 (full).
+- **Prevention**: Core pattern handles root-cause, regression-prevention, and scope coverage via `problem_type = "defect"` (resolve always sets this). Post-validation retains only the domain-specific template universality requirement.
+- **Post-validation**: resolve.md Step 5 applies template universality after solve-reasoning completes. If rejected: iterate once through self-check (light) or critic round 2 (full).
 
 ### `/change` Step 2b
 
@@ -240,11 +274,13 @@ default, full when complexity warrants it.
   - Phase 1 agents: Agent 1 = change problem space, Agent 2 = reuse/prior art (extends plan-exploration), Agent 3 = hard constraints (archetype, stack, behaviors)
   - Phase 5 Critic reviews plan mechanism choices (no extra domain vectors)
   - Output feeds: "How" sections, Risks & Mitigations, Approaches table
+- **Prevention**: When `preliminary_type = "Fix"`, callers set `problem_type = "defect"` to activate prevention dimension. Other types do not set problem_type.
 
 ### Direct `/solve` invocation
 
 - **Default**: full
 - **Override**: `--light` flag selects light mode
+- **Prevention**: Callers may set `problem_type = "defect"` via `--defect` or `--bug` flag to activate prevention. Default: not set (no prevention check).
 
 ### Caller conventions
 
@@ -252,3 +288,5 @@ default, full when complexity warrants it.
 - **Phase 3 autonomy**: Phase 3 is fully autonomous — the lead agent self-answers research gaps using first-principles reasoning. No user interaction occurs in Phase 3. Callers do not need to merge Phase 3 questions into STOP gates
 - **Domain-specific critics**: callers may inject additional critic vectors into Phase 5 (see `/resolve` Step 5b vectors)
 - **Post-validation iteration**: callers may apply their own domain validation after solve-reasoning completes and iterate once if rejected
+- **Prevention activation**: Callers set `problem_type = "defect"` to activate prevention questions. When not set, prevention dimension is skipped entirely. The pattern treats this as a pure input — it never infers problem_type on its own.
+- **Generic vs domain separation**: Core prevention handles root cause, recurrence, and scope coverage for all defects. Callers add domain-specific validation only (e.g., config universality, deployment constraints). Never re-implement generic prevention in a caller.

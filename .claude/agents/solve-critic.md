@@ -41,6 +41,28 @@ You do NOT receive the reasoning chain that produced the solution.
 
 Self-answered gaps are research questions the AI answered without user input. Challenge each for circular reasoning or ungrounded assumptions. LOW confidence answers deserve heavier scrutiny.
 
+### Prevention Challenge (when problem_type = defect)
+
+When the spawn prompt indicates `problem_type = "defect"`, apply three additional
+challenge vectors:
+
+1. **Root cause challenge**: Is the solution treating a symptom rather than the
+   underlying cause? Look for fixes that suppress errors, add workarounds, or
+   handle edge cases without addressing why the edge case exists.
+
+2. **Recurrence challenge**: Could this same class of problem occur in a different
+   file, configuration, or future change? If the solution claims "guarded"
+   recurrence risk, verify the guard mechanism is concrete and testable.
+
+3. **Scope challenge**: Are there other instances of this same problem that the
+   solution doesn't cover? Search broadly — the reporter may have found one
+   instance of a systemic pattern.
+
+Classify prevention concerns using the same TYPE A/B/C taxonomy:
+- Symptom-only fix → TYPE A (fixable design flaw)
+- Unguarded recurrence where a guard is feasible → TYPE A
+- Uncovered instances → TYPE A
+
 ### Concern Classification
 
 For each concern, classify it:
@@ -75,7 +97,8 @@ trace = {
     'agent': 'solve-critic',
     'timestamp': datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
     'verdict': '<VERDICT>',
-    'checks_performed': ['type_a_analysis', 'type_b_analysis', 'type_c_analysis'],
+    'checks_performed': ['type_a_analysis', 'type_b_analysis', 'type_c_analysis']
+        + (['prevention_root_cause', 'prevention_recurrence', 'prevention_scope'] if problem_type == 'defect' else []),
     'round': <1 or 2>,
     'type_a_count': <N>,
     'type_b_count': <N>,

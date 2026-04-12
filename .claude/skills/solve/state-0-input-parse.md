@@ -15,6 +15,13 @@ If `$ARGUMENTS` is empty, ask the user to describe the problem.
 - If user includes `--light` or `--quick` in arguments: use `light` mode (~30s, 0 agents)
 - If user includes `--full` in arguments: use `full` mode
 
+### Problem Type Detection
+
+If user includes `--defect` or `--bug` in arguments, or the problem statement
+clearly describes a defect/failure: set `problem_type = "defect"` in `solve-context.json`.
+This activates the prevention dimension in solve-reasoning (root cause + recurrence +
+scope checks). Otherwise: do not set `problem_type` (prevention skipped).
+
 Clean stale epilogue artifacts:
 ```bash
 rm -f .runs/observe-result.json
