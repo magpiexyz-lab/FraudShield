@@ -39,12 +39,7 @@
           },
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/bootstrap-commit-gate.sh",
-            "timeout": 30
-          },
-          {
-            "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/change-commit-gate.sh",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/skill-commit-gate.sh",
             "timeout": 30
           },
           {
@@ -99,7 +94,7 @@
           },
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/bootstrap-root-protection.sh",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/skill-write-gate.sh",
             "timeout": 30
           },
           {
@@ -144,7 +139,7 @@
           },
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/bootstrap-root-protection.sh",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/skill-write-gate.sh",
             "timeout": 30
           },
           {
@@ -159,7 +154,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/agent-state-gate.sh",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/skill-agent-gate.sh",
             "timeout": 30
           }
         ]
