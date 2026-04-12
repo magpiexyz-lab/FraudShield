@@ -897,6 +897,9 @@ When another project's dev server is already running on the configured port (e.g
 ### Windows compatibility for webServer command
 The `webServer.command` uses `` `PORT=${port} npm run dev` `` (POSIX shell syntax). On Windows, `cmd.exe` interprets `PORT=3099` as an executable name, not an environment variable assignment. If developing on Windows, install `cross-env` (`npm install -D cross-env`) and change the command to `` `cross-env PORT=${port} npm run dev` ``.
 
+### When a smoke test assertion targets the Next.js dev indicator or error overlay portal
+Scope the locator to `[data-nextjs-dialog-overlay]` rather than the generic portal container. The outer portal wrapper DOM structure changes between Next.js releases; the `data-nextjs-dialog-overlay` attribute is the stable selector for the actual overlay element.
+
 ## PR Instructions
 - Install [Docker Desktop](https://www.docker.com/products/docker-desktop/) if not already installed
 - Start local Supabase: `make supabase-start` (or `npx supabase start -x realtime,storage,imgproxy,inbucket,pgadmin-schema-diff,migra,postgres-meta,studio,edge-runtime,logflare,pgbouncer,vector && npx supabase db reset`)
