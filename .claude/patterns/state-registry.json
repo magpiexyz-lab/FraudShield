@@ -220,6 +220,83 @@
         "always": [],
         "when_full": ["solve-critic"]
       }
+    },
+    "resolve": {
+      "trace_file": "solve-trace.json",
+      "required_fields": {
+        "always": ["run_id", "mode", "problem_decomposition", "constraint_enumeration", "solution_design", "self_check", "output"],
+        "when_full": ["phase_3_gaps"]
+      },
+      "challenge_file": "resolve-challenge.json",
+      "challenge_fields": {
+        "always": ["critic_rounds", "round_1_type_a_count", "challenges"],
+        "when_rounds_gt_1": ["round_2_type_a_count"]
+      },
+      "expected_agent_traces": {
+        "always": ["resolve-challenger"],
+        "when_full": ["solve-critic"]
+      },
+      "cross_checks": [
+        {
+          "type": "array_vs_trace_count",
+          "challenge_array": "challenges",
+          "trace": "resolve-challenger",
+          "trace_field": "verdicts",
+          "description": "challenger verdict count matches challenge array length"
+        }
+      ]
+    },
+    "change": {
+      "trace_file": "solve-trace.json",
+      "context_file": "change-context.json",
+      "required_fields": {
+        "always": ["mode", "problem_decomposition", "constraint_enumeration", "solution_design", "self_check", "output"]
+      },
+      "extra_trace_files": {
+        "exploration-trace.json": {
+          "always": ["archetype", "stacks_read", "affected_files", "affected_imports"]
+        }
+      },
+      "challenge_file": "change-challenge.json",
+      "challenge_fields": {
+        "always": ["critic_rounds", "round_1_type_a_count"],
+        "when_rounds_gt_1": ["round_2_type_a_count"]
+      },
+      "expected_agent_traces": {
+        "always": [],
+        "when_solve_depth_full": ["solve-critic"]
+      },
+      "cross_checks": [
+        {
+          "type": "glob_status_check",
+          "trace_glob": "implementer-*",
+          "status_field": "status",
+          "expected_status": "complete",
+          "min_count": 0,
+          "description": "all implementer traces should have status=complete"
+        }
+      ]
+    },
+    "verify": {
+      "context_file": "verify-context.json",
+      "expected_agent_traces": {
+        "always": ["build-info-collector"],
+        "when_scope_includes_security": [
+          "security-defender", "security-attacker", "behavior-verifier", "spec-reviewer"
+        ],
+        "when_security_issues_found": ["security-fixer"],
+        "when_scope_includes_visual_and_webapp": [
+          "performance-reporter", "accessibility-scanner",
+          "design-critic", "design-consistency-checker", "ux-journeyer"
+        ],
+        "when_fixes_applied": ["observer"]
+      },
+      "cross_checks": [
+        {
+          "type": "all_agents_traced",
+          "description": "all spawned agents should have completed traces"
+        }
+      ]
     }
   }
 }
