@@ -69,7 +69,7 @@ Present the discovered MVPs:
 
 Wait for Team Lead confirmation. If they want to exclude or add MVPs, adjust the list accordingly.
 
-### Create context file
+### Merge cross-specific fields into context
 
 ```bash
 rm -f .runs/observe-result.json
@@ -94,7 +94,7 @@ bash .claude/scripts/init-context.sh iterate-cross "@.runs/_iterate-cross-extra.
 rm -f .runs/_iterate-cross-extra.json
 ```
 
-Replace the `mvps` list with actual data collected from Chrome MCP. The base fields (`skill`, `branch`, `timestamp`, `run_id`) are provided automatically by init-context.sh.
+Replace the `mvps` list with actual data collected from Chrome MCP. The base fields (`skill`, `branch`, `timestamp`, `run_id`) are already set by lifecycle-init.sh.
 
 **POSTCONDITIONS:**
 - Chrome MCP tools verified available

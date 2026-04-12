@@ -17,10 +17,9 @@ If no `### Rollback` subsection exists, STOP: "Rollback procedure not documented
 
 Read `experiment/experiment.yaml` to determine the archetype (`type` field, default: `web-app`).
 
-Clean stale epilogue artifacts and create context file to initialize state tracking:
+Clean stale epilogue artifacts:
 ```bash
 rm -f .runs/observe-result.json
-bash .claude/scripts/init-context.sh rollback
 ```
 
 **POSTCONDITIONS:**

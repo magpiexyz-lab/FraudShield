@@ -37,10 +37,9 @@
    - If `stripe` in manifest: `which stripe` + `stripe whoami` (soft — webhook
      deletion is nice-to-have)
 
-Clean stale epilogue artifacts and create context file to initialize state tracking:
+Clean stale epilogue artifacts:
 ```bash
 rm -f .runs/observe-result.json
-bash .claude/scripts/init-context.sh teardown
 ```
 
 **POSTCONDITIONS:**

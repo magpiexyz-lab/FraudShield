@@ -25,10 +25,9 @@ Example: /observe --file .claude/patterns/verify.md --symptom "STATE 3 retry loo
 
 No worktree is needed (analysis-only, no branch).
 
-Clean stale epilogue artifacts and create context file:
+Clean stale epilogue artifacts:
 ```bash
 rm -f .runs/observe-result.json .runs/observe-filing-result.json
-bash .claude/scripts/init-context.sh observe
 ```
 
 Store parsed arguments in the context file:

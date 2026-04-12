@@ -32,18 +32,43 @@ if [[ -z "$SKILL" ]]; then
   exit 1
 fi
 
-# --- State-reset guard ---
+# --- State-reset guard + identity check ---
 if [[ -f "$CTX" ]]; then
   GUARD=$(python3 -c "
 import json
 d = json.load(open('$CTX'))
-cs = d.get('completed_states', [])
-print('block' if len(cs) > 1 else 'ok')
-" 2>/dev/null || echo "ok")
+has_rid = bool(d.get('run_id', ''))
+if has_rid:
+    print('has_identity')
+else:
+    cs = d.get('completed_states', [])
+    print('block' if len(cs) > 1 else 'no_identity')
+" 2>/dev/null || echo "no_identity")
   if [[ "$GUARD" == "block" ]]; then
-    echo "ERROR: init-context.sh — $CTX exists with multiple completed states (skill already in progress). Delete it manually to re-initialize." >&2
+    echo "ERROR: init-context.sh — $CTX exists with multiple completed states but no run_id (corrupt state). Delete it manually to re-initialize." >&2
     exit 1
   fi
+  if [[ "$GUARD" == "has_identity" ]]; then
+    if [[ -z "$EXTRA" || "$EXTRA" == "{}" ]]; then
+      # Already initialized, nothing to merge — skip
+      echo "INFO: init-context.sh — $CTX already has run_id, skipping" >&2
+      exit 0
+    else
+      # Merge extra fields into existing context, protecting base infrastructure fields
+      printf '%s' "$EXTRA" | python3 -c "
+import json, sys
+ctx = json.load(open('$CTX'))
+extra = json.loads(sys.stdin.read())
+protected = {'branch', 'timestamp', 'run_id'}
+for k, v in extra.items():
+    if k not in protected:
+        ctx[k] = v
+json.dump(ctx, open('$CTX', 'w'))
+"
+      exit 0
+    fi
+  fi
+  # no_identity — fall through to create (overwrite stub with canonical context)
 fi
 
 # --- Ensure .runs/ exists ---

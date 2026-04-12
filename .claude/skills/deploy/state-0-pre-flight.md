@@ -61,7 +61,7 @@
    - If no `## CLI Provisioning` section found — treat as no CLI (stack file predates CLI metadata)
    - Do NOT stop for missing external CLIs — record status for display in Step 2.
 
-Clean stale epilogue artifacts and create context file to initialize state tracking.
+Clean stale epilogue artifacts and merge deploy-specific fields into context.
 Substitute `DEPLOY_MODE` with `"initial"` or `"update"` (from step 3b). For initial mode, all service arrays are empty. For update mode, populate from step 3b diff results:
 ```bash
 rm -f .runs/observe-result.json

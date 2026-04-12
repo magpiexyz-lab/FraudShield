@@ -12,7 +12,7 @@ If surface ≠ none: verify the surface stack file exists at `.claude/stacks/sur
 
 Parse `$ARGUMENTS` for `--phase 1` or `--phase 2`. If no `--phase` flag is present, default to phase 1. Store the parsed phase value (integer: 1 or 2) for inclusion in the context file.
 
-Create `.runs/distribute-context.json` to initialize state tracking:
+Merge distribute-specific fields into context:
 ```bash
 # Parse phase from $ARGUMENTS (default: 1)
 PHASE=1

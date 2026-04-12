@@ -15,10 +15,9 @@ If `$ARGUMENTS` is empty, ask the user to describe the problem.
 - If user includes `--light` or `--quick` in arguments: use `light` mode (~30s, 0 agents)
 - If user includes `--full` in arguments: use `full` mode
 
-Clean stale epilogue artifacts and create context file to initialize state tracking:
+Clean stale epilogue artifacts:
 ```bash
 rm -f .runs/observe-result.json
-bash .claude/scripts/init-context.sh solve
 ```
 
 **POSTCONDITIONS:**

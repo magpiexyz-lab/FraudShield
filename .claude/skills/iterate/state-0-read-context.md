@@ -31,10 +31,9 @@ Read and validate context files:
 - Read `experiment/EVENTS.yaml` -- understand what's being tracked (this is the canonical list of all events)
 - If `.runs/spec-manifest.json` exists, read it for hypothesis context (used in STATE 2 for per-hypothesis verdicts)
 
-Clean stale epilogue artifacts and create context file to initialize state tracking:
+Clean stale epilogue artifacts:
 ```bash
 rm -f .runs/observe-result.json
-bash .claude/scripts/init-context.sh iterate
 ```
 
 **POSTCONDITIONS:**

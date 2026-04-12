@@ -13,11 +13,6 @@ Clean up stale artifacts from prior runs:
 
 > **If resuming from a failed bootstrap:** see `.claude/patterns/recovery.md` for recovery options.
 
-Create `.runs/bootstrap-context.json` to initialize state tracking:
-```bash
-bash .claude/scripts/init-context.sh bootstrap
-```
-
 **POSTCONDITIONS:**
 - Current branch is `feat/bootstrap` (or `feat/bootstrap-N` if prior branch exists)
 - Branch is not `main`

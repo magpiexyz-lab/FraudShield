@@ -10,7 +10,7 @@
 #   1. Parse .claude/skills/<skill>/skill.yaml → .runs/<skill>-manifest.json
 #   2. If modes present + extra has mode field → select that mode's states
 #   3. If branch field present + not in worktree → create branch
-#   4. Call init-context.sh <skill> [extra_json]
+#   4. Create canonical context via init-context.sh <skill>
 #
 # Fallback: if skill.yaml not found → warn, call init-context.sh only (v1 compat)
 set -euo pipefail
@@ -232,15 +232,10 @@ except: print('')
   git checkout -b "$BRANCH" 2>/dev/null || echo "WARN: lifecycle-init.sh — branch $BRANCH already exists or checkout failed" >&2
 fi
 
-# --- Step 5: Create minimal context for lifecycle-next.sh dispatch ---
-# State-0's init-context.sh call creates the canonical context (single run_id source).
-# We only create a stub so lifecycle-next.sh can dispatch state 0.
+# --- Step 5: Create canonical context (run_id, branch, timestamp) ---
 CTX_SKILL="$SKILL"
 if [[ -n "$EXTRA" ]]; then
   MODE=$(python3 -c "import json; d=json.loads('''$EXTRA'''); m=d.get('mode',''); print(m if m and m!='default' else '')" 2>/dev/null || echo "")
   [[ -n "$MODE" ]] && CTX_SKILL="${SKILL}-${MODE}"
 fi
-CTX="$PROJECT_DIR/.runs/${CTX_SKILL}-context.json"
-if [[ ! -f "$CTX" ]]; then
-  echo '{"completed_states":[]}' > "$CTX"
-fi
+bash "$PROJECT_DIR/.claude/scripts/init-context.sh" "$CTX_SKILL"

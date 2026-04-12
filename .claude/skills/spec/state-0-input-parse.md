@@ -70,10 +70,9 @@ Display the parsed input and confirm before proceeding:
 
 Wait for user confirmation.
 
-Clean stale epilogue artifacts and create context file to initialize state tracking:
+Clean stale epilogue artifacts:
 ```bash
 rm -f .runs/observe-result.json
-bash .claude/scripts/init-context.sh spec
 ```
 
 **POSTCONDITIONS:**

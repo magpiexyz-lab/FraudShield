@@ -46,14 +46,14 @@ If no `mcp__claude-in-chrome__*` tools are returned, STOP and show the setup gui
 2. Present the full guide to the user
 3. End with: "After completing the setup, re-run `/iterate --check`."
 
-### Create context file
+### Merge ads-specific fields into context
 
 ```bash
 rm -f .runs/observe-result.json
 bash .claude/scripts/init-context.sh iterate-check "{\"mode\":\"check\",\"channel\":\"<channel from ads.yaml>\",\"campaign_name\":\"<campaign_name>\",\"campaign_id\":\"<campaign_id>\",\"campaign_age_days\":<N>,\"phase\":<1 or 2 from distribute-context.json, or null if unavailable>,\"budget_total_cents\":<N>,\"budget_daily_cents\":<N>,\"max_cpc_cents\":<N>,\"completed_states\":[\"c0\"]}"
 ```
 
-Replace all `<placeholder>` values with actual data read from ads.yaml and experiment.yaml. The base fields (`skill`, `branch`, `timestamp`, `run_id`) are provided automatically by init-context.sh. The `completed_states:["c0"]` override replaces the default `[0]` to use iterate-check's string state IDs.
+Replace all `<placeholder>` values with actual data read from ads.yaml and experiment.yaml. The base fields (`skill`, `branch`, `timestamp`, `run_id`) are already set by lifecycle-init.sh. The `completed_states:["c0"]` override replaces the default `[0]` to use iterate-check's string state IDs.
 
 **POSTCONDITIONS:**
 - `experiment/ads.yaml` read, channel is `google-ads`, `campaign_id` exists

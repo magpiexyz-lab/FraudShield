@@ -44,7 +44,7 @@
    fi
    ```
 
-6. Write `.runs/verify-context.json` via shared init script. Extra fields override base: `skill` attributes Q-scores to the calling skill, `scope`/`archetype`/`quality` drive agent gating, `mode` controls PR gate behavior, `baseline_available` enables delta reporting. Base fields (`branch`, `timestamp`, `run_id`, `completed_states`) are provided automatically:
+6. Merge verify-specific fields into context via shared init script. Extra fields override base: `skill` attributes Q-scores to the calling skill, `scope`/`archetype`/`quality` drive agent gating, `mode` controls PR gate behavior, `baseline_available` enables delta reporting. Base fields (`branch`, `timestamp`, `run_id`, `completed_states`) are already set by lifecycle-init.sh:
    ```bash
    bash .claude/scripts/init-context.sh verify "{\"skill\":\"<skill from step 4>\",\"scope\":\"<scope>\",\"archetype\":\"<type>\",\"quality\":\"production\",\"mode\":\"<standalone if skill is verify, otherwise the skill name + -verify e.g. bootstrap-verify, change-verify>\",\"baseline_available\":$BASELINE_AVAILABLE}"
    ```

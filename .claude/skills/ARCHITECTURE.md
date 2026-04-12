@@ -183,7 +183,7 @@ Steps:
 2. If modes present + extra_json has mode field → select that mode's states
 3. Write .runs/<skill>-manifest.json (JSON copy of skill.yaml, for hooks to read)
 4. If branch field present and not in worktree → create branch
-5. Call init-context.sh <skill> [extra_json] to create context file
+5. Create canonical context (run_id, branch, timestamp) via init-context.sh
 
 Fallback: if skill.yaml not found → warn, call init-context.sh only (v1 compat)
 ```

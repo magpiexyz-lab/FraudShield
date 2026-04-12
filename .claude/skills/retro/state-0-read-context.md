@@ -54,10 +54,9 @@ Collect these data points and present a summary before asking questions:
 
 Present the summary and then proceed to STATE 1.
 
-Clean stale epilogue artifacts and create context file to initialize state tracking:
+Clean stale epilogue artifacts:
 ```bash
 rm -f .runs/observe-result.json
-bash .claude/scripts/init-context.sh retro
 ```
 
 **POSTCONDITIONS:**

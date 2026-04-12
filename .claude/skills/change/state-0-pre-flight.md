@@ -14,7 +14,7 @@
 - Run `npm run build` to confirm the project compiles before making changes (unless `$ARGUMENTS` describes a fix). If the build fails and the change is not a build fix: stop and tell the user: "The app has build errors that need to be fixed first. Run `/change fix build errors` to address them."
 - **G1 Pre-flight Gate**: Spawn the `gate-keeper` agent (`subagent_type: gate-keeper`). Pass: "Execute G1 Pre-flight Gate. Verify: package.json exists, experiment/EVENTS.yaml exists, build passes (unless fix type), $ARGUMENTS is non-empty." If gate-keeper returns BLOCK, stop and report blocking items to user.
 
-Create `.runs/change-context.json` to initialize state tracking:
+Merge skill-specific fields into context:
 ```bash
 bash .claude/scripts/init-context.sh change '{"preliminary_type":null,"affected_areas":null,"solve_depth":null}'
 ```

@@ -49,10 +49,9 @@
 - Observation hot spots computed (possibly none) <!-- enforced by agent behavior, not VERIFY gate -->
 - `.runs/review-context.json` exists with state tracking initialized
 
-Clean stale epilogue artifacts and create the context file to initialize state tracking:
+Clean stale epilogue artifacts:
 ```bash
 rm -f .runs/observe-result.json
-bash .claude/scripts/init-context.sh review
 ```
 
 **VERIFY:**
