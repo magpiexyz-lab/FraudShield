@@ -78,7 +78,7 @@ import json, os, glob, datetime
 fix_log_lines = 0
 if os.path.exists('.runs/fix-log.md'):
     with open('.runs/fix-log.md') as f:
-        fix_log_lines = max(0, len(f.readlines()) - 1)  # exclude header
+        fix_log_lines = max(0, len([l for l in f.readlines() if l.strip()]) - 1)  # exclude header and empty lines
 trace_fixes = 0
 for tf in glob.glob('.runs/agent-traces/*.json'):
     try:
