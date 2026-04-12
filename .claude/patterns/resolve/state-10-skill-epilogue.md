@@ -22,22 +22,6 @@ This runs the observer agent if fixes were logged in `.runs/fix-log.md`,
 or records "clean" if not. The epilogue must complete before the final commit
 (`observe-commit-gate.sh` enforces this).
 
-### Worktree Cleanup (Ring 3 early exit only)
-
-If you entered a worktree in STATE 0 AND the skill is terminating after this
-state (Ring 3 — no code changes, no branch, no PR):
-
-1. Copy Q-score back to main checkout:
-```bash
-MAIN_DIR=$(git worktree list | head -1 | awk '{print $1}')
-mkdir -p "$MAIN_DIR/.runs"
-tail -1 .runs/verify-history.jsonl >> "$MAIN_DIR/.runs/verify-history.jsonl" 2>/dev/null || true
-```
-
-2. Call the `ExitWorktree` tool with `action: "remove"` and `discard_changes: true` to return to the main checkout and delete the worktree.
-
-If proceeding to STATE 11: skip this section (cleanup happens in STATE 11).
-
 **POSTCONDITIONS:**
 - Skill epilogue complete
 - Observer agent run (if fixes were logged) or "clean" recorded
