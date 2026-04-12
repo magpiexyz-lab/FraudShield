@@ -106,7 +106,7 @@ After ALL per-page agents + Stage 1b + Stage 2 (consistency check) complete:
 3. If build errors: fix (max 2 attempts), append to fix-log
 4. Re-run `npm run build && npm run lint` to confirm clean.
 
-> **Downstream compatibility**: agent-state-gate.sh and gate-keeper BG3 check the merged `design-critic.json` — no changes needed. `agents_completed` still lists `"design-critic"` (singular).
+> **Downstream compatibility**: skill-agent-gate.sh and gate-keeper BG3 check the merged `design-critic.json` — no changes needed. `agents_completed` still lists `"design-critic"` (singular).
 
 #### Lead-side validation (design-critic)
 

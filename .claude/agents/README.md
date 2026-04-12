@@ -64,8 +64,8 @@ Update these if renaming an agent:
 - `.claude/procedures/change-feature.md` -- implementer/visual-implementer dispatch
 - `.claude/procedures/tdd-task-generation.md` -- agent type table
 - `.claude/procedures/worktree-merge-verification.md` -- merge logic
-- `.claude/patterns/change/state-10-implement.md` -- trace globs, gate checks
-- `.claude/patterns/state-registry.json` -- agent_gates entries
-- `.claude/hooks/agent-state-gate.sh` -- SUBAGENT_TYPE branching
+- `.claude/skills/change/state-10-implement.md` -- trace globs, gate checks
+- `.claude/patterns/state-registry.json` -- VERIFY commands
+- `.claude/hooks/skill-agent-gate.sh` -- manifest-driven agent checks
 - `.claude/hooks/artifact-integrity-gate.sh` -- scaffold_prefixes list
-- `.claude/hooks/change-commit-gate.sh` -- merge commit detection
+- `.claude/hooks/skill-commit-gate.sh` -- commit convention gates

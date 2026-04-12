@@ -39,11 +39,13 @@ state=str('$STATE_NUM')
 if state not in cs: cs.append(state)
 d['completed_states']=cs
 # Mark context as completed when all required states are present
-reg_path = os.path.join('$PROJECT_DIR', '.claude/patterns/state-registry.json')
-if os.path.exists(reg_path):
-    reg = json.load(open(reg_path))
-    req = reg.get('agent_gates', {}).get('$SKILL', {}).get('_required_states', [])
-    if req:
+import re
+skill_yaml_path = os.path.join('$PROJECT_DIR', '.claude/skills/$SKILL/skill.yaml')
+if os.path.exists(skill_yaml_path):
+    yt = open(skill_yaml_path).read()
+    sm = re.search(r'states:\s*\[([^\]]+)\]', yt)
+    if sm:
+        req = [s.strip().strip('\"').strip(\"'\") for s in sm.group(1).split(',')]
         cs_set = set(str(s) for s in cs)
         req_set = set(str(s) for s in req)
         if req_set.issubset(cs_set):

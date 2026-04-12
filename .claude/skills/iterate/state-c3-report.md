@@ -55,7 +55,7 @@ Follow `.claude/patterns/skill-epilogue.md` **Strategy B** (Execution Audit).
 
 Inputs for Strategy B:
 - Context file: `.runs/iterate-check-context.json`
-- Expected completed states: `["c0", "c1", "c2"]` (from state-registry.json agent_gates)
+- Expected completed states: `["c0", "c1", "c2"]` (from skill.yaml states)
 - This skill is analysis-only and makes no code changes (Chrome MCP actions on Google Ads UI are not code changes)
 
 **Important:** When writing `observe-result.json`, use `"skill": "iterate-check"` (not `"iterate"`).

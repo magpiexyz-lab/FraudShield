@@ -46,7 +46,7 @@ python3 -c "import json,os; fl=open('.runs/fix-log.md').read() if os.path.exists
 ```
 Build command exited 0 after last Phase 2 agent.
 
-> **Hook-enforced:** `agent-state-gate.sh` validates STATE 3c postconditions before allowing security-fixer to spawn.
+> **Hook-enforced:** `skill-agent-gate.sh` validates STATE 3c postconditions before allowing security-fixer to spawn.
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
 ```bash

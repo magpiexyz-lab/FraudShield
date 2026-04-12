@@ -143,7 +143,7 @@ Between B1 completion and B2 spawning, verify the lib files compile cleanly:
    -- page agents would inherit broken types. Errors: [list errors]"
    This prevents compounding type failures across the B2 fan-out.
 
-**Phase B2 (pages + landing -- web-app only):** Service and cli archetypes skip Phase B2. (Per `patterns/archetype-behavior-check.md`) Only after B1 manifest verification AND type-check checkpoint pass. Spawn one `scaffold-pages` agent per golden_path page (excluding landing -- handled by scaffold-landing). The agent-state-gate hook enforces this ordering: scaffold-pages and scaffold-landing are blocked until `.runs/agent-traces/scaffold-libs.json` exists with status "complete".
+**Phase B2 (pages + landing -- web-app only):** Service and cli archetypes skip Phase B2. (Per `patterns/archetype-behavior-check.md`) Only after B1 manifest verification AND type-check checkpoint pass. Spawn one `scaffold-pages` agent per golden_path page (excluding landing -- handled by scaffold-landing). The skill-agent-gate hook enforces this ordering: scaffold-pages and scaffold-landing are blocked until `.runs/agent-traces/scaffold-libs.json` exists with status "complete".
 
 Each per-page agent prompt:
 - "Create SINGLE page: `<page_name>` at route `<route>`."

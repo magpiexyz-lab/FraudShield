@@ -947,7 +947,7 @@ class TestCheck61FooterDirectiveSync:
         (claude_dir / "agent-prompt-footer.md").write_text(
             "<!-- DIRECTIVES:a,b,c -->\n\n## Efficiency\n"
         )
-        (hooks_dir / "agent-state-gate.sh").write_text(
+        (hooks_dir / "skill-agent-gate.sh").write_text(
             '#!/bin/bash\nif ! echo "$PROMPT" | grep -q "DIRECTIVES:a,b,c"; then\nexit 1\nfi\n'
         )
         old_cwd = os.getcwd()
@@ -966,7 +966,7 @@ class TestCheck61FooterDirectiveSync:
         (claude_dir / "agent-prompt-footer.md").write_text(
             "<!-- DIRECTIVES:x,y,z -->\n"
         )
-        (hooks_dir / "agent-state-gate.sh").write_text(
+        (hooks_dir / "skill-agent-gate.sh").write_text(
             '#!/bin/bash\ngrep -q "DIRECTIVES:a,b,c"\n'
         )
         old_cwd = os.getcwd()

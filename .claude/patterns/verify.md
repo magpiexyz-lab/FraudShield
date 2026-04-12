@@ -116,7 +116,7 @@ Include these directives in every agent spawn prompt (Phase 1 and Phase 2):
 4. **Pre-existing changes**: Edit-capable agents (design-critic, ux-journeyer, security-fixer) should ignore pre-existing uncommitted changes that are outside the PR file boundary.
 
 > **Template enforcement:** Read `.claude/agent-prompt-footer.md` and append its full content
-> to every agent spawn prompt (Phase 1 and Phase 2). The agent-state-gate hook checks
+> to every agent spawn prompt (Phase 1 and Phase 2). The skill-agent-gate hook checks
 > for the directive marker in agent prompts.
 
 ### Trace State Detection

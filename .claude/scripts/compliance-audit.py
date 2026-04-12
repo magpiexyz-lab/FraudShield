@@ -29,6 +29,18 @@ RUNS_DIR = os.path.join(PROJECT_DIR, ".runs")
 REGISTRY_PATH = os.path.join(PROJECT_DIR, ".claude/patterns/state-registry.json")
 
 
+def _read_skill_states(skill):
+    """Read states list from skill.yaml."""
+    skill_yaml = os.path.join(PROJECT_DIR, ".claude/skills", skill, "skill.yaml")
+    if not os.path.isfile(skill_yaml):
+        return []
+    text = open(skill_yaml).read()
+    m = re.search(r'states:\s*\[([^\]]+)\]', text)
+    if not m:
+        return []
+    return [s.strip().strip('"').strip("'") for s in m.group(1).split(',')]
+
+
 def load_json(path):
     try:
         with open(path) as f:
@@ -112,11 +124,9 @@ def check_checks_completeness(skill):
         return {"name": "checks_completeness", "result": "skip",
                 "detail": "cannot read state-registry.json"}
 
-    # Find agent_gates for the skill's verify context or the skill itself
+    # Read verify agent specs from skill.yaml (v2) or agent_gates (v1 fallback)
     agent_gates = registry.get("agent_gates", {})
-
-    # Check verify agents (most common case)
-    verify_gates = agent_gates.get("verify", {})
+    verify_gates = agent_gates.get("verify", {}) if agent_gates else {}
     traces_dir = os.path.join(RUNS_DIR, "agent-traces")
     if not os.path.isdir(traces_dir):
         return {"name": "checks_completeness", "result": "skip",
@@ -209,8 +219,7 @@ def check_gate_enforcement(skill):
         return {"name": "gate_enforcement", "result": "skip",
                 "detail": "cannot read state-registry.json for state ordering"}
 
-    agent_gates = registry.get("agent_gates", {}).get(skill, {})
-    required = agent_gates.get("_required_states", [])
+    required = _read_skill_states(skill)
 
     # Any BLOCK should mean the skill stopped — check if it actually completed
     if context.get("completed"):
@@ -234,8 +243,7 @@ def check_missing_states(skill):
         return {"name": "missing_states", "result": "skip",
                 "detail": "cannot read state-registry.json"}
 
-    agent_gates = registry.get("agent_gates", {}).get(skill, {})
-    required = agent_gates.get("_required_states")
+    required = _read_skill_states(skill)
     if not required:
         return {"name": "missing_states", "result": "skip",
                 "detail": f"no _required_states defined for {skill}"}

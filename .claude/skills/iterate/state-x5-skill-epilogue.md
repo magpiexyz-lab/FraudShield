@@ -11,7 +11,7 @@ Follow `.claude/patterns/skill-epilogue.md` **Strategy B** (Execution Audit).
 
 Inputs for Strategy B:
 - Context file: `.runs/iterate-cross-context.json`
-- Expected completed states: `["x0", "x1", "x2", "x3", "x4"]` (from state-registry.json agent_gates)
+- Expected completed states: `["x0", "x1", "x2", "x3", "x4"]` (from skill.yaml states)
 - This skill is analysis-only and makes no code changes (Chrome MCP actions on Google Ads UI are not code changes; PostHog API calls are read-only queries)
 
 **Important:** When writing `observe-result.json`, use `"skill": "iterate-cross"` (not `"iterate"` or `"iterate-check"`).

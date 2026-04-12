@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
-"""Agent gate detection and registry checks for agent-state-gate.sh.
+"""Agent gate detection and registry checks (defense-in-depth).
 
-Detects active skill from context files, loads state-registry.json,
+Detects active skill from context files, loads skill.yaml agent declarations,
 checks gate conditions (isolation, background, required_states, artifacts).
 Returns tab-separated: skill<TAB>warn on line 1, errors on subsequent lines.
+
+Primary enforcement is in skill-agent-gate.sh (manifest-driven).
+This script provides supplementary registry-based checks.
 """
 import glob
 import json
@@ -46,15 +49,43 @@ def main():
         print(json.dumps({'skill': '', 'errors': [], 'warn': ''}))
         sys.exit(0)
 
-    # 2. Load registry
-    reg_path = os.path.join(project, '.claude', 'patterns', 'state-registry.json')
-    if not os.path.isfile(reg_path):
-        print(json.dumps({'skill': best_skill, 'errors': [], 'warn': 'registry missing'}))
+    # 2. Load skill.yaml for agent gate config
+    skill_yaml_path = os.path.join(project, '.claude', 'skills', best_skill, 'skill.yaml')
+    if not os.path.isfile(skill_yaml_path):
+        print(best_skill + '\t')
         sys.exit(0)
 
-    reg = json.load(open(reg_path))
-    agent_gates = reg.get('agent_gates', {})
-    skill_gates = agent_gates.get(best_skill, {})
+    # Parse agents section from skill.yaml (simple YAML subset)
+    import re
+    text = open(skill_yaml_path).read()
+    skill_gates = {}
+    in_agents = False
+    current_agent = None
+    for line in text.split('\n'):
+        if line.startswith('agents:'):
+            in_agents = True
+            continue
+        if in_agents:
+            if line and not line[0].isspace():
+                break  # New top-level key
+            agent_m = re.match(r'  (\S+):', line)
+            if agent_m:
+                current_agent = agent_m.group(1)
+                skill_gates[current_agent] = {}
+                continue
+            if current_agent:
+                kv = re.match(r'\s+(\w+):\s*(.*)', line)
+                if kv:
+                    key, val = kv.group(1), kv.group(2).strip()
+                    if val.startswith('['):
+                        items = [s.strip().strip('"').strip("'") for s in val.strip('[]').split(',') if s.strip()]
+                        skill_gates[current_agent][key] = items
+                    elif val in ('true', 'True'):
+                        skill_gates[current_agent][key] = True
+                    elif val in ('false', 'False'):
+                        skill_gates[current_agent][key] = False
+                    else:
+                        skill_gates[current_agent][key] = val
 
     # 3. Resolve gate config for this agent type
     gate = skill_gates.get(agent_type, skill_gates.get('_default', None))

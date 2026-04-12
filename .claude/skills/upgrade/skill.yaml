@@ -1,2 +1,5 @@
 branch: "chore/upgrade-{slug}"
 states: ["0", "1", "2", "3"]
+observation:
+  gate: commit-pr-gate
+  artifacts: [observe-result.json, upgrade-diff-report.json]

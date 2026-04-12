@@ -24,3 +24,7 @@ agents:
   scaffold-wire:
     after: ["13c"]
     depends_on: [scaffold-pages, scaffold-landing]
+observation:
+  gate: commit-pr-gate
+  artifacts: [observe-result.json, verify-report.md]
+  pr_checks: [frontmatter-validation, trace-completeness, agent-match]

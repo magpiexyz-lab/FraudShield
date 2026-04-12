@@ -204,26 +204,6 @@
     "3": "(gh pr view --json number 2>/dev/null || test -f .runs/upgrade-diff-report.json) && test -f .runs/observe-result.json && python3 -c \"import json; d=json.load(open('.runs/upgrade-step-check.json')); assert len(d.get('steps_completed',[])) > 0\""
   },
 
-  "observation_gates": {
-    "resolve":    { "strategy": "A", "gate_mechanism": "commit-pr-gate", "gate_artifacts": ["observe-result.json"], "pr_validation": "artifact-only", "pr_checks": [] },
-    "review":     { "strategy": "A", "gate_mechanism": "commit-pr-gate", "gate_artifacts": ["review-complete.json", "observe-result.json"], "pr_validation": "custom-review", "pr_checks": ["review-metrics"] },
-    "upgrade":    { "strategy": "A", "gate_mechanism": "commit-pr-gate", "gate_artifacts": ["observe-result.json", "upgrade-diff-report.json"], "pr_validation": "artifact-only", "pr_checks": [] },
-    "deploy":     { "strategy": "A", "gate_mechanism": "postcondition-only", "pr_checks": [] },
-    "spec":       { "strategy": "A", "gate_mechanism": "postcondition-only", "pr_checks": [] },
-    "bootstrap":  { "strategy": "A", "gate_mechanism": "commit-pr-gate", "gate_artifacts": ["observe-result.json", "verify-report.md"], "pr_validation": "full-verify", "pr_checks": ["frontmatter-validation", "trace-completeness", "agent-match"] },
-    "change":     { "strategy": "verify-embedded", "gate_mechanism": "commit-pr-gate", "gate_artifacts": ["verify-report.md"], "pr_validation": "full-verify", "pr_checks": ["frontmatter-validation", "trace-completeness", "agent-match", "postcondition-rerun", "gate-verdicts", "acceptance-criteria"] },
-    "distribute": { "strategy": "verify-embedded", "gate_mechanism": "commit-pr-gate", "gate_artifacts": ["verify-report.md"], "pr_validation": "full-verify", "pr_checks": ["frontmatter-validation", "trace-completeness", "agent-match", "postcondition-rerun"] },
-    "audit":      { "strategy": "B", "gate_mechanism": "postcondition-only", "pr_checks": [] },
-    "solve":      { "strategy": "B", "gate_mechanism": "postcondition-only", "pr_checks": [] },
-    "iterate":    { "strategy": "B", "gate_mechanism": "postcondition-only", "pr_checks": [] },
-    "iterate-check": { "strategy": "B", "gate_mechanism": "postcondition-only", "pr_checks": [] },
-    "iterate-cross": { "strategy": "B", "gate_mechanism": "postcondition-only", "pr_checks": [] },
-    "retro":      { "strategy": "B", "gate_mechanism": "postcondition-only", "pr_checks": [] },
-    "rollback":   { "strategy": "B", "gate_mechanism": "postcondition-only", "pr_checks": [] },
-    "teardown":   { "strategy": "B", "gate_mechanism": "postcondition-only", "pr_checks": [] },
-    "observe":    { "strategy": "B", "gate_mechanism": "postcondition-only", "pr_checks": [] }
-  },
-
   "trace_schemas": {
     "solve": {
       "trace_file": "solve-trace.json",
@@ -241,60 +221,5 @@
         "when_full": ["solve-critic"]
       }
     }
-  },
-
-  "agent_gates": {
-    "verify": {
-      "_required_states": ["0","1","2","3a","3b","3c","4","5","6","7a","7b","8"],
-      "build-info-collector":       { "required_states": ["0","1"], "artifacts": [".runs/build-result.json"], "deny_background": true, "required_checks": ["diff_collected","summaries_written","template_files_listed"] },
-      "security-defender":          { "required_states": ["0","1"], "artifacts": [".runs/build-result.json"], "deny_background": true, "required_checks": ["D1_secrets","D2_validation","D3_rls","D4_client_server","D5_rate_limit","D6_deps"] },
-      "security-attacker":          { "required_states": ["0","1"], "artifacts": [".runs/build-result.json"], "deny_background": true, "required_checks": ["A1_validation_bypass","A2_access_control","A3_injection","A4_info_leakage","A5_auth_weakness"] },
-      "behavior-verifier":          { "required_states": ["0","1"], "artifacts": [".runs/build-result.json"], "deny_background": true, "required_checks": ["state_model","happy_path","error_path","system_smoke","state_continuity"] },
-      "performance-reporter":       { "required_states": ["0","1"], "artifacts": [".runs/build-result.json"], "deny_background": true, "required_checks": ["P1_build","P2_routes","P3_large_pages","P4_deps","P5_lighthouse","P6_api"] },
-      "accessibility-scanner":      { "required_states": ["0","1"], "artifacts": [".runs/build-result.json"], "deny_background": true, "required_checks": ["axe_scan","tab_order"] },
-      "spec-reviewer":              { "required_states": ["0","1"], "artifacts": [".runs/build-result.json"], "deny_background": true, "required_checks": ["S1_features","S2_pages","S3_analytics","S4_golden_path","S5_system","S6_plan","S7_tdd","S8_process"] },
-      "design-critic":              { "required_states": ["0","1"], "artifacts": [".runs/build-result.json"], "required_checks": ["layer1_functional","layer2_taste","layer3_antipattern","visual_regression"] },
-      "design-consistency-checker": { "required_states": ["0","1"], "artifacts": [".runs/build-result.json"], "required_checks": ["C1_color","C2_typography","C3_spacing","C4_component","C5_layout"] },
-      "ux-journeyer":               { "required_states": ["0","1"], "artifacts": [".runs/build-result.json"], "required_checks": ["golden_path_trace","flow_issues","clicks_to_value"] },
-      "security-fixer":             { "required_states": ["0","1","2","3a","3b","3c"], "artifacts": [".runs/build-result.json"], "required_checks": ["fix_code","rebuild","recheck","collect_changes","generate_tables"] },
-      "observer":                   { "required_states": ["0","1","2","3a","3b","3c","4"], "artifacts": [".runs/e2e-result.json"], "required_checks": ["prerequisites","fix_evaluation","redaction","dedup","issue_filing"] },
-      "pattern-classifier":         { "required_states": ["0","1","2","3a","3b","3c","4","5","6"], "required_checks": ["pattern_analysis","template_classification"] }
-    },
-    "bootstrap": {
-      "_required_states": ["0","1","2","3","3a","3b","4","5","6","7","8","9","10","11","12","13","13a","13b","13c","14","15","16","17","18"],
-      "gate-keeper":        { "allow_unconditional": true },
-      "scaffold-externals": { "allow_unconditional": true },
-      "scaffold-setup":     { "required_states": ["0","1","2","3","3a","3b","4","5","6","7","8"], "artifacts": [".runs/gate-verdicts/bg1.json"], "deny_isolation": ["worktree"] },
-      "scaffold-init":      { "required_states": ["0","1","2","3","3a","3b","4","5","6","7","8","9"], "artifacts": [".runs/gate-verdicts/bg1.json"], "deny_isolation": ["worktree"] },
-      "scaffold-libs":      { "required_states": ["0","1","2","3","3a","3b","4","5","6","7","8","9","10"], "artifacts": [".runs/gate-verdicts/bg1.json"], "deny_isolation": ["worktree"] },
-      "scaffold-images":    { "required_states": ["0","1","2","3","3a","3b","4","5","6","7","8","9","10"], "artifacts": [".runs/gate-verdicts/bg1.json"], "deny_isolation": ["worktree"] },
-      "scaffold-pages":     { "required_states": ["0","1","2","3","3a","3b","4","5","6","7","8","9","10","11"], "artifacts": [".runs/gate-verdicts/bg1.json",".runs/agent-traces/scaffold-libs.json"], "deny_isolation": ["worktree"] },
-      "scaffold-landing":   { "required_states": ["0","1","2","3","3a","3b","4","5","6","7","8","9","10","11"], "artifacts": [".runs/gate-verdicts/bg1.json",".runs/agent-traces/scaffold-libs.json"], "deny_isolation": ["worktree"] },
-      "scaffold-wire":      { "required_states": ["0","1","2","3","3a","3b","4","5","6","7","8","9","10","11","12","13","13a","13b","13c"], "artifacts": [".runs/gate-verdicts/bg1.json",".runs/gate-verdicts/bg2.json"], "deny_isolation": ["worktree"] }
-    },
-    "change": {
-      "_required_states": ["0","1","2","3","4","5","6","7","8","9","10","11","12"],
-      "gate-keeper":        { "allow_unconditional": true },
-      "implementer":        { "required_states": ["0","1","2","3","4","5","6","7","8","9"], "artifacts": [".runs/gate-verdicts/g3.json"], "_note": "required_states enforces ordering; g3.json artifact is the authoritative gate for plan approval" },
-      "visual-implementer": { "required_states": ["0","1","2","3","4","5","6","7","8","9"], "artifacts": [".runs/gate-verdicts/g3.json"], "_note": "required_states enforces ordering; g3.json artifact is the authoritative gate for plan approval" },
-      "solve-critic":       { "required_states": ["0","1","2"], "deny_background": true, "required_checks": ["type_a_analysis","type_b_analysis","type_c_analysis"] }
-    },
-    "distribute": {
-      "_required_states": ["0","1","2","3","4","5","6"]
-    },
-    "audit":    { "_required_states": ["0","1","2","3"], "_default": { "required_states": ["0"] } },
-    "review":   { "_required_states": ["0","1","5"], "_default": { "required_states": ["0","1"] }, "review-challenger": { "required_states": ["0","1","2a","2b"], "deny_background": true, "required_checks": ["cross_file","edge_case","user_journey"] } },
-    "resolve":  { "_required_states": ["0","1","2","3","9a","10"], "_default": { "required_states": ["0","1","2","3","4","4b"] }, "resolve-challenger": { "required_states": ["0","1","2","3","4","4b","5"], "deny_background": true, "required_checks": ["configuration_counterexample","blast_radius_gap","regression_vector"] }, "solve-critic": { "required_states": ["0","1","2","3","4","4b","5"], "deny_background": true, "required_checks": ["type_a_analysis","type_b_analysis","type_c_analysis"] } },
-    "deploy":   { "_required_states": ["0","1","2","3a","3b","3c","4a","4b","5","6"], "_default": { "required_states": ["0","1","2"] }, "provision-scanner": { "required_states": ["0","1","2","3a","3b","3c","4a"] } },
-    "teardown": { "_required_states": ["0","1","2","3","4","5"], "_default": { "required_states": ["0","1","2"] }, "provision-scanner": { "required_states": ["0","1","2"], "artifacts": [".runs/deploy-manifest.json"] } },
-    "solve":    { "_required_states": ["0","1","2","3"], "_default": { "required_states": ["0"] }, "solve-critic": { "required_states": ["0"], "deny_background": true, "required_checks": ["type_a_analysis","type_b_analysis","type_c_analysis"] } },
-    "spec":     { "_required_states": ["0","1","2","3","4","5","6","7","8"] },
-    "rollback": { "_required_states": ["0","1","2","3","4"] },
-    "iterate":  { "_required_states": ["0","1","2","3","4","5"] },
-    "iterate-check": { "_required_states": ["c0","c1","c2","c3"] },
-    "iterate-cross": { "_required_states": ["x0","x1","x2","x3","x4","x5"] },
-    "retro":    { "_required_states": ["0","1","2","3","4"] },
-    "observe":  { "_required_states": ["0","1","2"] },
-    "upgrade":  { "_required_states": ["0","1","2","3"] }
   }
 }

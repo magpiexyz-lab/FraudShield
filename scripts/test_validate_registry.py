@@ -24,15 +24,9 @@ class TestRegistryStructure:
         reg = load_registry()
         assert isinstance(reg, dict)
 
-    def test_has_agent_gates(self):
-        reg = load_registry()
-        assert "agent_gates" in reg
-
     def test_skill_sections_are_dicts(self):
         reg = load_registry()
         for key, val in reg.items():
-            if key == "agent_gates":
-                continue
             assert isinstance(val, dict), f"Top-level key '{key}' must be a dict"
 
 
@@ -45,8 +39,6 @@ class TestStateEntryFormats:
     def test_all_entries_are_string_or_object(self):
         reg = load_registry()
         for skill, states in reg.items():
-            if skill == "agent_gates":
-                continue
             for state_id, entry in states.items():
                 assert isinstance(entry, (str, dict)), (
                     f"{skill}.{state_id}: entry must be str or dict, "
@@ -55,7 +47,7 @@ class TestStateEntryFormats:
 
     def test_object_entries_have_verify_key(self):
         reg = load_registry()
-        skip_sections = {"agent_gates", "observation_gates"}
+        skip_sections = {"trace_schemas"}
         for skill, states in reg.items():
             if skill in skip_sections:
                 continue
@@ -67,7 +59,7 @@ class TestStateEntryFormats:
 
     def test_object_entries_verify_is_string(self):
         reg = load_registry()
-        skip_sections = {"agent_gates", "observation_gates"}
+        skip_sections = {"trace_schemas"}
         for skill, states in reg.items():
             if skill in skip_sections:
                 continue
@@ -79,7 +71,7 @@ class TestStateEntryFormats:
 
     def test_object_entries_calls_is_list(self):
         reg = load_registry()
-        skip_sections = {"agent_gates", "observation_gates"}
+        skip_sections = {"trace_schemas"}
         for skill, states in reg.items():
             if skill in skip_sections:
                 continue
@@ -91,7 +83,7 @@ class TestStateEntryFormats:
 
     def test_calls_entries_have_required_keys(self):
         reg = load_registry()
-        skip_sections = {"agent_gates", "observation_gates"}
+        skip_sections = {"trace_schemas"}
         for skill, states in reg.items():
             if skill in skip_sections:
                 continue
@@ -128,7 +120,7 @@ class TestRegistryBaseline:
         reg = load_registry()
         count = 0
         for skill, states in reg.items():
-            if skill == "agent_gates":
+            if skill == "trace_schemas":
                 continue
             count += len(states)
         assert count >= 100, f"Expected ~147 state entries, found {count}"
@@ -145,7 +137,7 @@ class TestRegistryBaseline:
     def test_non_listed_entries_are_strings(self):
         """Entries NOT in KNOWN_OBJECT_ENTRIES must still be strings."""
         reg = load_registry()
-        skip_sections = {"agent_gates", "observation_gates"}
+        skip_sections = {"trace_schemas"}
         for skill, states in reg.items():
             if skill in skip_sections:
                 continue
@@ -156,22 +148,6 @@ class TestRegistryBaseline:
                     f"{skill}.{state_id}: unexpected object entry — "
                     f"add to KNOWN_OBJECT_ENTRIES if intentional"
                 )
-
-
-# ---------------------------------------------------------------------------
-# Agent gates structure
-# ---------------------------------------------------------------------------
-
-
-class TestAgentGatesStructure:
-    def test_each_skill_has_required_states(self):
-        reg = load_registry()
-        ag = reg.get("agent_gates", {})
-        for skill, gates in ag.items():
-            assert "_required_states" in gates, (
-                f"agent_gates.{skill}: missing _required_states"
-            )
-            assert isinstance(gates["_required_states"], list)
 
 
 # ---------------------------------------------------------------------------
@@ -190,7 +166,7 @@ def _state_sort_key(state_id):
 class TestStateOrdering:
     def test_state_keys_in_ascending_order(self):
         reg = load_registry()
-        skip_sections = {"agent_gates", "observation_gates"}
+        skip_sections = {"trace_schemas"}
         for skill, states in reg.items():
             if skill in skip_sections:
                 continue
@@ -205,15 +181,15 @@ class TestStateOrdering:
 # Bidirectional file <-> registry sync validation
 # ---------------------------------------------------------------------------
 
-PATTERNS_DIR = os.path.join(
-    os.path.dirname(__file__), "..", ".claude", "patterns"
+SKILLS_DIR = os.path.join(
+    os.path.dirname(__file__), "..", ".claude", "skills"
 )
 
 
 def _discover_state_files():
-    """Find all state-*.md files under .claude/patterns/*/."""
+    """Find all state-*.md files under .claude/skills/*/."""
     import glob
-    return sorted(glob.glob(os.path.join(PATTERNS_DIR, "*", "state-*.md")))
+    return sorted(glob.glob(os.path.join(SKILLS_DIR, "*", "state-*.md")))
 
 
 def _extract_advance_state_calls(filepath):
@@ -270,7 +246,7 @@ class TestReverseSync:
 
     def test_every_registry_entry_has_state_file(self):
         reg = load_registry()
-        skip = {"agent_gates", "observation_gates"}
+        skip = {"trace_schemas"}
         file_map = {}
         for f in _discover_state_files():
             for skill, state_id in _extract_advance_state_calls(f):
@@ -288,30 +264,13 @@ class TestReverseSync:
         )
 
 
-class TestRequiredStatesSync:
-    """agent_gates._required_states entries must exist in top-level registry."""
-
-    def test_required_states_have_registry_entries(self):
-        reg = load_registry()
-        ag = reg.get("agent_gates", {})
-        missing = []
-        for skill, gates in ag.items():
-            for s in gates.get("_required_states", []):
-                if str(s) not in reg.get(skill, {}):
-                    missing.append(
-                        f"agent_gates.{skill}._required_states[{s}]"
-                        f" -> {skill}.{s} missing"
-                    )
-        assert not missing, "\n".join(missing)
-
-
 class TestPostconditionSyntax:
     """Verify postcondition commands are syntactically valid."""
 
     def test_python_commands_parse(self):
         import ast
         reg = load_registry()
-        skip = {"agent_gates", "observation_gates"}
+        skip = {"trace_schemas"}
         errors = []
         for skill, states in reg.items():
             if skill in skip:
@@ -338,7 +297,7 @@ class TestPostconditionSyntax:
 
     def test_object_entries_structure(self):
         reg = load_registry()
-        skip = {"agent_gates", "observation_gates"}
+        skip = {"trace_schemas"}
         errors = []
         for skill, states in reg.items():
             if skill in skip:

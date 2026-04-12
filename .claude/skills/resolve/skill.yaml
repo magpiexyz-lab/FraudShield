@@ -5,3 +5,6 @@ agents:
     after: ["5"]
   solve-critic:
     after: ["5"]
+observation:
+  gate: commit-pr-gate
+  artifacts: [observe-result.json]

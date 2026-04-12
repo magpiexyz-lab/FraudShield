@@ -139,7 +139,7 @@ if [ -f "$SCG" ] && [ -f "$PBG" ]; then
 fi
 
 # 16. Verify verify.md STATE 5 branches on testing framework type
-STATE5=".claude/patterns/verify/state-5-e2e-tests.md"
+STATE5=".claude/skills/verify/state-5-e2e-tests.md"
 if [ -f "$STATE5" ]; then
   if grep -q 'playwright' "$STATE5" && ! grep -q 'vitest' "$STATE5"; then
     echo "FAIL: $STATE5 — hardcodes playwright without vitest branch (must handle all testing frameworks)"
@@ -157,7 +157,7 @@ if [ -f "$REGISTRY" ]; then
   WEAK=$(python3 -c "
 import json, sys
 data = json.load(open('$REGISTRY'))
-skip = {'observation_gates', 'agent_gates'}
+skip = {'trace_schemas'}
 s0 = {'0', 'c0', 'x0'}
 weak = []
 for skill, states in data.items():
@@ -180,7 +180,7 @@ fi
 # --- Check 18: Verify gate-keeper spawn prompts include Verify criteria ---
 echo -n "Check 18: gate-keeper prompts include Verify criteria... "
 GATE_MISSING=0
-for f in .claude/patterns/bootstrap/state-*.md .claude/patterns/*/state-*.md; do
+for f in .claude/skills/bootstrap/state-*.md .claude/skills/*/state-*.md; do
   [ -f "$f" ] || continue
   while IFS= read -r line; do
     if echo "$line" | grep -qi 'gate-keeper.*Pass:' && ! echo "$line" | grep -qi 'Verify:'; then
@@ -205,7 +205,7 @@ if [ -f "$REGISTRY" ]; then
   WEAK_TYPE=$(python3 -c "
 import json, re, sys
 data = json.load(open('$REGISTRY'))
-skip = {'observation_gates', 'agent_gates'}
+skip = {'trace_schemas'}
 s0 = {'0', 'c0', 'x0'}
 content_patterns = [
     r'len\(', r'>=', r'<=', r'>\s*0', r'==\s', r'!=',

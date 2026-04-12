@@ -23,7 +23,7 @@ ERRORS=()
 BRANCH=$(get_branch)
 
 # --- PR check functions ---
-# Each function maps to a pr_checks entry in observation_gates.
+# Each function maps to a pr_checks entry in skill.yaml observation config.
 # Functions use globals: REPORT, TRACES_DIR, ERRORS, PROJECT_DIR, BRANCH, SKILL.
 # FRONTMATTER is set by check_frontmatter and used by subsequent checks.
 
@@ -186,7 +186,7 @@ else:
 
 # --- Data-driven skill dispatch ---
 # Replaces branch-prefix if/elif chain. Skill identity comes from context
-# files; check lists come from observation_gates in state-registry.json.
+# files; check lists come from skill.yaml observation config.
 SKILL=$(detect_skill_for_branch "$BRANCH")
 if [[ -z "$SKILL" ]]; then
   exit 0  # Not skill-driven — allow PR
@@ -208,7 +208,7 @@ fi
 # Universal: check skill completion for all commit-pr-gate skills
 check_skill_completion "$SKILL" "$PROJECT_DIR/.runs/${SKILL}-context.json"
 
-# Fallback for skills not registered in observation_gates
+# Fallback for skills without observation config in skill.yaml
 if [[ -z "$GATE_MECH" ]]; then
   if [[ ! -f "$PROJECT_DIR/.runs/observe-result.json" ]]; then
     ERRORS+=("observe-result.json not found — /$SKILL must complete observation before PR")

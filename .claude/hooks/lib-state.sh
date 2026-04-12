@@ -21,18 +21,22 @@ except: print('')
 }
 
 # --- get_required_states ---
-# Reads _required_states array from agent_gates[$SKILL] in state-registry.json.
-# Returns space-separated list of state IDs. Empty string if skill or key missing.
+# Reads states array from skill.yaml for a skill.
+# Returns space-separated list of state IDs. Empty string if skill.yaml missing.
 # Usage: REQUIRED=$(get_required_states "bootstrap")
 get_required_states() {
   local skill="$1"
-  local registry="${CLAUDE_PROJECT_DIR:-.}/.claude/patterns/state-registry.json"
-  [[ ! -f "$registry" ]] && { echo ""; return; }
+  local skill_yaml="${CLAUDE_PROJECT_DIR:-.}/.claude/skills/$skill/skill.yaml"
+  [[ ! -f "$skill_yaml" ]] && { echo ""; return; }
   python3 -c "
-import json
-d = json.load(open('$registry'))
-rs = d.get('agent_gates',{}).get('$skill',{}).get('_required_states',[])
-print(' '.join(str(s) for s in rs))
+import re
+text = open('$skill_yaml').read()
+m = re.search(r'states:\s*\[([^\]]+)\]', text)
+if m:
+    states = [s.strip().strip('\"').strip(\"'\") for s in m.group(1).split(',')]
+    print(' '.join(states))
+else:
+    print('')
 " 2>/dev/null || echo ""
 }
 
@@ -69,7 +73,7 @@ check_skill_completion() {
 
 # --- detect_active_skill_for_branch ---
 # Scans *-context.json files, matches branch, returns skill name.
-# Returns "" if no matching context found. Follows agent-state-gate.sh pattern.
+# Returns "" if no matching context found.
 # Ignores epilogue-context.json and completed contexts.
 # Usage: SKILL=$(detect_active_skill_for_branch "$BRANCH")
 detect_active_skill_for_branch() {
@@ -133,23 +137,57 @@ print(best_skill)
 }
 
 # --- get_observation_gate ---
-# Reads observation_gates metadata from state-registry.json for a skill.
-# Returns the value of a specific field, or "" if not found.
+# Derives observation gate metadata from skill.yaml for a skill.
+# Fields: gate_mechanism, gate_artifacts, pr_checks, strategy.
+# Skills with observation section in skill.yaml use explicit config;
+# skills without default to postcondition-only.
 # Usage: MECH=$(get_observation_gate "upgrade" "gate_mechanism")
 get_observation_gate() {
   local skill="$1"
   local field="$2"
-  local registry="${CLAUDE_PROJECT_DIR:-.}/.claude/patterns/state-registry.json"
-  [[ ! -f "$registry" ]] && { echo ""; return; }
+  local skill_yaml="${CLAUDE_PROJECT_DIR:-.}/.claude/skills/$skill/skill.yaml"
+  [[ ! -f "$skill_yaml" ]] && { echo ""; return; }
   python3 -c "
-import json
-d = json.load(open('$registry'))
-obs = d.get('observation_gates', {}).get('$skill', {})
-val = obs.get('$field', '')
-if isinstance(val, list):
-    print(' '.join(val))
+import re
+text = open('$skill_yaml').read()
+field = '$field'
+
+# Parse observation section from skill.yaml
+obs = {}
+in_obs = False
+for line in text.split('\n'):
+    if line.startswith('observation:'):
+        in_obs = True
+        continue
+    if in_obs:
+        if line and not line[0].isspace():
+            break  # New top-level key
+        m = re.match(r'\s+(\w+):\s*(.*)', line)
+        if m:
+            key, val = m.group(1), m.group(2).strip()
+            if val.startswith('['):
+                items = [s.strip().strip('\"').strip(\"'\") for s in val.strip('[]').split(',') if s.strip()]
+                obs[key] = items
+            else:
+                obs[key] = val
+
+# Map field names to skill.yaml observation keys
+if field == 'gate_mechanism':
+    print(obs.get('gate', ''))
+elif field == 'gate_artifacts':
+    arts = obs.get('artifacts', [])
+    print(' '.join(arts) if isinstance(arts, list) else arts)
+elif field == 'pr_checks':
+    checks = obs.get('pr_checks', [])
+    print(' '.join(checks) if isinstance(checks, list) else checks)
+elif field == 'strategy':
+    has_branch = bool(re.search(r'^branch:', text, re.MULTILINE))
+    has_embed = bool(re.search(r'skill:\s*verify', text))
+    if has_embed: print('verify-embedded')
+    elif has_branch: print('A')
+    else: print('B')
 else:
-    print(val)
+    print('')
 " 2>/dev/null || echo ""
 }
 
@@ -167,7 +205,7 @@ parse_advance_state_args() {
 # Usage: ARCH=$(get_archetype)
 get_archetype() {
   local project_dir="${CLAUDE_PROJECT_DIR:-.}"
-  # 1. Try context JSON files (same pattern as agent-state-gate.sh)
+  # 1. Try context JSON files
   for f in "$project_dir"/.runs/*-context.json; do
     [[ -f "$f" ]] || continue
     local arch
