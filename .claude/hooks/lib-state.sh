@@ -22,19 +22,37 @@ except: print('')
 
 # --- get_required_states ---
 # Reads states array from skill.yaml for a skill.
+# Handles mode-qualified names (iterate-check → iterate dir, check mode).
 # Returns space-separated list of state IDs. Empty string if skill.yaml missing.
 # Usage: REQUIRED=$(get_required_states "bootstrap")
 get_required_states() {
   local skill="$1"
-  local skill_yaml="${CLAUDE_PROJECT_DIR:-.}/.claude/skills/$skill/skill.yaml"
+  local project_dir="${CLAUDE_PROJECT_DIR:-.}"
+  # Map mode-qualified skill names to directory + mode
+  local skill_dir="$skill" mode=""
+  case "$skill" in
+    iterate-check) skill_dir="iterate"; mode="check" ;;
+    iterate-cross) skill_dir="iterate"; mode="cross" ;;
+  esac
+  local skill_yaml="$project_dir/.claude/skills/$skill_dir/skill.yaml"
   [[ ! -f "$skill_yaml" ]] && { echo ""; return; }
   python3 -c "
 import re
 text = open('$skill_yaml').read()
-m = re.search(r'states:\s*\[([^\]]+)\]', text)
-if m:
-    states = [s.strip().strip('\"').strip(\"'\") for s in m.group(1).split(',')]
-    print(' '.join(states))
+mode = '$mode'
+if mode:
+    # Parse modes.<mode>.states
+    mp = re.search(r'%s:\s*\n\s+.*?states:\s*\[([^\]]+)\]' % mode, text, re.DOTALL)
+    if mp:
+        states = [s.strip().strip('\"').strip(\"'\") for s in mp.group(1).split(',')]
+        print(' '.join(states))
+    else:
+        print('')
+else:
+    m = re.search(r'^states:\s*\[([^\]]+)\]', text, re.MULTILINE)
+    if m:
+        states = [s.strip().strip('\"').strip(\"'\") for s in m.group(1).split(',')]
+        print(' '.join(states))
 else:
     print('')
 " 2>/dev/null || echo ""
@@ -145,7 +163,13 @@ print(best_skill)
 get_observation_gate() {
   local skill="$1"
   local field="$2"
-  local skill_yaml="${CLAUDE_PROJECT_DIR:-.}/.claude/skills/$skill/skill.yaml"
+  # Map mode-qualified skill names to directory
+  local skill_dir="$skill"
+  case "$skill" in
+    iterate-check) skill_dir="iterate" ;;
+    iterate-cross) skill_dir="iterate" ;;
+  esac
+  local skill_yaml="${CLAUDE_PROJECT_DIR:-.}/.claude/skills/$skill_dir/skill.yaml"
   [[ ! -f "$skill_yaml" ]] && { echo ""; return; }
   python3 -c "
 import re

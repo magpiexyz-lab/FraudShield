@@ -49,43 +49,17 @@ def main():
         print(json.dumps({'skill': '', 'errors': [], 'warn': ''}))
         sys.exit(0)
 
-    # 2. Load skill.yaml for agent gate config
-    skill_yaml_path = os.path.join(project, '.claude', 'skills', best_skill, 'skill.yaml')
-    if not os.path.isfile(skill_yaml_path):
-        print(best_skill + '\t')
-        sys.exit(0)
-
-    # Parse agents section from skill.yaml (simple YAML subset)
-    import re
-    text = open(skill_yaml_path).read()
+    # 2. Load agent gate config
+    # Primary enforcement is in skill-agent-gate.sh (manifest-driven).
+    # This script provides supplementary checks from state-registry.json agent_gates.
+    # After v2 migration, agent_gates is removed — gate checks are handled by
+    # manifest declarative checks + convention gate scripts (gates/*.sh).
+    reg_path = os.path.join(project, '.claude', 'patterns', 'state-registry.json')
     skill_gates = {}
-    in_agents = False
-    current_agent = None
-    for line in text.split('\n'):
-        if line.startswith('agents:'):
-            in_agents = True
-            continue
-        if in_agents:
-            if line and not line[0].isspace():
-                break  # New top-level key
-            agent_m = re.match(r'  (\S+):', line)
-            if agent_m:
-                current_agent = agent_m.group(1)
-                skill_gates[current_agent] = {}
-                continue
-            if current_agent:
-                kv = re.match(r'\s+(\w+):\s*(.*)', line)
-                if kv:
-                    key, val = kv.group(1), kv.group(2).strip()
-                    if val.startswith('['):
-                        items = [s.strip().strip('"').strip("'") for s in val.strip('[]').split(',') if s.strip()]
-                        skill_gates[current_agent][key] = items
-                    elif val in ('true', 'True'):
-                        skill_gates[current_agent][key] = True
-                    elif val in ('false', 'False'):
-                        skill_gates[current_agent][key] = False
-                    else:
-                        skill_gates[current_agent][key] = val
+    if os.path.isfile(reg_path):
+        reg = json.load(open(reg_path))
+        agent_gates = reg.get('agent_gates', {})
+        skill_gates = agent_gates.get(best_skill, {})
 
     # 3. Resolve gate config for this agent type
     gate = skill_gates.get(agent_type, skill_gates.get('_default', None))
@@ -93,10 +67,11 @@ def main():
     errors = []
     warn = ''
 
-    if gate is None:
+    if not skill_gates:
+        pass  # No agent_gates in registry (v2) — checks handled by manifest + convention gates
+    elif gate is None:
         if skill_gates:
             warn = f'unrecognized agent {agent_type} for skill {best_skill}'
-        # else: skill has no gates at all — silent allow
     elif gate.get('allow_unconditional'):
         pass  # always allow
     else:
