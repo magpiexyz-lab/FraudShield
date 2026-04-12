@@ -15,8 +15,8 @@ The bug pattern found in Step 3 may exist in other template files:
    rg "<pattern>" .claude/ scripts/ Makefile CLAUDE.md
    ```
 3. For each match: evaluate whether it has the same bug. Record matches as
-   `blast_radius` entries with file:line and whether they are confirmed
-   (same bug) or potential (similar pattern, different context)
+   `blast_radius` string entries in `file:line:classification` format
+   (classification is `confirmed` or `potential`)
 
 - **Record blast radius** in `resolve-context.json`:
   ```bash
@@ -24,15 +24,16 @@ The bug pattern found in Step 3 may exist in other template files:
   import json
   ctx = json.load(open('.runs/resolve-context.json'))
   ctx['blast_radius'] = [
-      {'issue': 0, 'affected': [{'file': '<path>', 'line': 0, 'classification': 'confirmed'}]}
+      '<file>:<line>:confirmed',
+      '<file>:<line>:potential'
   ]
   json.dump(ctx, open('.runs/resolve-context.json', 'w'), indent=2)
   "
   ```
 
 **POSTCONDITIONS:**
-- Each actionable issue has a `blast_radius` list
-- Each entry has file:line and classification (confirmed or potential)
+- `blast_radius` list exists in resolve-context.json
+- Each entry is a string in `file:line:classification` format
 - `blast_radius` field persisted to `resolve-context.json`
 
 **VERIFY:**
