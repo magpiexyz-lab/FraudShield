@@ -1,28 +1,22 @@
 #!/usr/bin/env bash
-# security-fixer.sh — Convention gate for security-fixer agent in /verify
-# Extracted from agent-state-gate.sh _verify_security_fixer_checks()
-# Called by: skill-agent-gate.sh (PR 5) after declarative checks pass
+# security-fixer.sh — Convention gate for security-fixer agent in /verify.
+# Called by: skill-agent-gate.sh after declarative checks pass.
+# Declarative checks (requires_traces for build-info-collector,
+# check_efficiency_directives) are handled by the universal hook.
+# This gate checks EXTRA requirements: postconditions, Phase 2 traces,
+# tier1 retry, hard gate, scope=security behavior-verifier.
 set -euo pipefail
 
 source "$(dirname "$0")/../../../hooks/lib.sh"
 
-# Accept env vars (convention gate protocol) or derive from payload/defaults
 if [[ -z "${PAYLOAD:-}" ]]; then parse_payload; fi
-SUBAGENT_TYPE="${SUBAGENT_TYPE:-$(read_payload_field "tool_input.subagent_type")}"
 PROJECT_DIR="${PROJECT_DIR:-${CLAUDE_PROJECT_DIR:-.}}"
 TRACES_DIR="${TRACES_DIR:-$PROJECT_DIR/.runs/agent-traces}"
 ERRORS=()
 
 check_postcondition_artifacts 3
 
-# Phase 1 trace
-if [[ ! -f "$TRACES_DIR/build-info-collector.json" ]]; then
-  ERRORS+=("build-info-collector.json trace missing — Phase 1 has not completed")
-fi
-require_trace_verdict "$TRACES_DIR/build-info-collector.json" "agent may still be running or exhausted turns"
-check_trace_run_id "$TRACES_DIR/build-info-collector.json"
-
-# Phase 2 traces (scope-conditional)
+# Phase 2 traces (scope-conditional — not in manifest declarative)
 SF_SCOPE=$(read_json_field "$PROJECT_DIR/.runs/verify-context.json" "scope")
 SF_ARCH=$(read_json_field "$PROJECT_DIR/.runs/verify-context.json" "archetype")
 if [[ "$SF_ARCH" == "web-app" && ( "$SF_SCOPE" == "full" || "$SF_SCOPE" == "visual" ) ]]; then
@@ -49,7 +43,7 @@ if [[ "$SF_ARCH" == "web-app" && ( "$SF_SCOPE" == "full" || "$SF_SCOPE" == "visu
   fi
 fi
 
-# scope=security requires behavior-verifier
+# scope=security requires behavior-verifier (not in manifest declarative)
 if [[ "$SF_SCOPE" == "security" ]]; then
   if [[ ! -f "$TRACES_DIR/behavior-verifier.json" ]]; then
     ERRORS+=("behavior-verifier.json trace missing — Phase 1 agent incomplete (scope=$SF_SCOPE)")
@@ -57,8 +51,6 @@ if [[ "$SF_SCOPE" == "security" ]]; then
   require_trace_verdict "$TRACES_DIR/behavior-verifier.json" "agent may still be running or exhausted turns"
   check_trace_run_id "$TRACES_DIR/behavior-verifier.json"
 fi
-
-check_efficiency_directives
 
 if [[ ${#ERRORS[@]} -gt 0 ]]; then
   deny_errors "security-fixer gate blocked: " "Complete prerequisites before spawning security-fixer."
