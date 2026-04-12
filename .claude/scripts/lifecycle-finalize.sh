@@ -194,8 +194,13 @@ EOF
     fi
   fi
   if [[ -z "$SKIP_MERGE" ]]; then
-    gh pr merge --squash --delete-branch 2>/dev/null || \
-      echo "WARN: lifecycle-finalize.sh — auto-merge failed" >&2
+    if [[ -n "${CLAUDE_WORKTREE:-}" ]]; then
+      gh pr merge --squash 2>/dev/null || \
+        echo "WARN: lifecycle-finalize.sh — auto-merge failed" >&2
+    else
+      gh pr merge --squash --delete-branch 2>/dev/null || \
+        echo "WARN: lifecycle-finalize.sh — auto-merge failed" >&2
+    fi
   fi
 
 else

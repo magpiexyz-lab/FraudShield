@@ -51,7 +51,13 @@ FEATURE_BRANCH=$(git branch --show-current)
 
 # All skills use --squash for clean single-commit history.
 # /upgrade tracks sync state via .claude/template-sync-meta.json instead of merge ancestry.
-gh pr merge --squash --delete-branch
+if [[ -n "${CLAUDE_WORKTREE:-}" ]]; then
+  # In worktree: --delete-branch triggers local checkout of main which fails
+  # (main is checked out in primary worktree). Branch is cleaned up by ExitWorktree.
+  gh pr merge --squash
+else
+  gh pr merge --squash --delete-branch
+fi
 ```
 
 If `gh pr merge` fails:
@@ -63,11 +69,14 @@ If `gh pr merge` fails:
 ## Post-Merge
 
 ```bash
-git checkout main && git pull
-git branch -d "$FEATURE_BRANCH" 2>/dev/null || true
+if [[ -z "${CLAUDE_WORKTREE:-}" ]]; then
+  git checkout main && git pull
+  git branch -d "$FEATURE_BRANCH" 2>/dev/null || true
+fi
+# In worktree: skip local checkout — ExitWorktree handles cleanup.
 ```
 
-After switching to main:
+After merge completes:
 1. Report: "PR #N auto-merged to main."
 2. Surface the skill's next-step guidance (deploy, publish, etc.)
 
