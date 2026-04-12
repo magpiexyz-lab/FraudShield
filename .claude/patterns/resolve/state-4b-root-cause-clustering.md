@@ -6,9 +6,18 @@
 
 **ACTIONS:**
 
-Skip if only 1 actionable issue remains.
+If only 1 actionable issue remains, write a single-issue clustering artifact and advance:
+```bash
+python3 -c "
+import json
+# Single issue — no clustering possible. Write minimal artifact to satisfy VERIFY.
+clusters = {'clusters': [], 'uncorrelated': [<issue_number>]}
+json.dump(clusters, open('.runs/resolve-clusters.json', 'w'), indent=2)
+"
+```
+Then run STATE TRACKING (advance-state.sh below) and continue to next state.
 
-Compare divergence points and causal patterns across all actionable issues:
+For 2+ issues, compare divergence points and causal patterns across all actionable issues:
 
 1. Group issues sharing the same root pattern (e.g., 3 issues all
    caused by "missing archetype guard" = 1 cluster)

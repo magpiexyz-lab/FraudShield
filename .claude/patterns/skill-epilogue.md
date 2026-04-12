@@ -143,6 +143,11 @@ If evidence exists (non-empty diff or fix-log entries):
    - Content of `.runs/fix-log.md` (or "no fix-log entries")
    - Template file list from Step 1c
    - Skill name
+   - If `.runs/<skill>-context.json` contains a non-empty `issue_list`:
+     pass issue numbers as exclusion list. Add to observer prompt:
+     "This skill run is resolving issues: #N, #M. Do NOT file observations
+     that duplicate these issues. If a finding overlaps a resolved issue,
+     record it as 'overlaps_resolved' in your trace and skip filing."
 
 2. Spawn the `observer` agent (`subagent_type: observer`).
    Pass ONLY the inputs above — do NOT include experiment.yaml content,
