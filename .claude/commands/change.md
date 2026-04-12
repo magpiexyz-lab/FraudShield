@@ -41,16 +41,34 @@ Before entering the lifecycle, check `.runs/current-plan.md`:
 
 ## Lifecycle
 
-1. Run `bash .claude/scripts/lifecycle-init.sh change '{"skill":"change"}'`
-2. State execution loop:
+1. Enter worktree isolation:
+   a. Clean stale worktrees (>24h) from failed prior runs:
+      ```bash
+      for wt in $(git worktree list --porcelain | grep '^worktree ' | awk '{print $2}' | grep '\.claude/worktrees/change-'); do
+        if [[ -d "$wt" ]]; then
+          AGE_SEC=$(( $(date +%s) - $(stat -f %m "$wt" 2>/dev/null || stat -c %Y "$wt" 2>/dev/null || echo 0) ))
+          if [[ $AGE_SEC -gt 86400 ]]; then
+            git worktree remove --force "$wt" 2>/dev/null || true
+          fi
+        fi
+      done
+      ```
+   b. Call `EnterWorktree` with name `"change-<current-timestamp>"`
+   c. If it succeeds: run `mkdir -p .runs` then `npm ci`
+   d. If it fails: continue in current directory (no worktree)
+2. Run `bash .claude/scripts/lifecycle-init.sh change '{"skill":"change"}'`
+3. State execution loop:
    a. Run: `NEXT=$(bash .claude/scripts/lifecycle-next.sh change)`
-   b. If NEXT is "FINALIZE" → go to step 3
+   b. If NEXT is "FINALIZE" → go to step 4
    c. If NEXT does not start with "/" → STOP with error (print NEXT for diagnosis)
    d. Read the state file at $NEXT and execute its ACTIONS section
    e. After ACTIONS complete, run the state's STATE TRACKING command
       (the `bash .claude/scripts/advance-state.sh` call in the state file)
-   f. Return to step 2a
-3. Run `bash .claude/scripts/lifecycle-finalize.sh change`
+   f. Return to step 3a
+4. Run `bash .claude/scripts/lifecycle-finalize.sh change`
+5. If worktree was entered in step 1:
+   a. Run `bash .claude/scripts/lifecycle-worktree-sync.sh`
+   b. Call `ExitWorktree` with action `"remove"` and `discard_changes: true`
 
 **Note:** STATE 7 (USER_APPROVAL) pauses for user input. The lifecycle loop resumes when the user responds with approval.
 
