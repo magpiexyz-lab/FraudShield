@@ -15,7 +15,7 @@ ci_placeholders:
   STRIPE_SECRET_KEY: placeholder-stripe-secret
   NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: placeholder-stripe-publishable
   STRIPE_WEBHOOK_SECRET: placeholder-stripe-webhook-secret
-  NEXT_PUBLIC_SITE_URL: placeholder-site-url
+  NEXT_PUBLIC_SITE_URL: http://localhost:3000
 clean:
   files: []
   dirs: []
@@ -118,6 +118,8 @@ export async function POST(request: Request) {
     // Example: const PLAN_PRICES: Record<string, number> = { basic: 999, pro: 2999 };
     const amount_cents = PLAN_PRICES[plan]; // Intentional — fails build until PLAN_PRICES is defined (see TODO above)
 
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+
     const session = await getStripe().checkout.sessions.create({
       mode: "payment",
       line_items: [
@@ -135,8 +137,8 @@ export async function POST(request: Request) {
         plan,
         amount_cents: String(amount_cents),
       },
-      success_url: `${process.env.NEXT_PUBLIC_SITE_URL}/`,
-      cancel_url: `${process.env.NEXT_PUBLIC_SITE_URL}/`,
+      success_url: `${siteUrl}/`,
+      cancel_url: `${siteUrl}/`,
     });
 
     return NextResponse.json({ url: session.url });
@@ -153,7 +155,7 @@ Notes:
 - Rate limiting: the template includes an in-memory burst limiter (`rateLimit` from `@/lib/rate-limit`). See the hosting stack file for the rate limiter implementation.
 - Validates request body with zod (plan name)
 - Creates a Stripe Checkout Session in `payment` mode (change to `subscription` for recurring)
-- Sets `success_url` and `cancel_url` using `NEXT_PUBLIC_SITE_URL` environment variable — never use client-controlled headers for redirect URLs
+- Sets `success_url` and `cancel_url` using `NEXT_PUBLIC_SITE_URL` environment variable with a `localhost:3000` fallback when the var is absent — never use client-controlled headers for redirect URLs
 - Returns the session URL to the client
 - If `stack.analytics` is present: fire `pay_start` analytics event before redirecting — use the typed `trackPayStart()` wrapper from `events.ts` (client-side, before calling this route). Skip if analytics is absent.
 - The `user.id` reference is intentionally undefined in the template — it causes a build error until auth is integrated. See the auth stack file's "Server-Side Auth Check" section for the correct import and guard pattern. The `metadata` object is critical — the webhook handler reads `session.metadata.user_id` to update the database.
@@ -235,6 +237,17 @@ Notes:
 - `pay_start`: fire client-side when the client receives the Checkout URL and redirects — use the typed `trackPayStart()` wrapper from `events.ts` (per CLAUDE.md Rule 2)
 - `pay_success`: fired server-side in the webhook handler via `trackServerEvent()` from `analytics-server.ts` after confirming `checkout.session.completed` — includes all required properties (`plan`, `amount_cents`, `provider`)
 - See experiment/EVENTS.yaml for the full property spec for both events
+
+## Known Issues
+
+### When NEXT_PUBLIC_SITE_URL is missing, Stripe checkout redirect URLs become "undefined/path"
+The checkout route template uses a `localhost:3000` fallback when building Stripe redirect URLs. Without it, the env var evaluates to `undefined` and produces `undefined/dashboard/setup` — a URL Stripe accepts silently, causing post-payment redirects to fail. The fallback is a defensive measure for local development before `NEXT_PUBLIC_SITE_URL` is configured. In production, the env var should always be set.
+
+```typescript
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+success_url: `${siteUrl}/`,
+cancel_url: `${siteUrl}/`,
+```
 
 ## PR Instructions
 - After merging, set these environment variables in your hosting provider:
