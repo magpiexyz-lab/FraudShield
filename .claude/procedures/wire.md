@@ -209,8 +209,7 @@ Re-read `.runs/current-plan.md` and `experiment/experiment.yaml` now. Verify eac
 
 **Feature and analytics checks:**
 - For each behavior in `behaviors`: confirm the implementation addresses it
-- For each event in the experiment/EVENTS.yaml `events` map (filtered by `requires` matching experiment stack and `archetypes` matching experiment type), confirm a tracking call exists in the appropriate page/route/command
-- If archetype is `cli` and `stack.analytics` is present: confirm `analytics-server.ts` wraps `trackServerEvent()` with an opt-in consent check (see analytics stack file's "CLI Opt-In Consent" section). CLI telemetry must be opt-in per the CLI archetype contract.
+- If `stack.analytics` is present: verify analytics per `patterns/analytics-verification.md`
 - If surface ≠ none and archetype is `service`: confirm root route exists and returns HTML (Content-Type: text/html)
 - If surface ≠ none and archetype is `cli`: confirm `site/index.html` exists
 - If `stack.payment` is present: confirm the webhook handler does not contain `// TODO: Update user's payment status` (this compiles silently — verify it was resolved in Step 5/6)

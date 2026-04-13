@@ -90,7 +90,7 @@ For each experiment.yaml `behavior` that has a corresponding API route:
 
 This step only applies to the **web-app** archetype. Skip for service and cli.
 
-> **STOP** — if `stack.analytics` is present, verify analytics before finishing. Every page must fire its experiment/EVENTS.yaml event(s). Every user action listed in experiment/EVENTS.yaml must have a tracking call. "I'll add analytics later" is not acceptable. If `stack.analytics` is absent, skip this check.
+> **STOP** — verify analytics per `patterns/analytics-verification.md` before finishing (skip if `stack.analytics` is absent).
 
 > **Note:** Visual rendering review (screenshots, layout breaks, mobile responsiveness)
 > is performed by the design-critic agent in `/verify` (web-app only). Scaffold agents

@@ -87,7 +87,7 @@ Generate a JSON-LD `<script type="application/ld+json">` block for the landing p
 ### 4. Wire analytics
 
 If `stack.analytics` is present and not already included:
-- For web-app: verify event imports and tracking calls exist
+- For web-app: verify analytics per `patterns/analytics-verification.md`
 - For service/cli: add inline snippet per surface stack file's analytics section
 
 > **Note:** Visual rendering review (screenshots, layout breaks, mobile responsiveness)
