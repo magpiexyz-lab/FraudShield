@@ -1,8 +1,12 @@
 # Auto-Merge Procedure
 
-Run this procedure after PR creation and all post-PR steps (Q-score, epilogue,
-issue closure) are complete. The PR exists for audit trail (Rule 1) and is
-merged immediately by the skill.
+Auto-merge is executed centrally by `lifecycle-finalize.sh` after delivery gate
+checks pass. Individual skills no longer call auto-merge directly — they write
+delivery artifacts (`.runs/commit-message.txt`, `.runs/pr-title.txt`,
+`.runs/pr-body.md`) and finalize handles commit, push, PR creation, and merge.
+
+This document defines the procedure that `lifecycle-finalize.sh` implements.
+The PR exists for audit trail (Rule 1) and is merged immediately after creation.
 
 ## Safety Gates
 

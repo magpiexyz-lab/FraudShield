@@ -82,7 +82,7 @@
     "9": "grep -q 'checkpoint: phase2-step6' .runs/current-plan.md && python3 -c \"import json; pt=json.load(open('.runs/change-context.json')).get('preliminary_type',''); assert pt!='Feature' or '  - id:' in open('experiment/experiment.yaml').read(), 'Feature requires behaviors'\"",
     "10": "grep -q 'checkpoint: phase2-step7' .runs/current-plan.md && python3 -c \"import json,glob,os; ts=glob.glob('.runs/agent-traces/implementer-*.json')+glob.glob('.runs/agent-traces/visual-implementer-*.json'); bad=[t for t in ts if json.load(open(t)).get('status')=='complete' and not json.load(open(t)).get('worktree_merged')]; assert not bad,'Unmerged: '+','.join(bad); assert not(len(ts)>=2 and not os.path.exists('.runs/consistency-scan-result.json')),'2+ implementers but no consistency-scan-result.json'\"",
     "11": "head -1 .runs/verify-report.md | grep -q '^---$' && grep -q 'checkpoint: phase2-step8' .runs/current-plan.md",
-    "12": "gh pr view --json number 2>/dev/null || git branch --show-current | grep -qE '^main$'"
+    "12": "test -f .runs/commit-message.txt && test -f .runs/pr-title.txt && test -f .runs/pr-body.md"
   },
   "review": {
     "0": "test -f .runs/review-context.json",
@@ -112,7 +112,7 @@
     "8b": "python3 -c \"import json; d=json.load(open('.runs/resolve-side-effects.json')); assert isinstance(d.get('comments_posted'), list), 'comments_posted not a list'; assert all(isinstance(c, (str,dict)) for c in d['comments_posted']), 'comments_posted items invalid'; assert isinstance(d.get('potentially_resolved'), list), 'potentially_resolved not a list'; assert all(isinstance(i, (str,int,dict)) for i in d['potentially_resolved']), 'potentially_resolved items invalid'\"",
     "9": "python3 -c \"import json; d=json.load(open('.runs/patterns-saved.json')); assert isinstance(d.get('patterns_saved'), list), 'patterns_saved not a list'; assert 'skipped_reason' in d, 'skipped_reason missing'; assert len(d['patterns_saved'])>0 or d['skipped_reason'], 'no patterns saved and no skip reason'\"",
     "9a": "python3 -c \"import json,os; d=json.load(open('.runs/graduation-result.json')); assert d.get('evaluated')==True, 'not evaluated'; svcs=d.get('services',[]); assert isinstance(svcs, list), 'services not a list'; [None for s in svcs if s.get('graduated') and not (s.get('file_path') and os.path.exists(s['file_path']) and s.get('frontmatter_valid')==True) and (_ for _ in ()).throw(AssertionError('graduated %s but file missing or invalid' % s.get('service')))]\"",
-    "11": "(gh pr view --json number 2>/dev/null || git branch --show-current | grep -qE '^main$')"
+    "11": "test -f .runs/commit-message.txt && test -f .runs/pr-title.txt && test -f .runs/pr-body.md"
   },
   "distribute": {
     "0": "test -f .runs/distribute-context.json && python3 -c \"import json; ctx=json.load(open('.runs/distribute-context.json')); assert 'phase' in ctx, 'phase missing'; assert ctx['phase'] in (1,2), 'phase must be 1 or 2'\" && python3 -c \"import json; p=json.load(open('.runs/distribute-preconditions.json')); assert p.get('deployed_url')\"",
@@ -201,7 +201,7 @@
     "0": "test -f .runs/upgrade-context.json && git branch --show-current | grep -q 'chore/upgrade-template'",
     "1": "python3 -c \"import json; d=json.load(open('.runs/upgrade-diff-report.json')); assert d.get('sync_status') in ('synced','up-to-date','dry-run'), 'sync_status invalid: %s' % d.get('sync_status'); assert isinstance(d.get('files_synced'), list), 'files_synced not list'; assert all(isinstance(f, str) for f in d['files_synced']), 'files_synced items not strings'; assert isinstance(d.get('orphans'), list), 'orphans not list'; assert all(isinstance(o, str) for o in d['orphans']), 'orphans items not strings'\"",
     "2": "python3 -c \"import json; d=json.load(open('.runs/upgrade-memory-report.json')); assert isinstance(d.get('memories_checked'), int) and d['memories_checked']>=0, 'memories_checked invalid'; assert isinstance(d.get('stale_entries'), list), 'stale_entries not list'; assert all(isinstance(e, (str,dict)) for e in d['stale_entries']), 'stale_entries items invalid'; assert d.get('action_taken') in ('reported','user-confirmed-deletions'), 'action_taken invalid: %s' % d.get('action_taken')\"",
-    "3": "(gh pr view --json number 2>/dev/null || test -f .runs/upgrade-diff-report.json) && python3 -c \"import json; d=json.load(open('.runs/upgrade-step-check.json')); assert len(d.get('steps_completed',[])) > 0\""
+    "3": "(test -f .runs/commit-message.txt || test -f .runs/delivery-skip.flag) && python3 -c \"import json; d=json.load(open('.runs/upgrade-step-check.json')); assert len(d.get('steps_completed',[])) > 0\""
   },
   "trace_schemas": {
     "solve": {

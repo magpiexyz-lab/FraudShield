@@ -37,12 +37,25 @@ print('Wrote .runs/q-dimensions.json')
 ```
 
 If no branch exists (no findings across all iterations):
-  Report "Review clean — no findings" and stop.
+  Report "Review clean — no findings."
+  Write `.runs/delivery-skip.flag` (content: `no-findings`).
 
 If branch exists with changes:
 
-- Commit all accumulated changes with a descriptive message
-- Push and open PR using `.github/PULL_REQUEST_TEMPLATE.md`:
+### Close resolved observations
+
+For each observation issue whose root cause was fixed in this review, close it:
+```bash
+gh issue close <number> --comment "Fixed in review — see upcoming PR"
+```
+
+### Write delivery artifacts
+
+Write `.runs/commit-message.txt` — descriptive message for accumulated changes.
+
+Write `.runs/pr-title.txt` — short title (<=70 chars).
+
+Write `.runs/pr-body.md` using `.github/PULL_REQUEST_TEMPLATE.md`:
   - **Summary**: "Automated review-fix: N findings fixed across M iterations"
   - **How to Test**: "Run `make validate` + all 3 validator scripts"
   - **What Changed**: list every file and what changed
@@ -64,30 +77,11 @@ If branch exists with changes:
   - Per-dimension precision: (fixed) / (confirmed + needs-evidence) for A, B, C
   - Per-label accuracy: fraction of "confirmed" that were fixed and kept
   - Overall yield: total fixed / total reported across all iterations
-- **Close resolved observations**: For each observation issue whose root cause
-  was fixed in this review PR, close it with a comment:
-  ```bash
-  gh issue close <number> --comment "Fixed in review PR #<pr-number>"
-  ```
-
-### Auto-merge
-
-If no branch exists (no findings across all iterations): skip auto-merge —
-there is no PR.
-
-If branch and PR exist: follow `.claude/patterns/auto-merge.md`. The PR number
-is from the `gh pr create` output above.
-
-If any safety gate fails, report the failure and leave the PR open.
-
-If auto-merge succeeded: "Review PR auto-merged to main. N findings fixed, M observation issues closed."
-If auto-merge skipped: "Review PR created but not auto-merged (<reason>). Merge manually."
+- End with: `🤖 Generated with [Claude Code](https://claude.com/claude-code)`
 
 **POSTCONDITIONS:**
-- All changes committed
-- PR created with full review summary (or no PR if no findings)
+- Delivery artifacts written (`.runs/commit-message.txt`, `.runs/pr-title.txt`, `.runs/pr-body.md`) OR `.runs/delivery-skip.flag` if no findings
 - Resolved observation issues closed
-- Auto-merge completed (or intentionally skipped / no PR case)
 
 **VERIFY:**
 ```bash
@@ -99,4 +93,9 @@ python3 -c "import json; rc=json.load(open('.runs/review-complete.json')); asser
 bash .claude/scripts/advance-state.sh review 6
 ```
 
-**NEXT:** TERMINAL — review complete, PR auto-merged (or left open with reason / no changes).
+**NEXT:** TERMINAL — `lifecycle-finalize.sh` handles commit, push, PR creation, and auto-merge (or skips if `delivery-skip.flag` present).
+
+After finalize, read the `DELIVERY=` output and tell the user:
+- If `DELIVERY=merged`: "Review PR auto-merged to main. N findings fixed, M observation issues closed."
+- If `DELIVERY=pr-created:<reason>`: "Review PR created but not auto-merged (<reason>). Merge manually."
+- If `DELIVERY=skipped`: "Review clean — no findings."

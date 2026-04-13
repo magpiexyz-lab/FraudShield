@@ -24,16 +24,8 @@ Repeat up to 3 times. If still failing after 3 attempts, report the error and co
 
 If `dry_run == true`:
 - Present the combined report from States 1-2 to the user (read `.runs/upgrade-diff-report.json` and `.runs/upgrade-memory-report.json`)
-- **STOP.** Do not commit or create a PR. Present the report and end.
-
-### Commit
-
-Stage all changes (overwritten template files + orphan deletions + any build fixes):
-```bash
-TEMPLATE_SHA=$(python3 -c "import json; print(json.load(open('.runs/upgrade-diff-report.json')).get('template_commit','latest')[:7])" 2>/dev/null || echo "latest")
-git add -A
-git commit -m "Upgrade template to $TEMPLATE_SHA"
-```
+- Write `.runs/delivery-skip.flag` (content: `dry-run`)
+- **STOP.** Do not write other delivery artifacts. Present the report and end.
 
 ### Update sync metadata
 
@@ -48,16 +40,21 @@ meta = {
 }
 json.dump(meta, open('.claude/template-sync-meta.json', 'w'), indent=2)
 "
-git add .claude/template-sync-meta.json
-git commit -m "Update template sync metadata"
 ```
 
-### PR
-
-Create a PR with the dedicated upgrade report format (do NOT use the standard PR template):
+### Write delivery artifacts
 
 ```bash
-gh pr create --title "chore: upgrade template to $TEMPLATE_SHA" --body "$(cat <<'EOF'
+TEMPLATE_SHA=$(python3 -c "import json; print(json.load(open('.runs/upgrade-diff-report.json')).get('template_commit','latest')[:7])" 2>/dev/null || echo "latest")
+```
+
+Write `.runs/commit-message.txt`: `Upgrade template to $TEMPLATE_SHA`
+
+Write `.runs/pr-title.txt`: `chore: upgrade template to $TEMPLATE_SHA`
+
+Write `.runs/pr-body.md` — dedicated upgrade report format (do NOT use the standard PR template):
+
+```
 ## Template Upgrade Report
 
 **Sync status:** <synced / up-to-date>
@@ -79,8 +76,6 @@ gh pr create --title "chore: upgrade template to $TEMPLATE_SHA" --body "$(cat <<
 <.gitignore differences — template additions and project additions>
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
-EOF
-)"
 ```
 
 Fill in the actual values from the report JSON files.
@@ -105,18 +100,6 @@ print('Wrote .runs/q-dimensions.json')
 " || true
 ```
 
-### Auto-merge (skip for dry-run)
-
-If `dry_run == true` in `.runs/upgrade-context.json`: skip this section
-entirely (no PR was created).
-
-If `dry_run == false` (normal mode): follow `.claude/patterns/auto-merge.md`.
-The PR number is from the `gh pr create` output above.
-
-If any safety gate fails, report and leave PR open.
-If auto-merge succeeded: "Upgrade PR auto-merged to main."
-If auto-merge skipped: "Upgrade PR created but not auto-merged (<reason>). Merge manually."
-
 ### Completion checkpoint
 
 Write `.runs/upgrade-step-check.json`:
@@ -135,20 +118,14 @@ else:
         diff = json.load(open('.runs/upgrade-diff-report.json'))
         if len(diff.get('files_synced', [])) > 0:
             steps.append('files_synced')
-    pr = subprocess.run(['gh','pr','view','--json','number','-q','.number'], capture_output=True, text=True)
-    pr_number = None
-    if pr.returncode == 0 and pr.stdout.strip():
-        steps.append('commit')
-        steps.append('pr')
-        pr_number = int(pr.stdout.strip())
-    steps.append('auto_merge')
+    if os.path.exists('.runs/commit-message.txt'):
+        steps.append('artifacts')
 steps.append('q_score')
 os.makedirs('.runs', exist_ok=True)
 json.dump({
     'steps_completed': steps,
     'key_outputs': {
         'build_passed': 'build_verify' in steps or not os.path.exists('package.json'),
-        'pr_number': int(pr.stdout.strip()) if not dry_run and pr.returncode == 0 and pr.stdout.strip() else None,
         'dry_run': dry_run
     }
 }, open('.runs/upgrade-step-check.json', 'w'), indent=2)
@@ -159,13 +136,13 @@ print('SELF-CHECK: wrote .runs/upgrade-step-check.json with', len(steps), 'steps
 This checkpoint is mandatory. Do not skip it.
 
 **POSTCONDITIONS:**
-- PR created and auto-merged (normal mode), or dry-run report presented, or PR left open (safety gate)
+- Delivery artifacts written (`.runs/commit-message.txt`, `.runs/pr-title.txt`, `.runs/pr-body.md`) OR `.runs/delivery-skip.flag` if dry-run
 - `.runs/q-dimensions.json` written
 - `.runs/upgrade-step-check.json` exists with at least 1 completed step
 
 **VERIFY:**
 ```bash
-(gh pr view --json number 2>/dev/null || test -f .runs/upgrade-diff-report.json) && python3 -c "import json; d=json.load(open('.runs/upgrade-step-check.json')); assert len(d.get('steps_completed',[])) > 0"
+(test -f .runs/commit-message.txt || test -f .runs/delivery-skip.flag) && python3 -c "import json; d=json.load(open('.runs/upgrade-step-check.json')); assert len(d.get('steps_completed',[])) > 0"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
@@ -173,4 +150,9 @@ This checkpoint is mandatory. Do not skip it.
 bash .claude/scripts/advance-state.sh upgrade 3
 ```
 
-**NEXT:** TERMINAL — upgrade complete, PR auto-merged (or dry-run / left open with reason).
+**NEXT:** TERMINAL — `lifecycle-finalize.sh` handles commit, push, PR creation, and auto-merge (or skips if dry-run).
+
+After finalize, read the `DELIVERY=` output and tell the user:
+- If `DELIVERY=merged`: "Upgrade PR auto-merged to main."
+- If `DELIVERY=pr-created:<reason>`: "Upgrade PR created but not auto-merged (<reason>). Merge manually."
+- If `DELIVERY=skipped`: "Dry-run complete — no changes committed."

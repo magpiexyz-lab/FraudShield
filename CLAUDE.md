@@ -15,7 +15,7 @@ Rules are in priority order. When two rules conflict, the lower-numbered rule wi
 ## Rule 1: PR-First Workflow
 - Never commit directly to `main`
 - Every change goes on a feature branch and gets a PR (for audit trail)
-- Skills auto-merge PRs after verification passes (see `.claude/patterns/auto-merge.md` for safety gates and skip conditions)
+- Skills write delivery artifacts (`.runs/commit-message.txt`, `.runs/pr-title.txt`, `.runs/pr-body.md`); `lifecycle-finalize.sh` handles commit, push, PR creation, and auto-merge after audit gates pass (see `.claude/patterns/auto-merge.md` for safety gates)
 - Branch naming: `feat/<topic>`, `fix/<topic>`, `chore/<topic>`, `change/<topic>`
 - Use `gh pr create` to open PRs
 - Fill in the PR template at `.github/PULL_REQUEST_TEMPLATE.md` for every PR

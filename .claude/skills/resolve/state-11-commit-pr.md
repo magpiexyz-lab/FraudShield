@@ -7,17 +7,21 @@
 
 Read `resolve-context.json` and check the `mode` field.
 
+### Write delivery artifacts
+
 **If `mode == "refine"`:**
-- Commit message: `Refine: <improvement description>\n\nFixes #N, #M`
-- PR title: `Refine: <skill> state improvements`
+- `commit-message.txt`: `Refine: <improvement description>\n\nFixes #N, #M`
+- `pr-title.txt`: `Refine: <skill> state improvements`
 - All other PR body sections (Root Cause Analysis, Blast Radius, etc.) remain the same
 
 **If `mode` is not `"refine"`:** use the normal format below.
 
-Commit all changes with message: `Fix #N: <imperative description>`
+Write `.runs/commit-message.txt`: `Fix #N: <imperative description>`
 (or `Fix #N, #M: <description>` for multiple issues).
 
-Push and open PR using `.github/PULL_REQUEST_TEMPLATE.md`:
+Write `.runs/pr-title.txt`: short title (<=70 chars).
+
+Write `.runs/pr-body.md` using `.github/PULL_REQUEST_TEMPLATE.md`:
 
 - **Summary**: For each issue resolved:
   - Issue number and title
@@ -57,26 +61,15 @@ If none: "No new checks — pattern is unlikely to recur."
 ### Potentially Resolved
 (From Step 8b, or "None — no side-effect matches detected")
 
-### Auto-merge
-
-Follow `.claude/patterns/auto-merge.md`. The PR number is from the `gh pr create`
-output above.
-
-If any safety gate fails, report the failure and leave the PR open — tell the
-user to merge manually.
-
-If auto-merge succeeded: "Resolve PR auto-merged to main. Issues closed."
-If auto-merge skipped: "Resolve PR created but not auto-merged (<reason>). Merge manually."
+End with: `🤖 Generated with [Claude Code](https://claude.com/claude-code)`
 
 **POSTCONDITIONS:**
-- All changes committed
-- PR opened with full template sections
-- `Closes #N` in PR body for each resolved issue
-- Auto-merge completed (or intentionally skipped with reason reported)
+- Delivery artifacts written: `.runs/commit-message.txt`, `.runs/pr-title.txt`, `.runs/pr-body.md`
+- `Closes #N` in `pr-body.md` for each resolved issue
 
 **VERIFY:**
 ```bash
-(gh pr view --json number 2>/dev/null || git branch --show-current | grep -qE '^main$')
+test -f .runs/commit-message.txt && test -f .runs/pr-title.txt && test -f .runs/pr-body.md
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
@@ -84,4 +77,8 @@ If auto-merge skipped: "Resolve PR created but not auto-merged (<reason>). Merge
 bash .claude/scripts/advance-state.sh resolve 11
 ```
 
-**NEXT:** TERMINAL — resolve complete, PR auto-merged (or left open with reason).
+**NEXT:** TERMINAL — `lifecycle-finalize.sh` handles commit, push, PR creation, and auto-merge.
+
+After finalize, read the `DELIVERY=` output and tell the user:
+- If `DELIVERY=merged`: "Resolve PR auto-merged to main. Issues closed."
+- If `DELIVERY=pr-created:<reason>`: "Resolve PR created but not auto-merged (<reason>). Merge manually."

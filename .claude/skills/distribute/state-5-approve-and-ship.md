@@ -43,28 +43,24 @@ json.dump(ctx, open('.runs/distribute-context.json', 'w'), indent=2)
 "
 ```
 
-### 5d: Create PR
+### 5d: Write delivery artifacts
 
-- You are already on a `chore/distribute-*` branch. Do not create another branch.
-- Push and open PR using `.github/PULL_REQUEST_TEMPLATE.md` format:
+Write `.runs/commit-message.txt` — descriptive message for distribution config changes.
+
+Write `.runs/pr-title.txt` — short title (<=70 chars).
+
+Write `.runs/pr-body.md` using `.github/PULL_REQUEST_TEMPLATE.md` format:
   - **Summary**: what was generated and why (include the selected channel)
   - **Distribution Setup**: step-by-step channel + analytics setup instructions (from State 3 working memory — the conversion sync and dashboard setup content)
   - **What Changed**: files modified (landing page UTM capture, experiment/EVENTS.yaml, ads.yaml, FeedbackWidget)
   - The full `ads.yaml` content in the PR body for easy review
-- Fill in **every** section of the PR template. Empty sections are not acceptable. If a section does not apply, write "N/A" with a one-line reason.
-- If `git push` or `gh pr create` fails: show the error and tell the user to check their GitHub authentication (`gh auth status`) and remote configuration (`git remote -v`), then retry.
-
-### 5e: Push to remote
-
-```bash
-git push -u origin HEAD
-```
+  - Fill in **every** section. Empty sections are not acceptable. If a section does not apply, write "N/A" with a one-line reason.
+  - End with: `🤖 Generated with [Claude Code](https://claude.com/claude-code)`
 
 **POSTCONDITIONS:**
 - User has explicitly approved the ads config
 - `approved` field set to `true` in `distribute-context.json`
-- All changes pushed to remote
-- PR opened with summary, distribution setup instructions, and full ads.yaml content
+- Delivery artifacts written: `.runs/commit-message.txt`, `.runs/pr-title.txt`, `.runs/pr-body.md`
 
 **VERIFY:**
 ```bash
@@ -76,4 +72,4 @@ python3 -c "import json; assert json.load(open('.runs/distribute-context.json'))
 bash .claude/scripts/advance-state.sh distribute 5
 ```
 
-**NEXT:** Read [state-6-campaign.md](state-6-campaign.md) to continue.
+**NEXT:** Read [state-6-campaign.md](state-6-campaign.md) to continue. `lifecycle-finalize.sh` handles commit, push, PR creation, and auto-merge after state 6 completes.

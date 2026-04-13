@@ -41,24 +41,22 @@ bash .claude/scripts/advance-state.sh verify 8
 - If mode is **change-verify**: Done — return to /change for PR creation.
 - If mode is **distribute-verify**: Done — return to /distribute for final PR creation.
 - If mode is **standalone**: Done.
-- If mode is **bootstrap-verify**: Create the bootstrap PR:
+- If mode is **bootstrap-verify**: Write delivery artifacts for the bootstrap PR:
   1. Read `.runs/verify-report.md` frontmatter `overall_verdict`
-  2. If `fail`: tell the user "Verification failed — fix issues and re-run `/verify`." Done.
-  3. If `pass`: Create the PR using `gh pr create`. Fill in the PR template (`.github/PULL_REQUEST_TEMPLATE.md`):
-     - **Summary**: "Bootstrap MVP scaffold from experiment.yaml, verified by /verify."
-     - **How to Test**: Read experiment.yaml `type` and surface configuration to generate archetype-appropriate guidance:
-       - web-app: "After merging, run `/deploy` to deploy."
-       - service with surface (co-located or detached): "After merging, run `/deploy` to deploy."
-       - service with no surface (`surface: none`): "After merging, deploy your API to your hosting provider. Run `/iterate` when ready to analyze metrics."
-       - cli with surface (detached): "After merging, run `/deploy` for the marketing surface, then `npm publish` to release the CLI package."
-       - cli with no surface: "After merging, run `npm publish` to release the CLI package."
-     - **What Changed**: List files from `git diff main --name-only`.
-     - **Why**: "Initial MVP scaffold for experiment."
-     - Include verify-report.md agent verdicts in the Verification checklist.
-  4. Tell the user the PR URL.
-  5. **Auto-merge**: Follow `.claude/patterns/auto-merge.md`. The PR number
-     is from the `gh pr create` output in step 3. If any safety gate fails,
-     report the failure and leave the PR open — tell the user to merge
-     manually. If auto-merge succeeds, tell the user:
-     "Bootstrap PR auto-merged to main." followed by the archetype-specific
-     guidance from the How to Test section above. Done.
+  2. If `fail`: tell the user "Verification failed — fix issues and re-run `/verify`." Write `.runs/delivery-skip.flag` (content: `verify-failed`). Done.
+  3. If `pass`: Write delivery artifacts:
+     - `.runs/commit-message.txt`: `Bootstrap verification complete` (used if verify agents made code changes)
+     - `.runs/pr-title.txt`: `Bootstrap MVP scaffold from experiment.yaml`
+     - `.runs/pr-body.md`: Fill in the PR template (`.github/PULL_REQUEST_TEMPLATE.md`):
+       - **Summary**: "Bootstrap MVP scaffold from experiment.yaml, verified by /verify."
+       - **How to Test**: Read experiment.yaml `type` and surface configuration to generate archetype-appropriate guidance:
+         - web-app: "After merging, run `/deploy` to deploy."
+         - service with surface (co-located or detached): "After merging, run `/deploy` to deploy."
+         - service with no surface (`surface: none`): "After merging, deploy your API to your hosting provider. Run `/iterate` when ready to analyze metrics."
+         - cli with surface (detached): "After merging, run `/deploy` for the marketing surface, then `npm publish` to release the CLI package."
+         - cli with no surface: "After merging, run `npm publish` to release the CLI package."
+       - **What Changed**: List files from `git diff main --name-only`.
+       - **Why**: "Initial MVP scaffold for experiment."
+       - Include verify-report.md agent verdicts in the Verification checklist.
+       - End with: `🤖 Generated with [Claude Code](https://claude.com/claude-code)`
+  4. `lifecycle-finalize.sh` handles commit (if changes), push, PR creation, and auto-merge.
