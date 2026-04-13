@@ -54,11 +54,6 @@ Collect these data points and present a summary before asking questions:
 
 Present the summary and then proceed to STATE 1.
 
-Clean stale epilogue artifacts:
-```bash
-rm -f .runs/observe-result.json
-```
-
 **POSTCONDITIONS:**
 - `experiment/experiment.yaml` has been read <!-- enforced by agent behavior, not VERIFY gate -->
 - `experiment/EVENTS.yaml` has been read <!-- enforced by agent behavior, not VERIFY gate -->

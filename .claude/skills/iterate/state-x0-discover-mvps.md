@@ -72,7 +72,6 @@ Wait for Team Lead confirmation. If they want to exclude or add MVPs, adjust the
 ### Merge cross-specific fields into context
 
 ```bash
-rm -f .runs/observe-result.json
 # Write extra JSON to temp file (avoids shell quoting issues with campaign names)
 python3 -c "
 import json

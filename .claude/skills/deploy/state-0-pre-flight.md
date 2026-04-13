@@ -61,10 +61,9 @@
    - If no `## CLI Provisioning` section found — treat as no CLI (stack file predates CLI metadata)
    - Do NOT stop for missing external CLIs — record status for display in Step 2.
 
-Clean stale epilogue artifacts and merge deploy-specific fields into context.
+Merge deploy-specific fields into context.
 Substitute `DEPLOY_MODE` with `"initial"` or `"update"` (from step 3b). For initial mode, all service arrays are empty. For update mode, populate from step 3b diff results:
 ```bash
-rm -f .runs/observe-result.json
 bash .claude/scripts/init-context.sh deploy '{"deploy_mode":"initial","added_services":[],"removed_services":[],"unchanged_services":[]}'
 ```
 - `deploy_mode`: set to `"update"` when `.runs/deploy-manifest.json` existed (step 3b); otherwise keep `"initial"`

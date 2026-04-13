@@ -37,11 +37,6 @@
    - If `stripe` in manifest: `which stripe` + `stripe whoami` (soft — webhook
      deletion is nice-to-have)
 
-Clean stale epilogue artifacts:
-```bash
-rm -f .runs/observe-result.json
-```
-
 **POSTCONDITIONS:**
 - `.runs/deploy-manifest.json` exists and has been read
 - experiment.yaml read and validated

@@ -70,9 +70,8 @@ Then write resolve-context.json with empty `issue_list`, advance state 0, and **
 skill ends. No triage needed, no PR, no further states. (The `_required_states` gate only
 applies when a PR is created; with 0 issues there is no PR.)
 
-Clean stale epilogue artifacts and merge resolve-specific fields into context:
+Merge resolve-specific fields into context:
 ```bash
-rm -f .runs/observe-result.json
 bash .claude/scripts/init-context.sh resolve '{"issue_list":[]}'
 ```
 

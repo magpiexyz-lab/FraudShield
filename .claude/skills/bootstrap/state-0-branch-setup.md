@@ -8,8 +8,8 @@
 
 Follow the branch setup procedure in `.claude/patterns/branch.md`. Use branch prefix `feat` and branch name `feat/bootstrap`.
 
-Clean up stale artifacts from prior runs:
-- `rm -rf .runs/gate-verdicts/ externals-decisions.json`
+Clean up stale skill-specific artifacts from prior runs:
+- `rm -f externals-decisions.json`
 
 > **If resuming from a failed bootstrap:** see `.claude/patterns/recovery.md` for recovery options.
 

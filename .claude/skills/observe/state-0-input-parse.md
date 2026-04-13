@@ -25,9 +25,9 @@ Example: /observe --file .claude/patterns/verify.md --symptom "STATE 3 retry loo
 
 No worktree is needed (analysis-only, no branch).
 
-Clean stale epilogue artifacts:
+Clean stale skill artifacts:
 ```bash
-rm -f .runs/observe-result.json .runs/observe-filing-result.json
+rm -f .runs/observe-filing-result.json
 ```
 
 Store parsed arguments in the context file:

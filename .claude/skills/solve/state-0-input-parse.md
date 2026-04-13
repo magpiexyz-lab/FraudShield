@@ -22,11 +22,6 @@ clearly describes a defect/failure: set `problem_type = "defect"` in `solve-cont
 This activates the prevention dimension in solve-reasoning (root cause + recurrence +
 scope checks). Otherwise: do not set `problem_type` (prevention skipped).
 
-Clean stale epilogue artifacts:
-```bash
-rm -f .runs/observe-result.json
-```
-
 **POSTCONDITIONS:**
 - Problem statement captured (from arguments or user input)
 - Depth mode selected (`full` or `light`)

@@ -31,11 +31,6 @@ Read and validate context files:
 - Read `experiment/EVENTS.yaml` -- understand what's being tracked (this is the canonical list of all events)
 - If `.runs/spec-manifest.json` exists, read it for hypothesis context (used in STATE 2 for per-hypothesis verdicts)
 
-Clean stale epilogue artifacts:
-```bash
-rm -f .runs/observe-result.json
-```
-
 **POSTCONDITIONS:**
 - `experiment/experiment.yaml` has been read and hypothesis understood
 - `experiment/EVENTS.yaml` has been read and events identified

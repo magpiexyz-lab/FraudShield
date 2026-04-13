@@ -180,10 +180,9 @@ for f in d.get('findings', []):
 
 Store prior findings as `prior_findings` for delta comparison in Step 2.
 
-Clean stale epilogue artifacts and merge audit-specific fields into context.
+Merge audit-specific fields into context.
 Substitute the parsed scope value (e.g., `full`, `hooks`, `commands`, `patterns`, `agents`, or `stacks`) into the command:
 ```bash
-rm -f .runs/observe-result.json
 bash .claude/scripts/init-context.sh audit '{"scope":"<parsed scope value>"}'
 ```
 

@@ -37,9 +37,9 @@ else
 fi
 ```
 
-Clean stale artifacts and merge upgrade-specific fields into context:
+Clean stale skill artifacts and merge upgrade-specific fields into context:
 ```bash
-rm -f .runs/upgrade-*.json .runs/observe-result.json
+rm -f .runs/upgrade-*.json
 bash .claude/scripts/init-context.sh upgrade '{"dry_run":false}'
 ```
 

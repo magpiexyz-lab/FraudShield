@@ -70,11 +70,6 @@ Display the parsed input and confirm before proceeding:
 
 Wait for user confirmation.
 
-Clean stale epilogue artifacts:
-```bash
-rm -f .runs/observe-result.json
-```
-
 **POSTCONDITIONS:**
 - Idea text parsed (>= 20 characters)
 - Level is 3 (always)

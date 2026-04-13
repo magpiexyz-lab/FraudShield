@@ -49,11 +49,6 @@
 - Observation hot spots computed (possibly none) <!-- enforced by agent behavior, not VERIFY gate -->
 - `.runs/review-context.json` exists with state tracking initialized
 
-Clean stale epilogue artifacts:
-```bash
-rm -f .runs/observe-result.json
-```
-
 **VERIFY:**
 ```bash
 test -f .runs/review-context.json

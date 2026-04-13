@@ -49,7 +49,6 @@ If no `mcp__claude-in-chrome__*` tools are returned, STOP and show the setup gui
 ### Merge ads-specific fields into context
 
 ```bash
-rm -f .runs/observe-result.json
 bash .claude/scripts/init-context.sh iterate-check "{\"mode\":\"check\",\"channel\":\"<channel from ads.yaml>\",\"campaign_name\":\"<campaign_name>\",\"campaign_id\":\"<campaign_id>\",\"campaign_age_days\":<N>,\"phase\":<1 or 2 from distribute-context.json, or null if unavailable>,\"budget_total_cents\":<N>,\"budget_daily_cents\":<N>,\"max_cpc_cents\":<N>,\"completed_states\":[\"c0\"]}"
 ```
 

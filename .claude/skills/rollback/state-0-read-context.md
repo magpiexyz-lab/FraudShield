@@ -17,11 +17,6 @@ If no `### Rollback` subsection exists, STOP: "Rollback procedure not documented
 
 Read `experiment/experiment.yaml` to determine the archetype (`type` field, default: `web-app`).
 
-Clean stale epilogue artifacts:
-```bash
-rm -f .runs/observe-result.json
-```
-
 **POSTCONDITIONS:**
 - `.runs/deploy-manifest.json` has been read and `hosting.provider` and `canonical_url` extracted
 - Hosting stack file has been read and rollback procedure identified

@@ -207,6 +207,43 @@ with open(manifest_path, "w") as f:
     f.write("\n")
 PYEOF
 
+# --- Step 3a: Clean stale artifacts from prior runs ---
+STALE_ARTIFACTS=(
+  "$PROJECT_DIR/.runs/observe-result.json"
+  "$PROJECT_DIR/.runs/epilogue-context.json"
+  "$PROJECT_DIR/.runs/observer-diffs.txt"
+  "$PROJECT_DIR/.runs/observe-evidence-check.json"
+  "$PROJECT_DIR/.runs/compliance-audit-result.json"
+  "$PROJECT_DIR/.runs/q-dimensions.json"
+  "$PROJECT_DIR/.runs/commit-message.txt"
+  "$PROJECT_DIR/.runs/pr-body.md"
+  "$PROJECT_DIR/.runs/pr-title.txt"
+  "$PROJECT_DIR/.runs/delivery-skip.flag"
+)
+for f in "${STALE_ARTIFACTS[@]}"; do
+  rm -f "$f"
+done
+rm -rf "$PROJECT_DIR/.runs/gate-verdicts/"
+
+# --- Step 3b: Validate experiment.yaml (if exists) ---
+EXPERIMENT_YAML="$PROJECT_DIR/experiment/experiment.yaml"
+VALIDATE_SCRIPT="$PROJECT_DIR/scripts/validate-experiment.py"
+
+SKIP_VALIDATE=""
+if [[ -f "$MANIFEST" ]]; then
+  SKIP_VALIDATE=$(python3 -c "import json; print(json.load(open('$MANIFEST')).get('skip_experiment_validation',''))" 2>/dev/null || echo "")
+fi
+
+if [[ -z "$SKIP_VALIDATE" && -f "$EXPERIMENT_YAML" && -f "$VALIDATE_SCRIPT" ]]; then
+  VALIDATE_EXIT=0
+  python3 "$VALIDATE_SCRIPT" || VALIDATE_EXIT=$?
+  if [[ $VALIDATE_EXIT -eq 1 ]]; then
+    echo "ERROR: experiment.yaml validation failed" >&2
+    exit 1
+  fi
+  # exit code 0 = pass, exit code 2 = warnings only, continue
+fi
+
 # --- Step 4: Branch creation ---
 BRANCH=$(python3 -c "import json; print(json.load(open('$MANIFEST')).get('branch',''))" 2>/dev/null || echo "")
 
