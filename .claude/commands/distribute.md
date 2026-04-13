@@ -42,6 +42,7 @@ If `$ARGUMENTS` contains no `--phase` flag, default to phase 1.
       (the `bash .claude/scripts/advance-state.sh` call in the state file)
    f. Return to step 2a
 3. Run `bash .claude/scripts/lifecycle-finalize.sh distribute`
+4. Read `.claude/patterns/finalize-epilogue.md` and execute
 
 ## Do NOT
 

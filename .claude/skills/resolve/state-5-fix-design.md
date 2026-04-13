@@ -32,7 +32,7 @@ Determine Ring level based on files the fix will modify:
 - Output analysis report only (no `fix_plan`)
 - In `solve-trace.json`, set `output` to: "Ring 3: requires architecture discussion — see analysis"
 - In `resolve-context.json`, set `"ring": 3`
-- After STATE 5d completes, skip STATEs 6-11 and jump directly to STATE 10 (skill epilogue)
+- After STATE 5d completes, skip STATEs 6-9a and jump directly to STATE 11 (commit-pr)
 
 
 #### 5b-light) Light mode path

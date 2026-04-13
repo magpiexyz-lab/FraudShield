@@ -1,4 +1,4 @@
-states: ["0","1","2","3a","3b","3c","4a","4b","5","6"]
+states: ["0","1","2","3a","3b","3c","4a","4b","5",]
 agents:
   provision-scanner:
     after: ["3a"]

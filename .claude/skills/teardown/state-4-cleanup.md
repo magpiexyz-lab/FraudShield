@@ -32,11 +32,18 @@ Compute teardown quality (see `.claude/patterns/skill-scoring.md`):
 ```bash
 RUN_ID=$(python3 -c "import json; print(json.load(open('.runs/teardown-context.json')).get('run_id', ''))" 2>/dev/null || echo "")
 Q_DELETION=$(test ! -f .runs/deploy-manifest.json && echo "1.0" || echo "0.0")
-python3 .claude/scripts/write-q-score.py \
-  --skill teardown --scope teardown \
-  --archetype "$(python3 -c "import yaml; print(yaml.safe_load(open('experiment/experiment.yaml')).get('type','web-app'))" 2>/dev/null || echo web-app)" \
-  --gate 1.0 --dims "{\"deletion\": $Q_DELETION, \"completion\": 1.0}" \
-  --run-id "$RUN_ID" || true
+python3 -c "
+import json, datetime
+with open('.runs/q-dimensions.json', 'w') as f:
+    json.dump({
+        'skill': 'teardown',
+        'scope': 'teardown',
+        'dims': {'deletion': float('$Q_DELETION'), 'completion': 1.0},
+        'run_id': '$RUN_ID',
+        'timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat()
+    }, f, indent=2)
+print('Wrote .runs/q-dimensions.json')
+" || true
 ```
 
 ### Step 5: Summary
@@ -88,4 +95,4 @@ python3 -c "import json; d=json.load(open('.runs/teardown-cleanup.json')); asser
 bash .claude/scripts/advance-state.sh teardown 4
 ```
 
-**NEXT:** Read [state-5-skill-epilogue.md](state-5-skill-epilogue.md) to continue.
+**NEXT:** Skill states complete.

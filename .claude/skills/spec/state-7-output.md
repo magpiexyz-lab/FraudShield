@@ -116,11 +116,19 @@ GATE=$(echo "$SPEC_Q" | sed -n '2p')
 VERDICT=$(echo "$SPEC_Q" | tail -1)
 RUN_ID=$(python3 -c "import json; print(json.load(open('.runs/spec-context.json')).get('run_id', ''))" 2>/dev/null || echo "")
 
-python3 .claude/scripts/write-q-score.py \
-  --skill spec --scope spec --archetype N/A \
-  --gate "$GATE" --dims "$DIMS_JSON" \
-  --run-id "$RUN_ID" --overall-verdict "$VERDICT" \
-  || true
+python3 -c "
+import json, datetime
+dims = json.loads('$DIMS_JSON')
+with open('.runs/q-dimensions.json', 'w') as f:
+    json.dump({
+        'skill': 'spec',
+        'scope': 'spec',
+        'dims': dims,
+        'run_id': '$RUN_ID',
+        'timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat()
+    }, f, indent=2)
+print('Wrote .runs/q-dimensions.json')
+" || true
 ```
 
 ### 7c.2: Observation check
@@ -181,4 +189,4 @@ python3 -c "import json,yaml; yaml.safe_load(open('experiment/experiment.yaml'))
 bash .claude/scripts/advance-state.sh spec 7
 ```
 
-**NEXT:** Read [state-8-skill-epilogue.md](state-8-skill-epilogue.md) to continue.
+**NEXT:** Skill states complete.

@@ -25,6 +25,7 @@ Tear down the cloud infrastructure created by `/deploy`.
       (the `bash .claude/scripts/advance-state.sh` call in the state file)
    f. Return to step 2a
 3. Run `bash .claude/scripts/lifecycle-finalize.sh teardown`
+4. Read `.claude/patterns/finalize-epilogue.md` and execute
 
 ## Do NOT
 

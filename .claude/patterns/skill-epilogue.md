@@ -1,5 +1,11 @@
 # Skill Epilogue — Unified Quality Assurance at Skill Termination
 
+> **Calling convention (as of PR chore/unify-epilogue-qscore):**
+> This procedure is now called by `finalize-epilogue.md` after
+> `lifecycle-finalize.sh` completes — NOT by individual skill states.
+> The strategy (A or B) is determined by finalize.sh and passed in.
+> Step 0 (state completion check) is handled by finalize.sh — skip it here.
+
 Follow this procedure at the end of every skill that does NOT embed `/verify`.
 Two strategies, dispatched by evidence type:
 
@@ -15,23 +21,11 @@ Two strategies, dispatched by evidence type:
 - `/optimize-prompt` — stateless utility, no state machine
 - `/verify` itself — has its own STATE 6 + STATE 7
 
-## Step 0: Verify state completion (both strategies)
+## Step 0: State completion check — HANDLED BY FINALIZE
 
-Before proceeding with observation, check that the skill completed all required states.
-
-Read `.runs/<skill>-context.json` and compare `completed_states` against
-`states` from `.claude/skills/<skill>/skill.yaml`.
-
-If any required state is missing:
-- **HARD FAIL**: The skill cannot produce `verdict: "clean"`. Set a flag
-  `_incomplete_states = true` with the missing state IDs.
-- The final `observe-result.json` MUST have `verdict: "incomplete"` — this
-  overrides any other verdict determination in Steps 3-4 / B3-B4.
-- Continue with remaining epilogue steps for compliance auditing, but the
-  verdict is locked to "incomplete".
-
-If all required states are present or `_required_states` is not defined for this skill,
-proceed to Step 1 with no friction recorded from this step.
+> **Skip this step.** `lifecycle-finalize.sh` verifies state completion
+> before calling this procedure. If states are incomplete, finalize warns
+> but does not block (epilogue is best-effort).
 
 ## Step 1: Collect evidence (artifact-based, not memory-based)
 

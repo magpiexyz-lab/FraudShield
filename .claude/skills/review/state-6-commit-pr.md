@@ -1,7 +1,7 @@
 # STATE 6: COMMIT_PR
 
 **PRECONDITIONS:**
-- Skill epilogue complete (STATE 5 POSTCONDITIONS met)
+- Final validation complete (STATE 4 POSTCONDITIONS met)
 
 **ACTIONS:**
 
@@ -22,10 +22,18 @@ try:
 except:
     print(json.dumps({'completion': 1.0}))
 " 2>/dev/null || echo '{"completion": 1.0}')
-python3 .claude/scripts/write-q-score.py \
-  --skill review --scope review --archetype N/A \
-  --gate 1.0 --dims "$REVIEW_DIMS" \
-  --run-id "$RUN_ID" || true
+python3 -c "
+import json, datetime
+with open('.runs/q-dimensions.json', 'w') as f:
+    json.dump({
+        'skill': 'review',
+        'scope': 'review',
+        'dims': json.loads('$REVIEW_DIMS'),
+        'run_id': '$RUN_ID',
+        'timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat()
+    }, f, indent=2)
+print('Wrote .runs/q-dimensions.json')
+" || true
 ```
 
 If no branch exists (no findings across all iterations):
@@ -83,7 +91,7 @@ If auto-merge skipped: "Review PR created but not auto-merged (<reason>). Merge 
 
 **VERIFY:**
 ```bash
-python3 -c "import json; rc=json.load(open('.runs/review-complete.json')); assert rc.get('timestamp'), 'review-complete timestamp empty'; assert isinstance(rc.get('findings_fixed'), int) and rc['findings_fixed']>=0, 'findings_fixed invalid'; ob=json.load(open('.runs/observe-result.json')); assert ob.get('skill')=='review', 'observe skill != review'; assert ob.get('verdict') in ('clean','filed','no-template-issues','incomplete'), 'observe verdict invalid'"
+python3 -c "import json; rc=json.load(open('.runs/review-complete.json')); assert rc.get('timestamp'), 'review-complete timestamp empty'; assert isinstance(rc.get('findings_fixed'), int) and rc['findings_fixed']>=0, 'findings_fixed invalid'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

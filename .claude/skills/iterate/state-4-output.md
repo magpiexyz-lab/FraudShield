@@ -81,11 +81,18 @@ try:
 except:
     print(json.dumps({'completion': 1.0}))
 " 2>/dev/null || echo '{"completion": 1.0}')
-python3 .claude/scripts/write-q-score.py \
-  --skill iterate --scope iterate \
-  --archetype "$(python3 -c "import yaml; print(yaml.safe_load(open('experiment/experiment.yaml')).get('type','web-app'))" 2>/dev/null || echo web-app)" \
-  --gate 1.0 --dims "$ITERATE_DIMS" \
-  --run-id "$RUN_ID" || true
+python3 -c "
+import json, datetime
+with open('.runs/q-dimensions.json', 'w') as f:
+    json.dump({
+        'skill': 'iterate',
+        'scope': 'iterate',
+        'dims': json.loads('$ITERATE_DIMS'),
+        'run_id': '$RUN_ID' or 'iterate-unknown',
+        'timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat()
+    }, f, indent=2)
+print('Wrote .runs/q-dimensions.json')
+" || true
 ```
 
 ### Summarize next steps
@@ -148,4 +155,4 @@ python3 -c "import json; d=json.load(open('.runs/iterate-manifest.json')); asser
 bash .claude/scripts/advance-state.sh iterate 4
 ```
 
-**NEXT:** Read [state-5-skill-epilogue.md](state-5-skill-epilogue.md) to continue.
+**NEXT:** Skill states complete.

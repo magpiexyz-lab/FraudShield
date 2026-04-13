@@ -40,11 +40,18 @@ Compute rollback quality (see `.claude/patterns/skill-scoring.md`):
 
 ```bash
 RUN_ID=$(python3 -c "import json; print(json.load(open('.runs/rollback-context.json')).get('run_id', ''))" 2>/dev/null || echo "")
-python3 .claude/scripts/write-q-score.py \
-  --skill rollback --scope rollback \
-  --archetype "$(python3 -c "import yaml; print(yaml.safe_load(open('experiment/experiment.yaml')).get('type','web-app'))" 2>/dev/null || echo web-app)" \
-  --gate 1.0 --dims '{"rollback": 1.0, "completion": 1.0}' \
-  --run-id "$RUN_ID" || true
+python3 -c "
+import json, datetime
+with open('.runs/q-dimensions.json', 'w') as f:
+    json.dump({
+        'skill': 'rollback',
+        'scope': 'rollback',
+        'dims': {'rollback': 1.0, 'completion': 1.0},
+        'run_id': '$RUN_ID',
+        'timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat()
+    }, f, indent=2)
+print('Wrote .runs/q-dimensions.json')
+" || true
 ```
 
 **POSTCONDITIONS:**
@@ -75,4 +82,4 @@ python3 -c "import json; d=json.load(open('.runs/rollback-result.json')); assert
 bash .claude/scripts/advance-state.sh rollback 3
 ```
 
-**NEXT:** Read [state-4-skill-epilogue.md](state-4-skill-epilogue.md) to continue.
+**NEXT:** Skill states complete.

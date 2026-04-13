@@ -1,7 +1,7 @@
 # STATE 11: COMMIT_PR
 
 **PRECONDITIONS:**
-- Skill epilogue complete (STATE 10 POSTCONDITIONS met)
+- External stack graduation complete (STATE 9a POSTCONDITIONS met)
 
 **ACTIONS:**
 
@@ -76,7 +76,7 @@ If auto-merge skipped: "Resolve PR created but not auto-merged (<reason>). Merge
 
 **VERIFY:**
 ```bash
-(gh pr view --json number 2>/dev/null || git branch --show-current | grep -qE '^main$') && test -f .runs/observe-result.json
+(gh pr view --json number 2>/dev/null || git branch --show-current | grep -qE '^main$')
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

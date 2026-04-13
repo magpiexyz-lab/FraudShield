@@ -115,6 +115,26 @@ After evaluating all services, write the combined result:
   "
   ```
 
+### Q-score
+
+Write dimension data for lifecycle-finalize:
+
+```bash
+RUN_ID=$(python3 -c "import json; print(json.load(open('.runs/resolve-context.json')).get('run_id', ''))" 2>/dev/null || echo "")
+python3 -c "
+import json, datetime
+with open('.runs/q-dimensions.json', 'w') as f:
+    json.dump({
+        'skill': 'resolve',
+        'scope': 'resolve',
+        'dims': {'completion': 1.0},
+        'run_id': '$RUN_ID',
+        'timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat()
+    }, f, indent=2)
+print('Wrote .runs/q-dimensions.json')
+" || true
+```
+
 **POSTCONDITIONS:**
 - `.runs/graduation-result.json` exists with required fields
 - For each service with `graduated: true`: permanent stack file exists and frontmatter is valid
@@ -130,4 +150,4 @@ python3 -c "import json,os; d=json.load(open('.runs/graduation-result.json')); a
 bash .claude/scripts/advance-state.sh resolve 9a
 ```
 
-**NEXT:** Read [state-10-skill-epilogue.md](state-10-skill-epilogue.md) to continue.
+**NEXT:** Read [state-11-commit-pr.md](state-11-commit-pr.md) to continue.

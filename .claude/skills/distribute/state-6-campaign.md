@@ -721,11 +721,18 @@ Compute distribute execution quality (see `.claude/patterns/skill-scoring.md`):
 ```bash
 RUN_ID=$(python3 -c "import json; print(json.load(open('.runs/distribute-context.json')).get('run_id', ''))" 2>/dev/null || echo "")
 CAMPAIGN_CREATED=$(grep -q 'campaign_id' experiment/ads.yaml 2>/dev/null && echo "1.0" || echo "0.5")
-python3 .claude/scripts/write-q-score.py \
-  --skill distribute --scope distribute \
-  --archetype "$(python3 -c "import yaml; print(yaml.safe_load(open('experiment/experiment.yaml')).get('type','web-app'))" 2>/dev/null || echo web-app)" \
-  --gate 1.0 --dims "{\"campaign\": $CAMPAIGN_CREATED, \"completion\": 1.0}" \
-  --run-id "$RUN_ID" || true
+python3 -c "
+import json, datetime
+with open('.runs/q-dimensions.json', 'w') as f:
+    json.dump({
+        'skill': 'distribute',
+        'scope': 'distribute',
+        'dims': {'campaign': float($CAMPAIGN_CREATED), 'completion': 1.0},
+        'run_id': '$RUN_ID',
+        'timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat()
+    }, f, indent=2)
+print('Wrote .runs/q-dimensions.json')
+" || true
 ```
 
 ### 6h: Auto-merge
@@ -795,7 +802,7 @@ steps.append('6g')
 pr = subprocess.run(['gh','pr','view','--json','number'], capture_output=True, text=True)
 if pr.returncode == 0:
     steps.append('6h')
-if os.path.exists('.runs/q-score-distribute.json'):
+if os.path.exists('.runs/q-dimensions.json'):
     steps.append('q_score')
 steps.append('6i')
 os.makedirs('.runs', exist_ok=True)

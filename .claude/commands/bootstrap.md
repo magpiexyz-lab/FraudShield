@@ -37,6 +37,7 @@ Bootstrap the MVP from experiment.yaml.
       (the `bash .claude/scripts/advance-state.sh` call in the state file)
    f. Return to step 2a
 3. Run `bash .claude/scripts/lifecycle-finalize.sh bootstrap`
+4. Read `.claude/patterns/finalize-epilogue.md` and execute
 
 **Note:** STATE 6 (USER_APPROVAL) pauses for user input. The lifecycle loop resumes when the user responds with approval.
 

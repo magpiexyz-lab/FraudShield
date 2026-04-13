@@ -172,11 +172,19 @@ R_HUMAN=$(echo "$DEPLOY_Q" | sed -n '3p')
 VERDICT=$(echo "$DEPLOY_Q" | tail -1)
 RUN_ID=$(python3 -c "import json; print(json.load(open('.runs/deploy-context.json')).get('run_id', ''))" 2>/dev/null || echo "")
 
-python3 .claude/scripts/write-q-score.py \
-  --skill deploy --scope deploy --archetype "<archetype>" \
-  --gate "$GATE" --dims "$DIMS_JSON" --r-human "$R_HUMAN" \
-  --run-id "$RUN_ID" --overall-verdict "$VERDICT" \
-  || true
+python3 -c "
+import json, datetime
+dims = json.loads('$DIMS_JSON')
+with open('.runs/q-dimensions.json', 'w') as f:
+    json.dump({
+        'skill': 'deploy',
+        'scope': 'deploy',
+        'dims': dims,
+        'run_id': '$RUN_ID',
+        'timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat()
+    }, f, indent=2)
+print('Wrote .runs/q-dimensions.json')
+" || true
 ```
 
 **POSTCONDITIONS:**
@@ -194,4 +202,4 @@ python3 -c "import json; d=json.load(open('.runs/deploy-manifest.json')); assert
 bash .claude/scripts/advance-state.sh deploy 5
 ```
 
-**NEXT:** Read [state-6-skill-epilogue.md](state-6-skill-epilogue.md) to continue.
+**NEXT:** Skill states complete.

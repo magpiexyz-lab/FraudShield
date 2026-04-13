@@ -97,4 +97,4 @@ python3 -c "import json; d=json.load(open('.runs/iterate-cross-scores.json')); m
 bash .claude/scripts/advance-state.sh iterate-cross x4
 ```
 
-**NEXT:** Read [state-x5-skill-epilogue.md](state-x5-skill-epilogue.md) to continue.
+**NEXT:** Skill states complete.

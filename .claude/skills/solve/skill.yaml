@@ -1,4 +1,4 @@
-states: ["0", "1", "2", "3"]
+states: ["0", "1", "2"]
 agents:
   solve-critic:
     after: ["0"]

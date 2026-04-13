@@ -24,6 +24,7 @@ Audit the template's structural quality. $ARGUMENTS
       (the `bash .claude/scripts/advance-state.sh` call in the state file)
    f. Return to step 2a
 3. Run `bash .claude/scripts/lifecycle-finalize.sh audit`
+4. Read `.claude/patterns/finalize-epilogue.md` and execute
 
 ## Do NOT
 - Modify any source files — this skill is analysis only

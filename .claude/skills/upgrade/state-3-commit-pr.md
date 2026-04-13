@@ -24,16 +24,6 @@ Repeat up to 3 times. If still failing after 3 attempts, report the error and co
 
 If `dry_run == true`:
 - Present the combined report from States 1-2 to the user (read `.runs/upgrade-diff-report.json` and `.runs/upgrade-memory-report.json`)
-- Write `.runs/observe-result.json`:
-  ```json
-  {
-    "skill": "upgrade",
-    "timestamp": "<ISO 8601>",
-    "friction_detected": false,
-    "observations_filed": 0,
-    "verdict": "clean"
-  }
-  ```
 - **STOP.** Do not commit or create a PR. Present the report and end.
 
 ### Commit
@@ -101,22 +91,19 @@ Compute upgrade execution quality (see `.claude/patterns/skill-scoring.md`):
 
 ```bash
 RUN_ID=$(python3 -c "import json; print(json.load(open('.runs/upgrade-context.json')).get('run_id', ''))" 2>/dev/null || echo "")
-python3 .claude/scripts/write-q-score.py \
-  --skill upgrade --scope upgrade --archetype N/A \
-  --gate 1.0 --dims '{"completion": 1.0}' \
-  --run-id "$RUN_ID" || true
+python3 -c "
+import json, datetime
+with open('.runs/q-dimensions.json', 'w') as f:
+    json.dump({
+        'skill': 'upgrade',
+        'scope': 'upgrade',
+        'dims': {'completion': 1.0},
+        'run_id': '$RUN_ID' or 'upgrade-unknown',
+        'timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat()
+    }, f, indent=2)
+print('Wrote .runs/q-dimensions.json')
+" || true
 ```
-
-### Strategy A epilogue
-
-Follow `.claude/patterns/skill-epilogue.md` **Strategy A** (Code Observation).
-
-Inputs for Strategy A:
-- Context file: `.runs/upgrade-context.json`
-- Expected completed states: `[0, 1, 2]` (from state-registry.json)
-- This skill produces diffs (template overwrite + orphan cleanup)
-
-Spawn observer if diffs exist. Write `.runs/observe-result.json` with `"skill": "upgrade"`.
 
 ### Auto-merge (skip for dry-run)
 
@@ -155,7 +142,7 @@ else:
         steps.append('pr')
         pr_number = int(pr.stdout.strip())
     steps.append('auto_merge')
-steps.extend(['q_score', 'epilogue'])
+steps.append('q_score')
 os.makedirs('.runs', exist_ok=True)
 json.dump({
     'steps_completed': steps,
@@ -173,12 +160,12 @@ This checkpoint is mandatory. Do not skip it.
 
 **POSTCONDITIONS:**
 - PR created and auto-merged (normal mode), or dry-run report presented, or PR left open (safety gate)
-- `.runs/observe-result.json` exists with `"skill": "upgrade"`
+- `.runs/q-dimensions.json` written
 - `.runs/upgrade-step-check.json` exists with at least 1 completed step
 
 **VERIFY:**
 ```bash
-(gh pr view --json number 2>/dev/null || test -f .runs/upgrade-diff-report.json) && test -f .runs/observe-result.json && python3 -c "import json; d=json.load(open('.runs/upgrade-step-check.json')); assert len(d.get('steps_completed',[])) > 0"
+(gh pr view --json number 2>/dev/null || test -f .runs/upgrade-diff-report.json) && python3 -c "import json; d=json.load(open('.runs/upgrade-step-check.json')); assert len(d.get('steps_completed',[])) > 0"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

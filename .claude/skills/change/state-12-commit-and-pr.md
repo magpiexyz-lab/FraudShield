@@ -48,11 +48,18 @@ RUN_ID=$(python3 -c "import json; print(json.load(open('.runs/change-context.jso
 PLAN_COMPLETE=$(grep -c '\- \[x\]' .runs/current-plan.md 2>/dev/null || echo "0")
 PLAN_TOTAL=$(grep -c '\- \[.\]' .runs/current-plan.md 2>/dev/null || echo "1")
 Q_PLAN=$(python3 -c "print(round(int('${PLAN_COMPLETE}') / max(int('${PLAN_TOTAL}'), 1), 3))")
-python3 .claude/scripts/write-q-score.py \
-  --skill change --scope change \
-  --archetype "$(python3 -c "import yaml; print(yaml.safe_load(open('experiment/experiment.yaml')).get('type','web-app'))" 2>/dev/null || echo web-app)" \
-  --gate 1.0 --dims "{\"plan\": $Q_PLAN, \"completion\": 1.0}" \
-  --run-id "$RUN_ID" || true
+python3 -c "
+import json, datetime
+with open('.runs/q-dimensions.json', 'w') as f:
+    json.dump({
+        'skill': 'change',
+        'scope': 'change',
+        'dims': {'plan': float('$Q_PLAN'), 'completion': 1.0},
+        'run_id': '$RUN_ID' or 'change-unknown',
+        'timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat()
+    }, f, indent=2)
+print('Wrote .runs/q-dimensions.json')
+" || true
 ```
 
 - Delete `.runs/current-plan.md`, `.runs/verify-report.md`, and `.runs/agent-traces/` (if it exists) — the plan is captured in the PR description and the verification results are in the PR checklist. Note: plan deletion happens AFTER Step 7 completes (spec-reviewer needs the plan during verification).

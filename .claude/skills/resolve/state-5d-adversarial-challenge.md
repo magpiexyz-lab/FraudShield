@@ -123,4 +123,4 @@ python3 .claude/scripts/verify-resolve-challenge.py  # resolve-challenge.json, r
 bash .claude/scripts/advance-state.sh resolve 5d
 ```
 
-**NEXT:** If `resolve-context.json` has `"ring": 3`, skip to [state-10-skill-epilogue.md](state-10-skill-epilogue.md). Otherwise, read [state-6-branch-setup.md](state-6-branch-setup.md) to continue.
+**NEXT:** If `resolve-context.json` has `"ring": 3`, skip to [state-11-commit-pr.md](state-11-commit-pr.md). Otherwise, read [state-6-branch-setup.md](state-6-branch-setup.md) to continue.

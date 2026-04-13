@@ -112,10 +112,19 @@ if os.path.exists('.runs/audit-manifest.json'):
     q_findings = 1.0 if int(m.get('total_findings', 0)) > 0 else 0.5
 print(json.dumps({'coverage': 1.0, 'findings': q_findings}))
 " 2>/dev/null || echo '{"coverage": 1.0, "findings": 0.5}')
-python3 .claude/scripts/write-q-score.py \
-  --skill audit --scope audit --archetype N/A \
-  --gate 1.0 --dims "$AUDIT_DIMS" \
-  --run-id "$RUN_ID" || true
+python3 -c "
+import json, datetime
+dims = json.loads('$AUDIT_DIMS')
+with open('.runs/q-dimensions.json', 'w') as f:
+    json.dump({
+        'skill': 'audit',
+        'scope': 'audit',
+        'dims': dims,
+        'run_id': '$RUN_ID',
+        'timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat()
+    }, f, indent=2)
+print('Wrote .runs/q-dimensions.json')
+" || true
 ```
 
 ### Actionable Prompts
@@ -200,4 +209,4 @@ python3 -c "import json; d=json.load(open('.runs/audit-analysis.json')); assert 
 bash .claude/scripts/advance-state.sh audit 2
 ```
 
-**NEXT:** Read [state-3-skill-epilogue.md](state-3-skill-epilogue.md) to continue.
+**NEXT:** Skill states complete.

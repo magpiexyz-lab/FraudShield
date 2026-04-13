@@ -24,6 +24,7 @@ Run a structured retrospective for the current experiment and file it as a GitHu
       (the `bash .claude/scripts/advance-state.sh` call in the state file)
    f. Return to step 2a
 3. Run `bash .claude/scripts/lifecycle-finalize.sh retro`
+4. Read `.claude/patterns/finalize-epilogue.md` and execute
 
 ## Do NOT
 - Modify any code files

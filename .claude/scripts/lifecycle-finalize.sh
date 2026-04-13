@@ -1,17 +1,15 @@
 #!/usr/bin/env bash
-# lifecycle-finalize.sh — Phase 3: Delivery gate + git ops.
+# lifecycle-finalize.sh — Phase 3: Post-execution audit, Q-score, epilogue.
 # Usage: bash .claude/scripts/lifecycle-finalize.sh <skill>
-# Output: FINALIZE_COMPLETE (on success)
+# Output: FINALIZE_COMPLETE + EPILOGUE_STRATEGY=A|B
 #
-# For code-writing skills (branch + diff):
-#   1. Rerun ALL state VERIFY commands from state-registry.json
-#   2. Validate verify-report.md frontmatter (if exists)
-#   3. Scan gate-verdicts/*.json for BLOCK verdicts
-#   4. Check observe-result.json exists
-#   5. If all pass: commit → push → gh pr create → auto-merge
+# Steps (unconditional — runs for all skills):
+#   1. Verify all states completed (warn if missing)
+#   2. Rerun ALL state VERIFY commands from state-registry.json (warn on failure)
+#   3. Q-score: read .runs/q-dimensions.json → call write-q-score.py (skip if absent)
+#   4. Epilogue strategy: output EPILOGUE_STRATEGY=A (diffs vs main) or B (no diffs)
 #
-# For analysis skills (no branch or no diff):
-#   Verify observe-result.json exists (warn if missing)
+# Delivery (commit/push/PR/merge) is NOT handled here — see PR 2.
 set -euo pipefail
 
 SKILL="${1:-}"
@@ -78,136 +76,115 @@ if [[ -n "$HAS_BRANCH" ]]; then
   fi
 fi
 
-# --- Code-writing path: Delivery Gate ---
-if [[ -n "$HAS_BRANCH" && -n "$HAS_DIFF" ]]; then
-  GATE_RESULT=$(PROJECT_DIR_ENV="$PROJECT_DIR" python3 - "$SKILL" << 'PYEOF'
-import json, os, subprocess, glob, sys
+# --- Step 2: Rerun ALL state VERIFY commands (unconditional, warn-only) ---
+# Determine registry key — mode-aware for iterate --check/--cross
+REGISTRY_SKILL="$SKILL"
+if [[ -f "$MANIFEST" ]]; then
+  REGISTRY_SKILL=$(python3 -c "
+import json
+m=json.load(open('$MANIFEST'))
+am=m.get('active_mode','')
+sk='$SKILL'
+# iterate-check, iterate-cross use hyphenated keys in registry
+print('%s-%s'%(sk,am) if am and am!='default' else sk)
+" 2>/dev/null || echo "$SKILL")
+fi
 
-skill = sys.argv[1]
-project_dir = os.environ.get("PROJECT_DIR_ENV", ".")
-errors = []
+python3 -c "
+import json, subprocess, sys, os
 
-# --- Gate 1: Rerun ALL state VERIFY commands ---
-registry_path = os.path.join(project_dir, ".claude/patterns/state-registry.json")
-if os.path.isfile(registry_path):
-    registry = json.load(open(registry_path))
-    skill_states = registry.get(skill, {})
-    for state_id, raw in skill_states.items():
-        # Skip metadata keys
-        if state_id.startswith("_"):
-            continue
-        # Extract verify command (handle string and dict entries)
-        if isinstance(raw, str):
-            cmd = raw
-        elif isinstance(raw, dict):
-            cmd = raw.get("verify", "")
-        else:
-            continue
-        if not cmd or cmd.strip() == "true":
-            continue
-        try:
-            result = subprocess.run(cmd, shell=True, capture_output=True,
-                                    timeout=30, cwd=project_dir)
-            if result.returncode != 0:
-                stderr = result.stderr.decode().strip()[:200]
-                errors.append("VERIFY %s.%s failed: %s" % (skill, state_id, stderr))
-        except subprocess.TimeoutExpired:
-            errors.append("VERIFY %s.%s timed out" % (skill, state_id))
-        except Exception as e:
-            errors.append("VERIFY %s.%s error: %s" % (skill, state_id, e))
+skill = '$REGISTRY_SKILL'
+project_dir = '$PROJECT_DIR'
+registry_path = os.path.join(project_dir, '.claude/patterns/state-registry.json')
 
-# --- Gate 2: verify-report.md frontmatter ---
-report_path = os.path.join(project_dir, ".runs/verify-report.md")
-if os.path.isfile(report_path):
-    content = open(report_path).read()
-    if content.startswith("---"):
-        parts = content.split("---", 2)
-        if len(parts) >= 3:
-            fm = parts[1]
-            required = ["overall_verdict:", "hard_gate_failure:",
-                        "process_violation:", "agents_expected:",
-                        "agents_completed:"]
-            missing = [f for f in required if f not in fm]
-            if missing:
-                errors.append("verify-report.md frontmatter missing: %s" % missing)
-        else:
-            errors.append("verify-report.md frontmatter malformed")
+if not os.path.isfile(registry_path):
+    print('WARN: state-registry.json not found, skipping VERIFY rerun', file=sys.stderr)
+    sys.exit(0)
 
-# --- Gate 3: gate-verdicts scan for BLOCK ---
-verdicts_dir = os.path.join(project_dir, ".runs/gate-verdicts")
-if os.path.isdir(verdicts_dir):
-    for vf in glob.glob(os.path.join(verdicts_dir, "*.json")):
-        try:
-            v = json.load(open(vf))
-            if v.get("verdict") == "BLOCK":
-                errors.append("BLOCK verdict in %s" % os.path.basename(vf))
-        except (json.JSONDecodeError, OSError):
-            pass
+registry = json.load(open(registry_path))
+skill_states = registry.get(skill, {})
+failures = 0
 
-# --- Gate 4: observe-result.json exists ---
-observe_path = os.path.join(project_dir, ".runs/observe-result.json")
-if not os.path.isfile(observe_path):
-    errors.append("observe-result.json not found")
+for state_id, raw in skill_states.items():
+    if state_id.startswith('_'):
+        continue
+    if isinstance(raw, str):
+        cmd = raw
+    elif isinstance(raw, dict):
+        cmd = raw.get('verify', '')
+    else:
+        continue
+    if not cmd or cmd.strip() == 'true':
+        continue
+    try:
+        result = subprocess.run(cmd, shell=True, capture_output=True,
+                                timeout=30, cwd=project_dir)
+        if result.returncode != 0:
+            stderr = result.stderr.decode().strip()[:200]
+            print('WARN: VERIFY %s.%s failed: %s' % (skill, state_id, stderr), file=sys.stderr)
+            failures += 1
+    except subprocess.TimeoutExpired:
+        print('WARN: VERIFY %s.%s timed out' % (skill, state_id), file=sys.stderr)
+        failures += 1
+    except Exception as e:
+        print('WARN: VERIFY %s.%s error: %s' % (skill, state_id, e), file=sys.stderr)
+        failures += 1
 
-# Output
-if errors:
-    for e in errors:
-        print("GATE FAIL: %s" % e, file=sys.stderr)
-    print("FAIL")
-else:
-    print("PASS")
-PYEOF
-  )
+if failures > 0:
+    print('WARN: %d VERIFY command(s) failed (non-blocking)' % failures, file=sys.stderr)
+"
 
-  if [[ "$GATE_RESULT" == "FAIL" ]]; then
-    echo "ERROR: lifecycle-finalize.sh — delivery gate failed (see errors above)" >&2
-    exit 1
-  fi
+# --- Step 3: Q-score — read q-dimensions.json, call write-q-score.py ---
+Q_DIMS_PATH="$PROJECT_DIR/.runs/q-dimensions.json"
+if [[ -f "$Q_DIMS_PATH" ]]; then
+  python3 -c "
+import json, subprocess, sys, os
 
-  # --- Git delivery ---
-  git add -A
-  git commit -m "$(cat <<EOF
-$SKILL: automated delivery
+dims_path = '$Q_DIMS_PATH'
+project_dir = '$PROJECT_DIR'
+script = os.path.join(project_dir, '.claude/scripts/write-q-score.py')
 
-Co-Authored-By: Claude Code <noreply@anthropic.com>
-EOF
-)"
-  git push -u origin HEAD
+if not os.path.isfile(script):
+    print('WARN: write-q-score.py not found, skipping Q-score', file=sys.stderr)
+    sys.exit(0)
 
-  # Create PR
-  gh pr create --title "$SKILL: automated delivery" \
-    --body "Automated delivery from lifecycle-finalize.sh" 2>/dev/null || \
-    echo "WARN: lifecycle-finalize.sh — gh pr create failed (PR may already exist)" >&2
-
-  # Auto-merge with safety guards
-  SKIP_MERGE=""
-  # Guard: migration files
-  if git diff --name-only origin/main...HEAD 2>/dev/null | grep -q '^supabase/migrations/'; then
-    echo "WARN: lifecycle-finalize.sh — PR contains migrations, skipping auto-merge" >&2
-    SKIP_MERGE="true"
-  fi
-  # Guard: secret scan (advisory)
-  if [[ -z "$SKIP_MERGE" ]] && command -v gitleaks >/dev/null 2>&1; then
-    if ! gitleaks detect --source . --no-banner --exit-code 1 2>/dev/null; then
-      echo "WARN: lifecycle-finalize.sh — gitleaks detected potential secrets, skipping auto-merge" >&2
-      SKIP_MERGE="true"
-    fi
-  fi
-  if [[ -z "$SKIP_MERGE" ]]; then
-    if [[ -n "${CLAUDE_WORKTREE:-}" ]]; then
-      gh pr merge --squash 2>/dev/null || \
-        echo "WARN: lifecycle-finalize.sh — auto-merge failed" >&2
-    else
-      gh pr merge --squash --delete-branch 2>/dev/null || \
-        echo "WARN: lifecycle-finalize.sh — auto-merge failed" >&2
-    fi
-  fi
-
+d = json.load(open(dims_path))
+args = [
+    'python3', script,
+    '--skill', d.get('skill', '$SKILL'),
+    '--scope', d.get('scope', 'N/A'),
+    '--dims', json.dumps(d.get('dims', {})),
+    '--run-id', d.get('run_id', ''),
+]
+try:
+    result = subprocess.run(args, capture_output=True, timeout=30, cwd=project_dir)
+    if result.stdout:
+        print(result.stdout.decode().strip())
+    if result.returncode != 0:
+        print('WARN: write-q-score.py exited %d: %s' % (result.returncode, result.stderr.decode().strip()[:200]), file=sys.stderr)
+except Exception as e:
+    print('WARN: Q-score write failed: %s' % e, file=sys.stderr)
+" || true
 else
-  # --- Analysis-only path ---
-  if [[ ! -f "$PROJECT_DIR/.runs/observe-result.json" ]]; then
-    echo "WARN: lifecycle-finalize.sh — observe-result.json missing" >&2
+  echo "WARN: lifecycle-finalize.sh — .runs/q-dimensions.json not found, skipping Q-score" >&2
+fi
+
+# --- Step 4: Epilogue strategy determination ---
+EPILOGUE_STRATEGY="B"
+if [[ -n "$HAS_BRANCH" ]]; then
+  # Check for committed diffs relative to main
+  MERGE_BASE=$(git merge-base main HEAD 2>/dev/null || echo "")
+  if [[ -n "$MERGE_BASE" ]] && ! git diff --quiet "$MERGE_BASE"...HEAD 2>/dev/null; then
+    EPILOGUE_STRATEGY="A"
+    # Collect evidence: diffs for observer
+    git diff "$MERGE_BASE"...HEAD > "$PROJECT_DIR/.runs/observer-diffs.txt" 2>/dev/null || true
   fi
 fi
 
+# Collect fix-log availability
+if [[ -f "$PROJECT_DIR/.runs/fix-log.md" ]] && [[ -s "$PROJECT_DIR/.runs/fix-log.md" ]]; then
+  echo "INFO: fix-log.md present ($(wc -l < "$PROJECT_DIR/.runs/fix-log.md") lines)" >&2
+fi
+
+echo "EPILOGUE_STRATEGY=$EPILOGUE_STRATEGY"
 echo "FINALIZE_COMPLETE"

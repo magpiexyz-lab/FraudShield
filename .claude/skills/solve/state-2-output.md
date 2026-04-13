@@ -13,10 +13,18 @@ Compute solve quality (see `.claude/patterns/skill-scoring.md`):
 
 ```bash
 RUN_ID=$(python3 -c "import json; print(json.load(open('.runs/solve-context.json')).get('run_id', ''))" 2>/dev/null || echo "")
-python3 .claude/scripts/write-q-score.py \
-  --skill solve --scope solve --archetype N/A \
-  --gate 1.0 --dims '{"depth": 1.0, "output": 1.0}' \
-  --run-id "$RUN_ID" || true
+python3 -c "
+import json, datetime
+with open('.runs/q-dimensions.json', 'w') as f:
+    json.dump({
+        'skill': 'solve',
+        'scope': 'solve',
+        'dims': {'depth': 1.0, 'output': 1.0},
+        'run_id': '$RUN_ID' or 'solve-unknown',
+        'timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat()
+    }, f, indent=2)
+print('Wrote .runs/q-dimensions.json')
+" || true
 ```
 
 **STOP.** After presenting the output, end your response here. Do not implement anything.
@@ -30,7 +38,7 @@ The user decides next steps:
 **POSTCONDITIONS:**
 - Solution output presented to user
 - No code changes made
-- Q-score written to verify-history.jsonl
+- Q-score dimensions written to .runs/q-dimensions.json
 
 **VERIFY:**
 ```bash
@@ -42,4 +50,4 @@ python3 -c "import json; st=json.load(open('.runs/solve-trace.json')); assert st
 bash .claude/scripts/advance-state.sh solve 2
 ```
 
-**NEXT:** Read [state-3-skill-epilogue.md](state-3-skill-epilogue.md) to continue.
+**NEXT:** Skill states complete.

@@ -26,3 +26,4 @@ Roll back to the previous production deployment when something goes wrong after 
       (the `bash .claude/scripts/advance-state.sh` call in the state file)
    f. Return to step 2a
 3. Run `bash .claude/scripts/lifecycle-finalize.sh rollback`
+4. Read `.claude/patterns/finalize-epilogue.md` and execute

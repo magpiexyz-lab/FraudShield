@@ -38,6 +38,7 @@ Parse `$ARGUMENTS` for mode flags:
       (the `bash .claude/scripts/advance-state.sh` call in the state file)
    f. Return to step 2a
 3. Run `bash .claude/scripts/lifecycle-finalize.sh iterate`
+4. Read `.claude/patterns/finalize-epilogue.md` and execute
 
 ## Do NOT
 - Write code or modify source files — this skill is analysis only

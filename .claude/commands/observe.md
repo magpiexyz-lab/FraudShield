@@ -23,6 +23,7 @@ Evaluate a template file and file an observation issue if it qualifies. $ARGUMEN
       (the `bash .claude/scripts/advance-state.sh` call in the state file)
    f. Return to step 2a
 3. Run `bash .claude/scripts/lifecycle-finalize.sh observe`
+4. Read `.claude/patterns/finalize-epilogue.md` and execute
 
 ## Do NOT
 - Modify any code files -- this skill is analysis only

@@ -27,6 +27,7 @@ Transform an idea into a complete experiment specification: $ARGUMENTS
       (the `bash .claude/scripts/advance-state.sh` call in the state file)
    f. Return to step 2a
 3. Run `bash .claude/scripts/lifecycle-finalize.sh spec`
+4. Read `.claude/patterns/finalize-epilogue.md` and execute
 
 ## Do NOT
 - Add behaviors not traceable to a hypothesis

@@ -39,4 +39,4 @@ test -f .runs/review-complete.json && python3 scripts/validate-frontmatter.py > 
 bash .claude/scripts/advance-state.sh review 4
 ```
 
-**NEXT:** Read [state-5-skill-epilogue.md](state-5-skill-epilogue.md) to continue.
+**NEXT:** Read [state-6-commit-pr.md](state-6-commit-pr.md) to continue.
