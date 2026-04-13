@@ -105,6 +105,7 @@ CHECKS: list[tuple[int, str, object]] = [
     (63, "Canonical Dependency Reference", lambda ctx: check_63_canonical_dependency_ref(
         ctx["bootstrap_content"], ctx["change_content"], ctx["procedure_contents"], ctx["agent_contents"])
         if ctx["bootstrap_content"] and ctx["change_content"] else []),
+    (64, "Conditional Packages Prose Sync", lambda ctx: check_64_conditional_packages_prose_sync(ctx["stack_contents"])),
 ]
 
 

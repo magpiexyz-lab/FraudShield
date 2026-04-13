@@ -40,7 +40,7 @@ bash .claude/scripts/advance-state.sh verify 8
 **NEXT:**
 - If mode is **change-verify**: Done — return to /change for PR creation.
 - If mode is **distribute-verify**: Done — return to /distribute for final PR creation.
-- If mode is **standalone**: Done.
+- If mode is **standalone**: Done. Tell the user: "Verification complete. Next steps: run `/deploy` if not yet deployed, `/change` to add features or fixes, or `/distribute` to set up ad campaigns."
 - If mode is **bootstrap-verify**: Write delivery artifacts for the bootstrap PR:
   1. Read `.runs/verify-report.md` frontmatter `overall_verdict`
   2. If `fail`: tell the user "Verification failed — fix issues and re-run `/verify`." Write `.runs/delivery-skip.flag` (content: `verify-failed`). Done.

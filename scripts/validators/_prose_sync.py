@@ -15,6 +15,7 @@ __all__ = [
     "check_17_env_vars_prose_frontmatter_sync",
     "check_21_packages_prose_frontmatter_sync",
     "check_26_testing_env_frontmatter_assumes",
+    "check_64_conditional_packages_prose_sync",
 ]
 
 def check_4_frontmatter_content_sync(
@@ -170,6 +171,52 @@ def check_21_packages_prose_frontmatter_sync(stack_contents: dict[str, str]) -> 
                 f"[21] {sf}:{line_num}: Packages prose contains 'npm install {pkg}' "
                 f"but '{pkg}' is not in frontmatter packages.runtime or packages.dev"
             )
+    return errors
+
+
+def check_64_conditional_packages_prose_sync(stack_contents: dict[str, str]) -> list[str]:
+    """Check 64: Packages skipped in fallback sections must not appear unconditionally in ## Packages."""
+    errors: list[str] = []
+    skip_pattern = re.compile(r"skip\s+`([^`]+)`")
+
+    for sf, content in stack_contents.items():
+        # Find packages explicitly skipped in framework-fallback sections
+        skipped_pkgs: set[str] = set()
+        for m in skip_pattern.finditer(content):
+            skipped_pkgs.add(m.group(1))
+        if not skipped_pkgs:
+            continue
+
+        # Find the main ## Packages section
+        pkg_section_match = re.search(
+            r"##\s+Packages\s*\n(.*?)(?=\n##\s|\Z)", content, re.DOTALL
+        )
+        if not pkg_section_match:
+            continue
+
+        # Extract unconditional npm install commands (not preceded by "> When")
+        pkg_prose = pkg_section_match.group(1)
+        # Split into lines and find npm install commands that are inside code blocks
+        # but NOT after a conditional note ("> When...")
+        in_conditional = False
+        for line in pkg_prose.splitlines():
+            if line.strip().startswith("> When") or line.strip().startswith("> when"):
+                in_conditional = True
+            elif line.startswith("```") and in_conditional:
+                # Code block following a conditional note — skip until closing ```
+                continue
+            elif line.startswith("```"):
+                in_conditional = False
+
+            if not in_conditional and line.strip().startswith("npm install"):
+                tokens = line.strip().split()[2:]  # skip "npm" and "install"
+                pkgs = [t for t in tokens if not t.startswith("-")]
+                for pkg in pkgs:
+                    if pkg in skipped_pkgs:
+                        errors.append(
+                            f"[64] {sf}: ## Packages has unconditional 'npm install {pkg}' "
+                            f"but a fallback section says to skip it"
+                        )
     return errors
 
 

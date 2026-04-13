@@ -2,8 +2,9 @@
 # lib-artifacts.sh — Artifact checking and postcondition functions.
 # Sourced via lib.sh facade. Do NOT source directly.
 # Requires: ERRORS, WARNINGS arrays (from caller); PAYLOAD (from parse_payload).
-# Cross-module: read_json_field (lib-core.sh).
+# Cross-module: read_json_field (lib-core.sh), PROJECT_DIR (from caller).
 
+# shellcheck disable=SC2153  # PROJECT_DIR is set by the sourcing script, not a misspelling of project_dir
 # --- check_postcondition_artifacts ---
 # Verifies that postcondition artifact files exist for a given verify state.
 # Appends to global ERRORS for any missing artifacts.

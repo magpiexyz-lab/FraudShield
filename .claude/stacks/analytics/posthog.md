@@ -21,7 +21,11 @@ gitignore: []
 
 ## Packages
 ```bash
-npm install posthog-js posthog-node
+npm install posthog-node
+```
+> When framework is nextjs, also install the client-side library:
+```bash
+npm install posthog-js
 ```
 
 ## Files to Create

@@ -33,7 +33,8 @@ get_project_dir() {
 
 # Override CLAUDE_PROJECT_DIR so all downstream code (hooks, lib modules,
 # Python subprocesses) uses the worktree-aware path. No-op when not in a worktree.
-export CLAUDE_PROJECT_DIR="$(get_project_dir)"
+CLAUDE_PROJECT_DIR="$(get_project_dir)"
+export CLAUDE_PROJECT_DIR
 
 # --- deny ---
 # Outputs reason to stderr and exits 2 to block the tool call.

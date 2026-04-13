@@ -86,9 +86,9 @@ elif is_agent_trace:
     is_scaffold = any(basename.startswith(p) for p in scaffold_prefixes)
 
     # Verdict agents — read from registry
-    _reg_path = os.path.join(os.environ.get('CLAUDE_PROJECT_DIR', '.'), '.claude/patterns/agent-registry.json')
+    _reg_path = os.path.join(os.environ.get("CLAUDE_PROJECT_DIR", "."), ".claude/patterns/agent-registry.json")
     try:
-        verdict_agents = set(json.load(open(_reg_path)).get('verdict_agents', []))
+        verdict_agents = set(json.load(open(_reg_path)).get("verdict_agents", []))
     except Exception:
         verdict_agents = set()
     # Match by prefix for per-page traces like design-critic-landing

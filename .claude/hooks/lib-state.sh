@@ -208,7 +208,10 @@ else:
 # Parse advance-state.sh arguments from a command string.
 # Sets SKILL and STATE_ID globals. Expects $COMMAND to be set.
 parse_advance_state_args() {
+  # Intentionally global — callers read SKILL and STATE_ID after invoking this function
+  # shellcheck disable=SC2034
   SKILL=$(echo "$COMMAND" | grep -oE 'advance-state\.sh[[:space:]]+([a-z-]+)' | awk '{print $NF}' || echo "")
+  # shellcheck disable=SC2034
   STATE_ID=$(echo "$COMMAND" | grep -oE 'advance-state\.sh[[:space:]]+[a-z-]+[[:space:]]+([0-9a-z_]+)' | awk '{print $NF}' || echo "")
 }
 
