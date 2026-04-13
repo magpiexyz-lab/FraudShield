@@ -128,3 +128,29 @@ handle_validation() {
     deny "${gate_name} blocked: ${detail}. ${suffix}"
   fi
 }
+
+# --- Agent registry lookup ---
+# Reads a field from agent-registry.json using dot notation (e.g., "merge_gates.design_ux.checks").
+# Returns: lists as space-separated strings, dicts as JSON, scalars as strings.
+# Usage: VAL=$(read_agent_registry_field "verdict_agents")
+_AGENT_REGISTRY="${CLAUDE_PROJECT_DIR:-.}/.claude/patterns/agent-registry.json"
+
+read_agent_registry_field() {
+  local field="$1"
+  [[ ! -f "$_AGENT_REGISTRY" ]] && { echo ""; return; }
+  python3 -c "
+import json
+reg = json.load(open('$_AGENT_REGISTRY'))
+keys = '$field'.split('.')
+val = reg
+for k in keys:
+    val = val[k] if isinstance(val, dict) and k in val else None
+    if val is None: break
+if isinstance(val, list):
+    print(' '.join(str(v) for v in val))
+elif isinstance(val, dict):
+    print(json.dumps(val))
+elif val is not None:
+    print(val)
+" 2>/dev/null || echo ""
+}

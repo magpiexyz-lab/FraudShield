@@ -85,14 +85,12 @@ elif is_agent_trace:
     scaffold_prefixes = ("scaffold-", "implementer-", "visual-implementer-")
     is_scaffold = any(basename.startswith(p) for p in scaffold_prefixes)
 
-    # Verdict agents — the known set that must have verdict + checks_performed
-    verdict_agents = {
-        "observer", "spec-reviewer", "design-critic", "design-consistency-checker",
-        "ux-journeyer", "security-fixer", "security-attacker", "security-defender",
-        "behavior-verifier", "performance-reporter", "accessibility-scanner",
-        "build-info-collector", "pattern-classifier",
-        "resolve-challenger", "review-challenger", "solve-critic"
-    }
+    # Verdict agents — read from registry
+    _reg_path = os.path.join(os.environ.get('CLAUDE_PROJECT_DIR', '.'), '.claude/patterns/agent-registry.json')
+    try:
+        verdict_agents = set(json.load(open(_reg_path)).get('verdict_agents', []))
+    except Exception:
+        verdict_agents = set()
     # Match by prefix for per-page traces like design-critic-landing
     is_verdict_agent = basename in verdict_agents or any(
         basename.startswith(va + "-") for va in verdict_agents

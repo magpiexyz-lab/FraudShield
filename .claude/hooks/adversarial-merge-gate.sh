@@ -24,11 +24,16 @@ try:
 except Exception:
     print('PARSE_ERROR'); sys.exit(0)
 traces_dir = os.environ.get('CLAUDE_PROJECT_DIR', '.') + '/.runs/agent-traces'
-# Check for either resolve-challenger (light mode) or solve-critic (full mode)
-rc_path = os.path.join(traces_dir, 'resolve-challenger.json')
-sc_path = os.path.join(traces_dir, 'solve-critic.json')
+# Read trace names from agent registry
+_reg_path = os.path.join(os.environ.get('CLAUDE_PROJECT_DIR', '.'), '.claude/patterns/agent-registry.json')
+try:
+    _adv = json.load(open(_reg_path)).get('merge_gates', {}).get('adversarial', {}).get('resolve', {})
+except Exception:
+    _adv = {}
+rc_path = os.path.join(traces_dir, _adv.get('light_trace', 'resolve-challenger') + '.json')
+sc_path = os.path.join(traces_dir, _adv.get('full_trace', 'solve-critic') + '.json')
 if not os.path.exists(rc_path) and not os.path.exists(sc_path):
-    print('FAIL:No adversarial trace found (resolve-challenger.json or solve-critic.json)')
+    print(f'FAIL:No adversarial trace found ({os.path.basename(rc_path)} or {os.path.basename(sc_path)})')
     sys.exit(0)
 errors = []
 challenges = merge.get('challenges', [])
@@ -74,9 +79,15 @@ try:
 except Exception:
     print('PARSE_ERROR'); sys.exit(0)
 traces_dir = os.environ.get('CLAUDE_PROJECT_DIR', '.') + '/.runs/agent-traces'
-trace_path = os.path.join(traces_dir, 'review-challenger.json')
+# Read trace name from agent registry
+_reg_path = os.path.join(os.environ.get('CLAUDE_PROJECT_DIR', '.'), '.claude/patterns/agent-registry.json')
+try:
+    _review_trace = json.load(open(_reg_path)).get('merge_gates', {}).get('adversarial', {}).get('review', {}).get('trace', 'review-challenger')
+except Exception:
+    _review_trace = 'review-challenger'
+trace_path = os.path.join(traces_dir, _review_trace + '.json')
 if not os.path.exists(trace_path):
-    print('FAIL:review-challenger.json trace not found -- cannot validate adversarial artifact')
+    print(f'FAIL:{os.path.basename(trace_path)} trace not found -- cannot validate adversarial artifact')
     sys.exit(0)
 trace = json.load(open(trace_path))
 tv = trace.get('verdicts', [])
@@ -117,20 +128,8 @@ except Exception:
       exit 0
     fi
 
-    CHANGE_CHECKS='{
-      "traces": [
-        {
-          "trace_file": "solve-critic.json",
-          "merge_key": null,
-          "missing_error": "solve-critic.json trace not found -- cannot validate change challenge (solve_depth=full)",
-          "fields": [
-            {"trace_field": "type_a_count", "merge_field": "round_1_type_a_count"},
-            {"trace_field": "round", "merge_field": "critic_rounds"}
-          ]
-        }
-      ],
-      "self_checks": []
-    }'
+    CHANGE_CHECKS=$(read_agent_registry_field "merge_gates.adversarial.change.checks")
+    [[ -z "$CHANGE_CHECKS" ]] && exit 0
     run_merge_gate "change-challenge" "$CHANGE_CHECKS" "Adversarial merge gate (change)"
     ;;
 

@@ -53,27 +53,54 @@ if [[ -f "$PROJECT_DIR/.runs/verify-context.json" ]]; then
     fi
   fi
 
-  # Check 9: design-critic hard gate
-  check_hard_gate_trace "design-critic" "$TRACE_DIR" \
-    '"$F_verdict" == "unresolved" || "$F_recovery" == "True"' \
-    verdict recovery
+  # Hard gate checks — read from agent registry
+  while IFS=$'\t' read -r _hg_agent _hg_condition _hg_fields; do
+    [[ -z "$_hg_agent" ]] && continue
+    # shellcheck disable=SC2086
+    check_hard_gate_trace "$_hg_agent" "$TRACE_DIR" "$_hg_condition" $_hg_fields
+  done < <(python3 -c "
+import json, os
+reg_path = os.path.join(os.environ.get('CLAUDE_PROJECT_DIR', '.'), '.claude/patterns/agent-registry.json')
+try:
+    reg = json.load(open(reg_path))
+except Exception:
+    exit(0)
+def rule_to_expr(r):
+    f = r['field']
+    if 'eq' in r: return '\"\$F_{0}\" == \"{1}\"'.format(f, r['eq'])
+    if 'gt' in r: return '\"\$F_{0}\" -gt {1}'.format(f, r['gt'])
+    return 'false'
+for hg in reg.get('hard_gates', []):
+    parts, fields = [], set()
+    for rule in hg.get('block_rules', []):
+        if 'all' in rule:
+            sub = ' && '.join(rule_to_expr(sr) for sr in rule['all'])
+            parts.append('(' + sub + ')')
+            for sr in rule['all']: fields.add(sr['field'])
+        else:
+            parts.append(rule_to_expr(rule))
+            fields.add(rule['field'])
+    print(hg['agent'] + '\t' + ' || '.join(parts) + '\t' + ' '.join(sorted(fields)))
+" 2>/dev/null)
 
-  # Check 10: ux-journeyer hard gate
-  check_hard_gate_trace "ux-journeyer" "$TRACE_DIR" \
-    '"$F_verdict" == "blocked" || "$F_unresolved_dead_ends" -gt 0 || "$F_recovery" == "True"' \
-    verdict unresolved_dead_ends recovery
-
-  # Check 11: security-fixer hard gate
-  check_hard_gate_trace "security-fixer" "$TRACE_DIR" \
-    '("$F_verdict" == "partial" && "$F_unresolved_critical" -gt 0) || "$F_recovery" == "True"' \
-    verdict unresolved_critical recovery
-
-  # Check 13: design-consistency-checker trace required for full/visual + web-app
-  if [[ "$SCOPE" =~ ^(full|visual)$ ]] && [[ "$ARCH" == "web-app" ]]; then
-    if [[ ! -f "$TRACE_DIR/design-consistency-checker.json" ]]; then
-      ERRORS+=("design-consistency-checker.json trace missing for scope=$SCOPE archetype=$ARCH")
+  # Trace existence checks — read from agent registry
+  while IFS=$'\t' read -r _te_agent _te_scopes _te_arch; do
+    [[ -z "$_te_agent" ]] && continue
+    if [[ ",$_te_scopes," == *",$SCOPE,"* ]] && [[ "$ARCH" == "$_te_arch" ]]; then
+      if [[ ! -f "$TRACE_DIR/${_te_agent}.json" ]]; then
+        ERRORS+=("${_te_agent}.json trace missing for scope=$SCOPE archetype=$ARCH")
+      fi
     fi
-  fi
+  done < <(python3 -c "
+import json, os
+reg_path = os.path.join(os.environ.get('CLAUDE_PROJECT_DIR', '.'), '.claude/patterns/agent-registry.json')
+try:
+    reg = json.load(open(reg_path))
+except Exception:
+    exit(0)
+for tr in reg.get('trace_required', []):
+    print(tr['agent'] + '\t' + ','.join(tr['when_scope']) + '\t' + tr['when_archetype'])
+" 2>/dev/null)
 fi
 
 # ═══════════════════════════════════════════════════════════════════

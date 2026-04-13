@@ -1,0 +1,133 @@
+{
+  "_description": "Canonical agent metadata — hooks read from here instead of hardcoding names",
+  "verdict_agents": [
+    "observer", "spec-reviewer", "design-critic", "design-consistency-checker",
+    "ux-journeyer", "security-fixer", "security-attacker", "security-defender",
+    "behavior-verifier", "performance-reporter", "accessibility-scanner",
+    "build-info-collector", "pattern-classifier",
+    "resolve-challenger", "review-challenger", "solve-critic"
+  ],
+  "merge_gates": {
+    "design_ux": {
+      "checks": {
+        "traces": [
+          {
+            "trace_file": "design-critic.json",
+            "merge_key": "design_critic",
+            "missing_error": "design-critic.json trace not found — cannot validate merge",
+            "fields": [
+              {"trace_field": "verdict",   "merge_field": "verdict"},
+              {"trace_field": "min_score", "merge_field": "min_score", "null_ok": true}
+            ],
+            "sub_traces": [
+              {
+                "trace_file": "design-critic-shared.json",
+                "condition": "exists",
+                "fields": [
+                  {"trace_field": "fixes_applied", "merge_field": "shared_fixes_applied", "null_ok": true}
+                ]
+              }
+            ]
+          },
+          {
+            "trace_file": "ux-journeyer.json",
+            "merge_key": "ux_journeyer",
+            "missing_error": "ux-journeyer.json trace not found — cannot validate merge",
+            "fields": [
+              {"trace_field": "verdict",         "merge_field": "verdict"},
+              {"trace_field": "clicks_to_value", "merge_field": "clicks_to_value", "null_ok": true},
+              {"trace_field": "dead_ends",       "merge_field": "dead_ends",       "null_ok": true}
+            ]
+          }
+        ],
+        "self_checks": []
+      }
+    },
+    "security": {
+      "checks": {
+        "traces": [
+          {
+            "trace_file": "security-defender.json",
+            "merge_key": null,
+            "missing_error": "security-defender.json trace not found — cannot validate merge",
+            "fields": [
+              {"trace_field": "fails_count", "merge_field": "defender_fails"}
+            ]
+          },
+          {
+            "trace_file": "security-attacker.json",
+            "merge_key": null,
+            "missing_error": "security-attacker.json trace not found — cannot validate merge",
+            "fields": [
+              {"trace_field": "findings_count", "merge_field": "attacker_findings"}
+            ]
+          }
+        ],
+        "self_checks": [
+          {"type": "count_match", "array_field": "issues", "count_field": "merged_issues"}
+        ]
+      }
+    },
+    "adversarial": {
+      "resolve": {
+        "light_trace": "resolve-challenger",
+        "full_trace": "solve-critic"
+      },
+      "review": {
+        "trace": "review-challenger"
+      },
+      "change": {
+        "checks": {
+          "traces": [
+            {
+              "trace_file": "solve-critic.json",
+              "merge_key": null,
+              "missing_error": "solve-critic.json trace not found -- cannot validate change challenge (solve_depth=full)",
+              "fields": [
+                {"trace_field": "type_a_count", "merge_field": "round_1_type_a_count"},
+                {"trace_field": "round", "merge_field": "critic_rounds"}
+              ]
+            }
+          ],
+          "self_checks": []
+        }
+      }
+    }
+  },
+  "hard_gates": [
+    {
+      "agent": "design-critic",
+      "block_rules": [
+        {"field": "verdict", "eq": "unresolved"},
+        {"field": "recovery", "eq": "True"}
+      ]
+    },
+    {
+      "agent": "ux-journeyer",
+      "block_rules": [
+        {"field": "verdict", "eq": "blocked"},
+        {"field": "unresolved_dead_ends", "gt": 0},
+        {"field": "recovery", "eq": "True"}
+      ]
+    },
+    {
+      "agent": "security-fixer",
+      "block_rules": [
+        {
+          "all": [
+            {"field": "verdict", "eq": "partial"},
+            {"field": "unresolved_critical", "gt": 0}
+          ]
+        },
+        {"field": "recovery", "eq": "True"}
+      ]
+    }
+  ],
+  "trace_required": [
+    {
+      "agent": "design-consistency-checker",
+      "when_scope": ["full", "visual"],
+      "when_archetype": "web-app"
+    }
+  ]
+}
