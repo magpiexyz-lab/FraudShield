@@ -89,18 +89,20 @@ check_skill_completion() {
   fi
 }
 
-# --- detect_active_skill_for_branch ---
-# Scans *-context.json files, matches branch, returns skill name.
-# Returns "" if no matching context found.
-# Ignores epilogue-context.json and completed contexts.
-# Usage: SKILL=$(detect_active_skill_for_branch "$BRANCH")
-detect_active_skill_for_branch() {
+# --- _detect_skill_for_branch_impl ---
+# Internal: shared implementation for detect_active/detect_skill.
+# Args: <branch> <include_completed>
+#   include_completed="true"  → return any matching context (active or completed)
+#   include_completed="false" → skip contexts with completed: true
+_detect_skill_for_branch_impl() {
   local branch="$1"
+  local include_completed="$2"
   local project_dir="${CLAUDE_PROJECT_DIR:-.}"
   python3 -c "
 import json, glob, os
 branch = '$branch'
 project = '$project_dir'
+include_completed = ('$include_completed' == 'true')
 best_skill = ''
 best_ts = ''
 for f in glob.glob(os.path.join(project, '.runs', '*-context.json')):
@@ -110,7 +112,7 @@ for f in glob.glob(os.path.join(project, '.runs', '*-context.json')):
         d = json.load(open(f))
         if d.get('branch') != branch:
             continue
-        if d.get('completed'):
+        if not include_completed and d.get('completed'):
             continue
         ts = d.get('timestamp', '')
         if ts > best_ts:
@@ -122,6 +124,15 @@ print(best_skill)
 " 2>/dev/null || echo ""
 }
 
+# --- detect_active_skill_for_branch ---
+# Scans *-context.json files, matches branch, returns skill name.
+# Returns "" if no matching context found.
+# Ignores epilogue-context.json and completed contexts.
+# Usage: SKILL=$(detect_active_skill_for_branch "$BRANCH")
+detect_active_skill_for_branch() {
+  _detect_skill_for_branch_impl "$1" "false"
+}
+
 # --- detect_skill_for_branch ---
 # Like detect_active_skill_for_branch but does NOT filter completed contexts.
 # Use for PR gates where the skill has already finished all states and
@@ -129,29 +140,7 @@ print(best_skill)
 # Returns "" if no matching context found.
 # Usage: SKILL=$(detect_skill_for_branch "$BRANCH")
 detect_skill_for_branch() {
-  local branch="$1"
-  local project_dir="${CLAUDE_PROJECT_DIR:-.}"
-  python3 -c "
-import json, glob, os
-branch = '$branch'
-project = '$project_dir'
-best_skill = ''
-best_ts = ''
-for f in glob.glob(os.path.join(project, '.runs', '*-context.json')):
-    if 'epilogue-context' in f:
-        continue
-    try:
-        d = json.load(open(f))
-        if d.get('branch') != branch:
-            continue
-        ts = d.get('timestamp', '')
-        if ts > best_ts:
-            best_ts = ts
-            best_skill = d.get('skill', '')
-    except:
-        continue
-print(best_skill)
-" 2>/dev/null || echo ""
+  _detect_skill_for_branch_impl "$1" "true"
 }
 
 # --- get_observation_gate ---

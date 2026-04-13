@@ -96,7 +96,8 @@ for state_id in states:
         if path:
             print(path)
         else:
-            print("STATE_FILE_NOT_FOUND:%s:%s" % (skill, sid))
+            print("STATE_FILE_NOT_FOUND:%s:%s" % (skill, sid), file=sys.stderr)
+            sys.exit(1)
         sys.exit(0)
 
 # All states completed

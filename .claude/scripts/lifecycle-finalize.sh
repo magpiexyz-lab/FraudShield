@@ -245,7 +245,7 @@ if d.get('exit_code') != 0:
   fi
 
   # --- Git delivery ---
-  git add -A
+  git add -A -- ':!.runs/'
   if ! git diff --cached --quiet 2>/dev/null; then
     git commit -m "$(cat "$COMMIT_MSG")"
   fi

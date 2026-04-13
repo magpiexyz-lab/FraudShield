@@ -67,6 +67,45 @@ _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../scripts" && pwd)"
 source "$_SCRIPT_DIR/lifecycle-lib.sh"
 CTX_FILE=$(resolve_context_path "$SKILL")
 
+# --- _log_verify_trace ---
+# Append a verify pass/fail entry to the execution trace.
+# Args: <skill> <state_id> <result> [verify_cmd]
+_log_verify_trace() {
+  local skill="$1" state_id="$2" result="$3" verify_cmd="${4:-}"
+  python3 -c "
+import json, os, datetime
+try:
+    ctx_path = '$CTX_FILE'
+    run_id = json.load(open(ctx_path)).get('run_id', 'unknown') if os.path.exists(ctx_path) else 'unknown'
+    trace_file = '.runs/${skill}-execution-trace.jsonl'
+    is_first = True
+    if os.path.exists(trace_file):
+        with open(trace_file) as f:
+            for line in f:
+                try:
+                    e = json.loads(line)
+                    if e.get('run_id') == run_id and e.get('state_id') == '$state_id':
+                        is_first = False
+                        break
+                except: pass
+    os.makedirs('.runs', exist_ok=True)
+    entry = {
+        'run_id': run_id,
+        'skill': '$skill',
+        'state_id': '$state_id',
+        'timestamp': datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+        'verify_result': '$result',
+        'is_first_attempt': is_first
+    }
+    verify_cmd = '''$verify_cmd'''
+    if verify_cmd:
+        entry['verify_cmd'] = verify_cmd
+    with open(trace_file, 'a') as f:
+        f.write(json.dumps(entry) + '\n')
+except: pass
+" 2>/dev/null || true
+}
+
 if [[ -f "$CTX_FILE" ]]; then
   CHAIN_RESULT=$(python3 -c "
 import json, sys
@@ -104,35 +143,7 @@ fi
 cd "$PROJECT_DIR"
 if ! eval "$VERIFY_CMD" >/dev/null 2>&1; then
   # Trace: log VERIFY failure
-  python3 -c "
-import json, os, datetime
-try:
-    ctx_path = '$CTX_FILE'
-    run_id = json.load(open(ctx_path)).get('run_id', 'unknown') if os.path.exists(ctx_path) else 'unknown'
-    trace_file = '.runs/$SKILL-execution-trace.jsonl'
-    is_first = True
-    if os.path.exists(trace_file):
-        with open(trace_file) as f:
-            for line in f:
-                try:
-                    e = json.loads(line)
-                    if e.get('run_id') == run_id and e.get('state_id') == '$STATE_ID':
-                        is_first = False
-                        break
-                except: pass
-    os.makedirs('.runs', exist_ok=True)
-    with open(trace_file, 'a') as f:
-        f.write(json.dumps({
-            'run_id': run_id,
-            'skill': '$SKILL',
-            'state_id': '$STATE_ID',
-            'timestamp': datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
-            'verify_result': 'fail',
-            'is_first_attempt': is_first,
-            'verify_cmd': '''$VERIFY_CMD'''
-        }) + '\n')
-except: pass
-" 2>/dev/null || true
+  _log_verify_trace "$SKILL" "$STATE_ID" "fail" "$VERIFY_CMD"
   deny "State completion gate: $SKILL STATE $STATE_ID postconditions not met. VERIFY failed: $VERIFY_CMD — complete this state's actions before marking it done."
 fi
 
@@ -157,34 +168,7 @@ fi
 
 # Postconditions verified — allow
 # Trace: log VERIFY pass
-python3 -c "
-import json, os, datetime
-try:
-    ctx_path = '$CTX_FILE'
-    run_id = json.load(open(ctx_path)).get('run_id', 'unknown') if os.path.exists(ctx_path) else 'unknown'
-    trace_file = '.runs/$SKILL-execution-trace.jsonl'
-    is_first = True
-    if os.path.exists(trace_file):
-        with open(trace_file) as f:
-            for line in f:
-                try:
-                    e = json.loads(line)
-                    if e.get('run_id') == run_id and e.get('state_id') == '$STATE_ID':
-                        is_first = False
-                        break
-                except: pass
-    os.makedirs('.runs', exist_ok=True)
-    with open(trace_file, 'a') as f:
-        f.write(json.dumps({
-            'run_id': run_id,
-            'skill': '$SKILL',
-            'state_id': '$STATE_ID',
-            'timestamp': datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
-            'verify_result': 'pass',
-            'is_first_attempt': is_first
-        }) + '\n')
-except: pass
-" 2>/dev/null || true
+_log_verify_trace "$SKILL" "$STATE_ID" "pass"
 # === Template remote + version check (only on STATE 0) ===
 if [[ "$STATE_ID" == "0" ]]; then
     python3 -c "
