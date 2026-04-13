@@ -52,7 +52,7 @@ Check off in `.runs/current-plan.md`: `- [x] BG4 PR Gate passed`
 
 **VERIFY:**
 ```bash
-python3 -c "import json; g=json.load(open('.runs/gate-verdicts/bg4.json')); assert g.get('verdict')=='PASS', 'BG4 verdict is %s' % g.get('verdict')"
+python3 -c "import json,os; g=json.load(open('.runs/gate-verdicts/bg4.json')); assert g.get('verdict')=='PASS', 'BG4 verdict is %s' % g.get('verdict'); assert os.path.isfile('.runs/commit-message.txt'), 'commit-message.txt missing'; json.load(open('.runs/q-dimensions.json'))"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

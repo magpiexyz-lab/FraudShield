@@ -64,7 +64,7 @@ Write `.runs/pr-body.md` using `.github/PULL_REQUEST_TEMPLATE.md` format:
 
 **VERIFY:**
 ```bash
-python3 -c "import json; assert json.load(open('.runs/distribute-context.json')).get('approved') == True"
+python3 -c "import json,os; assert json.load(open('.runs/distribute-context.json')).get('approved')==True; assert os.path.isfile('.runs/commit-message.txt'), 'commit-message.txt missing'; assert os.path.isfile('.runs/pr-title.txt'), 'pr-title.txt missing'; assert os.path.isfile('.runs/pr-body.md'), 'pr-body.md missing'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

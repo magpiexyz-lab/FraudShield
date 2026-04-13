@@ -85,7 +85,7 @@ Write `.runs/pr-body.md` using `.github/PULL_REQUEST_TEMPLATE.md`:
 
 **VERIFY:**
 ```bash
-python3 -c "import json; rc=json.load(open('.runs/review-complete.json')); assert rc.get('timestamp'), 'review-complete timestamp empty'; assert isinstance(rc.get('findings_fixed'), int) and rc['findings_fixed']>=0, 'findings_fixed invalid'"
+python3 -c "import json,os; rc=json.load(open('.runs/review-complete.json')); assert rc.get('timestamp'), 'review-complete timestamp empty'; assert isinstance(rc.get('findings_fixed'), int) and rc['findings_fixed']>=0, 'findings_fixed invalid'; skip=os.path.isfile('.runs/delivery-skip.flag'); assert skip or (os.path.isfile('.runs/commit-message.txt') and os.path.isfile('.runs/pr-title.txt') and os.path.isfile('.runs/pr-body.md')), 'delivery artifacts missing and no skip flag'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

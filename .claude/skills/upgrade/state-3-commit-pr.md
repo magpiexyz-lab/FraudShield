@@ -142,7 +142,7 @@ This checkpoint is mandatory. Do not skip it.
 
 **VERIFY:**
 ```bash
-(test -f .runs/commit-message.txt || test -f .runs/delivery-skip.flag) && python3 -c "import json; d=json.load(open('.runs/upgrade-step-check.json')); assert len(d.get('steps_completed',[])) > 0"
+(test -f .runs/delivery-skip.flag || (test -f .runs/commit-message.txt && test -f .runs/pr-title.txt && test -f .runs/pr-body.md)) && test -f .runs/q-dimensions.json && python3 -c "import json; d=json.load(open('.runs/upgrade-step-check.json')); assert len(d.get('steps_completed',[])) > 0"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
