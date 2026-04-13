@@ -26,18 +26,8 @@ if [[ ! -f "$MANIFEST" ]]; then
 fi
 
 # Determine context file — mode-aware for iterate --check/--cross
-if [[ "$SKILL" == "verify" ]]; then
-  CTX="$PROJECT_DIR/.runs/verify-context.json"
-else
-  CTX_SKILL=$(python3 -c "
-import json
-m=json.load(open('$MANIFEST'))
-am=m.get('active_mode','')
-sk='$SKILL'
-print('%s-%s'%(sk,am) if am and am!='default' else sk)
-" 2>/dev/null || echo "$SKILL")
-  CTX="$PROJECT_DIR/.runs/${CTX_SKILL}-context.json"
-fi
+source "$(dirname "$0")/lifecycle-lib.sh"
+CTX=$(resolve_context_path "$SKILL" "$MANIFEST")
 
 # Missing context = no states completed yet (first dispatch before state-0 creates it)
 # --- Dispatch logic (Python for JSON + glob) ---

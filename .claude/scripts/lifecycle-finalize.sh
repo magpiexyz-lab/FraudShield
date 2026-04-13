@@ -25,20 +25,8 @@ PROJECT_DIR="$(git rev-parse --show-toplevel 2>/dev/null || echo "${CLAUDE_PROJE
 MANIFEST="$PROJECT_DIR/.runs/${SKILL}-manifest.json"
 
 # Determine context file — mode-aware for iterate --check/--cross
-if [[ "$SKILL" == "verify" ]]; then
-  CTX="$PROJECT_DIR/.runs/verify-context.json"
-elif [[ -f "$MANIFEST" ]]; then
-  CTX_SKILL=$(python3 -c "
-import json
-m=json.load(open('$MANIFEST'))
-am=m.get('active_mode','')
-sk='$SKILL'
-print('%s-%s'%(sk,am) if am and am!='default' else sk)
-" 2>/dev/null || echo "$SKILL")
-  CTX="$PROJECT_DIR/.runs/${CTX_SKILL}-context.json"
-else
-  CTX="$PROJECT_DIR/.runs/${SKILL}-context.json"
-fi
+source "$(dirname "$0")/lifecycle-lib.sh"
+CTX=$(resolve_context_path "$SKILL" "$MANIFEST")
 
 if [[ ! -f "$CTX" ]]; then
   echo "ERROR: lifecycle-finalize.sh — $CTX not found" >&2
@@ -79,17 +67,7 @@ fi
 
 # --- Step 2: Rerun ALL state VERIFY commands (unconditional, warn-only) ---
 # Determine registry key — mode-aware for iterate --check/--cross
-REGISTRY_SKILL="$SKILL"
-if [[ -f "$MANIFEST" ]]; then
-  REGISTRY_SKILL=$(python3 -c "
-import json
-m=json.load(open('$MANIFEST'))
-am=m.get('active_mode','')
-sk='$SKILL'
-# iterate-check, iterate-cross use hyphenated keys in registry
-print('%s-%s'%(sk,am) if am and am!='default' else sk)
-" 2>/dev/null || echo "$SKILL")
-fi
+REGISTRY_SKILL=$(resolve_registry_key "$SKILL" "$MANIFEST")
 
 python3 -c "
 import json, subprocess, sys, os

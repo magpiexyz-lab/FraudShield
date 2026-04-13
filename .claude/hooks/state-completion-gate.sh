@@ -63,11 +63,9 @@ CALLS_JSON=$(printf '%s' "$ENTRY_DATA" | cut -f2)
 # --- Chain check: verify all prior states are in completed_states ---
 # This prevents skipping states (e.g., jumping from STATE 0 to STATE 3).
 # Uses registry key order as the canonical state sequence.
-if [[ "$SKILL" == "verify" ]]; then
-  CTX_FILE="$PROJECT_DIR/.runs/verify-context.json"
-else
-  CTX_FILE="$PROJECT_DIR/.runs/${SKILL}-context.json"
-fi
+_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../scripts" && pwd)"
+source "$_SCRIPT_DIR/lifecycle-lib.sh"
+CTX_FILE=$(resolve_context_path "$SKILL")
 
 if [[ -f "$CTX_FILE" ]]; then
   CHAIN_RESULT=$(python3 -c "
@@ -109,7 +107,7 @@ if ! eval "$VERIFY_CMD" >/dev/null 2>&1; then
   python3 -c "
 import json, os, datetime
 try:
-    ctx_path = '.runs/verify-context.json' if '$SKILL' == 'verify' else '.runs/$SKILL-context.json'
+    ctx_path = '$CTX_FILE'
     run_id = json.load(open(ctx_path)).get('run_id', 'unknown') if os.path.exists(ctx_path) else 'unknown'
     trace_file = '.runs/$SKILL-execution-trace.jsonl'
     is_first = True
@@ -162,7 +160,7 @@ fi
 python3 -c "
 import json, os, datetime
 try:
-    ctx_path = '.runs/verify-context.json' if '$SKILL' == 'verify' else '.runs/$SKILL-context.json'
+    ctx_path = '$CTX_FILE'
     run_id = json.load(open(ctx_path)).get('run_id', 'unknown') if os.path.exists(ctx_path) else 'unknown'
     trace_file = '.runs/$SKILL-execution-trace.jsonl'
     is_first = True

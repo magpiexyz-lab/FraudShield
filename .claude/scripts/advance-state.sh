@@ -10,12 +10,11 @@ SKILL="$1"
 STATE_NUM="$2"
 PROJECT_DIR="$(git rev-parse --show-toplevel 2>/dev/null || echo "${CLAUDE_PROJECT_DIR:-.}")"
 
-# Determine context file — verify uses verify-context.json, others use <skill>-context.json
-if [[ "$SKILL" == "verify" ]]; then
-  CTX="$PROJECT_DIR/.runs/verify-context.json"
-else
-  CTX="$PROJECT_DIR/.runs/${SKILL}-context.json"
-fi
+# Determine context file — mode-aware for iterate --check/--cross
+source "$(dirname "$0")/lifecycle-lib.sh"
+read -r SKILL_DIR _SKILL_MODE <<< "$(resolve_skill_dir "$SKILL")"
+MANIFEST="$PROJECT_DIR/.runs/${SKILL_DIR}-manifest.json"
+CTX=$(resolve_context_path "$SKILL")
 
 # Fail-closed: verify STATE_NUM exists in registry
 REGISTRY="$PROJECT_DIR/.claude/patterns/state-registry.json"
@@ -38,29 +37,19 @@ cs=d.get('completed_states',[])
 state=str('$STATE_NUM')
 if state not in cs: cs.append(state)
 d['completed_states']=cs
-# Mark context as completed when all required states are present
-import re
-# Map mode-qualified skill names to their directory and mode
-_skill = '$SKILL'
-_MODE_MAP = {'iterate-check': ('iterate', 'check'), 'iterate-cross': ('iterate', 'cross')}
-_dir, _mode = _MODE_MAP.get(_skill, (_skill, None))
-skill_yaml_path = os.path.join('$PROJECT_DIR', '.claude/skills/%s/skill.yaml' % _dir)
-if os.path.exists(skill_yaml_path):
-    yt = open(skill_yaml_path).read()
-    req = []
-    if _mode:
-        # Parse modes.<mode>.states
-        mp = re.search(r'%s:\s*\n\s+.*?states:\s*\[([^\]]+)\]' % _mode, yt, re.DOTALL)
-        if mp:
-            req = [s.strip().strip('\"').strip(\"'\") for s in mp.group(1).split(',')]
+
+# Read required states from manifest (already parsed by lifecycle-init.sh)
+manifest_path = '$MANIFEST'
+if os.path.exists(manifest_path):
+    manifest = json.load(open(manifest_path))
+    if 'active_mode' in manifest and 'modes' in manifest:
+        req = [str(s) for s in manifest['modes'][manifest['active_mode']].get('states', [])]
     else:
-        sm = re.search(r'^states:\s*\[([^\]]+)\]', yt, re.MULTILINE)
-        if sm:
-            req = [s.strip().strip('\"').strip(\"'\") for s in sm.group(1).split(',')]
+        req = [str(s) for s in manifest.get('states', [])]
     if req:
         cs_set = set(str(s) for s in cs)
-        req_set = set(str(s) for s in req)
-        if req_set.issubset(cs_set):
+        if set(req).issubset(cs_set):
             d['completed'] = True
+
 json.dump(d, open(f, 'w'))
 "
