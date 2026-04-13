@@ -37,7 +37,6 @@ Run analytics and design verification checks:
    Fix directly if missing.
 
 If any check fails: fix directly (budget: 2 fix attempts).
-After completing all fixes in steps 3-6, re-run `npm run build` to validate changes compile.
 If still failing after 2 attempts: list all remaining errors and their file locations. Ask the user whether to (a) continue and fix later, or (b) stop and investigate now.
 
 Write intermediate artifact:

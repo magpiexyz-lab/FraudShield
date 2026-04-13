@@ -39,7 +39,7 @@ Run content quality and SEO verification checks:
    Budget: 1 fix attempt.
 
 If any check fails: the bootstrap lead fixes directly (it has full file access
-as coordinator). Re-run `npm run build` after fixes. Budget: 2 fix attempts.
+as coordinator). Budget: 2 fix attempts.
 If still failing after 2 attempts: list all remaining errors and their file locations. Ask the user whether to (a) continue to wire phase and fix later, or (b) stop and investigate now.
 
 Update checkpoint in `.runs/current-plan.md` frontmatter to `phase2-wire`.
