@@ -1,7 +1,7 @@
 # STATE 12: EXTERNALS_DECISIONS
 
 **PRECONDITIONS:**
-- Scaffold done, all subagents returned (STATE 11 POSTCONDITIONS met)
+- Scaffold done, all subagents returned (STATE 11b POSTCONDITIONS met)
 - Externals classification table available from scaffold-externals
 
 **ACTIONS:**

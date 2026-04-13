@@ -47,7 +47,7 @@ exact checkpoint without re-deriving classification, scope, or stack.
 |-----------|------------|
 | `phase2-setup` | STATE 9 (setup phase) |
 | `phase2-design` | STATE 10 (design phase) |
-| `phase2-scaffold` | STATE 11 (parallel scaffold) |
+| `phase2-scaffold` | STATE 11 (core scaffold) |
 | `phase2-wire` | STATE 14 (wire phase) |
 | `awaiting-verify` | Terminal — run `/verify`, not `/bootstrap` |
 

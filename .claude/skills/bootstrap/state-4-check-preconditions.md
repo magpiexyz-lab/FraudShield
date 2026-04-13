@@ -15,7 +15,7 @@ Follow checkpoint-resumption protocol per `patterns/checkpoint-resumption.md`.
      |-----------|------------|
      | `phase2-setup` | STATE 9 (setup phase) |
      | `phase2-design` | STATE 10 (design phase) |
-     | `phase2-scaffold` | STATE 11 (parallel scaffold) |
+     | `phase2-scaffold` | STATE 11 (core scaffold) |
      | `phase2-wire` | STATE 14 (wire phase) |
      | `awaiting-verify` | TERMINAL — run `/verify` |
 
@@ -60,6 +60,6 @@ bash .claude/scripts/advance-state.sh bootstrap 4
 - Fresh start: [state-5-present-plan.md](state-5-present-plan.md)
 - Resume phase2-setup: [state-9-setup-phase.md](state-9-setup-phase.md)
 - Resume phase2-design: [state-10-design-phase.md](state-10-design-phase.md)
-- Resume phase2-scaffold: [state-11-parallel-scaffold.md](state-11-parallel-scaffold.md)
+- Resume phase2-scaffold: [state-11-core-scaffold.md](state-11-core-scaffold.md)
 - Resume phase2-wire: [state-14-wire-phase.md](state-14-wire-phase.md)
 - Resume awaiting-verify: TERMINAL -- run `/verify` next

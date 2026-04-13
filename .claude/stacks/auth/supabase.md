@@ -8,10 +8,10 @@ files:
   - src/app/auth/callback/route.ts          # always; scaffold-wire
   - src/app/auth/reset-password/page.tsx     # always; scaffold-wire
   - src/components/nav-bar.tsx               # always; scaffold-wire
-  # --- scaffold-pages creates (user-facing pages, STATE 11 B2) ---
+  # --- scaffold-pages creates (user-facing pages, STATE 11b) ---
   - src/app/signup/page.tsx                  # only if "signup" in golden_path; scaffold-pages
   - src/app/login/page.tsx                   # only if "login" in golden_path; scaffold-pages
-  # --- scaffold-libs creates (library + middleware, STATE 11 B1) ---
+  # --- scaffold-libs creates (library + middleware, STATE 11a) ---
   - src/middleware.ts                        # always; scaffold-libs
   - src/lib/supabase-auth.ts                 # only when stack.database is NOT supabase; scaffold-libs
   - src/lib/supabase-auth-server.ts          # only when stack.database is NOT supabase; scaffold-libs

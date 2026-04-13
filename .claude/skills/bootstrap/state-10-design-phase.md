@@ -40,4 +40,4 @@ test -f .runs/current-visual-brief.md && grep -q 'theme\|palette\|font\|color' .
 bash .claude/scripts/advance-state.sh bootstrap 10
 ```
 
-**NEXT:** Read [state-11-parallel-scaffold.md](state-11-parallel-scaffold.md) to continue.
+**NEXT:** Read [state-11-core-scaffold.md](state-11-core-scaffold.md) to continue.
