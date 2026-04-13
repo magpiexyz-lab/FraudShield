@@ -31,3 +31,11 @@ Find the optimal solution to a problem using first-principles analysis, structur
 6. If worktree was entered in step 1:
    a. Run `bash .claude/scripts/lifecycle-worktree-sync.sh`
    b. Call `ExitWorktree` with action `"remove"`
+
+## Do NOT
+- Modify any source files — this skill is analysis only
+- Create branches or PRs
+- Change experiment.yaml or any spec file
+- Install or remove packages
+- Implement the solution — that is `/change` or `/resolve`'s job
+- Propose solutions that require libraries not in experiment.yaml `stack`

@@ -27,3 +27,12 @@ Roll back to the previous production deployment when something goes wrong after 
    f. Return to step 2a
 3. Run `bash .claude/scripts/lifecycle-finalize.sh rollback`
 4. Read `.claude/patterns/finalize-epilogue.md` and execute
+
+## Do NOT
+- Modify any source code files
+- Change experiment.yaml or any spec file
+- Create a branch or PR — rollback operates directly on production
+- Proceed without a valid deploy manifest (`.runs/deploy-manifest.json`)
+- Rollback without explicit user confirmation of the target deployment
+- Delete source code, database data, or git history
+- Force-push or rewrite git history
