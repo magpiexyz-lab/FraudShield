@@ -590,4 +590,49 @@ if assumes_warnings:
     )
     warnings = True
 
+# --- Stack dependency matrix (canonical: patterns/stack-dependency-validation.md) ---
+if stack.get("payment"):
+    if not stack.get("auth"):
+        print("Error: payment requires auth — add `auth: <provider>` to experiment.yaml stack")
+        sys.exit(1)
+    if not stack.get("database"):
+        print("Error: payment requires database — add `database: <provider>` to experiment.yaml stack")
+        sys.exit(1)
+
+if stack.get("email"):
+    if not stack.get("auth"):
+        print("Error: email requires auth — add `auth: <provider>` to experiment.yaml stack")
+        sys.exit(1)
+    if not stack.get("database"):
+        print("Error: email requires database — add `database: <provider>` to experiment.yaml stack")
+        sys.exit(1)
+
+if stack.get("auth_providers"):
+    if not stack.get("auth"):
+        print("Error: auth_providers requires auth — add `auth: <provider>` to experiment.yaml stack")
+        sys.exit(1)
+
+# --- Compatibility constraints (canonical: patterns/stack-dependency-validation.md) ---
+for i, svc in enumerate(services):
+    svc_testing = svc.get("testing")
+    if svc_testing == "playwright" and effective_type in ("service", "cli"):
+        print(
+            f"Error: stack.services[{i}].testing: playwright is incompatible with "
+            f"archetype '{effective_type}' — use vitest instead"
+        )
+        sys.exit(1)
+    svc_runtime = svc.get("runtime")
+    if effective_type == "web-app" and svc_runtime and svc_runtime != "nextjs":
+        print(
+            f"Error: stack.services[{i}].runtime: '{svc_runtime}' — "
+            f"web-app archetype requires nextjs"
+        )
+        sys.exit(1)
+    if effective_type == "cli" and svc_runtime and svc_runtime != "commander":
+        print(
+            f"Error: stack.services[{i}].runtime: '{svc_runtime}' — "
+            f"cli archetype requires commander"
+        )
+        sys.exit(1)
+
 sys.exit(2 if warnings else 0)

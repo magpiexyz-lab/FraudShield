@@ -209,7 +209,7 @@ Verify experiment.yaml validation was thorough:
 3. `name` matches `^[a-z][a-z0-9-]*$` (lowercase, hyphens, starts with letter)
 4. Grep the file for literal "TODO" — BLOCK if any field value contains it
 5. Archetype-specific: web-app → `golden_path` with `page: landing`; service → `endpoints` non-empty; cli → `commands` non-empty
-6. Stack dependencies: `payment` → both `auth` and `database` must exist; `email` → both `auth` and `database` must exist
+6. Stack dependencies: verify per `patterns/stack-dependency-validation.md` Dependency Matrix — payment requires auth+database, email requires auth+database, auth_providers requires auth
 7. `stack.testing` must be present
 8. If `variants` present → ≥2 entries, each has slug/headline/subheadline/cta/pain_points, all slugs unique
 

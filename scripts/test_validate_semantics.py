@@ -990,6 +990,69 @@ class TestCheck61FooterDirectiveSync:
 
 
 # ---------------------------------------------------------------------------
+# Check 63: Canonical Dependency Reference
+# ---------------------------------------------------------------------------
+
+
+class TestCheck63CanonicalDependencyRef:
+    _marker = "stack-dependency-validation.md"
+    _ref = f"Validate per patterns/{_marker} matrix."
+
+    def _agents(self, with_ref=True):
+        return {".claude/agents/gate-keeper.md": self._ref if with_ref else "no ref"}
+
+    def _procs(self, with_ref=True):
+        return {".claude/procedures/change-feature.md": self._ref if with_ref else "no ref"}
+
+    def test_passes_when_all_files_have_reference(self):
+        errors = vs.check_63_canonical_dependency_ref(
+            self._ref, self._ref, self._procs(), self._agents())
+        assert errors == []
+
+    def test_fails_when_bootstrap_missing_reference(self):
+        errors = vs.check_63_canonical_dependency_ref(
+            "no ref", self._ref, self._procs(), self._agents())
+        assert len(errors) == 1
+        assert "bootstrap.md" in errors[0]
+
+    def test_fails_when_change_missing_reference(self):
+        errors = vs.check_63_canonical_dependency_ref(
+            self._ref, "no ref", self._procs(), self._agents())
+        assert len(errors) == 1
+        assert "change.md" in errors[0]
+
+    def test_fails_when_procedure_missing_reference(self):
+        errors = vs.check_63_canonical_dependency_ref(
+            self._ref, self._ref, self._procs(with_ref=False), self._agents())
+        assert len(errors) == 1
+        assert "change-feature.md" in errors[0]
+
+    def test_fails_when_procedure_file_absent(self):
+        errors = vs.check_63_canonical_dependency_ref(
+            self._ref, self._ref, {}, self._agents())
+        assert len(errors) == 1
+        assert "not found" in errors[0]
+
+    def test_fails_when_gate_keeper_missing_reference(self):
+        errors = vs.check_63_canonical_dependency_ref(
+            self._ref, self._ref, self._procs(), self._agents(with_ref=False))
+        assert len(errors) == 1
+        assert "gate-keeper.md" in errors[0]
+
+    def test_fails_when_gate_keeper_file_absent(self):
+        errors = vs.check_63_canonical_dependency_ref(
+            self._ref, self._ref, self._procs(), {})
+        assert len(errors) == 1
+        assert "gate-keeper.md" in errors[0]
+        assert "not found" in errors[0]
+
+    def test_fails_when_all_missing(self):
+        errors = vs.check_63_canonical_dependency_ref(
+            "no ref", "no ref", self._procs(with_ref=False), self._agents(with_ref=False))
+        assert len(errors) == 4
+
+
+# ---------------------------------------------------------------------------
 # Subprocess integration test — runs the full validator
 # ---------------------------------------------------------------------------
 

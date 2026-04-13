@@ -1,4 +1,5 @@
 """Skill file content validation checks."""
+import os
 import re
 
 from ._utils import (
@@ -31,6 +32,7 @@ __all__ = [
     "check_50_change_email_auth_database",
     "check_57_change_production_precondition",
     "check_59_framework_archetype_compatibility",
+    "check_63_canonical_dependency_ref",
 ]
 
 def check_5_conditional_dependency_refs(skill_contents: dict[str, str]) -> list[str]:
@@ -679,4 +681,60 @@ def check_59_framework_archetype_compatibility(
                 f"[59] {path}: missing framework-archetype validation "
                 f"(cli requires commander)"
             )
+    return errors
+
+
+def check_63_canonical_dependency_ref(
+    bootstrap_content: str,
+    change_content: str,
+    procedure_contents: dict[str, str],
+    agent_contents: dict[str, str],
+) -> list[str]:
+    """Check 63: bootstrap, change, change-feature procedure, and gate-keeper reference canonical dependency file."""
+    errors: list[str] = []
+    marker = "stack-dependency-validation.md"
+
+    if marker not in bootstrap_content:
+        errors.append(
+            "[63] bootstrap.md (+ state files): missing reference to "
+            "stack-dependency-validation.md (canonical dependency source)"
+        )
+    if marker not in change_content:
+        errors.append(
+            "[63] change.md (+ state files): missing reference to "
+            "stack-dependency-validation.md (canonical dependency source)"
+        )
+
+    # change-feature.md is a procedure, not part of change_content
+    change_feature_found = False
+    for path, content in procedure_contents.items():
+        if os.path.basename(path) == "change-feature.md":
+            change_feature_found = True
+            if marker not in content:
+                errors.append(
+                    f"[63] {path}: missing reference to "
+                    "stack-dependency-validation.md (canonical dependency source)"
+                )
+            break
+    if not change_feature_found:
+        errors.append(
+            "[63] .claude/procedures/change-feature.md not found in procedure_contents"
+        )
+
+    # gate-keeper.md is an agent file that enforces dependency validation
+    gate_keeper_found = False
+    for path, content in agent_contents.items():
+        if os.path.basename(path) == "gate-keeper.md":
+            gate_keeper_found = True
+            if marker not in content:
+                errors.append(
+                    f"[63] {path}: missing reference to "
+                    "stack-dependency-validation.md (canonical dependency source)"
+                )
+            break
+    if not gate_keeper_found:
+        errors.append(
+            "[63] .claude/agents/gate-keeper.md not found in agent_contents"
+        )
+
     return errors

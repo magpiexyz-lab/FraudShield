@@ -102,6 +102,9 @@ CHECKS: list[tuple[int, str, object]] = [
     (60, "Settings Hook Paths", lambda ctx: check_60_settings_hook_paths()),
     (61, "Footer Directive Sync", lambda ctx: check_61_footer_directive_sync()),
     (62, "Trace Framework Completeness", lambda ctx: check_62_trace_framework_completeness()),
+    (63, "Canonical Dependency Reference", lambda ctx: check_63_canonical_dependency_ref(
+        ctx["bootstrap_content"], ctx["change_content"], ctx["procedure_contents"], ctx["agent_contents"])
+        if ctx["bootstrap_content"] and ctx["change_content"] else []),
 ]
 
 
