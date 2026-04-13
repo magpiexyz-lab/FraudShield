@@ -10,7 +10,10 @@ Run this procedure after making code changes and before committing.
 
 > **Do NOT skip this procedure.** Do NOT claim the build passes without running it. Do NOT commit without a passing build. There are no exceptions.
 
-> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table, rows "Visual agents", "Performance + a11y agents".
+>
+> Visual agents — web-app: design-critic, ux-journeyer, consistency-checker | service: skip | cli: skip
+> Perf + a11y — web-app: performance-reporter, accessibility-scanner | service: skip | cli: skip
 
 ## Scope Parameter
 

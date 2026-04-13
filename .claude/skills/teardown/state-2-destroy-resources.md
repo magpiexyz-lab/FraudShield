@@ -5,7 +5,9 @@
 
 **ACTIONS:**
 
-> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table, row "npm cleanup on teardown".
+>
+> web-app: skip | service: skip | cli: npm deprecate reminder
 
 ### Step 2: Pre-delete safety check (if database present)
 

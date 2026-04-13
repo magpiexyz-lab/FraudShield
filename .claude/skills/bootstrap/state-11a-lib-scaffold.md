@@ -6,6 +6,8 @@
 
 **ACTIONS:**
 
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+
 #### Phase B1 (libs + externals + images)
 
 Spawn scaffold-libs, scaffold-externals, and (conditionally) scaffold-images in parallel. These have no cross-dependency. scaffold-pages and scaffold-landing are NOT spawned yet -- they depend on libs output.

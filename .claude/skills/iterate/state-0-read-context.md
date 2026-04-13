@@ -5,7 +5,10 @@
 
 **ACTIONS:**
 
-> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table, rows "Spec field", "Primary unit".
+>
+> Spec field — web-app: golden_path | service: endpoints | cli: commands
+> Primary unit — web-app: page | service: endpoint | cli: command
 >
 > State-specific logic below takes precedence.
 

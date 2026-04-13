@@ -5,7 +5,9 @@
 
 **ACTIONS:**
 
-> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table + Compound Dimensions "Deploy gate".
+>
+> Deploy gate — web-app/co-located: full deploy | service/none: stop | cli/detached: surface-only | cli/none: stop
 
 ### Step 5a: Initial deploy
 

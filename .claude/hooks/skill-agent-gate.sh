@@ -91,6 +91,7 @@ while IFS= read -r line; do
 done < <(echo "$GATE_RESULT" | tail -n +2)
 
 # ── Manifest declarative checks: requires_archetype, requires_traces, scope_condition ──
+# REF: Archetype branching — see .claude/patterns/archetype-behavior-check.md Quick-Reference Table.
 # All values passed via environment variables to avoid shell injection in Python literals.
 export _SAG_MANIFEST="$MANIFEST" _SAG_AGENT="$SUBAGENT_TYPE"
 export _SAG_PROJECT="$PROJECT_DIR" _SAG_TRACES="$TRACES_DIR"

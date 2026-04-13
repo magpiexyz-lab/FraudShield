@@ -32,6 +32,21 @@ check_present ".claude/patterns/archetype-behavior-check.md" \
   'web-app.*service.*cli' \
   "Quick-Reference Table missing archetype columns"
 
+# 2b. Quick-Reference Table has at least 14 data rows (excluding header)
+# Extract only lines between "## Quick-Reference Table" and the next "## " section
+QRT_DATA_ROWS=$(sed -n '/^## Quick-Reference Table/,/^## [^Q]/p' \
+  ".claude/patterns/archetype-behavior-check.md" \
+  | grep -c '^| [A-Z]' 2>/dev/null || echo "0")
+if [ "$QRT_DATA_ROWS" -lt 14 ]; then
+  echo "FAIL: archetype-behavior-check.md — Quick-Reference Table has $QRT_DATA_ROWS data rows, expected ≥14"
+  ERRORS=$((ERRORS + 1))
+fi
+
+# 2c. Compound Dimensions section exists
+check_present ".claude/patterns/archetype-behavior-check.md" \
+  'Compound Dimensions' \
+  "missing Compound Dimensions section"
+
 # 3. All archetype-branching files reference archetype-behavior-check.md
 REF_ONLY_FILES=(
   ".claude/procedures/wire.md"
@@ -75,6 +90,7 @@ REF_ONLY_FILES=(
   ".claude/skills/deploy/state-3c-deploy-services.md"
   ".claude/skills/deploy/state-4a-health-fix.md"
   ".claude/skills/deploy/state-4b-production-validation.md"
+  ".claude/skills/distribute/state-0-init.md"
   ".claude/skills/iterate/state-0-read-context.md"
   ".claude/skills/iterate/state-4-output.md"
   ".claude/skills/retro/state-3-file-issue.md"
@@ -84,6 +100,8 @@ REF_ONLY_FILES=(
   ".claude/skills/teardown/state-2-destroy-resources.md"
   ".claude/skills/verify/state-2-phase1-parallel.md"
   ".claude/skills/verify/state-3a-design-agents.md"
+  ".claude/skills/verify/state-3c-ux-merge.md"
+  ".claude/patterns/analytics-verification.md"
 )
 
 for f in "${REF_ONLY_FILES[@]}"; do

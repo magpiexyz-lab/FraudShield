@@ -14,6 +14,10 @@ Skip this entire checklist if `stack.analytics` is absent in experiment.yaml.
 - [ ] Every user action described in experiment/EVENTS.yaml must have a
       corresponding tracking call — no deferred wiring
 
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table, row "Consent guard".
+>
+> web-app: none | service: none | cli: opt-in consent on trackServerEvent
+
 ## CLI Consent Guard (if archetype is `cli`)
 
 - [ ] Confirm the server analytics file wraps `trackServerEvent()` with
