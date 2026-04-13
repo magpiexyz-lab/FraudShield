@@ -689,11 +689,11 @@ echo "hello"
 
 
 class TestCheck54ProcedureProductionBranch:
-    def test_passes_with_production_branch(self):
+    def test_passes_with_tdd_and_on_touch_references(self):
         files = {
-            "change-feature.md": "## Production\nWhen quality: production is set, use TDD.",
-            "change-upgrade.md": "## Production\nIf quality.*production, spawn agents.",
-            "change-fix.md": "## Production\nWhen quality: production, write regression test.",
+            "change-feature.md": "1. ON-TOUCH check\n2. Generate TDD tasks per patterns/tdd.md.",
+            "change-upgrade.md": "1. ON-TOUCH check\n2. Generate TDD tasks per patterns/tdd.md.",
+            "change-fix.md": "1. ON-TOUCH check\n2. Regression test per patterns/tdd.md.",
         }
         errors = vs.check_54_procedure_production_branch(files)
         assert errors == []
@@ -735,12 +735,13 @@ class TestCheck55ProductionReferencesTdd:
         assert len(errors) == 1
         assert "tdd.md" in errors[0]
 
-    def test_skips_without_production_section(self):
+    def test_fails_without_tdd_reference_unconditionally(self):
         files = {
             "change-feature.md": "Build the feature normally.",
         }
         errors = vs.check_55_production_references_tdd(files)
-        assert errors == []
+        assert len(errors) == 1
+        assert "tdd.md" in errors[0]
 
 
 # ---------------------------------------------------------------------------
@@ -796,10 +797,11 @@ class TestCheck57ChangeProductionPrecondition:
         assert len(errors) == 1
         assert "stack.testing" in errors[0]
 
-    def test_skips_without_production_block(self):
+    def test_fails_without_stack_testing_unconditionally(self):
         content = "Build the feature normally."
         errors = vs.check_57_change_production_precondition(content)
-        assert errors == []
+        assert len(errors) == 1
+        assert "stack.testing" in errors[0]
 
 
 # ---------------------------------------------------------------------------
