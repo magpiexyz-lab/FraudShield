@@ -4,8 +4,10 @@
 # Requires: ERRORS array (from caller). Cross-module: none (self-contained).
 
 # --- normalize_states ---
-# Reads completed_states from a context JSON file. Normalizes all entries
-# to strings (int 0 → "0", mixed types handled). Outputs space-separated list.
+# Reads completed_states (and skip_states) from a context JSON file.
+# Normalizes all entries to strings (int 0 → "0", mixed types handled).
+# Outputs space-separated list. skip_states are included so downstream
+# checks treat skipped states as satisfied.
 # Returns empty string if file missing, field absent, or parse error.
 # Usage: STATES=$(normalize_states "/path/to/context.json")
 normalize_states() {
@@ -15,7 +17,9 @@ normalize_states() {
 import json
 try:
     d = json.load(open('$ctx_file'))
-    print(' '.join(str(s) for s in d.get('completed_states', [])))
+    cs = [str(s) for s in d.get('completed_states', [])]
+    skip = [str(s) for s in d.get('skip_states', [])]
+    print(' '.join(cs + skip))
 except: print('')
 " 2>/dev/null || echo ""
 }

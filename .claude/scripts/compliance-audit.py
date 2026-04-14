@@ -249,8 +249,9 @@ def check_missing_states(skill):
                 "detail": f"no _required_states defined for {skill}"}
 
     completed = set(str(s) for s in context.get("completed_states", []))
+    skip = set(str(s) for s in context.get("skip_states", []))
     required_set = set(required)
-    missing = required_set - completed
+    missing = required_set - completed - skip
 
     if missing:
         # If exactly 1 state missing and it's the last required state,

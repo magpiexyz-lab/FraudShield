@@ -48,7 +48,8 @@ if os.path.exists(manifest_path):
         req = [str(s) for s in manifest.get('states', [])]
     if req:
         cs_set = set(str(s) for s in cs)
-        if set(req).issubset(cs_set):
+        skip = set(str(s) for s in d.get('skip_states', []))
+        if set(req).issubset(cs_set | skip):
             d['completed'] = True
 
 json.dump(d, open(f, 'w'))

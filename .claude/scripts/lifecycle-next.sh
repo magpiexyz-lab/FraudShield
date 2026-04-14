@@ -88,6 +88,11 @@ if loop_set and loop_set.issubset(completed):
 if loop_continue:
     completed = completed - loop_set
 
+# --- Skip handling ---
+# If context specifies states to skip, treat them as completed
+skip_states = set(str(s) for s in ctx.get("skip_states", []))
+completed = completed | skip_states
+
 # --- Find next state ---
 for state_id in states:
     sid = str(state_id)

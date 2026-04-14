@@ -38,6 +38,7 @@ python3 -c "
 import json, sys
 ctx = json.load(open('$CTX'))
 completed = set(str(s) for s in ctx.get('completed_states', []))
+skip = set(str(s) for s in ctx.get('skip_states', []))
 manifest_path = '$MANIFEST'
 try:
     manifest = json.load(open(manifest_path))
@@ -45,7 +46,7 @@ try:
         states = manifest['modes'][manifest['active_mode']]['states']
     else:
         states = manifest.get('states', [])
-    missing = [str(s) for s in states if str(s) not in completed]
+    missing = [str(s) for s in states if str(s) not in completed and str(s) not in skip]
     if missing:
         print('WARN: lifecycle-finalize.sh — states not completed: %s' % missing, file=sys.stderr)
 except FileNotFoundError:
@@ -84,8 +85,17 @@ registry = json.load(open(registry_path))
 skill_states = registry.get(skill, {})
 failures = 0
 
+ctx_path = '$CTX'
+skip = set()
+if os.path.isfile(ctx_path):
+    try:
+        skip = set(str(s) for s in json.load(open(ctx_path)).get('skip_states', []))
+    except: pass
+
 for state_id, raw in skill_states.items():
     if state_id.startswith('_'):
+        continue
+    if state_id in skip:
         continue
     if isinstance(raw, str):
         cmd = raw

@@ -118,6 +118,17 @@ proceeding to Phase 3.** The user may adjust fix plans or scope.
 python3 .claude/scripts/verify-resolve-challenge.py  # resolve-challenge.json, resolve-challenger.json, solve-critic.json
 ```
 
+**Ring 3 skip:** If `resolve-context.json` has `"ring": 3`, write `skip_states` before advancing:
+```bash
+python3 -c "
+import json
+ctx = json.load(open('.runs/resolve-context.json'))
+if ctx.get('ring') == 3:
+    ctx['skip_states'] = ['6','7','8','8b','9','9a','10']
+    json.dump(ctx, open('.runs/resolve-context.json', 'w'), indent=2)
+"
+```
+
 **STATE TRACKING:** After postconditions pass, mark this state complete:
 ```bash
 bash .claude/scripts/advance-state.sh resolve 5d

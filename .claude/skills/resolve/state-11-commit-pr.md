@@ -2,6 +2,7 @@
 
 **PRECONDITIONS:**
 - Post-fix review complete (STATE 10 POSTCONDITIONS met)
+- For Ring 3 runs (`"ring": 3` in resolve-context.json), STATEs 6-10 are skipped — proceed directly from STATE 5d
 
 **ACTIONS:**
 

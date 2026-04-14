@@ -112,11 +112,12 @@ import json, sys
 reg = json.load(open('$REGISTRY'))
 ctx = json.load(open('$CTX_FILE'))
 cs = [str(s) for s in ctx.get('completed_states', [])]
+skip = set(str(s) for s in ctx.get('skip_states', []))
 states = list(reg.get('$SKILL', {}).keys())
 cur = '$STATE_ID'
 if cur in states:
     idx = states.index(cur)
-    missing = [s for s in states[:idx] if s not in cs]
+    missing = [s for s in states[:idx] if s not in cs and s not in skip]
     if missing:
         print(','.join(missing))
 else:

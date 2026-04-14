@@ -172,7 +172,9 @@ These skills have no diffs to observe, so the observer agent is never spawned.
 
 Read `.runs/<skill>-context.json` and verify that `completed_states` includes
 all expected states from `state-registry.json` for this skill (excluding the
-epilogue state itself). If any expected state is missing, record it as friction.
+epilogue state itself). States listed in `skip_states` (if present) are
+intentionally skipped and count as satisfied — do not record them as friction.
+If any other expected state is missing, record it as friction.
 
 ### Step B2: Check for friction
 

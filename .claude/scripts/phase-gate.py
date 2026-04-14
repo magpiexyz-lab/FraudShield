@@ -21,9 +21,11 @@ def check_completed_states(skill, required_states, errors):
 
     ctx = json.load(open(ctx_file))
     completed = [str(s) for s in ctx.get('completed_states', [])]
+    skip = [str(s) for s in ctx.get('skip_states', [])]
+    satisfied = set(completed + skip)
 
     for state in required_states:
-        if str(state) not in completed:
+        if str(state) not in satisfied:
             errors.append(f'State {state} not in completed_states (have: {completed})')
 
 

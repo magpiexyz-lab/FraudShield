@@ -95,10 +95,11 @@ def main():
             if os.path.isfile(ctx_file):
                 ctx = json.load(open(ctx_file))
                 cs = [str(s) for s in ctx.get('completed_states', [])]
+                skip = set(str(s) for s in ctx.get('skip_states', []))
                 if not cs:
                     pass  # Fail-open if field absent (backward compat)
                 else:
-                    missing = [str(r) for r in required if str(r) not in cs]
+                    missing = [str(r) for r in required if str(r) not in cs and str(r) not in skip]
                     if missing:
                         errors.append(f"States [{','.join(missing)}] not in completed_states — prerequisite states were skipped")
 
