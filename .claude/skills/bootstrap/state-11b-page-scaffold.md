@@ -11,29 +11,37 @@
 
 Service and cli archetypes skip Phase B2 — proceed to STATE TRACKING to advance state immediately. (Per `patterns/archetype-behavior-check.md`)
 
-Only after B1 manifest verification AND type-check checkpoint pass. Spawn one `scaffold-pages` agent per golden_path page (excluding landing -- handled by scaffold-landing). The skill-agent-gate hook enforces this ordering: scaffold-pages and scaffold-landing are blocked until `.runs/agent-traces/scaffold-libs.json` exists with status "complete".
+Only after B1 manifest verification AND type-check checkpoint pass. Spawn `scaffold-pages` agents for golden_path pages (excluding landing -- handled by scaffold-landing), using the **batching policy** below. The skill-agent-gate hook enforces this ordering: scaffold-pages and scaffold-landing are blocked until `.runs/agent-traces/scaffold-libs.json` exists with status "complete".
 
-Each per-page agent prompt:
-- "Create SINGLE page: `<page_name>` at route `<route>`."
-- Write ONLY to `src/app/<page_name>/` -- do NOT write to `src/components/` or `src/lib/`
-- Write trace as `scaffold-pages-<page_name>.json`
+Each agent prompt (single page or batched group):
+- Single-page assignment: "Create page: `<page_name>` at route `<route>`."
+- Batched assignment: "Create pages: `<page_1>` at `<route_1>`, `<page_2>` at `<route_2>` [, `<page_3>` at `<route_3>`]."
+- Write ONLY to `src/app/<page_name>/` for each assigned page -- do NOT write to `src/components/` or `src/lib/`
+- Write one trace per page as `scaffold-pages-<page_name>.json` (even when batched -- the merge script and post-fan-out verification depend on per-page traces)
 - Read context files: `experiment/experiment.yaml`, `experiment/EVENTS.yaml`,
   `.runs/current-plan.md`, archetype file,
   framework/UI stack files, `.claude/patterns/design.md`,
   `.runs/current-visual-brief.md`, `.runs/image-manifest.json`
 - Follow CLAUDE.md Rules 3, 4, 6, 7, 9
 
-**Scope guard -- MANDATORY DERIVATION**: Read `golden_path` from experiment.yaml NOW. Extract the unique page names (excluding landing). Write them as a numbered list below before spawning any agents. Spawn scaffold-pages agents for EXACTLY these pages -- no more, no fewer. Do NOT use the `pages:` field or any other source. BG2 check 3b will independently count pages on disk and BLOCK if actual count exceeds golden_path count.
+**Scope guard -- MANDATORY DERIVATION**: Read `golden_path` from experiment.yaml NOW. Extract the unique page names (excluding landing). Write them as a numbered list below before spawning any agents. Spawn scaffold-pages agents for EXACTLY these pages -- no more, no fewer. Use the batching policy to determine agent grouping. Do NOT use the `pages:` field or any other source. BG2 check 3b will independently count pages on disk and BLOCK if actual count exceeds golden_path count.
 
 **Auth-derived page exception**: When `stack.auth` is present, also include `login` and `signup` pages in the spawn list if they are not already in golden_path. These are infrastructure pages required by the auth stack (see auth stack file) and owned by scaffold-pages. Do NOT include scaffold-wire-owned routes (`auth/callback`, `auth/reset-password`) — those are created in STATE 14. Count auth-derived pages separately from the golden_path limit in BG2 check 3b.
 
-**Per-page subagents (one per golden_path page, excluding landing):**
+**Batching policy:**
+- **6 or fewer pages** (excluding landing): spawn one agent per page.
+- **More than 6 pages**: MAY batch into groups of 2-3 pages per agent. Group adjacent golden_path pages together (pages that share functional context). Each batched agent MUST still write a separate `scaffold-pages-<page_name>.json` trace for EACH page it creates. The per-page trace contract is non-negotiable -- the merge script and post-fan-out verification depend on it.
+- Auth-derived pages (login, signup) SHOULD get their own agent (not batched with product pages) because they follow the auth stack template.
+
+**Page subagents (per batching policy):**
 - subagent_type: scaffold-pages
-- prompt per page: Tell the subagent to:
+- prompt per agent: Tell the subagent to:
   1. Read `.claude/procedures/scaffold-pages.md` and execute all steps
-  2. Create SINGLE page: `<page_name>` at route `<route>`.
-     Write ONLY to `src/app/<page_name>/` -- do NOT write to `src/components/` or `src/lib/`
-     Write trace as `scaffold-pages-<page_name>.json`
+  2. Create the assigned page(s):
+     - Single-page: `<page_name>` at route `<route>`.
+     - Batched: `<page_1>` at `<route_1>`, `<page_2>` at `<route_2>` [, `<page_3>` at `<route_3>`].
+     For each page: write ONLY to `src/app/<page_name>/` -- do NOT write to `src/components/` or `src/lib/`.
+     Write one trace per page as `scaffold-pages-<page_name>.json`.
   3. Read context files: `experiment/experiment.yaml`, `experiment/EVENTS.yaml`,
      `.runs/current-plan.md`, archetype file,
      framework/UI stack files, `.claude/patterns/design.md`,

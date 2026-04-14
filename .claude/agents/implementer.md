@@ -63,4 +63,6 @@ Blocked reasons:
 
 ## Trace Output
 
-After returning the Output Contract to the lead, the **lead** (not the implementer) writes a trace to `.runs/agent-traces/` based on the Output Contract fields above. The implementer runs in a worktree and cannot write to the main working tree's trace directory. See `change-feature.md` for the lead-side trace writing procedure.
+Trace writing depends on isolation mode:
+- **With worktree isolation** (default, used by /change): The **lead** (not the implementer) writes a trace to `.runs/agent-traces/` based on the Output Contract fields above. The implementer runs in a worktree and cannot write to the main working tree's trace directory. See `change-feature.md` for the lead-side trace writing procedure.
+- **Without worktree isolation** (direct mode, used by /bootstrap state 16 when all test files are new): The implementer writes its own trace directly to `.runs/agent-traces/implementer-<task-slug>.json`. The spawn prompt will explicitly instruct you to do this when running in direct mode.

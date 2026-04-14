@@ -12,19 +12,32 @@ Generate unit tests for CRITICAL modules using implementer agents.
 - Order modules so dependencies are tested first (if A imports B, test B first)
 - Independent modules can be in any order — place them first
 
+**Isolation policy:** Before spawning implementer agents, determine the isolation mode:
+- Check if any test files already exist under `src/`: `find src -name '*.test.*' -o -name '*.spec.*' | head -1`
+- **If no test files exist** (typical during bootstrap): use **direct mode** — agents commit directly to the feature branch without worktree isolation. This avoids unnecessary worktree overhead when there is no risk of conflicting modifications.
+- **If any test file already exists** (atypical, possible if re-running after partial failure): use **worktree mode** — agents run in worktree isolation per the standard procedure.
+
 For each CRITICAL module **in dependency order, sequentially**:
-  a. Spawn implementer agent (`agents/implementer.md`, isolation: "worktree")
-  b. Pass to implementer: file paths, the module's behaviors from experiment.yaml (behavior IDs and `tests` entries), and the classification reason
+  a. Spawn implementer agent (`agents/implementer.md`; include `isolation: "worktree"` for worktree mode, omit for direct mode)
+  b. Pass to implementer: file paths, the module's behaviors from experiment.yaml (behavior IDs and `tests` entries), and the classification reason. If direct mode: also pass "You are running without worktree isolation. Commit directly to the current branch. Write your trace to `.runs/agent-traces/implementer-<module-name>.json`."
   c. Implementer writes unit tests per `patterns/tdd.md`:
      - What SHOULD the module do? (from behaviors + code reading)
      - Write tests for correct behavior
      - If test fails AND failure shows incorrect behavior → fix the code (bug discovery)
      - If test passes → specification captured
-  d. **Merge worktree changes with verification:**
+  d. **Verification (mode-dependent):**
+
+     *Worktree mode:*
      - Verify implementer committed: `git log --oneline main..<worktree-branch>`
      - If no commit: re-spawn agent for commit-only (do NOT commit on behalf of the agent). Budget: 1 retry.
      - Merge: `git merge <worktree-branch> --no-ff -m "Merge unit tests: <module-name>"`
      - Verify merge: `git log --oneline -1` must show merge commit
+
+     *Direct mode:*
+     - Verify implementer committed: `git log --oneline -1` must show a commit for this module
+     - If no commit: re-spawn agent for commit-only. Budget: 1 retry.
+     - Lead writes trace to `.runs/agent-traces/implementer-<module-name>.json` if the agent did not
+
   e. Run `npm run build` — if broken, fix before next module
   f. Log: "Module [name]: N tests added, all passing"
 
