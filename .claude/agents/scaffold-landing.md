@@ -28,7 +28,7 @@ You are a world-champion of persuasion. Your landing page is the absolute limit 
 - Follow messaging.md for copy derivation (headline = outcome, CTA = action verb + outcome)
 - Wire analytics events per experiment/EVENTS.yaml
 - Build must pass after your changes
-- Read `.runs/image-manifest.json` for available generated images. Use `next/image` `Image` component (from `next/image`) for raster images: `<Image src="/images/hero.webp" alt="..." width={1920} height={1080} />` for the hero section, `/images/feature-{1,2,3}.webp` for feature sections. For SVG images (filenames ending in `.svg`), use `<img>` tags instead. These image paths are guaranteed to exist -- do not add conditional logic for missing images.
+- Read `.runs/image-manifest.json` for available generated images. Use the `publicPath` from each manifest entry — do NOT hardcode file extensions (images may be `.webp` or `.svg` depending on whether AI generation ran). Use `next/image` `Image` component for `.webp` raster images and `<img>` tags for `.svg` files. These image paths are guaranteed to exist -- do not add conditional logic for missing images.
 - If a file you need to create already exists: stop and report the conflict. Do not overwrite.
 - If `src/app/v/[variant]/page.tsx` exists: variant routing is active. Create `src/components/landing-content.tsx` only -- do NOT create `src/app/page.tsx`.
 

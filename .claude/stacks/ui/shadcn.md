@@ -34,7 +34,7 @@ Run in order:
      @import "tailwindcss";
      ```
 2. `npx shadcn@latest init --yes --defaults` — configures component paths and theme
-3. `npx shadcn@latest add -y button input card label separator badge tabs accordion avatar tooltip dialog alert progress` — install base components (add more later as needed)
+3. `npx shadcn@latest add -y button input card label separator badge tabs accordion avatar tooltip dialog alert progress sheet` — install base components (add more later as needed)
 
 ## Post-Setup Verification
 After running setup commands, verify:

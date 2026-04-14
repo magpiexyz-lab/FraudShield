@@ -88,6 +88,7 @@ Notes:
 - The raw request body (`request.text()`) must be used for HMAC computation — not the parsed JSON
 - Return 401 for missing or invalid signatures, 503 for missing configuration
 - Linear webhook secret is configured in Linear Settings > API > Webhooks
+- After Zod schema validation, if the payload references user-supplied IDs (e.g., `organizationId`, `assigneeId`), validate them against stored records before processing — a valid signature proves Linear sent the payload, not that the referenced entities are authorized for this endpoint
 
 ## Environment Variables
 
