@@ -74,8 +74,6 @@ For each image slot, generate **multiple diverse candidates**, score each, and s
 | 6 | `og-photo.webp` | og | Ideogram V3 | 1200x630 | 3 | 2 AI + 1 Unsplash |
 | 7 | `empty-state.webp` | empty-state | Recraft V4 Pro | 400x400 | 2 | 1 AI + 1 Unsplash |
 
-**Circuit breaker check** (before EACH image slot): If `turns_remaining < images_remaining × 8 + 20`, degrade to **single-candidate mode** for all remaining slots (generate one candidate per slot, skip multi-candidate). Track whether the circuit breaker triggered for the trace.
-
 **For each image slot:**
 
 1. **Craft diverse prompts.** For each AI candidate, write a DIFFERENT prompt variant. Diversity comes from varying these axes (pick a different axis for each variant):
@@ -187,7 +185,6 @@ Write `.runs/image-candidates.json` with metadata for ALL candidates generated (
   "generated_at": "<ISO 8601>",
   "strategy": "compete-and-shortlist",
   "total_candidates": <total across all slots>,
-  "circuit_breaker_triggered": false,
   "slots": {
     "hero": {
       "candidates": [
@@ -253,7 +250,6 @@ Write `.runs/agent-traces/scaffold-images.json`:
   "fallback_count": 0,
   "total_candidates": <total across all slots>,
   "candidates_per_slot": { "hero": 5, "feature-1": 3, "feature-2": 3, "feature-3": 3, "logo": 2, "og-photo": 3, "empty-state": 2 },
-  "circuit_breaker_triggered": false,
   "weakest_image": "<filename>",
   "weakest_score": <min score across all dimensions and images>,
   "total_retries": <sum of retries across all images>,

@@ -230,10 +230,6 @@ of domain, and the best candidate is selected.
 feature-2 and feature-3 candidates are generated style-matched to feature-1's
 winning visual system. The goal is the best COMBINATION of 3, not 3 independent bests.
 
-**Circuit breaker:** scaffold-images degrades to single-candidate mode when
-`turns_remaining < images_remaining × 8 + 20`. All 7 canonical images must
-be generated — candidate diversity is sacrificed before completeness.
-
 **Candidate storage:** All candidates live in `.runs/image-candidates/` (NOT
 `public/images/`). Only winners are copied to canonical paths. Metadata is
 recorded in the sidecar file `.runs/image-candidates.json`. The main manifest

@@ -10,7 +10,7 @@ tools:
   - Grep
 disallowedTools:
   - Agent
-maxTurns: 750
+maxTurns: 1000
 ---
 
 # Scaffold Images Agent
@@ -45,8 +45,6 @@ Generate **multiple diverse candidates** per image slot, score each, and select 
 
 **Unsplash fallback reallocation:** If WebFetch cannot extract multiple Unsplash photo IDs from the search page, reallocate those slots to additional AI prompt variants. Total candidate count per slot is maintained.
 
-**Circuit breaker:** Before generating candidates for each image slot, check: if `turns_remaining < images_remaining × 8 + 20`, degrade to **single-candidate mode** for all remaining slots. All 7 canonical images must be generated — candidate diversity is sacrificed before completeness.
-
 ## Image Quality Self-Check (verify before shipping)
 
 After generating EACH candidate, **use the Read tool to view the saved image file**. Then self-score the candidate 1-10 on these 5 dimensions. Any candidate below 8 on ANY dimension is a weaker option (but still kept as a candidate — the design-critic may select it in page context).
@@ -61,7 +59,6 @@ After generating EACH candidate, **use the Read tool to view the saved image fil
 - Score EACH candidate after generation. The highest-scoring candidate per slot becomes the preliminary winner and is copied to `public/images/`.
 - All candidates (winners and runners-up) are recorded in the sidecar `.runs/image-candidates.json` for the design-critic to evaluate in page context.
 - If ALL candidates for a slot score below 8: generate one more candidate with a refined prompt addressing the specific weakness. If still below 8, keep the best available and let the design-critic handle it.
-- Reserve ≥ 30 turns for manifest, sidecar, and trace output. maxTurns is the safety net.
 - Record all scores in the trace file for downstream design-critic verification.
 
 ## Instructions
@@ -80,7 +77,6 @@ Read `.claude/procedures/scaffold-images.md` for full step-by-step instructions.
 ## Candidate Sidecar
 <path to .runs/image-candidates.json>
 - Total candidates generated: <N>
-- Circuit breaker triggered: yes/no
 
 ## Issues
 - <any issues encountered, or "None">
