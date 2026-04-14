@@ -58,6 +58,7 @@ export function escapeXml(str: string): string {
 ### `src/app/api/webhooks/twilio/route.ts` — Webhook handler template
 ```ts
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { validateRequest } from "twilio";
 
 export async function POST(req: NextRequest) {
@@ -76,7 +77,26 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Bad request" }, { status: 401 });
   }
 
-  // Process webhook payload...
+  // Validate webhook fields with strict Zod schema
+  const twilioWebhookSchema = z.object({
+    MessageSid: z.string().max(200).optional(),
+    AccountSid: z.string().max(200).optional(),
+    From: z.string().max(50).optional(),
+    To: z.string().max(50).optional(),
+    Body: z.string().max(1600).optional(),
+    NumMedia: z.string().max(5).optional(),
+    CallSid: z.string().max(200).optional(),
+    CallStatus: z.string().max(50).optional(),
+    Digits: z.string().max(100).optional(),
+  }).passthrough();
+
+  const parsed = twilioWebhookSchema.safeParse(params);
+  if (!parsed.success) {
+    console.error("Twilio webhook validation failed: %d issues", parsed.error.issues.length);
+    return NextResponse.json({ error: "Bad request" }, { status: 400 });
+  }
+
+  // Process validated webhook payload...
   return new NextResponse("<Response></Response>", {
     headers: { "Content-Type": "text/xml" },
   });

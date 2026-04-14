@@ -428,10 +428,13 @@ event is the same regardless of whether the user is signing up or logging in via
 "use client";
 
 import { useState, useEffect } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { Menu } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import type { User } from "@supabase/supabase-js";
 
 export function NavBar() {
@@ -463,31 +466,58 @@ export function NavBar() {
     router.refresh();
   }
 
+  const navLinks = (
+    <>
+      {/* Bootstrap adds page links here from golden_path */}
+    </>
+  );
+
+  const authSection = loading ? (
+    <Button variant="outline" disabled className="min-w-[70px]">
+      &nbsp;
+    </Button>
+  ) : user ? (
+    <>
+      <span className="text-sm text-muted-foreground truncate max-w-[200px]">
+        {user.email}
+      </span>
+      <Button variant="outline" onClick={handleLogout}>
+        Log out
+      </Button>
+    </>
+  ) : (
+    <Link href="/login" className={buttonVariants({ variant: "outline" })}>
+      Log in
+    </Link>
+  );
+
   return (
     <nav className="flex items-center justify-between px-6 py-4 border-b">
-      <Link href="/" className="text-xl font-bold">
-        APP_NAME
+      <Link href="/" className="flex items-center gap-2">
+        {/* Logo from scaffold-images — read path from .runs/image-manifest.json */}
+        <Image src="/images/logo.svg" alt="APP_NAME" width={32} height={32} />
+        <span className="text-xl font-bold">APP_NAME</span>
       </Link>
-      <div className="flex items-center gap-2">
-        {/* Bootstrap adds page links here from golden_path */}
-        {loading ? (
-          <Button variant="outline" disabled className="min-w-[70px]">
-            &nbsp;
-          </Button>
-        ) : user ? (
-          <>
-            <span className="text-sm text-muted-foreground truncate max-w-[200px]">
-              {user.email}
-            </span>
-            <Button variant="outline" onClick={handleLogout}>
-              Log out
+      {/* Desktop nav */}
+      <div className="hidden md:flex items-center gap-4">
+        {navLinks}
+        {authSection}
+      </div>
+      {/* Mobile hamburger menu */}
+      <div className="md:hidden">
+        <Sheet>
+          <SheetTrigger>
+            <Button variant="ghost" size="icon">
+              <Menu className="h-5 w-5" />
             </Button>
-          </>
-        ) : (
-          <Link href="/login" className={buttonVariants({ variant: "outline" })}>
-            Log in
-          </Link>
-        )}
+          </SheetTrigger>
+          <SheetContent side="right" className="w-[280px]">
+            <div className="flex flex-col gap-4 mt-8">
+              {navLinks}
+              {authSection}
+            </div>
+          </SheetContent>
+        </Sheet>
       </div>
     </nav>
   );
@@ -502,9 +532,12 @@ import { createAuthClient as createClient } from "@/lib/supabase-auth";
 
 Notes:
 - Bootstrap replaces `APP_NAME` with experiment.yaml `name` and adds page-specific navigation links
+- Bootstrap reads `.runs/image-manifest.json` for the logo path and updates the `<Image>` `src` attribute
+- The `navLinks` and `authSection` are shared between desktop and mobile layouts — add golden_path links to `navLinks`
 - `getSession()` on mount sets initial auth state; `onAuthStateChange()` reacts to login/logout
 - Loading state prevents flash of "Log in" button before auth state is known
 - `router.refresh()` after logout clears server-side cached session data
+- The `Sheet` component requires `npx shadcn@latest add -y sheet` — this is included in the base component set (see UI stack file)
 
 ## Client-Side Auth State
 - The `NavBar` component (above) demonstrates the pattern: `getSession()` for initial state + `onAuthStateChange()` for reactive updates

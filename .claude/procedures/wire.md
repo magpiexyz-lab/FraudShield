@@ -50,6 +50,8 @@ Create auth infrastructure files not owned by scaffold-libs or scaffold-pages:
 1. **Auth callback route** (`src/app/auth/callback/route.ts`): from auth stack file's callback handler template. Use shared-client or standalone-client variant based on whether `stack.database` matches the auth provider.
 2. **Reset password page** (`src/app/auth/reset-password/page.tsx`): from auth stack file's reset password template.
 3. **Auth-aware nav bar** (`src/components/nav-bar.tsx`): from auth stack file's NavBar template. Replace `APP_NAME` with experiment.yaml `name`. Add nav links for each golden_path page (excluding landing and auth routes).
+   - **Logo:** The NavBar template includes an `<Image>` component for the logo. Read `.runs/image-manifest.json` for the actual logo path (typically `/images/logo.svg`) and update the `src` attribute. The logo links to `/`.
+   - **Mobile menu:** The NavBar template includes a Sheet-based hamburger menu for viewports below the `md` breakpoint. Ensure nav links and auth controls are duplicated inside the Sheet content.
 
 These files depend on auth library files (scaffold-libs, B1) and are referenced by pages (scaffold-pages, B2). Creating them in the wire phase ensures all dependencies exist.
 

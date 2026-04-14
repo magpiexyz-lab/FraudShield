@@ -58,6 +58,7 @@ export function verifyRetellSignature(
 ### `src/app/api/webhooks/retell/route.ts` — Webhook handler template
 ```ts
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { verifyRetellSignature } from "@/lib/retell";
 
 export async function POST(req: NextRequest) {
@@ -76,9 +77,37 @@ export async function POST(req: NextRequest) {
 
   const payload = JSON.parse(rawBody);
 
-  // Cross-validate agent_id against stored record
-  // const agentId = payload.agent_id;
-  // Verify agentId matches the expected agent for this endpoint
+  // Validate payload with strict Zod schema
+  const retellWebhookSchema = z.object({
+    event: z.string().max(100),
+    call: z.object({
+      call_id: z.string().max(200),
+      agent_id: z.string().max(200),
+      call_status: z.string().max(50).optional(),
+      start_timestamp: z.number().optional(),
+      end_timestamp: z.number().optional(),
+      transcript: z.string().max(50000).optional(),
+      recording_url: z.string().url().max(2000).optional(),
+    }).passthrough(),
+  }).passthrough();
+
+  const parsed = retellWebhookSchema.safeParse(payload);
+  if (!parsed.success) {
+    console.error("Retell webhook validation failed: %d issues", parsed.error.issues.length);
+    return NextResponse.json({ error: "Bad request" }, { status: 400 });
+  }
+
+  // Cross-validate agent_id against stored record before processing
+  // const agentId = parsed.data.call.agent_id;
+  // const agent = await supabase.from("agents").select("id").eq("retell_agent_id", agentId).single();
+  // if (!agent.data) return NextResponse.json({ error: "Bad request" }, { status: 400 });
+
+  // If payload contains user_id: validate against profiles table before inserting
+  // const userId = parsed.data.call.metadata?.user_id;
+  // if (userId) {
+  //   const profile = await supabase.from("profiles").select("id").eq("id", userId).single();
+  //   if (!profile.data) return NextResponse.json({ error: "Bad request" }, { status: 400 });
+  // }
 
   return NextResponse.json({ received: true });
 }
@@ -93,7 +122,9 @@ RETELL_WEBHOOK_SECRET=your-webhook-secret  # HMAC-SHA256 secret for webhook veri
 ## Patterns
 - Always verify HMAC-SHA256 signatures on incoming webhooks before processing any payload
 - Read the raw body before JSON parsing to ensure signature verification uses the original bytes
-- After signature verification, cross-validate `agent_id` in the payload against the stored record in the database — a valid signature alone does not prevent a legitimate agent from posting to the wrong endpoint
+- After signature verification, validate the payload with a strict Zod schema including `.max()` bounds on all string and array fields — a valid signature does not guarantee safe field lengths or types
+- After schema validation, cross-validate `agent_id` in the payload against the stored record in the database — a valid signature alone does not prevent a legitimate agent from posting to the wrong endpoint
+- If the payload contains user-supplied fields like `user_id`, validate them against the profiles table before inserting webhook data — a valid signature proves Retell sent the payload, not that the user_id belongs to a real user
 - Avoid logging raw Zod validation errors — log only the error count to prevent leaking request structure
 
 ## Security

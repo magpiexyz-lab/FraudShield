@@ -39,7 +39,7 @@ For each page derived from experiment.yaml `golden_path`:
   - Follow page conventions from the framework stack file
   - If `stack.analytics` is present: import tracking functions per the analytics stack file conventions and fire the appropriate experiment/EVENTS.yaml event(s) on the correct trigger
   - Follow `.claude/patterns/design.md` quality invariants (form input sizing). Aim for a distinctive, polished look that matches the product domain.
-  - For empty states (empty tables, lists, dashboards): use the empty-state image from `.runs/image-manifest.json` (e.g., `<img src="/images/empty-state.svg" alt="No items yet" />`). This file is generated during Phase B1.
+  - For empty states (empty tables, lists, dashboards): read `.runs/image-manifest.json` and use the empty-state image at the `publicPath` listed there — do NOT hardcode the file extension (it may be `.svg` or `.webp` depending on whether AI image generation ran). Example: if manifest shows `"publicPath": "/images/empty-state.webp"`, use `<Image src="/images/empty-state.webp" alt="No items yet" width={400} height={400} />`.
   - If an event from the experiment/EVENTS.yaml events map has no matching page in experiment.yaml (e.g., no signup page for signup_start/signup_complete), omit that event — do not create a page just to fire it
 - **Landing page**: Do NOT generate the landing page content here — it is
   created by the landing-page subagent (see `scaffold-landing.md`). If
@@ -78,7 +78,12 @@ For each page derived from experiment.yaml `golden_path`:
   consume the theme tokens, match the product's visual identity, and follow
   the inner page utility criteria from design.md.
   Each page must have heading, description matching purpose, and a clear
-  next-action CTA
+  next-action CTA.
+  - **Forward navigation:** If this page is not the last step in `golden_path`,
+    include a prominent forward CTA (button or link) that navigates to the
+    next golden_path step's page route. Read `golden_path` from experiment.yaml
+    to determine the next step. This prevents dead-end pages where users
+    complete an action but have no path forward.
 
 #### Feature→UI cross-reference (after page creation)
 

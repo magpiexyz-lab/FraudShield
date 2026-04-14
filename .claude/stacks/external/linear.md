@@ -29,6 +29,7 @@ Linear signs webhook payloads with HMAC-SHA256 using the webhook secret. Every i
 ### `src/app/api/webhooks/linear/route.ts` — Webhook handler with signature verification
 ```ts
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { createHmac, timingSafeEqual } from "crypto";
 
 function verifyLinearSignature(body: string, signature: string, secret: string): boolean {
@@ -58,9 +59,25 @@ export async function POST(request: Request) {
 
   const payload = JSON.parse(body);
 
+  // Validate payload with strict Zod schema
+  const linearWebhookSchema = z.object({
+    action: z.string().max(50),
+    type: z.string().max(100),
+    data: z.record(z.unknown()),
+    url: z.string().url().max(2000).optional(),
+    createdAt: z.string().max(100).optional(),
+    organizationId: z.string().max(200).optional(),
+  }).passthrough();
+
+  const parsed = linearWebhookSchema.safeParse(payload);
+  if (!parsed.success) {
+    console.error("Linear webhook validation failed: %d issues", parsed.error.issues.length);
+    return NextResponse.json({ error: "Bad request" }, { status: 400 });
+  }
+
   // Process webhook payload here
-  // payload.type: "Issue", "Comment", "Cycle", etc.
-  // payload.action: "create", "update", "remove"
+  // parsed.data.type: "Issue", "Comment", "Cycle", etc.
+  // parsed.data.action: "create", "update", "remove"
 
   return NextResponse.json({ received: true });
 }

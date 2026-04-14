@@ -34,7 +34,8 @@ You are a world-champion of utility. Every page you create should make users fee
 - Do NOT write to `src/lib/`, `.env*`, `src/components/`, or `.claude/stacks/external/`
 - Import from `src/lib/events.ts` using function signatures derived from experiment/EVENTS.yaml (file created by libs subagent in parallel)
 - If `stack.analytics` is present: every page MUST fire its experiment/EVENTS.yaml events — no deferring
-- For empty states (empty tables, lists, dashboards): read `.runs/image-manifest.json` and use the empty-state image at the path listed there (e.g., `<img src="/images/empty-state.svg" alt="No data yet" />`). This file is generated during Phase B1.
+- **Forward navigation:** If this page is not the last step in `golden_path`, include a prominent forward CTA (button or link) navigating to the next golden_path step's page route. Read `golden_path` from experiment.yaml to determine the next step.
+- For empty states (empty tables, lists, dashboards): read `.runs/image-manifest.json` and use the empty-state image at the `publicPath` listed there — do NOT hardcode the file extension (it may be `.svg` or `.webp` depending on whether AI image generation ran). Use `next/image` `Image` component for `.webp` files and `<img>` for `.svg` files.
 
 > These criteria are evaluated from source code only — no build or screenshot is required.
 
