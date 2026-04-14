@@ -33,6 +33,7 @@ the missing provider suggestion (e.g., `supabase`).
 | email | auth | "Email requires authentication to know who to send emails to. Add `auth: <provider>` (or another auth provider) to your experiment.yaml `stack` section." |
 | email | database | "Email requires a database to track user activation status. Add `database: <provider>` (or another database provider) to your experiment.yaml `stack` section." |
 | auth_providers | auth | "OAuth providers require an auth system. Add `auth: supabase` to your experiment.yaml `stack` section." |
+| testing: playwright | service/cli archetype | "Playwright requires a browser and is not compatible with the `<archetype>` archetype. Use `testing: vitest` instead." |
 
 For `/change` context, append branch cleanup instructions: "To abort: `git checkout main && git branch -D <branch-name>`. To fix and retry: make the required changes, then re-run `/change`."
 

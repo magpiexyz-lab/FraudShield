@@ -1055,6 +1055,39 @@ class TestCheck63CanonicalDependencyRef:
 
 
 # ---------------------------------------------------------------------------
+# Check 65: Playwright-archetype compatibility
+# ---------------------------------------------------------------------------
+
+
+class TestCheck65PlaywrightArchetypeCompatibility:
+    def test_passes_when_both_files_have_validation(self):
+        bootstrap = "playwright is not compatible with service/cli archetypes"
+        change = "if archetype is service or cli and stack.testing is playwright, stop"
+        errors = vs.check_65_playwright_archetype_compatibility(bootstrap, change)
+        assert errors == []
+
+    def test_fails_when_bootstrap_missing_validation(self):
+        bootstrap = "some other content about testing"
+        change = "playwright is not compatible with service/cli archetypes"
+        errors = vs.check_65_playwright_archetype_compatibility(bootstrap, change)
+        assert len(errors) == 1
+        assert "bootstrap.md" in errors[0]
+
+    def test_fails_when_change_missing_validation(self):
+        bootstrap = "playwright incompatible with service/cli"
+        change = "some other content about testing"
+        errors = vs.check_65_playwright_archetype_compatibility(bootstrap, change)
+        assert len(errors) == 1
+        assert "change.md" in errors[0]
+
+    def test_passes_with_alternate_phrasing(self):
+        bootstrap = "testing: playwright and archetype is service or cli"
+        change = "Playwright incompatible with service and cli archetypes"
+        errors = vs.check_65_playwright_archetype_compatibility(bootstrap, change)
+        assert errors == []
+
+
+# ---------------------------------------------------------------------------
 # Subprocess integration test — runs the full validator
 # ---------------------------------------------------------------------------
 

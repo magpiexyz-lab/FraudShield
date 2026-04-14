@@ -1,7 +1,7 @@
 # Check Inventory
 
 Scannable reference listing all automated checks by name, grouped by validator.
-84 active checks consolidated into 80 inventory rows.
+85 active checks consolidated into 81 inventory rows.
 Checks 3 and 7 are archetype-aware — they read `required_experiment_fields` and `excluded_stacks` from archetype frontmatter.
 
 Last updated: 2026-03-30
@@ -91,6 +91,7 @@ better enforced by the scoped LLM review (`scripts/scoped-review-prompt.md`).
 | Verify settings.json hook paths resolve to existing files | Every hook `command` path in `.claude/settings.json` must point to an existing `.sh` file |
 | Verify agent-prompt-footer directive matches hook grep | Directive marker in `agent-prompt-footer.md` must appear as grep pattern in `skill-agent-gate.sh` |
 | Verify conditional packages not listed unconditionally in prose | Stack files with fallback sections that skip packages must not list those packages in an unconditional `npm install` in the `## Packages` section |
+| Verify playwright-archetype compatibility in bootstrap and change | Both bootstrap.md and change.md must validate that playwright testing is incompatible with service/cli archetypes |
 
 ## consistency-check.sh
 

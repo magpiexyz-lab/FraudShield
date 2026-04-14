@@ -33,6 +33,7 @@ __all__ = [
     "check_57_change_production_precondition",
     "check_59_framework_archetype_compatibility",
     "check_63_canonical_dependency_ref",
+    "check_65_playwright_archetype_compatibility",
 ]
 
 def check_5_conditional_dependency_refs(skill_contents: dict[str, str]) -> list[str]:
@@ -737,4 +738,28 @@ def check_63_canonical_dependency_ref(
             "[63] .claude/agents/gate-keeper.md not found in agent_contents"
         )
 
+    return errors
+
+
+def check_65_playwright_archetype_compatibility(
+    bootstrap_content: str, change_content: str
+) -> list[str]:
+    """Check 65: bootstrap.md and change.md validate playwright-archetype compatibility."""
+    errors: list[str] = []
+    for label, content, path in [
+        ("bootstrap.md", bootstrap_content, ".claude/commands/bootstrap.md"),
+        ("change.md", change_content, ".claude/commands/change.md"),
+    ]:
+        # Must mention playwright incompatible with service/cli
+        if not re.search(
+            r"playwright.*(?:incompatible|not compatible).*(?:service|cli)"
+            r"|(?:service|cli).*playwright.*stop"
+            r"|testing.*playwright.*archetype.*(?:service|cli)",
+            content,
+            re.IGNORECASE,
+        ):
+            errors.append(
+                f"[65] {path}: missing playwright-archetype validation "
+                f"(playwright incompatible with service/cli)"
+            )
     return errors

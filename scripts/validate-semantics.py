@@ -106,6 +106,7 @@ CHECKS: list[tuple[int, str, object]] = [
         ctx["bootstrap_content"], ctx["change_content"], ctx["procedure_contents"], ctx["agent_contents"])
         if ctx["bootstrap_content"] and ctx["change_content"] else []),
     (64, "Conditional Packages Prose Sync", lambda ctx: check_64_conditional_packages_prose_sync(ctx["stack_contents"])),
+    (65, "Playwright-Archetype Compatibility", lambda ctx: check_65_playwright_archetype_compatibility(ctx["bootstrap_content"], ctx["change_content"]) if ctx["bootstrap_content"] and ctx["change_content"] else []),
 ]
 
 
