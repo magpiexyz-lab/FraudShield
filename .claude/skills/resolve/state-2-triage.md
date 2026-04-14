@@ -73,7 +73,9 @@ Before within-batch clustering, check whether any newly classified architectural
 gh issue list --label architecture --state open --json number,title,body --limit 50
 ```
 
-If the result is empty or the command fails: skip this entire section (graceful degradation — proceed to within-batch consolidation).
+**Important:** The current batch's issues were just labeled `architecture` (lines above), so they will appear in this result. Exclude all issue numbers from the current batch before matching — cross-batch consolidation only matches against issues from **previous** /resolve runs.
+
+If the result is empty after excluding current-batch issues, or the command fails: skip this entire section (graceful degradation — proceed to within-batch consolidation).
 
 **Step 1 — Match each new architectural issue against existing pool:**
 
@@ -93,6 +95,13 @@ If a new issue matches multiple existing issues, pick the most specific one (the
 **Step 2 — For each match, consolidate into existing issue:**
 
 **Case A — Existing issue is an individual (non-consolidated) issue:**
+
+First, read the existing issue body to preserve its analysis:
+```bash
+EXISTING_BODY=$(gh issue view <EXISTING> --json body --jq '.body')
+```
+
+Extract the root cause, analysis, and suggested changes from `EXISTING_BODY` to incorporate into the consolidated `### Context for /solve` section below.
 
 Convert the existing issue to consolidated format:
 ```bash
@@ -148,6 +157,12 @@ gh issue close <NEW> --comment "Consolidated into #<EXISTING>. Root cause: <summ
 **Step 4 — Remove matched issues from batch:**
 
 Remove cross-batch matched issues from the batch's architectural issue list so within-batch clustering does not re-process them. If `gh issue edit` or `gh issue close` fails for any match: leave both issues open with their `architecture` labels (graceful degradation — /solve processes them individually).
+
+**Step 5 — Update triage artifact for cross-batch matches:**
+
+For each cross-batch consolidated issue, record it in the `issues` array:
+- `{"number": <NEW>, "type": "architectural", "severity": "<severity>", "action": "defer", "consolidated_into": <EXISTING>}`
+- Increment `cross_batch_consolidated_count` by the number of issues merged into existing architecture issues
 
 ### Within-Batch Architectural Consolidation (when 2+ unmatched architectural issues)
 
