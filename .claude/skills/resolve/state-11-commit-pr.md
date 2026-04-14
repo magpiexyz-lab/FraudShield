@@ -1,7 +1,7 @@
 # STATE 11: COMMIT_PR
 
 **PRECONDITIONS:**
-- External stack graduation complete (STATE 9a POSTCONDITIONS met)
+- Post-fix review complete (STATE 10 POSTCONDITIONS met)
 
 **ACTIONS:**
 

@@ -150,4 +150,4 @@ python3 -c "import json,os; d=json.load(open('.runs/graduation-result.json')); a
 bash .claude/scripts/advance-state.sh resolve 9a
 ```
 
-**NEXT:** Read [state-11-commit-pr.md](state-11-commit-pr.md) to continue.
+**NEXT:** Read [state-10-post-fix-review.md](state-10-post-fix-review.md) to continue.
