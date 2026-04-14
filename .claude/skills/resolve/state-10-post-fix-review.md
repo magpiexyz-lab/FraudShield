@@ -47,6 +47,10 @@ Include in the prompt:
 - Explicit instruction: "You are reviewing IMPLEMENTATION correctness, not design correctness.
   The design was already approved in STATE 5d. Your job is to verify the code changes
   faithfully and completely implement the approved design."
+- **Trace filename override**: "Use `resolve-reviewer` as the agent name (not `resolve-challenger`).
+  Your FIRST Bash command must be: `python3 scripts/init-trace.py resolve-reviewer --context .runs/resolve-context.json`.
+  Write the final trace to `.runs/agent-traces/resolve-reviewer.json`."
+  This prevents overwriting the STATE 5d adversarial challenge trace at `resolve-challenger.json`.
 
 **Three review vectors** (pass these as the agent's challenge protocol):
 

@@ -128,7 +128,7 @@ the existing issue body and the new issue body.>
 
 ### Original Issues
 - #<EXISTING> (original observation — now the tracking issue)
-- Closes #<NEW>
+- #<NEW> (closed — merged into this issue)
 
 ---
 *Auto-consolidated by /resolve triage (cross-batch).*
@@ -201,8 +201,8 @@ what constraints apply. This section is the input for
 `/solve "Issue #<this-number>: <title>"`.>
 
 ### Original Issues
-- Closes #A
-- Closes #B
+- #A (closed — merged into this issue)
+- #B (closed — merged into this issue)
 
 ---
 *Auto-consolidated by /resolve triage.*
