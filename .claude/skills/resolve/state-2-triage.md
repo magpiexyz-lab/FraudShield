@@ -64,11 +64,96 @@ gh issue edit <N> --remove-label "observation" 2>/dev/null || true
 
 If `gh issue edit` fails: embed `**Label:** architecture (create this label for filtering)` in the defer comment body as fallback.
 
-### Architectural Consolidation (when 2+ architectural issues in this batch)
+### Cross-Batch Architectural Consolidation
 
-If only 0 or 1 architectural issue: skip this section.
+Before within-batch clustering, check whether any newly classified architectural issues share a root cause with **existing** open architecture issues from previous /resolve runs.
 
-If 2+ issues classified as Architectural in this triage batch:
+**Step 0 — Fetch existing architecture issues:**
+```bash
+gh issue list --label architecture --state open --json number,title,body --limit 50
+```
+
+If the result is empty or the command fails: skip this entire section (graceful degradation — proceed to within-batch consolidation).
+
+**Step 1 — Match each new architectural issue against existing pool:**
+
+For each newly classified architectural issue in this batch, compare its root cause against each existing open architecture issue. Use the same causal-pattern matching as STATE 4b: look for shared structural root cause, not surface-level keyword overlap.
+
+Matching criteria (any one sufficient):
+- The new issue's root cause is a specific instance of the existing issue's root cause
+- Both issues cite the same structural mechanism (e.g., "lifecycle engine lacks skip-to", "worktree isolation policy is uniform")
+- Fixing the existing issue would resolve or subsume the new issue
+
+Distinguish between two existing issue formats:
+- **Individual issues**: title starts with `[observe]` or `[template]`. Root cause is in the body's analysis sections.
+- **Consolidated issues**: title starts with `[Architecture]`. Body contains `## Consolidated Architectural Issue` header with `**Root cause**:` line and `### Symptoms` table.
+
+If a new issue matches multiple existing issues, pick the most specific one (the existing issue whose root cause most precisely subsumes the new issue).
+
+**Step 2 — For each match, consolidate into existing issue:**
+
+**Case A — Existing issue is an individual (non-consolidated) issue:**
+
+Convert the existing issue to consolidated format:
+```bash
+gh issue edit <EXISTING> \
+  --title "[Architecture] <root-cause-summary-in-imperative-form>" \
+  --body "$(cat <<'BODY'
+## Consolidated Architectural Issue
+
+**Root cause**: <1-2 sentence root cause hypothesis>
+**Cluster size**: 2 issues
+
+### Symptoms
+
+| # | Title | Severity | Symptom |
+|---|-------|----------|---------|
+| #<EXISTING> | <existing-title> | <severity> | <one-line symptom from existing> |
+| #<NEW> | <new-title> | <severity> | <one-line symptom from new> |
+
+### Context for /solve
+
+<Why these are the same root cause, what design options exist,
+what constraints apply. Preserve relevant analysis from both
+the existing issue body and the new issue body.>
+
+### Original Issues
+- #<EXISTING> (original observation — now the tracking issue)
+- Closes #<NEW>
+
+---
+*Auto-consolidated by /resolve triage (cross-batch).*
+BODY
+)"
+```
+
+**Case B — Existing issue is already a consolidated issue:**
+
+Read the existing body and update it:
+- Increment `**Cluster size**:` by 1
+- Add a row to the `### Symptoms` table for the new issue
+- Add `- Closes #<NEW>` to the `### Original Issues` section
+- Append relevant context from the new issue to `### Context for /solve`
+
+```bash
+gh issue edit <EXISTING> --body "<updated-body>"
+```
+
+**Step 3 — Close new issue with cross-reference:**
+
+```bash
+gh issue close <NEW> --comment "Consolidated into #<EXISTING>. Root cause: <summary>. Track resolution at #<EXISTING>."
+```
+
+**Step 4 — Remove matched issues from batch:**
+
+Remove cross-batch matched issues from the batch's architectural issue list so within-batch clustering does not re-process them. If `gh issue edit` or `gh issue close` fails for any match: leave both issues open with their `architecture` labels (graceful degradation — /solve processes them individually).
+
+### Within-Batch Architectural Consolidation (when 2+ unmatched architectural issues)
+
+If only 0 or 1 architectural issue remains after cross-batch consolidation: skip this section.
+
+If 2+ issues classified as Architectural remain unmatched after cross-batch consolidation:
 
 **Step 1 — Root-cause clustering:** Compare the architectural issues and group those
 sharing the same structural root cause. Same logic as STATE 4b: look for shared causal
@@ -153,8 +238,10 @@ Present a triage table:
 Severity levels: HIGH (breaks execution), MEDIUM (wrong output), LOW (cosmetic).
 
 If all issues are non-actionable or architectural (all closed or deferred in this state): report "All issues
-resolved as non-actionable or deferred — no Phase 2 diagnosis needed." If architectural issues were consolidated,
-report the consolidated issue number(s) and recommend `/solve "Issue #<N>: <title>"` for each. Stop here.
+resolved as non-actionable or deferred — no Phase 2 diagnosis needed." If architectural issues were consolidated
+(within-batch or cross-batch), report the consolidated issue number(s) and recommend `/solve "Issue #<N>: <title>"`
+for each. For cross-batch consolidations, report: "Issue #NEW consolidated into existing #EXISTING (<root-cause>)."
+Stop here.
 
 **STOP. Present the triage table to the user and wait for approval before
 proceeding to Phase 2.** The user may reclassify issues or remove them from scope.
@@ -166,12 +253,14 @@ proceeding to Phase 2.** The user may reclassify issues or remove them from scop
   triage = {
       'issues': [
           {'number': 0, 'type': '<bug|gap|inconsistency|regression|observation|architectural>', 'severity': '<high|medium|low>', 'action': '<fix|close|defer>'}
-          # Consolidated entries add: 'consolidated_from': [A, B]
+          # Within-batch consolidated entries add: 'consolidated_from': [A, B]
+          # Cross-batch consolidated entries add: 'consolidated_into': <existing-issue-number>
       ],
       'actionable_count': 0,
       'closed_count': 0,
       'deferred_count': 0,
-      'consolidated_count': 0  # number of consolidated issues created (0 if no consolidation)
+      'consolidated_count': 0,  # within-batch consolidated issues created (0 if no consolidation)
+      'cross_batch_consolidated_count': 0  # issues merged into existing architecture issues
   }
   json.dump(triage, open('.runs/resolve-triage.json', 'w'), indent=2)
   "
