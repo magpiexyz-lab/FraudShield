@@ -77,6 +77,10 @@ function createDemoClient() {
             data: { user: demoUser, session: { access_token: "demo-token", refresh_token: "demo-refresh" } },
             error: null,
           }),
+        signInWithPassword: () =>
+          Promise.resolve({ data: { user: demoUser, session: { access_token: "demo-token", refresh_token: "demo-refresh" } }, error: null }),
+        signOut: () => Promise.resolve({ error: null }),
+        resetPasswordForEmail: () => Promise.resolve({ data: {}, error: null }),
         onAuthStateChange: () => ({
           data: { subscription: { unsubscribe: () => {} } },
         }),
@@ -149,6 +153,10 @@ function createDemoClient() {
             data: { user: demoUser, session: { access_token: "demo-token", refresh_token: "demo-refresh" } },
             error: null,
           }),
+        signInWithPassword: () =>
+          Promise.resolve({ data: { user: demoUser, session: { access_token: "demo-token", refresh_token: "demo-refresh" } }, error: null }),
+        signOut: () => Promise.resolve({ error: null }),
+        resetPasswordForEmail: () => Promise.resolve({ data: {}, error: null }),
       },
       {
         get: (target, prop) =>
@@ -271,7 +279,11 @@ SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 - User-owned tables must have:
   - `user_id uuid REFERENCES auth.users(id) NOT NULL`
 - `ALTER TABLE ... ENABLE ROW LEVEL SECURITY` on every table
-- RLS policies: `auth.uid() = user_id`
+- RLS policies:
+  - SELECT: `USING (auth.uid() = user_id)`
+  - INSERT: `WITH CHECK (auth.uid() = user_id)`
+  - UPDATE: `USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id)` — the WITH CHECK clause prevents a user from changing `user_id` to another user's ID (privilege escalation via `UPDATE SET user_id = ...`)
+  - DELETE: `USING (auth.uid() = user_id)`
 - Add SQL comments explaining each table's purpose
 - Migrations are applied automatically during Vercel builds via the `prebuild` script (when `POSTGRES_URL_NON_POOLING` is set by the Supabase Vercel Integration). They are also applied by CI on merge to `main` (via `supabase db push` if CI secrets are configured). For manual use: `make migrate`. Fallback: copy SQL into Supabase Dashboard → SQL Editor.
 

@@ -181,7 +181,7 @@ export async function POST(request: Request) {
   const signature = request.headers.get("stripe-signature");
 
   if (!signature) {
-    return NextResponse.json({ error: "Missing signature" }, { status: 400 });
+    return NextResponse.json({ error: "Bad request" }, { status: 400 });
   }
 
   let event;
@@ -192,7 +192,7 @@ export async function POST(request: Request) {
       process.env.STRIPE_WEBHOOK_SECRET!
     );
   } catch {
-    return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
+    return NextResponse.json({ error: "Bad request" }, { status: 400 });
   }
 
   if (event.type === "checkout.session.completed") {

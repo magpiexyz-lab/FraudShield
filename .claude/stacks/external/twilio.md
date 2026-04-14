@@ -63,7 +63,7 @@ import { validateRequest } from "twilio";
 export async function POST(req: NextRequest) {
   const authToken = process.env.TWILIO_AUTH_TOKEN;
   if (!authToken) {
-    return NextResponse.json({ error: "Service not configured" }, { status: 503 });
+    return NextResponse.json({ error: "Service unavailable" }, { status: 503 });
   }
 
   // HMAC-SHA1 signature verification
@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
   const params = Object.fromEntries(new URLSearchParams(body));
 
   if (!validateRequest(authToken, signature, url, params)) {
-    return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+    return NextResponse.json({ error: "Bad request" }, { status: 401 });
   }
 
   // Process webhook payload...

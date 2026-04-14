@@ -43,17 +43,17 @@ export async function POST(request: Request) {
   const secret = process.env.LINEAR_WEBHOOK_SECRET;
   if (!secret) {
     console.error("[503] LINEAR_WEBHOOK_SECRET not configured");
-    return NextResponse.json({ error: "Service not configured" }, { status: 503 });
+    return NextResponse.json({ error: "Service unavailable" }, { status: 503 });
   }
 
   const signature = request.headers.get("linear-signature");
   if (!signature) {
-    return NextResponse.json({ error: "Missing signature" }, { status: 401 });
+    return NextResponse.json({ error: "Bad request" }, { status: 401 });
   }
 
   const body = await request.text();
   if (!verifyLinearSignature(body, signature, secret)) {
-    return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+    return NextResponse.json({ error: "Bad request" }, { status: 401 });
   }
 
   const payload = JSON.parse(body);

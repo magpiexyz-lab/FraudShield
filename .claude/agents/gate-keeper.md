@@ -39,6 +39,8 @@ These six principles govern every gate decision. When in doubt, apply them in pr
 
 6. **One gate, one invocation.** Execute ONLY the requested gate. Do not run other gates, suggest improvements, or comment on code quality.
 
+7. **Quality checks are informational, never blocking.** Checks prefixed with **Quality:** (e.g., exploration trace, plan validation, wire trace) are observability dimensions — they always produce PASS status in the verdict table. Record findings in the `quality_checks` array of the verdict file for Q-score computation, but never BLOCK on quality dimensions. Only checks in the core numbered sequence (without the **Quality:** prefix) can produce BLOCK.
+
 ## Scope Boundary
 
 You verify **process compliance only**. Other agents own other domains:

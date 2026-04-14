@@ -42,7 +42,7 @@ The health check endpoint lives at `/api/health` (or the framework's equivalent 
 - Health check path: `/api/health`
 - Health check timeout: 5s (default)
 
-The health check handler follows the same pattern as other hosting providers — returns JSON `{ status: "ok", ... }` with service-specific checks added by bootstrap based on active stack. See the hosting/vercel stack file's Health Check section for the response pattern.
+The health check handler follows the same pattern as other hosting providers — returns binary JSON `{ status: "ok" | "degraded" }` with no per-subsystem keys (prevents infrastructure topology leakage). Detailed check results are logged server-side only. See the hosting/vercel stack file's Health Check section for the response pattern.
 
 ## Dockerfile Template
 
@@ -193,7 +193,7 @@ railway volume add --mount <mount_path>
 ```bash
 curl -s <canonical_url>/api/health
 ```
-Returns JSON `{ status: "ok", ... }` with per-service checks.
+Returns JSON `{ status: "ok" | "degraded" }` — binary status only, no per-subsystem keys.
 
 ### Auto-Fix
 

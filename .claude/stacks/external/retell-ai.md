@@ -63,7 +63,7 @@ import { verifyRetellSignature } from "@/lib/retell";
 export async function POST(req: NextRequest) {
   const secret = process.env.RETELL_WEBHOOK_SECRET;
   if (!secret) {
-    return NextResponse.json({ error: "Service not configured" }, { status: 503 });
+    return NextResponse.json({ error: "Service unavailable" }, { status: 503 });
   }
 
   // Read raw body before parsing
@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
   const signature = req.headers.get("x-retell-signature") ?? "";
 
   if (!verifyRetellSignature(rawBody, signature, secret)) {
-    return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+    return NextResponse.json({ error: "Bad request" }, { status: 401 });
   }
 
   const payload = JSON.parse(rawBody);

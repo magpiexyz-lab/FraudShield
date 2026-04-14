@@ -137,6 +137,20 @@ The `/change fix` command string is constructed from the `behavior_verification.
 **On timeout:** Record `behavior_verification: { ran: true, mode: "production", timed_out: true }`. Report:
 > Production behavior verification timed out after 5 minutes. This may indicate slow page loads or hanging requests in production. Check application logs.
 
+#### 5d.9: Synthetic webhook endpoint verification
+
+**Gate:** Only run when webhook endpoints exist. Check: `stack.payment` is present in experiment.yaml, OR `ls src/app/api/webhooks/*/route.ts 2>/dev/null` returns files. Skip with log "No webhook endpoints detected — skipping synthetic webhook test" when neither condition is met.
+
+**Test:** For each webhook route file found, send a POST request with an empty body and no signature headers:
+```bash
+STATUS=$(curl -s -o /dev/null -w '%{http_code}' -X POST <canonical_url>/api/webhooks/<service>)
+```
+- Expected: 400 (rejects unsigned request gracefully)
+- FAIL if 500 (unhandled error — endpoint crashes on missing signature)
+- FAIL if 404 (endpoint not deployed — build may have excluded the route)
+
+Record results in `deploy-health.json` under `webhook_verification: { ran: true, endpoints_tested: N, all_passed: boolean }`.
+
 ### 5e: File template observations
 
 If any fix during the deploy flow (Steps 3-5d) required working around a

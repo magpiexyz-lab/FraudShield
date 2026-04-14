@@ -2,7 +2,7 @@
 assumes: []
 packages:
   runtime: [next, react, react-dom]
-  dev: [typescript, "@types/react", "@types/node", eslint, "@eslint/js", typescript-eslint]
+  dev: [typescript, "@types/react", "@types/node", eslint, "@eslint/js", typescript-eslint, eslint-plugin-react-hooks, "@next/eslint-plugin-next"]
 files:
   - .nvmrc
   - eslint.config.mjs
@@ -35,7 +35,7 @@ gitignore: [.next/, out/]
 ## Packages
 ```bash
 npm install next react react-dom
-npm install -D typescript @types/react @types/node eslint @eslint/js typescript-eslint
+npm install -D typescript @types/react @types/node eslint @eslint/js typescript-eslint eslint-plugin-react-hooks @next/eslint-plugin-next
 ```
 
 ## Project Setup
@@ -48,10 +48,14 @@ npm install -D typescript @types/react @types/node eslint @eslint/js typescript-
 ```js
 import eslint from "@eslint/js";
 import tseslint from "typescript-eslint";
+import reactHooks from "eslint-plugin-react-hooks";
+import nextPlugin from "@next/eslint-plugin-next";
 
 export default tseslint.config(
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
+  { plugins: { "react-hooks": reactHooks }, rules: reactHooks.configs.recommended.rules },
+  { plugins: { "@next/next": nextPlugin }, rules: nextPlugin.configs.recommended.rules },
   { ignores: [".next/", "out/", "node_modules/"] }
 );
 ```
@@ -120,9 +124,10 @@ The root `route.ts` is created only when surface is `co-located` (the default fo
 ## API Route Conventions
 - Route handlers in `src/app/api/<resource>/route.ts`
 - Validate all input with zod — always include `.max()` bounds on all string and array fields. Suggested defaults: short text fields `.max(200)`, long text fields `.max(5000)`, array fields `.max(50)`. Adjust per business logic. Without bounds, a single oversized request can exhaust memory or run up large inference costs.
-- Dynamic route segment params (e.g., `[id]` in `src/app/api/projects/[id]/route.ts`) must be validated before use. Parse `params` with zod: `z.object({ id: z.string().uuid() }).parse(await params)`. Reject non-UUID values with 400 before they reach database queries. This prevents malformed inputs (SQL-injection-style strings, excessively long values) from reaching the database layer.
+- Dynamic route segment params (e.g., `[id]` in `src/app/api/projects/[id]/route.ts`) must be validated before use. Parse `params` with zod: `z.object({ id: z.uuid() }).parse(await params)`. Reject non-UUID values with 400 before they reach database queries. This prevents malformed inputs (SQL-injection-style strings, excessively long values) from reaching the database layer.
 - Return `{ error: string }` with appropriate HTTP status codes on failure
 - Use try/catch, return user-friendly error messages
+- When catching `ZodError`, return generic `{ error: "Invalid request" }` with status 400 — never forward `error.issues` or `error.message` which expose schema structure to attackers (OWASP A4-InfoLeakage)
 
 ## CORS Policy
 
@@ -269,6 +274,26 @@ In API routes that call external AI services (Anthropic, OpenAI, etc.), run auth
 2. Unauthenticated requests consume rate-limit budget, returning 429 instead of 401 and masking the auth failure
 
 Correct order: `verifyAuth()` → `checkApiKey()` → `rateLimit()` → business logic.
+
+### When handling file uploads, sanitize filenames before storage key interpolation
+User-supplied filenames can contain path traversal sequences (`../`, `..\`), null bytes, or special characters that break storage key construction. Always sanitize before interpolating into a storage path:
+
+```typescript
+function sanitizeFilename(name: string): string {
+  return name
+    .replace(/[/\\]/g, "-")       // path separators
+    .replace(/\.\./g, "")          // traversal sequences
+    .replace(/[^a-zA-Z0-9._-]/g, "-") // non-safe chars
+    .replace(/-+/g, "-")           // collapse consecutive hyphens
+    .slice(0, 255);                // filesystem limit
+}
+
+// Usage: prepend a UUID to prevent collisions and predictable paths
+const key = `uploads/${crypto.randomUUID()}/${sanitizeFilename(file.name)}`;
+```
+
+### Zod v4: use `z.uuid()` instead of `z.string().uuid()`
+Zod v4 renamed `z.string().uuid()` to `z.uuid()`. The old form is deprecated (console warning) but still functional. Use `z.uuid()` in all new code. If a project pins Zod v3 in `package-lock.json`, `z.uuid()` will cause a compile error — revert to `z.string().uuid()` in that case.
 
 ### When a let variable is always overwritten in the try block (no-useless-assignment)
 Declare the variable with a type annotation and no initial value: `let x: string;` instead of `let x = "placeholder";`. The `@typescript-eslint/no-useless-assignment` lint rule (from `tseslint.configs.recommended`) fires when the initial value is never read because every branch (try + catch) reassigns the variable before use. An initial value suggests a fallback that isn't actually used.

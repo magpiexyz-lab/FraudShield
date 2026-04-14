@@ -62,18 +62,18 @@ MAGICUI_COMPONENTS=(
   scroll-progress lens pointer smooth-cursor progressive-blur
   neon-gradient-card meteors grid-pattern striped-pattern
   interactive-grid-pattern dot-pattern flickering-grid hero-video-dialog
-  code-comparison script-copy-btn marquee globe shimmer-button
+  code-comparison marquee globe shimmer-button
   tweet-card client-tweet-card bento-grid particles number-ticker
   ripple retro-grid animated-list animated-shiny-text animated-grid-pattern
   border-beam animated-beam text-reveal hyper-text animated-gradient-text
   orbiting-circles dock word-rotate avatar-circles typing-animation
-  sparkles-text spinning-text flip-text comic-text icon-cloud text-animate
-  scroll-based-velocity scratch-to-reveal shiny-button box-reveal
+  sparkles-text spinning-text comic-text icon-cloud text-animate
+  scroll-based-velocity shiny-button
   shine-border animated-circular-progress-bar confetti
-  animated-subscribe-button cool-mode pulsating-button ripple-button
-  file-tree blur-fade safari iphone-15-pro rainbow-button
+  cool-mode pulsating-button ripple-button
+  file-tree blur-fade safari rainbow-button
   interactive-hover-button terminal video-text pixel-image highlighter
-  arc-timeline animated-theme-toggler grid-beams android
+  animated-theme-toggler android
 )
 for comp in "${MAGICUI_COMPONENTS[@]}"; do
   npx shadcn@latest add -y "https://magicui.design/r/$comp" || true

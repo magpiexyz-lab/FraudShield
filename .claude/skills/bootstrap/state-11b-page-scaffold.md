@@ -25,6 +25,8 @@ Each per-page agent prompt:
 
 **Scope guard -- MANDATORY DERIVATION**: Read `golden_path` from experiment.yaml NOW. Extract the unique page names (excluding landing). Write them as a numbered list below before spawning any agents. Spawn scaffold-pages agents for EXACTLY these pages -- no more, no fewer. Do NOT use the `pages:` field or any other source. BG2 check 3b will independently count pages on disk and BLOCK if actual count exceeds golden_path count.
 
+**Auth-derived page exception**: When `stack.auth` is present, also include `login` and `signup` pages in the spawn list if they are not already in golden_path. These are infrastructure pages required by the auth stack (see auth stack file) and owned by scaffold-pages. Do NOT include scaffold-wire-owned routes (`auth/callback`, `auth/reset-password`) — those are created in STATE 14. Count auth-derived pages separately from the golden_path limit in BG2 check 3b.
+
 **Per-page subagents (one per golden_path page, excluding landing):**
 - subagent_type: scaffold-pages
 - prompt per page: Tell the subagent to:

@@ -40,22 +40,31 @@ Bootstrap creates this endpoint unconditionally. It always returns basic status;
 import { NextResponse } from "next/server";
 
 export async function GET() {
-  const checks: Record<string, string> = { status: "ok" };
+  const checks: Record<string, "ok" | "degraded" | "error"> = {};
   // Service checks are added by bootstrap based on active stack services.
-  // Each returns "ok" or an error message.
-  return NextResponse.json(checks);
+  // Each sets "ok", "degraded", or "error" — details are logged server-side only.
+
+  const critical = Object.entries(checks).filter(([k]) => ["database", "auth"].includes(k));
+  const hasCriticalFailure = critical.some(([, v]) => v === "error");
+
+  return NextResponse.json(
+    { status: hasCriticalFailure ? "degraded" : "ok" },
+    { status: hasCriticalFailure ? 503 : 200 }
+  );
 }
 ```
 
-**When `stack.database` is present:** bootstrap adds a database connectivity check inside the function body — import the server client, run a lightweight query (e.g., `supabase.from('...').select('id').limit(1)`), and set `checks.database = "ok"` or `"error"`. Log the actual error server-side with `console.error("Health check database error:", error.message)` — never expose raw error messages in the response.
+> **Security:** The response returns ONLY `{ status: "ok" | "degraded" }` — no per-subsystem keys, no error details, no env var presence. This prevents unauthenticated callers from probing infrastructure topology (OWASP A4-InfoLeakage). All diagnostic details are logged server-side via `console.error`.
 
-**When `stack.auth` is present:** bootstrap adds an auth service check — call `supabase.auth.getUser()` with no session (expects an auth error, not a network error), and set `checks.auth = "ok"` or `"error"`. Log the actual error server-side with `console.error("Health check auth error:", e.message)` — never expose raw error messages in the response.
+**When `stack.database` is present:** bootstrap adds a database connectivity check inside the function body — import the server client, run a lightweight query (e.g., `supabase.from('...').select('id').limit(1)`), and set `checks.database = "ok"` or `"error"`. Log the actual error server-side with `console.error("Health check database error:", error.message)` — never expose raw error messages or subsystem names in the response.
 
-**When `stack.analytics` is present:** bootstrap adds an analytics reachability check. Import constants from the analytics server library (e.g., `import { POSTHOG_KEY, POSTHOG_HOST } from "@/lib/analytics-server"`). Do NOT hardcode the API key — always use the imported constant. The publishable key is always available (hardcoded fallback in the analytics library), so always attempt the reachability check. For PostHog: `fetch(POSTHOG_HOST + "/decide?v=3", { method: "POST", body: JSON.stringify({ api_key: POSTHOG_KEY, distinct_id: "healthcheck" }) })`. Set `checks.analytics = "ok"` or `"error"` based on reachability. Timeout gracefully (e.g., 3s) — set `checks.analytics = "degraded"` on timeout. Log the actual error server-side — never expose raw error messages in the response. The `/decide` endpoint is lightweight and does not create events. Analytics is a **non-critical** check (see Response below).
+**When `stack.auth` is present:** bootstrap adds an auth service check — call `supabase.auth.getUser()` with no session (expects an auth error, not a network error), and set `checks.auth = "ok"` or `"error"`. Log the actual error server-side with `console.error("Health check auth error:", e.message)` — never expose raw error messages or subsystem names in the response.
 
-**When `stack.payment` is present:** bootstrap adds a payment configuration check — verify the payment provider's secret key env var exists and has the correct format. For Stripe: check `process.env.STRIPE_SECRET_KEY` starts with `sk_`. Set `checks.payment = "ok"` or `"error"`. Log the actual error server-side — never expose raw error messages in the response.
+**When `stack.analytics` is present:** bootstrap adds an analytics reachability check. Import constants from the analytics server library (e.g., `import { POSTHOG_KEY, POSTHOG_HOST } from "@/lib/analytics-server"`). Do NOT hardcode the API key — always use the imported constant. The publishable key is always available (hardcoded fallback in the analytics library), so always attempt the reachability check. For PostHog: `fetch(POSTHOG_HOST + "/decide?v=3", { method: "POST", body: JSON.stringify({ api_key: POSTHOG_KEY, distinct_id: "healthcheck" }) })`. Set `checks.analytics = "ok"` or `"error"` based on reachability. Timeout gracefully (e.g., 3s) — set `checks.analytics = "degraded"` on timeout. Log the actual error server-side — never expose raw error messages or subsystem names in the response. The `/decide` endpoint is lightweight and does not create events. Analytics is a **non-critical** check (see Response below).
 
-**Response:** Checks are classified as **critical** (database, auth) or **non-critical** (analytics, payment config). Returns 200 with JSON `{ status: "ok", ... }` if all critical checks pass — non-critical checks may report `"degraded"` or `"error"` without affecting the HTTP status code. Returns 503 only if a critical check fails, with individual check results so failures are diagnosable.
+**When `stack.payment` is present:** bootstrap adds a payment configuration check — verify the payment provider's secret key env var exists and has the correct format. For Stripe: check `process.env.STRIPE_SECRET_KEY` starts with `sk_`. Set `checks.payment = "ok"` or `"error"`. Log the actual error server-side — never expose raw error messages or subsystem names in the response.
+
+**Response:** Checks are classified as **critical** (database, auth) or **non-critical** (analytics, payment config). Returns 200 with `{ status: "ok" }` if all critical checks pass. Returns 503 with `{ status: "degraded" }` if any critical check fails. Per-subsystem keys are **never** included in the response — the binary status is all an external caller needs; detailed check results are logged server-side only for operator diagnostics.
 
 ## Preview Smoke Test
 
