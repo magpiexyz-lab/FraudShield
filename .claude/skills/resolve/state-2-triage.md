@@ -53,11 +53,13 @@ This observation describes a template-architecture concern that requires first-p
 \`/solve \"Issue #<N>: <title>\"\`"
 ```
 
-Apply the `architecture` label so future `/resolve` runs skip this issue:
+Apply the `architecture` label and remove `observation` label (if present) so future `/resolve` runs skip this issue:
 ```bash
 # Create label if it doesn't exist (idempotent)
 gh label create "architecture" --description "Architectural issue deferred to /solve" --color "d4c5f9" 2>/dev/null || true
 gh issue edit <N> --add-label "architecture"
+# Remove observation label so /resolve won't pick this up again
+gh issue edit <N> --remove-label "observation" 2>/dev/null || true
 ```
 
 If `gh issue edit` fails: embed `**Label:** architecture (create this label for filtering)` in the defer comment body as fallback.

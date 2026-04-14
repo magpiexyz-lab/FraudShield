@@ -20,7 +20,7 @@
     {
       "name": "Fix",
       "state_range": [6, 11],
-      "interactive": false,
+      "interactive": true,
       "max_budget": 80,
       "gate": {
         "postconditions": true

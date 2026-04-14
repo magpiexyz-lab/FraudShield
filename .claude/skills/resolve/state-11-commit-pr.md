@@ -29,7 +29,8 @@ Write `.runs/pr-body.md` using `.github/PULL_REQUEST_TEMPLATE.md`:
   - What changed
 - **How to Test**: "Run `make validate` + all 3 validator scripts"
 - **What Changed**: List every file and what changed
-- **Why**: "Resolves template issues reported in #N" with `Closes #N` for each issue
+- **Why**: "Resolves template issues reported in #N" with `Closes #N` for each implemented issue.
+  Check `rejected_issues` in `resolve-context.json` — exclude those issue numbers from `Closes #N` lines (rejected issues remain open).
 
 Include additional sections in PR body:
 
@@ -65,7 +66,7 @@ End with: `🤖 Generated with [Claude Code](https://claude.com/claude-code)`
 
 **POSTCONDITIONS:**
 - Delivery artifacts written: `.runs/commit-message.txt`, `.runs/pr-title.txt`, `.runs/pr-body.md`
-- `Closes #N` in `pr-body.md` for each resolved issue
+- `Closes #N` in `pr-body.md` for each implemented issue (excludes `rejected_issues` from `resolve-context.json`)
 
 **VERIFY:**
 ```bash

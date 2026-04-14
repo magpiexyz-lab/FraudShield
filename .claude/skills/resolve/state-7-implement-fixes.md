@@ -7,6 +7,18 @@
 
 For each issue in severity order (HIGH first):
 
+0. **Present fix summary and wait for approval:**
+   Before implementing, present a brief explanation to the user:
+   ```
+   **Fix for #<N>: <title>**
+   - Root cause: <1 sentence>
+   - What changes: <files and what's modified, 1-2 bullets>
+   - Risk: <low/medium — blast radius summary>
+   ```
+   **STOP. Wait for the user to approve this fix before implementing.**
+   If the user rejects a fix, log it in `.runs/fix-log.md` as
+   `**Rejected** — #<N>: <title> — rejected by user` and move to the next issue.
+
 1. Implement the fix per the approved fix plan from Step 5
 1b. After each fix, log it in `.runs/fix-log.md` (create with header `# Error Fix Log` if absent):
     `**Fix N** — <file>: <one-line description of what was fixed and why>`
@@ -40,11 +52,26 @@ For each issue in severity order (HIGH first):
 If new validator checks were added:
 - Update `scripts/check-inventory.md` (add to appropriate table, update counts)
 
+**After all fixes have been processed:**
+- Record rejected issue numbers in `resolve-context.json`:
+  ```bash
+  python3 -c "
+  import json
+  ctx = json.load(open('.runs/resolve-context.json'))
+  ctx['rejected_issues'] = []  # list of issue numbers rejected by user (empty if none)
+  json.dump(ctx, open('.runs/resolve-context.json', 'w'), indent=2)
+  "
+  ```
+- If ALL fixes were rejected (no changes in git working tree): report
+  "All fixes were rejected — no changes to commit. Issues remain open."
+  Advance state and **TERMINAL** — skill ends, no PR created.
+
 **POSTCONDITIONS:**
 - All approved fixes implemented (or reverted with logged reason)
 - Validator error count has not increased vs `pre_fix_baseline`
 - `check-inventory.md` updated if new checks were added
-- Git working tree has changes (fixes applied)
+- `rejected_issues` recorded in `resolve-context.json`
+- Git working tree has changes (fixes applied) — unless all-rejected TERMINAL
 
 **VERIFY:**
 ```bash
