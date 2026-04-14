@@ -151,7 +151,7 @@ _parse_check_result() {
 
 # --- check_artifact_presence ---
 # Table-driven artifact existence checks for verify-report-gate.
-# Covers Checks 1-7, 13b, 15: file existence, field validation, trace checks.
+# Covers Checks 1-8, 13b, 15: file existence, field validation, trace checks.
 # Returns JSON {"errors":[...],"warnings":[...]} — caller uses _parse_check_result.
 # $1: project directory  $2: has_hard_gate (0|1)  $3: report content
 # Usage: RESULT=$(check_artifact_presence "$PROJECT_DIR" "$HAS_HARD_GATE" "$CONTENT")

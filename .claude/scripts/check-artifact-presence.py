@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Artifact presence checks for verify-report-gate.
 
-Covers Checks 1-7, 13b, 15: file existence, field validation, trace checks.
+Covers Checks 1-8, 13b, 15: file existence, field validation, trace checks.
 Reads report content from stdin. Returns JSON {"errors":[], "warnings":[]}.
 """
 import argparse
@@ -91,6 +91,19 @@ def main():
                 if not e2e.get('passed', False):
                     warnings.append('e2e-result.json: passed=false — E2E tests failed')
             except: pass
+
+    # --- Check 8: retrospective-result.json (STATE 6b, skip on hard gate) ---
+    if not hard_gate:
+        retro_path = os.path.join(project, '.runs/retrospective-result.json')
+        if not os.path.exists(retro_path):
+            errors.append('retrospective-result.json not found — lead retrospective (STATE 6b) did not run')
+        else:
+            try:
+                retro = json.load(open(retro_path))
+                if not isinstance(retro.get('agent_instruction_compliance'), list):
+                    warnings.append('retrospective-result.json: agent_instruction_compliance is not a list')
+            except:
+                warnings.append('retrospective-result.json: invalid JSON')
 
     # --- Check 13b: design-critic-shared when per-page has unresolved_shared ---
     if scope in ('full', 'visual') and arch == 'web-app':

@@ -20,9 +20,9 @@ real observation data.
 ## Step 2: Check skip list
 
 Skip epilogue entirely for these skills (they handle observation elsewhere):
-- **change** — verify.md STATE 6 Auto-Observe handles observation
-- **distribute** — verify.md STATE 6 Auto-Observe handles observation
-- **verify** — has its own STATE 6 + 7 for observation
+- **change** — verify.md STATE 6 + 6b handles observation
+- **distribute** — verify.md STATE 6 + 6b handles observation
+- **verify** — has its own STATE 6 + 6b + 7 for observation
 - **optimize-prompt** — stateless utility, no observation
 
 If the current skill is in this list, stop. Do not write observe-result.json

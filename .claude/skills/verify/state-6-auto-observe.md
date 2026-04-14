@@ -79,4 +79,4 @@ print(f'Collected diffs for {len(diffs)} files -> .runs/observer-diffs.txt')
 bash .claude/scripts/advance-state.sh verify 6
 ```
 
-**NEXT:** Read [state-7a-write-report.md](state-7a-write-report.md) to continue.
+**NEXT:** Read [state-6b-lead-retrospective.md](state-6b-lead-retrospective.md) to continue.

@@ -112,7 +112,7 @@ After ALL per-page agents + Stage 1b + Stage 2 (consistency check) complete:
 
 1. Read `.runs/agent-traces/design-critic.json` trace (merged by lead in Step A).
 2. Verify `pages_reviewed` >= number of discovered pages (filesystem + golden_path union).
-3. If `verdict` == `"unresolved"`, this is a **hard gate failure** — design quality threshold (8/10) was not met after 2 fix attempts. Skip STATEs 4-6 but still write verify-report.md (STATE 7a) and execute STATE 8 (Save Patterns). Report failure to user with the `unresolved_sections` count.
+3. If `verdict` == `"unresolved"`, this is a **hard gate failure** — design quality threshold (8/10) was not met after 2 fix attempts. Skip STATEs 4-6b but still write verify-report.md (STATE 7a) and execute STATE 8 (Save Patterns). Report failure to user with the `unresolved_sections` count.
 4. If `min_score` < 8 and `verdict` == `"fixed"`, note in verify report that threshold was met after fixes.
 5. If `pre_existing_debt` is non-empty, note pre-existing quality debt in verify report (informational, does not block).
 6. Extract Fix Summaries from per-page agent return messages. Append each fix to `.runs/fix-log.md` with the prefix `Fix (design-critic):`.

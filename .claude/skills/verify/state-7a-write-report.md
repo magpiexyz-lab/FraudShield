@@ -1,6 +1,6 @@
 # STATE 7a: WRITE_REPORT
 
-**PRECONDITIONS:** STATE 6 complete. All agents finished. All traces written.
+**PRECONDITIONS:** STATE 6b complete. All agents finished. All traces written.
 
 > **This state is gated by `verify-report-gate.sh`.** The hook checks that
 > verify-context.json, fix-log.md, and agent traces exist before allowing
@@ -34,6 +34,7 @@ agents_expected: [list from scope table]
 agents_completed: [list as they finish]
 consistency_scan: pass | skipped | N/A
 auto_observe: ran | skipped-no-fixes | observations-filed
+lead_retrospective: ran | skipped-hard-gate | observations-filed
 agent_verdicts: <AGENT_VERDICTS JSON>
 hard_gate_failure: false
 process_violation: false
@@ -72,7 +73,10 @@ overall_verdict: pass | fail
 | spec-reviewer | [pass/N gaps/skipped] | [1-line summary] |
 
 ## Observations Filed
-- [list, or "None"]
+Read `.runs/retrospective-result.json` if it exists.
+Combine observer-filed observations (from STATE 6) with lead-retrospective-filed
+observations (from STATE 6b) into a single list.
+- [combined list, or "None"]
 
 ## Process Compliance
 > Always populated.

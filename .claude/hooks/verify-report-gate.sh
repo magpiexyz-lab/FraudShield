@@ -22,7 +22,7 @@ WARNINGS=()
 
 extract_write_content
 
-# Detect hard_gate_failure in report content — when true, STATEs 4-6 artifacts
+# Detect hard_gate_failure in report content — when true, STATEs 4-6b artifacts
 # are correctly absent (hard gate skips them). Checks 5, 7, 15 become conditional.
 HAS_HARD_GATE=0
 if [[ -n "$CONTENT" ]]; then
@@ -30,7 +30,7 @@ if [[ -n "$CONTENT" ]]; then
 fi
 
 # ═══════════════════════════════════════════════════════════════════
-# === Section A: Artifact Presence (Checks 1-7, 13b, 15) ===
+# === Section A: Artifact Presence (Checks 1-8, 13b, 15) ===
 # ═══════════════════════════════════════════════════════════════════
 
 ARTIFACT_RESULT=$(check_artifact_presence "$PROJECT_DIR" "$HAS_HARD_GATE" "$CONTENT")
