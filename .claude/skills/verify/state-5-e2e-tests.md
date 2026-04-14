@@ -8,13 +8,13 @@
   ```bash
   echo '{"skipped":true,"reason":"no testing stack"}' > .runs/e2e-result.json
   ```
-  Skip to STATE 6.
+  Skip to STATE 7a.
 
 - If `stack.testing` is present but no test configuration file exists → write `.runs/e2e-result.json`:
   ```bash
   echo '{"skipped":true,"reason":"no test configuration"}' > .runs/e2e-result.json
   ```
-  Skip to STATE 6.
+  Skip to STATE 7a.
 
 - Otherwise: run tests with precondition separation.
 
@@ -25,7 +25,7 @@
     ```bash
     echo '{"skipped":true,"reason":"unrecognized test runner"}' > .runs/e2e-result.json
     ```
-    Skip to STATE 6.
+    Skip to STATE 7a.
 
   **Phase A: Config validation (max 2 attempts, NOT counted against test budget)**
 
@@ -43,7 +43,7 @@
      echo 'WARN (e2e-config): Test infrastructure broken after 2 fix attempts — tests were NOT executed. This will be flagged in the verify report.' >> .runs/fix-log.md
      ```
      **Important:** STATE 7 (WRITE_REPORT) must check for `config_error` in `e2e-result.json` and set `hard_gate_failure: true` when present — a passing report with untested code violates Rule 5 (Deploy-Ready).
-     Skip to STATE 6.
+     Skip to STATE 7a.
 
   **Phase B: Test execution (3-attempt budget, starts ONLY after list succeeds)**
 
@@ -81,4 +81,4 @@ python3 -c "import json; d=json.load(open('.runs/e2e-result.json')); assert d.ge
 bash .claude/scripts/advance-state.sh verify 5
 ```
 
-**NEXT:** Read [state-6-auto-observe.md](state-6-auto-observe.md) to continue.
+**NEXT:** Read [state-7a-write-report.md](state-7a-write-report.md) to continue.

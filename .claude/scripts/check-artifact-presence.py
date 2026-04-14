@@ -72,6 +72,9 @@ def main():
             errors.append('security-merge.json not found — security merge step was skipped (scope=' + scope + ')')
 
     # --- Check 6: fix-log vs auto_observe (skip on hard gate) ---
+    # With unified observation, auto_observe is "evaluated-in-epilogue" during verify.
+    # The epilogue runs observation-phase.md after finalize — observe-result.json
+    # may not exist yet at verify-report write time, which is expected.
     if not hard_gate and os.path.exists(fix_log_path):
         try:
             lines = open(fix_log_path).readlines()[1:]  # skip header
@@ -92,12 +95,13 @@ def main():
                     warnings.append('e2e-result.json: passed=false — E2E tests failed')
             except: pass
 
-    # --- Check 8: retrospective-result.json (STATE 6b, skip on hard gate) ---
+    # --- Check 8: retrospective-result.json (written by observation-phase.md Step 5a in epilogue) ---
+    # With unified observation, retrospective-result.json is written in the epilogue
+    # (after finalize), not during verify. At verify-report write time it may not exist.
+    # Only check if it exists; missing is expected when auto_observe is "evaluated-in-epilogue".
     if not hard_gate:
         retro_path = os.path.join(project, '.runs/retrospective-result.json')
-        if not os.path.exists(retro_path):
-            errors.append('retrospective-result.json not found — lead retrospective (STATE 6b) did not run')
-        else:
+        if os.path.exists(retro_path):
             try:
                 retro = json.load(open(retro_path))
                 if not isinstance(retro.get('agent_instruction_compliance'), list):

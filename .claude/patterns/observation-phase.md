@@ -1,0 +1,399 @@
+# Observation Phase — Unified Template Observation Procedure
+
+> **Single entry point for all observation across all 16 lifecycle skills.**
+> Called by `skill-epilogue.md` after `lifecycle-finalize.sh` completes.
+> Replaces verify STATE 6 (AUTO_OBSERVE) + STATE 6b (LEAD_RETROSPECTIVE)
+> and skill-epilogue Strategy A/B with one parameterized procedure.
+
+## Parameters
+
+Received from the caller (skill-epilogue.md or /observe skill):
+
+- **scope**: `full` | `code` | `process` | `audit-only`
+- **skill**: the active skill name (from `*-context.json`)
+
+### Scope Derivation (performed by caller)
+
+The caller reads `.claude/skills/<skill>/skill.yaml` and derives scope:
+
+```
+if skill.yaml has embed with skill: verify → scope = "full"
+elif skill.yaml has critic/challenger agents AND diffs exist → scope = "full"
+elif skill.yaml has critic/challenger agents AND no diffs → scope = "process"
+elif diffs exist → scope = "code"
+else → scope = "audit-only"
+```
+
+**Critic/challenger agents** are agents whose role is to challenge or evaluate
+quality: `solve-critic`, `resolve-challenger`, `review-challenger`.
+**Operational agents** like `provision-scanner` do not trigger process observation.
+
+| Skill | Scope | Rationale |
+|-------|-------|-----------|
+| bootstrap | full | embed:verify — agents + diffs |
+| change | full | embed:verify — agents + diffs |
+| distribute | full | embed:verify — agents + diffs |
+| resolve | full | solve-critic + resolve-challenger + diffs |
+| review | full | review-challenger + diffs |
+| deploy | code | operational agent only, has diffs |
+| spec | code | diffs, no agents |
+| upgrade | code | diffs, no agents |
+| solve | process | solve-critic, no diffs |
+| audit | audit-only | no agents, no diffs |
+| iterate | audit-only | no agents, no diffs |
+| retro | audit-only | no agents, no diffs |
+| rollback | audit-only | no agents, no diffs |
+| teardown | audit-only | no agents, no diffs |
+
+## Step 1: Idempotency Guard
+
+If `.runs/observe-result.json` already exists, **STOP**. Another mechanism
+already wrote it. Do not overwrite.
+
+## Step 2: Evidence Collection
+
+Collect all available evidence (shared across all scopes):
+
+```bash
+# a. Collect branch diffs
+if git log --oneline $(git merge-base main HEAD)..HEAD 2>/dev/null | grep -q .; then
+  git diff $(git merge-base main HEAD)...HEAD > .runs/observer-diffs.txt
+else
+  git diff --cached > .runs/observer-diffs.txt
+  git diff >> .runs/observer-diffs.txt
+fi
+
+# b. Read fix-log (if exists)
+# .runs/fix-log.md — created during skill execution when retries/failures occur
+
+# c. Generate template file list
+cat .claude/template-owned-dirs.txt | grep -v '^#' | grep -v '^$' | xargs -I{} find {} -type f 2>/dev/null | sort
+```
+
+### Fallback: check agent traces for unreported fixes
+
+If fix-log has only the header line and no entries:
+
+```bash
+python3 -c "
+import json, os
+traces = ['.runs/agent-traces/design-critic.json',
+          '.runs/agent-traces/ux-journeyer.json',
+          '.runs/agent-traces/security-fixer.json']
+entries = []
+for t in traces:
+    if not os.path.exists(t): continue
+    d = json.load(open(t))
+    name = os.path.basename(t).replace('.json', '')
+    for fix in d.get('fixes', []):
+        f = fix.get('file', 'unknown')
+        symptom = fix.get('symptom', fix.get('desc', 'no description'))
+        action = fix.get('fix', fix.get('action', 'fixed'))
+        entries.append(f'Fix ({name}): \x60{f}\x60 — Symptom: {symptom} — Fix: {action}')
+if entries:
+    with open('.runs/fix-log.md', 'a') as log:
+        log.write('\n'.join(entries) + '\n')
+    print(f'WARNING: fix-log was empty but traces had {len(entries)} fixes. Synthesized entries.')
+else:
+    print('NO_FIXES')
+"
+```
+
+## Step 2.5: Write Evidence Check Artifact
+
+Record proof that the evidence scan was performed:
+
+```bash
+python3 -c "
+import json, os, glob, datetime
+fix_log_lines = 0
+if os.path.exists('.runs/fix-log.md'):
+    with open('.runs/fix-log.md') as f:
+        fix_log_lines = max(0, len([l for l in f.readlines() if l.strip()]) - 1)
+trace_fixes = 0
+for tf in glob.glob('.runs/agent-traces/*.json'):
+    try:
+        data = json.load(open(tf))
+        if isinstance(data.get('fixes'), list) and len(data['fixes']) > 0:
+            trace_fixes += 1
+    except: pass
+json.dump({
+    'fix_log_entries': fix_log_lines,
+    'trace_fixes_found': trace_fixes,
+    'checked_at': datetime.datetime.now(datetime.timezone.utc).isoformat()
+}, open('.runs/observe-evidence-check.json', 'w'), indent=2)
+"
+```
+
+## Step 3: Fast-Path Evaluation
+
+If `.runs/observer-diffs.txt` is empty AND `.runs/fix-log.md` has no entries
+(or does not exist) AND no agent traces contain fixes:
+
+Write `.runs/observe-result.json`:
+```json
+{
+  "skill": "<skill-name>",
+  "timestamp": "<ISO 8601>",
+  "friction_detected": false,
+  "observations_filed": 0,
+  "verdict": "clean"
+}
+```
+
+If scope is `process` or `audit-only`, also add `"strategy": "execution-audit"`.
+
+**DONE.** Zero overhead on the happy path.
+
+## Step 4: Code Observation
+
+**Activates when:** scope is `full` or `code` AND diffs exist (non-empty
+`.runs/observer-diffs.txt`).
+
+**Skip when:** scope is `process` or `audit-only`, OR no diffs exist.
+
+### Collect targeted diffs
+
+```bash
+python3 -c "
+import re, subprocess, os
+fixes = open('.runs/fix-log.md').read()
+files = sorted(set(re.findall(r'\x60([^\x60]+\.(?:ts|tsx|js|jsx|json|css))\x60', fixes)))
+diffs = []
+for f in files:
+    r = subprocess.run(['git', 'diff', 'HEAD', '--', f], capture_output=True, text=True)
+    if r.stdout.strip():
+        diffs.append(f'=== {f} ===\n{r.stdout}')
+    elif os.path.exists(f):
+        r2 = subprocess.run(['git', 'diff', '--no-index', '/dev/null', f], capture_output=True, text=True)
+        if r2.stdout.strip():
+            diffs.append(f'=== {f} (new file) ===\n{r2.stdout}')
+with open('.runs/observer-diffs.txt', 'w') as out:
+    out.write('\n'.join(diffs) if diffs else '(no diffs captured)')
+print(f'Collected diffs for {len(diffs)} files -> .runs/observer-diffs.txt')
+"
+```
+
+### Spawn observer agent
+
+> REF: The observer agent implements `.claude/patterns/observe.md` Path 1
+> (Observer Agent with diff). The decision framework, redaction rules, dedup
+> logic, and issue filing format are defined there.
+
+1. Spawn the `observer` agent (`subagent_type: observer`).
+   Pass ONLY: content of `.runs/observer-diffs.txt` + Fix Log summaries +
+   template file list from Step 2c.
+   Do NOT include experiment.yaml content, project name, or feature descriptions.
+
+2. Report the observer's result.
+
+3. Verify `.runs/agent-traces/observer.json` exists; if agent returned output
+   but trace is missing, write a recovery trace with `"recovery":true`.
+
+If observer spawning fails for any reason, continue to Step 5. Observation
+is best-effort.
+
+## Step 5: Process Observation
+
+Split into three sub-steps with scope-controlled activation.
+
+### Step 5a: Agent Instruction Compliance
+
+**Activates when:** scope is `full` or `process` AND agent traces exist in
+`.runs/agent-traces/`.
+
+**Skip when:** scope is `code` or `audit-only`, OR no agent traces exist.
+
+The lead agent answers 3 structured questions using its full execution context
+(agent traces, fix-log, verify-context or skill-context, in-memory knowledge):
+
+**Question 1: Flow Compliance**
+
+> "Did execution strictly follow the state machine defined in skill files?
+> Were any states skipped, reordered, or handled incorrectly?"
+
+Review:
+- `completed_states` in `*-context.json` vs expected states in state-registry.json
+- Whether any hard gate was triggered and handled correctly
+
+**Question 2: Agent Instruction Compliance**
+
+> "Did each spawned agent execute its defined procedure correctly?
+> If an agent produced incorrect output or required rework — was the template
+> instruction wrong/incomplete/ambiguous, or did the agent simply not follow it?"
+
+Review:
+- Each agent trace in `.runs/agent-traces/*.json` — verdict, checks_performed, fixes
+- Whether agent outputs were usable by downstream consumers
+- Whether any agent exhausted turns or produced recovery traces
+
+**Question 3: Trace Fidelity**
+
+> "Do the written traces accurately reflect actual execution, or are there
+> omissions or inconsistencies?"
+
+Review:
+- Are all expected agent traces present?
+- Do trace verdicts match observed behavior?
+- Are fix-log entries consistent with agent trace fixes arrays?
+
+#### Evaluate findings
+
+For each finding from Q1-Q3, apply the 3-condition test (observe.md):
+- **Condition A**: Template file is the root cause
+- **Condition B**: NOT caused by environment issues
+- **Condition C**: NOT specific to this project
+
+#### File qualifying observations
+
+For findings passing all 3 conditions, follow observe.md's Redaction, Dedup,
+and Issue Creation sections.
+
+#### Hard gate skip path
+
+Read the skill's context JSON. If `hard_gate_failure` is true:
+- Write minimal `.runs/retrospective-result.json`:
+  ```json
+  {
+    "process_compliance": "skipped-hard-gate",
+    "agent_instruction_compliance": [],
+    "trace_fidelity": "skipped-hard-gate",
+    "observations_filed": 0,
+    "skipped": true
+  }
+  ```
+- Skip to Step 5b.
+
+#### Write result
+
+Write `.runs/retrospective-result.json`:
+```json
+{
+  "process_compliance": "<summary or 'clean'>",
+  "agent_instruction_compliance": [
+    {"agent": "<name>", "compliant": true, "finding": null, "root_cause": "n-a"}
+  ],
+  "trace_fidelity": "<summary or 'clean'>",
+  "observations_filed": 0,
+  "skipped": false
+}
+```
+
+### Step 5b: Deterministic Compliance Audit
+
+**Activates:** Always (all scopes).
+
+Run cross-artifact consistency checks:
+```bash
+SKILL=$(python3 -c "import json;d=[json.load(open(f)) for f in __import__('glob').glob('.runs/*-context.json') if 'epilogue' not in f and 'verify' not in f];print(d[0]['skill'] if d else 'unknown')" 2>/dev/null)
+RUN_ID=$(python3 -c "import json;d=[json.load(open(f)) for f in __import__('glob').glob('.runs/*-context.json') if 'epilogue' not in f and 'verify' not in f];print(d[0].get('run_id','') if d else '')" 2>/dev/null)
+python3 .claude/scripts/compliance-audit.py --skill "$SKILL" --run-id "$RUN_ID"
+```
+
+Read `.runs/compliance-audit-result.json`. Record `anomaly_count`.
+
+### Step 5c: Adaptive LLM Audit
+
+**Activates when:** Step 5b `anomaly_count > 0` OR Q-score is low.
+
+```bash
+Q_SCORE=$(python3 -c "
+import json
+try:
+    with open('.runs/verify-history.jsonl') as f:
+        lines = f.readlines()
+    last = json.loads(lines[-1]) if lines else {}
+    print(last.get('q_skill', 1.0))
+except: print('1.0')
+" 2>/dev/null || echo "1.0")
+ANOMALIES=$(python3 -c "import json;print(json.load(open('.runs/compliance-audit-result.json')).get('anomaly_count',0))" 2>/dev/null || echo "0")
+python3 .claude/scripts/audit-sample.py --anomaly-count "$ANOMALIES" --q-score "$Q_SCORE" --run-id "$RUN_ID"
+```
+
+Read the JSON output. If `trigger` is `true`:
+- Perform **inline** comparison-based evaluation (do NOT spawn a subagent):
+- For each failing check in `compliance-audit-result.json`:
+  1. Read the spec (state-registry.json section)
+  2. Read the artifact (trace/challenge file)
+  3. Compare spec vs artifact
+  4. Classify root cause: template-spec-deficiency vs execution-omission vs
+     expected-edge-case
+  5. For template-spec-deficiency: apply 3-condition test to determine filing
+
+## Step 6: Action — Unified Filing
+
+> REF: This step implements the decision framework, redaction, dedup, and
+> issue filing defined in `.claude/patterns/observe.md`.
+
+For any findings from Steps 4 and 5 that qualify as template observations,
+follow the unified procedure:
+
+### 3-Condition Test (from observe.md)
+
+**A. Template file is root cause.** The fix required changing — or would ideally
+change — a file in the template file list.
+
+**B. Not an environment issue.** NOT caused by: missing CLI tools, network
+failures, Node version mismatches, missing env vars, or auth failures.
+
+**C. Not a user code issue.** NOT caused by: business logic bugs, project-specific
+dependency conflicts, or code that doesn't follow template guidance.
+
+**Heuristic:** "Would another developer using this template with a different
+experiment.yaml hit this same problem?" If yes → file it.
+
+### Redaction
+
+- Replace project name with `<project>`
+- Replace experiment.yaml content with `<redacted>`
+- Replace full stack traces with error message only
+- Replace project-specific paths with generic paths
+- Keep: template file name, generic symptom, fix diff (template-relevant only)
+
+### Dedup
+
+```bash
+TEMPLATE_REPO="magpiexyz-lab/mvp-template"
+gh issue list --repo $TEMPLATE_REPO --label observation \
+  --search "[observe] <template-file-basename>:" --state open --limit 20
+```
+
+If duplicate found: comment instead of creating new issue.
+
+### Issue Filing
+
+Title: `[observe] <template-file-basename>: <symptom-in-imperative-form>`
+
+Follow observe.md "Issue Creation" section for body format, file version
+metadata, and error handling.
+
+## Step 7: Write Final Results
+
+Write `.runs/observe-result.json`:
+```json
+{
+  "skill": "<skill-name>",
+  "timestamp": "<ISO 8601>",
+  "friction_detected": true,
+  "observations_filed": <N>,
+  "verdict": "filed" | "no-template-issues"
+}
+```
+
+**Strategy field mapping** (for lib-verdict.sh compatibility):
+- scope = `full` or `code` → do NOT set `"strategy"` field (observer should
+  have run; lib-verdict.sh treats absent strategy as code observation)
+- scope = `process` or `audit-only` → set `"strategy": "execution-audit"`
+
+Verdict values:
+- `"filed"` — observer or lead created/commented on GitHub issues
+- `"no-template-issues"` — evaluated but found no template-rooted issues
+
+## Constraints
+
+- **Best-effort.** Any failure in any step → write observe-result.json with
+  `"verdict": "clean"` and continue. Never block the skill.
+- **Max 1 observer spawn.** Combine all evidence into a single evaluation.
+- **Max 1 issue per session.** Multiple fixes → combine into one issue.
+- **No project-specific data in observer prompt.** Follow observe.md redaction.
+- **Idempotency.** Step 1 prevents double-observation across mechanisms.

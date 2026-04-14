@@ -135,10 +135,9 @@ Follow the database patterns defined in your active database stack file (`.claud
 ## Rule 12: Template Observations
 Template-rooted issues are detected and filed automatically.
 `lifecycle-finalize.sh` runs the epilogue for all skills:
-1. Determines epilogue strategy: **A** (code observation — diffs exist) or **B** (execution audit — no diffs)
-2. The command file reads `.claude/patterns/finalize-epilogue.md` and executes the appropriate strategy from `.claude/patterns/skill-epilogue.md`
-3. **Verify-embedded skills** (/change, /distribute) skip the epilogue — verify.md STATE 6 handles observation
-4. **Manual observation** (/observe): Use `/observe --file <path> --symptom "<desc>"` to manually file observations outside of automated flows
+1. The command file reads `.claude/patterns/finalize-epilogue.md` which calls `.claude/patterns/skill-epilogue.md`
+2. `skill-epilogue.md` derives observation scope from `skill.yaml` and calls `.claude/patterns/observation-phase.md` — the unified observation procedure for all skills
+3. **Manual observation** (/observe): Use `/observe --file <path> --symptom "<desc>"` to manually file observations outside of automated flows
 
 No manual note-taking is required during skill execution. For ad-hoc fixes
 outside of a skill context, use `/observe` to evaluate and file template

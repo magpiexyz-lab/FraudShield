@@ -17,8 +17,8 @@ Run `npm run build`. If build fails, fix (max 2 attempts) before next agent.
 #### Lead-side validation (ux-journeyer)
 
 1. Read `.runs/agent-traces/ux-journeyer.json` trace.
-2. If `verdict` == `"blocked"`, this is a **hard gate failure** — the golden path cannot be completed. Report the blocked location to the user. Skip STATEs 4-6b but still write verify-report.md (STATE 7a) and execute STATE 8 (Save Patterns).
-3. If `unresolved_dead_ends` > 0, this is a **hard gate failure** — real dead ends remain after fixes. Skip STATEs 4-6b but still write verify-report.md (STATE 7a) and execute STATE 8 (Save Patterns).
+2. If `verdict` == `"blocked"`, this is a **hard gate failure** — the golden path cannot be completed. Report the blocked location to the user. Skip STATEs 4-5 but still write verify-report.md (STATE 7a) and execute STATE 8 (Save Patterns).
+3. If `unresolved_dead_ends` > 0, this is a **hard gate failure** — real dead ends remain after fixes. Skip STATEs 4-5 but still write verify-report.md (STATE 7a) and execute STATE 8 (Save Patterns).
 4. If `dead_ends` > 0 AND `unresolved_dead_ends` == 0, all dead ends are intentional fake-door pages. Note in verify report (informational, does not block).
 5. Extract Fix Summaries from the agent's return message. Append each fix to `.runs/fix-log.md` with the prefix `Fix (ux-journeyer):`.
 

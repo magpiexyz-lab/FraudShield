@@ -1,4 +1,4 @@
-states: ["0","1","2","3a","3b","3c","4","5","6","6b","7a","7b","8"]
+states: ["0","1","2","3a","3b","3c","4","5","7a","7b","8"]
 agents:
   build-info-collector:
     after: ["1"]
@@ -45,7 +45,5 @@ agents:
   security-fixer:
     after: ["3a"]
     requires_traces: [build-info-collector]
-  observer:
-    after: ["4"]
   pattern-classifier:
-    after: ["6"]
+    after: ["5"]

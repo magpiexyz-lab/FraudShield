@@ -123,7 +123,7 @@
    - Body: skill name, Q-score breakdown (Gate, R_system, R_human, dimension_scores), timestamp
    - Follow observe.md's Redaction, Dedup, and Issue Creation procedures
 
-   This is a direct evaluation (like Path 2), not a callback to STATE 6. Do NOT spawn the observer agent.
+   This is a direct evaluation (like Path 2), not a callback to the observation epilogue. Do NOT spawn the observer agent.
 
 **POSTCONDITIONS:**
 - `verify-report.md` exists with valid frontmatter

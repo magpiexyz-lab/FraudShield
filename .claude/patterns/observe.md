@@ -5,19 +5,17 @@ issues on the template repo.
 
 ## Entry Point
 
-This procedure is called:
-1. By verify.md's "Auto-Observe" section — after all fixes (build, visual, security) are complete
-2. By deploy.md Step 5e — after deployment fixes
-3. Manually — for ad-hoc fixes outside of skills
-4. By skill-epilogue.md Strategy A — after code-writing skills that don't run /verify (e.g., /resolve, /review)
-5. By skill-epilogue.md Strategy B — inline Path 2 evaluation for analysis-only skills
+> **Implementation:** `.claude/patterns/observation-phase.md` is the unified
+> entry point for all observation. It calls this procedure's decision framework
+> (3-condition test), redaction, dedup, and issue filing sections.
+
+This procedure defines the canonical decision framework. It is invoked:
+1. By `observation-phase.md` Steps 4-6 — the unified observation procedure for all skills
+2. By `/observe` skill's state-1 — manual observation via `--file` and `--symptom`
+3. By verify STATE 7b — Q-score-triggered observation (Path 3)
 
 When called, you should already know which fix(es) to evaluate. Proceed
 directly to Trigger Evaluation below.
-
-**If you are running `/iterate` or `/retro`,
-skip this entire procedure** — these skills use Strategy B in skill-epilogue.md,
-which handles observation inline without calling this procedure directly.
 
 ## Prerequisites
 

@@ -462,7 +462,7 @@ No branch → analysis-only. `lifecycle-init.sh` selects mode based on trigger a
 ### Complex agent graph — /verify
 
 ```yaml
-states: ["0","1","2","3a","3b","3c","4","5","6","7a","7b","8"]
+states: ["0","1","2","3a","3b","3c","4","5","7a","7b","8"]
 agents:
   build-info-collector:
     after: ["1"]

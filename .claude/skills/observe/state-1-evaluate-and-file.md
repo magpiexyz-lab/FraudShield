@@ -1,5 +1,9 @@
 # STATE 1: EVALUATE_AND_FILE
 
+> REF: The 3-condition test, redaction, dedup, and filing in this state follow
+> the same decision framework defined in `observation-phase.md` Step 6 and
+> `observe.md`. Changes to the decision framework must be reflected in both files.
+
 **PRECONDITIONS:**
 - Arguments parsed (STATE 0 POSTCONDITIONS met)
 - `.runs/observe-context.json` exists with `template_file` and `symptom`

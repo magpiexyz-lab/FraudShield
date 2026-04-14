@@ -22,7 +22,7 @@ WARNINGS=()
 
 extract_write_content
 
-# Detect hard_gate_failure in report content — when true, STATEs 4-6b artifacts
+# Detect hard_gate_failure in report content — when true, STATEs 4-5 artifacts
 # are correctly absent (hard gate skips them). Checks 5, 7, 15 become conditional.
 HAS_HARD_GATE=0
 if [[ -n "$CONTENT" ]]; then

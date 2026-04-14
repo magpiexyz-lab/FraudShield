@@ -55,8 +55,6 @@ Read each STATE's file **only when transitioning to that state**. Do NOT read ah
 | 3c | UX_MERGE | [state-3c-ux-merge.md](verify/state-3c-ux-merge.md) |
 | 4 | SECURITY_MERGE_FIX | [state-4-security-merge-fix.md](verify/state-4-security-merge-fix.md) |
 | 5 | E2E_TESTS | [state-5-e2e-tests.md](verify/state-5-e2e-tests.md) |
-| 6 | AUTO_OBSERVE | [state-6-auto-observe.md](verify/state-6-auto-observe.md) |
-| 6b | LEAD_RETROSPECTIVE | [state-6b-lead-retrospective.md](verify/state-6b-lead-retrospective.md) |
 | 7a | WRITE_REPORT | [state-7a-write-report.md](verify/state-7a-write-report.md) |
 | 7b | COMPUTE_QSCORE | [state-7b-compute-qscore.md](verify/state-7b-compute-qscore.md) |
 | 8 | SAVE_PATTERNS | [state-8-save-patterns.md](verify/state-8-save-patterns.md) |
@@ -222,7 +220,7 @@ Re-spawn the agent with a reduced scope prompt:
 **On double exhaustion** (retry also produces State 2):
 1. Write a recovery trace: `{"agent":"<name>","status":"exhausted","verdict":"exhausted","recovery":true,"retry_attempted":true,"checks_performed":["exhaustion-recovery"],"timestamp":"..."}`
 2. Set `hard_gate_failure: true` in the verify report frontmatter
-3. Skip operational STATEs 4-6b (jump to STATE 7a, then continue to STATE 8)
+3. Skip operational STATEs 4-5 (jump to STATE 7a, then continue to STATE 8)
 4. Report to user: "Agent <name> exhausted turns twice. Hard gate failure — manual review required."
 
 #### Tier 2 — Critical read-only agents
@@ -280,7 +278,8 @@ See [state-1-build-lint-loop.md](verify/state-1-build-lint-loop.md) for full pro
 
 ## Auto-Observe
 
-See [state-6-auto-observe.md](verify/state-6-auto-observe.md) for full procedure.
+Observation is now handled in the post-finalize epilogue via
+[observation-phase.md](observation-phase.md) for all skills.
 
 ## Write Verification Report
 

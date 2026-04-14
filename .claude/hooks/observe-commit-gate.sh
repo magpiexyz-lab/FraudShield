@@ -4,7 +4,7 @@
 # Data-driven: uses *-context.json + skill.yaml observation config
 # to determine which skills need observation enforcement.
 # Skills that embed /verify (bootstrap, change, distribute) are exempt —
-# verify-report.md proves STATE 6 auto-observe ran.
+# verify-report.md proves verify ran — observation handled in epilogue.
 
 set -euo pipefail
 
@@ -41,14 +41,14 @@ fi
 
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-.}"
 
-# If verify-report.md exists, verify's STATE 6 handled observation — allow
+# If verify-report.md exists, verify ran — observation handled in epilogue
 if [[ -f "$PROJECT_DIR/.runs/verify-report.md" ]]; then
   exit 0
 fi
 
 # If observe-result.json exists, check verdict consistency then allow
 if [[ -f "$PROJECT_DIR/.runs/observe-result.json" ]]; then
-  # Verdict consistency invariant: non-empty diffs + "clean" + Strategy A = violation
+  # Verdict consistency invariant: non-empty diffs + "clean" + code-observation scope = violation
   ERRORS=()
   check_verdict_consistency "$SKILL"
   if [[ ${#ERRORS[@]} -gt 0 ]]; then
