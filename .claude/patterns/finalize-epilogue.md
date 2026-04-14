@@ -20,6 +20,7 @@ real observation data.
 ## Step 2: Check skip list
 
 Skip epilogue entirely for these skills (they handle observation elsewhere):
+- **bootstrap** — verify.md STATE 6 + 6b handles observation
 - **change** — verify.md STATE 6 + 6b handles observation
 - **distribute** — verify.md STATE 6 + 6b handles observation
 - **verify** — has its own STATE 6 + 6b + 7 for observation

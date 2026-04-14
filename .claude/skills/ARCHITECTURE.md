@@ -98,7 +98,7 @@ All derived automatically. Zero manual configuration.
 |---|----------|-------------|-------|
 | 1 | Create branch | `branch` field | Present → create; absent → skip |
 | 2 | Skill type | `branch` field | Present → code-writing; absent → analysis |
-| 3 | When to verify | `branch` + `embed` | Has branch + no embed:verify → auto-append verify(full) after last state |
+| 3 | When to verify | `branch` + `embed` | Has branch + embed:verify → verify runs at embed state; no embed → verify runs standalone after last state |
 | 4 | Verify scope | Default `full` | Override only via `embed` scope field |
 | 5 | Observation mode | Runtime `git diff` | Diff exists → spawn observer agent; else → inline execution audit |
 | 6 | Create PR | `branch` + `git diff` | Has branch + has diff → commit + PR + auto-merge |
@@ -383,7 +383,7 @@ Has branch → code-writing → verify(full) auto-appended → PR auto-created.
 ```yaml
 branch: "feat/bootstrap-{slug}"
 states: ["0","1","2","3","3a","3b","4","5","6","7","8","9",
-         "10","11","12","13","13a","13b","13c","14","15","16","17","18"]
+         "10","11","11a","11b","12","13","13a","13b","13c","14","15","16","17","18","19"]
 agents:
   gate-keeper:
     after: ["0"]
@@ -395,22 +395,26 @@ agents:
   scaffold-init:
     after: ["9"]
   scaffold-libs:
-    after: ["10"]
+    after: ["11"]
     depends_on: [scaffold-setup]
   scaffold-images:
-    after: ["10"]
-  scaffold-pages:
     after: ["11"]
+  scaffold-pages:
+    after: ["11a"]
     depends_on: [scaffold-libs]
   scaffold-landing:
-    after: ["11"]
+    after: ["11a"]
     depends_on: [scaffold-libs]
   scaffold-wire:
     after: ["13c"]
     depends_on: [scaffold-pages, scaffold-landing]
+embed:
+  - at: "19"
+    skill: verify
+    scope: full
 ```
 
-Convention gates: `gates/commit.sh` (BG verdict checks), `gates/write.sh` (root file protection).
+Embedded verify runs at state 19 with scope: full. Convention gates: `gates/commit.sh` (BG verdict checks), `gates/write.sh` (root file protection).
 
 ### Verify-first — /distribute
 

@@ -1,5 +1,5 @@
 branch: "feat/bootstrap-{slug}"
-states: ["0","1","2","3","3a","3b","4","5","6","7","8","9","10","11","11a","11b","12","13","13a","13b","13c","14","15","16","17","18"]
+states: ["0","1","2","3","3a","3b","4","5","6","7","8","9","10","11","11a","11b","12","13","13a","13b","13c","14","15","16","17","18","19"]
 agents:
   gate-keeper:
     after: ["0"]
@@ -24,7 +24,11 @@ agents:
   scaffold-wire:
     after: ["13c"]
     depends_on: [scaffold-pages, scaffold-landing]
+embed:
+  - at: "19"
+    skill: verify
+    scope: full
 observation:
   gate: commit-pr-gate
-  artifacts: [observe-result.json, verify-report.md]
+  artifacts: [verify-report.md]
   pr_checks: [frontmatter-validation, trace-completeness, agent-match]

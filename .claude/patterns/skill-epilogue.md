@@ -13,11 +13,11 @@ Two strategies, dispatched by evidence type:
 
 | Strategy | Skills | When |
 |----------|--------|------|
-| **A — Code Observation** | `/bootstrap`, `/resolve`, `/review`, `/deploy`, `/spec`, `/upgrade` | Skill produces diffs or modifies template files → spawn observer agent |
+| **A — Code Observation** | `/resolve`, `/review`, `/deploy`, `/spec`, `/upgrade` | Skill produces diffs or modifies template files → spawn observer agent |
 | **B — Execution Audit** | `/audit`, `/solve`, `/iterate`, `/observe`, `/retro`, `/rollback`, `/teardown` | Analysis-only, no diffs → inline friction check |
 
 **Skip for:**
-- Skills that embed `/verify` (`/change`, `/distribute`) — verify.md STATE 6 + 6b handles observation
+- Skills that embed `/verify` (`/bootstrap`, `/change`, `/distribute`) — verify.md STATE 6 + 6b handles observation
 - `/optimize-prompt` — stateless utility, no state machine
 - `/verify` itself — has its own STATE 6 + 6b + STATE 7
 
