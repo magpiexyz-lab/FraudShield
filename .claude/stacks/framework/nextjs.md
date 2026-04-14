@@ -56,7 +56,7 @@ export default tseslint.config(
   ...tseslint.configs.recommended,
   { plugins: { "react-hooks": reactHooks }, rules: reactHooks.configs.recommended.rules },
   { plugins: { "@next/next": nextPlugin }, rules: nextPlugin.configs.recommended.rules },
-  { ignores: [".next/", "out/", "node_modules/"] }
+  { ignores: [".next/", "out/", "node_modules/", "src/components/ui/", "src/components/magicui/"] }
 );
 ```
 

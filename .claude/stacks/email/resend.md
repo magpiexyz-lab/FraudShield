@@ -53,6 +53,24 @@ function getResend(): Resend {
   return _resend;
 }
 
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#x27;");
+}
+
+function sanitizeSubject(str: string): string {
+  return str.replace(/[\r\n\0]/g, "");
+}
+
+function safeUrl(url: string): string {
+  if (url === "/" || (url.startsWith("/") && !url.startsWith("//"))) return url;
+  if (url.startsWith("https://")) return url;
+  throw new Error("Invalid URL: must be https:// or a relative path");
+}
 
 const FROM_ADDRESS = process.env.RESEND_FROM || "onboarding@resend.dev";
 
@@ -61,14 +79,16 @@ export async function sendWelcomeEmail(to: string, name: string, ctaUrl: string)
     throw new Error("DEMO_MODE is not allowed in production");
   }
   if (process.env.DEMO_MODE === "true") return;
+  const safeName = escapeHtml(name);
+  const safeCtaUrl = safeUrl(ctaUrl);
   const { error } = await getResend().emails.send({
     from: FROM_ADDRESS,
     to,
-    subject: `Welcome to the app, ${name}!`,
+    subject: `Welcome to the app, ${sanitizeSubject(name)}!`,
     html: `
-      <h1>Welcome, ${name}!</h1>
+      <h1>Welcome, ${safeName}!</h1>
       <p>Thanks for signing up. We built this to help you get started fast.</p>
-      <p><a href="${ctaUrl}" style="display:inline-block;padding:12px 24px;background:#2563eb;color:#fff;border-radius:6px;text-decoration:none;">Get Started</a></p>
+      <p><a href="${safeCtaUrl}" style="display:inline-block;padding:12px 24px;background:#2563eb;color:#fff;border-radius:6px;text-decoration:none;">Get Started</a></p>
     `,
   });
   if (error) throw error;
@@ -79,14 +99,17 @@ export async function sendActivationNudge(to: string, name: string, activationAc
     throw new Error("DEMO_MODE is not allowed in production");
   }
   if (process.env.DEMO_MODE === "true") return;
+  const safeName = escapeHtml(name);
+  const safeAction = escapeHtml(activationAction);
+  const safeCtaUrl = safeUrl(ctaUrl);
   const { error } = await getResend().emails.send({
     from: FROM_ADDRESS,
     to,
-    subject: `Quick reminder: ${activationAction}`,
+    subject: `Quick reminder: ${sanitizeSubject(activationAction)}`,
     html: `
-      <h1>Hey ${name}, you're almost there</h1>
-      <p>You signed up but haven't ${activationAction} yet. It only takes a minute.</p>
-      <p><a href="${ctaUrl}" style="display:inline-block;padding:12px 24px;background:#2563eb;color:#fff;border-radius:6px;text-decoration:none;">${activationAction}</a></p>
+      <h1>Hey ${safeName}, you're almost there</h1>
+      <p>You signed up but haven't ${safeAction} yet. It only takes a minute.</p>
+      <p><a href="${safeCtaUrl}" style="display:inline-block;padding:12px 24px;background:#2563eb;color:#fff;border-radius:6px;text-decoration:none;">${safeAction}</a></p>
     `,
   });
   if (error) throw error;
@@ -101,18 +124,31 @@ Called from the auth success callback after `signup_complete`. Sends a welcome e
 
 ```ts
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
+import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { sendWelcomeEmail } from "@/lib/email";
 import { trackServerEvent } from "@/lib/analytics-server";
 
-export async function POST(req: NextRequest) {
-  const { email, name, ctaUrl } = await req.json();
+const welcomeSchema = z.object({
+  email: z.string().email().max(200),
+  name: z.string().max(200),
+  ctaUrl: z.string().max(500).optional(),
+});
 
-  if (!email || !name) {
-    return NextResponse.json({ error: "Missing email or name" }, { status: 400 });
+export async function POST(req: NextRequest) {
+  const supabase = await createServerSupabaseClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  await sendWelcomeEmail(email, name, ctaUrl || "/");
-  await trackServerEvent("email_welcome_sent", email, { recipient: email });
+  const body = welcomeSchema.safeParse(await req.json());
+  if (!body.success) {
+    return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+  }
+
+  await sendWelcomeEmail(body.data.email, body.data.name, body.data.ctaUrl || "/");
+  await trackServerEvent("email_welcome_sent", body.data.email, { recipient: body.data.email });
 
   return NextResponse.json({ ok: true });
 }
@@ -245,6 +281,14 @@ Both pipelines use the same sender domain when `stack.email: resend` is enabled:
 `<domain>` = `deploy.domain` from experiment.yaml; fallback `draftlabs.org`.
 
 **Prerequisite:** Verify domain in Resend Dashboard → Domains (one-time, team-level setup).
+
+## Security
+
+- Always HTML-escape user-supplied values (`name`, `activationAction`) before interpolating into email HTML bodies using the `escapeHtml()` helper — prevents HTML injection via crafted registration names
+- Always strip control characters (`\r`, `\n`, `\0`) from values interpolated into email subject lines using `sanitizeSubject()` — prevents email header injection
+- Always validate `ctaUrl` with `safeUrl()` before interpolation into `<a href>` — rejects `javascript:`, `data:`, and protocol-relative (`//`) URLs that could redirect users to malicious sites
+- The welcome email route (`/api/email/welcome`) must require authentication and validate input with zod — unauthenticated email-sending endpoints can be abused for spam relay
+- Never log raw email addresses in production — they are PII
 
 ## Without Auth or Database
 

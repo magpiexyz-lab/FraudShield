@@ -170,10 +170,10 @@ The `render` prop replaces the trigger's default `<button>` wrapper with the pro
 ## Known Issues
 
 ### When ESLint reports errors in auto-generated UI components
-Add `src/components/ui/` to the `ignores` array in `eslint.config.mjs`. Auto-generated shadcn files contain `@ts-nocheck` pragmas and useless-assignment patterns that ESLint flags — this directory must be excluded from linting since its contents are managed by the CLI, not by hand.
+Add `src/components/ui/` and `src/components/magicui/` to the `ignores` array in `eslint.config.mjs`. Auto-generated shadcn and MagicUI files contain `@ts-nocheck` pragmas and useless-assignment patterns that ESLint flags — these directories must be excluded from linting since their contents are managed by the CLI, not by hand.
 
 ```js
-{ ignores: [".next/", "out/", "node_modules/", "src/components/ui/"] }
+{ ignores: [".next/", "out/", "node_modules/", "src/components/ui/", "src/components/magicui/"] }
 ```
 
 ## Import Example

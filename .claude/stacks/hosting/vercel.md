@@ -202,6 +202,16 @@ if (!success) {
 
 > **Caveat:** In-memory state does not persist across serverless invocations, so this provides burst protection (limiting rapid requests to a single instance) rather than true distributed rate limiting. Add `// TODO: Upgrade to Upstash Redis for cross-instance rate limiting` after the rate limit check. If experiment.yaml `stack` includes a rate-limiting service (e.g., Upstash), use that instead of the in-memory limiter.
 
+### AI/LLM API endpoints
+
+When experiment.yaml behaviors involve an AI/LLM provider (e.g., `external/anthropic`, `external/openai`), apply rate limiting to all API routes that call the provider — not just auth and payment routes. Use a lower limit than standard routes (suggested default: 5 req/min/IP) since each request can generate significant inference costs. Adjust the limit based on the specific integration's cost profile and expected usage patterns.
+
+```ts
+const ip = request.headers.get("x-forwarded-for") ?? "unknown";
+const { success } = rateLimit(ip, { limit: 5, windowMs: 60_000 });
+if (!success) return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+```
+
 ## Security Headers
 
 Add a `vercel.json` with baseline security headers. These apply to all responses automatically.

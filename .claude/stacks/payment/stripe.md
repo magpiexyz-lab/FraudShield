@@ -41,7 +41,8 @@ function createDemoStripe() {
   return {
     checkout: {
       sessions: {
-        create: () => Promise.resolve({ url: "/" }),
+        create: (params: Record<string, unknown>) =>
+          Promise.resolve({ url: (params?.success_url as string) ?? "/" }),
       },
     },
     webhooks: {

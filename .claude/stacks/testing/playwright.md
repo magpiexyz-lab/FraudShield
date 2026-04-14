@@ -592,6 +592,8 @@ Notes:
 - Cron tests call the cron handler directly
 - Admin tests call admin API handlers (no browser, no login flow)
 - Skip tests when required env vars are missing (e.g., Stripe webhook secret)
+- **Database-dependent tests**: When a test calls an API route that requires a database connection, use `it.skipIf(!process.env.SUPABASE_URL)` to skip the test when no database is available (common in CI without a live Supabase instance). When a database IS available, the test should reject 500 as a real failure — do not blanket-accept all status codes.
+- **Stub generation from behavior.tests**: For each behavior with `actor: system/cron`, iterate over the behavior's `tests` array and generate a stub `it()` block for each entry. Include a descriptive TODO comment for the database assertion even if the assertion body is not yet implemented. This ensures spec-reviewer S5/S7 checks find matching `it()` blocks for every behavior test entry. Example: `it("Call record is inserted into calls table", async () => { // TODO: query database to verify record exists });`
 - These complement funnel tests: golden_path tests the customer journey (browser),
   behaviors with actor: system/cron tests the delivery chain (API)
 
@@ -899,6 +901,25 @@ The `webServer.command` uses `` `PORT=${port} npm run dev` `` (POSIX shell synta
 
 ### When a smoke test assertion targets the Next.js dev indicator or error overlay portal
 Scope the locator to `[data-nextjs-dialog-overlay]` rather than the generic portal container. The outer portal wrapper DOM structure changes between Next.js releases; the `data-nextjs-dialog-overlay` attribute is the stable selector for the actual overlay element.
+
+### When testing pages with MagicUI animation components (BlurFade, scroll-triggered effects)
+Add a `triggerAllInView()` helper to `e2e/helpers.ts` that scrolls through the full page height to trigger IntersectionObserver-based animations before asserting on elements inside them:
+
+```ts
+export async function triggerAllInView(page: Page) {
+  const height = await page.evaluate(() => document.body.scrollHeight);
+  for (let y = 0; y <= height; y += 200) {
+    await page.evaluate((scrollY) => window.scrollTo(0, scrollY), y);
+    await page.waitForTimeout(50);
+  }
+  await page.evaluate(() => window.scrollTo(0, 0));
+}
+```
+
+Call `await triggerAllInView(page)` after navigation and before asserting on elements that are inside BlurFade or other IntersectionObserver-controlled components. Without this, selectors targeting animated elements return empty results because the elements remain in their pre-animation hidden state.
+
+### When selecting MagicUI ShimmerButton in Playwright tests
+Use `page.locator('text=...')` or attribute selectors (`[data-testid=...]`) instead of `page.getByRole('button', { name: '...' })`. ShimmerButton is a styled canvas-based element without a standard ARIA button role, so `getByRole('button')` does not match it.
 
 ## PR Instructions
 - Install [Docker Desktop](https://www.docker.com/products/docker-desktop/) if not already installed
