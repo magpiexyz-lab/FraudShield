@@ -167,6 +167,88 @@ if missing:
   fi
 fi
 
+# ── Universal spawn provenance check ──
+# For each completed trace in agent-traces/, verify a matching spawn record
+# exists in agent-spawn-log.jsonl. Excludes recovery traces, started-only
+# traces, merge artifacts, and non-manifest agents.
+# This is the Option B universal check — works for ALL skills, zero config.
+SPAWN_LOG="$PROJECT_DIR/.runs/agent-spawn-log.jsonl"
+_SCG_MANIFEST="$PROJECT_DIR/.runs/${SKILL}-manifest.json"
+if [[ -f "$SPAWN_LOG" && -f "$_SCG_MANIFEST" ]]; then
+  PROVENANCE_RESULT=$(python3 -c "
+import json, glob, os, sys
+
+manifest = json.load(open('$_SCG_MANIFEST'))
+declared = set(manifest.get('agents', {}).keys())
+if not declared:
+    sys.exit(0)  # No agents declared in manifest
+
+# Get current run_id to filter stale spawn records from prior runs
+ctx_path = os.path.join('$PROJECT_DIR', '.runs', '$SKILL' + '-context.json')
+current_run_id = ''
+try:
+    current_run_id = json.load(open(ctx_path)).get('run_id', '')
+except: pass
+
+# Collect spawned agent base names from hook-written spawn-log
+# Only count entries matching the current run_id
+spawned = set()
+with open('$SPAWN_LOG') as f:
+    for line in f:
+        try:
+            e = json.loads(line)
+            if e.get('hook') in ('skill-agent-gate', 'recovery-script'):
+                if not current_run_id or e.get('run_id') == current_run_id:
+                    spawned.add(e['agent'])
+        except: pass
+
+# Check each trace file for provenance
+errors = []
+traces_dir = os.path.join('$PROJECT_DIR', '.runs', 'agent-traces')
+for tf in sorted(glob.glob(os.path.join(traces_dir, '*.json'))):
+    try:
+        td = json.load(open(tf))
+    except: continue
+    agent_name = td.get('agent', '')
+    if not agent_name: continue
+    # Skip recovery traces (written by controlled script)
+    if td.get('recovery'): continue
+    # Skip started-only init traces (no verdict yet)
+    if td.get('status') == 'started' and 'verdict' not in td: continue
+    # Skip traces from prior runs (stale run_id)
+    trace_run_id = td.get('run_id', '')
+    if current_run_id and trace_run_id and trace_run_id != current_run_id: continue
+
+    # Resolve base agent name (e.g., design-critic-landing -> design-critic)
+    base = agent_name
+    bn = os.path.basename(tf).replace('.json', '')
+    for da in sorted(declared, key=len, reverse=True):
+        if agent_name == da or bn.startswith(da + '-'):
+            base = da
+            break
+
+    # Only check manifest-declared agents
+    if base not in declared: continue
+
+    # Skip lead-written merge artifacts (e.g., design-critic.json merged
+    # from per-page design-critic-*.json traces in state-3b)
+    if bn == base and glob.glob(os.path.join(traces_dir, base + '-*.json')):
+        continue
+
+    # Provenance check: base agent must appear in spawn-log
+    if base not in spawned:
+        errors.append(f'{bn}: no spawn record for {base}')
+
+if errors:
+    print('|'.join(errors))
+" 2>/dev/null || echo "")
+
+  if [[ -n "$PROVENANCE_RESULT" ]]; then
+    _log_verify_trace "$SKILL" "$STATE_ID" "fail-provenance" ""
+    deny "State completion gate: $SKILL STATE $STATE_ID — trace provenance failed. Traces without Agent spawn records: ${PROVENANCE_RESULT//|/, }. You must spawn agents via the Agent tool."
+  fi
+fi
+
 # Postconditions verified — allow
 # Trace: log VERIFY pass
 _log_verify_trace "$SKILL" "$STATE_ID" "pass"

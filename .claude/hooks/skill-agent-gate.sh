@@ -197,4 +197,28 @@ if [[ ${#ERRORS[@]} -gt 0 ]]; then
   deny_errors "State gate blocked: " "Complete prerequisite states before spawning $SUBAGENT_TYPE."
 fi
 
+# ── Record spawn in agent-spawn-log.jsonl (tamper-protected) ──
+# This file is guarded by trace-write-guard.sh (Bash) and artifact-integrity-gate.sh
+# (Write/Edit). Only this hook can write to it because hook execution does not
+# trigger PreToolUse hooks.
+_SAG_SPAWN_LOG="$PROJECT_DIR/.runs/agent-spawn-log.jsonl"
+_SAG_CTX="$PROJECT_DIR/.runs/${ACTIVE_SKILL}-context.json"
+_SAG_RUN_ID=""
+if [[ -f "$_SAG_CTX" ]]; then
+  _SAG_RUN_ID=$(python3 -c "import json; print(json.load(open('$_SAG_CTX')).get('run_id',''))" 2>/dev/null || echo "")
+fi
+mkdir -p "$PROJECT_DIR/.runs"
+python3 -c "
+import json, datetime
+entry = {
+    'agent': '$SUBAGENT_TYPE',
+    'skill': '$ACTIVE_SKILL',
+    'run_id': '$_SAG_RUN_ID',
+    'timestamp': datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+    'hook': 'skill-agent-gate'
+}
+with open('$_SAG_SPAWN_LOG', 'a') as f:
+    f.write(json.dumps(entry) + '\n')
+" 2>/dev/null || true
+
 exit 0

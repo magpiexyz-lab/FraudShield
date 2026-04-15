@@ -11,6 +11,12 @@ parse_payload
 
 FILE_PATH=$(read_payload_field "tool_input.file_path")
 
+# Block direct writes to hook-managed spawn-log
+case "$FILE_PATH" in
+  *agent-spawn-log.jsonl)
+    deny "Artifact integrity gate: agent-spawn-log.jsonl is hook-managed. Cannot be written directly." ;;
+esac
+
 # Only fire for agent-traces/*.json and gate-verdicts/*.json
 case "$FILE_PATH" in
   *agent-traces/*.json|*gate-verdicts/*.json) ;;

@@ -6,6 +6,11 @@
 
 Spawn edit-capable agents ONE AT A TIME. Each must complete and pass `npm run build` before the next is spawned. This prevents write conflicts.
 
+> **Trace integrity**: Per-page design-critic agents MUST be spawned via the Agent
+> tool. The state-completion-gate cross-references trace files against the spawn
+> audit log — traces without matching Agent spawns will be blocked. Do NOT write
+> trace files directly. For recovery traces, use `bash .claude/scripts/write-recovery-trace.sh`.
+
 After each edit-capable agent completes, read its completion report and append its fixes to `.runs/fix-log.md`.
 
 > **Shared algorithms:** Before each edit-capable agent spawn, execute [Atomic Execution Protocol](../verify.md#atomic-execution-protocol) snapshot. After each agent returns, use [Trace State Detection](../verify.md#trace-state-detection) and [Exhaustion Protocol](../verify.md#exhaustion-protocol) to handle the result.
@@ -116,7 +121,7 @@ because they were outside the per-page file boundary).
 
 **VERIFY:**
 ```bash
-ls .runs/agent-traces/design-critic-*.json >/dev/null 2>&1 && python3 -c "import json,glob; fs=glob.glob('.runs/agent-traces/design-critic-*.json'); assert len(fs)>=1, 'no design-critic traces'; d=json.load(open(fs[0])); assert 'exit_code' in d or 'verdict' in d, 'design-critic trace missing exit_code or verdict'"
+ls .runs/agent-traces/design-critic-*.json >/dev/null 2>&1 && python3 -c "import json,glob; fs=glob.glob('.runs/agent-traces/design-critic-*.json'); assert len(fs)>=1, 'no design-critic traces'; d=json.load(open(fs[0])); assert 'exit_code' in d or 'verdict' in d, 'design-critic trace missing exit_code or verdict'; assert isinstance(d.get('checks_performed'),list) and len(d.get('checks_performed',[]))>=3, 'checks_performed too shallow (%d) — suspected fabrication' % len(d.get('checks_performed',[])); assert d.get('pages_reviewed',0)>=1, 'pages_reviewed missing or zero'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

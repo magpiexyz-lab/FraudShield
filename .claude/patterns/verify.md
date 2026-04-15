@@ -245,6 +245,22 @@ echo '{"agent":"<name>","status":"exhausted","verdict":"incomplete","recovery":t
 
 Continue to next STATE. Note in verify report: "Agent <name> exhausted turns — skipped."
 
+### Trace Integrity
+
+Agent traces MUST be produced by actual Agent tool invocations. Writing trace
+files directly (via Bash, Write, or any other mechanism) without spawning the
+corresponding agent is a critical integrity violation.
+
+**Mechanical enforcement**: `state-completion-gate.sh` cross-references every
+trace file against `.runs/agent-spawn-log.jsonl` (written by `skill-agent-gate.sh`
+on each Agent tool call). Traces without matching spawn records cause state
+advancement to be blocked.
+
+- Do NOT write to `.runs/agent-traces/` without spawning the agent
+- Do NOT write to `.runs/agent-spawn-log.jsonl` — it is hook-managed
+- For legitimate recovery traces (agent crashed), use:
+  `bash .claude/scripts/write-recovery-trace.sh <agent-name> [skill]`
+
 ### Atomic Execution Protocol
 
 Before each edit-capable agent spawn, snapshot the working tree:
