@@ -31,7 +31,7 @@ Before proceeding to Step 5, execute the process gate:
 
    ```markdown
    ## Process Checklist
-   - Implementation mode: [MVP direct | Production TDD]
+   - Implementation mode: TDD
    - Procedure file: [filename | inline (Polish/Analytics)]
    - Verification scope: [scope]
    - [ ] Spawn agents: [enumerate each agent from verify.md scope table for this scope+archetype]

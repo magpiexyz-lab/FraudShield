@@ -66,10 +66,9 @@ Auth and payment API routes (`/api/auth/**`, `/api/payment/**`, `/api/checkout/*
 
 In-memory rate limiting (e.g., a `Map` or counter variable) does NOT work on serverless platforms — each invocation runs in a fresh instance, so counters reset on every request.
 
-Acceptable alternatives by quality level:
+Acceptable alternatives:
 
-- **MVP** (`quality` absent): A `// TODO: Add rate limiting (serverless — needs external store)` comment counts as "present". This is a PASS.
-- **Production** (`quality: production`): A real implementation is required. TODO comments are a **FAIL**. Use one of:
+- A real implementation is required. TODO comments are a **FAIL**. Use one of:
   - `@upstash/ratelimit` with Upstash Redis (recommended — minimal setup)
   - Vercel Edge Config for simple threshold checks
   - Any external counter store (Redis, DynamoDB, etc.)

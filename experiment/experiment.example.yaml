@@ -12,7 +12,7 @@ type: web-app                  # Product archetype (web-app | service | cli). De
 level: 3                       # Product: auth + payments + complete features
 status: draft
 quality: production              # Default. TDD, per-task implementer, spec review.
-                               # Set to 'mvp' to skip TDD for faster iteration.
+                               # This field is reserved for future use. Do not set quality: mvp.
 
 # --- 2. Intent ---
 description: |

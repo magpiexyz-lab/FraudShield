@@ -46,9 +46,9 @@ bash .claude/scripts/advance-state.sh verify 8
   2. If `fail`: tell the user "Verification failed — fix issues and re-run `/verify`." Write `.runs/delivery-skip.flag` (content: `verify-failed`). Done.
   3. If `pass`: Write delivery artifacts:
      - `.runs/commit-message.txt`: `Bootstrap verification complete` (used if verify agents made code changes)
-     - `.runs/pr-title.txt`: `Bootstrap MVP scaffold from experiment.yaml`
+     - `.runs/pr-title.txt`: `Bootstrap scaffold from experiment.yaml`
      - `.runs/pr-body.md`: Fill in the PR template (`.github/PULL_REQUEST_TEMPLATE.md`):
-       - **Summary**: "Bootstrap MVP scaffold from experiment.yaml, verified by /verify."
+       - **Summary**: "Bootstrap scaffold from experiment.yaml, verified by /verify."
        - **How to Test**: Read experiment.yaml `type` and surface configuration to generate archetype-appropriate guidance:
          - web-app: "After merging, run `/deploy` to deploy."
          - service with surface (co-located or detached): "After merging, run `/deploy` to deploy."
@@ -56,7 +56,7 @@ bash .claude/scripts/advance-state.sh verify 8
          - cli with surface (detached): "After merging, run `/deploy` for the marketing surface, then `npm publish` to release the CLI package."
          - cli with no surface: "After merging, run `npm publish` to release the CLI package."
        - **What Changed**: List files from `git diff main --name-only`.
-       - **Why**: "Initial MVP scaffold for experiment."
+       - **Why**: "Initial scaffold for experiment."
        - Include verify-report.md agent verdicts in the Verification checklist.
        - End with: `🤖 Generated with [Claude Code](https://claude.com/claude-code)`
   4. `lifecycle-finalize.sh` handles commit (if changes), push, PR creation, and auto-merge.

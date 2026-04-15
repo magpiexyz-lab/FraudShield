@@ -137,8 +137,8 @@ For each endpoint:
 
 ### 4. Quality Gate
 
-- **MVP**: Happy path + 1 invalid input per endpoint.
-- **Production**: Also test missing fields, wrong types, boundary values, empty arrays vs null.
+- Happy path + 1 invalid input per endpoint.
+- Also test missing fields, wrong types, boundary values, empty arrays vs null.
 
 ### 5. System Behavior Smoke
 
@@ -174,5 +174,5 @@ For each command:
 
 ### 4. Quality Gate
 
-- **MVP**: Happy path + 1 invalid arg per command.
-- **Production**: Also test missing required args, conflicting flags, edge case inputs (empty string, very long args, special characters).
+- Happy path + 1 invalid arg per command.
+- Also test missing required args, conflicting flags, edge case inputs (empty string, very long args, special characters).

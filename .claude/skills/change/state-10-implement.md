@@ -74,7 +74,7 @@ Follow the procedure in `.claude/procedures/change-test.md`.
   import json, glob
   traces = glob.glob('.runs/agent-traces/implementer-*.json')
   if not traces:
-      print('No implementer traces (MVP mode or no production tasks)')
+      print('No implementer traces found')
   else:
       results = {'complete': 0, 'blocked': 0, 'other': 0}
       for f in traces:

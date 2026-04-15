@@ -82,7 +82,7 @@ Before entering the lifecycle, check `.runs/current-plan.md`:
 - Skip updating experiment.yaml when adding new behaviors — the source of truth must always reflect the current app
 - Change analytics event names — they must match experiment/EVENTS.yaml
 - Add analytics events without user approval
-- Add error-state tests — funnel happy path only (Rule 4)
+- Add error-state tests — funnel tests cover the happy path only
 - Mock services in tests — the whole point is testing real integrations
 - Skip Step 7 verification (verify.md must run with the classified scope — build loop and auto-observe always run; review agents run per scope)
 - Commit to main directly

@@ -1,4 +1,4 @@
-# CLAUDE.md — Experiment Template Rules (v1.0)
+# CLAUDE.md — Template Rules (v2.0)
 
 Read `experiment/experiment.yaml` before every task. It is the single source of truth for what to build.
 
@@ -38,7 +38,7 @@ Rules are in priority order. When two rules conflict, the lower-numbered rule wi
 - Do not add frameworks or libraries not listed in experiment.yaml `stack` section
 - Exception: small utility packages (clsx, date-fns, zod) are fine
 - If a feature requires a library not in `stack`, ask the user before adding it
-- Bootstrap installs latest versions of all packages (no version pinning). This is intentional for MVPs — `package-lock.json` locks exact versions for reproducibility
+- Bootstrap installs latest versions of all packages (no version pinning). `package-lock.json` locks exact versions for reproducibility
 
 ### Archetype-Feature Matrix
 
@@ -60,8 +60,8 @@ Rules are in priority order. When two rules conflict, the lower-numbered rule wi
 
 ## Rule 4: Keep It Minimal
 - Prefer well-known libraries over custom code
-- Bootstrap creates page-load smoke tests when `stack.testing` is present. Use `/change` for full funnel tests and `/verify` to run tests and fix failures. No additional tests except for auth and payment flows. Exception: if a feature contains non-trivial business logic (calculations, state machines, multi-step workflows), add unit tests for that logic. This is rare in first MVPs — if you're writing complex algorithms, consider whether you're overbuilding.
-- Business logic (calculations, state machines, data mutations, auth, payment) MUST have unit tests (see `patterns/tdd.md`)
+- Bootstrap creates page-load smoke tests when `stack.testing` is present. Use `/change` for full funnel tests and `/verify` to run tests and fix failures.
+- Business logic (calculations, state machines, data mutations, auth, payment) MUST have unit tests (see `patterns/tdd.md`). If you're writing complex algorithms, consider whether you're overbuilding.
 - Every /change Feature, Fix, or Upgrade spawns implementer agents (see `agents/implementer.md`) with task dependency ordering
 - /verify adds spec-reviewer as an additional parallel agent (see `agents/spec-reviewer.md`)
 - `stack.testing` is required — /change and /bootstrap will stop if testing stack is absent.

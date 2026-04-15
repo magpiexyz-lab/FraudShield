@@ -14,7 +14,7 @@ Follow gate execution procedure per `procedures/gate-execution.md`.
 
 - Stage files: `git add -A` (safe -- `.gitignore` excludes `.env.local`, `.runs/gate-verdicts/`, and sensitive patterns). Verify: `git diff --cached --name-only | grep -iE '\.env\.local|\.key$|\.pem$|credentials|\.secret$|\.token$|service-account' && echo "STOP: secrets staged" || echo "OK"`.
 - **BG4 PR Gate**: Spawn the `gate-keeper` agent (`subagent_type: gate-keeper`). Pass: "Execute BG4 PR Gate. Verify: on feature branch (not main), commit message follows imperative mood convention." If gate-keeper returns BLOCK, fix blocking items before proceeding.
-- Write `.runs/commit-message.txt`: `Bootstrap MVP scaffold from experiment.yaml`
+- Write `.runs/commit-message.txt`: `Bootstrap scaffold from experiment.yaml`
 - Do NOT write `pr-title.txt` or `pr-body.md` -- the PR is created later by `/verify` in bootstrap-verify mode.
 ### Q-score
 

@@ -48,10 +48,7 @@ Every audit log entry follows this structure:
 
 ## Where to Log
 
-### MVP (`quality` not set or absent)
-Not required. Skip audit logging entirely.
-
-### Production (`quality: production`)
+### Implementation
 
 **Phase 1 — Structured console output:**
 ```typescript

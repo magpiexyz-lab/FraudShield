@@ -21,5 +21,5 @@
 6. Continue to Step 7
 - Make the minimal change needed — smaller diffs are easier to review
 - Fix only the root cause, no refactoring of surrounding code
-- If the fix touches auth or payment code: add or update a test (per CLAUDE.md Rule 4)
+- If the fix touches auth or payment code: add or update a test (see `patterns/tdd.md`)
 - Check that analytics events on modified pages are still intact

@@ -1,4 +1,4 @@
-# experiment.yaml — Describe your MVP experiment
+# experiment.yaml — Describe your experiment
 #
 # RECOMMENDED: Run `/spec 'your idea'` in Claude Code — it fills this file
 # automatically with hypotheses, behaviors, variants, and stack choices.

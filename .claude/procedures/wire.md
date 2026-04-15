@@ -177,10 +177,10 @@ If experiment.yaml has behaviors with `actor: system/cron`:
   - Tests are independent — each sets up its own state and cleans up
 - For webhook flows: call the webhook handler with a realistic test payload.
   Guard the test with a check for required env vars (skip if missing).
-  If `stack.payment` is present: webhook tests must go beyond auth guard checks — assert the handler processes the payload (e.g., database state changes, status updates). This is required by CLAUDE.md Rule 4 ("No additional tests except for auth and payment flows").
+  If `stack.payment` is present: webhook tests must go beyond auth guard checks — assert the handler processes the payload (e.g., database state changes, status updates). See `patterns/tdd.md` for testing requirements.
 - For admin flows: call the admin API handler directly (no browser).
 - For cron flows: call the cron API handler directly.
-- If `stack.payment` is present: also generate tests for payment API routes (checkout, portal) that verify the handler creates sessions/returns correct responses — not just auth guards. Auth and payment flows are the two exceptions to Rule 4's minimal testing policy.
+- If `stack.payment` is present: also generate tests for payment API routes (checkout, portal) that verify the handler creates sessions/returns correct responses — not just auth guards. Payment flows require thorough testing per `patterns/tdd.md`.
 - Add `test:flows` script to package.json: `vitest run tests/flows.test.ts`
 - These tests are NOT run during bootstrap — only created (same as funnel tests)
 
@@ -236,9 +236,9 @@ Re-read `.runs/current-plan.md` and `experiment/experiment.yaml` now. Verify eac
 ### Step 9: Commit, push, open PR
 > **Note:** This step is executed by the bootstrap lead, not this subagent.
 - You are already on a feature branch (created in Step 0). Do not create another branch.
-- Stage all new files and commit: "Bootstrap MVP scaffold from experiment.yaml"
+- Stage all new files and commit: "Bootstrap scaffold from experiment.yaml"
 - Push and open PR using the `.github/PULL_REQUEST_TEMPLATE.md` format:
-  - **Summary**: plain-English explanation — "Full MVP scaffold generated from experiment.yaml" with key highlights
+  - **Summary**: plain-English explanation — "Full scaffold generated from experiment.yaml" with key highlights
   - **How to Test**: "After merging: [If hosting is Vercel: 1) Import your repo at vercel.com/new, 2) Connect Supabase via the Vercel integration (vercel.com/integrations/supabase) — it walks you through creating a Supabase project; database migrations are applied automatically during the first build, [If stack.payment is present: add Stripe env vars manually in Vercel Project → Settings → Environment Variables,] 3) Verify: visit your production URL and check each page] [If hosting is not Vercel: read the hosting stack file's PR Instructions for deployment steps] [If archetype is CLI: run `npm run build && node dist/index.js --help` to verify the CLI works] For local verification: run `/verify` in Claude Code (auto-fixes failures), or `make verify-local` from terminal"
   - **What Changed**: list every file created and its purpose
   - **Why**: reference the experiment.yaml problem/solution
