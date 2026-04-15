@@ -11,6 +11,7 @@
 #
 # Steps (unconditional — runs for all skills):
 #   5. Delivery: read .runs/ artifacts → gate checks → commit/push/PR/auto-merge
+#   6. Write .runs/verify-recheck.json for remediation phase (best-effort)
 set -euo pipefail
 
 SKILL="${1:-}"
@@ -84,6 +85,7 @@ if not os.path.isfile(registry_path):
 registry = json.load(open(registry_path))
 skill_states = registry.get(skill, {})
 failures = 0
+verify_results = []
 
 ctx_path = '$CTX'
 skip = set()
@@ -105,22 +107,39 @@ for state_id, raw in skill_states.items():
         continue
     if not cmd or cmd.strip() == 'true':
         continue
+    entry = {'state': state_id, 'passed': True, 'error': None}
     try:
         result = subprocess.run(cmd, shell=True, capture_output=True,
                                 timeout=30, cwd=project_dir)
         if result.returncode != 0:
             stderr = result.stderr.decode().strip()[:200]
+            entry['passed'] = False
+            entry['error'] = stderr
             print('WARN: VERIFY %s.%s failed: %s' % (skill, state_id, stderr), file=sys.stderr)
             failures += 1
+        verify_results.append(entry)
     except subprocess.TimeoutExpired:
+        entry['passed'] = False
+        entry['error'] = 'timeout'
+        verify_results.append(entry)
         print('WARN: VERIFY %s.%s timed out' % (skill, state_id), file=sys.stderr)
         failures += 1
     except Exception as e:
+        entry['passed'] = False
+        entry['error'] = str(e)[:200]
+        verify_results.append(entry)
         print('WARN: VERIFY %s.%s error: %s' % (skill, state_id, e), file=sys.stderr)
         failures += 1
 
 if failures > 0:
     print('WARN: %d VERIFY command(s) failed (non-blocking)' % failures, file=sys.stderr)
+
+# Write raw verify results for remediation phase (Step 6 assembles final JSON)
+try:
+    raw_path = os.path.join(project_dir, '.runs/.verify-results-raw.json')
+    json.dump(verify_results, open(raw_path, 'w'), indent=2)
+except Exception as e:
+    print('WARN: failed to write .verify-results-raw.json: %s' % e, file=sys.stderr)
 "
 
 # --- Step 3: Q-score — read q-dimensions.json, call write-q-score.py ---
@@ -178,6 +197,7 @@ fi
 echo "EPILOGUE_STRATEGY=$EPILOGUE_STRATEGY"
 
 # --- Step 5: Delivery (code-writing skills only) ---
+DELIVERY_STATUS="none"
 COMMIT_MSG="$PROJECT_DIR/.runs/commit-message.txt"
 PR_TITLE="$PROJECT_DIR/.runs/pr-title.txt"
 PR_BODY="$PROJECT_DIR/.runs/pr-body.md"
@@ -185,6 +205,7 @@ SKIP_FLAG="$PROJECT_DIR/.runs/delivery-skip.flag"
 
 if [[ -f "$SKIP_FLAG" ]]; then
   echo "INFO: delivery-skip.flag present — skipping delivery" >&2
+  DELIVERY_STATUS="skipped"
   echo "DELIVERY=skipped"
 elif [[ -f "$COMMIT_MSG" ]]; then
   # --- Delivery gates ---
@@ -306,17 +327,68 @@ if d.get('exit_code') != 0:
     fi
 
     if [[ -z "$SKIP_MERGE" ]]; then
+      DELIVERY_STATUS="merged"
       echo "DELIVERY=merged"
     else
+      DELIVERY_STATUS="pr-created:$SKIP_MERGE"
       echo "DELIVERY=pr-created:$SKIP_MERGE"
     fi
   else
     # commit+push only — no PR (bootstrap pattern)
+    DELIVERY_STATUS="pushed"
     echo "DELIVERY=pushed"
   fi
 else
   # No delivery artifacts — analysis skill
   echo "DELIVERY=none"
 fi
+
+# --- Step 6: Write verify-recheck.json for remediation phase ---
+# Assembles final structured artifact from Step 2 raw results + missing states + delivery status.
+python3 -c "
+import json, sys, os
+
+project_dir = '$PROJECT_DIR'
+ctx_path = '$CTX'
+manifest_path = '$MANIFEST'
+delivery_status = '$DELIVERY_STATUS'
+
+result = {
+    'skill': '$SKILL',
+    'missing_states': [],
+    'verify_results': [],
+    'total': 0,
+    'passed': 0,
+    'failed': 0,
+    'delivery_status': delivery_status
+}
+
+# Read raw verify results from Step 2
+raw_path = os.path.join(project_dir, '.runs/.verify-results-raw.json')
+if os.path.isfile(raw_path):
+    try:
+        result['verify_results'] = json.load(open(raw_path))
+        result['total'] = len(result['verify_results'])
+        result['passed'] = sum(1 for r in result['verify_results'] if r.get('passed'))
+        result['failed'] = result['total'] - result['passed']
+    except: pass
+
+# Compute missing_states (same logic as Step 1)
+try:
+    ctx = json.load(open(ctx_path))
+    completed = set(str(s) for s in ctx.get('completed_states', []))
+    skip = set(str(s) for s in ctx.get('skip_states', []))
+    manifest = json.load(open(manifest_path))
+    if 'active_mode' in manifest and 'modes' in manifest:
+        states = manifest['modes'][manifest['active_mode']]['states']
+    else:
+        states = manifest.get('states', [])
+    result['missing_states'] = [str(s) for s in states if str(s) not in completed and str(s) not in skip]
+except: pass
+
+outpath = os.path.join(project_dir, '.runs/verify-recheck.json')
+json.dump(result, open(outpath, 'w'), indent=2)
+print('INFO: Wrote verify-recheck.json (%d passed, %d failed)' % (result['passed'], result['failed']), file=sys.stderr)
+" || true
 
 echo "FINALIZE_COMPLETE"

@@ -29,7 +29,19 @@ Read `.claude/patterns/skill-epilogue.md` and follow the procedure. **Skip
 Step 0** (state completion check) — `lifecycle-finalize.sh` already verified
 state completion.
 
+## Step 2.5: Remediation suggestions
+
+If `.runs/verify-recheck.json` exists, read `.claude/patterns/remediation-phase.md`
+and follow the procedure with the current skill name.
+
+Skip when: skill is `optimize-prompt` (already exited at Step 1.5).
+
+This step is best-effort. If any part fails, continue to Step 3.
+
 ## Step 3: Done
 
 Epilogue is best-effort. If any step fails, write `observe-result.json` with
 `"verdict": "clean"` and continue — never block the skill.
+
+If remediation suggestions were generated, they have been printed to the
+terminal and saved to `.runs/remediation.json`.
