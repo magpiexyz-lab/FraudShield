@@ -62,7 +62,7 @@
            dims['Q_behavior'] = round(tp / max(tp + tf, 1), 3)
 
        elif name == 'spec-reviewer' and scope in ('full', 'security'):
-           dims['Q_spec'] = 1.0 if d.get('verdict', '') == 'PASS' else 0.0
+           dims['Q_spec'] = 1.0 if d.get('verdict', '').upper() == 'PASS' else 0.0
 
    # Gate: binary — build passes AND no hard gate failure
    gate = 0.0 if fm.get('hard_gate_failure', 'false') == 'true' else 1.0

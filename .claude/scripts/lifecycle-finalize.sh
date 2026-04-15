@@ -280,6 +280,8 @@ if d.get('exit_code') != 0:
   if ! git diff --cached --quiet 2>/dev/null; then
     git commit -m "$(cat "$COMMIT_MSG")"
   fi
+  # Large initial commits (bootstrap: 170+ files) can exceed default http.postBuffer (1MB)
+  git config --local http.postBuffer 52428800  # 50MB
   git push -u origin HEAD
 
   # --- PR creation (only if pr-title.txt exists) ---

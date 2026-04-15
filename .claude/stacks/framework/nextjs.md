@@ -54,11 +54,13 @@ import nextPlugin from "@next/eslint-plugin-next";
 export default tseslint.config(
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
-  { plugins: { "react-hooks": reactHooks }, rules: reactHooks.configs.recommended.rules },
+  { plugins: { "react-hooks": reactHooks }, rules: { ...reactHooks.configs.recommended.rules, "react-hooks/set-state-in-effect": "off" } },
   { plugins: { "@next/next": nextPlugin }, rules: nextPlugin.configs.recommended.rules },
   { ignores: [".next/", "out/", "node_modules/", "src/components/ui/", "src/components/magicui/"] }
 );
 ```
+
+> **Known Issue — `eslint-disable` comments:** When generating `eslint-disable-next-line` comments, use the generic form (`// eslint-disable-next-line`) without a rule name. Rule-specific forms like `// eslint-disable-next-line react/no-danger` cause errors if the corresponding plugin (e.g., `eslint-plugin-react`) is not installed. Only specify rule names for rules known to be configured in the eslint config above.
 
 ## File Structure
 

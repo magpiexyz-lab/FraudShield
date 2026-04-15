@@ -46,7 +46,13 @@ Agents may add fields beyond the base schema to capture agent-specific metrics:
 
 ### Verdict Values
 
-Each agent defines its own verdict vocabulary:
+Each agent defines its own verdict vocabulary. **Casing is normative** — write
+verdicts exactly as shown in the table below. Consumers perform defensive
+normalization (`.upper()` / `.lower()`), but agents must match the canonical form.
+
+> **Scope note:** This casing requirement applies to agent-trace verdicts
+> (LLM-generated). Gate verdicts (written by template-controlled gate-keeper
+> code) use their own casing convention and are not governed by this table.
 
 | Agent | Possible verdicts |
 |-------|------------------|

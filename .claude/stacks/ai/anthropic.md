@@ -137,7 +137,7 @@ export async function ask(params: MessageParams): Promise<Anthropic.Message> {
  */
 export async function stream(
   params: StreamParams
-): Promise<Anthropic.MessageStream> {
+) {
   const { model = DEFAULT_MODEL, ...rest } = params;
   let lastError: unknown;
 

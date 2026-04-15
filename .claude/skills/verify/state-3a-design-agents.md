@@ -41,6 +41,7 @@ Spawn **one design-critic agent per page**, ALL as parallel foreground Agent cal
   ```
   > **Hook-enforced:** `skill-agent-gate.sh` validates that no shared paths appear between these markers. The hook will BLOCK the agent spawn if shared paths are detected.
 - Context digest summary
+- Image candidates sidecar path: For the **landing page** critic, include: "Image candidates sidecar: `.runs/image-candidates.json` — you have full read-write access for candidate evaluation in Step 5.5." For **all other pages**, include: "Image candidates sidecar: `.runs/image-candidates.json` (READ-ONLY context). Do NOT modify or act on candidates. Record image issues in your trace under `image_issues_for_landing`."
 - Instruction to write trace as `design-critic-<page_name>.json`
 - **Empty-boundary fast path**: If ALL files between `FILE_BOUNDARY_START` and `FILE_BOUNDARY_END`
   are empty (no page-local files in PR), execute a **fast-path review**: check whether any modified

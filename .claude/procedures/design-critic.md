@@ -123,7 +123,9 @@ Any of these triggers automatic fix — each has a measurable threshold:
 
 > **Scope Lock**: When fixing sections, change ONLY visual output (CSS classes, JSX structure for layout, animation code). Do NOT refactor component architecture, rename variables, or change state management patterns. If a section needs architectural changes to fix visually, note it as unresolved.
 
-### 5.5. Candidate Selection Phase (landing-page critic only)
+### 5.5. Candidate Selection Phase
+
+#### Landing-page critic — full candidate evaluation
 
 If you are reviewing the **landing page** AND `.runs/image-candidates.json` exists:
 
@@ -143,7 +145,30 @@ If you are reviewing the **landing page** AND `.runs/image-candidates.json` exis
 
 3. If NO candidate for a slot reaches ≥ 8 in context: flag the slot for new generation in Step 6
 
-If you are NOT reviewing the landing page: skip this step entirely. Record any image issues you notice in the trace under `image_issues_for_landing`.
+#### og-photo — metadata-based evaluation (landing-page critic only)
+
+The og-photo image is a `<meta property="og:image">` tag invisible in page screenshots.
+Evaluate it via metadata and direct file inspection instead of in-context screenshot scoring:
+
+1. Read `.runs/image-manifest.json` and find the og-photo entry
+2. Use the Read tool to visually inspect the og-photo file directly
+3. Check: file exists, dimensions meet minimum (1200x630), format is valid (png/jpg/webp)
+4. Score the image standalone on: subject relevance, brand consistency with page palette, production polish, text legibility at thumbnail size
+5. If score < 8: apply the same three-priority fix tree from Step 6 (try candidates → generate new → source switch)
+6. Record og-photo evaluation in trace under `image_scores`
+
+#### Inner-page critic — empty-state image slot
+
+If your page renders an empty-state image (check `src/app/<page>/` for references to `public/images/empty-state*`):
+
+1. Read `.runs/image-candidates.json` (provided as READ-ONLY context) for empty-state slot candidates
+2. Use the Read tool to visually inspect the current empty-state image
+3. Score standalone on: subject relevance, color harmony with page palette, emotional tone
+4. Do NOT modify or replace the image. Record any issues in the trace under `image_issues_for_landing`
+
+#### Non-landing, non-empty-state pages
+
+Skip this step entirely. Record any image issues you notice in the trace under `image_issues_for_landing`.
 
 ### 6. Fix Below-Standard Sections
 

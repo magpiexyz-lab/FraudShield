@@ -41,7 +41,7 @@ for b in batches:
     page_fixes = d.get('fixes', [])
     if isinstance(page_fixes, list):
         merged['fixes'].extend(page_fixes)
-    bv = d.get('verdict', 'pass')
+    bv = d.get('verdict', 'pass').lower()
     if worst_verdicts.get(bv, 0) > worst_verdicts.get(merged['verdict'], 0):
         merged['verdict'] = bv
         merged['weakest_page'] = d.get('weakest_page', d.get('page', ''))
@@ -51,7 +51,7 @@ for b in batches:
 shared_path = '.runs/agent-traces/design-critic-shared.json'
 if os.path.exists(shared_path):
     shared = json.load(open(shared_path))
-    shared_v = shared.get('verdict', '')
+    shared_v = shared.get('verdict', '').lower()
     shared_fixes = shared.get('fixes_applied', 0)
     merged['shared_fixes_applied'] = shared_fixes
     # If only unresolved issues were shared-component, and shared agent fixed them:
