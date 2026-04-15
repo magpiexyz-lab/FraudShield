@@ -1,7 +1,7 @@
 # STATE 12: COMMIT_AND_PR
 
 **PRECONDITIONS:**
-- Verification complete (STATE 11 POSTCONDITIONS met)
+- Verification complete (STATE 11b POSTCONDITIONS met)
 - Checkpoint is `phase2-step8`
 - `.runs/verify-report.md` exists
 

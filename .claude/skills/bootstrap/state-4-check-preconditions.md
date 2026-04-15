@@ -17,7 +17,7 @@ Follow checkpoint-resumption protocol per `patterns/checkpoint-resumption.md`.
      | `phase2-design` | STATE 10 (design phase) |
      | `phase2-scaffold` | STATE 11 (core scaffold) |
      | `phase2-wire` | STATE 14 (wire phase) |
-     | `awaiting-verify` | STATE 19 (verify) |
+     | `awaiting-verify` | STATE 19a (verify prep) |
 
   3. If no frontmatter (old format): skip States 1-7, jump to STATE 8.
 - If `package.json` exists AND `src/app/` contains page or route entry points:
@@ -62,4 +62,4 @@ bash .claude/scripts/advance-state.sh bootstrap 4
 - Resume phase2-design: [state-10-design-phase.md](state-10-design-phase.md)
 - Resume phase2-scaffold: [state-11-core-scaffold.md](state-11-core-scaffold.md)
 - Resume phase2-wire: [state-14-wire-phase.md](state-14-wire-phase.md)
-- Resume awaiting-verify: [state-19-verify.md](state-19-verify.md)
+- Resume awaiting-verify: [state-19a-verify-prep.md](state-19a-verify-prep.md)

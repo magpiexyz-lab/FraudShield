@@ -94,4 +94,4 @@ python3 -c "import json; p=json.load(open('.runs/distribute-preconditions.json')
 bash .claude/scripts/advance-state.sh distribute 2
 ```
 
-**NEXT:** Read [state-3-implement-and-verify.md](state-3-implement-and-verify.md) to continue.
+**NEXT:** Read [state-3-implement.md](state-3-implement.md) to continue.

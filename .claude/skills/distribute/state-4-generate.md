@@ -1,7 +1,7 @@
 # STATE 4: GENERATE
 
 **PRECONDITIONS:**
-- Implementation verified (STATE 3 POSTCONDITIONS met)
+- Implementation verified (STATE 3b POSTCONDITIONS met)
 
 **ACTIONS:**
 

@@ -1,4 +1,4 @@
-# STATE 11: VERIFY
+# STATE 11a: VERIFY_PREP
 
 **PRECONDITIONS:**
 - Implementation complete (STATE 10 POSTCONDITIONS met)
@@ -10,12 +10,6 @@
 >
 > State-specific logic below takes precedence.
 
-- Follow the verification procedure in `.claude/patterns/verify.md` with **scope: [scope from Step 3]**:
-  1. Build & lint loop (max 3 attempts)
-  2. Save notable patterns (if you fixed errors)
-  3. Template observation review (ALWAYS — even if no errors were fixed)
-- **Note**: When scope is `full` or `security`, `/verify` automatically spawns spec-reviewer as an additional parallel agent. spec-reviewer validates all behaviors are implemented and unit tests are present. No extra action needed — just be aware it runs.
-- **Write conflict prevention**: verify.md now requires edit-capable agents (design-critic, ux-journeyer) to run serially — not in parallel. The verification procedure handles this automatically. No extra action needed.
 - Re-read `.runs/current-plan.md` to verify implementation matches the approved plan. Check that every item in the plan has been addressed.
 - Type-specific checks:
   - **Feature**: trace the user flow — can a user discover, use, and complete the feature? Verify all new analytics events fire.
@@ -43,8 +37,6 @@
 Update checkpoint in `.runs/current-plan.md` frontmatter to `phase2-step8`.
 
 **POSTCONDITIONS:**
-- Verification procedure completed per scope
-- Build passes
 - Type-specific checks passed
 - Implementation matches approved plan
 - If type is Fix: `defect_category` field present in change-context.json (may be "unclassified")
@@ -52,12 +44,12 @@ Update checkpoint in `.runs/current-plan.md` frontmatter to `phase2-step8`.
 
 **VERIFY:**
 ```bash
-head -1 .runs/verify-report.md | grep -q '^---$' && grep -q 'checkpoint: phase2-step8' .runs/current-plan.md
+grep -q 'checkpoint: phase2-step8' .runs/current-plan.md
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
 ```bash
-bash .claude/scripts/advance-state.sh change 11
+bash .claude/scripts/advance-state.sh change 11a
 ```
 
-**NEXT:** Read [state-12-commit-and-pr.md](state-12-commit-and-pr.md) to continue.
+**NEXT:** Read [state-11b-verify-embed.md](state-11b-verify-embed.md) to continue.

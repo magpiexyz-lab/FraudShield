@@ -1,7 +1,7 @@
 # Skill Coverage Map
 
 Static reference mapping defect categories to the upstream skill(s) responsible for
-preventing them. Consumed by `/change` STATE 11 for Fix-type skill deficiency attribution.
+preventing them. Consumed by `/change` STATE 11a for Fix-type skill deficiency attribution.
 
 ## Defect Taxonomy Reference
 
