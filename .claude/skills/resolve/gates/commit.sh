@@ -9,8 +9,13 @@ source "$(dirname "$0")/../../../hooks/lib.sh"
 
 PROJECT_DIR="${PROJECT_DIR:-${CLAUDE_PROJECT_DIR:-.}}"
 
-# Epilogue bypass: observation complete → allow commit
+# Epilogue bypass: observation complete → check verdict integrity then allow
 if [[ -f "$PROJECT_DIR/.runs/observe-result.json" ]]; then
+  ERRORS=()
+  check_verdict_error
+  if [[ ${#ERRORS[@]} -gt 0 ]]; then
+    deny_errors "Observation integrity check failed: " "Re-run /resolve to retry observation."
+  fi
   exit 0
 fi
 

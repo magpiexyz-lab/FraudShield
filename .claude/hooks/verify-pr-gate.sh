@@ -228,6 +228,13 @@ else
   done
 fi
 
+# Universal: observation verdict integrity (covers embed:verify skills
+# that bypass observe-commit-gate via verify-report.md exemption)
+if [[ -f "$PROJECT_DIR/.runs/observe-result.json" ]]; then
+  check_verdict_error
+  check_fixlog_verdict_consistency
+fi
+
 # Universal: BLOCK verdict check (applies to all skill-driven PRs)
 check_block_verdicts
 

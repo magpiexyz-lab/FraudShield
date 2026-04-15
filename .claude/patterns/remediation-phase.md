@@ -2,7 +2,8 @@
 
 > **Called by `finalize-epilogue.md` Step 2.5 after observation completes.**
 > Detects execution gaps and presents actionable follow-up prompts.
-> Best-effort, non-blocking. Failure writes empty remediation.json and continues.
+> Mandatory execution, graceful degradation. Failure writes empty remediation.json
+> with error reason and continues — do not silently skip.
 
 ## Parameters
 

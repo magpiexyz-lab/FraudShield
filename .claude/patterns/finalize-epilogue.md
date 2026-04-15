@@ -36,12 +36,17 @@ and follow the procedure with the current skill name.
 
 Skip when: skill is `optimize-prompt` (already exited at Step 1.5).
 
-This step is best-effort. If any part fails, continue to Step 3.
+Remediation execution is mandatory. If any part fails, retry once. If it still
+fails, log the failure reason and continue to Step 3 — do not silently skip.
 
 ## Step 3: Done
 
-Epilogue is best-effort. If any step fails, write `observe-result.json` with
-`"verdict": "clean"` and continue — never block the skill.
+Epilogue execution is **mandatory**. Every skill must complete the observation
+epilogue before the skill is considered done. If a step fails, retry once.
+If it still fails, write `observe-result.json` with `"verdict": "error"` and
+`"error_reason"` — do NOT silently write `"clean"`. Report the failure to
+the user. External service failures (GitHub API, template repo access) degrade
+to local logging but do not skip the evaluation.
 
 If remediation suggestions were generated, they have been printed to the
 terminal and saved to `.runs/remediation.json`.

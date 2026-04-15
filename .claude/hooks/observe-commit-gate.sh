@@ -46,13 +46,14 @@ if [[ -f "$PROJECT_DIR/.runs/verify-report.md" ]]; then
   exit 0
 fi
 
-# If observe-result.json exists, check verdict consistency then allow
+# If observe-result.json exists, check verdict integrity then allow
 if [[ -f "$PROJECT_DIR/.runs/observe-result.json" ]]; then
-  # Verdict consistency invariant: non-empty diffs + "clean" + code-observation scope = violation
   ERRORS=()
+  check_verdict_error
   check_verdict_consistency "$SKILL"
+  check_fixlog_verdict_consistency
   if [[ ${#ERRORS[@]} -gt 0 ]]; then
-    deny_errors "Observation integrity check failed: " "Re-run the skill epilogue to spawn the observer."
+    deny_errors "Observation integrity check failed: " "Re-run the skill epilogue to retry observation."
   fi
   exit 0
 fi

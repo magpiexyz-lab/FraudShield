@@ -190,8 +190,12 @@ print(f'Collected diffs for {len(diffs)} files -> .runs/observer-diffs.txt')
 3. Verify `.runs/agent-traces/observer.json` exists; if agent returned output
    but trace is missing, write a recovery trace with `"recovery":true`.
 
-If observer spawning fails for any reason, continue to Step 5. Observation
-is best-effort.
+If observer spawning fails, retry once with reduced scope (pass only fix-log
+summaries, omit full diffs). If it still fails, the lead agent must perform
+inline evaluation of fix-log entries using the 3-condition test (Step 6) —
+do NOT skip to writing a clean verdict. Write `observe-result.json` with
+`"verdict": "error"` and `"error_reason": "<failure description>"` only if
+inline evaluation also fails.
 
 ## Step 5: Process Observation
 
@@ -388,11 +392,21 @@ Write `.runs/observe-result.json`:
 Verdict values:
 - `"filed"` — observer or lead created/commented on GitHub issues
 - `"no-template-issues"` — evaluated but found no template-rooted issues
+- `"error"` — observation was attempted but failed (observer spawn failure
+  after retry, inline evaluation failure, or other unrecoverable error).
+  Includes `"error_reason"` field. Blocked by commit gate — re-run the skill
+  to retry. Note: if evaluation completed successfully but only GitHub filing
+  failed, use the evaluation's natural verdict (`"no-template-issues"` or
+  `"filed"`), not `"error"`.
 
 ## Constraints
 
-- **Best-effort.** Any failure in any step → write observe-result.json with
-  `"verdict": "clean"` and continue. Never block the skill.
+- **Mandatory execution, graceful degradation.** Observation evaluation must
+  always be attempted. If a step fails, retry once. If it still fails, write
+  `observe-result.json` with `"verdict": "error"` and `"error_reason"` — do
+  NOT silently write `"clean"`. External service failures (GitHub API, template
+  repo access) degrade filing to local logging but do not skip the evaluation.
+  The commit gate blocks on `"error"` — re-run the skill to retry.
 - **Max 1 observer spawn.** Combine all evidence into a single evaluation.
 - **Max 1 issue per session.** Multiple fixes → combine into one issue.
 - **No project-specific data in observer prompt.** Follow observe.md redaction.

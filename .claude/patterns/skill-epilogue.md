@@ -24,7 +24,7 @@ All skills except `/optimize-prompt` (stateless utility, no state machine).
 
 > **Skip this step.** `lifecycle-finalize.sh` verifies state completion
 > before calling this procedure. If states are incomplete, finalize warns
-> but does not block (epilogue is best-effort).
+> and continues — the epilogue still runs (it is mandatory, not best-effort).
 
 ## Step 1: Collect evidence (artifact-based, not memory-based)
 
@@ -106,7 +106,10 @@ the derived `scope` and `skill` parameters.
 
 ## Constraints
 
-- **Best-effort.** Any failure in the epilogue → write observe-result.json with
-  `"verdict": "clean"` and continue. Never block the skill.
+- **Mandatory execution, graceful degradation.** The epilogue must always
+  execute. If a step fails, retry once. If it still fails, write
+  `observe-result.json` with `"verdict": "error"` and `"error_reason"` —
+  do NOT silently write `"clean"`. External service failures degrade filing
+  to local logging but do not skip evaluation.
 - **Max 1 observer spawn per epilogue.** Combine all evidence into a single evaluation.
 - **No project-specific data in observer prompt.** Follow observe.md redaction rules.

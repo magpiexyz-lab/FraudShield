@@ -3,6 +3,57 @@
 # Sourced via lib.sh facade. Do NOT source directly.
 # Requires: ERRORS array (from caller). Cross-module: read_json_field, get_branch (lib-core.sh).
 
+# --- check_verdict_error ---
+# Unconditionally rejects verdict "error" in observe-result.json.
+# Placed BEFORE check_verdict_consistency because that function has early-return
+# guards on diffs existence — process-scope skills (e.g., /solve) with no diffs
+# would bypass it. This function has NO early-return guards.
+# Appends to global ERRORS array. Does not exit — caller decides.
+# Usage: check_verdict_error
+check_verdict_error() {
+  local project_dir="${CLAUDE_PROJECT_DIR:-.}"
+  local obs_file="$project_dir/.runs/observe-result.json"
+
+  [[ ! -f "$obs_file" ]] && return 0
+
+  local verdict
+  verdict=$(read_json_field "$obs_file" "verdict")
+
+  if [[ "$verdict" == "error" ]]; then
+    local reason
+    reason=$(read_json_field "$obs_file" "error_reason")
+    ERRORS+=("Observation failed with verdict 'error': ${reason:-unknown reason}. Re-run the skill to retry observation.")
+  fi
+}
+
+# --- check_fixlog_verdict_consistency ---
+# Blocks if: fix-log.md has entries but verdict is "clean" (not execution-audit).
+# Catches the case where observation-phase.md was skipped but agents produced
+# fixes that went unobserved.
+# Appends to global ERRORS array. Does not exit — caller decides.
+# Usage: check_fixlog_verdict_consistency
+check_fixlog_verdict_consistency() {
+  local project_dir="${CLAUDE_PROJECT_DIR:-.}"
+  local obs_file="$project_dir/.runs/observe-result.json"
+  local fixlog="$project_dir/.runs/fix-log.md"
+
+  [[ ! -f "$obs_file" ]] && return 0
+  [[ ! -f "$fixlog" ]] && return 0
+
+  # Count non-empty, non-header lines in fix-log
+  local entry_count
+  entry_count=$(grep -c -v '^\s*$\|^#' "$fixlog" 2>/dev/null || echo "0")
+  [[ "$entry_count" -eq 0 ]] && return 0
+
+  local verdict strategy
+  verdict=$(read_json_field "$obs_file" "verdict")
+  strategy=$(read_json_field "$obs_file" "strategy")
+
+  if [[ "$verdict" == "clean" ]] && [[ "$strategy" != "execution-audit" ]]; then
+    ERRORS+=("Verdict inconsistency: fix-log.md has $entry_count entries but verdict is 'clean'. Observation was skipped or incomplete.")
+  fi
+}
+
 # --- check_verdict_consistency ---
 # Checks that observe-result.json verdict is consistent with observer-diffs.txt content.
 # Blocks if: non-empty diffs + verdict "clean" + not execution-audit + not dry-run.

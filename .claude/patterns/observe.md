@@ -30,8 +30,9 @@ directly to Trigger Evaluation below.
 2. `gh auth status` — if fails → skip silently.
 3. `gh repo view $TEMPLATE_REPO --json name` — if fails → skip silently.
 
-Observation filing is best-effort. Never stop the skill, never ask the user for
-input, never block on filing.
+Observation evaluation is mandatory. Filing to GitHub is gracefully degraded
+(if `gh` auth or repo access fails, log locally and report to user). Never
+silently skip the evaluation step itself.
 
 ## Trigger Evaluation
 
@@ -252,7 +253,9 @@ gh issue create --repo $TEMPLATE_REPO \
 
 ## Constraints
 
-- **Best-effort.** Any failure → skip silently. Never block the current task.
+- **Mandatory evaluation, graceful filing.** Evaluation must always run.
+  GitHub filing degrades gracefully on API failures (log locally, report to user).
+  Never silently skip evaluation.
 - **Max 1 issue per session.** Multiple fixes → combine into one issue with
   multiple Symptom/Fix sections.
 - **Skip simple typos** unlikely to recur (consistent with verify.md's skip rule).

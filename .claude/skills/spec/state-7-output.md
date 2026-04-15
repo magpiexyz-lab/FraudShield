@@ -141,7 +141,7 @@ If `make validate` required fixes (did not pass on first attempt in Step 7c):
    - Not an environment issue?
    - Not a user-specific experiment.yaml issue?
 3. If any qualify -> follow observe.md's Redaction, Dedup, and Issue Creation
-   procedures (best-effort, never block)
+   procedures (mandatory execution, graceful degradation on external failures)
 4. Write `.runs/observe-result.json`:
    ```json
    {

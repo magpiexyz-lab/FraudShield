@@ -11,7 +11,7 @@
 #
 # Steps (unconditional — runs for all skills):
 #   5. Delivery: read .runs/ artifacts → gate checks → commit/push/PR/auto-merge
-#   6. Write .runs/verify-recheck.json for remediation phase (best-effort)
+#   6. Write .runs/verify-recheck.json for remediation phase (mandatory execution, graceful degradation)
 set -euo pipefail
 
 SKILL="${1:-}"
@@ -254,6 +254,9 @@ import json, sys
 d = json.load(open('$PROJECT_DIR/.runs/observe-result.json'))
 if not d.get('verdict'):
     print('observe-result.json missing verdict', file=sys.stderr); sys.exit(1)
+if d.get('verdict') == 'error':
+    reason = d.get('error_reason', 'unknown')
+    print('observe-result.json verdict is error: %s' % reason, file=sys.stderr); sys.exit(1)
 " 2>&1 || GATE_ERRORS+=("observe-result.json validation failed")
   fi
 
