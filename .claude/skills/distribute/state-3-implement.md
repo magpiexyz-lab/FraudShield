@@ -1,4 +1,4 @@
-# STATE 3: IMPLEMENT_AND_VERIFY
+# STATE 3: IMPLEMENT
 
 **PRECONDITIONS:**
 - Analytics validated (STATE 2 POSTCONDITIONS met)
@@ -124,40 +124,6 @@ Read `experiment/EVENTS.yaml`. Check that at least one event has `funnel_stage: 
 
 **If only conversion event check fails (and first 4 pass):** WARNING only, continue.
 
-### 3f: Run verify.md
-
-Before running verify.md, set skill attribution: use `"distribute"` as the skill value when creating verify-context.json. Since distribute does not use `current-plan.md`, pass the skill directly when creating verify-context.json.
-
-Run the verification procedure per `.claude/patterns/verify.md`.
-
-**Gate check:** Read `.runs/verify-report.md`. If it does not exist, STOP — go back and run verify.md. Do NOT proceed without a verification report.
-
-### 3g: Commit to branch
-
-- You are already on a `chore/distribute-*` branch
-- Commit all changes with message: imperative mood describing the implementation (e.g., "Add UTM/gclid capture and feedback widget for distribution")
-- Do NOT create a PR yet (that happens in State 5)
-
-### Working memory for PR body (State 5)
-
-Store the following in working memory for inclusion in the PR body during State 5:
-
-**Demo mode recommendation:**
-If the app requires signup/auth before the user can see value, note a recommendation for a demo/preview mode. This is a recommendation only — implementing the demo is a separate `/change` task.
-
-**Conversion sync setup instructions:**
-Read the selected channel's stack file "Setup Instructions" section and prepare step-by-step instructions. Also read the analytics stack file for provider-specific destination/integration instructions.
-
-**Ads Dashboard Setup:**
-Read the analytics stack file's Dashboard Navigation section for provider-specific terminology, then prepare these instructions:
-
-1. Go to the analytics dashboard -> New dashboard -> "Ads Performance: {project_name}"
-2. Add these insights (read the channel's stack file "UTM Parameters" section for the correct `utm_source` value):
-   - **Traffic by Source**: Trend chart, event `visit_landing`, breakdown by `utm_source`, last 7 days
-   - **Paid Funnel**: Funnel chart, events `visit_landing` (filtered: utm_source = {channel_source}) -> `signup_complete` -> `activate`, last 7 days
-   - **Cost per Activation**: Number (manual calculation) — Total channel spend / activate count where utm_source = {channel_source}
-   - **Feedback Summary**: Trend chart, event `feedback_submitted`, breakdown by `source` property, last 7 days
-
 ### Completion checkpoint
 
 Write `.runs/distribute-impl-step-check.json`:
@@ -180,9 +146,6 @@ if fb:
     steps.append('3c')
 steps.append('3d')  # project_name fix (no-op if mismatch was false)
 steps.append('3e')  # ad-readiness checks ran
-if os.path.exists('.runs/verify-report.md'):
-    steps.append('3f')
-steps.append('3g')  # commit
 os.makedirs('.runs', exist_ok=True)
 json.dump({
     'steps_completed': steps,
@@ -206,13 +169,11 @@ This checkpoint is mandatory. Do not skip it.
 - Feedback widget implemented per archetype (web-app: React component, service/cli: inline HTML)
 - project_name fixed if mismatch was recorded in preconditions
 - Ad-readiness checks passed (Phase 1 + google-ads: blocking; Phase 2 + google-ads: warnings noted)
-- verify.md completed and `.runs/verify-report.md` exists
-- All changes committed to branch
 - `.runs/distribute-impl-step-check.json` exists with at least 1 completed step
 
 **VERIFY:**
 ```bash
-test -f .runs/verify-report.md && (grep -q 'utm_source' src/app/page.tsx 2>/dev/null || grep -q 'utm_source' site/index.html 2>/dev/null) && python3 -c "import json; d=json.load(open('.runs/distribute-impl-step-check.json')); assert len(d.get('steps_completed',[])) > 0" && grep -q 'feedback_submitted' experiment/EVENTS.yaml
+(grep -q 'utm_source' src/app/page.tsx 2>/dev/null || grep -q 'utm_source' site/index.html 2>/dev/null) && python3 -c "import json; d=json.load(open('.runs/distribute-impl-step-check.json')); assert len(d.get('steps_completed',[])) > 0" && grep -q 'feedback_submitted' experiment/EVENTS.yaml
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
@@ -220,4 +181,4 @@ test -f .runs/verify-report.md && (grep -q 'utm_source' src/app/page.tsx 2>/dev/
 bash .claude/scripts/advance-state.sh distribute 3
 ```
 
-**NEXT:** Read [state-4-generate.md](state-4-generate.md) to continue.
+**NEXT:** Read [state-3a-verify-embed.md](state-3a-verify-embed.md) to continue.

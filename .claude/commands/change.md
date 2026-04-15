@@ -60,11 +60,12 @@ Before entering the lifecycle, check `.runs/current-plan.md`:
 3. State execution loop:
    a. Run: `NEXT=$(bash .claude/scripts/lifecycle-next.sh change)`
    b. If NEXT is "FINALIZE" → go to step 4
-   c. If NEXT does not start with "/" → STOP with error (print NEXT for diagnosis)
-   d. Read the state file at $NEXT and execute its ACTIONS section
-   e. After ACTIONS complete, run the state's STATE TRACKING command
+   c. If NEXT starts with "EMBED_COMPLETE:" → parse the suffix as `<skill>:<state>`, run `bash .claude/scripts/advance-state.sh <skill> <state>`, then return to step 3a
+   d. If NEXT does not start with "/" → STOP with error (print NEXT for diagnosis)
+   e. Read the state file at $NEXT and execute its ACTIONS section
+   f. After ACTIONS complete, run the state's STATE TRACKING command
       (the `bash .claude/scripts/advance-state.sh` call in the state file)
-   f. Return to step 3a
+   g. Return to step 3a
 4. Run `bash .claude/scripts/lifecycle-finalize.sh change`
 5. Read `.claude/patterns/finalize-epilogue.md` and execute
 6. If worktree was entered in step 1:

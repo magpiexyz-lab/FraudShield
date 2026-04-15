@@ -60,4 +60,4 @@ python3 -c "import json,os; g=json.load(open('.runs/gate-verdicts/bg4.json')); a
 bash .claude/scripts/advance-state.sh bootstrap 18
 ```
 
-**NEXT:** Read [state-19-verify.md](state-19-verify.md) to continue.
+**NEXT:** Read [state-19a-verify-prep.md](state-19a-verify-prep.md) to continue.

@@ -112,4 +112,4 @@ grep -q 'checkpoint: phase2-step7' .runs/current-plan.md && python3 -c "import j
 bash .claude/scripts/advance-state.sh change 10
 ```
 
-**NEXT:** Read [state-11-verify.md](state-11-verify.md) to continue.
+**NEXT:** Read [state-11a-verify-prep.md](state-11a-verify-prep.md) to continue.

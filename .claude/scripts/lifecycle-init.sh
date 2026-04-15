@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # lifecycle-init.sh — Phase 1: Initialize skill execution from skill.yaml manifest.
-# Usage: bash .claude/scripts/lifecycle-init.sh <skill> [extra_json]
+# Usage: bash .claude/scripts/lifecycle-init.sh <skill> [--embed] [extra_json]
 # Examples:
 #   bash .claude/scripts/lifecycle-init.sh solve
 #   bash .claude/scripts/lifecycle-init.sh change '{"preliminary_type":null}'
 #   bash .claude/scripts/lifecycle-init.sh iterate '{"mode":"check"}'
+#   bash .claude/scripts/lifecycle-init.sh verify --embed
 #
 # Steps:
 #   1. Parse .claude/skills/<skill>/skill.yaml → .runs/<skill>-manifest.json
@@ -16,7 +17,15 @@
 set -euo pipefail
 
 SKILL="${1:-}"
-EXTRA="${2:-}"
+
+# --- Embed mode: skip cleanup/validation/branch when called by lifecycle-next.sh embed dispatch ---
+EMBED_MODE=""
+if [[ "${2:-}" == "--embed" ]]; then
+  EMBED_MODE=1
+  EXTRA="${3:-}"
+else
+  EXTRA="${2:-}"
+fi
 
 if [[ -z "$SKILL" ]]; then
   echo "ERROR: lifecycle-init.sh — skill name required" >&2
@@ -207,6 +216,9 @@ with open(manifest_path, "w") as f:
     f.write("\n")
 PYEOF
 
+# --- Steps 3a-4 skipped in embed mode (parent skill already ran them) ---
+if [[ -z "$EMBED_MODE" ]]; then
+
 # --- Step 3a: Clean stale artifacts from prior runs ---
 STALE_ARTIFACTS=(
   "$PROJECT_DIR/.runs/observe-result.json"
@@ -219,11 +231,16 @@ STALE_ARTIFACTS=(
   "$PROJECT_DIR/.runs/pr-body.md"
   "$PROJECT_DIR/.runs/pr-title.txt"
   "$PROJECT_DIR/.runs/delivery-skip.flag"
+  "$PROJECT_DIR/.runs/verify-context.json"
+  "$PROJECT_DIR/.runs/verify-manifest.json"
+  "$PROJECT_DIR/.runs/verify-report.md"
+  "$PROJECT_DIR/.runs/fix-log.md"
 )
 for f in "${STALE_ARTIFACTS[@]}"; do
   rm -f "$f"
 done
 rm -rf "$PROJECT_DIR/.runs/gate-verdicts/"
+rm -rf "$PROJECT_DIR/.runs/agent-traces/"
 
 # --- Step 3b: Validate experiment.yaml (if exists) ---
 EXPERIMENT_YAML="$PROJECT_DIR/experiment/experiment.yaml"
@@ -244,10 +261,12 @@ if [[ -z "$SKIP_VALIDATE" && -f "$EXPERIMENT_YAML" && -f "$VALIDATE_SCRIPT" ]]; 
   # exit code 0 = pass, exit code 2 = warnings only, continue
 fi
 
-# --- Step 4: Branch creation ---
+fi # end embed guard for Steps 3a-3b
+
+# --- Step 4: Branch creation (skipped in embed mode) ---
 BRANCH=$(python3 -c "import json; print(json.load(open('$MANIFEST')).get('branch',''))" 2>/dev/null || echo "")
 
-if [[ -n "$BRANCH" && -z "${CLAUDE_WORKTREE:-}" ]]; then
+if [[ -z "$EMBED_MODE" && -n "$BRANCH" && -z "${CLAUDE_WORKTREE:-}" ]]; then
   # Extract slug from EXTRA if present
   SLUG=""
   if [[ -n "$EXTRA" ]]; then

@@ -23,7 +23,7 @@
      | `phase2-gate` | STATE 8 (Phase 2 Pre-flight) |
      | `phase2-step5` | STATE 9 (update specs) |
      | `phase2-step6` | STATE 10 (implement) |
-     | `phase2-step7` | STATE 11 (verify) |
+     | `phase2-step7` | STATE 11a (verify prep) |
      | `phase2-step8` | STATE 12 (commit/PR) |
 
      If `checkpoint` is present but does not match any row above: stop — "Saved plan has unrecognized checkpoint `<value>`. Delete `.runs/current-plan.md` and re-run `/change` for a fresh start. To abort: `git checkout main && git branch -D <branch-name>`."

@@ -11,9 +11,9 @@
    ```
    If either is missing, **STOP**: "No bootstrapped app found. Run `/bootstrap` first to scaffold the project from experiment.yaml."
 
-2. Clean trace directory (removes stale traces from prior runs):
+2. Ensure trace directory exists (stale traces cleaned by lifecycle-init.sh):
    ```bash
-   rm -rf .runs/agent-traces && mkdir -p .runs/agent-traces
+   mkdir -p .runs/agent-traces
    ```
 
 3. Read context files:

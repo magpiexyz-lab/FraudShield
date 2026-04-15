@@ -38,7 +38,7 @@ exact checkpoint without re-deriving classification, scope, or stack.
 | `phase2-gate` | STATE 8 (Phase 2 preflight) |
 | `phase2-step5` | STATE 9 (update specs) |
 | `phase2-step6` | STATE 10 (implement) |
-| `phase2-step7` | STATE 11 (verify) |
+| `phase2-step7` | STATE 11a (verify prep) |
 | `phase2-step8` | STATE 12 (commit and PR) |
 
 ### /bootstrap
@@ -49,7 +49,7 @@ exact checkpoint without re-deriving classification, scope, or stack.
 | `phase2-design` | STATE 10 (design phase) |
 | `phase2-scaffold` | STATE 11 (core scaffold) |
 | `phase2-wire` | STATE 14 (wire phase) |
-| `awaiting-verify` | STATE 19 (verify) |
+| `awaiting-verify` | STATE 19a (verify prep) |
 
 ## When to Save
 

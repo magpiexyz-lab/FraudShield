@@ -29,7 +29,7 @@ checkpoint without re-deriving classification or stack.
 ### /bootstrap failure
 - **State saved:** `.runs/current-plan.md` with frontmatter (archetype, stack, checkpoint), `package.json` (installed packages)
 - **Recovery:** Re-run `/bootstrap` — Step 4 reads frontmatter checkpoint and resumes at exact phase
-- **If checkpoint is `awaiting-verify`:** Bootstrap scaffolding complete. Re-run `/bootstrap` — resumes at STATE 19 (embedded verify).
+- **If checkpoint is `awaiting-verify`:** Bootstrap scaffolding complete. Re-run `/bootstrap` — resumes at STATE 19a (verify prep), then 19b runs embedded verify via transparent dispatch.
 - **Manual cleanup:** If you want to start fresh: `git checkout main && make clean`
 
 ### /deploy failure (most common)
@@ -53,7 +53,7 @@ checkpoint without re-deriving classification or stack.
 
 ### /verify failure
 - **State saved:** Fix attempts on current branch, `.runs/agent-traces/` (partial trace artifacts)
-- **Recovery:** Re-run `/verify` — starts fresh test run. If verify was embedded by bootstrap, re-run `/bootstrap` instead — it resumes at STATE 19 (verify).
+- **Recovery:** Re-run `/verify` — starts fresh test run. If verify was embedded by bootstrap, re-run `/bootstrap` instead — it resumes at STATE 19a (verify prep).
 - **Manual cleanup:** Trace cleanup is now automatic in STATE 0 (`rm -rf .runs/agent-traces && mkdir -p .runs/agent-traces`). No manual cleanup needed. Verify itself does not modify infrastructure.
 
 ### /distribute failure
