@@ -27,8 +27,8 @@ directly to Trigger Evaluation below.
    fi
    ```
    The template remote is auto-added if missing.
-2. `gh auth status` — if fails → skip silently.
-3. `gh repo view $TEMPLATE_REPO --json name` — if fails → skip silently.
+2. `gh auth status` — if fails → skip filing only (evaluation still runs).
+3. `gh repo view $TEMPLATE_REPO --json name` — if fails → skip filing only (evaluation still runs).
 
 Observation evaluation is mandatory. Filing to GitHub is gracefully degraded
 (if `gh` auth or repo access fails, log locally and report to user). Never

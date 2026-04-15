@@ -392,8 +392,11 @@ try:
 except: pass
 
 outpath = os.path.join(project_dir, '.runs/verify-recheck.json')
-json.dump(result, open(outpath, 'w'), indent=2)
-print('INFO: Wrote verify-recheck.json (%d passed, %d failed)' % (result['passed'], result['failed']), file=sys.stderr)
-" || true
+try:
+    json.dump(result, open(outpath, 'w'), indent=2)
+    print('INFO: Wrote verify-recheck.json (%d passed, %d failed)' % (result['passed'], result['failed']), file=sys.stderr)
+except Exception as e:
+    print('WARN: Failed to write verify-recheck.json: %s' % e, file=sys.stderr)
+" || echo "WARN: verify-recheck.json assembly failed — remediation phase will have no structured input" >&2
 
 echo "FINALIZE_COMPLETE"
