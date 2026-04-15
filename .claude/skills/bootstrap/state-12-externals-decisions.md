@@ -22,8 +22,10 @@ After the externals subagent returns its classification table:
 3. **Execute remaining work** -- explicit externals checklist:
 
    For each decision where `user_choice` is one of {Provide now, Provision at deploy, Full Integration}:
-   - [ ] Generate `.claude/stacks/external/<service-slug>.md` using the external stack file
-         template (service name, classification, required env vars, integration notes)
+   - [ ] Check if a pre-built stack file already exists at `.claude/stacks/*/<service-slug>.md`
+         (any subdirectory — e.g., `ai/`, `database/`, `payment/`). If found, skip generation
+         and use the pre-built file. Only generate `.claude/stacks/external/<service-slug>.md`
+         when no pre-built file exists.
    - [ ] Run `python3 .claude/scripts/validate-frontmatter.py .claude/stacks/external/<service-slug>.md`
          to verify frontmatter is well-formed
    - [ ] Add env var guard: create or update the relevant API route to return 503 with

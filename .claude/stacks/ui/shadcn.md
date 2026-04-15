@@ -176,6 +176,24 @@ Add `src/components/ui/` and `src/components/magicui/` to the `ignores` array in
 { ignores: [".next/", "out/", "node_modules/", "src/components/ui/", "src/components/magicui/"] }
 ```
 
+### Skeleton Hydration Warning
+
+The `<Skeleton>` component renders as a `<div>`. Do not nest it inside `<p>` tags — this causes React hydration errors because `<div>` (block element) is invalid inside `<p>` (phrasing content). The browser auto-closes the `<p>` before the `<div>`, creating a DOM mismatch with the server-rendered HTML. Use `<div>` or `<span>` containers instead when showing loading states for text content.
+
+```tsx
+import { Skeleton } from "@/components/ui/skeleton";
+
+// WRONG (hydration error — div inside p):
+<p className="text-lg font-bold">
+  {loading ? <Skeleton className="h-6 w-16" /> : value}
+</p>
+
+// CORRECT (div container):
+<div className="text-lg font-bold">
+  {loading ? <Skeleton className="h-6 w-16" /> : value}
+</div>
+```
+
 ## Import Example
 ```tsx
 import { Button } from "@/components/ui/button";

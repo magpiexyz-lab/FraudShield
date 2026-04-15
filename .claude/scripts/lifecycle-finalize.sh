@@ -202,7 +202,7 @@ parts = c.split('---', 2)
 if len(parts) < 3:
     print('verify-report.md malformed frontmatter', file=sys.stderr); sys.exit(1)
 fm = parts[1]
-for field in ['overall_verdict:', 'agents_expected:', 'agents_completed:']:
+for field in ['overall_verdict:', 'hard_gate_failure:', 'process_violation:', 'agents_expected:', 'agents_completed:']:
     if field not in fm:
         print('verify-report.md missing %s' % field, file=sys.stderr); sys.exit(1)
 " 2>&1 || GATE_ERRORS+=("verify-report.md frontmatter validation failed")
@@ -255,7 +255,7 @@ if d.get('exit_code') != 0:
   fi
 
   # --- Git delivery ---
-  git add -A -- ':!.runs/'
+  git add -A
   if ! git diff --cached --quiet 2>/dev/null; then
     git commit -m "$(cat "$COMMIT_MSG")"
   fi
