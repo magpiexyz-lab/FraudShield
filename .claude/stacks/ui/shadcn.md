@@ -194,6 +194,15 @@ import { Skeleton } from "@/components/ui/skeleton";
 </div>
 ```
 
+### MagicUI post-install fixes
+After installing MagicUI components, check for and fix these known issues:
+- `client-tweet-card.tsx`: change `@/components/tweet-card` import to `@/components/ui/tweet-card`
+- `globe.tsx`: add `// @ts-nocheck` at the top of the file (`COBEOptions` type incompatibility with current TypeScript)
+- Install missing runtime dependencies: `npm install @shikijs/transformers @radix-ui/react-accordion`
+- Install missing shadcn component: `npx shadcn@latest add -y scroll-area`
+
+The MagicUI CLI generates components with import paths and dependency assumptions that do not always match the shadcn/ui project structure. The bulk install script uses `|| true` to continue past individual failures — verify all expected components exist after installation.
+
 ## Import Example
 ```tsx
 import { Button } from "@/components/ui/button";

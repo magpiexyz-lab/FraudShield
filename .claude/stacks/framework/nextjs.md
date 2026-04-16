@@ -243,6 +243,7 @@ import { NavBar } from "@/components/nav-bar";
 
 // Inside the <body> tag:
 <NavBar />    {/* Only when stack.auth is present */}
+<main>{children}</main>
 <RetainTracker />
 ```
 
@@ -299,6 +300,12 @@ Zod v4 renamed `z.string().uuid()` to `z.uuid()`. The old form is deprecated (co
 
 ### When a let variable is always overwritten in the try block (no-useless-assignment)
 Declare the variable with a type annotation and no initial value: `let x: string;` instead of `let x = "placeholder";`. The `@typescript-eslint/no-useless-assignment` lint rule (from `tseslint.configs.recommended`) fires when the initial value is never read because every branch (try + catch) reassigns the variable before use. An initial value suggests a fallback that isn't actually used.
+
+### When accessibility scanner reports all pages missing `<main>` landmark
+Wrap `{children}` in a `<main>` element in `src/app/layout.tsx`. The root layout template emits `{children}` directly inside `<body>`, which causes every page to fail WCAG landmark checks. A `<main>` in the root layout applies the fix to all pages simultaneously.
+
+### When npm install fails with eslint-plugin-react-hooks peer dependency error
+`eslint-plugin-react-hooks` does not support eslint v10+. When `npm install` resolves the latest eslint major version and the peer dependency check fails, re-run with a pinned version: `npm install -D eslint@9`. This is a temporary compatibility workaround until `eslint-plugin-react-hooks` supports eslint v10. Other framework stacks (Hono, Commander) do not use `eslint-plugin-react-hooks` and are unaffected.
 
 ## PR Instructions
 - No additional framework setup needed after merging — `npm install && npm run dev` is sufficient

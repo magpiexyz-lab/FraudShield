@@ -914,6 +914,22 @@ The callback URL for all providers is: `https://<ref>.supabase.co/auth/v1/callba
 **Manual fallback:** Supabase Dashboard → Authentication → Providers → enable the provider
 → paste Client ID and Secret from the provider's developer console.
 
+## Known Issues
+
+### When an API route should be restricted to admin users
+Verify `user.app_metadata?.role === "admin"` after the standard auth check, with an `ADMIN_EMAILS` env var fallback for initial setup before roles are assigned in Supabase:
+
+```typescript
+const { data: { user } } = await supabase.auth.getUser();
+if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+const adminEmails = (process.env.ADMIN_EMAILS ?? "").split(",").map(e => e.trim()).filter(Boolean);
+const isAdmin = user.app_metadata?.role === "admin" || adminEmails.includes(user.email ?? "");
+if (!isAdmin) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+```
+
+`app_metadata` is set server-side via the Supabase service role client and cannot be modified by users — it is safe for authorization decisions. The `ADMIN_EMAILS` fallback allows admin operations before Supabase role metadata is configured. Missing this check allows any authenticated user to call admin-only routes, returning 200 instead of 403.
+
 ## PR Instructions
 - Email confirmation is enabled by default in Supabase. The signup form handles this: when `signUp()` returns `session: null`, it shows a "check your email" message instead of redirecting. Users who confirm their email can then log in normally.
 - The signup form passes `emailRedirectTo` pointing to `/auth/callback`, which exchanges the PKCE code for a session and redirects to `/`. This requires the production URL to be in Supabase's redirect allow-list (configured by `/deploy`).
