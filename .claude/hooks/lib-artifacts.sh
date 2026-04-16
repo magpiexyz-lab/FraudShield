@@ -134,6 +134,49 @@ else:
   fi
 }
 
+# --- check_claimed_shared ---
+# Validates CLAIMED_SHARED markers against .runs/design-claims.json.
+# No-op if no CLAIMED_SHARED markers present (backward compatible).
+# Appends to global ERRORS on violations. Requires global PAYLOAD.
+# Usage: check_claimed_shared "design-critic (per-page)"
+check_claimed_shared() {
+  local AGENT_NAME="$1"
+  local PROMPT
+  PROMPT=$(python3 -c "
+import json,sys
+d=json.loads(sys.stdin.read())
+print(d.get('tool_input',{}).get('prompt',''))
+" <<< "$PAYLOAD" 2>/dev/null || echo "")
+
+  local CLAIM_RESULT
+  CLAIM_RESULT=$(python3 -c "
+import re, sys, json, os
+prompt = sys.stdin.read()
+m = re.search(r'CLAIMED_SHARED_START\n(.*?)CLAIMED_SHARED_END', prompt, re.DOTALL)
+if not m:
+    print('OK')
+    sys.exit(0)
+files = [f.strip() for f in m.group(1).strip().split('\n') if f.strip()]
+claims_path = os.path.join('${PROJECT_DIR}', '.runs', 'design-claims.json')
+if not os.path.exists(claims_path):
+    print('NO_CLAIMS_FILE')
+    sys.exit(0)
+claims = json.load(open(claims_path)).get('claims', {})
+invalid = [f for f in files if f not in claims]
+if invalid:
+    print('UNCLAIMED:' + ';'.join(invalid[:3]))
+else:
+    print('OK')
+" <<< "$PROMPT" 2>/dev/null || echo "OK")
+
+  if [[ "$CLAIM_RESULT" == "NO_CLAIMS_FILE" ]]; then
+    ERRORS+=("$AGENT_NAME has CLAIMED_SHARED markers but .runs/design-claims.json does not exist")
+  elif [[ "$CLAIM_RESULT" == UNCLAIMED:* ]]; then
+    local UNCLAIMED="${CLAIM_RESULT#UNCLAIMED:}"
+    ERRORS+=("$AGENT_NAME CLAIMED_SHARED contains paths not in design-claims.json ($UNCLAIMED)")
+  fi
+}
+
 # --- _parse_check_result ---
 # Parses JSON {"errors":[...],"warnings":[...]} from check functions.
 # Appends to global ERRORS and WARNINGS arrays.

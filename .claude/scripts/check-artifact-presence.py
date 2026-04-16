@@ -119,8 +119,27 @@ def main():
                 if d.get('unresolved_shared', 0) > 0:
                     has_shared = True; break
             except: pass
-        if has_shared and not os.path.exists(os.path.join(traces_dir, 'design-critic-shared.json')):
-            errors.append('design-critic-shared.json missing but per-page agents reported shared-component issues')
+        if has_shared:
+            # Check if all shared issues are for claimed components (handled by per-page claiming agents)
+            all_claimed = False
+            claims_path = os.path.join(project, '.runs', 'design-claims.json')
+            if os.path.exists(claims_path):
+                try:
+                    claims = json.load(open(claims_path)).get('claims', {})
+                    if claims:
+                        all_claimed = True
+                        for f in glob.glob(os.path.join(traces_dir, 'design-critic-*.json')):
+                            if 'design-critic-shared' in f: continue
+                            try:
+                                d = json.load(open(f))
+                                for si in d.get('shared_issues', []):
+                                    if si.get('file', '') not in claims:
+                                        all_claimed = False; break
+                            except: pass
+                            if not all_claimed: break
+                except: pass
+            if not all_claimed and not os.path.exists(os.path.join(traces_dir, 'design-critic-shared.json')):
+                errors.append('design-critic-shared.json missing but per-page agents reported shared-component issues for unclaimed components')
 
     # --- Check 15: Postcondition artifact backstop ---
     for f in ['verify-context.json', 'fix-log.md']:

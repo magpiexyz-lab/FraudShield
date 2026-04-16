@@ -20,13 +20,14 @@ IS_PER_PAGE=$(python3 -c "
 import json, sys, re
 d = json.loads(sys.stdin.read())
 prompt = d.get('tool_input',{}).get('prompt','')
-if re.search(r'design-critic-\w+\.json', prompt):
+if re.search(r'design-critic-(?!shared)\w+\.json', prompt):
     print('yes')
 else:
     print('no')
 " <<< "$PAYLOAD" 2>/dev/null || echo "no")
 if [[ "$IS_PER_PAGE" == "yes" ]]; then
   check_file_boundary "design-critic (per-page)"
+  check_claimed_shared "design-critic (per-page)"
 fi
 
 if [[ ${#ERRORS[@]} -gt 0 ]]; then

@@ -27,10 +27,30 @@ else: print('no')
 " 2>/dev/null || echo "no")
 
 if [[ "$HAS_SHARED" == "yes" ]]; then
-  if [[ ! -f "$TRACES_DIR/design-critic-shared.json" ]]; then
-    ERRORS+=("design-critic-shared.json missing — per-page agents reported shared-component issues")
-  else
-    require_trace_verdict "$TRACES_DIR/design-critic-shared.json" "shared-component agent may still be running"
+  # Check if all shared issues are for claimed components (handled by per-page claiming agents)
+  ALL_CLAIMED=$(python3 -c "
+import json, glob, os
+claims = {}
+try: claims = json.load(open('$PROJECT_DIR/.runs/design-claims.json')).get('claims', {})
+except: pass
+if not claims:
+    print('no'); exit()
+for f in glob.glob('$TRACES_DIR/design-critic-*.json'):
+    if 'design-critic-shared' in f: continue
+    try:
+        d = json.load(open(f))
+        for si in d.get('shared_issues', []):
+            if si.get('file','') not in claims:
+                print('no'); exit()
+    except: pass
+print('yes')
+" 2>/dev/null || echo "no")
+  if [[ "$ALL_CLAIMED" != "yes" ]]; then
+    if [[ ! -f "$TRACES_DIR/design-critic-shared.json" ]]; then
+      ERRORS+=("design-critic-shared.json missing — per-page agents reported shared-component issues for unclaimed components")
+    else
+      require_trace_verdict "$TRACES_DIR/design-critic-shared.json" "shared-component agent may still be running"
+    fi
   fi
 fi
 
