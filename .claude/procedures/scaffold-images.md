@@ -70,7 +70,7 @@ For each image slot, generate **multiple diverse candidates**, score each, and s
 | 2 | `feature-1.webp` | feature | Recraft V4 Pro | 800x600 | 3 | 2 AI + 1 Unsplash (ensemble anchor) |
 | 3 | `feature-2.webp` | feature | Recraft V4 Pro | 800x600 | 3 | 2 AI + 1 Unsplash (style-match feature-1) |
 | 4 | `feature-3.webp` | feature | Recraft V4 Pro | 800x600 | 3 | 2 AI + 1 Unsplash (style-match feature-1) |
-| 5 | `logo.svg` | logo | Recraft V4 Vector | 512x512 | 2 | 2 AI variants |
+| 5 | `logo.svg` | logo | Recraft V4 Vector | 512x512 | 5 | 5 AI variants |
 | 6 | `og-photo.webp` | og | Ideogram V3 | 1200x630 | 3 | 2 AI + 1 Unsplash |
 | 7 | `empty-state.webp` | empty-state | Recraft V4 Pro | 400x400 | 2 | 1 AI + 1 Unsplash |
 
@@ -134,6 +134,14 @@ For each image slot, generate **multiple diverse candidates**, score each, and s
    After selecting the feature-1 winner, derive a **style anchor prefix** from it — describe its visual characteristics (illustration style, color temperature, abstraction level, rendering technique) in 15-20 words. When generating feature-2 and feature-3 candidates, prepend this style anchor prefix to every prompt. This ensures cross-feature consistency while still allowing per-feature subject diversity.
 
 7. If the specialized model fails entirely, the `generateImage()` function automatically falls back to FLUX.2 Pro, then to SVG placeholder. Continue with the next slot.
+
+8. **SVG post-processing (logo slot only):**
+   After generating each SVG logo candidate, read the SVG source and remove any opaque white/near-white background rectangle that Recraft V4 Vector commonly adds:
+   ```bash
+   # Remove rect elements with white fill (common Recraft V4 Vector artifact)
+   sed -i '' '/<rect[^>]*fill="\(#[Ff][Ff][Ff]\|#[Ff][Ff][Ff][Ff][Ff][Ff]\|white\)"[^>]*\/\?>/d' .runs/image-candidates/<logo-file>.svg
+   ```
+   After removal, verify the SVG still contains at least one visible path element and renders correctly by reading it with the Read tool. If the background rect was part of an intentional design element (the SVG looks broken after removal), restore the original and note the issue — the design-critic Layer 1 SVG transparency check will catch it in context.
 
 ### Step 4b: Completeness Check
 
@@ -249,7 +257,7 @@ Write `.runs/agent-traces/scaffold-images.json`:
   "image_count": 7,
   "fallback_count": 0,
   "total_candidates": <total across all slots>,
-  "candidates_per_slot": { "hero": 5, "feature-1": 3, "feature-2": 3, "feature-3": 3, "logo": 2, "og-photo": 3, "empty-state": 2 },
+  "candidates_per_slot": { "hero": 5, "feature-1": 3, "feature-2": 3, "feature-3": 3, "logo": 5, "og-photo": 3, "empty-state": 2 },
   "weakest_image": "<filename>",
   "weakest_score": <min score across all dimensions and images>,
   "total_retries": <sum of retries across all images>,

@@ -77,6 +77,7 @@ For every page, check:
 - **Mobile: navigation usable** — hamburger menu or equivalent on small screens
 - **Images render** — if `public/images/` contains files, verify no broken image icons in screenshots. Read each image file with the Read tool to visually inspect standalone quality.
 - **Image manifest** — check `.runs/image-manifest.json` for generation status and per-image quality scores from scaffold-images
+- **SVG transparency** — if logo is SVG format, verify no opaque white background rectangle is present. Check both the SVG source (read the file for `<rect>` elements with white fill like `#fff`, `#FFFFFF`, or `white`) and the visual rendering (no white square visible against the page's background color). If a white background rect is found, remove it from the SVG source and verify the logo renders correctly.
 
 Any Layer 1 failure → fix immediately before continuing to Layer 2.
 
@@ -125,6 +126,22 @@ Any of these triggers automatic fix — each has a measurable threshold:
 
 ### 5.5. Candidate Selection Phase
 
+#### Candidate Image Swap Protocol
+
+When evaluating a candidate image in page context (used by Step 5.5d, Step 6
+Priorities 1/2/3, and og-photo evaluation), use a fresh production server
+to avoid dev server image caching:
+
+1. Copy candidate to `public/images/<filename>` (overwriting current)
+2. Start production server: `npx next start -p 3099 &`; wait for ready (max 15s, poll `http://localhost:3099`)
+3. Screenshot against `http://localhost:3099` (NOT the original `base_url` — the dev server may cache the old image)
+4. Score the candidate in page context
+5. Kill the production server: `kill $(lsof -ti:3099) 2>/dev/null || true`
+
+Use the original `base_url` for all non-candidate operations (initial review,
+post-fix re-screenshots). The production server serves `public/` at runtime,
+so no `npm run build` is needed between candidate swaps — only a server restart.
+
 #### Landing-page critic — full candidate evaluation
 
 If you are reviewing the **landing page** AND `.runs/image-candidates.json` exists:
@@ -134,11 +151,9 @@ If you are reviewing the **landing page** AND `.runs/image-candidates.json` exis
    a. Identify the current winner rendered on the page (the image at `public/images/<canonical filename>`)
    b. Assess the current winner's quality IN page context using the Layer 2 image integration criteria (image fusion, color temperature match, visual weight)
    c. If the current winner scores **≥ 8** in context AND no unused candidate scored within 1 point of the winner → keep it, skip to next slot
-   c2. If the current winner scores **≥ 8** in context BUT an unused candidate scored within 1 point → try those close-scoring candidates using the same full cycle as step d below (copy, build, re-screenshot, score in context). Keep the highest scorer; on equal scores, prefer the current winner to minimize churn.
-   d. If the current winner scores **< 8** in context → systematically try each alternate candidate:
-      - Copy the candidate to `public/images/<canonical filename>` (overwriting the current winner)
-      - Run `npm run build` to ensure the build passes
-      - Re-screenshot the page
+   c2. If the current winner scores **≥ 8** in context BUT an unused candidate scored within 1 point → try those close-scoring candidates using the Candidate Image Swap Protocol above. Keep the highest scorer; on equal scores, prefer the current winner to minimize churn.
+   d. If the current winner scores **< 8** in context → systematically try each alternate candidate using the Candidate Image Swap Protocol:
+      - Follow the swap protocol (copy → start production server → screenshot → score → kill server)
       - Score the candidate IN page context (image fusion + color temperature + visual weight)
    e. Select the candidate that scores highest in context
    f. Update `.runs/image-manifest.json` with the winner's source, model, and scores
@@ -190,7 +205,7 @@ For any section rated below 8/10 in Layer 2, or any Layer 1/Layer 3 failure:
 1. Analyze what's wrong with the image in page context (color mismatch? wrong subject? AI artifacts? style inconsistency? composition competes with text?)
 
 2. **Priority 1 — Try remaining pre-generated candidates** (if `.runs/image-candidates.json` exists and was not exhausted in Step 5.5):
-   - For each untried candidate in the sidecar for this slot: copy to `public/images/<filename>`, rebuild, re-screenshot, score in context
+   - For each untried candidate in the sidecar for this slot: use the **Candidate Image Swap Protocol** (Section 5.5) to evaluate in page context
    - If any candidate scores ≥ 8 in context → accept it. Update manifest and sidecar.
 
 3. **Priority 2 — Generate new candidates with page context:**
@@ -202,7 +217,7 @@ For any section rated below 8/10 in Layer 2, or any Layer 1/Layer 3 failure:
      ```bash
      DEMO_MODE= npx tsx -e "import { generateImage } from './src/lib/image-gen'; const r = await generateImage({ type: '<type>', prompt: '<context-informed prompt>', width: <w>, height: <h>, filename: '<slot>-critic-<N>.webp', altText: '<alt>', outputDir: '.runs/image-candidates' }); console.log(JSON.stringify(r));"
      ```
-   - Try each new candidate in context (copy → build → screenshot → score)
+   - Try each new candidate in context using the **Candidate Image Swap Protocol** (Section 5.5)
    - Update `.runs/image-candidates.json` sidecar with new entries
    - Also try Unsplash if appropriate: craft search terms informed by the visual problem (e.g., "color too warm" → search for cool-toned photos: `cool-tone-minimal-workspace`). Use a DIFFERENT search query for each Unsplash candidate — picking multiple photos from the same search produces similar results, not diverse candidates. WebFetch search → download to `.runs/image-candidates/` → try in context
 

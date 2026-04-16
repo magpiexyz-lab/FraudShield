@@ -17,7 +17,10 @@
 
 Read the hosting stack file's `## Deploy Interface > Domain Setup`. Follow the instructions to add a custom domain. The default parent domain is `draftlabs.org`; override with `deploy.domain` in experiment.yaml.
 - **On success:** `canonical_url` = the custom domain, `domain_added` = true
-- **On failure:** warn with the stack file's fallback message, set `canonical_url` = null (finalized after Step 5a deploy), `domain_added` = false
+- **On failure:** Output a visible warning to the user with the stack file's fallback message:
+  > **WARNING: Domain setup failed.** <stack file's fallback message>. The MVP will deploy to the auto-assigned hosting URL. To add the custom domain manually after deploy, see the hosting stack file's `## Deploy Interface > Domain Setup`.
+
+  Set `canonical_url` = null (backfilled by state-3c after deploy with the auto-assigned hosting URL), `domain_added` = false
 
 #### 4.3: Volume setup (if needed)
 
@@ -81,7 +84,7 @@ Collect all env vars and set them using the hosting provider's method:
 
 **VERIFY:**
 ```bash
-python3 -c "import json; d=json.load(open('.runs/deploy-provision-3b.json')); assert d.get('hosting_created') is True, 'hosting_created not True'; assert d.get('env_vars_set') is True, 'env_vars_set not True'; assert d.get('canonical_url','')!='', 'canonical_url empty'; assert d.get('domain_added') is True, 'domain_added not True'"
+python3 -c "import json; d=json.load(open('.runs/deploy-provision-3b.json')); assert d.get('hosting_created') is True, 'hosting_created not True'; assert d.get('env_vars_set') is True, 'env_vars_set not True'; assert d.get('domain_added') is not None, 'domain_added missing'; assert d.get('domain_added') is True or d.get('canonical_url') is None or d.get('canonical_url') == '', 'domain_added False but canonical_url set unexpectedly'; assert d.get('domain_added') is not True or (d.get('canonical_url') not in (None, '')), 'domain_added True but canonical_url empty'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

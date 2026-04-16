@@ -138,7 +138,7 @@ Sources: `lead-spec-reviewer`, `lead-a11y`, `lead-behavior-verifier`, `lead-perf
 
 **VERIFY:**
 ```bash
-python3 -c "import json,os; ctx=json.load(open('.runs/verify-context.json')); needs_dc=ctx.get('scope') in ('full','visual') and ctx.get('archetype')=='web-app'; assert not needs_dc or os.path.exists('.runs/agent-traces/design-critic.json'), 'design-critic.json missing (scope=%s, archetype=%s)' % (ctx.get('scope'),ctx.get('archetype')); assert not needs_dc or os.path.exists('.runs/agent-traces/design-consistency-checker.json'), 'design-consistency-checker.json missing'; assert json.load(open('.runs/build-result.json'))['exit_code']==0"
+python3 -c "import json,os,glob; ctx=json.load(open('.runs/verify-context.json')); needs_dc=ctx.get('scope') in ('full','visual') and ctx.get('archetype')=='web-app'; assert not needs_dc or os.path.exists('.runs/agent-traces/design-critic.json'), 'design-critic.json missing (scope=%s, archetype=%s)' % (ctx.get('scope'),ctx.get('archetype')); assert not needs_dc or os.path.exists('.runs/agent-traces/design-consistency-checker.json'), 'design-consistency-checker.json missing'; assert json.load(open('.runs/build-result.json'))['exit_code']==0; has_candidates=os.path.exists('.runs/image-candidates.json'); dc_traces=glob.glob('.runs/agent-traces/design-critic-*.json') if needs_dc and has_candidates else []; root_checked=any('candidates_tried' in json.load(open(t)) for t in dc_traces) if dc_traces else True; assert root_checked, 'image-candidates.json exists but no design-critic trace contains candidates_tried — Step 5.5 may have been skipped'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

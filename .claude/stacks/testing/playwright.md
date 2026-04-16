@@ -921,6 +921,15 @@ Call `await triggerAllInView(page)` after navigation and before asserting on ele
 ### When selecting MagicUI ShimmerButton in Playwright tests
 Use `page.locator('text=...')` or attribute selectors (`[data-testid=...]`) instead of `page.getByRole('button', { name: '...' })`. ShimmerButton is a styled canvas-based element without a standard ARIA button role, so `getByRole('button')` does not match it.
 
+### When smoke test navigates to auth-protected page that redirects
+Pages behind auth guards immediately redirect to a login page. `page.goto()` waits for `load` by default, which fires before the redirect-triggered navigation finishes. Assertions on page content (title, heading) run against the intermediate blank state. Use `waitUntil: 'networkidle'` to wait for the redirect to settle:
+
+```typescript
+await page.goto("/protected-page", { waitUntil: "networkidle" });
+```
+
+Alternatively, assert on the redirect destination with `page.waitForURL(/\/login/)` instead of asserting on page content.
+
 ## PR Instructions
 - Install [Docker Desktop](https://www.docker.com/products/docker-desktop/) if not already installed
 - Start local Supabase: `make supabase-start` (or `npx supabase start -x realtime,storage,imgproxy,inbucket,pgadmin-schema-diff,migra,postgres-meta,studio,edge-runtime,logflare,pgbouncer,vector && npx supabase db reset`)

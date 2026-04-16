@@ -310,5 +310,35 @@ Wrap `{children}` in a `<main>` element in `src/app/layout.tsx`. The root layout
 ### When npm install fails with eslint-plugin-react-hooks peer dependency error
 `eslint-plugin-react-hooks` does not support eslint v10+. When `npm install` resolves the latest eslint major version and the peer dependency check fails, re-run with a pinned version: `npm install -D eslint@9`. This is a temporary compatibility workaround until `eslint-plugin-react-hooks` supports eslint v10. Other framework stacks (Hono, Commander) do not use `eslint-plugin-react-hooks` and are unaffected.
 
+### When a custom hook returns a useRef and react-hooks/refs lint fires
+A custom hook that returns a `useRef` object triggers the `react-hooks/refs` ESLint rule when consumers access properties on the returned ref during render (e.g., `hook().current`). The error is "Cannot access refs during render." Convert `useRef` to a `useState` + callback ref pattern, or restructure so the hook returns derived values instead of the raw ref object. This commonly occurs with scroll-tracking or intersection-observer hooks.
+
+### When openGraph metadata is missing images array, og:image is absent
+When the `openGraph` config object in `layout.tsx` is written without an `images` property, the `og:image` meta tag is entirely absent from the rendered HTML. Social sharing previews and link unfurls show no image. Always include the `images` array in the openGraph config:
+
+```typescript
+openGraph: {
+  title: "...",
+  description: "...",
+  images: [{ url: "/images/og-photo.webp", width: 1200, height: 630 }],
+},
+```
+
+### When API route accepts total + line-items breakdown, validate with .refine()
+API routes that accept both a `total` field (e.g., `total_cents`) and a breakdown array (e.g., `line_items`) must validate that the sum matches. Without cross-field validation, a client can pass an arbitrary total that does not match the line items. Use Zod's `.refine()` for cross-field validation:
+
+```typescript
+const schema = z.object({
+  total_cents: z.number().int().positive(),
+  line_items: z.array(z.object({ amount_cents: z.number().int() })),
+}).refine(
+  (data) => data.total_cents === data.line_items.reduce((sum, i) => sum + i.amount_cents, 0),
+  { message: "total_cents must equal sum of line_items" }
+);
+```
+
+### When API routes performing expensive operations lack rate limiting
+CLAUDE.md Rule 6 specifies rate limiting for auth and payment routes, but any API route performing expensive operations (AI calls, email sends, database writes from anonymous users, quote generation) is equally vulnerable to abuse. Add rate limiting to all write routes and routes that call external services, not just auth and payment.
+
 ## PR Instructions
 - No additional framework setup needed after merging — `npm install && npm run dev` is sufficient
