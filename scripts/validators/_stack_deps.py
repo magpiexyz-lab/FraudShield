@@ -107,7 +107,7 @@ def check_14_stack_fallback_when_assumes_not_met(stack_contents: dict[str, str])
     OPTIONAL_ASSUME_CATEGORIES = {"database", "auth", "payment", "testing"}
     # Shared stack categories (not per-service) that may assume a specific framework
     # but must work across different service runtimes
-    SHARED_STACK_CATEGORIES = {"database", "auth", "analytics", "payment", "email"}
+    SHARED_STACK_CATEGORIES = {"database", "auth", "analytics", "payment", "email", "ai", "telephony", "voice", "notifications", "project-management"}
 
     for sf, content in stack_contents.items():
         fm = parse_frontmatter(sf)

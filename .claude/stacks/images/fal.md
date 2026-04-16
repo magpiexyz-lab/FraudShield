@@ -18,6 +18,9 @@ gitignore: []
 # Images: fal.ai (Multi-Model)
 > Template infrastructure -- used during bootstrap image generation.
 > Not gated by experiment.yaml stack. Activated when `FAL_KEY` is available.
+> **Do not register** `images` in archetypes `optional_stacks`, `SHARED_STACK_KEYS`,
+> or other category registration points -- this is internal infrastructure, not a
+> user-declared stack category.
 > Single `FAL_KEY` drives 5 specialized models for world-champion image quality.
 
 ## Packages

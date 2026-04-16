@@ -115,6 +115,11 @@ Each value maps to a stack file at `.claude/stacks/<category>/<value>.md`. Skill
 | payment | `stripe` | *(none — opt-in)* |
 | email | `resend` | *(none — opt-in)* |
 | testing | `playwright`, `vitest` | `playwright` |
+| ai | `anthropic` | *(none — opt-in)* |
+| telephony | `twilio` | *(none — opt-in)* |
+| voice | `retell-ai` | *(none — opt-in)* |
+| notifications | `slack` | *(none — opt-in)* |
+| project-management | `linear` | *(none — opt-in)* |
 | distribution | `google-ads`, `twitter`, `reddit` | *(none — set by /distribute)* |
 
 ## Archetype reference

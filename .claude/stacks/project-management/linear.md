@@ -14,7 +14,7 @@ clean:
   dirs: []
 gitignore: []
 ---
-# External: Linear
+# Project Management: Linear
 > Used when experiment.yaml behaviors require Linear issue tracking or webhook integrations
 > Assumes: `framework/nextjs` for API route handlers
 

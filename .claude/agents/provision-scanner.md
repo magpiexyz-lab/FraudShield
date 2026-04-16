@@ -78,7 +78,7 @@ Grep the output for the webhook URL.
 - `teardown` expects: URL not found in output
 
 **P6. External services**
-Read `external_services[]` from the manifest. For each entry, read the corresponding stack file at `.claude/stacks/external/<service-slug>.md` and look for a health-check command. If no health-check command is defined, `skip:not-configured` for that service.
+Read `external_services[]` from the manifest. For each entry, find the corresponding stack file by searching `.claude/stacks/*/<service-slug>.md` (any category directory — e.g., `ai/`, `telephony/`, `external/`). Read the matched file and look for a health-check command. If no stack file is found or no health-check command is defined, `skip:not-configured` for that service.
 - `deploy` expects: per-service health check passes
 - `teardown` expects: per-service health check fails
 

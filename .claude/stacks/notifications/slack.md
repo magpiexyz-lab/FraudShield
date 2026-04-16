@@ -13,7 +13,7 @@ clean:
   dirs: []
 gitignore: []
 ---
-# External: Slack
+# Notifications: Slack
 > Used when experiment.yaml behaviors require Slack notifications via incoming webhooks
 > Assumes: `framework/nextjs` for API route handlers
 

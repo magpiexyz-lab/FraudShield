@@ -6,7 +6,7 @@ reads:
   - .env.example
   - CLAUDE.md
   - experiment/EVENTS.yaml
-stack_categories: [hosting, database, auth, analytics, payment, email]
+stack_categories: [hosting, database, auth, analytics, payment, email, ai, telephony, voice, notifications, project-management]
 requires_approval: true
 references:
   - .claude/patterns/observe.md

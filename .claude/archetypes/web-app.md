@@ -1,7 +1,7 @@
 ---
 description: "Web application with browser-based pages, UI components, and user authentication"
 required_stacks: [framework, hosting, testing]
-optional_stacks: [database, auth, analytics, ui, payment, email]
+optional_stacks: [database, auth, analytics, ui, payment, email, ai, telephony, voice, notifications, project-management]
 excluded_stacks: []
 required_experiment_fields: [golden_path]
 build_command: "npm run build"

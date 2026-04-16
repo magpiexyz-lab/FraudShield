@@ -20,7 +20,7 @@ BASE_REQUIRED_EXPERIMENT_FIELDS = [
     "stack",
 ]
 
-OPTIONAL_CATEGORIES = {"database", "auth", "payment", "email"}
+OPTIONAL_CATEGORIES = {"database", "auth", "payment", "email", "ai", "telephony", "voice", "notifications", "project-management"}
 
 
 

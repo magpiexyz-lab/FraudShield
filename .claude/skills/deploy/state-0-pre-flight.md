@@ -54,7 +54,7 @@
    - If the database has no Prerequisites section (e.g., sqlite), skip
 8. **Payment prerequisites:** If `stack.payment: stripe`: `which stripe` — if not found, warn: "Stripe CLI not installed. Webhook will need manual setup. Install: `brew install stripe/stripe-cli/stripe` (macOS) or see https://stripe.com/docs/stripe-cli." If found: `stripe whoami` — if fails, stop: "Run `stripe login` first (one-time per machine)."
 9. **Compatibility check** (skip for surface-only deployments)**:** Read the database stack file's `## Deploy Interface > Hosting Requirements > incompatible_hosting`. If the current `stack.services[0].hosting` value appears in the list, stop with the reason from the stack file (e.g., "SQLite is incompatible with Vercel: serverless has no persistent filesystem").
-10. Check external service CLIs: For each `.claude/stacks/external/*.md`, read `## CLI Provisioning`. If a CLI is specified:
+10. Check external service CLIs: For each stack file in `.claude/stacks/*/` that contains a `## CLI Provisioning` section (search all category directories — e.g., `ai/`, `telephony/`, `external/` — excluding stack-declared categories like `database/`, `auth/`, `analytics/`, `payment/`, `email/`, `framework/`, `hosting/`, `testing/`, `ui/`), read `## CLI Provisioning`. If a CLI is specified:
    - `which <cli>` — record `cli_status: not_installed` (with install command) if not found
    - If found, run auth check — record `cli_status: not_authed` if fails
    - If both pass — record `cli_status: ready`

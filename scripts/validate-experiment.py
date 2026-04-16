@@ -447,7 +447,7 @@ for i, svc in enumerate(services):
                 )
 
 # Stack file existence checks — shared values
-SHARED_STACK_KEYS = {"database", "auth", "analytics", "payment", "email"}
+SHARED_STACK_KEYS = {"database", "auth", "analytics", "payment", "email", "ai", "telephony", "voice", "notifications", "project-management"}
 for k, v in stack.items():
     if k in SHARED_STACK_KEYS and isinstance(v, str):
         sf_path = f".claude/stacks/{k}/{v}.md"

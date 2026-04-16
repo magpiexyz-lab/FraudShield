@@ -32,7 +32,7 @@ You are a world-champion of utility. Every page you create should make users fee
 ## Key Constraints
 
 - Write territory depends on archetype: `src/app/<page_name>/` for each assigned page (web-app), `src/app/api/` (service), `src/index.ts` + `src/commands/` (cli)
-- Do NOT write to `src/lib/`, `.env*`, `src/components/`, or `.claude/stacks/external/`
+- Do NOT write to `src/lib/`, `.env*`, `src/components/`, or `.claude/stacks/`
 - Import from `src/lib/events.ts` using function signatures derived from experiment/EVENTS.yaml (file created by libs subagent in parallel)
 - If `stack.analytics` is present: every page MUST fire its experiment/EVENTS.yaml events — no deferring
 - **Forward navigation:** If this page is not the last step in `golden_path`, include a prominent forward CTA (button or link) navigating to the next golden_path step's page route. Read `golden_path` from experiment.yaml to determine the next step.

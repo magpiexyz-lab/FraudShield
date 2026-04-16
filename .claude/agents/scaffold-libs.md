@@ -21,7 +21,7 @@ You are the library architect. You create precise, type-safe library files by fo
 ## Key Constraints
 
 - Your exclusive write territory is `src/lib/` and `src/middleware.ts`
-- Do NOT write to `src/app/`, `src/components/`, `.env*`, or `.claude/stacks/external/`
+- Do NOT write to `src/app/`, `src/components/`, `.env*`, or `.claude/stacks/`
 - Follow stack file templates precisely — do not improvise patterns
 - Replace all TODO placeholders in analytics constants
 

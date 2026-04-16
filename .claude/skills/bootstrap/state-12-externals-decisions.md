@@ -26,7 +26,8 @@ After the externals subagent returns its classification table:
          (any subdirectory — e.g., `ai/`, `database/`, `payment/`). If found, skip generation
          and use the pre-built file. Only generate `.claude/stacks/external/<service-slug>.md`
          when no pre-built file exists.
-   - [ ] Run `python3 .claude/scripts/validate-frontmatter.py .claude/stacks/external/<service-slug>.md`
+   - [ ] Run `python3 .claude/scripts/validate-frontmatter.py` on the resolved stack file path
+         (the pre-built file from the glob check above, or the newly generated `external/` file)
          to verify frontmatter is well-formed
    - [ ] Add env var guard: create or update the relevant API route to return 503 with
          `{ error: "<service> not configured" }` when the required env var is missing

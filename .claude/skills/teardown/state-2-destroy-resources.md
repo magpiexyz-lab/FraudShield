@@ -87,7 +87,7 @@ If fails: report with the dashboard URL from the stack file's Teardown section f
 #### 3e: External services (manual)
 
 For each service in `external_services`:
-- Read `.claude/stacks/external/<service-slug>.md` for the dashboard URL
+- Find the service's stack file by searching `.claude/stacks/*/<service-slug>.md` (any category directory) and read it for the dashboard URL
 - List the service with its dashboard URL for manual cleanup
 
 **POSTCONDITIONS:**

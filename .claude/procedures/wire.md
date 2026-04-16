@@ -41,7 +41,7 @@ These routes must:
 - Compile and pass `npm run build` without real credentials present
 - Return 503 with generic error message when env vars are missing (service details logged server-side only — see security-review.md A4)
 - Implement the complete integration logic (OAuth flow, API calls, etc.) when env vars are present
-- Read the external stack file (`.claude/stacks/external/<service-slug>.md`) for API patterns and code templates
+- Read the service's stack file by searching `.claude/stacks/*/<service-slug>.md` (any category directory — e.g., `ai/`, `telephony/`, `external/`) for API patterns and code templates
 
 ### Step 5b: Auth infrastructure files (if `stack.auth` is present)
 

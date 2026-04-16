@@ -22,7 +22,9 @@ If no external service is referenced in any resolved issue:
 
 ### 2. Check if permanent file already exists
 
-If `.claude/stacks/external/<service-slug>.md` already exists:
+Search `.claude/stacks/*/<service-slug>.md` (any category directory). If a stack
+file already exists for this service in any category (e.g., `ai/anthropic.md`,
+`telephony/twilio.md`, or `external/xero.md`):
 → Record `{ "service": "<slug>", "graduated": false, "skipped_reason": "permanent stack file already exists" }` → continue to next service.
 
 ### 3. Count observations (dual search)
@@ -54,14 +56,21 @@ body references the service name or `external/<service-slug>.md`.
 If threshold not met:
 → Record `{ "service": "<slug>", "graduated": false, "skipped_reason": "threshold not met (<count>/<threshold>)" }` → continue to next service.
 
-### 5. Synthesize permanent stack file
+### 5. Determine category and synthesize permanent stack file
 
-Create `.claude/stacks/external/<service-slug>.md` using:
+**5a. Determine category** — Propose a category directory name based on the
+service's domain. Use short, descriptive names following the existing convention
+(e.g., `telephony` for SMS/voice, `voice` for AI voice agents, `notifications`
+for webhook notifications, `project-management` for issue tracking). Present the
+proposed category to the user for confirmation. Create `.claude/stacks/<category>/`
+if the directory does not exist.
+
+**5b. Create the stack file** at `.claude/stacks/<category>/<service-slug>.md` using:
 
 **Content sources:**
 - Resolved observations' "Suggested template change" sections
 - `scaffold-externals.md` Known Service Quirks entries for this service
-- Existing permanent files (`retell-ai.md`, `twilio.md`) as structural reference
+- Existing permanent files in other categories as structural reference
 - Claude's knowledge of the service API
 
 **Required sections:**
@@ -75,14 +84,36 @@ Create `.claude/stacks/external/<service-slug>.md` using:
 - `## PR Instructions` — manual provisioning steps
 
 **Constraints:**
-- `ci_placeholders: {}` — external service env vars are runtime-only
+- `ci_placeholders`: set placeholder values for each env var in `env.server` and
+  `env.client` (e.g., `TWILIO_ACCOUNT_SID: placeholder-twilio-sid`). Empty `{}`
+  is only acceptable when the service has zero env vars.
 - Server vars in `env.server`, client vars in `env.client`
 - Next.js client vars must use `NEXT_PUBLIC_` prefix
+
+**5c. Auto-register the new category** — Update ALL of the following registration
+points to include the new `<category>`:
+
+| File | Field to update |
+|------|-----------------|
+| `.claude/archetypes/web-app.md` | `optional_stacks` |
+| `.claude/archetypes/service.md` | `optional_stacks` |
+| `.claude/archetypes/cli.md` | `optional_stacks` |
+| `.claude/skills/bootstrap/state-2-resolve-archetype.md` | known shared categories list |
+| `.claude/procedures/scaffold-externals.md` | exclusion list (line 14) |
+| `scripts/validate-experiment.py` | `SHARED_STACK_KEYS` |
+| `scripts/validators/_utils.py` | `OPTIONAL_CATEGORIES` |
+| `scripts/validators/_stack_deps.py` | `SHARED_STACK_CATEGORIES` |
+| `.claude/commands/bootstrap.md` | `stack_categories` |
+| `.claude/commands/change.md` | `stack_categories` |
+| `.claude/commands/deploy.md` | `stack_categories` |
+
+If the category already exists in a registration point (from a prior graduation),
+skip that point.
 
 ### 6. Validate frontmatter
 
 ```bash
-python3 scripts/validate-frontmatter.py .claude/stacks/external/<service-slug>.md
+python3 scripts/validate-frontmatter.py .claude/stacks/<category>/<service-slug>.md
 ```
 
 Max 2 retries on failure. Record graduated service result.
@@ -101,10 +132,11 @@ After evaluating all services, write the combined result:
           # one entry per identified service:
           {
               'service': '<service-slug>',
+              'category': '<category>',
               'observation_count': N,
               'threshold': 2,
               'graduated': True,  # or False
-              'file_path': '.claude/stacks/external/<service-slug>.md',
+              'file_path': '.claude/stacks/<category>/<service-slug>.md',
               'frontmatter_valid': True,
               'skipped_reason': None  # or reason string
           }
@@ -142,7 +174,7 @@ print('Wrote .runs/q-dimensions.json')
 <!-- VERIFY=registry: graduation-result.json artifact validation -->
 **VERIFY:**
 ```bash
-python3 -c "import json,os; d=json.load(open('.runs/graduation-result.json')); assert d.get('evaluated')==True, 'not evaluated'; svcs=d.get('services',[]); assert isinstance(svcs, list), 'services not a list'; [None for s in svcs if s.get('graduated') and not (s.get('file_path') and os.path.exists(s['file_path']) and s.get('frontmatter_valid')==True) and (_ for _ in ()).throw(AssertionError('graduated %s but file missing or invalid' % s.get('service')))]"
+python3 -c "import json,os; d=json.load(open('.runs/graduation-result.json')); assert d.get('evaluated')==True, 'not evaluated'; svcs=d.get('services',[]); assert isinstance(svcs, list), 'services not a list'; [None for s in svcs if s.get('graduated') and not (s.get('file_path') and os.path.exists(s['file_path']) and s.get('frontmatter_valid')==True and not s['file_path'].startswith('.claude/stacks/external/')) and (_ for _ in ()).throw(AssertionError('graduated %s but file missing, invalid, or in external/' % s.get('service')))]"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

@@ -22,7 +22,7 @@
 3. Spawn implementer agents (same procedure as Feature production path, including step 6 trace writing)
 4. **Merge worktree changes with verification** -- follow `procedures/worktree-merge-verification.md` (include consistency scan if 2+ agents).
 5. Continue to Step 7
-- Read or generate the external stack file for the service (`.claude/stacks/external/<service-slug>.md`) — use the same generation procedure as described in `.claude/procedures/scaffold-externals.md` (Step 6), including checking Known Service Quirks before generating
+- Read or generate the service's stack file — first search `.claude/stacks/*/<service-slug>.md` (any category directory). If a pre-built file exists, use it. If not found, generate to `.claude/stacks/external/<service-slug>.md` using the procedure in `.claude/procedures/scaffold-externals.md` (Step 6), including checking Known Service Quirks before generating
 - Replace the Fake Door component with real UI that calls the actual API route
 - Replace any stub route (501/503) with the full integration logic using the service's API
 - Remove `fake_door: true` from the `activate` event call — keep the same event name (`activate`) and `action` value for analytics continuity

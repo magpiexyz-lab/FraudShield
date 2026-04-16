@@ -5,7 +5,7 @@ reads:
   - experiment/experiment.yaml
   - experiment/EVENTS.yaml
   - CLAUDE.md
-stack_categories: [framework, database, auth, analytics, ui, payment, email, testing, hosting]
+stack_categories: [framework, database, auth, analytics, ui, payment, email, testing, hosting, ai, telephony, voice, notifications, project-management]
 requires_approval: true
 references:
   - .claude/patterns/verify.md

@@ -1,7 +1,7 @@
 ---
 description: "Command-line tool distributed via package registry, no server hosting"
 required_stacks: [framework, testing]
-optional_stacks: [database, analytics]
+optional_stacks: [database, analytics, ai, telephony, voice, notifications, project-management]
 excluded_stacks: [hosting, ui, auth, payment, email]
 required_experiment_fields: [commands]
 build_command: "npm run build"

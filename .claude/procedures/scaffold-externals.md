@@ -11,7 +11,7 @@
 
 Before API routes are generated, assess whether experiment.yaml features require external services not covered by `stack`:
 
-1. Read experiment.yaml `behaviors`. For each behavior, assess: does it require credentials for an external service (OAuth, API key, webhook secret) that is NOT already handled by a `stack` category (database, auth, payment, email, analytics)?
+1. Read experiment.yaml `behaviors`. For each behavior, assess: does it require credentials for an external service (OAuth, API key, webhook secret) that is NOT already handled by a `stack` category (database, auth, payment, email, analytics, ai, telephony, voice, notifications, project-management)?
    - Examples: "Connect Xero and import invoices" → Xero OAuth, "Send SMS via Twilio" → Twilio API key, "Sync with Google Sheets" → Google OAuth
    - Stack-handled services don't count: Supabase, Stripe, Resend, PostHog are already managed by their stack files
 

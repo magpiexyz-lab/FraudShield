@@ -15,7 +15,7 @@ clean:
   dirs: []
 gitignore: []
 ---
-# External: Twilio
+# Telephony: Twilio
 > Used when experiment.yaml behaviors require SMS, voice, or Twilio webhooks
 > Assumes: `framework/nextjs` for API route handlers
 

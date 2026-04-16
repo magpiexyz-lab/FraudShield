@@ -15,7 +15,7 @@ clean:
   dirs: []
 gitignore: []
 ---
-# External: Retell AI
+# Voice: Retell AI
 > Used when experiment.yaml behaviors require AI voice agents or Retell AI webhooks
 > Assumes: `framework/nextjs` for API route handlers
 
