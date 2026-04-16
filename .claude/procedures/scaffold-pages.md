@@ -21,7 +21,7 @@ The `src/lib/events.ts` file exists when this agent runs — import typed wrappe
 
 #### App shell (Step 3)
 - Follow the framework stack file's file structure and page conventions
-- **Root layout**: metadata from experiment.yaml `title`, import globals.css. Set up the display font per the UI stack file's "Theme Setup" section (chosen font via `next/font/google`, apply variable to `<html>`). Also implement `retain_return` tracking following the framework stack file's `retain_return` section and experiment/EVENTS.yaml
+- **Root layout**: metadata from experiment.yaml `title`, import globals.css. Set up the display font per the UI stack file's "Theme Setup" section (chosen font via `next/font/google`, apply variable to `<html>`). The `retain_return` tracking component (RetainTracker) and NavBar are wired into layout.tsx later by scaffold-wire (Step 5c) — do not add them here.
 - **404 page**: simple not-found page with link back to `/`
 - **Error boundary**: user-friendly message and retry button
 

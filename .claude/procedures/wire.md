@@ -53,7 +53,25 @@ Create auth infrastructure files not owned by scaffold-libs or scaffold-pages:
    - **Logo:** The NavBar template includes an `<Image>` component for the logo. Read `.runs/image-manifest.json` for the actual logo path (typically `/images/logo.svg`) and update the `src` attribute. The logo links to `/`.
    - **Mobile menu:** The NavBar template includes a Sheet-based hamburger menu for viewports below the `md` breakpoint. Ensure nav links and auth controls are duplicated inside the Sheet content.
 
-These files depend on auth library files (scaffold-libs, B1) and are referenced by pages (scaffold-pages, B2). Creating them in the wire phase ensures all dependencies exist.
+These files depend on auth library files (scaffold-libs, B1). Creating them in the wire phase ensures all dependencies exist. Since scaffold-pages (B2) creates layout.tsx before scaffold-wire runs, scaffold-wire is responsible for wiring these components into the existing layout (see Step 5c).
+
+### Step 5c: Layout assembly (web-app only)
+
+Wire conditional components into `src/app/layout.tsx`. The layout was created by the bootstrap lead before these components existed. Now that all components are created, add their imports and render calls:
+
+1. **NavBar** (if `stack.auth` is present): Add `import { NavBar } from "@/components/nav-bar";` and render `<NavBar />` as the first child inside `<body>`, before `<main>`.
+2. **RetainTracker** (if `stack.analytics` is present): Create `src/components/RetainTracker.tsx` from the framework stack file's `retain_return` section template. Then add `import { RetainTracker } from "@/components/RetainTracker";` and render `<RetainTracker />` after `</main>`, as the last child inside `<body>`.
+
+The resulting layout body structure:
+```tsx
+<body>
+  <NavBar />          {/* Only when stack.auth is present */}
+  <main>{children}</main>
+  <RetainTracker />   {/* Only when stack.analytics is present */}
+</body>
+```
+
+Layout.tsx MUST remain a server component — do NOT add "use client".
 
 ### Step 6: Database schema (if needed)
 If `stack.database` is present and experiment.yaml behaviors require persistent data:

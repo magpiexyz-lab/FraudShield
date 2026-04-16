@@ -27,6 +27,7 @@ You wire the backend: API routes with input validation, database schema with acc
 - Do NOT run Step 8 (verify.md) or Step 9 (PR) — the bootstrap lead handles those
 - Do NOT recreate packages, library files, or pages — they already exist
 - EXCEPTION: when `stack.auth` is present, create auth infrastructure files that no other agent owns: `src/app/auth/callback/route.ts`, `src/app/auth/reset-password/page.tsx`, and `src/components/nav-bar.tsx` (see auth stack file for templates)
+- EXCEPTION: wire conditional components into `src/app/layout.tsx` (Step 5c). When `stack.auth` is present, import and render NavBar. When `stack.analytics` is present, create `src/components/RetainTracker.tsx` (from framework stack file template) and import it. Layout.tsx was created in Phase A — this modification adds imports after all components exist.
 - Every API route: zod input validation, proper HTTP status codes, rate limiting on auth/payment routes
 - If a file you need to create already exists: stop and report the conflict. Do not overwrite.
 - Database: RLS policies on all tables, never trust the client

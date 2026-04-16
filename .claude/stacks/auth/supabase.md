@@ -538,6 +538,7 @@ Notes:
 - Loading state prevents flash of "Log in" button before auth state is known
 - `router.refresh()` after logout clears server-side cached session data
 - The `Sheet` component requires `npx shadcn@latest add -y sheet` — this is included in the base component set (see UI stack file)
+- **Layout wiring (scaffold-wire, Step 5c):** After creating `nav-bar.tsx`, scaffold-wire must add `import { NavBar } from "@/components/nav-bar";` to `src/app/layout.tsx` and render `<NavBar />` as the first child inside `<body>`, before `<main>`. See wire.md Step 5c.
 
 ## Client-Side Auth State
 - The `NavBar` component (above) demonstrates the pattern: `getSession()` for initial state + `onAuthStateChange()` for reactive updates

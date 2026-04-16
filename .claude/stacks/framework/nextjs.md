@@ -207,7 +207,7 @@ Notes:
 
 When `stack.analytics` is absent: skip this entire section — the RetainTracker component exists solely to fire analytics events.
 
-Create a client component for retain_return tracking and render it in the root layout. This keeps the root layout as a server component (required for `metadata` export) while running client-side localStorage logic in a separate component.
+Create a client component for retain_return tracking and render it in the root layout. **Created by scaffold-wire (Step 5c)** — not by scaffold-pages (which is barred from `src/components/`). This keeps the root layout as a server component (required for `metadata` export) while running client-side localStorage logic in a separate component.
 
 ### `src/components/RetainTracker.tsx` — Client component
 ```tsx
@@ -236,17 +236,18 @@ export function RetainTracker() {
 }
 ```
 
-In the root layout (a server component — do NOT add "use client" to layout.tsx):
+In the root layout (a server component — do NOT add "use client" to layout.tsx).
+These imports are added by **scaffold-wire (Step 5c)** after creating the components:
 ```tsx
+// Added by scaffold-wire Step 5c when stack.analytics is present:
 import { RetainTracker } from "@/components/RetainTracker";
-// When stack.auth is present:
+// Added by scaffold-wire Step 5c when stack.auth is present:
 import { NavBar } from "@/components/nav-bar";
 
 // Inside the <body> tag:
-<NavBar />    {/* Only when stack.auth is present */}
+<NavBar />    {/* Only when stack.auth is present — scaffold-wire Step 5c */}
 <main>{children}</main>
-<RetainTracker />
-<main>{children}</main>
+<RetainTracker />  {/* Only when stack.analytics is present — scaffold-wire Step 5c */}
 ```
 
 ## Security

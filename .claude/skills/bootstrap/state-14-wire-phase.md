@@ -37,11 +37,17 @@ Verify scaffold-wire trace: `test -f .runs/agent-traces/scaffold-wire.json && py
   ```bash
   python3 -c "
   import json, glob, os, yaml
-  arch = yaml.safe_load(open('experiment/experiment.yaml')).get('type', 'web-app')
+  ey = yaml.safe_load(open('experiment/experiment.yaml'))
+  arch = ey.get('type', 'web-app')
+  stack = ey.get('stack', {})
   trace = {'checkpoint': 'awaiting-verify'}
   if arch == 'web-app':
       trace['pages_wired'] = [os.path.relpath(os.path.dirname(f), 'src/app') for f in glob.glob('src/app/**/page.tsx', recursive=True) if '/api/' not in f]
       trace['api_routes_wired'] = [os.path.relpath(os.path.dirname(f), 'src/app/api') for f in glob.glob('src/app/api/**/route.ts', recursive=True)]
+      layout_components = []
+      if stack.get('auth') and os.path.isfile('src/components/nav-bar.tsx'): layout_components.append('NavBar')
+      if stack.get('analytics') and os.path.isfile('src/components/RetainTracker.tsx'): layout_components.append('RetainTracker')
+      trace['layout_components_wired'] = layout_components
   elif arch == 'service':
       trace['pages_wired'] = []
       trace['api_routes_wired'] = [os.path.relpath(os.path.dirname(f), 'src/app/api') for f in glob.glob('src/app/api/**/route.ts', recursive=True)]
@@ -61,7 +67,7 @@ Verify scaffold-wire trace: `test -f .runs/agent-traces/scaffold-wire.json && py
 
 **VERIFY:**
 ```bash
-python3 -c "import json; d=json.load(open('.runs/bootstrap-wire-trace.json')); assert 'checkpoint' in d, 'checkpoint missing'; a=json.load(open('.runs/bootstrap-context.json')).get('archetype','web-app'); assert a!='web-app' or (isinstance(d.get('pages_wired'),list) and len(d['pages_wired'])>0), 'web-app: pages_wired empty or missing'; assert a!='service' or (isinstance(d.get('api_routes_wired'),list) and len(d['api_routes_wired'])>0), 'service: api_routes_wired empty or missing'; assert a!='cli' or (isinstance(d.get('commands_wired'),list) and len(d['commands_wired'])>0), 'cli: commands_wired empty or missing'"
+python3 -c "import json,os,re; d=json.load(open('.runs/bootstrap-wire-trace.json')); assert 'checkpoint' in d, 'checkpoint missing'; a=json.load(open('.runs/bootstrap-context.json')).get('archetype','web-app'); assert a!='web-app' or (isinstance(d.get('pages_wired'),list) and len(d['pages_wired'])>0), 'web-app: pages_wired empty or missing'; assert a!='service' or (isinstance(d.get('api_routes_wired'),list) and len(d['api_routes_wired'])>0), 'service: api_routes_wired empty or missing'; assert a!='cli' or (isinstance(d.get('commands_wired'),list) and len(d['commands_wired'])>0), 'cli: commands_wired empty or missing'; ey=open('experiment/experiment.yaml').read() if a=='web-app' else ''; has_auth=bool(re.search(r'^\s+auth:\s+\S',ey,re.MULTILINE)); has_analytics=bool(re.search(r'^\s+analytics:\s+\S',ey,re.MULTILINE)); layout=open('src/app/layout.tsx').read() if a=='web-app' and os.path.isfile('src/app/layout.tsx') else ''; assert not (a=='web-app' and has_auth) or 'nav-bar' in layout, 'layout.tsx missing NavBar import (stack.auth present)'; assert not (a=='web-app' and has_analytics) or 'RetainTracker' in layout, 'layout.tsx missing RetainTracker import (stack.analytics present)'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
