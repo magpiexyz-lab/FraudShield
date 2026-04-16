@@ -138,7 +138,7 @@ Sources: `lead-spec-reviewer`, `lead-a11y`, `lead-behavior-verifier`, `lead-perf
 
 **VERIFY:**
 ```bash
-test -f .runs/agent-traces/design-critic.json && python3 -c "import json; assert json.load(open('.runs/build-result.json'))['exit_code']==0"
+python3 -c "import json,os; ctx=json.load(open('.runs/verify-context.json')); needs_dc=ctx.get('scope') in ('full','visual') and ctx.get('archetype')=='web-app'; assert not needs_dc or os.path.exists('.runs/agent-traces/design-critic.json'), 'design-critic.json missing (scope=%s, archetype=%s)' % (ctx.get('scope'),ctx.get('archetype')); assert not needs_dc or os.path.exists('.runs/agent-traces/design-consistency-checker.json'), 'design-consistency-checker.json missing'; assert json.load(open('.runs/build-result.json'))['exit_code']==0"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

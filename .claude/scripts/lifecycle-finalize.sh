@@ -49,7 +49,12 @@ try:
         states = manifest.get('states', [])
     missing = [str(s) for s in states if str(s) not in completed and str(s) not in skip]
     if missing:
-        print('WARN: lifecycle-finalize.sh — states not completed: %s' % missing, file=sys.stderr)
+        has_agents = bool(manifest.get('agents', {}))
+        if has_agents:
+            print('ERROR: lifecycle-finalize.sh — states not completed: %s' % missing, file=sys.stderr)
+            sys.exit(1)
+        else:
+            print('WARN: lifecycle-finalize.sh — states not completed: %s' % missing, file=sys.stderr)
 except FileNotFoundError:
     pass
 "

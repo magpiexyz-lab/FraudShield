@@ -63,7 +63,7 @@ After each agent returns, use [Trace State Detection](../verify.md#trace-state-d
 
 **VERIFY:**
 ```bash
-ls .runs/agent-traces/*.json >/dev/null 2>&1 && python3 -c "import glob; traces=glob.glob('.runs/agent-traces/*.json'); assert len(traces)>=1, 'no agent traces found: expected at least 1'"
+python3 -c "import json,os; ctx=json.load(open('.runs/verify-context.json')); scope=ctx.get('scope',''); arch=ctx.get('archetype',''); req=['build-info-collector']; req.extend(['security-defender','security-attacker','behavior-verifier','spec-reviewer'] if scope in ('full','security') else []); req.extend(['performance-reporter','accessibility-scanner'] if scope in ('full','visual') and arch=='web-app' else []); missing=[a for a in req if not os.path.exists('.runs/agent-traces/'+a+'.json')]; assert not missing, 'missing Phase 1 agent traces: %s (scope=%s, archetype=%s)' % (missing,scope,arch)"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

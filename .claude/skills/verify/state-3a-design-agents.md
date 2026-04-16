@@ -121,7 +121,7 @@ because they were outside the per-page file boundary).
 
 **VERIFY:**
 ```bash
-ls .runs/agent-traces/design-critic-*.json >/dev/null 2>&1 && python3 -c "import json,glob; fs=glob.glob('.runs/agent-traces/design-critic-*.json'); assert len(fs)>=1, 'no design-critic traces'; d=json.load(open(fs[0])); assert 'exit_code' in d or 'verdict' in d, 'design-critic trace missing exit_code or verdict'; assert isinstance(d.get('checks_performed'),list) and len(d.get('checks_performed',[]))>=3, 'checks_performed too shallow (%d) — suspected fabrication' % len(d.get('checks_performed',[])); assert d.get('pages_reviewed',0)>=1, 'pages_reviewed missing or zero'"
+python3 -c "import json,glob,os; ctx=json.load(open('.runs/verify-context.json')); needs_dc=ctx.get('scope') in ('full','visual') and ctx.get('archetype')=='web-app'; fs=glob.glob('.runs/agent-traces/design-critic-*.json') if needs_dc else []; assert not needs_dc or len(fs)>=1, 'no design-critic traces (scope=%s, archetype=%s)' % (ctx.get('scope'),ctx.get('archetype')); d=json.load(open(fs[0])) if fs else {}; assert not fs or ('exit_code' in d or 'verdict' in d), 'design-critic trace missing exit_code or verdict'; assert not fs or (isinstance(d.get('checks_performed'),list) and len(d.get('checks_performed',[]))>=3), 'checks_performed too shallow (%d) — suspected fabrication' % len(d.get('checks_performed',[])); assert not fs or d.get('pages_reviewed',0)>=1, 'pages_reviewed missing or zero'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

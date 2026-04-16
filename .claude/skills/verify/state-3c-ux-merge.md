@@ -46,7 +46,7 @@ After both design-critic and ux-journeyer have completed and their builds pass:
 
 **VERIFY:**
 ```bash
-python3 -c "import json,os; fl=open('.runs/fix-log.md').read() if os.path.exists('.runs/fix-log.md') else ''; checks=[('design-critic','.runs/agent-traces/design-critic.json'),('ux-journeyer','.runs/agent-traces/ux-journeyer.json'),('security-fixer','.runs/agent-traces/security-fixer.json')]; errs=[n+': trace has fixes but fix-log missing Fix ('+n+')' for n,p in checks if os.path.exists(p) and len(json.load(open(p)).get('fixes',[]))>0 and 'Fix ('+n not in fl]; assert not errs, '; '.join(errs)"
+python3 -c "import json,os; ctx=json.load(open('.runs/verify-context.json')); needs_ux=ctx.get('scope') in ('full','visual') and ctx.get('archetype')=='web-app'; assert not needs_ux or os.path.exists('.runs/agent-traces/ux-journeyer.json'), 'ux-journeyer.json missing (scope=%s, archetype=%s)' % (ctx.get('scope'),ctx.get('archetype')); assert not needs_ux or os.path.exists('.runs/design-ux-merge.json'), 'design-ux-merge.json missing'; fl=open('.runs/fix-log.md').read() if os.path.exists('.runs/fix-log.md') else ''; checks=[('design-critic','.runs/agent-traces/design-critic.json'),('ux-journeyer','.runs/agent-traces/ux-journeyer.json'),('security-fixer','.runs/agent-traces/security-fixer.json')]; errs=[n+': trace has fixes but fix-log missing Fix ('+n+')' for n,p in checks if os.path.exists(p) and len(json.load(open(p)).get('fixes',[]))>0 and 'Fix ('+n not in fl]; assert not errs, '; '.join(errs)"
 ```
 Build command exited 0 after last Phase 2 agent.
 
