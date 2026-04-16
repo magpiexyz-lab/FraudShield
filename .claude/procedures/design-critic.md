@@ -133,7 +133,8 @@ If you are reviewing the **landing page** AND `.runs/image-candidates.json` exis
 2. For each image slot with `candidates.length > 1`:
    a. Identify the current winner rendered on the page (the image at `public/images/<canonical filename>`)
    b. Assess the current winner's quality IN page context using the Layer 2 image integration criteria (image fusion, color temperature match, visual weight)
-   c. If the current winner scores **≥ 8** in context → keep it, skip to next slot
+   c. If the current winner scores **≥ 8** in context AND no unused candidate scored within 1 point of the winner → keep it, skip to next slot
+   c2. If the current winner scores **≥ 8** in context BUT an unused candidate scored within 1 point → try those close-scoring candidates using the same full cycle as step d below (copy, build, re-screenshot, score in context). Keep the highest scorer; on equal scores, prefer the current winner to minimize churn.
    d. If the current winner scores **< 8** in context → systematically try each alternate candidate:
       - Copy the candidate to `public/images/<canonical filename>` (overwriting the current winner)
       - Run `npm run build` to ensure the build passes

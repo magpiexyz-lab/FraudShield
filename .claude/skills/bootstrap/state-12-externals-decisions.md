@@ -80,7 +80,7 @@ EXTEOF
 ```
 If no external dependencies: `has_externals` is `false`, arrays are `[]`.
 
-**BG2.5 Externals Gate**: Spawn the `gate-keeper` agent (`subagent_type: gate-keeper`). Pass: "Execute BG2.5 Externals Gate. Verify: (1) externals-decisions.json exists with correct structure (has_externals, user_confirmed, decisions, fake_doors, timestamp); (2) for each decision where user_choice is 'Provide now', 'Provision at deploy', or 'Full Integration': .env.example contains the required env var(s); (3) for each such decision: grep the relevant API route file for a 503 response guard referencing the service's env var — BLOCK if any route is missing the guard."
+**BG2.5 Externals Gate**: Spawn the `gate-keeper` agent (`subagent_type: gate-keeper`). Pass: "Execute BG2.5 Externals Gate. Verify: (1) externals-decisions.json exists with correct structure (has_externals, user_confirmed, decisions, fake_doors, timestamp); (2) for each decision where user_choice is 'Provide now', 'Provision at deploy', or 'Full Integration': .env.example contains the required env var(s); (3) for each such decision: grep the relevant API route file for a 503 response guard referencing the service's env var — BLOCK if any route is missing the guard; (4) for each such decision: verify a stack file exists at `.claude/stacks/*/<service-slug>.md` (any subdirectory — e.g., `ai/`, `external/`, `database/`) — BLOCK if no stack file found for any such decision."
 
 Check off in `.runs/current-plan.md`: `- [x] BG2.5 Externals Gate passed`
 

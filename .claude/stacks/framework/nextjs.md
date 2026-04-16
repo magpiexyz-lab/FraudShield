@@ -2,7 +2,7 @@
 assumes: []
 packages:
   runtime: [next, react, react-dom]
-  dev: [typescript, "@types/react", "@types/node", eslint, "@eslint/js", typescript-eslint, eslint-plugin-react-hooks, "@next/eslint-plugin-next"]
+  dev: [typescript, "@types/react", "@types/node", "eslint@9", "@eslint/js", typescript-eslint, eslint-plugin-react-hooks, "@next/eslint-plugin-next"]
 files:
   - .nvmrc
   - eslint.config.mjs
@@ -35,7 +35,8 @@ gitignore: [.next/, out/]
 ## Packages
 ```bash
 npm install next react react-dom
-npm install -D typescript @types/react @types/node eslint @eslint/js typescript-eslint eslint-plugin-react-hooks @next/eslint-plugin-next
+npm install -D typescript @types/react @types/node eslint@9 @eslint/js typescript-eslint eslint-plugin-react-hooks @next/eslint-plugin-next
+# Pin eslint@9 — eslint-plugin-react-hooks requires flat config (eslint 9); update all 4 framework stack files when eslint 10 ships
 ```
 
 ## Project Setup
@@ -245,6 +246,7 @@ import { NavBar } from "@/components/nav-bar";
 <NavBar />    {/* Only when stack.auth is present */}
 <main>{children}</main>
 <RetainTracker />
+<main>{children}</main>
 ```
 
 ## Security

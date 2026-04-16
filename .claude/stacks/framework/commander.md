@@ -2,7 +2,7 @@
 assumes: []
 packages:
   runtime: [commander]
-  dev: [typescript, tsx, "@types/node", eslint, "@eslint/js", typescript-eslint]
+  dev: [typescript, tsx, "@types/node", "eslint@9", "@eslint/js", typescript-eslint]
 files:
   - .nvmrc
   - eslint.config.mjs
@@ -23,7 +23,8 @@ gitignore: []
 ## Packages
 ```bash
 npm install commander
-npm install -D typescript tsx @types/node eslint @eslint/js typescript-eslint
+npm install -D typescript tsx @types/node eslint@9 @eslint/js typescript-eslint
+# Pin eslint@9 — flat config required; update all 4 framework stack files when eslint 10 ships
 ```
 
 ## Project Setup

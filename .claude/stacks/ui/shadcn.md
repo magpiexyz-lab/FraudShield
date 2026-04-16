@@ -195,13 +195,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 ```
 
 ### MagicUI post-install fixes
-After installing MagicUI components, check for and fix these known issues:
-- `client-tweet-card.tsx`: change `@/components/tweet-card` import to `@/components/ui/tweet-card`
-- `globe.tsx`: add `// @ts-nocheck` at the top of the file (`COBEOptions` type incompatibility with current TypeScript)
-- Install missing runtime dependencies: `npm install @shikijs/transformers @radix-ui/react-accordion`
-- Install missing shadcn component: `npx shadcn@latest add -y scroll-area`
+After installing MagicUI components via `npx shadcn@latest add`, some components require manual fixes:
 
-The MagicUI CLI generates components with import paths and dependency assumptions that do not always match the shadcn/ui project structure. The bulk install script uses `|| true` to continue past individual failures — verify all expected components exist after installation.
+- `client-tweet-card.tsx`: change import from `@/components/tweet-card` to `@/components/ui/tweet-card`
+- `globe.tsx`: add `// @ts-nocheck` at the top of the file (`COBEOptions` type incompatibility with the installed version)
+- Missing runtime dependencies: run `npm install @shikijs/transformers @radix-ui/react-accordion` (required by `code-comparison.tsx` and `file-tree.tsx` respectively)
+- Missing shadcn component: run `npx shadcn@latest add -y scroll-area` (required by `file-tree.tsx`)
+
+These fixes are needed because MagicUI CLI generates components with import paths and dependency assumptions that don't match the shadcn/ui project structure. The `|| true` in the bulk install script prevents installation failures from stopping the batch, but the generated files still need post-install corrections.
 
 ## Import Example
 ```tsx

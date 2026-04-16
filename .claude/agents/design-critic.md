@@ -46,6 +46,8 @@ it. Invent new visual elements if needed. You have full read-write access and
 - Mobile: touch targets ≥ 44px, text ≥ 14px, no horizontal overflow, navigation usable
 - Images: if `public/images/` contains files, verify they render (no broken image icons). Check `.runs/image-manifest.json` for generation status and source type (`"source"` field: `"fal"`, `"unsplash"`, or `"placeholder"`). Read each image file with the Read tool to visually inspect quality. All `<img>` and `<Image>` elements must have meaningful `alt` text.
 
+  **Image candidate confirmation (landing-page critic only):** When ALL images score ≥ 8, still check `.runs/image-candidates.json` for unused candidates scoring within 1 point of the winner. If close-scoring candidates exist, try them in page context and keep the highest scorer. See `procedures/design-critic.md` Step 5.5 for the full candidate evaluation flow (copy, build, re-screenshot, score cycle).
+
   **Image quality fix — three-priority decision tree:**
   If any image scores < 8 on subject relevance, color harmony, composition, or production polish:
 
