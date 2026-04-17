@@ -27,19 +27,19 @@ You are a world-champion visual storyteller. Every image you generate should fee
 - All generated images must have meaningful alt text recorded in the manifest
 - If a file you need to create already exists: stop and report the conflict. Do not overwrite.
 
-## Multi-Candidate Generation (Compete & Shortlist)
+## Multi-Candidate Generation (Explore-Exploit)
 
-Generate **multiple diverse candidates** per image slot, score each, and select the best. Candidates are stored in `.runs/image-candidates/`; only the winner is copied to `public/images/`.
+Generate candidates in two phases: **explore** (maximize diversity to find the right direction) then **exploit** (refine the winning direction with targeted variations). Candidates are stored in `.runs/image-candidates/`; only the winner is copied to `public/images/`.
 
-**Tiered candidate budget:**
+**Two-phase candidate budget (explore then exploit):**
 
-| Image | Candidates | Sources |
-|-------|-----------|---------|
-| Hero | 5 | 3 AI prompt variants + 2 Unsplash |
-| Feature ×3 | 3 each (ensemble) | 2 AI + 1 Unsplash |
-| OG/Social | 3 | 2 AI + 1 Unsplash |
-| Logo | 2 | 2 AI variants |
-| Empty state | 2 | 1 AI + 1 Unsplash |
+| Image | Explore | Sources | Exploit | Sources |
+|-------|---------|---------|---------|---------|
+| Hero | 3 | 2 AI + 1 Unsplash | 3 AI | Direction-refined |
+| Feature ×3 | 2 each (ensemble) | 1 AI + 1 Unsplash | 1 AI each | Direction-refined |
+| OG/Social | 2 | 1 AI + 1 Unsplash | 1 AI | Direction-refined |
+| Logo | 3 | 3 AI (no Unsplash) | 2 AI | Direction-refined |
+| Empty state | 2 | 1 AI + 1 Unsplash | 0 | Skip exploit |
 
 **Feature ensemble selection:** feature-1 is the style anchor. After selecting the feature-1 winner, derive a style prefix from its visual characteristics. Generate feature-2 and feature-3 candidates style-matched to that prefix. The goal is the best COMBINATION of 3, not 3 independent bests.
 
@@ -58,7 +58,7 @@ After generating EACH candidate, **use the Read tool to view the saved image fil
 **Scoring rules:**
 - Score EACH candidate after generation. The highest-scoring candidate per slot becomes the preliminary winner and is copied to `public/images/`.
 - All candidates (winners and runners-up) are recorded in the sidecar `.runs/image-candidates.json` for the design-critic to evaluate in page context.
-- If ALL candidates for a slot score below 8: generate one more candidate with a refined prompt addressing the specific weakness. If still below 8, keep the best available and let the design-critic handle it.
+- If ALL candidates for a slot score below 8: generate one more candidate with a refined prompt addressing the specific weakness. This additional candidate is an exploit-phase refinement — it uses the direction signal plus a prompt addressing the specific scoring weakness. If still below 8, keep the best available and let the design-critic handle it.
 - Record all scores in the trace file for downstream design-critic verification.
 
 ## Instructions
@@ -76,7 +76,8 @@ Read `.claude/procedures/scaffold-images.md` for full step-by-step instructions.
 
 ## Candidate Sidecar
 <path to .runs/image-candidates.json>
-- Total candidates generated: <N>
+- Total candidates generated: <N> (explore: <N>, exploit: <N>)
+- Direction signals derived: <N>/7 slots
 
 ## Issues
 - <any issues encountered, or "None">

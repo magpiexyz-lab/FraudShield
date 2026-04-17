@@ -216,15 +216,20 @@ The Image Source Strategy table above is a STARTING POINT, not a commitment.
 For high-impact images, both AI and Unsplash candidates are generated regardless
 of domain, and the best candidate is selected.
 
-**Tiered candidate budget:**
+**Two-phase candidate budget (explore then exploit):**
 
-| Image | Candidates | Sources |
-|-------|-----------|---------|
-| Hero | 5 | 3 AI prompt variants + 2 Unsplash |
-| Feature ×3 | 3 each (ensemble) | 2 AI + 1 Unsplash |
-| OG/Social | 3 | 2 AI + 1 Unsplash |
-| Logo | 2 | 2 AI variants |
-| Empty state | 2 | 1 AI + 1 Unsplash |
+| Image | Explore | Sources | Exploit | Sources |
+|-------|---------|---------|---------|---------|
+| Hero | 3 | 2 AI + 1 Unsplash | 3 AI | Direction-refined |
+| Feature ×3 | 2 each (ensemble) | 1 AI + 1 Unsplash | 1 AI each | Direction-refined |
+| OG/Social | 2 | 1 AI + 1 Unsplash | 1 AI | Direction-refined |
+| Logo | 3 | 3 AI (no Unsplash) | 2 AI | Direction-refined |
+| Empty state | 2 | 1 AI + 1 Unsplash | 0 | Skip exploit |
+
+**Direction extraction:** After scoring explore candidates per slot, derive a
+15-20 word direction signal from the top-2 candidates. Exploit candidates
+reference this signal and vary on secondary axes only (lighting, detail,
+perspective, edge treatment).
 
 **Ensemble selection for features:** feature-1 winner is the style anchor.
 feature-2 and feature-3 candidates are generated style-matched to feature-1's
@@ -234,6 +239,10 @@ winning visual system. The goal is the best COMBINATION of 3, not 3 independent 
 `public/images/`). Only winners are copied to canonical paths. Metadata is
 recorded in the sidecar file `.runs/image-candidates.json`. The main manifest
 (`.runs/image-manifest.json`) schema is unchanged.
+
+**Phase tagging:** Each candidate in the sidecar includes `"phase": "explore"|"exploit"`
+and each slot includes `"direction_signal"`. These fields are additive — downstream
+consumers (design-critic) can safely ignore them.
 
 **Unsplash fallback reallocation:** If WebFetch cannot extract multiple Unsplash
 photo IDs from the search page, reallocate the Unsplash budget to additional

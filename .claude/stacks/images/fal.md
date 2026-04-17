@@ -309,7 +309,7 @@ Written to `.runs/image-manifest.json` after generation:
 
 ## Multi-Candidate Usage
 
-The `outputDir` option enables the **Compete & Shortlist** architecture. Instead
+The `outputDir` option enables the **Explore-Exploit** architecture. Instead
 of writing directly to `public/images/`, candidates are written to a staging
 directory for comparison and selection.
 
@@ -319,17 +319,17 @@ const result = await generateImage({
   type: "hero",
   prompt: "...",
   width: 1920, height: 1080,
-  filename: "hero-v1.webp",
+  filename: "hero-explore-1.webp",
   altText: "...",
   outputDir: ".runs/image-candidates"
 });
-// result.path = ".runs/image-candidates/hero-v1.webp"
+// result.path = ".runs/image-candidates/hero-explore-1.webp"
 ```
 
-**Selecting a winner:** After scoring all candidates, copy the winner to the
-canonical path:
+**Selecting a winner:** After scoring all candidates across both explore and
+exploit phases, copy the winner to the canonical path:
 ```bash
-cp .runs/image-candidates/hero-v2.webp public/images/hero.webp
+cp .runs/image-candidates/hero-exploit-2.webp public/images/hero.webp
 ```
 
 **Sidecar file:** All candidate metadata is recorded in `.runs/image-candidates.json`
