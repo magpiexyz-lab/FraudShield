@@ -150,6 +150,8 @@ def main():
     if scope in ('full', 'visual') and arch == 'web-app':
         if not os.path.exists(os.path.join(project, '.runs/design-ux-merge.json')):
             errors.append('design-ux-merge.json missing (STATE 3)')
+        if not os.path.exists(os.path.join(project, '.runs/quality-merge.json')):
+            errors.append('quality-merge.json missing (STATE 3d)')
     if not hard_gate:
         if scope in ('full', 'security'):
             if not os.path.exists(os.path.join(project, '.runs/security-merge.json')):

@@ -186,7 +186,7 @@ Verify after Step 7 verification:
 6. If spec-reviewer in `agents_completed`: read spec-reviewer verdict from `.runs/verify-report.md` or `.runs/agent-traces/spec-reviewer.json` — BLOCK if verdict is `FAIL`
 7. `.runs/e2e-result.json` exists — BLOCK if missing: "E2E tests (STATE 5) were not executed"
 8. `.runs/patterns-saved.json` exists — BLOCK if missing: "Save Patterns (STATE 8) was not executed"
-9. If `.runs/verify-context.json` has `completed_states` field: verify it contains all states [0,1,2,3a,3b,3c,4,5,7a,7b,8]. If any state is missing, BLOCK: "States [missing] were skipped during verification."
+9. If `.runs/verify-context.json` has `completed_states` field: verify it contains all states [0,1,2,3a,3b,3c,3d,4,5,7a,7b,8]. If any state is missing, BLOCK: "States [missing] were skipped during verification."
 
 ### G6 PR Gate
 
@@ -271,7 +271,7 @@ Verify verify.md ran completely:
 8. `.runs/agent-traces/` contains `.json` files whose count matches the number of entries in `agents_completed`
 9. Each trace in `.runs/agent-traces/` has a `checks_performed` array (non-empty list; recovery traces with `"recovery":true` are exempt from the non-empty requirement) — run `python3 -c "import json,glob; traces=glob.glob('.runs/agent-traces/*.json'); bad=[t for t in traces if not json.load(open(t)).get('recovery',False) and (not isinstance(json.load(open(t)).get('checks_performed'),list) or len(json.load(open(t)).get('checks_performed',[]))==0)]; print('PASS' if not bad else 'BLOCK: '+','.join(bad))"`
 10. security-attacker trace has `findings_count` field — run `python3 -c "import json; d=json.load(open('.runs/agent-traces/security-attacker.json')); print('PASS' if 'findings_count' in d else 'BLOCK')"`  (skip if security-attacker not in agents_completed)
-11. Any trace with `"recovery":true` → check agent name: hard-gate agents (design-critic, ux-journeyer, security-fixer) with `recovery: true` → **BLOCK**; other agents with `recovery: true` → WARN (PASS status with WARN in Observed column) — run `python3 -c "import json,glob; hard_gate={'design-critic','ux-journeyer','security-fixer'}; traces=glob.glob('.runs/agent-traces/*.json'); recovery=[t for t in traces if json.load(open(t)).get('recovery')]; blocks=[t for t in recovery if json.load(open(t)).get('agent','') in hard_gate]; warns=[t for t in recovery if t not in blocks]; print('BLOCK: recovery on hard-gate agents '+','.join(blocks) if blocks else ('WARN: '+','.join(warns) if warns else 'PASS'))"`
+11. Any trace with `"recovery":true` → check agent name: hard-gate agents (design-critic, ux-journeyer, security-fixer) with `recovery: true` → **BLOCK**; other agents with `recovery: true` → WARN (PASS status with WARN in Observed column) — run `python3 -c "import json,glob; hard_gate={'design-critic','ux-journeyer','security-fixer','quality-fixer'}; traces=glob.glob('.runs/agent-traces/*.json'); recovery=[t for t in traces if json.load(open(t)).get('recovery')]; blocks=[t for t in recovery if json.load(open(t)).get('agent','') in hard_gate]; warns=[t for t in recovery if t not in blocks]; print('BLOCK: recovery on hard-gate agents '+','.join(blocks) if blocks else ('WARN: '+','.join(warns) if warns else 'PASS'))"`
 12. `.runs/verify-context.json` exists — run `test -f .runs/verify-context.json`
 13. `.runs/fix-log.md` exists — run `test -f .runs/fix-log.md`
 14. If scope is `full` or `security`: `.runs/security-merge.json` exists — extract scope from verify-context.json, check `test -f .runs/security-merge.json` (skip if scope is `visual` or `build`)

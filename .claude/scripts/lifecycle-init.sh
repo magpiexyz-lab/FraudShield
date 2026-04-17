@@ -235,6 +235,9 @@ STALE_ARTIFACTS=(
   "$PROJECT_DIR/.runs/verify-manifest.json"
   "$PROJECT_DIR/.runs/verify-report.md"
   "$PROJECT_DIR/.runs/fix-log.md"
+  "$PROJECT_DIR/.runs/quality-merge.json"
+  "$PROJECT_DIR/.runs/security-merge.json"
+  "$PROJECT_DIR/.runs/design-ux-merge.json"
 )
 for f in "${STALE_ARTIFACTS[@]}"; do
   rm -f "$f"

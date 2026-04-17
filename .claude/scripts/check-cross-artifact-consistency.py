@@ -42,7 +42,8 @@ def main():
             prefix_map = {
                 'design-critic': 'Fix (design-critic):',
                 'ux-journeyer': 'Fix (ux-journeyer):',
-                'security-fixer': 'Fix (security-fixer):'
+                'security-fixer': 'Fix (security-fixer):',
+                'quality-fixer': 'Fix (quality-fixer):'
             }
             for tf in glob.glob(os.path.join(traces_dir, '*.json')):
                 name = os.path.basename(tf).replace('.json', '')

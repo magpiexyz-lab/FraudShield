@@ -57,4 +57,4 @@ Build command exited 0 after last Phase 2 agent.
 bash .claude/scripts/advance-state.sh verify 3c
 ```
 
-**NEXT:** Read [state-4-security-merge-fix.md](state-4-security-merge-fix.md) to continue.
+**NEXT:** Read [state-3d-quality-fix.md](state-3d-quality-fix.md) to continue.

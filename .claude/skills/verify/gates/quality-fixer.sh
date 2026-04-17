@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# security-fixer.sh — Convention gate for security-fixer agent in /verify.
+# quality-fixer.sh — Convention gate for quality-fixer agent in /verify.
 # Called by: skill-agent-gate.sh after declarative checks pass.
 # Declarative checks (requires_traces for build-info-collector,
 # check_efficiency_directives) are handled by the universal hook.
 # This gate checks EXTRA requirements: postconditions, Phase 2 traces,
-# tier1 retry, hard gate, scope=security behavior-verifier.
+# tier1 retry, hard gate, quality-merge presence.
 set -euo pipefail
 
 source "$(dirname "$0")/../../../hooks/lib.sh"
@@ -14,16 +14,17 @@ PROJECT_DIR="${PROJECT_DIR:-${CLAUDE_PROJECT_DIR:-.}}"
 TRACES_DIR="${TRACES_DIR:-$PROJECT_DIR/.runs/agent-traces}"
 ERRORS=()
 
+# Check STATE 3 postconditions (design-ux-merge.json) AND STATE 3d postconditions (quality-merge.json)
 check_postcondition_artifacts 3
 check_postcondition_artifacts "3d"
 
-# Phase 2 traces (scope-conditional — not in manifest declarative)
-SF_SCOPE=$(read_json_field "$PROJECT_DIR/.runs/verify-context.json" "scope")
-SF_ARCH=$(read_json_field "$PROJECT_DIR/.runs/verify-context.json" "archetype")
-if [[ "$SF_ARCH" == "web-app" && ( "$SF_SCOPE" == "full" || "$SF_SCOPE" == "visual" ) ]]; then
-  for AGENT in design-critic ux-journeyer; do
+# Phase 2 traces (scope-conditional)
+QF_SCOPE=$(read_json_field "$PROJECT_DIR/.runs/verify-context.json" "scope")
+QF_ARCH=$(read_json_field "$PROJECT_DIR/.runs/verify-context.json" "archetype")
+if [[ "$QF_ARCH" == "web-app" && ( "$QF_SCOPE" == "full" || "$QF_SCOPE" == "visual" ) ]]; then
+  for AGENT in design-critic ux-journeyer accessibility-scanner design-consistency-checker; do
     if [[ ! -f "$TRACES_DIR/$AGENT.json" ]]; then
-      ERRORS+=("$AGENT.json trace missing — Phase 2 agent incomplete (scope=$SF_SCOPE, archetype=$SF_ARCH)")
+      ERRORS+=("$AGENT.json trace missing — prerequisite agent incomplete (scope=$QF_SCOPE, archetype=$QF_ARCH)")
     else
       require_trace_verdict "$TRACES_DIR/$AGENT.json" "agent may still be running or exhausted turns"
       check_trace_run_id "$TRACES_DIR/$AGENT.json"
@@ -35,7 +36,7 @@ fi
 check_tier1_retry_complete "ux-journeyer" "$TRACES_DIR"
 
 # HARD GATE: design-ux-merge.json verdict must not be "fail"
-if [[ "$SF_ARCH" == "web-app" && ( "$SF_SCOPE" == "full" || "$SF_SCOPE" == "visual" ) ]]; then
+if [[ "$QF_ARCH" == "web-app" && ( "$QF_SCOPE" == "full" || "$QF_SCOPE" == "visual" ) ]]; then
   if [[ -f "$PROJECT_DIR/.runs/design-ux-merge.json" ]]; then
     MERGE_VERDICT=$(read_json_field "$PROJECT_DIR/.runs/design-ux-merge.json" "verdict")
     if [[ "$MERGE_VERDICT" == "fail" ]]; then
@@ -44,17 +45,13 @@ if [[ "$SF_ARCH" == "web-app" && ( "$SF_SCOPE" == "full" || "$SF_SCOPE" == "visu
   fi
 fi
 
-# scope=security requires behavior-verifier (not in manifest declarative)
-if [[ "$SF_SCOPE" == "security" ]]; then
-  if [[ ! -f "$TRACES_DIR/behavior-verifier.json" ]]; then
-    ERRORS+=("behavior-verifier.json trace missing — Phase 1 agent incomplete (scope=$SF_SCOPE)")
-  fi
-  require_trace_verdict "$TRACES_DIR/behavior-verifier.json" "agent may still be running or exhausted turns"
-  check_trace_run_id "$TRACES_DIR/behavior-verifier.json"
+# quality-merge.json must exist (written by STATE 3d before spawn)
+if [[ ! -f "$PROJECT_DIR/.runs/quality-merge.json" ]]; then
+  ERRORS+=("quality-merge.json missing — STATE 3d merge step incomplete")
 fi
 
 if [[ ${#ERRORS[@]} -gt 0 ]]; then
-  deny_errors "security-fixer gate blocked: " "Complete prerequisites before spawning security-fixer."
+  deny_errors "quality-fixer gate blocked: " "Complete prerequisites before spawning quality-fixer."
 fi
 
 exit 0

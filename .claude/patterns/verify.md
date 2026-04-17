@@ -22,9 +22,9 @@ If no scope is specified, the default is `full`.
 
 | Scope      | Agents spawned                                                              |
 |------------|-----------------------------------------------------------------------------|
-| `full`     | build-info, design-critic\*, ux-journeyer\*, behavior-verifier, security pair, perf\*\*, a11y\*\*, spec-reviewer\*\*\* |
+| `full`     | build-info, design-critic\*, ux-journeyer\*, quality-fixer\*, behavior-verifier, security pair, perf\*\*, a11y\*\*, spec-reviewer\*\*\* |
 | `security` | build-info, behavior-verifier, security pair, spec-reviewer\*\*\*           |
-| `visual`   | build-info, design-critic\*, ux-journeyer\*, perf\*\*, a11y\*\*            |
+| `visual`   | build-info, design-critic\*, ux-journeyer\*, quality-fixer\*, perf\*\*, a11y\*\*            |
 | `build`    | build-info only                                                             |
 
 \* = skip if archetype is NOT `web-app`
@@ -53,6 +53,7 @@ Read each STATE's file **only when transitioning to that state**. Do NOT read ah
 | 3a | DESIGN_AGENTS | [state-3a-design-agents.md](verify/state-3a-design-agents.md) |
 | 3b | QUALITY_GATE | [state-3b-quality-gate.md](verify/state-3b-quality-gate.md) |
 | 3c | UX_MERGE | [state-3c-ux-merge.md](verify/state-3c-ux-merge.md) |
+| 3d | QUALITY_FIX | [state-3d-quality-fix.md](verify/state-3d-quality-fix.md) |
 | 4 | SECURITY_MERGE_FIX | [state-4-security-merge-fix.md](verify/state-4-security-merge-fix.md) |
 | 5 | E2E_TESTS | [state-5-e2e-tests.md](verify/state-5-e2e-tests.md) |
 | 7a | WRITE_REPORT | [state-7a-write-report.md](verify/state-7a-write-report.md) |
@@ -102,7 +103,7 @@ git diff --name-only $(git merge-base HEAD main)...HEAD
 > find src/ -type f \( -name '*.ts' -o -name '*.tsx' -o -name '*.js' -o -name '*.jsx' \)
 > ```
 
-Pass this list to each agent that has Edit/Write permissions (design-critic, ux-journeyer, security-fixer) as a hard constraint in the agent prompt:
+Pass this list to each agent that has Edit/Write permissions (design-critic, ux-journeyer, security-fixer, quality-fixer) as a hard constraint in the agent prompt:
 
 > "You may ONLY modify files in this list: [files]. If you find issues in files outside this list, REPORT them in your verdict but do NOT edit them."
 
@@ -115,7 +116,7 @@ Include these directives in every agent spawn prompt (Phase 1 and Phase 2):
 1. **Batch searches**: Use Grep with glob patterns (e.g., `glob: "src/**/*.tsx"`) instead of reading files one by one.
 2. **PR-changed files first**: Check files from `git diff --name-only $(git merge-base HEAD main)...HEAD` before scanning the full source tree.
 3. **Context digest**: Include the context digest summary (pages, behavior IDs, event names, golden_path steps) extracted in STATE 0 so agents don't need to re-read experiment.yaml.
-4. **Pre-existing changes**: Edit-capable agents (design-critic, ux-journeyer, security-fixer) should ignore pre-existing uncommitted changes that are outside the PR file boundary.
+4. **Pre-existing changes**: Edit-capable agents (design-critic, ux-journeyer, security-fixer, quality-fixer) should ignore pre-existing uncommitted changes that are outside the PR file boundary.
 
 > **Template enforcement:** Read `.claude/agent-prompt-footer.md` and append its full content
 > to every agent spawn prompt (Phase 1 and Phase 2). The skill-agent-gate hook checks
@@ -183,7 +184,7 @@ When an agent returns but its trace has `"status":"started"` and no `"verdict"` 
 
 | Tier | Agents | Action | On Double Exhaustion |
 |------|--------|--------|---------------------|
-| 1 | design-critic, ux-journeyer, security-fixer | Retry once (focused scope) | Hard gate failure, skip remaining STATEs |
+| 1 | design-critic, ux-journeyer, security-fixer, quality-fixer | Retry once (focused scope) | Hard gate failure, skip remaining STATEs |
 | 2 | behavior-verifier, security-attacker, security-defender, design-consistency-checker | Retry once | Recovery trace with `"status":"exhausted"`, WARN, continue |
 | 3 | build-info-collector, observer, performance-reporter, accessibility-scanner, spec-reviewer | No retry | Recovery trace with `"status":"exhausted"`, WARN, continue |
 
@@ -216,6 +217,9 @@ Re-spawn the agent with a reduced scope prompt:
 - design-critic: "Focus on the lowest-scoring page only. Skip pages that already score ≥8."
 - ux-journeyer: "Focus on the primary golden path only. Skip secondary journeys."
 - security-fixer: "Fix only Critical severity issues. Skip High/Medium."
+- quality-fixer: "Fix only critical WCAG violations. Skip consistency and moderate/minor issues."
+
+> quality-fixer is Tier 1 because it is edit-capable, even though its input comes from Tier 3 scanners.
 
 **On double exhaustion** (retry also produces State 2):
 1. Write a recovery trace: `{"agent":"<name>","status":"exhausted","verdict":"exhausted","recovery":true,"retry_attempted":true,"checks_performed":["exhaustion-recovery"],"timestamp":"..."}`

@@ -73,8 +73,36 @@ If no issues found:
 After completing all work, write a trace file:
 
 ```bash
-RUN_ID=$(python3 -c "import json;print(json.load(open('.runs/verify-context.json')).get('run_id',''))" 2>/dev/null || echo "")
-mkdir -p .runs/agent-traces && echo '{"agent":"accessibility-scanner","timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","verdict":"<verdict>","checks_performed":["axe_scan","tab_order"],"pages_scanned":<N>,"run_id":"'"$RUN_ID"'"}' > .runs/agent-traces/accessibility-scanner.json
+python3 << 'TRACE_EOF'
+import json, os
+from datetime import datetime, timezone
+run_id = ""
+try:
+    with open(".runs/verify-context.json") as f:
+        run_id = json.load(f).get("run_id", "")
+except: pass
+os.makedirs(".runs/agent-traces", exist_ok=True)
+trace = {
+    "agent": "accessibility-scanner",
+    "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    "verdict": "<verdict>",
+    "checks_performed": ["axe_scan", "tab_order"],
+    "pages_scanned": <N>,
+    "violations_count": <VC>,
+    "violations": [
+        # One entry per violation found. Example:
+        # {"rule": "image-alt", "impact": "critical", "page": "/", "element": "<img src=\"...\">", "wcag": "1.1.1", "detail": "Images must have alternate text"}
+    ],
+    "run_id": run_id
+}
+with open(".runs/agent-traces/accessibility-scanner.json", "w") as f:
+    json.dump(trace, f, indent=2)
+TRACE_EOF
 ```
 
-Replace `<verdict>` with `"pass"` if no issues, or `"N issues"` with the count.
+Replace placeholders with actual values:
+- `<verdict>`: `"pass"` if no issues, or `"N issues"` with the count
+- `<N>`: number of pages scanned
+- `<VC>`: total count of violations (must equal `len(violations)`)
+
+The `impact` field uses axe-core severity levels: `"critical"`, `"serious"`, `"moderate"`, `"minor"`. For static fallback, map: High→`"serious"`, Medium→`"moderate"`. Both runtime and static fallback paths MUST populate the `violations` array (use `[]` when no violations found).

@@ -113,7 +113,7 @@ You are triggered because a skill's Q-score fell below 0.5. You received:
 For Q-score-triggered observations, the evaluation is simpler than Path 1/2:
 
 **A. Is this a template issue?** Does the low Q indicate a systematic problem that would affect other users with different experiment.yaml files?
-- Gate = 0 (hard failure) with `hard_gate_failure: true` → likely template issue if the gate agent (design-critic, ux-journeyer, security-fixer) consistently fails
+- Gate = 0 (hard failure) with `hard_gate_failure: true` → likely template issue if the gate agent (design-critic, ux-journeyer, security-fixer, quality-fixer) consistently fails
 - R_system > 0.5 (high auto-remediation) → template prompt may need tightening (agents doing too much cleanup)
 - R_human > 0 (exhaustions/interventions) → template agent budgets or instructions may be insufficient
 

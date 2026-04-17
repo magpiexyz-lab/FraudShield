@@ -67,6 +67,7 @@ overall_verdict: pass | fail
 | security-defender | [pass/N issues] | [1-line summary] |
 | security-attacker | [pass/N findings] | [1-line summary] |
 | security-fixer | [fixed N/skipped] | [1-line summary] |
+| quality-fixer | [fixed N/skipped] | [1-line summary] |
 | behavior-verifier | [pass/N issues] | [1-line summary] |
 | performance-reporter | [summary/skipped] | [1-line summary] |
 | accessibility-scanner | [pass/N issues/skipped] | [1-line summary] |

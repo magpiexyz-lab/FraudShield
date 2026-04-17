@@ -462,7 +462,7 @@ No branch → analysis-only. `lifecycle-init.sh` selects mode based on trigger a
 ### Complex agent graph — /verify
 
 ```yaml
-states: ["0","1","2","3a","3b","3c","4","5","7a","7b","8"]
+states: ["0","1","2","3a","3b","3c","3d","4","5","7a","7b","8"]
 agents:
   build-info-collector:
     after: ["1"]
@@ -506,6 +506,10 @@ agents:
     after: ["1"]
     requires_archetype: web-app
     requires_traces: [design-critic, design-consistency-checker]
+  quality-fixer:
+    after: ["3c"]
+    requires_archetype: web-app
+    requires_traces: [accessibility-scanner, design-consistency-checker]
   security-fixer:
     after: ["3a"]
     requires_traces: [build-info-collector]
@@ -515,8 +519,8 @@ agents:
     after: ["6"]
 ```
 
-13 agents. Convention gates: `gates/design-critic.sh` (per-page file boundary),
-`gates/ux-journeyer.sh` (retry completeness), `gates/security-fixer.sh` (scope-conditional aggregation).
+14 agents. Convention gates: `gates/design-critic.sh` (per-page file boundary),
+`gates/ux-journeyer.sh` (retry completeness), `gates/quality-fixer.sh` (quality-merge prerequisites), `gates/security-fixer.sh` (scope-conditional aggregation).
 
 ### Other skills (minimal manifests)
 
