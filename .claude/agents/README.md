@@ -1,6 +1,6 @@
 # Agent Taxonomy
 
-25 sub-agents in `.claude/agents/`. Each agent is a specialized subprocess with constrained tools, model tier, and scope.
+26 sub-agents in `.claude/agents/`. Each agent is a specialized subprocess with constrained tools, model tier, and scope.
 
 Categories are mutually exclusive -- each agent appears in exactly one category, grouped by the lifecycle skill that invokes it.
 
@@ -22,7 +22,7 @@ Edit/Write with worktree isolation. Shared TDD logic extracted to `procedures/td
 
 Kept separate because: (a) different output contracts (visual-implementer has DESIGN field), (b) 6+ consuming files reference both names in hooks/globs/traces, (c) `skills: [frontend-design]` is a declarative frontmatter field with no runtime conditional loading.
 
-### 3. Verify agents (13) -- /verify
+### 3. Verify agents (14) -- /verify
 
 Invoked across /verify phases. Sub-grouped by phase:
 
@@ -31,8 +31,8 @@ Invoked across /verify phases. Sub-grouped by phase:
 
 Each has deeply specialized instructions (WCAG rules, golden path steps, git diff extraction, Core Web Vitals thresholds, experiment.yaml fidelity). Different model tiers: opus for behavioral reasoning (behavior-verifier), sonnet for checklist verification (spec-reviewer), haiku for data extraction (build-info-collector).
 
-**Design & UX** (3) -- Phase 3, serial execution:
-`design-critic` (edit-capable), `design-consistency-checker` (read-only), `ux-journeyer` (edit-capable)
+**Design & UX** (4) -- Phase 3, serial execution:
+`design-critic` (edit-capable), `design-consistency-checker` (read-only), `ux-journeyer` (edit-capable), `quality-fixer` (edit-capable)
 
 Different scopes: per-page visual, cross-page consistency, end-to-end flow. Edit-capable agents run serially to prevent git conflicts.
 

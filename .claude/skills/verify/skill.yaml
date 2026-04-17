@@ -1,4 +1,4 @@
-states: ["0","1","2","3a","3b","3c","4","5","7a","7b","8"]
+states: ["0","1","2","3a","3b","3c","3d","4","5","7a","7b","8"]
 agents:
   build-info-collector:
     after: ["1"]
@@ -42,6 +42,10 @@ agents:
     after: ["1"]
     requires_archetype: web-app
     requires_traces: [design-critic, design-consistency-checker]
+  quality-fixer:
+    after: ["3c"]
+    requires_archetype: web-app
+    requires_traces: [accessibility-scanner, design-consistency-checker]
   security-fixer:
     after: ["3a"]
     requires_traces: [build-info-collector]

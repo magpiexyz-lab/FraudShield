@@ -2,7 +2,7 @@
 
 **PRECONDITIONS:** STATE 1 complete (build passes, build-result.json exists).
 
-> **Write Conflict Prevention**: Edit-capable agents (design-critic, ux-journeyer, security-fixer)
+> **Write Conflict Prevention**: Edit-capable agents (design-critic, ux-journeyer, quality-fixer, security-fixer)
 > MUST run serially in Phase 2. Read-only agents run in parallel here.
 
 **ACTIONS:**

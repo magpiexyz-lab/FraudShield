@@ -25,11 +25,21 @@ check_postcondition_artifacts() {
         [[ -f "$PROJECT_DIR/.runs/design-ux-merge.json" ]] || ERRORS+=("design-ux-merge.json missing — STATE 3 incomplete")
       fi
       ;;
+    3d)
+      V_SCOPE=$(read_json_field "$PROJECT_DIR/.runs/verify-context.json" "scope")
+      V_ARCH=$(read_json_field "$PROJECT_DIR/.runs/verify-context.json" "archetype")
+      if [[ ("$V_SCOPE" == "full" || "$V_SCOPE" == "visual") && "$V_ARCH" == "web-app" ]]; then
+        [[ -f "$PROJECT_DIR/.runs/quality-merge.json" ]] || ERRORS+=("quality-merge.json missing — STATE 3d incomplete")
+      fi
+      ;;
     4)
       V_SCOPE=$(read_json_field "$PROJECT_DIR/.runs/verify-context.json" "scope")
       if [[ "$V_SCOPE" == "full" || "$V_SCOPE" == "security" ]]; then
         [[ -f "$PROJECT_DIR/.runs/security-merge.json" ]] || ERRORS+=("security-merge.json missing — STATE 4 incomplete")
       fi
+      ;;
+    *)
+      # Unknown state — fail open (no artifacts to check)
       ;;
   esac
 }

@@ -1,6 +1,6 @@
 # STATE 4: SECURITY_MERGE_FIX
 
-**PRECONDITIONS:** STATE 3c complete.
+**PRECONDITIONS:** STATE 3d complete.
 
 **Always write** `.runs/security-merge.json` — this is a metadata artifact, not an operational step:
 
