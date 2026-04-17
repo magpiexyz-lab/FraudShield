@@ -4,7 +4,7 @@ packages:
   runtime: []
   dev: []
 files:
-  - src/app/api/webhooks/linear/route.ts
+  - src/app/api/webhooks/linear/route.ts  # conditional: only when framework is nextjs
 env:
   server: [LINEAR_WEBHOOK_SECRET]
   client: []
@@ -95,6 +95,10 @@ Notes:
 | Variable | Description |
 |----------|-------------|
 | `LINEAR_WEBHOOK_SECRET` | Webhook signing secret from Linear (Settings > API > Webhooks) |
+
+## Fallback for non-Next.js frameworks
+
+When `framework/nextjs` is absent (e.g., `runtime: hono`, `runtime: virtuals-acp`, or CLI archetype without webhook ingress), the Next.js-specific handler above does not apply. For `hono`, mount an equivalent route that reads the raw body, runs the same `verifyLinearSignature` HMAC check, and validates the payload with the same Zod schema — import the verification function from `src/lib/linear-webhook.ts` (factor it out of the handler) so both runtimes share it. For `virtuals-acp`, webhook ingress is out of scope — Linear events should be polled or relayed through a separate Next.js or hono service. For the `cli` archetype, this stack is not applicable; use the Linear API client directly from commands instead.
 
 ## Known Issues
 
