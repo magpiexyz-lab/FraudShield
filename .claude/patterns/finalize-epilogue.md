@@ -29,7 +29,32 @@ Read `.claude/patterns/skill-epilogue.md` and follow the procedure. **Skip
 Step 0** (state completion check) — `lifecycle-finalize.sh` already verified
 state completion.
 
-## Step 2.5: Remediation suggestions
+## Step 2a: Validate observation artifacts
+
+Run the deterministic artifact enforcement check:
+```bash
+bash .claude/scripts/check-observation-artifacts.sh
+```
+
+This validates that observation-phase.md Steps 5a/5b/5c produced their
+expected artifacts based on the skill's observation scope. Warnings are
+emitted to stderr for any missing artifacts. This check is non-blocking
+(the epilogue continues regardless) but writes
+`.runs/observation-enforcement.json` for audit trail.
+
+**Expected artifacts by scope:**
+| Scope | compliance-audit-result.json | retrospective-result.json | observe-result.json |
+|-------|:---:|:---:|:---:|
+| full | required | required (if agent traces exist) | required |
+| process | required | required (if agent traces exist) | required |
+| code | required | not expected | required |
+| audit-only | required | not expected | required |
+
+When the fast-path fired (Step 3 of observation-phase.md: no diffs, no
+fix-log entries, no agent trace fixes), no intermediate artifacts are
+expected — the check passes automatically.
+
+## Step 2b: Remediation suggestions
 
 If `.runs/verify-recheck.json` exists, read `.claude/patterns/remediation-phase.md`
 and follow the procedure with the current skill name.
