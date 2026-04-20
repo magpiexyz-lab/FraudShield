@@ -141,10 +141,10 @@ Process entries in fix-log order:
       gh issue create --repo <template-repo> --title "[pattern] <stack-file>: <when-condition>" \
         --label "observation" --body "<structured body: stack file, problem, evidence, suggested fix>"
       ```
-      Record `{"path": "<issue-url>", "type": "universal-issue"}` in `saved_to_files`.
+      Record the issue URL as a **string** in `saved_to_files` (e.g., `"https://github.com/magpiexyz-lab/mvp-template/issues/1234"`). Do NOT wrap it in an object.
       Do NOT modify the local stack file — the template repo is the single source of truth.
    f-local. **If template repo is unknown** → append the pattern to the local stack file in When/Then format (original behavior). Log a warning: "Universal pattern saved locally — could not determine template repo. Consider adding `.claude/template-meta.json`."
-      Record `{"path": "<relative-path>", "type": "universal"}` in `saved_to_files`
+      Record the relative path as a **string** in `saved_to_files` (e.g., `".claude/stacks/framework/nextjs.md"`). Do NOT wrap it in an object.
 
 2. **For each project-specific pattern:**
    a. Write a memory file to the auto memory directory
@@ -158,7 +158,7 @@ Process entries in fix-log order:
 Before writing the final artifact, verify:
 
 1. **Arithmetic**: `saved + skipped == total` AND `total == count of **Fix and Fix (...) entries in fix-log`
-2. **Destination integrity**: For each `saved_to_files` entry, the path exists on disk
+2. **Destination integrity**: For each `saved_to_files` entry that is a local path (does not start with `http://` or `https://`), the path exists on disk. URL entries (universal-issue GitHub links) are recorded as-is and not file-checked.
 3. **Content quality**: For each universal pattern appended, re-read the stack file and confirm the appended text is specific and actionable (has a "When" condition and a "Then" action)
 4. **No orphans**: Every fix-log entry is accounted for in exactly one category
 5. **No duplicates**: No two entries were saved to the same destination with the same root cause
@@ -174,15 +174,17 @@ Write `.runs/patterns-saved.json`:
   "saved": <N>,
   "skipped": <N>,
   "total": <N>,
-  "saved_to_files": [{"path": "<relative>", "type": "universal|project"}],
+  "saved_to_files": ["<relative-path-or-issue-url>"],
   "saved_to_memory": <M>
 }
 ```
 
+Each entry in `saved_to_files` is a **string** — either a local relative path (e.g., `".claude/stacks/framework/nextjs.md"` from Phase 3 step 1f-local) or a GitHub issue URL (e.g., `"https://github.com/magpiexyz-lab/mvp-template/issues/1234"` from Phase 3 step 1f). Do not wrap entries in objects.
+
 **Invariants (enforced by patterns-saved-gate.sh — your write WILL be rejected if any fail):**
 - `saved + skipped == total`
 - `len(saved_to_files) + saved_to_memory == saved`
-- Each `saved_to_files[].path` exists on disk
+- Each local-path entry in `saved_to_files` exists on disk (URL entries starting with `http://` / `https://` are not file-checked)
 - `total` must equal the number of `**Fix` entries in fix-log.md
 
 ## Output Contract

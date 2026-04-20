@@ -3,7 +3,8 @@
 # Validates patterns-saved.json invariants:
 #   saved + skipped == total
 #   len(saved_to_files) + saved_to_memory == saved
-#   Each saved_to_files[].path exists on disk
+#   Each saved_to_files[] is a string — a local path (must exist on disk)
+#     OR a URL (http/https prefix, not file-checked — used for universal-issue GitHub links).
 
 set -euo pipefail
 
@@ -53,14 +54,20 @@ saved_to_memory = d.get("saved_to_memory", 0)
 if len(saved_to_files) + saved_to_memory != saved:
     errors.append("len(saved_to_files)(%d) + saved_to_memory(%d) != saved(%d)" % (len(saved_to_files), saved_to_memory, saved))
 
-# Invariant 3: Each saved_to_files[].path exists on disk
+# Invariant 3: Each saved_to_files[] is a string. Local paths must exist on disk;
+# URL entries (http:// or https://) are recorded as-is and not file-checked.
 project_dir = os.environ.get("CLAUDE_PROJECT_DIR", ".")
-for entry in saved_to_files:
-    path = entry.get("path", "")
-    if path:
-        full_path = os.path.join(project_dir, path)
-        if not os.path.exists(full_path):
-            errors.append("saved_to_files path does not exist: %s" % path)
+for path in saved_to_files:
+    if not isinstance(path, str):
+        errors.append("saved_to_files entry is not a string: %r" % (path,))
+        continue
+    if not path:
+        continue
+    if path.startswith("http://") or path.startswith("https://"):
+        continue  # URL entry — skip filesystem check
+    full_path = os.path.join(project_dir, path)
+    if not os.path.exists(full_path):
+        errors.append("saved_to_files path does not exist: %s" % path)
 
 # Invariant 4: total must match actual fix-log entry count
 fix_log_path = os.path.join(project_dir, ".claude", "runs", "fix-log.md")

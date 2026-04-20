@@ -50,13 +50,35 @@ mkdir -p .runs/image-candidates
 
 All candidate images are generated into `.runs/image-candidates/` first (not directly into `public/images/`). Only the winning candidate per slot is copied to `public/images/`.
 
-### Step 2: Install package
+### Step 2: Install packages
 ```bash
 npm install @fal-ai/client
+npm install --save-dev sharp
 ```
 
+`sharp` is required for the dimension cap (see Dimension Contract below). It is a small (~10MB) image-processing library and is installed unconditionally because scaffold-images runs across archetypes (web-app / service / cli) whenever `image_gen_status: "available"` — it cannot rely on Next.js's transitive copy.
+
+If the `sharp` install fails (no npm, offline, package unavailable): **stop and report**. Do NOT proceed with a silent skip — without the cap, oversized candidates will crash the downstream design-critic agent (see #957).
+
+## Dimension Contract
+
+Every image written to `public/images/` and `.runs/image-candidates/` MUST have a longest side ≤ **1920 px**. This matches the hero slot's natural Full HD dimension (1920×1080) and keeps ~80 px of margin below the 2000 px single-side limit that Claude's many-image vision pipeline enforces. A single oversized artifact causes downstream design-critic agents to crash mid-review, cascading the entire Phase-2 visual review into recovery traces.
+
+To enforce this, every generation path in Step 4 must post-process its output with `sharp` before writing:
+
+```ts
+import sharp from "sharp";
+await sharp(inputPath)
+  .resize({ width: 1920, height: 1920, fit: "inside", withoutEnlargement: true })
+  .toFile(outputPath);
+```
+
+- `fit: "inside"` preserves aspect ratio and fits within a 1920×1920 bounding box (hero 1920×1080 → unchanged; oversized 2400×1600 → 1920×1280).
+- `withoutEnlargement: true` never upscales images that are already smaller than the cap.
+- This applies to BOTH `.runs/image-candidates/*.webp` (used by design-critic Step 5.5) and final `public/images/*.webp`.
+
 ### Step 3: Create image generation library
-Create `src/lib/image-gen.ts` following the multi-model code template in `.claude/stacks/images/fal.md`.
+Create `src/lib/image-gen.ts` following the multi-model code template in `.claude/stacks/images/fal.md`. The generator must call the `sharp` cap (above) on every write path — both intermediate candidate writes into `.runs/image-candidates/` and final writes into `public/images/`.
 
 ### Step 4: Generate candidates with explore-exploit feedback loop
 

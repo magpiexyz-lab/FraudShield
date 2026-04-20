@@ -41,7 +41,7 @@ npm install -D typescript @types/react @types/node eslint@9 @eslint/js typescrip
 
 ## Project Setup
 - `.nvmrc`: containing `20` (used by CI and local version managers)
-- `package.json`: `scripts` with `dev`, `build`, `start`, `lint` (`eslint src/`), and (when `stack.database` is present) `prebuild` (auto-migrate, see database stack file); `engines: { "node": ">=20" }`
+- `package.json`: `scripts` with `dev`, `build`, `start`, `lint` (`eslint src/`); `engines: { "node": ">=20" }`. Stack-specific scripts (e.g., `prebuild` for database auto-migrate) are added by the owning scaffold-libs stage together with the target file it invokes — scaffold-setup must NOT write such script entries ahead of the helper file's creation, which would leave a fragile window where any intermediate `npm run build` fails at an unresolvable `prebuild`.
 - `tsconfig.json`: enable `strict: true` and `@/` path alias mapping to `src/`
 - `next.config.ts`: minimal, no custom config
 
@@ -112,7 +112,20 @@ The root `route.ts` is created only when surface is `co-located` (the default fo
 ### SEO Metadata Conventions
 - `layout.tsx` MUST export a `metadata` object (Next.js Metadata API) with `title`, `description`, and `openGraph` fields — derived per messaging.md Section E
 - Variant pages export `generateMetadata()` to override layout defaults with variant-specific title/description
-- JSON-LD structured data: include a `<script type="application/ld+json">` tag in layout.tsx body with Schema.org type per archetype: `WebApplication` (web-app), `WebAPI` (service), `SoftwareApplication` (cli)
+- JSON-LD structured data — archetype-specific injection:
+  - **web-app** (React): use `next/script` with the JSON passed as children. This avoids the React prop that takes a `{ __html: ... }` payload (which trips security-review hooks and forces an `eslint-disable` that then fails as an unused-disable). `next/script` renders inline `<script>` safely from the children string.
+
+    ```tsx
+    import Script from "next/script";
+    // ...
+    <Script id="ld-app" type="application/ld+json" strategy="beforeInteractive">
+      {JSON.stringify(jsonLd)}
+    </Script>
+    ```
+
+  - **service / cli** (plain HTML): write `<script type="application/ld+json">...</script>` directly in the inline HTML `<head>` — no React, so the prop concern does not apply (see `procedures/scaffold-landing.md` per-archetype JSON-LD embedding).
+
+  Schema.org type per archetype: `WebApplication` (web-app), `WebAPI` (service), `SoftwareApplication` (cli).
 - `src/app/sitemap.ts`: export a default function returning `MetadataRoute.Sitemap` — URLs derived from golden_path pages
 - `src/app/robots.ts`: export a default function returning `MetadataRoute.Robots` — allow all crawlers for MVP (`{ rules: { userAgent: '*', allow: '/' } }`)
 
@@ -312,6 +325,21 @@ Wrap `{children}` in a `<main>` element in `src/app/layout.tsx`. The root layout
 
 ### When a custom hook returns a useRef and react-hooks/refs lint fires
 A custom hook that returns a `useRef` object triggers the `react-hooks/refs` ESLint rule when consumers access properties on the returned ref during render (e.g., `hook().current`). The error is "Cannot access refs during render." Convert `useRef` to a `useState` + callback ref pattern, or restructure so the hook returns derived values instead of the raw ref object. This commonly occurs with scroll-tracking or intersection-observer hooks.
+
+### When `react-hooks/purity` flags `Date.now()` or `Math.random()` in a Server Component helper
+The `react-hooks/purity` rule fires on helper functions that use impure expressions (`Date.now()`, `Math.random()`, etc.) when those helpers are defined inside a component-scope file. Server Components render server-side once and are serialized to HTML — they are NOT bound by React's purity rules for hooks. In a Server Component file, calling `Date.now()` in a helper is valid and a false positive. Suppress with an inline comment that both disables the rule and documents the reason:
+
+```tsx
+// eslint-disable-next-line react-hooks/purity -- Server Component: purity rule does not apply
+const now = Date.now();
+```
+
+**Only suppress in files that do NOT contain the `"use client"` directive.** In Client Components the rule IS applicable — `Date.now()` inside a component-scope helper can cause hydration mismatches and should be wrapped in `useEffect` or moved out of render, not suppressed.
+
+### When a page component wraps its content in `<main>` causing `landmark-no-duplicate-main`
+When `src/app/layout.tsx` already wraps `{children}` in a `<main>` element (see the paired "missing `<main>` landmark" entry above), individual page components MUST NOT add their own `<main>`. Two `<main>` elements on the same page fail the axe-core `landmark-no-duplicate-main` check (WCAG 4.1.2). Scaffold-generated `page.tsx` templates should use `<div>` as the outermost wrapper — only `layout.tsx` owns the `<main>` landmark.
+
+This pairs with the missing-`<main>` entry to form the full rule: **exactly one `<main>` per rendered page, owned by `layout.tsx`, never duplicated by a page component.**
 
 ### When openGraph metadata is missing images array, og:image is absent
 When the `openGraph` config object in `layout.tsx` is written without an `images` property, the `og:image` meta tag is entirely absent from the rendered HTML. Social sharing previews and link unfurls show no image. Always include the `images` array in the openGraph config:

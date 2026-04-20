@@ -16,11 +16,12 @@ Follow gate execution procedure per `procedures/gate-execution.md`.
 - **G5 Verification Gate**: Spawn the `gate-keeper` agent (`subagent_type: gate-keeper`). Pass: "Execute G5 Verification Gate. Verify: .runs/verify-report.md exists. Read it and check: agents_expected equals agents_completed; if 2+ implementer agents spawned, consistency_scan is not 'skipped'; if fix cycles ran, auto_observe is not 'skipped-no-fixes'; build result is pass; if spec-reviewer in agents_completed, spec-reviewer verdict is not FAIL." If gate-keeper returns BLOCK: if the block reason is spec-reviewer FAIL, read the spec-reviewer findings from `.runs/verify-report.md` — the implementation is missing features, so go back to STATE 10 (IMPLEMENT) to add the missing behaviors/pages/endpoints/events, then re-run STATE 11 (VERIFY). For all other blocks, go back and complete Step 7.
 
 - You are already on a feature branch (created in Step 0). Do not create another branch.
-- **G6 PR Gate**: Spawn the `gate-keeper` agent (`subagent_type: gate-keeper`). Pass: "Execute G6 PR Gate. Verify: on feature branch (not main), commit message follows imperative mood convention." If gate-keeper returns BLOCK, fix blocking items before proceeding.
 
 ### Write delivery artifacts
 
-Write `.runs/commit-message.txt` — imperative mood describing the change (e.g., "Add invoice email reminders", "Fix email validation on signup form", "Polish landing copy and error states").
+Write `.runs/commit-message.txt` — imperative mood describing the change (e.g., "Add invoice email reminders", "Fix email validation on signup form", "Polish landing copy and error states"). The G6 gate (below) reads this file to verify the imperative-mood convention, so write it BEFORE spawning the gate.
+
+- **G6 PR Gate**: Spawn the `gate-keeper` agent (`subagent_type: gate-keeper`). Pass: "Execute G6 PR Gate. Verify: on feature branch (not main), pending commit message in `.runs/commit-message.txt` follows imperative mood convention." If gate-keeper returns BLOCK, fix blocking items before proceeding.
 
 Write `.runs/pr-title.txt` — short title (<=70 chars).
 

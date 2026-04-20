@@ -19,7 +19,7 @@ Generate unit tests for CRITICAL modules using implementer agents.
 
 For each CRITICAL module **in dependency order, sequentially**:
   a. Spawn implementer agent (`agents/implementer.md`; include `isolation: "worktree"` for worktree mode, omit for direct mode)
-  b. Pass to implementer: file paths, the module's behaviors from experiment.yaml (behavior IDs and `tests` entries), and the classification reason. If direct mode: also pass "You are running without worktree isolation. Commit directly to the current branch. Write your trace to `.runs/agent-traces/implementer-<module-name>.json`."
+  b. Pass to implementer: file paths, the module's behaviors from experiment.yaml (behavior IDs and `tests` entries), and the classification reason. If direct mode: also pass "You are running without worktree isolation. Commit directly to the current branch. Write your trace to `.runs/agent-traces/implementer-<module-name>.json`." ALWAYS pass: **"Generated test files MUST pass `npm run lint` with zero `@typescript-eslint/no-unused-vars` errors. Import only symbols that are referenced in assertions. If you want compile-time coverage of all typed wrappers in a file (common for `src/lib/events.test.ts`), add a single `_coverageCheck()` function that calls each wrapper once with a representative payload — this keeps every import referenced without polluting the test bodies. The lint-clean requirement applies to every file you create, including `events.test.ts` and `rate-limit.test.ts`."**
   c. Implementer writes unit tests per `patterns/tdd.md`:
      - What SHOULD the module do? (from behaviors + code reading)
      - Write tests for correct behavior
@@ -39,7 +39,8 @@ For each CRITICAL module **in dependency order, sequentially**:
      - Lead writes trace to `.runs/agent-traces/implementer-<module-name>.json` if the agent did not
 
   e. Run `npm run build` — if broken, fix before next module
-  f. Log: "Module [name]: N tests added, all passing"
+  e2. Run `npm run lint` — if any `@typescript-eslint/no-unused-vars` errors appear in test files written by this implementer, re-spawn for a cleanup round (budget: 1 retry) with the unused-import error text in the prompt. Generated tests must ship lint-clean so the first `/verify` build-lint retry budget is not spent on mechanical unused-import errors (#962).
+  f. Log: "Module [name]: N tests added, all passing, lint clean"
 
 - **Write modules trace artifact** (`.runs/bootstrap-modules-trace.json`):
   ```bash

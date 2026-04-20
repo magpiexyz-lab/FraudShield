@@ -275,16 +275,17 @@ When running E2E tests, block analytics requests to prevent test data from pollu
 ```
 This matches the proxied PostHog ingestion endpoint (`/ingest/*`). Playwright's `page.route()` uses this pattern to intercept and abort analytics requests. See the testing stack file's `blockAnalytics` helper for usage.
 
-**sendBeacon limitation:** PostHog JS uses `navigator.sendBeacon()` by default, which Playwright's `page.route()` cannot intercept. To make analytics requests interceptable in E2E tests (required for `captureAnalytics` event verification), bootstrap should add `disable_compression: true` to the `posthog.init()` options when the testing stack is present — this forces XHR transport instead of sendBeacon:
+**sendBeacon + batching limitations:** PostHog JS uses `navigator.sendBeacon()` by default (which Playwright's `page.route()` cannot intercept) and batches multiple events into a single XHR after a threshold (which delays event emission past a test's assertion window). Both behaviors must be disabled for reliable Playwright interception. When the testing stack is present, bootstrap should set BOTH `disable_compression: true` AND `request_batching: false` on `posthog.init()`:
 ```ts
 posthog.init(POSTHOG_KEY, {
   api_host: POSTHOG_HOST,
   capture_pageview: false,
   capture_exceptions: true,
-  disable_compression: true, // Force XHR for Playwright route interception
+  disable_compression: true, // Force XHR transport (Playwright cannot intercept sendBeacon)
+  request_batching: false,   // Force immediate per-event XHR (batching delays events past assertion time)
 });
 ```
-The `disable_compression` option is safe for MVPs — compression only matters at scale.
+Both flags work together. `disable_compression` forces XHR transport; `request_batching: false` makes each event fire immediately instead of waiting for a batch threshold. The testing helper `captureAnalytics` (see `testing/playwright.md`) does handle batched bodies for slower assertions, but immediate-fire reduces flakiness in tight action → assertion windows. Both options are safe for MVPs — per-event XHRs and uncompressed payloads only matter at scale.
 
 When creating a new analytics stack file, document the equivalent endpoint pattern so the testing stack file can adapt its route blocking.
 

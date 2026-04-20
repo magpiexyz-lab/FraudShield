@@ -194,7 +194,7 @@ Verify before push:
 
 1. Current branch is NOT `main` — run `git branch --show-current`
 2. `git status` shows no uncommitted changes to tracked files (untracked OK)
-3. Most recent commit message starts with an imperative verb (e.g., Add, Fix, Update, Remove, Refactor, Implement, Bootstrap, Wire)
+3. **Pending** commit message in `.runs/commit-message.txt` starts with an imperative verb (e.g., Add, Fix, Update, Remove, Refactor, Implement, Bootstrap, Wire) — run `head -1 .runs/commit-message.txt | grep -E '^[A-Z][a-z]+ '`. The skill commit has NOT yet been created — it will be created by `lifecycle-finalize.sh` from this file. Do NOT inspect `git log -1`: the most recent commit may be an intermediate implementer-agent commit that legitimately uses conventional-commit prefixes (`test:`, `feat:`, `fix:`).
 
 ---
 
@@ -288,4 +288,4 @@ Verify final state before push:
 
 1. Current branch is NOT `main` — run `git branch --show-current`
 2. `git status` shows no uncommitted changes to tracked files
-3. Most recent commit message starts with an imperative verb
+3. **Pending** commit message in `.runs/commit-message.txt` starts with an imperative verb (e.g., Add, Fix, Update, Remove, Refactor, Implement, Bootstrap, Wire) — run `head -1 .runs/commit-message.txt | grep -E '^[A-Z][a-z]+ '`. The bootstrap commit has NOT yet been created — it will be created by `lifecycle-finalize.sh` from this file. Do NOT inspect `git log -1`: the most recent commit may be an intermediate implementer-agent commit that legitimately uses conventional-commit prefixes (`test:`, `feat:`, `fix:`).

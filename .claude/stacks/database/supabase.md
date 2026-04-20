@@ -410,6 +410,24 @@ The demo client (`createDemoClient()`) returns `DEMO_SEED_DATA` — 3 generic ro
 ### Single-row queries return null in demo mode
 The chainable proxy's `.single()` method returns `{ data: null, error: null }` — not a row from `DEMO_SEED_DATA`. Pages that call `.from("table").select().eq(...).single()` and expect a non-null result should handle the null case (loading state or fallback UI). This matches the real Supabase behavior when no row matches the filter.
 
+### When `npm run dev` fails with `TypeError: Failed to fetch` in demo mode
+Client-side Supabase needs `NEXT_PUBLIC_DEMO_MODE=true` in addition to server-side `DEMO_MODE=true`. Always set both together:
+
+```bash
+DEMO_MODE=true NEXT_PUBLIC_DEMO_MODE=true npm run dev
+```
+
+The server-side guard reads `process.env.DEMO_MODE`; the browser bundle reads `process.env.NEXT_PUBLIC_DEMO_MODE` (Next.js only exposes env vars with the `NEXT_PUBLIC_` prefix to client code). If only `DEMO_MODE` is set, the server renders the demo shell but the browser falls through to a real Supabase client using placeholder URLs → `TypeError: Failed to fetch` on every auth/data call.
+
+For developers who want persistent local-dev demo mode without prefixing every command, add BOTH lines to `.env.local`:
+
+```bash
+DEMO_MODE=true
+NEXT_PUBLIC_DEMO_MODE=true
+```
+
+`.env.local` is gitignored and never committed. **Never** add `DEMO_MODE` or `NEXT_PUBLIC_DEMO_MODE` to `.env.example` — these are local-only flags and must not leak into production configs (production protection is enforced by the `VERCEL === "1"` guard in `createBrowserClient()` / `createServerClient()` — see the code templates above).
+
 ## PR Instructions
 - When creating migrations, add to the PR body: "After merging, migrations are applied automatically during the next Vercel build (via the `prebuild` script). If not using the Supabase Vercel Integration, CI applies them on merge to `main` (requires CI secrets), or run `make migrate` manually — see Migration Setup in README."
 - For the bootstrap PR, also add: "Run `/deploy` to set up Vercel + Supabase automatically, or manually add the Supabase Vercel Integration at vercel.com/integrations/supabase."
@@ -761,12 +779,19 @@ POSTGRES_URL_NON_POOLING=postgresql://postgres.<ref>:<password>@<pooler-host>:54
 
 ### Fallback Build Integration
 
-Add the migration runner to `package.json` so it runs before each build:
+Add the migration runner to `package.json` so it runs before each build. **scaffold-libs owns this write** — it writes BOTH `scripts/auto-migrate.mjs` AND the `prebuild` entry in a single pass. The framework-side scaffold-setup must NOT pre-write the `prebuild` script (see `.claude/stacks/framework/nextjs.md` Project Setup), otherwise intermediate `npm run build` calls between scaffold-setup and scaffold-libs crash on the missing runner file.
+
+Recommended entry:
 ```json
-{ "scripts": { "prebuild": "node scripts/auto-migrate.mjs" } }
+{ "scripts": { "prebuild": "test ! -f scripts/auto-migrate.mjs || node scripts/auto-migrate.mjs" } }
 ```
+
+- `test ! -f scripts/auto-migrate.mjs` returns true (exit 0) when the file is MISSING — prebuild is a no-op in that case, so any accidental early build succeeds.
+- When the file EXISTS, the `||` short-circuit doesn't fire and `node scripts/auto-migrate.mjs` runs — its non-zero exit code (SQL error, permission denied, network failure) **propagates** so genuine migration failures still fail the build.
+- Do NOT use `test -f X && node X || true` — `|| true` swallows real migration errors, masking production regressions.
+
 - On Vercel: `prebuild` runs automatically before `build`
-- On other platforms (Docker, Fly.io, Railway): add `node scripts/auto-migrate.mjs` as a pre-start or build step
+- On other platforms (Docker, Fly.io, Railway): add `node scripts/auto-migrate.mjs` as a pre-start or build step (with the same missing-file guard if the script can be absent)
 - Locally: run `node scripts/auto-migrate.mjs` manually, or use `make migrate` with `supabase db push`
 
-The migration runner exits silently when `POSTGRES_URL_NON_POOLING` is not set (local dev without database), so adding `prebuild` is safe even when the variable is absent.
+The migration runner also exits silently when `POSTGRES_URL_NON_POOLING` is not set (local dev without database), so adding `prebuild` is safe even when the env variable is absent.
