@@ -106,6 +106,13 @@ Launch 3 agents concurrently:
 > `occurrence_count`. Missing sections are expected (HC3) — absence is not
 > a finding, just skip.
 >
+> When invoked from /change STATE 2, the precomputed hints artifact
+> `.runs/change-stack-knowledge-hints.json` lists pre-filtered stable +
+> canonical entries (already filtered for `graduated_to is None`). Treat
+> `maturity=canonical` as a hard constraint (must avoid); `maturity=stable`
+> as strong guidance. When the artifact is absent, fall back to parsing
+> stack files directly.
+>
 > Output: list of findings, each with: file path, what it does, gap remaining.
 
 **Agent 3 — Hard Constraints** (Explore subagent)

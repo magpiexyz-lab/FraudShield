@@ -2,6 +2,11 @@
 
 **PRECONDITIONS:**
 - BG2 PASS, build passes (STATE 13c POSTCONDITIONS met)
+- Optional: load Stack Knowledge hints (stable + canonical, non-graduated)
+  into memory via `scripts/lib/stack_knowledge_parser.py::parse_stack_knowledge_file`
+  across all `.claude/stacks/**/*.md` files. Absent sections are expected (HC3 —
+  never blocking). Wire decisions consult these hints to avoid known-bad
+  layout / provider-wiring patterns.
 
 **ACTIONS:**
 
@@ -25,13 +30,44 @@ Spawn a subagent via Agent with:
   3. Include the completion reports from init, libs, pages, landing, and
      externals subagents (external dep decisions, generated files, env vars)
      in the prompt so the wire subagent has context
-  4. Follow CLAUDE.md Rules 1, 4, 5, 6, 7, 8, 10, 12
+  4. **Read `.runs/bootstrap-state14-stack-knowledge-hints.json`** (may be
+     empty — HC3). Every entry in `entries[]` is a pattern that has already
+     been observed and sedimented. Treat `maturity: canonical` entries as
+     HARD CONSTRAINTS — the wire implementation MUST avoid the
+     `divergence_pattern` they describe. Treat `maturity: stable` entries as
+     strong guidance. For each matching entry, apply the `fix_template`
+     preemptively; cite the entry's `id` in the wire trace when you do.
+  5. Follow CLAUDE.md Rules 1, 4, 5, 6, 7, 8, 10, 12
 
 Update checkpoint in `.runs/current-plan.md` frontmatter to `awaiting-verify`.
 
 Check off in `.runs/current-plan.md`: `- [x] scaffold-wire completed`
 
 Verify scaffold-wire trace: `test -f .runs/agent-traces/scaffold-wire.json && python3 -c "import json;d=json.load(open('.runs/agent-traces/scaffold-wire.json'));assert d.get('status')=='complete';print('scaffold-wire trace: OK')"`. If trace missing: log "WARN: scaffold-wire did not write trace -- continuing with file-based verification".
+
+- **Write Stack Knowledge hints artifact** (`.runs/bootstrap-state14-stack-knowledge-hints.json`) — active prevention consulted during wire decisions:
+  ```bash
+  python3 -c "
+  import glob, json, os, sys
+  sys.path.insert(0, 'scripts')
+  from lib.stack_knowledge_parser import parse_stack_knowledge_file
+  ACTIVE = {'stable', 'canonical'}
+  hints = []
+  sources = []
+  for path in sorted(glob.glob('.claude/stacks/**/*.md', recursive=True)):
+      entries = parse_stack_knowledge_file(path)
+      if not entries:
+          continue
+      sources.append(path)
+      for e in entries:
+          if e.get('maturity') in ACTIVE and e.get('graduated_to') is None:
+              hints.append({'source': path, 'id': e.get('id'), 'maturity': e.get('maturity'), 'composite_identity': e.get('composite_identity'), 'composite_identity_hash': e.get('composite_identity_hash'), 'fix_template': e.get('fix_template'), 'prevention_mechanism': e.get('prevention_mechanism'), 'occurrence_count': e.get('occurrence_count')})
+  os.makedirs('.runs', exist_ok=True)
+  json.dump({'entries': hints, 'source_files': sources, 'count': len(hints)}, open('.runs/bootstrap-state14-stack-knowledge-hints.json', 'w'), indent=2)
+  print(f'bootstrap state14 stack-knowledge hints: {len(hints)} active entries from {len(sources)} files')
+  "
+  ```
+  HC3: absent sections = empty hints list. Never blocking. No new VERIFY assertion. Pass this artifact's entries into the `scaffold-wire` agent prompt so wiring decisions avoid known-bad patterns.
 
 - **Write wire trace artifact** (`.runs/bootstrap-wire-trace.json`):
   ```bash
@@ -64,6 +100,7 @@ Verify scaffold-wire trace: `test -f .runs/agent-traces/scaffold-wire.json && py
 - Wire integration complete <!-- enforced by agent behavior, not VERIFY gate -->
 - Checkpoint updated to `awaiting-verify`
 - `.runs/bootstrap-wire-trace.json` exists with wiring details
+- `.runs/bootstrap-state14-stack-knowledge-hints.json` exists (HC3: may contain empty `entries` array)
 
 **VERIFY:**
 ```bash

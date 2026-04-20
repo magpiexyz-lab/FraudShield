@@ -3,6 +3,11 @@
 **PRECONDITIONS:**
 - Scaffold done, all subagents returned (STATE 11b POSTCONDITIONS met)
 - Externals classification table available from scaffold-externals
+- Optional: load Stack Knowledge hints (stable + canonical, non-graduated)
+  into memory via `scripts/lib/stack_knowledge_parser.py::parse_stack_knowledge_file`
+  across all `.claude/stacks/**/*.md` files. Absent sections are expected (HC3 —
+  never blocking). These hints warn against known-bad env-var guard patterns
+  and Fake Door wirings before decisions are made.
 
 **ACTIONS:**
 
@@ -19,7 +24,16 @@ After the externals subagent returns its classification table:
    Provision at deploy) for each dependency.
 2. **Collect credentials**: for "Provide now" choices, ask the user for
    credential values.
-3. **Execute remaining work** -- explicit externals checklist:
+3. **Consult Stack Knowledge hints before deciding**: load
+   `.runs/bootstrap-state12-stack-knowledge-hints.json` (may be empty — HC3).
+   For each proposed decision, check whether any hint's `composite_identity`
+   (particularly `stack_scope` matching the current service and
+   `root_cause_class` covering env-var guards or Fake Door wiring) applies.
+   When a `canonical` entry applies, treat its `fix_template` as mandatory
+   (e.g., a specific env-var guard shape, a specific Fake Door component
+   location). When a `stable` entry applies, apply unless there is a concrete
+   reason not to; cite the entry's `id` in the externals-decisions artifact.
+4. **Execute remaining work** -- explicit externals checklist:
 
    For each decision where `user_choice` is one of {Provide now, Provision at deploy, Full Integration}:
    - [ ] Check if a pre-built stack file already exists at `.claude/stacks/*/<service-slug>.md`
@@ -80,6 +94,31 @@ EXTEOF
 ```
 If no external dependencies: `has_externals` is `false`, arrays are `[]`.
 
+Write Stack Knowledge hints artifact (`.runs/bootstrap-state12-stack-knowledge-hints.json`) — active prevention input consulted during env-var guard + Fake Door wiring decisions:
+```bash
+python3 -c "
+import glob, json, sys
+sys.path.insert(0, 'scripts')
+from lib.stack_knowledge_parser import parse_stack_knowledge_file
+ACTIVE = {'stable', 'canonical'}
+hints = []
+sources = []
+for path in sorted(glob.glob('.claude/stacks/**/*.md', recursive=True)):
+    entries = parse_stack_knowledge_file(path)
+    if not entries:
+        continue
+    sources.append(path)
+    for e in entries:
+        if e.get('maturity') in ACTIVE and e.get('graduated_to') is None:
+            hints.append({'source': path, 'id': e.get('id'), 'maturity': e.get('maturity'), 'composite_identity': e.get('composite_identity'), 'composite_identity_hash': e.get('composite_identity_hash'), 'fix_template': e.get('fix_template'), 'prevention_mechanism': e.get('prevention_mechanism'), 'occurrence_count': e.get('occurrence_count')})
+import os
+os.makedirs('.runs', exist_ok=True)
+json.dump({'entries': hints, 'source_files': sources, 'count': len(hints)}, open('.runs/bootstrap-state12-stack-knowledge-hints.json', 'w'), indent=2)
+print(f'bootstrap state12 stack-knowledge hints: {len(hints)} active entries from {len(sources)} files')
+"
+```
+HC3: absent sections = empty hints list. Never blocking. No new VERIFY assertion.
+
 **BG2.5 Externals Gate**: Spawn the `gate-keeper` agent (`subagent_type: gate-keeper`). Pass: "Execute BG2.5 Externals Gate. Verify: (1) externals-decisions.json exists with correct structure (has_externals, user_confirmed, decisions, fake_doors, timestamp); (2) for each decision where user_choice is 'Provide now', 'Provision at deploy', or 'Full Integration': .env.example contains the required env var(s); (3) for each such decision: grep the relevant API route file for a 503 response guard referencing the service's env var — BLOCK if any route is missing the guard; (4) for each such decision: verify a stack file exists at `.claude/stacks/*/<service-slug>.md` (any subdirectory — e.g., `ai/`, `external/`, `database/`) — BLOCK if no stack file found for any such decision."
 
 Check off in `.runs/current-plan.md`: `- [x] BG2.5 Externals Gate passed`
@@ -89,6 +128,7 @@ Check off in `.runs/current-plan.md`: `- [x] BG2.5 Externals Gate passed`
 - User decisions collected for all external dependencies
 - Fake Door components created (if any)
 - Env vars written (if any)
+- `.runs/bootstrap-state12-stack-knowledge-hints.json` exists (HC3: may contain empty `entries` array)
 
 **VERIFY:**
 ```bash

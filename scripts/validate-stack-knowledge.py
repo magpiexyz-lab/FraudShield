@@ -29,6 +29,7 @@ from lib.stack_knowledge_parser import (  # noqa: E402
     REQUIRED_FIELDS,
     MATURITY_VALUES,
     compute_hash,
+    is_archive_path,
     parse_stack_knowledge,
 )
 
@@ -121,7 +122,7 @@ def validate_file(path: str) -> list[str]:
 
 
 def main(argv: list[str]) -> int:
-    paths = [p for p in argv[1:] if p]
+    paths = [p for p in argv[1:] if p and not is_archive_path(p)]
     if not paths:
         return 0
 

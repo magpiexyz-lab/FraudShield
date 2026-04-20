@@ -24,9 +24,17 @@ jobs:
         shell: bash
         run: |
           shopt -s globstar nullglob
-          files=(.claude/stacks/**/*.md)
+          all_files=(.claude/stacks/**/*.md)
+          # Filter out archive files (*.archive.md) — they are historical docs, not live entries.
+          files=()
+          for f in "${all_files[@]}"; do
+            case "$f" in
+              *.archive.md) ;;
+              *) files+=("$f") ;;
+            esac
+          done
           if [ ${#files[@]} -eq 0 ]; then
-            echo "No stack files found — skipping."
+            echo "No live stack files found — skipping."
             exit 0
           fi
           python3 scripts/validate-stack-knowledge.py "${files[@]}"

@@ -10,7 +10,9 @@ sys.path.insert(0, os.path.dirname(__file__))
 from lib.stack_knowledge_parser import (
     canonicalize,
     compute_hash,
+    is_archive_path,
     parse_stack_knowledge,
+    parse_stack_knowledge_file,
     REQUIRED_FIELDS,
     MATURITY_VALUES,
     COMPOSITE_KEYS,
@@ -231,3 +233,49 @@ class TestConstants:
 
     def test_composite_keys(self):
         assert COMPOSITE_KEYS == ("root_cause_class", "divergence_pattern", "stack_scope")
+
+
+class TestIsArchivePath:
+    def test_archive_suffix_true(self):
+        assert is_archive_path(".claude/stacks/framework/nextjs.archive.md") is True
+        assert is_archive_path("nextjs.archive.md") is True
+
+    def test_non_archive_false(self):
+        assert is_archive_path(".claude/stacks/framework/nextjs.md") is False
+        assert is_archive_path(".claude/stacks/framework/archive.md") is False
+
+    def test_substring_false_positive_rejected(self):
+        """Directory named archive.md.* must not match — we require the exact .archive.md suffix."""
+        assert is_archive_path(".claude/stacks/archive.md.stale/foo.md") is False
+        assert is_archive_path("some/archive.md/inner.md") is False
+
+    def test_non_string_returns_false(self):
+        assert is_archive_path(None) is False  # type: ignore[arg-type]
+        assert is_archive_path(42) is False  # type: ignore[arg-type]
+
+
+class TestParseStackKnowledgeFile:
+    def test_archive_path_returns_empty(self, tmp_path):
+        """Even if the archive file contains valid Stack Knowledge YAML, reader returns []."""
+        p = tmp_path / "nextjs.archive.md"
+        p.write_text(
+            "## Stack Knowledge\n\n```yaml\nid: archived-entry\nmaturity: canonical\n```\n"
+        )
+        assert parse_stack_knowledge_file(str(p)) == []
+
+    def test_missing_file_returns_empty(self):
+        assert parse_stack_knowledge_file("/nonexistent/path/to/file.md") == []
+
+    def test_real_file_parses(self, tmp_path):
+        p = tmp_path / "nextjs.md"
+        p.write_text(
+            "## Stack Knowledge\n\n```yaml\nid: live-entry\nmaturity: stable\n```\n"
+        )
+        entries = parse_stack_knowledge_file(str(p))
+        assert len(entries) == 1
+        assert entries[0]["id"] == "live-entry"
+
+    def test_absent_section_returns_empty(self, tmp_path):
+        p = tmp_path / "nextjs.md"
+        p.write_text("# Framework: Next.js\n\nNo stack knowledge section here.\n")
+        assert parse_stack_knowledge_file(str(p)) == []

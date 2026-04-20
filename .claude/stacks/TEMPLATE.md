@@ -170,6 +170,30 @@ VARIABLE_NAME=description-or-example
      Do NOT create a `## Known Issues` heading — that heading is forbidden
      by the validator. Migrate legacy Known Issues prose to Stack Knowledge
      entries via scripts/migrate-known-issues.py (two-phase, approval-gated).
+
+     ---
+
+     Maturity lifecycle (Phase 3 — active prevention + compression + promotion):
+
+     | Tier       | Entry condition                                               | Readers                                   |
+     |------------|---------------------------------------------------------------|-------------------------------------------|
+     | raw        | First sighting; /resolve STATE 9 writes                       | /resolve (reactive)                       |
+     | stable     | occurrence_count >= 5, confidence > 0.8, no oscillation 90d   | /resolve + /change + /bootstrap (active)  |
+     | canonical  | stable for >= 60 days, no regression linked back              | all skills (active, constraint-strength)  |
+     | graduated  | Manual PR removes entry AND adds validator/hook/rule/default  | retained as doc via `graduated_to` field  |
+     | archived   | Filename *.archive.md — skill-unreadable, documentation only  | none (preserved for history only)         |
+
+     Promotion paths (system NEVER auto-mutates maturity — always via human /resolve PR):
+       - raw → stable:        .claude/scripts/stack-knowledge-audit.sh files `pattern-graduation-stable` issue
+       - stable → canonical:  .claude/scripts/stack-knowledge-audit.sh files `pattern-graduation-canonical` issue
+       - canonical → graduated:  human PR, CI (.github/workflows/stack-knowledge-graduation.yml) enforces
+                                 that the `graduated_to:` path is modified in the same PR
+       - canonical → archived:  audit files `pattern-archive-candidate` issue → maintainer renames to *.archive.md
+
+     Reader filtering: active-prevention consumers (/change, /bootstrap) filter
+     `maturity in {stable, canonical}` AND `graduated_to is None`. Entries with
+     graduated_to != None are preserved for history but deprioritized — the
+     structural prevention (validator/hook/rule/default) is now the source of truth.
      ========================================================================= -->
 
 <!-- Include the Deploy Interface section for hosting and database stack files.

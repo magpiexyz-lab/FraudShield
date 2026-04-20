@@ -17,7 +17,10 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from lib.stack_knowledge_parser import parse_stack_knowledge  # noqa: E402
+from lib.stack_knowledge_parser import (  # noqa: E402
+    is_archive_path,
+    parse_stack_knowledge,
+)
 
 STACK_GLOB = ".claude/stacks/**/*.md"
 EXCLUDE_BASENAMES = {"TEMPLATE.md"}
@@ -25,7 +28,10 @@ EXCLUDE_BASENAMES = {"TEMPLATE.md"}
 
 def main() -> int:
     start = time.perf_counter()
-    paths = [p for p in glob.glob(STACK_GLOB, recursive=True) if os.path.basename(p) not in EXCLUDE_BASENAMES]
+    paths = [
+        p for p in glob.glob(STACK_GLOB, recursive=True)
+        if os.path.basename(p) not in EXCLUDE_BASENAMES and not is_archive_path(p)
+    ]
 
     index: dict[str, list[tuple[str, int]]] = {}
     total_entries = 0

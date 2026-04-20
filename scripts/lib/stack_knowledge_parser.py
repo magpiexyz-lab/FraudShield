@@ -3,11 +3,23 @@
 Consumers:
   - scripts/validate-stack-knowledge.py  (per-file, pre-commit-style)
   - scripts/ci-check-stack-knowledge.py  (cross-file uniqueness)
+  - scripts/ci-check-graduation-atomicity.py (PR-diff atomicity check)
   - .claude/skills/resolve/state-9-save-patterns.md  (producer)
   - .claude/skills/resolve/state-2-triage.md          (optional reader)
+  - .claude/skills/change/state-2-read-context.md     (active-prevention reader)
+  - .claude/skills/bootstrap/state-12-externals-decisions.md (active-prevention reader)
+  - .claude/skills/bootstrap/state-14-wire-phase.md   (active-prevention reader)
+  - .claude/scripts/stack-knowledge-audit.sh          (nightly audit)
   - .claude/patterns/solve-reasoning.md                (Agent 2 optional reader)
 
-HC3: parse_stack_knowledge returns [] when the section is absent.
+Public API:
+  - parse_stack_knowledge(content) — pure string → entries
+  - parse_stack_knowledge_file(path) — path → entries (handles archive + missing)
+  - is_archive_path(path) — True if path is *.archive.md (skipped everywhere)
+  - compute_hash(composite) — 12-char sha1 hash for dedup
+  - canonicalize(s) — string normalization for stable hashing
+
+HC3: all readers return [] when the section is absent or the file is archive.
 """
 
 from __future__ import annotations
@@ -105,3 +117,33 @@ def parse_stack_knowledge(file_content: str) -> list[dict[str, Any]]:
         if isinstance(doc, dict):
             entries.append(doc)
     return entries
+
+
+def is_archive_path(path: str) -> bool:
+    """True if path ends with .archive.md — archive files are skipped by all readers.
+
+    Archive files are historical Stack Knowledge entries preserved as documentation
+    only. They live under .claude/stacks/ so /upgrade syncs them, but no skill,
+    validator, or CI check reads their contents.
+    """
+    return isinstance(path, str) and path.endswith(".archive.md")
+
+
+def parse_stack_knowledge_file(path: str) -> list[dict[str, Any]]:
+    """Read a stack file and parse its Stack Knowledge section.
+
+    Returns [] when:
+      - path is archive (is_archive_path(path) is True)
+      - file does not exist or cannot be read
+      - section is absent
+
+    This is the canonical consumer-facing reader. Skills and validators call
+    this with a file path and get back the entry list (or [] on any failure).
+    """
+    if is_archive_path(path):
+        return []
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return parse_stack_knowledge(f.read())
+    except (OSError, UnicodeDecodeError):
+        return []

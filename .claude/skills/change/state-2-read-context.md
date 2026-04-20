@@ -2,6 +2,11 @@
 
 **PRECONDITIONS:**
 - On `change/*` branch (STATE 1 POSTCONDITIONS met)
+- Optional: load Stack Knowledge hints (stable + canonical, non-graduated)
+  into memory via `scripts/lib/stack_knowledge_parser.py::parse_stack_knowledge_file`
+  across all `.claude/stacks/**/*.md` files. Absent sections are expected (HC3 —
+  never blocking). These hints feed solve-reasoning Phase 1 Agent 2 as prior
+  art that new code must avoid re-introducing.
 
 **ACTIONS:**
 
@@ -51,6 +56,32 @@
   "
   ```
 
+- **Write Stack Knowledge hints artifact** (`.runs/change-stack-knowledge-hints.json`) — active prevention input for solve-reasoning Agent 2:
+  ```bash
+  python3 -c "
+  import glob, json, sys
+  sys.path.insert(0, 'scripts')
+  from lib.stack_knowledge_parser import parse_stack_knowledge_file
+  ACTIVE = {'stable', 'canonical'}
+  hints = []
+  sources = []
+  for path in sorted(glob.glob('.claude/stacks/**/*.md', recursive=True)):
+      entries = parse_stack_knowledge_file(path)
+      if not entries:
+          continue
+      sources.append(path)
+      for e in entries:
+          if e.get('maturity') in ACTIVE and e.get('graduated_to') is None:
+              hints.append({'source': path, 'id': e.get('id'), 'maturity': e.get('maturity'), 'composite_identity': e.get('composite_identity'), 'composite_identity_hash': e.get('composite_identity_hash'), 'fix_template': e.get('fix_template'), 'prevention_mechanism': e.get('prevention_mechanism'), 'occurrence_count': e.get('occurrence_count')})
+  json.dump({'entries': hints, 'source_files': sources, 'count': len(hints)}, open('.runs/change-stack-knowledge-hints.json', 'w'), indent=2)
+  print(f'change stack-knowledge hints: {len(hints)} active entries from {len(sources)} files')
+  "
+  ```
+  HC3: absent sections = empty hints list. Never blocking.
+  The hints artifact is read by STATE 3 and passed into solve-reasoning Phase 1
+  Agent 2 (prior art); Agent 2 treats `maturity=canonical` entries as hard
+  constraints (must avoid) and `maturity=stable` as strong guidance.
+
 **POSTCONDITIONS:**
 - `experiment/experiment.yaml` read and understood
 - `experiment/EVENTS.yaml` read and understood
@@ -63,6 +94,7 @@
 - Diagnostic context from prior verify run read (if available)
 - `.runs/exploration-trace.json` exists with required fields (`archetype`, `archetype_constraints`, `stacks_read`, `affected_files`, `affected_imports`, `exploration_steps_completed`)
 - Files listed in `affected_files` exist on disk
+- `.runs/change-stack-knowledge-hints.json` exists (HC3: may contain empty `entries` array)
 
 **VERIFY:**
 ```bash
