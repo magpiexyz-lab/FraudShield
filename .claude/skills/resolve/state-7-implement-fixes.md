@@ -15,6 +15,15 @@ For each issue in severity order (HIGH first):
    - What changes: <files and what's modified, 1-2 bullets>
    - Risk: <low/medium — blast radius summary>
    ```
+   **Learned pattern basis (advisory — only when `pattern_hints` non-empty):**
+   If `.runs/resolve-triage.json.pattern_hints` has entries matching this issue,
+   append a short block listing each hint's `id`, `maturity`, `confidence_score`,
+   and a one-line pointer to `fix_template`. Example:
+   ```
+   #### Learned pattern basis
+   - nextjs-demo-guard (canonical, confidence 1.0) — fix_template: add VERCEL guard before DEMO_MODE check
+   ```
+   This is purely informational — it does NOT change the approval flow below.
    **STOP. Wait for the user to approve this fix before implementing.**
    If the user rejects a fix, log it in `.runs/fix-log.md` as
    `**Rejected** — #<N>: <title> — rejected by user` and move to the next issue.

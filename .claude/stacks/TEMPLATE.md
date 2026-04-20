@@ -128,6 +128,50 @@ VARIABLE_NAME=description-or-example
 - [Environment variables to configure]
 - [External service configuration]
 
+<!-- =========================================================================
+     ## Stack Knowledge (OPTIONAL — added by /resolve STATE 9 as it learns)
+
+     Structured composite-identity-hashed entries sedimented by /resolve runs
+     in the template repo (magpiexyz-lab/mvp-template). Downstream projects
+     never write this section directly — they file `pattern-proposal`-labeled
+     issues upstream instead (HC1).
+
+     All consumers (STATE 2 triage, solve-reasoning Agent 2, STATE 5d
+     adversarial challenge, STATE 7 fix approval) treat this section as
+     OPTIONAL (HC3). Absent section = empty list = zero hints.
+
+     Per-entry YAML schema:
+
+     ```yaml
+     id: <stack>-<short-slug>           # human-readable, e.g. nextjs-demo-guard
+     maturity: raw | stable | canonical # raw=first sighting, canonical=hardened
+     anti_pattern: false                # Phase 1 always false; Phase 2 enables
+     composite_identity:
+       root_cause_class: <class>        # canonicalized before hashing
+       divergence_pattern: <pattern>    # canonicalized before hashing
+       stack_scope: <stack-slug>        # e.g. framework/nextjs
+     composite_identity_hash: <12-char-sha1>   # sha1(sort_keys(canon(ci)))[:12]
+     symptom_keywords: [kw1, kw2]
+     fix_template: <snippet or pointer>
+     prevention_mechanism: <test|guard|validator|null>
+     confidence_score: 0.5              # float in [0.0, 1.0]
+     occurrence_count: 1                # int >= 1
+     linked_issues: [#123]
+     first_seen: YYYY-MM-DD
+     last_seen: YYYY-MM-DD
+     graduated_to: null                 # Phase 2: pointer if promoted
+     ```
+
+     One one-paragraph prose summary for humans SHOULD follow each fenced
+     YAML entry. Entries are enforced by scripts/validate-stack-knowledge.py
+     (schema + forbidden-heading lint + within-file hash uniqueness) and
+     scripts/ci-check-stack-knowledge.py (cross-file hash uniqueness).
+
+     Do NOT create a `## Known Issues` heading — that heading is forbidden
+     by the validator. Migrate legacy Known Issues prose to Stack Knowledge
+     entries via scripts/migrate-known-issues.py (two-phase, approval-gated).
+     ========================================================================= -->
+
 <!-- Include the Deploy Interface section for hosting and database stack files.
      deploy.md and teardown.md reference these subsections by name.
      Omit this section for non-hosting/non-database stacks (analytics, payment, etc.). -->

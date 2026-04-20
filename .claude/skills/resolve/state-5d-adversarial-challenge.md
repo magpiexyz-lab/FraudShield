@@ -5,16 +5,27 @@
 
 **ACTIONS:**
 
-The adversarial challenge adapts based on `solve_depth`:
+The adversarial challenge adapts based on `solve_depth`.
+
+#### Learned-pattern vector (optional)
+
+Before spawning the challenger/critic, check `.runs/resolve-triage.json.pattern_hints`.
+If non-empty, include a `Learned Patterns` block in the agent prompt listing
+each hint's `id`, `maturity`, `occurrence_count`, and `root_cause_class`. The
+challenger uses these as an extra challenge vector: "pattern &lt;id&gt; has recurred
+&lt;occurrence_count&gt; times — does the proposed fix target its stated
+`root_cause_class` or merely its `symptom_keywords`?". When `pattern_hints` is
+empty (the common case when Stack Knowledge has no matches), skip this block.
 
 #### Light mode adversarial challenge
 
 Spawn the `resolve-challenger` Named agent (`subagent_type: resolve-challenger`).
 
 Pass in the agent prompt: all fix plans from Step 5 (root cause, fix plan,
-blast radius, prevention_analysis). The agent definition at
-`.claude/agents/resolve-challenger.md` contains the full challenge protocol
-(3 vectors: configuration counterexample, blast radius gap, regression vector).
+blast radius, prevention_analysis), plus the Learned Patterns block above when
+present. The agent definition at `.claude/agents/resolve-challenger.md` contains
+the full challenge protocol (3 vectors: configuration counterexample, blast
+radius gap, regression vector).
 
 After the agent returns:
 1. Read the agent's trace at `.runs/agent-traces/resolve-challenger.json`
@@ -35,8 +46,9 @@ the override reason, and the raw agent output so the user can see the override.
 Spawn the `solve-critic` Named agent (`subagent_type: solve-critic`).
 Pass `--context .runs/resolve-context.json` and `problem_type = "defect"` in the
 agent prompt. Include the 3 domain-specific challenge vectors (configuration
-counterexample, blast radius gap, regression vector) as additional instructions
-in the critic prompt.
+counterexample, blast radius gap, regression vector) plus the Learned Patterns
+block from above (when `pattern_hints` non-empty) as additional instructions in
+the critic prompt.
 
 The solve-critic writes its trace to `.runs/agent-traces/solve-critic.json`.
 If round 2 is needed (TYPE A count > 0), re-spawn solve-critic with round 2

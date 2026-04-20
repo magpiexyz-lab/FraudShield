@@ -919,7 +919,7 @@ The callback URL for all providers is: `https://<ref>.supabase.co/auth/v1/callba
 **Manual fallback:** Supabase Dashboard → Authentication → Providers → enable the provider
 → paste Client ID and Secret from the provider's developer console.
 
-## Known Issues
+## Stack Knowledge
 
 ### When a signup or profile API route inserts a user row, use the session email — never the body-supplied email
 If a project adds a server-side API route that mirrors signup to a database table (e.g., `src/app/api/auth/signup/route.ts` inserting into a `profiles` table), the client-supplied email in the POST body cannot be trusted. An attacker who has authenticated with email A can pass email B in the request body and insert a row under email B's identity. Always derive the email from the verified auth session:

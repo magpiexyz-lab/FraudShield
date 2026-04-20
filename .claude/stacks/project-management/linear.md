@@ -100,7 +100,7 @@ Notes:
 
 When `framework/nextjs` is absent (e.g., `runtime: hono`, `runtime: virtuals-acp`, or CLI archetype without webhook ingress), the Next.js-specific handler above does not apply. For `hono`, mount an equivalent route that reads the raw body, runs the same `verifyLinearSignature` HMAC check, and validates the payload with the same Zod schema — import the verification function from `src/lib/linear-webhook.ts` (factor it out of the handler) so both runtimes share it. For `virtuals-acp`, webhook ingress is out of scope — Linear events should be polled or relayed through a separate Next.js or hono service. For the `cli` archetype, this stack is not applicable; use the Linear API client directly from commands instead.
 
-## Known Issues
+## Stack Knowledge
 
 ### Webhook payload size
 Linear webhook payloads can be large (especially for Issue updates with full descriptions). Ensure your deployment platform's request body size limit is sufficient (Vercel default: 4.5 MB for serverless, which is adequate).

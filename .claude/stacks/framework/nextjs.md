@@ -323,7 +323,7 @@ import { NavBar } from "@/components/nav-bar";
 - Validate all API route inputs with zod before processing
 - Return generic error messages to the client — do not leak stack traces or internal details
 
-## Known Issues
+## Stack Knowledge
 
 ### When verifying shared secrets in API routes (cron triggers, webhooks)
 Use `crypto.timingSafeEqual` instead of `===` or `!==`. String equality is vulnerable to timing side-channels — an attacker can infer secret characters by measuring response-time differences.

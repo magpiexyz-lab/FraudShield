@@ -1,0 +1,233 @@
+"""Tests for scripts/lib/stack_knowledge_parser.py."""
+
+import os
+import sys
+
+import pytest
+
+sys.path.insert(0, os.path.dirname(__file__))
+
+from lib.stack_knowledge_parser import (
+    canonicalize,
+    compute_hash,
+    parse_stack_knowledge,
+    REQUIRED_FIELDS,
+    MATURITY_VALUES,
+    COMPOSITE_KEYS,
+)
+
+
+class TestCanonicalize:
+    def test_trailing_space(self):
+        assert canonicalize("foo ") == "foo"
+
+    def test_leading_space(self):
+        assert canonicalize(" foo") == "foo"
+
+    def test_case(self):
+        assert canonicalize("FOO") == "foo"
+        assert canonicalize("Foo Bar") == "foo bar"
+
+    def test_hyphen_underscore_equivalence(self):
+        assert canonicalize("foo-bar") == canonicalize("foo_bar") == canonicalize("foo bar") == "foo bar"
+
+    def test_collapses_internal_whitespace(self):
+        assert canonicalize("a    b\t\tc") == "a b c"
+
+    def test_unicode_passthrough(self):
+        assert canonicalize("Café") == "café"
+
+    def test_empty_string(self):
+        assert canonicalize("") == ""
+
+    def test_raises_on_non_string(self):
+        with pytest.raises(TypeError):
+            canonicalize(42)  # type: ignore[arg-type]
+
+
+class TestComputeHash:
+    def _base(self):
+        return {
+            "root_cause_class": "missing-archetype-guard",
+            "divergence_pattern": "skill-branches-only-two-archetypes",
+            "stack_scope": "archetypes/cli",
+        }
+
+    def test_length_is_12(self):
+        h = compute_hash(self._base())
+        assert len(h) == 12
+        assert all(c in "0123456789abcdef" for c in h)
+
+    def test_canonicalization_invariance(self):
+        """Surface-different composites that canonicalize identically must hash identically."""
+        a = {
+            "root_cause_class": "Missing-Archetype-Guard",
+            "divergence_pattern": "skill-branches-only-two-archetypes ",
+            "stack_scope": "Archetypes/Cli",
+        }
+        b = {
+            "root_cause_class": "missing_archetype guard",
+            "divergence_pattern": "  SKILL_BRANCHES only two archetypes",
+            "stack_scope": "archetypes/cli",
+        }
+        c = {
+            "root_cause_class": "missing archetype guard",
+            "divergence_pattern": "skill branches only two archetypes",
+            "stack_scope": "archetypes/CLI",
+        }
+        assert compute_hash(a) == compute_hash(b) == compute_hash(c)
+
+    def test_slash_preserved(self):
+        """Slashes (common in stack_scope paths) are not whitespace-equivalent."""
+        with_slash = {"root_cause_class": "x", "divergence_pattern": "y", "stack_scope": "framework/nextjs"}
+        with_space = {"root_cause_class": "x", "divergence_pattern": "y", "stack_scope": "framework nextjs"}
+        assert compute_hash(with_slash) != compute_hash(with_space)
+
+    def test_stable_under_key_reordering(self):
+        a = {
+            "root_cause_class": "x",
+            "divergence_pattern": "y",
+            "stack_scope": "z",
+        }
+        b = {
+            "stack_scope": "z",
+            "divergence_pattern": "y",
+            "root_cause_class": "x",
+        }
+        assert compute_hash(a) == compute_hash(b)
+
+    def test_different_composite_hashes_differently(self):
+        a = {"root_cause_class": "a", "divergence_pattern": "b", "stack_scope": "c"}
+        d = {"root_cause_class": "a", "divergence_pattern": "b", "stack_scope": "different"}
+        assert compute_hash(a) != compute_hash(d)
+
+    def test_missing_keys_default_empty(self):
+        """A composite with missing keys still hashes (empty string slot), doesn't crash."""
+        assert len(compute_hash({"root_cause_class": "foo"})) == 12
+
+    def test_raises_on_non_dict(self):
+        with pytest.raises(TypeError):
+            compute_hash("not a dict")  # type: ignore[arg-type]
+
+
+class TestParseStackKnowledge:
+    def test_empty_file(self):
+        assert parse_stack_knowledge("") == []
+
+    def test_missing_section(self):
+        content = "# Framework: Next.js\n\nSome prose.\n\n## Patterns\nfoo"
+        assert parse_stack_knowledge(content) == []
+
+    def test_single_entry(self):
+        content = """# Framework
+
+## Stack Knowledge
+
+```yaml
+id: nextjs-demo-guard
+maturity: canonical
+composite_identity:
+  root_cause_class: demo-mode-leak
+  divergence_pattern: env-var-check-missing
+  stack_scope: framework/nextjs
+composite_identity_hash: abcdef012345
+symptom_keywords: [demo, production]
+fix_template: Add VERCEL guard before DEMO_MODE check
+prevention_mechanism: validator
+confidence_score: 1.0
+occurrence_count: 1
+linked_issues: []
+first_seen: 2026-01-01
+last_seen: 2026-01-01
+graduated_to: null
+```
+
+Prose follows the fence.
+"""
+        entries = parse_stack_knowledge(content)
+        assert len(entries) == 1
+        assert entries[0]["id"] == "nextjs-demo-guard"
+        assert entries[0]["maturity"] == "canonical"
+
+    def test_multiple_entries(self):
+        content = """## Stack Knowledge
+
+```yaml
+id: one
+maturity: raw
+```
+
+Some prose.
+
+```yaml
+id: two
+maturity: stable
+```
+"""
+        entries = parse_stack_knowledge(content)
+        assert [e["id"] for e in entries] == ["one", "two"]
+
+    def test_stops_at_next_h2(self):
+        content = """## Stack Knowledge
+
+```yaml
+id: kept
+```
+
+## Other Section
+
+```yaml
+id: skipped
+```
+"""
+        entries = parse_stack_knowledge(content)
+        assert [e["id"] for e in entries] == ["kept"]
+
+    def test_malformed_yaml_skipped(self):
+        content = """## Stack Knowledge
+
+```yaml
+id: good
+maturity: raw
+```
+
+```yaml
+this: is:: not: valid: yaml: ::
+  - broken
+```
+
+```yaml
+id: also-good
+```
+"""
+        entries = parse_stack_knowledge(content)
+        ids = [e.get("id") for e in entries]
+        assert "good" in ids
+        assert "also-good" in ids
+
+    def test_non_yaml_fence_ignored(self):
+        content = """## Stack Knowledge
+
+```bash
+echo "not a yaml entry"
+```
+
+```yaml
+id: real
+```
+"""
+        entries = parse_stack_knowledge(content)
+        assert len(entries) == 1
+        assert entries[0]["id"] == "real"
+
+
+class TestConstants:
+    def test_required_fields_contains_identity_hash(self):
+        assert "composite_identity_hash" in REQUIRED_FIELDS
+        assert "composite_identity" in REQUIRED_FIELDS
+
+    def test_maturity_values(self):
+        assert MATURITY_VALUES == {"raw", "stable", "canonical"}
+
+    def test_composite_keys(self):
+        assert COMPOSITE_KEYS == ("root_cause_class", "divergence_pattern", "stack_scope")

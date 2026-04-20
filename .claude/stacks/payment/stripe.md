@@ -283,7 +283,7 @@ Notes:
 - `pay_success`: fired server-side in the webhook handler via `trackServerEvent()` from `analytics-server.ts` after confirming `checkout.session.completed` — includes all required properties (`plan`, `amount_cents`, `provider`)
 - See experiment/EVENTS.yaml for the full property spec for both events
 
-## Known Issues
+## Stack Knowledge
 
 ### When deduplicating Stripe webhook replays, use INSERT + catch PG `23505` (already baked into the template)
 Stripe delivers at-least-once, so webhook replays are expected. The route template above uses the correct pattern: `INSERT INTO stripe_events(stripe_event_id)` and catch PostgreSQL error code `23505` (unique_violation) as a successful no-op. **Do NOT rewrite this as a SELECT-then-INSERT check** — that is a Time-of-Check-Time-of-Use (TOCTOU) race: two concurrent deliveries of the same event ID can both pass the SELECT and both INSERT, causing duplicate side-effects (double payment processing, double `trackServerEvent("pay_success")`). The INSERT + catch-`23505` pattern is atomic at the database level via the `PRIMARY KEY` on `stripe_event_id`; keep it.

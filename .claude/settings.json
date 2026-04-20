@@ -84,6 +84,11 @@
           },
           {
             "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/resolve-learnings-gate.sh",
+            "timeout": 30
+          },
+          {
+            "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/design-ux-merge-gate.sh",
             "timeout": 30
           },
@@ -125,6 +130,11 @@
           {
             "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/patterns-saved-gate.sh",
+            "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/resolve-learnings-gate.sh",
             "timeout": 30
           },
           {

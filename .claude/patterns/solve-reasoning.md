@@ -98,7 +98,13 @@ Launch 3 agents concurrently:
 > solve this problem. For each finding: what it does + what gap remains.
 >
 > Search targets: demo modes, test fixtures, mocks, fallbacks, guards, gates,
-> env vars, scripts, similar patterns in other files, related config.
+> env vars, scripts, similar patterns in other files, related config, and the
+> optional `## Stack Knowledge` sections across `.claude/stacks/**/*.md` —
+> for each entry whose `composite_identity` matches the problem's derived
+> composite (see `scripts/lib/stack_knowledge_parser.py`), surface its
+> `fix_template` as prior art tagged with the entry's `id`, `maturity`, and
+> `occurrence_count`. Missing sections are expected (HC3) — absence is not
+> a finding, just skip.
 >
 > Output: list of findings, each with: file path, what it does, gap remaining.
 

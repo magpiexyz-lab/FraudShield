@@ -2,6 +2,9 @@
 
 **PRECONDITIONS:**
 - Context files read (STATE 1 POSTCONDITIONS met)
+- Optional: parse `## Stack Knowledge` sections across `.claude/stacks/**/*.md`
+  into memory using `scripts/lib/stack_knowledge_parser.py::parse_stack_knowledge`.
+  Absent section = empty list; missing files = empty list (HC3 — never blocking).
 
 **ACTIONS:**
 
@@ -258,6 +261,22 @@ resolved as non-actionable or deferred — no Phase 2 diagnosis needed." If arch
 for each. For cross-batch consolidations, report: "Issue #NEW consolidated into existing #EXISTING (<root-cause>)."
 Stop here.
 
+### Pattern hints (advisory — zero-assumption first)
+
+After default classification completes, for every issue classified as actionable
+(Bug / Gap / Inconsistency / Regression / Observation), compute a preliminary
+`composite_identity` using the same keys as STATE 9
+(`root_cause_class`, `divergence_pattern`, `stack_scope`) and the same
+canonicalization + 12-char sha1 hash (`scripts/lib/stack_knowledge_parser.py::compute_hash`).
+
+For each issue, query matching entries from the Stack Knowledge index loaded in
+PRECONDITIONS. A match is an entry whose `composite_identity_hash` equals the
+issue's preliminary hash.
+
+Record matches as `pattern_hints` — advisory only. They do NOT replace the
+default classification, do NOT change the triage table presentation, and do NOT
+skip the user-approval STOP below. They inform downstream states (5, 5d, 7).
+
 **STOP. Present the triage table to the user and wait for approval before
 proceeding to Phase 2.** The user may reclassify issues or remove them from scope.
 
@@ -275,7 +294,8 @@ proceeding to Phase 2.** The user may reclassify issues or remove them from scop
       'closed_count': 0,
       'deferred_count': 0,
       'consolidated_count': 0,  # within-batch consolidated issues created (0 if no consolidation)
-      'cross_batch_consolidated_count': 0  # issues merged into existing architecture issues
+      'cross_batch_consolidated_count': 0,  # issues merged into existing architecture issues
+      'pattern_hints': []  # optional; [{'issue': N, 'id': '<entry-id>', 'stack_file': '<path>', 'maturity': '<m>', 'occurrence_count': <int>, 'fix_template': '<string>'}, ...]
   }
   json.dump(triage, open('.runs/resolve-triage.json', 'w'), indent=2)
   "

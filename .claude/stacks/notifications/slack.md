@@ -92,7 +92,7 @@ Notes:
 - Only `https:` protocol is accepted — never allow `http:` for webhook URLs
 - Log SSRF attempts server-side for security monitoring
 
-## Known Issues
+## Stack Knowledge
 
 ### Slack webhook URL format changes
 Slack may change their webhook URL format in the future. If `hooks.slack.com` is deprecated, update the `ALLOWED_SLACK_DOMAINS` list. The current format is `https://hooks.slack.com/services/T.../B.../...`.

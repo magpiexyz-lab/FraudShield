@@ -876,7 +876,7 @@ Add this job to `.github/workflows/ci.yml` after the `e2e` job. It runs page-loa
 - `e2e/.auth.json` is gitignored — contains test credentials that should not be committed
 - Test users are created and deleted per run — no persistent test accounts
 
-## Known Issues
+## Stack Knowledge
 
 ### Strict-mode violations with repeated text across page sections
 When asserting text that appears in multiple page sections (e.g., a pricing string like "$297" in hero, features, and pricing sections), `getByText()` in strict mode fails because it resolves to multiple elements. Scope the locator to a specific section or use `.first()` — e.g., `page.getByText("$297").first()`.

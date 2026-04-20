@@ -96,7 +96,7 @@ Notes:
 |----------|-------------|
 | `LINEAR_WEBHOOK_SECRET` | Webhook signing secret from Linear (Settings > API > Webhooks) |
 
-## Known Issues
+## Stack Knowledge
 
 ### Webhook payload size
 Linear webhook payloads can be large (especially for Issue updates with full descriptions). Ensure your deployment platform's request body size limit is sufficient (Vercel default: 4.5 MB for serverless, which is adequate).
