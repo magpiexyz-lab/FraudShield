@@ -81,7 +81,7 @@ print('Wrote .runs/q-dimensions.json')
 
 **VERIFY:**
 ```bash
-test -f .runs/commit-message.txt && test -f .runs/pr-title.txt && test -f .runs/pr-body.md
+python3 -c "import os,re; [None for f in ('.runs/commit-message.txt','.runs/pr-title.txt','.runs/pr-body.md') if not os.path.isfile(f) and (_ for _ in ()).throw(AssertionError(f+' missing'))]; cm=open('.runs/commit-message.txt').read().strip(); assert re.match(r'^[A-Z][a-z]+\s', cm), 'commit-message first line not imperative mood: %r' % cm.split(chr(10))[0]; pt=open('.runs/pr-title.txt').read().strip(); assert 0 < len(pt) <= 70, 'pr-title length=%d (must be 1..70 chars)' % len(pt); pb=open('.runs/pr-body.md').read(); assert 'Generated with' in pb, 'pr-body.md missing PR template footer (Generated with [Claude Code])'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
