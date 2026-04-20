@@ -33,3 +33,6 @@ jobs:
 
       - name: Cross-file uniqueness
         run: python3 scripts/ci-check-stack-knowledge.py
+
+      - name: Convergence config validate
+        run: python3 scripts/validate-convergence-config.py

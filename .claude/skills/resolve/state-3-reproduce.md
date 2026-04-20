@@ -99,4 +99,4 @@ python3 -c "import json; d=json.load(open('.runs/resolve-reproduction.json')); r
 bash .claude/scripts/advance-state.sh resolve 3
 ```
 
-**NEXT:** Read [state-4-blast-radius.md](state-4-blast-radius.md) to continue.
+**NEXT:** Read [state-3b-causal-analysis.md](state-3b-causal-analysis.md) to continue.

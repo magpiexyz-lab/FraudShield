@@ -6,6 +6,42 @@
 
 **ACTIONS:**
 
+### Step 0 — Short-circuit on delivery-skip.flag
+
+If `.runs/delivery-skip.flag` exists, the run was halted earlier (most likely
+at STATE 3b oscillation escalation) and no PR should be opened. Skip the
+normal delivery artifact generation and advance — `lifecycle-finalize.sh`
+already honors the flag and will bypass commit/push/PR creation.
+
+```bash
+if [ -f .runs/delivery-skip.flag ]; then
+  cat .runs/delivery-skip.flag
+  # Defensive: if STATE 3b escalation did not file an issue (gh_failed path),
+  # file a minimal one here so the halt is auditable on GitHub.
+  python3 -c "
+import json, os, subprocess, sys
+a = json.load(open('.runs/resolve-causal-analysis.json')) if os.path.exists('.runs/resolve-causal-analysis.json') else {}
+if a.get('halted') and not a.get('escalation_issue_url'):
+    dps = a.get('divergence_points_analyzed', [])
+    loc = dps[0]['divergence_point'] if dps else 'unknown'
+    try:
+        url = subprocess.check_output([
+            'gh','issue','create',
+            '--repo','magpiexyz-lab/mvp-template',
+            '--label','oscillation-escalation',
+            '--title', f'[escalation] /resolve halted: oscillation at {loc}',
+            '--body', 'Auto-filed defensive escalation (STATE 3b dispatch did not record a URL).'
+        ], text=True).strip()
+        a['escalation_issue_url'] = url
+        json.dump(a, open('.runs/resolve-causal-analysis.json','w'), indent=2)
+    except Exception as e:
+        print(f'defensive escalation file failed: {e}', file=sys.stderr)
+"
+  bash .claude/scripts/advance-state.sh resolve 11
+  exit 0
+fi
+```
+
 Read `resolve-context.json` and check the `mode` field.
 
 ### Write delivery artifacts
@@ -76,7 +112,7 @@ End with: `🤖 Generated with [Claude Code](https://claude.com/claude-code)`
 
 **VERIFY:**
 ```bash
-python3 -c "import os,re,json; [None for f in ('.runs/commit-message.txt','.runs/pr-title.txt','.runs/pr-body.md') if not os.path.isfile(f) and (_ for _ in ()).throw(AssertionError(f+' missing'))]; cm=open('.runs/commit-message.txt').read().strip(); assert re.match(r'^[A-Z][a-z]+\s', cm), 'commit-message first line not imperative mood: %r' % cm.split(chr(10))[0]; pt=open('.runs/pr-title.txt').read().strip(); assert 0 < len(pt) <= 70, 'pr-title length=%d (must be 1..70 chars)' % len(pt); pb=open('.runs/pr-body.md').read(); assert 'Generated with' in pb, 'pr-body.md missing PR template footer'; ctx=json.load(open('.runs/resolve-context.json')); rejected=set(ctx.get('rejected_issues') or []); issues=[i.get('number') for i in ctx.get('issue_list',[]) if i.get('number') not in rejected]; assert not issues or ('Closes #' in pb), 'pr-body.md missing Closes #N line for resolved issues'"
+python3 -c "import os,re,json,sys; skip=os.path.isfile('.runs/delivery-skip.flag'); sys.exit(0) if skip else None; [None for f in ('.runs/commit-message.txt','.runs/pr-title.txt','.runs/pr-body.md') if not os.path.isfile(f) and (_ for _ in ()).throw(AssertionError(f+' missing'))]; cm=open('.runs/commit-message.txt').read().strip(); assert re.match(r'^[A-Z][a-z]+\s', cm), 'commit-message first line not imperative mood: %r' % cm.split(chr(10))[0]; pt=open('.runs/pr-title.txt').read().strip(); assert 0 < len(pt) <= 70, 'pr-title length=%d (must be 1..70 chars)' % len(pt); pb=open('.runs/pr-body.md').read(); assert 'Generated with' in pb, 'pr-body.md missing PR template footer'; ctx=json.load(open('.runs/resolve-context.json')); rejected=set(ctx.get('rejected_issues') or []); issues=[i.get('number') for i in ctx.get('issue_list',[]) if i.get('number') not in rejected]; assert not issues or ('Closes #' in pb), 'pr-body.md missing Closes #N line for resolved issues'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

@@ -73,6 +73,18 @@ def _validate_entry(entry: dict, index: int) -> list[str]:
     if not isinstance(symptoms, list):
         errs.append(f"{prefix} symptom_keywords must be a list")
 
+    if entry.get("anti_pattern") is True:
+        prev = entry.get("prevention_mechanism")
+        if not isinstance(prev, str) or not prev.strip():
+            errs.append(
+                f"{prefix} anti_pattern=true requires non-empty prevention_mechanism"
+            )
+        if maturity != "canonical":
+            errs.append(
+                f"{prefix} anti_pattern=true requires maturity='canonical' "
+                f"(got {maturity!r})"
+            )
+
     return errs
 
 

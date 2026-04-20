@@ -368,7 +368,7 @@ No branch → analysis-only → no PR, no verify auto-append, Strategy B epilogu
 
 ```yaml
 branch: "fix/resolve-{slug}"
-states: ["0","1","2","3","4","4b","5","5d","6","7","8","8b","9","9a","10","11"]
+states: ["0","1","2","3","3b","4","4b","5","5d","6","7","8","8b","9","9a","10","11"]
 agents:
   resolve-challenger:
     after: ["5"]

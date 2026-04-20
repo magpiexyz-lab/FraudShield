@@ -97,6 +97,23 @@ Skip Steps 1–5 (leave `learnings=[]`, set `skipped_reason`) when all resolved
 issues are trivial (typo fixes, single-character changes, etc.) unlikely to
 recur.
 
+### Step 6b — Emit anti-pattern entries (issue-body marker)
+
+For each issue being saved, read the original issue body (fetched earlier in
+the run and available via `gh issue view <N> --json body`). If it contains
+the literal marker `<!-- anti-pattern: true -->`, the emitted Stack Knowledge
+entry MUST set:
+
+- `anti_pattern: true`
+- `maturity: canonical` (anti-patterns are never `raw` — they encode a
+  known-bad direction)
+- `fix_template` describes what NOT to do at this location (the schema reuses
+  the field; semantics shift on `anti_pattern`)
+- `prevention_mechanism` is required and non-empty (validator, guard, test)
+
+This is the only automated path to creating anti-pattern entries. /resolve
+never self-classifies a fix as an anti-pattern.
+
 ### Step 7 — Write new artifact `.runs/resolve-learnings.json`
 
 ```bash
@@ -131,6 +148,37 @@ legacy = {
     'skipped_reason': ''
 }
 json.dump(legacy, open('.runs/patterns-saved.json', 'w'), indent=2)
+"
+```
+
+### Step 9 — Append convergence history
+
+After the learnings artifact is written, append one line to
+`.runs/convergence-history.jsonl` (create if absent) summarizing this run.
+This log is consumed only by `.claude/scripts/convergence-report.py` — no
+skill state reads it during execution.
+
+```bash
+python3 -c "
+import json, os, datetime
+ctx = json.load(open('.runs/resolve-context.json'))
+causal_path = '.runs/resolve-causal-analysis.json'
+causal = json.load(open(causal_path)) if os.path.exists(causal_path) else {}
+dps = causal.get('divergence_points_analyzed', []) or []
+osc_sum = sum(int(dp.get('oscillation_count') or 0) for dp in dps)
+patterns = [dp['anti_pattern_match']['id'] for dp in dps if dp.get('anti_pattern_match')]
+files_touched = sorted({dp.get('divergence_point','').split(':',1)[0] for dp in dps if dp.get('divergence_point')})
+entry = {
+    'run_id': ctx.get('run_id',''),
+    'timestamp': datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+    'divergence_points_analyzed': len(dps),
+    'oscillation_count_sum': osc_sum,
+    'halted': bool(causal.get('halted')),
+    'files_touched': files_touched,
+    'patterns_matched': patterns,
+}
+with open('.runs/convergence-history.jsonl', 'a') as f:
+    f.write(json.dumps(entry) + '\n')
 "
 ```
 
