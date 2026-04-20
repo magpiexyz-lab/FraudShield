@@ -71,7 +71,7 @@ src/
   app/              # App Router pages and API routes
     layout.tsx      # Root layout — <html>, <body>, metadata, globals.css import
     page.tsx        # Landing page (/)
-    not-found.tsx   # 404 page with link back to /
+    not-found.tsx   # 404 page with link back to / — MUST export a `metadata` object
     error.tsx       # Error boundary with "use client", user-friendly message, retry + home link
     icon.tsx        # Dynamic favicon -- monogram in primary color (Next.js Metadata File API)
     opengraph-image.tsx  # Dynamic OG image -- branded card (Next.js Metadata File API)
@@ -216,6 +216,59 @@ Notes:
 - Always include both a retry button (`reset()`) and a navigation link — if the error is persistent, the user needs an escape route
 - The `Link` import is from `next/link`; the `Button` import assumes shadcn/ui is present (when `stack.ui: shadcn`, which is the default)
 
+## Accessibility
+
+> This section is **unconditional** — it applies to every web-app bootstrap regardless of `stack.analytics`, `stack.auth`, or variants.
+
+### Root layout — skip-nav link + `<main id="main-content">` for WCAG 2.4.1 (Bypass Blocks)
+
+The root `<body>` must include a visually-hidden skip-navigation anchor before the first visible navigation block, and the `<main>` wrapper around `{children}` must carry `id="main-content"` so the anchor can target it. Keyboard users tab to the skip link first and jump past every repeated nav item.
+
+```tsx
+// In src/app/layout.tsx <body>:
+// Added by scaffold-wire Step 5c when stack.auth is present:
+import { NavBar } from "@/components/nav-bar";
+// Added by scaffold-wire Step 5c when stack.analytics is present:
+import { RetainTracker } from "@/components/RetainTracker";
+
+<a
+  href="#main-content"
+  className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:px-4 focus:py-2 focus:bg-background focus:text-foreground focus:rounded"
+>
+  Skip to main content
+</a>
+{/* Only when stack.auth is present — scaffold-wire Step 5c adds this: */}
+<NavBar />
+<main id="main-content">{children}</main>
+{/* Only when stack.analytics is present — scaffold-wire Step 5c adds this: */}
+<RetainTracker />
+```
+
+Both additions (the `<a>` skip link and `id="main-content"` on `<main>`) are required for WCAG 2.4.1 to pass. Without the skip link, keyboard-only users must tab through every nav item on every page; without the matching `id`, the skip link has nowhere to jump.
+
+### Multi-nav layouts — unique `aria-label` on each `<nav>`; decorative logos `alt=""`
+
+Pages that render more than one `<nav>` (e.g., top NavBar + landing-page marketing nav, or NavBar + footer) must give each `<nav>` element a unique `aria-label`. Without labels, screen readers announce both as "navigation" with no way for the user to distinguish them.
+
+```tsx
+<nav aria-label="Primary">{/* main NavBar */}</nav>
+<nav aria-label="Footer">{/* footer nav */}</nav>
+```
+
+When a logo `<img>` or `<Image>` is placed directly next to visible brand text, set `alt=""` and `aria-hidden="true"` on the image so the brand name is not announced twice.
+
+```tsx
+import Image from "next/image";
+import Link from "next/link";
+
+<Link href="/" className="flex items-center gap-2">
+  <Image src="/images/logo.svg" alt="" aria-hidden width={32} height={32} />
+  <span>APP_NAME</span>
+</Link>
+```
+
+If the logo is standalone (no adjacent brand text), keep `alt="APP_NAME"` — only decorate with `alt=""` when the text is already announced.
+
 ## retain_return Tracking
 
 When `stack.analytics` is absent: skip this entire section — the RetainTracker component exists solely to fire analytics events.
@@ -257,10 +310,11 @@ import { RetainTracker } from "@/components/RetainTracker";
 // Added by scaffold-wire Step 5c when stack.auth is present:
 import { NavBar } from "@/components/nav-bar";
 
-// Inside the <body> tag:
-<NavBar />    {/* Only when stack.auth is present — scaffold-wire Step 5c */}
-<main>{children}</main>
-<RetainTracker />  {/* Only when stack.analytics is present — scaffold-wire Step 5c */}
+// Inside the <body> tag — see the Accessibility section above for the full
+// skip-nav link + <main id="main-content"> pattern that applies unconditionally:
+<NavBar />           {/* Only when stack.auth is present — scaffold-wire Step 5c */}
+<main id="main-content">{children}</main>
+<RetainTracker />    {/* Only when stack.analytics is present — scaffold-wire Step 5c */}
 ```
 
 ## Security
@@ -311,8 +365,44 @@ function sanitizeFilename(name: string): string {
 const key = `uploads/${crypto.randomUUID()}/${sanitizeFilename(file.name)}`;
 ```
 
-### Zod v4: use `z.uuid()` instead of `z.string().uuid()`
-Zod v4 renamed `z.string().uuid()` to `z.uuid()`. The old form is deprecated (console warning) but still functional. Use `z.uuid()` in all new code. If a project pins Zod v3 in `package-lock.json`, `z.uuid()` will cause a compile error — revert to `z.string().uuid()` in that case.
+### Zod v4: use top-level string-format validators (`z.uuid()`, `z.url()`, `z.email()`)
+Zod v4 promoted all string-format validators to top-level factories: `z.string().uuid()` → `z.uuid()`, `z.string().url()` → `z.url()`, `z.string().email()` → `z.email()`, `z.string().cuid()` → `z.cuid()`, `z.string().nanoid()` → `z.nanoid()`. The old `.string().<format>()` forms are deprecated (console warning) but still functional. Use the top-level forms in all new code. If a project pins Zod v3 in `package-lock.json`, the top-level forms cause compile errors — revert to `z.string().<format>()`.
+
+### Next.js 16: `src/middleware.ts` → `src/proxy.ts`
+Next.js 16 deprecated the `middleware.ts` filename in favour of `proxy.ts`. The exported function and `config` are unchanged — only the filename moves. New projects on Next.js 16+ should scaffold `src/proxy.ts` directly. Existing projects on Next.js 16 emit a console warning on every `npm run dev` / `npm run build` until renamed. When migrating, do one `git mv src/middleware.ts src/proxy.ts` — no code changes required. Update `package-lock.json`-pinned projects on Next.js 15 or earlier stay on `middleware.ts`.
+
+### React 19: use `React.SyntheticEvent<HTMLFormElement>` for onSubmit handler types
+`React.FormEvent<HTMLFormElement>` is deprecated in React 19 types — it emits a TypeScript deprecation warning during `npm run build`. The correct replacement is `React.SyntheticEvent<HTMLFormElement>`, which covers the same surface and does not trigger the warning. Write the handler signature as `async function onSubmit(e: React.SyntheticEvent<HTMLFormElement>) { ... }` (never `React.FormEvent<...>`).
+
+This applies to every form handler in auth pages (signup, login, password reset), settings forms, and any custom form UI.
+
+### When accessibility scanner reports duplicate `<nav>` landmark regions or duplicate brand announcement
+See the "Multi-nav layouts" entry under `## Accessibility` above. Two `<nav>` elements on the same page require unique `aria-label` values; a logo image adjacent to visible brand text requires `alt=""` + `aria-hidden` so the brand name is not announced twice.
+
+### When keyboard accessibility scan reports missing skip-navigation link (WCAG 2.4.1)
+See the "Root layout — skip-nav link" entry under `## Accessibility` above. The layout must include a visually-hidden `<a href="#main-content">` anchor before the first visible navigation block, and `<main>` must carry `id="main-content"`. Both are required — the anchor alone without the matching id fails.
+
+### `src/app/not-found.tsx` must export a `metadata` object
+The 404 page has no `<title>` without an explicit `metadata` export, which fails a11y / SEO audits. Add a static `metadata` export at the top of `src/app/not-found.tsx`:
+
+```tsx
+// src/app/not-found.tsx
+import Link from "next/link";
+
+export const metadata = { title: "Page Not Found" };
+
+export default function NotFound() {
+  return (
+    <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4 text-center">
+      <h1 className="text-2xl font-bold">Page not found</h1>
+      <p className="text-muted-foreground">The page you&apos;re looking for doesn&apos;t exist.</p>
+      <Link href="/" className="underline">Back to home</Link>
+    </div>
+  );
+}
+```
+
+`generateMetadata()` is NOT needed — `not-found.tsx` is a static route so the object export is sufficient.
 
 ### When a let variable is always overwritten in the try block (no-useless-assignment)
 Declare the variable with a type annotation and no initial value: `let x: string;` instead of `let x = "placeholder";`. The `@typescript-eslint/no-useless-assignment` lint rule (from `tseslint.configs.recommended`) fires when the initial value is never read because every branch (try + catch) reassigns the variable before use. An initial value suggests a fallback that isn't actually used.

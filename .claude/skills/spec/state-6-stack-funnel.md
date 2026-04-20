@@ -176,7 +176,12 @@ Present the derived EVENTS.yaml alongside experiment.yaml for review.
 ### CHECKPOINT
 
 Present the assembled experiment.yaml and EVENTS.yaml in full. Then say:
-> **Review the experiment specification and analytics events above.**
+> **Review the assembled experiment specification above.**
+>
+> `experiment/experiment.yaml` has been progressively written during STATES 2–6
+> — each state's VERIFY gate requires its fields to be on disk. `experiment/EVENTS.yaml`
+> is assembled in-memory here and written alongside the other delivery artifacts
+> (`.runs/spec-manifest.json`, Q-score) in STATE 7.
 >
 > - Check that hypotheses match your intuition
 > - Check that behaviors cover what you want to test
@@ -184,11 +189,13 @@ Present the assembled experiment.yaml and EVENTS.yaml in full. Then say:
 > - Check that the stack matches your needs
 > - Check that analytics events cover the key actions you want to measure
 >
-> Reply **approve** to write the files, or tell me what to change.
+> Reply **approve** to advance to STATE 7 (finalize delivery — writes EVENTS.yaml,
+> spec-manifest.json, and the Q-score), or tell me what to change and I will revise
+> both files in place.
 
-**STOP.** Do NOT write any files until the user explicitly approves.
+**STOP.** Wait for explicit `approve`. The spec is not delivered until STATE 7 completes — this approval gates delivery-artifact writes, not the progressive spec writes (which are already on disk to satisfy the STATE 2–5 VERIFY gates).
 
-If the user requests changes, revise the YAML and/or events and present again. Repeat until approved.
+If the user requests changes, revise `experiment/experiment.yaml` on disk (and the in-memory EVENTS.yaml) and present again. Repeat until approved.
 
 **POSTCONDITIONS:**
 - Complete experiment.yaml assembled with all 7 sections

@@ -72,8 +72,11 @@ export function getStripe(): Stripe {
 ```ts
 import { loadStripe } from "@stripe/stripe-js";
 
+// Use `||` (falsy check) rather than `??` so empty-string env values (common on
+// CI/Vercel when a var is declared but unset) fall back to the placeholder
+// instead of initializing Stripe.js with "" and crashing at load time.
 export const stripePromise = loadStripe(
-  process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? "placeholder-stripe-publishable"
+  process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || "placeholder-stripe-publishable"
 );
 ```
 - Use this in client components to redirect to Stripe Checkout
@@ -165,9 +168,13 @@ Notes:
 ### `src/app/api/webhooks/stripe/route.ts` — Stripe Webhook Handler
 
 When `stack.analytics` is absent: remove the `@/lib/analytics-server` import and the `await trackServerEvent()` call from the template below. The webhook will still process payments correctly without analytics.
+
+The template uses **INSERT + catch PG `23505`** for idempotency (see `supabase/migrations/xxx_stripe_events.sql` below). Stripe delivers at-least-once; a SELECT-then-INSERT check is a TOCTOU race that can double-process the same event under concurrent delivery. The UNIQUE constraint on `stripe_event_id` + the catch of the `23505` unique-violation error code is atomic and safe by default.
+
 ```ts
 import { NextResponse } from "next/server";
 import { getStripe } from "@/lib/stripe";
+import { createServiceRoleClient } from "@/lib/supabase-server";
 import { trackServerEvent } from "@/lib/analytics-server";
 import { rateLimit } from "@/lib/rate-limit";
 
@@ -196,6 +203,21 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Bad request" }, { status: 400 });
   }
 
+  // Idempotency guard: INSERT + catch PG 23505 (unique_violation).
+  // This is atomic — two concurrent deliveries of the same event_id will
+  // produce exactly one successful insert; the other receives 23505 and
+  // exits early with 200 so Stripe does not retry.
+  const supabase = createServiceRoleClient();
+  const { error: insertErr } = await supabase
+    .from("stripe_events")
+    .insert({ stripe_event_id: event.id });
+  if (insertErr) {
+    if ((insertErr as { code?: string }).code === "23505") {
+      return NextResponse.json({ received: true });
+    }
+    return NextResponse.json({ error: "Persistence error" }, { status: 500 });
+  }
+
   if (event.type === "checkout.session.completed") {
     const session = event.data.object;
     const userId = session.metadata?.user_id ?? "unknown";
@@ -211,6 +233,28 @@ export async function POST(request: Request) {
   return NextResponse.json({ received: true });
 }
 ```
+
+#### Idempotency migration (`supabase/migrations/<N>_stripe_events.sql`)
+
+```sql
+create table if not exists stripe_events (
+  stripe_event_id text primary key,
+  received_at timestamptz not null default now()
+);
+
+-- Only the service role writes to this table (webhook handler uses createServiceRoleClient).
+-- No RLS-exposed access from clients.
+alter table stripe_events enable row level security;
+
+drop policy if exists "service role writes stripe events" on stripe_events;
+create policy "service role writes stripe events"
+  on stripe_events
+  for all
+  using (auth.role() = 'service_role')
+  with check (auth.role() = 'service_role');
+```
+
+The primary key on `stripe_event_id` is what makes the INSERT+catch-23505 pattern atomic — PostgreSQL rejects the second insert with `23505` (`unique_violation`) inside the same transaction window as the first.
 
 Notes:
 - Rate limiting: the template includes an in-memory burst limiter with a higher limit (30/min vs 10/min for checkout) since webhooks may receive bursts from Stripe. See the hosting stack file and the checkout route notes above.
@@ -240,6 +284,9 @@ Notes:
 - See experiment/EVENTS.yaml for the full property spec for both events
 
 ## Known Issues
+
+### When deduplicating Stripe webhook replays, use INSERT + catch PG `23505` (already baked into the template)
+Stripe delivers at-least-once, so webhook replays are expected. The route template above uses the correct pattern: `INSERT INTO stripe_events(stripe_event_id)` and catch PostgreSQL error code `23505` (unique_violation) as a successful no-op. **Do NOT rewrite this as a SELECT-then-INSERT check** — that is a Time-of-Check-Time-of-Use (TOCTOU) race: two concurrent deliveries of the same event ID can both pass the SELECT and both INSERT, causing duplicate side-effects (double payment processing, double `trackServerEvent("pay_success")`). The INSERT + catch-`23505` pattern is atomic at the database level via the `PRIMARY KEY` on `stripe_event_id`; keep it.
 
 ### When NEXT_PUBLIC_SITE_URL is missing, Stripe checkout redirect URLs become "undefined/path"
 The checkout route template uses a `localhost:3000` fallback when building Stripe redirect URLs. Without it, the env var evaluates to `undefined` and produces `undefined/dashboard/setup` — a URL Stripe accepts silently, causing post-payment redirects to fail. The fallback is a defensive measure for local development before `NEXT_PUBLIC_SITE_URL` is configured. In production, the env var should always be set.

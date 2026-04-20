@@ -55,12 +55,18 @@ already wrote it. Do not overwrite.
 Collect all available evidence (shared across all scopes):
 
 ```bash
-# a. Collect branch diffs
-if git log --oneline $(git merge-base main HEAD)..HEAD 2>/dev/null | grep -q .; then
-  git diff $(git merge-base main HEAD)...HEAD > .runs/observer-diffs.txt
-else
-  git diff --cached > .runs/observer-diffs.txt
-  git diff >> .runs/observer-diffs.txt
+# a. Collect branch diffs — IDEMPOTENT with lifecycle-finalize.sh and
+# skill-epilogue.md. finalize writes observer-diffs.txt PRE-merge; this step
+# runs within skill-epilogue POST-merge when HEAD is already on main and
+# `git merge-base main HEAD == HEAD` (empty diff). Only collect when the file
+# is absent or empty — otherwise re-running clobbers the finalize evidence.
+if [ ! -s .runs/observer-diffs.txt ]; then
+  if git log --oneline $(git merge-base main HEAD)..HEAD 2>/dev/null | grep -q .; then
+    git diff $(git merge-base main HEAD)...HEAD > .runs/observer-diffs.txt
+  else
+    git diff --cached > .runs/observer-diffs.txt
+    git diff >> .runs/observer-diffs.txt
+  fi
 fi
 
 # b. Read fix-log (if exists)

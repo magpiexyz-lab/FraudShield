@@ -29,13 +29,20 @@ All skills except `/optimize-prompt` (stateless utility, no state machine).
 ## Step 1: Collect evidence (artifact-based, not memory-based)
 
 ```bash
-# a. Collect all branch changes
-# Committed changes if any, otherwise fall back to staged+unstaged
-if git log --oneline $(git merge-base main HEAD)..HEAD 2>/dev/null | grep -q .; then
-  git diff $(git merge-base main HEAD)...HEAD > .runs/observer-diffs.txt
-else
-  git diff --cached > .runs/observer-diffs.txt
-  git diff >> .runs/observer-diffs.txt
+# a. Collect branch diffs — IDEMPOTENT with lifecycle-finalize.sh.
+# lifecycle-finalize.sh Step 4 writes .runs/observer-diffs.txt PRE-merge using
+# `git diff $MERGE_BASE...HEAD`. When skill-epilogue runs POST-merge (auto-merge
+# completed), HEAD is already on main so `git merge-base main HEAD == HEAD` and
+# the diff is empty — re-running the same command would clobber finalize's good
+# evidence with 0 bytes. Only collect when .runs/observer-diffs.txt is absent or
+# empty (fast-path skills that skipped finalize delivery, or standalone /observe).
+if [ ! -s .runs/observer-diffs.txt ]; then
+  if git log --oneline $(git merge-base main HEAD)..HEAD 2>/dev/null | grep -q .; then
+    git diff $(git merge-base main HEAD)...HEAD > .runs/observer-diffs.txt
+  else
+    git diff --cached > .runs/observer-diffs.txt
+    git diff >> .runs/observer-diffs.txt
+  fi
 fi
 
 # b. Read fix-log (if exists)

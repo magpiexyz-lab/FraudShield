@@ -7,8 +7,11 @@
 
 ## Step 7: Write Files and Confirm
 
-### 7a: Write experiment.yaml
-Write the approved YAML to `experiment/experiment.yaml`.
+### 7a: Verify experiment.yaml on disk
+`experiment/experiment.yaml` was progressively written during STATES 2–6 (each
+state's VERIFY gate required its fields to be on disk). This step confirms the
+on-disk file matches the approved spec — re-write only if the STATE 6 approval
+round captured a last-minute revision that has not yet been persisted.
 
 ### 7a.1: Write EVENTS.yaml
 Write the approved EVENTS.yaml to `experiment/EVENTS.yaml`.

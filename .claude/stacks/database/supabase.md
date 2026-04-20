@@ -105,9 +105,12 @@ function createDemoClient() {
 
 export function createClient() {
   if (process.env.NEXT_PUBLIC_DEMO_MODE === "true") return createDemoClient();
+  // Use `||` (falsy check) rather than `??` so empty-string env values (common on
+  // CI/Vercel when a var is declared but unset) fall back to the placeholder
+  // instead of initializing the SDK with "" and crashing on first request.
   return createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL ?? "https://placeholder.supabase.co",
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "placeholder-anon-key"
+    process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder.supabase.co",
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "placeholder-anon-key"
   );
 }
 ```
@@ -189,8 +192,8 @@ export async function createServerSupabaseClient() {
   const cookieStore = await cookies();
 
   return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL ?? "https://placeholder.supabase.co",
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "placeholder-anon-key",
+    process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder.supabase.co",
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "placeholder-anon-key",
     {
       cookies: {
         getAll() {
@@ -214,7 +217,7 @@ export function createServiceRoleClient() {
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!serviceRoleKey) throw new Error("SUPABASE_SERVICE_ROLE_KEY is not configured");
   return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL ?? "https://placeholder.supabase.co",
+    process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder.supabase.co",
     serviceRoleKey
   );
 }
@@ -704,8 +707,8 @@ import { createClient } from "@supabase/supabase-js";
 
 export function createServerSupabaseClient() {
   return createClient(
-    process.env.SUPABASE_URL ?? "https://placeholder.supabase.co",
-    process.env.SUPABASE_ANON_KEY ?? "placeholder-anon-key"
+    process.env.SUPABASE_URL || "https://placeholder.supabase.co",
+    process.env.SUPABASE_ANON_KEY || "placeholder-anon-key"
   );
 }
 
@@ -713,7 +716,7 @@ export function createServiceRoleClient() {
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!serviceRoleKey) throw new Error("SUPABASE_SERVICE_ROLE_KEY is not configured");
   return createClient(
-    process.env.SUPABASE_URL ?? "https://placeholder.supabase.co",
+    process.env.SUPABASE_URL || "https://placeholder.supabase.co",
     serviceRoleKey
   );
 }

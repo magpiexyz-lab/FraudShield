@@ -19,6 +19,12 @@ def main():
     warnings = []
 
     # --- Check 12: agent_verdicts in report vs actual trace verdicts ---
+    # Report verdicts may annotate trace verdicts with parenthetical context
+    # (e.g., trace "1 FAIL" -> report "1 FAIL (dev-only rate limiter)").
+    # Accept when the report equals OR starts with the trace-verdict string —
+    # preserves anti-fraud intent (report cannot claim PASS when trace says
+    # FAIL) while allowing human annotation. Strict equality forced humans
+    # to strip context, losing information.
     match = re.search(r'agent_verdicts:\s*(.+)', content)
     if match and os.path.isdir(traces_dir):
         try:
@@ -28,8 +34,9 @@ def main():
                 if os.path.exists(tp):
                     try:
                         tv = json.load(open(tp)).get('verdict', 'missing')
-                        if str(rv) != str(tv):
-                            errors.append('agent_verdicts mismatch: ' + name + ': report=' + str(rv) + ', trace=' + str(tv))
+                        rv_s, tv_s = str(rv), str(tv)
+                        if rv_s != tv_s and not rv_s.startswith(tv_s):
+                            errors.append('agent_verdicts mismatch: ' + name + ': report=' + rv_s + ', trace=' + tv_s)
                     except: pass
         except json.JSONDecodeError:
             pass

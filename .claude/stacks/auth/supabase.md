@@ -104,7 +104,7 @@ export default function ResetPasswordPage() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
-  async function handleReset(e: React.FormEvent) {
+  async function handleReset(e: React.SyntheticEvent<HTMLFormElement>) {
     e.preventDefault();
     if (password.length < 8) {
       setError("Password must be at least 8 characters");
@@ -170,7 +170,7 @@ export default function SignupPage() {
 
   useEffect(() => { trackSignupStart({ method: "email" }); }, []);
 
-  async function handleSignup(e: React.FormEvent) {
+  async function handleSignup(e: React.SyntheticEvent<HTMLFormElement>) {
     e.preventDefault();
     if (password.length < 8) {
       setError("Password must be at least 8 characters");
@@ -301,7 +301,7 @@ function LoginForm() {
   const confirmed = searchParams.get("confirmed") === "true";
   const authError = searchParams.get("error") === "auth";
 
-  async function handleLogin(e: React.FormEvent) {
+  async function handleLogin(e: React.SyntheticEvent<HTMLFormElement>) {
     e.preventDefault();
     setLoading(true);
     setError("");
@@ -312,7 +312,7 @@ function LoginForm() {
     router.push("/"); // Redirect to landing — bootstrap will update to the first non-auth page from experiment.yaml
   }
 
-  async function handleForgotPassword(e: React.FormEvent) {
+  async function handleForgotPassword(e: React.SyntheticEvent<HTMLFormElement>) {
     e.preventDefault();
     setLoading(true);
     setError("");
@@ -492,10 +492,11 @@ export function NavBar() {
   );
 
   return (
-    <nav className="flex items-center justify-between px-6 py-4 border-b">
+    <nav aria-label="Primary" className="flex items-center justify-between px-6 py-4 border-b">
       <Link href="/" className="flex items-center gap-2">
         {/* Logo from scaffold-images — read path from .runs/image-manifest.json */}
-        <Image src="/images/logo.svg" alt="APP_NAME" width={32} height={32} />
+        {/* Decorative: brand name is already announced by the adjacent <span>, so alt="" + aria-hidden prevents double announcement. */}
+        <Image src="/images/logo.svg" alt="" aria-hidden width={32} height={32} />
         <span className="text-xl font-bold">APP_NAME</span>
       </Link>
       {/* Desktop nav */}
@@ -605,9 +606,12 @@ export async function middleware(request: NextRequest) {
   }
 
   const response = NextResponse.next();
+  // Use `||` (falsy check) not `!` (non-null assertion) — non-null assertions
+  // pass through empty-string env values ("" is set but empty), causing the SDK
+  // to initialize with "" and crash on the first cookie refresh.
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder.supabase.co",
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "placeholder-anon-key",
     {
       cookies: {
         getAll() { return request.cookies.getAll(); },
@@ -650,8 +654,8 @@ import { createServerClient } from "@supabase/ssr";
 
 // Replace the createServerClient block with:
 const supabase = createServerClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL ?? "https://placeholder.supabase.co",
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "placeholder-anon-key",
+  process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder.supabase.co",
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "placeholder-anon-key",
   { cookies: { /* same cookie handlers as above */ } }
 );
 ```
@@ -779,8 +783,8 @@ function createDemoClient() {
 export function createAuthClient() {
   if (process.env.NEXT_PUBLIC_DEMO_MODE === "true") return createDemoClient();
   return createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL ?? "https://placeholder.supabase.co",
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "placeholder-anon-key"
+    process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder.supabase.co",
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "placeholder-anon-key"
   );
 }
 ```
@@ -842,8 +846,8 @@ export async function createServerAuthClient() {
   if (process.env.DEMO_MODE === "true") return createDemoClient();
   const cookieStore = await cookies();
   return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL ?? "https://placeholder.supabase.co",
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "placeholder-anon-key",
+    process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder.supabase.co",
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "placeholder-anon-key",
     {
       cookies: {
         getAll() { return cookieStore.getAll(); },
@@ -916,6 +920,23 @@ The callback URL for all providers is: `https://<ref>.supabase.co/auth/v1/callba
 → paste Client ID and Secret from the provider's developer console.
 
 ## Known Issues
+
+### When a signup or profile API route inserts a user row, use the session email — never the body-supplied email
+If a project adds a server-side API route that mirrors signup to a database table (e.g., `src/app/api/auth/signup/route.ts` inserting into a `profiles` table), the client-supplied email in the POST body cannot be trusted. An attacker who has authenticated with email A can pass email B in the request body and insert a row under email B's identity. Always derive the email from the verified auth session:
+
+```typescript
+// WRONG — trusts client-supplied email (A1 validation bypass)
+const { email } = await request.json();
+await supabase.from("profiles").insert({ user_id: user.id, email });
+
+// CORRECT — uses the authenticated identity from the Supabase session
+const supabase = await createServerSupabaseClient();
+const { data: { user } } = await supabase.auth.getUser();
+if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+await supabase.from("profiles").insert({ user_id: user.id, email: user.email });
+```
+
+The client form should omit `email` from the POST body entirely — the server always derives it from `supabase.auth.getUser()`. This applies to any mutation that writes an email-derived identifier (display name, hashed email, external-system user tag): if the auth session already verifies the value, trust the session, not the request body.
 
 ### When an API route should be restricted to admin users
 Verify `user.app_metadata?.role === "admin"` after the standard auth check, with an `ADMIN_EMAILS` env var fallback for initial setup before roles are assigned in Supabase:

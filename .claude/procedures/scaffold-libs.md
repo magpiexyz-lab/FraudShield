@@ -32,11 +32,7 @@ Create ONLY the `src/lib/` files (and `src/middleware.ts` when `stack.auth` is p
 
 8. **Typed event wrappers** (if `stack.analytics` is present AND framework is `nextjs` AND archetype is `web-app`): generate `src/lib/events.ts` from experiment/EVENTS.yaml following the analytics stack file's generation rules. For each event in the EVENTS.yaml `events` map (filtered by `requires` matching experiment stack and `archetypes` matching experiment type): (a) generate a typed wrapper function named `track` + PascalCase(event_name) with props typed from the event's `properties` map, (b) the wrapper body calls `track(event_name, { ...props, funnel_stage: "<funnel_stage>" })` to auto-inject the event's funnel_stage. Also generate an `EVENT_FUNNEL_MAP` constant (`Record<string, string>`) mapping each event name to its funnel_stage. Pages should import from `events.ts` instead of calling `track()` directly with string event names. For non-Next.js frameworks (Hono, Commander) or non-web-app archetypes (service, cli), skip this step — only server-side analytics apply (see analytics stack file).
 
-9. **Email events** (if `stack.email` is present): add to experiment/EVENTS.yaml `events` map:
-   - `email_welcome_sent` (trigger: Welcome email sent after signup, properties: `recipient` string required)
-   - `email_nudge_sent` (trigger: Activation nudge email sent by cron, properties: `recipient` string required, `days_since_signup` integer required)
-
-10. **Write completion manifest**
+9. **Write completion manifest**
    ```bash
    mkdir -p .runs/agent-traces
    ```

@@ -230,8 +230,18 @@ for tf in sorted(glob.glob(os.path.join(traces_dir, '*.json'))):
     # Only check manifest-declared agents
     if base not in declared: continue
 
-    # Skip lead-written merge artifacts (e.g., design-critic.json merged
-    # from per-page design-critic-*.json traces in state-3b)
+    # Skip lead-written merge artifacts from per-item parallel fan-out.
+    # Canonical example: verify STATE 3b merges per-page design-critic-<page>.json
+    # traces (each individually spawned via the Agent tool, each with its own
+    # spawn-log entry) into an aggregate design-critic.json written by the
+    # orchestrator in code — NOT via an Agent spawn, so it carries no spawn
+    # record. This exception keeps the aggregate valid provided sibling
+    # <base>-*.json traces exist (each sibling already satisfies provenance).
+    # Same shape applies to bootstrap state-11b scaffold-pages-<page>.json ->
+    # scaffold-pages.json, and any future per-item parallel-agent merge.
+    # Do NOT remove this block without updating every skill that fans out
+    # per-item — otherwise every merged-aggregate trace will be rejected as
+    # "no spawn record" and the skill cannot advance.
     if bn == base and glob.glob(os.path.join(traces_dir, base + '-*.json')):
         continue
 

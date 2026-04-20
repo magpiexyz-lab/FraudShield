@@ -30,7 +30,12 @@ def check_1_import_completeness(stack_contents: dict[str, str]) -> list[str]:
         blocks = extract_code_blocks(content, {"tsx", "jsx"})
         for block in blocks:
             code = block["code"]
-            used_components = set(re.findall(r"<([A-Z][a-zA-Z]+)", code))
+            # Match JSX component tags only — not TypeScript generics.
+            # JSX `<X>` is preceded by `(`, whitespace, `>`, `=`, `{`, `,`, or
+            # line start. TS generics `Type<X>` are preceded by a word char
+            # (the identifier immediately before `<`). Negative lookbehind on
+            # `[a-zA-Z0-9_]` excludes generics like `SyntheticEvent<HTMLFormElement>`.
+            used_components = set(re.findall(r"(?<![a-zA-Z0-9_])<([A-Z][a-zA-Z]+)", code))
             used_components -= BUILTIN_COMPONENTS
 
             imported: set[str] = set()

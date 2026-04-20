@@ -118,16 +118,13 @@ export async function sendActivationNudge(to: string, name: string, activationAc
 
 ### `src/app/api/email/welcome/route.ts`
 
-When `stack.analytics` is absent: remove the `@/lib/analytics-server` import and the `await trackServerEvent()` call from both email route templates below. The email routes work without analytics.
-
-Called from the auth success callback after `signup_complete`. Sends a welcome email with the value prop and a CTA to complete the activation action.
+Called from the auth success callback after `signup_complete`. Sends a welcome email with the value prop and a CTA to complete the activation action. Bootstrap generates the route **without** `trackServerEvent()` — see "Analytics Integration" below for how to add telemetry via `/change` after bootstrap.
 
 ```ts
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { sendWelcomeEmail } from "@/lib/email";
-import { trackServerEvent } from "@/lib/analytics-server";
 
 const welcomeSchema = z.object({
   email: z.string().email().max(200),
@@ -148,7 +145,6 @@ export async function POST(req: NextRequest) {
   }
 
   await sendWelcomeEmail(body.data.email, body.data.name, body.data.ctaUrl || "/");
-  await trackServerEvent("email_welcome_sent", body.data.email, { recipient: body.data.email });
 
   return NextResponse.json({ ok: true });
 }
@@ -163,7 +159,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { timingSafeEqual } from "crypto";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { sendActivationNudge } from "@/lib/email";
-import { trackServerEvent } from "@/lib/analytics-server";
 
 export async function GET(req: NextRequest) {
   // Validate cron secret (timing-safe to prevent side-channel attacks)
@@ -193,18 +188,11 @@ export async function GET(req: NextRequest) {
   let sent = 0;
   for (const user of users ?? []) {
     try {
-      const daysSinceSignup = Math.floor(
-        (Date.now() - new Date(user.created_at).getTime()) / (1000 * 60 * 60 * 24)
-      );
       await sendActivationNudge(user.email, user.name, "complete your first action", "/");
       await supabase
         .from("user_status")
         .update({ nudge_sent_at: new Date().toISOString() })
         .eq("user_id", user.user_id);
-      await trackServerEvent("email_nudge_sent", user.email, {
-        recipient: user.email,
-        days_since_signup: daysSinceSignup,
-      });
       sent++;
     } catch {
       // Skip individual failures, continue with remaining users
@@ -259,7 +247,14 @@ create policy "Service role only" on user_status
 
 ## Analytics Integration
 
-Welcome and nudge email sends fire server-side events via `trackServerEvent()`. Bootstrap adds the event definitions (`email_welcome_sent`, `email_nudge_sent`) to the experiment/EVENTS.yaml `events` map when `stack.email` is present — see scaffold procedure Step 2 for the canonical event list and properties.
+Email-send tracking is **optional** and is not added to `experiment/EVENTS.yaml` by bootstrap (CLAUDE.md Rule 0 forbids scaffold-time modifications to spec files). The route templates above therefore omit `trackServerEvent()` by default — the welcome and nudge helpers work without analytics.
+
+If you want email telemetry, run `/change "Add email telemetry"` **after** bootstrap. `/change` will:
+1. Add the event definitions (`email_welcome_sent`, `email_nudge_sent` with their `funnel_stage` and `properties`) to `experiment/EVENTS.yaml`
+2. Regenerate typed wrappers in `src/lib/events.ts`
+3. Wire the `trackServerEvent()` calls into `src/app/api/email/welcome/route.ts` and `src/app/api/email/nudge/route.ts`
+
+This keeps the canonical event dictionary aligned with the experiment's spec'd funnel instead of silently expanding it during scaffolding.
 
 ## Environment Variables
 

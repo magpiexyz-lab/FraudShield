@@ -26,8 +26,14 @@ Run content quality and SEO verification checks:
 9. **Internal href audit** (web-app only): extract all `href="/..."` values from all
    page files (`grep -roh 'href="/[^"]*"' src/app/*/page.tsx`). For each internal path,
    verify the target route has a corresponding page directory under `src/app/` or is a
-   defined API route under `src/app/api/`. Exclude external URLs (`href="http`).
-   If broken links found: fix the href to point to the correct route. Budget: 1 fix attempt.
+   defined API route under `src/app/api/`. Exclude external URLs (`href="http`) and
+   **scaffold-wire-owned auth routes** — `/auth/callback` and `/auth/reset-password`
+   are created by scaffold-wire in STATE 14 (AFTER this state runs), so the directories
+   do not exist yet at audit time. The auth stack file owns them and their ownership
+   is documented in `.claude/skills/bootstrap/state-11b-page-scaffold.md`. Treat both
+   as expected-missing.
+   If broken links found (excluding those scaffold-wire exceptions): fix the href to
+   point to the correct route. Budget: 1 fix attempt.
 10. **Cross-page token consistency** (web-app only): grep all page.tsx files for
    Tailwind arbitrary color values (`text-\[#`, `bg-\[#`, `border-\[#`). If any page uses
    arbitrary hex color values not traceable to the visual brief, replace with theme token
