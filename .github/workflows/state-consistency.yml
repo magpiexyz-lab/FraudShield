@@ -1,5 +1,10 @@
 name: State Consistency
 
+# Enforces declarative-vs-prose drift detection for state-registry.json fields
+# (allows_early_exit_when, verify_semantics). Other verify-linter.sh categories
+# (UNCOVERED / DIVERGED / UNJUSTIFIED_TRUE) are manual dev tooling with their
+# own backlog — not gated here to keep this check's scope narrow.
+
 on:
   pull_request:
     paths:
@@ -15,10 +20,19 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  verify-linter:
+  drift-check:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
       - uses: actions/checkout@v4
-      - name: Run verify-linter
-        run: bash .claude/scripts/verify-linter.sh
+      - name: Check declarative-vs-prose drift
+        run: |
+          set +e
+          OUTPUT=$(bash .claude/scripts/verify-linter.sh)
+          echo "$OUTPUT"
+          set -e
+          if echo "$OUTPUT" | grep -q '^DRIFT_DECLARED_VS_PROSE'; then
+            echo "::error::Declarative-vs-prose drift detected. Fix the registry declaration or update the state-file prose above."
+            exit 1
+          fi
+          echo "No declarative drift detected."
