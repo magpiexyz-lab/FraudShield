@@ -105,7 +105,7 @@ Collect all env vars and set them using the hosting provider's method:
 
 **VERIFY:**
 ```bash
-python3 .claude/scripts/verify-deploy-3b.py
+python3 .claude/scripts/verify-deploy-3b.py  # artifact: .runs/deploy-provision-3b.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
