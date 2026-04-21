@@ -39,9 +39,18 @@ for b in batches:
     merged['unresolved_sections'] += d.get('unresolved_sections', 0)
     # render-review-detection aggregation (render-review-detection.md)
     page_key = d.get('page') or d.get('weakest_page') or os.path.basename(b).replace('design-critic-', '').replace('.json', '')
-    if d.get('review_method'):
-        merged['per_page_review_methods'][page_key] = d.get('review_method')
+    rm = d.get('review_method')
+    if rm:
+        merged['per_page_review_methods'][page_key] = rm
         merged['per_page_review_evidence'].append({'page': page_key, **(d.get('review_evidence') or {})})
+        # Invariant enforcement (tight gate): source-only/unknown MUST be unresolved.
+        # When an agent emits a non-unresolved verdict on a degraded render, self-heal
+        # the in-memory trace AND log so the agent bug surfaces.
+        original_verdict = d.get('verdict', '')
+        if rm in ('source-only', 'unknown') and original_verdict.lower() != 'unresolved':
+            print('WARN: [' + page_key + '] review_method=' + rm + ' but verdict=' + original_verdict + '; forcing verdict=unresolved per Rendered-Review Contract')
+            d['verdict'] = 'unresolved'
+            merged.setdefault('review_method_gate_corrections', []).append({'page': page_key, 'review_method': rm, 'original_verdict': original_verdict})
     debt = d.get('pre_existing_debt', [])
     if isinstance(debt, list):
         merged['pre_existing_debt'].extend(debt)

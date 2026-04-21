@@ -15,6 +15,7 @@ SUITES=(
   ".claude/scripts/tests/test_hard_gate_predicates.py"
   ".claude/scripts/tests/test_agent_trace_write_guard.py"
   ".claude/scripts/tests/test_transient_teardown.py"
+  ".claude/scripts/tests/test_state3b_review_method_merge.py"
 )
 
 FAIL=0

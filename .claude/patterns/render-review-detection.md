@@ -13,11 +13,23 @@ when the target page was never actually rendered.
 
 Caller passes an options object to the inline detection script:
 
+- `browser`: a live Playwright `Browser` instance the caller already
+  created with `chromium.launch({ headless: true })`. The pattern creates a
+  new `BrowserContext` off it — never a new browser.
 - `requested_route`: path being reviewed (e.g. `"/dashboard"`)
 - `base_url`: dev server URL the caller already started (e.g. `"http://localhost:3099"`)
 - `is_first_page`: boolean — when `true` and URL bypass fails into an auth
   route, the detection marks `fallback_reason="demo-mode-bypass-failed"` so
   the loud upstream middleware/env bug surfaces exactly once per run.
+
+## Caller cleanup
+
+The returned `context` (and therefore `page`) is live when the pattern
+returns. The caller MUST call `await context.close()` before moving to the
+next page to avoid leaking contexts. See accessibility-scanner.md R1 for
+the per-page `finally`/explicit-close pattern; design-critic reuses the
+context through Step 4's screenshot loop and closes it at the end of Step
+7 cleanup.
 
 ## Outputs
 
@@ -77,7 +89,14 @@ if (storageStateCheck.ok) {
   }
 } else {
   context = await browser.newContext();
-  fallbackReason = storageStateCheck.reason; // observational; demo-mode still proceeds
+  // Only record a fallback_reason when something UNEXPECTED caused the
+  // fallback. Absence of e2e/.auth.json is the default in bootstrap — not
+  // a fallback, just the normal demo-mode path. Recording it here would
+  // pollute every bootstrap trace. Other reasons (parse failure, missing
+  // cookies on a file that DID exist, etc.) ARE fallbacks worth recording.
+  if (storageStateCheck.reason !== "auth.json-absent") {
+    fallbackReason = storageStateCheck.reason;
+  }
 }
 ```
 
