@@ -124,7 +124,13 @@ out = {
     'learnings': [ ... ],           # one entry per unique composite_identity_hash
     'target_stacks': [ ... ],       # stack slugs matched (e.g. framework/nextjs)
     'proposals_filed': [ ... ],     # upstream issue URLs (or [])
-    'halt_events': [],
+    'halt_events': [],              # reserved. STATE 9 never populates this in the
+                                    # normal flow because a STATE 3b escalate routes
+                                    # through skip_states and bypasses STATE 9
+                                    # entirely; STATE 3b override does not constitute
+                                    # a halt. The field is kept so the schema can
+                                    # accept future halt-event emitters without a
+                                    # VERIFY migration.
     'gh_failed': False,
     'pending_proposals': [],        # entries skipped due to gh failure
     'skipped_reason': ''            # set only when Steps 1-5 are skipped

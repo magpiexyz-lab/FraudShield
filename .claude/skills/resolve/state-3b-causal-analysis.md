@@ -16,14 +16,34 @@ halt it presents the user with three options and waits for the user's reply.
 The analyzer reads `.runs/resolve-reproduction.json`, checks each divergence
 point against git history and `anti_pattern: true` entries in
 `.claude/stacks/**/*.md`, and writes `.runs/resolve-causal-analysis.json`.
-A 30-second wall-clock timeout protects against slow `git log -L` calls.
+A 30-second wall-clock timeout (from `convergence-config.json`) protects
+against slow `git log -L` calls.
+
+Per divergence point, the analyzer performs four checks:
+
+1. **Time-trace** — `git log -L <line>,<line>:<file>` enumerates the most
+   recent commits that touched the exact line range. Each commit's message
+   is regex-scanned for `#<num>` issue references; `gh pr view <num>` reads
+   labels so the analyzer can distinguish /resolve-authored fixes (label
+   `resolve`) from ordinary edits.
+2. **Reversal detection** — whitespace-normalized diff comparison between
+   the most recent /resolve fix at this location and the currently proposed
+   change direction. When the "delete" set of the prior fix matches the
+   "add" set of the proposed fix (and vice versa), `reversal_detected=true`.
+3. **Oscillation counting** — the number of reversal pairs within a 90-day
+   sliding window becomes `oscillation_count`. `oscillation_count >= 2`
+   triggers `halt_required=true`.
+4. **Anti-pattern match** — the current fix's composite identity is looked
+   up against every `anti_pattern: true` entry in the matching stack file's
+   Stack Knowledge section. A match also sets `halt_required=true`.
 
 ```bash
 python3 .claude/scripts/resolve-causal-analyzer.py
 ```
 
 On shallow clones or empty history at the target line the artifact is
-written with `causal_unavailable: true` and analysis proceeds as a no-op.
+written with `causal_unavailable: true` and analysis proceeds as a no-op
+(halt is impossible without history).
 
 ### Step 2 — Read the artifact
 
