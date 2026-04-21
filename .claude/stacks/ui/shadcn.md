@@ -183,6 +183,25 @@ The `render` prop replaces the trigger's default `<button>` wrapper with the pro
 
 ## Stack Knowledge
 
+### When a shadcn component variant class string is used in multiple page callsites
+Export the class string from a shared constants file (e.g., `src/components/<feature>/variants.ts`) and import it in each callsite. Duplicating the class string inline causes callsites to drift independently — one callsite may use `border border-ink/30` while another uses `ring-1 ring-ink/30`, producing inconsistent rendering that only surfaces during a dedicated consistency audit.
+
+```ts
+// src/components/<feature>/variants.ts
+export const FEATURE_GHOST_TRIGGER =
+  "variant-ghost border border-ink/30 hover:bg-ink/5 text-ink";
+```
+
+```tsx
+// In each callsite:
+import { DialogTrigger } from "@/components/ui/dialog";
+import { twMerge } from "tailwind-merge";
+import { FEATURE_GHOST_TRIGGER } from "@/components/<feature>/variants";
+<DialogTrigger className={twMerge(FEATURE_GHOST_TRIGGER, className)} />
+```
+
+This applies to any non-default visual variant (ghost/outline/subordinate triggers, inverted cards, condensed list rows) used on 2+ pages. Hoist on the second callsite — don't wait for the third.
+
 ### When ESLint reports errors in auto-generated UI components
 Add `src/components/ui/` and `src/components/magicui/` to the `ignores` array in `eslint.config.mjs`. Auto-generated shadcn and MagicUI files contain `@ts-nocheck` pragmas and useless-assignment patterns that ESLint flags — these directories must be excluded from linting since their contents are managed by the CLI, not by hand.
 

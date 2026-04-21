@@ -60,6 +60,7 @@ function getSupabaseConfig() {
       url: status.API_URL || "http://127.0.0.1:54321",
       anonKey: status.ANON_KEY,
       serviceRoleKey: status.SERVICE_ROLE_KEY,
+      unreachable: false,
     };
   } catch {
     // Fallback: legacy deterministic keys (Supabase CLI <v2.76)
@@ -69,6 +70,7 @@ function getSupabaseConfig() {
         "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0",
       serviceRoleKey:
         "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU",
+      unreachable: true,
     };
   }
 }
@@ -122,12 +124,20 @@ export default defineConfig({
           NEXT_PUBLIC_SUPABASE_URL: supabase.url,
           NEXT_PUBLIC_SUPABASE_ANON_KEY: supabase.anonKey,
           SUPABASE_SERVICE_ROLE_KEY: supabase.serviceRoleKey,
+          // Activate the middleware + server-client demo-mode bypass when
+          // Supabase is unreachable (fresh clone, no Docker). The app's
+          // `VERCEL === "1"` guards reject DEMO_MODE in production, so this
+          // is a no-op when tests run against a real deployment.
+          ...(supabase.unreachable
+            ? { DEMO_MODE: "true", NEXT_PUBLIC_DEMO_MODE: "true" }
+            : {}),
         },
       },
 });
 ```
 - Two projects: Desktop Chrome and Mobile Chrome (Pixel 5) — cross-browser is out of scope per Rule 4, but mobile viewport testing catches layout overflow issues
 - `webServer` is conditional: when `E2E_BASE_URL` is set, `webServer` is `undefined` (production server already running). This pattern is used by both the preview-smoke CI job and `/deploy` STATE 4 production testing.
+- When `supabase status` fails (no Docker, fresh clone), the config flips `DEMO_MODE=true` + `NEXT_PUBLIC_DEMO_MODE=true` in `webServer.env`. Middleware and server Supabase clients bypass auth in demo mode, letting smoke/funnel tests run without a live database. Production-safe: `createServerSupabaseClient`, `createServiceRoleClient`, and `/auth/callback/route.ts` all reject `DEMO_MODE` when `VERCEL === "1"`.
 - When `PROD_TEST_EMAIL` is set alongside `E2E_BASE_URL`, the `prod-auth-setup` project runs first to authenticate via the app's login form and save auth state for downstream tests
 - `webServer` starts `npm run dev` automatically and waits for the app (local mode only)
 - `getSupabaseConfig()` reads keys dynamically from `supabase status -o json` — works with both legacy JWT keys (CLI <v2.76) and new `sb_publishable_*`/`sb_secret_*` keys (CLI v2.76+)
@@ -629,11 +639,15 @@ Full-Auth path reads local Supabase keys dynamically from `supabase status -o js
 ```
 
 ## CI Job Template
-Add this job to `.github/workflows/ci.yml` after the `build` job:
+Add this job to `.github/workflows/ci.yml` after the `build` job. Gate
+hashFiles checks at the step level — `hashFiles()` at job-level `if:` is
+rejected by actionlint and causes GitHub Actions to fail the workflow at
+parse time. If the repo already defines a `detect` job (per the workflow
+template in this repo), gate on `needs.detect.outputs.e2e_present == 'true'`
+and add `detect` to `needs:` instead.
 ```yaml
   e2e:
     needs: build
-    if: hashFiles('playwright.config.ts') != ''
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -646,29 +660,44 @@ Add this job to `.github/workflows/ci.yml` after the `build` job:
       # STRIPE_WEBHOOK_SECRET: ${{ secrets.E2E_STRIPE_WEBHOOK_SECRET }}
     steps:
       - uses: actions/checkout@v4
+      - name: Skip if no playwright config
+        id: check
+        run: |
+          if [ -f playwright.config.ts ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/setup-node@v4
+        if: steps.check.outputs.run == 'true'
         with:
           node-version-file: '.nvmrc'
           cache: npm
       - uses: supabase/setup-cli@v1
+        if: steps.check.outputs.run == 'true'
       - name: Start local Supabase
+        if: steps.check.outputs.run == 'true'
         run: supabase start -x realtime,storage,imgproxy,inbucket,pgadmin-schema-diff,migra,postgres-meta,studio,edge-runtime,logflare,pgbouncer,vector
       - name: Apply migrations
+        if: steps.check.outputs.run == 'true'
         run: supabase db reset
       - name: Install dependencies
+        if: steps.check.outputs.run == 'true'
         run: npm ci
       - name: Install Playwright browsers
+        if: steps.check.outputs.run == 'true'
         run: npx playwright install chromium --with-deps
       - name: Run E2E tests
+        if: steps.check.outputs.run == 'true'
         run: npx playwright test
       - uses: actions/upload-artifact@v4
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.check.outputs.run == 'true' }}
         with:
           name: playwright-report
           path: playwright-report/
           retention-days: 7
       - name: Stop local Supabase
-        if: ${{ always() }}
+        if: ${{ always() && steps.check.outputs.run == 'true' }}
         run: supabase stop
 ```
 
@@ -784,11 +813,10 @@ test.describe.serial("Funnel smoke test", () => {
 - See funnel.spec.ts (above) for the full user journey test template
 
 ### No-Auth CI Job Template
-When using the No-Auth Fallback path, use this CI template instead of the full-auth version above. It omits the local Supabase lifecycle (no Docker, no `supabase start/stop`), running tests unconditionally when `playwright.config.ts` exists.
+When using the No-Auth Fallback path, use this CI template instead of the full-auth version above. It omits the local Supabase lifecycle (no Docker, no `supabase start/stop`). A step-level `hashFiles()` probe gates the run on `playwright.config.ts` existence — do NOT use job-level `if: hashFiles(...)`, which is rejected by actionlint and causes GitHub Actions to fail the workflow at parse time.
 ```yaml
   e2e:
     needs: build
-    if: hashFiles('playwright.config.ts') != ''
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -801,18 +829,30 @@ When using the No-Auth Fallback path, use this CI template instead of the full-a
       # STRIPE_WEBHOOK_SECRET: ${{ secrets.E2E_STRIPE_WEBHOOK_SECRET }}
     steps:
       - uses: actions/checkout@v4
+      - name: Skip if no playwright config
+        id: check
+        run: |
+          if [ -f playwright.config.ts ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/setup-node@v4
+        if: steps.check.outputs.run == 'true'
         with:
           node-version-file: '.nvmrc'
           cache: npm
       - name: Install dependencies
+        if: steps.check.outputs.run == 'true'
         run: npm ci
       - name: Install Playwright browsers
+        if: steps.check.outputs.run == 'true'
         run: npx playwright install chromium --with-deps
       - name: Run E2E tests
+        if: steps.check.outputs.run == 'true'
         run: npx playwright test
       - uses: actions/upload-artifact@v4
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.check.outputs.run == 'true' }}
         with:
           name: playwright-report
           path: playwright-report/
@@ -820,35 +860,48 @@ When using the No-Auth Fallback path, use this CI template instead of the full-a
 ```
 
 ## Preview Smoke CI Job Template
-Add this job to `.github/workflows/ci.yml` after the `e2e` job. It runs page-load smoke tests against Vercel preview deployments on PRs — no auth, no database writes, no Docker required.
+Add this job to `.github/workflows/ci.yml` after the `e2e` job. It runs page-load smoke tests against Vercel preview deployments on PRs — no auth, no database writes, no Docker required. Job-level `if:` keeps the PR-only gate (`github.event_name`); a step-level `hashFiles()` probe handles the `playwright.config.ts` gate — job-level `hashFiles()` fails workflow parsing.
 ```yaml
   preview-smoke:
     needs: build
-    if: github.event_name == 'pull_request' && hashFiles('playwright.config.ts') != ''
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+      - name: Skip if no playwright config
+        id: check
+        run: |
+          if [ -f playwright.config.ts ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/setup-node@v4
+        if: steps.check.outputs.run == 'true'
         with:
           node-version-file: '.nvmrc'
           cache: npm
       - name: Wait for Vercel preview
+        if: steps.check.outputs.run == 'true'
         uses: patrickedqvist/wait-for-vercel-preview@v1.3.2
         id: preview
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           max_timeout: 300
       - name: Install dependencies
+        if: steps.check.outputs.run == 'true'
         run: npm ci
       - name: Install Playwright browsers
+        if: steps.check.outputs.run == 'true'
         run: npx playwright install chromium --with-deps
       - name: Smoke test preview deployment
+        if: steps.check.outputs.run == 'true'
         run: npx playwright test e2e/smoke.spec.ts --global-setup="" --global-teardown=""
         env:
           E2E_BASE_URL: ${{ steps.preview.outputs.url }}
       - uses: actions/upload-artifact@v4
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.check.outputs.run == 'true' }}
         with:
           name: preview-smoke-report
           path: playwright-report/

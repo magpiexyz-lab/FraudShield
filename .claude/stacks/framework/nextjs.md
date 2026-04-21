@@ -57,9 +57,23 @@ export default tseslint.config(
   ...tseslint.configs.recommended,
   { plugins: { "react-hooks": reactHooks }, rules: { ...reactHooks.configs.recommended.rules, "react-hooks/set-state-in-effect": "off" } },
   { plugins: { "@next/next": nextPlugin }, rules: nextPlugin.configs.recommended.rules },
+  {
+    rules: {
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          destructuredArrayIgnorePattern: "^_",
+          ignoreRestSiblings: true,
+        },
+      ],
+    },
+  },
   { ignores: [".next/", "out/", "node_modules/", "src/components/ui/", "src/components/magicui/"] }
 );
 ```
+> **Underscore-prefix convention:** The `^_` ignore pattern lets you mark intentionally unused params as `_userId`, `_brandId`, etc. without tripping `no-unused-vars` — standard TS/ESLint convention. Without it, any project with an unused underscore-prefixed callback param (common in API handlers, test stubs, typed wrappers) fails `npm run lint`.
 
 > **Known Issue — `eslint-disable` comments:** When generating `eslint-disable-next-line` comments, use the generic form (`// eslint-disable-next-line`) without a rule name. Rule-specific forms like `// eslint-disable-next-line react/no-danger` cause errors if the corresponding plugin (e.g., `eslint-plugin-react`) is not installed. Only specify rule names for rules known to be configured in the eslint config above.
 

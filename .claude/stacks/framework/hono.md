@@ -39,9 +39,23 @@ import tseslint from "typescript-eslint";
 export default tseslint.config(
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
+  {
+    rules: {
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          destructuredArrayIgnorePattern: "^_",
+          ignoreRestSiblings: true,
+        },
+      ],
+    },
+  },
   { ignores: ["dist/", "node_modules/"] }
 );
 ```
+> The `^_` ignore lets you mark intentionally unused params as `_userId` without tripping `no-unused-vars` — without it, route handlers with unused callback args fail `npm run lint`.
 
 ## File Structure
 ```

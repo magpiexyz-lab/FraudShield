@@ -301,6 +301,39 @@ Notes:
 - **Bootstrap smoke tests**: service archetypes test endpoints via `app.request()`, CLI archetypes test commands via `--help`. Both use vitest — no browser needed.
 - **Coverage threshold**: not enforced by default — add thresholds in vitest.config.ts if needed
 
+## Stack Knowledge
+
+### When live-DB integration tests are unavailable (CI without a real database)
+Read the migration SQL file directly and regex-assert database-level invariants — access-control policies, UNIQUE/CHECK constraints, NOT NULL columns, etc. This is a lightweight substitute that catches accidental deletion of security-critical SQL without requiring a live database connection. The example below is Supabase/Postgres; adapt regex patterns for other SQL dialects.
+
+```ts
+// tests/rls-migration.test.ts
+import { readFileSync } from "fs";
+import { join } from "path";
+import { describe, it, expect } from "vitest";
+
+describe("migration 000X <table> RLS and constraints", () => {
+  const sql = readFileSync(
+    join(__dirname, "../supabase/migrations/000X_<table>.sql"),
+    "utf-8",
+  );
+
+  it("enables RLS on <table>", () => {
+    expect(sql).toMatch(/enable row level security/i);
+  });
+
+  it("blocks cross-user reads with a SELECT policy", () => {
+    expect(sql).toMatch(/create policy.*select.*using.*auth\.uid\(\)/is);
+  });
+
+  it("enforces UNIQUE constraint on (<col1>, <col2>)", () => {
+    expect(sql).toMatch(/unique.*\(<col1>,\s*<col2>\)/i);
+  });
+});
+```
+
+When the migration file path changes (e.g., after a rename or re-number), update the path in the test — the test will fail clearly rather than silently passing. Spec-reviewer S7 checks that new tables with access-control policies have matching test assertions; this pattern satisfies that without a live DB.
+
 ## PR Instructions
 - Run `npm test` locally to verify tests pass
 - Run `npm run test:coverage` to check coverage

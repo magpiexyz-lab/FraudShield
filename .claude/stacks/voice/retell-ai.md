@@ -7,7 +7,7 @@ files:
   - src/lib/retell.ts
   - src/app/api/webhooks/retell/route.ts
 env:
-  server: [RETELL_API_KEY, RETELL_WEBHOOK_SECRET]
+  server: [RETELL_API_KEY]
   client: []
 ci_placeholders: {}
 clean:
@@ -28,8 +28,7 @@ npm install retell-sdk
 
 ### `src/lib/retell.ts` — Retell AI client and helpers
 ```ts
-import Retell from "retell-sdk";
-import { createHmac, timingSafeEqual } from "crypto";
+import Retell, { verify } from "retell-sdk";
 
 const apiKey = process.env.RETELL_API_KEY;
 
@@ -40,18 +39,22 @@ if (!apiKey) {
 export const retellClient = apiKey ? new Retell({ apiKey }) : null;
 
 /**
- * Verify HMAC-SHA256 signature on incoming Retell AI webhooks.
+ * Verify Retell AI webhook signature using the SDK helper. Retell signs
+ * webhooks with the API key itself (not a separate webhook secret); the
+ * `x-retell-signature` header has format `v=<timestamp_ms>,d=<hex_digest>`
+ * and the SDK enforces the 5-minute timestamp window via constant-time
+ * comparison. See https://docs.retellai.com/features/secure-webhook.
  */
-export function verifyRetellSignature(
+export async function verifyRetellSignature(
   body: string,
-  signature: string,
-  secret: string
-): boolean {
-  if (!signature || !secret) return false;
-  const expected = createHmac("sha256", secret).update(body).digest("hex");
-  const a = Buffer.from(signature);
-  const b = Buffer.from(expected);
-  return a.length === b.length && timingSafeEqual(a, b);
+  signature: string | null,
+): Promise<boolean> {
+  if (!apiKey || !signature) return false;
+  try {
+    return await verify(body, apiKey, signature);
+  } catch {
+    return false;
+  }
 }
 ```
 
@@ -62,16 +65,15 @@ import { z } from "zod";
 import { verifyRetellSignature } from "@/lib/retell";
 
 export async function POST(req: NextRequest) {
-  const secret = process.env.RETELL_WEBHOOK_SECRET;
-  if (!secret) {
+  if (!process.env.RETELL_API_KEY) {
     return NextResponse.json({ error: "Service unavailable" }, { status: 503 });
   }
 
   // Read raw body before parsing
   const rawBody = await req.text();
-  const signature = req.headers.get("x-retell-signature") ?? "";
+  const signature = req.headers.get("x-retell-signature");
 
-  if (!verifyRetellSignature(rawBody, signature, secret)) {
+  if (!(await verifyRetellSignature(rawBody, signature))) {
     return NextResponse.json({ error: "Bad request" }, { status: 401 });
   }
 
@@ -115,21 +117,23 @@ export async function POST(req: NextRequest) {
 
 ## Environment Variables
 ```
-RETELL_API_KEY=your-api-key                # Retell AI API key
-RETELL_WEBHOOK_SECRET=your-webhook-secret  # HMAC-SHA256 secret for webhook verification
+RETELL_API_KEY=your-api-key                # Retell AI API key (also signs webhooks — no separate secret)
 ```
 
+Retell does NOT issue a separate webhook-signing secret. Webhooks are signed
+with the API key itself. Do not introduce a separate webhook-signing env var —
+see https://docs.retellai.com/features/secure-webhook.
+
 ## Patterns
-- Always verify HMAC-SHA256 signatures on incoming webhooks before processing any payload
-- Read the raw body before JSON parsing to ensure signature verification uses the original bytes
+- Verify webhook signatures with the SDK's `verify(body, apiKey, signature)` helper — it parses the `v=<timestamp_ms>,d=<hex_digest>` header format, enforces a 5-minute timestamp window, and does constant-time comparison. Do NOT hand-roll HMAC-SHA256 over the body only — Retell signs `body + timestamp`, not just body.
+- Read the raw body before JSON parsing so the bytes passed to `verify()` match what Retell signed
 - After signature verification, validate the payload with a strict Zod schema including `.max()` bounds on all string and array fields — a valid signature does not guarantee safe field lengths or types
 - After schema validation, cross-validate `agent_id` in the payload against the stored record in the database — a valid signature alone does not prevent a legitimate agent from posting to the wrong endpoint
 - If the payload contains user-supplied fields like `user_id`, validate them against the profiles table before inserting webhook data — a valid signature proves Retell sent the payload, not that the user_id belongs to a real user
 - Avoid logging raw Zod validation errors — log only the error count to prevent leaking request structure
 
 ## Security
-- HMAC-SHA256 signature verification is mandatory on all webhook routes — without it, any caller can send arbitrary payloads
-- Use `timingSafeEqual` for signature comparison to prevent timing attacks
+- SDK `verify()` signature verification is mandatory on all webhook routes — without it, any caller can send arbitrary payloads
 - Redact phone numbers and PII from all log output
 - Remove internal service names from error responses returned to callers
 - Add rate limiting to webhook routes
@@ -139,7 +143,6 @@ No CLI available — credentials must be obtained via the Retell AI dashboard at
 
 ## PR Instructions
 - Sign up at https://www.retellai.com and create a project
-- Copy the API key from the dashboard
-- Configure a webhook secret in Retell AI settings
-- Add env vars to `.env.local`
+- Copy the API key from the dashboard (also used for webhook signature verification — no separate secret)
+- Add `RETELL_API_KEY` to `.env.local`
 - Set the webhook URL in Retell AI → Agents → select agent → Webhook URL
