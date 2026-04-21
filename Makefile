@@ -4,7 +4,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help validate distribute verify-local test-e2e deploy setup-prod migrate clean clean-all supabase-start supabase-stop sync-verify
+.PHONY: help validate distribute verify-local test-e2e deploy setup-prod migrate clean clean-all supabase-start supabase-stop sync-verify lint-template
 
 help: ## Show this help message
 	@echo "Usage: make <command>"
@@ -24,6 +24,35 @@ help: ## Show this help message
 
 sync-verify: ## Sync VERIFY commands from state-registry.json to state files
 	@bash .claude/scripts/sync-verify-to-state-files.sh
+
+lint-template: ## Run the same template validators CI runs (before pushing .claude/ edits)
+	@echo "== lint-template: running all CI-bound template validators =="
+	@echo "-- validate-frontmatter --"
+	@python3 scripts/validate-frontmatter.py
+	@echo "-- validate-semantics --"
+	@python3 scripts/validate-semantics.py
+	@echo "-- validate-convergence-config --"
+	@python3 scripts/validate-convergence-config.py
+	@echo "-- consistency-check --"
+	@bash scripts/consistency-check.sh
+	@echo "-- ci-check-stack-knowledge --"
+	@python3 scripts/ci-check-stack-knowledge.py
+	@echo "-- validate-stack-knowledge (per-file) --"
+	@files=$$(find .claude/stacks -type f -name '*.md' ! -name '*.archive.md' | sort); \
+	if [ -n "$$files" ]; then \
+	  python3 scripts/validate-stack-knowledge.py $$files; \
+	else \
+	  echo "  (no live stack files — skipped)"; \
+	fi
+	@echo "-- state-registry drift (DRIFT_DECLARED_VS_PROSE) --"
+	@if bash .claude/scripts/verify-linter.sh 2>&1 | grep -q '^DRIFT_DECLARED_VS_PROSE'; then \
+	  echo "FAIL: DRIFT_DECLARED_VS_PROSE detected in state-registry.json vs state files"; \
+	  exit 1; \
+	else \
+	  echo "  no drift"; \
+	fi
+	@echo ""
+	@echo "== All CI-bound template validators passed. Safe to push .claude/ edits. =="
 
 validate: ## Check experiment.yaml for valid YAML, TODOs, name format, and structure
 	@echo "Validating experiment/experiment.yaml..."

@@ -44,9 +44,29 @@ review which may miss secrets that deterministic scanning catches.
 
 ### Gate 3: Build verification
 
-No additional check needed. The verify-pr-gate.sh hook already blocks PR
-creation without passing verification. If the PR was created, this gate
-is satisfied.
+`verify-pr-gate.sh` blocks PR creation without passing runtime verification.
+But `/verify`'s scope is build + runtime agents — it does NOT run the
+template-lint validators that CI runs (`validate-semantics.py`,
+`validate-convergence-config.py`, `consistency-check.sh`, etc.). A PR
+that passes `/verify` but contains a `.claude/` edit with a semantic
+defect will be auto-merged and CI will fail on main.
+
+### Gate 4: Template-lint parity (when PR touches `.claude/`)
+
+```bash
+if git diff --name-only "$(git merge-base main HEAD)..HEAD" | grep -q '^\.claude/'; then
+  if ! make lint-template; then
+    echo "make lint-template failed — skipping auto-merge."
+    echo "Fix the template-lint failures locally, then re-push."
+    # SKIP — do not merge
+  fi
+fi
+```
+
+Why: `make lint-template` mirrors the CI workflow's validator set (see
+`.github/workflows/ci.yml` and `.github/workflows/stack-knowledge-validate.yml`).
+Running it locally before merge prevents broken template changes from
+landing on main and avoids the follow-up-fix-PR pattern.
 
 ## Merge
 
