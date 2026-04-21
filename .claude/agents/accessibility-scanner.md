@@ -68,6 +68,34 @@ If no issues found:
 
 > All scanned files pass accessibility checks. No WCAG violations detected.
 
+## Rendered-Review Contract
+
+Every scanned page MUST record its render classification. Detection procedure:
+`.claude/patterns/render-review-detection.md`. Call it inside the per-page
+loop of `.claude/procedures/accessibility-scanner.md` — before the axe-core
+scan.
+
+### Required trace extension field
+
+- `per_page_reviews`: array of `{page, review_method, review_evidence}` — one
+  entry for every golden_path page considered (both scanned and skipped).
+
+### Scan gate
+
+- If a page's `review_method ∈ {"source-only", "unknown"}`:
+  - SKIP the axe-core scan for that page.
+  - Do NOT count it in `pages_scanned`.
+  - Do NOT append anything to `violations` for that page.
+  - The `per_page_reviews` entry is the only record of that page's coverage.
+- If `review_method ∈ {"rendered-authed", "rendered-demo"}`: scan normally.
+
+### Diagnostic: demo-mode bypass failure
+
+On the FIRST auth-gated page in the loop (`is_first_page = true`), if the URL
+assertion fails AND the final pathname is an auth route, `fallback_reason`
+MUST be `"demo-mode-bypass-failed"`. Subsequent pages with the same symptom
+get `"redirected-to-auth-route"` instead.
+
 ## Trace Output
 
 After completing all work, write a trace file:
@@ -93,6 +121,15 @@ trace = {
         # One entry per violation found. Example:
         # {"rule": "image-alt", "impact": "critical", "page": "/", "element": "<img src=\"...\">", "wcag": "1.1.1", "detail": "Images must have alternate text"}
     ],
+    "per_page_reviews": [
+        # One entry per golden_path page considered. Example:
+        # {"page": "dashboard", "review_method": "rendered-demo",
+        #  "review_evidence": {"requested_route": "/dashboard",
+        #                      "final_url": "http://localhost:3096/dashboard",
+        #                      "auth_source": "demo-mode",
+        #                      "fallback_reason": null,
+        #                      "content_density": 312}}
+    ],
     "run_id": run_id
 }
 with open(".runs/agent-traces/accessibility-scanner.json", "w") as f:
@@ -102,7 +139,9 @@ TRACE_EOF
 
 Replace placeholders with actual values:
 - `<verdict>`: `"pass"` if no issues, or `"N issues"` with the count
-- `<N>`: number of pages scanned
+- `<N>`: number of pages ACTUALLY scanned (excludes pages skipped because `review_method` was `"source-only"` or `"unknown"`)
 - `<VC>`: total count of violations (must equal `len(violations)`)
 
 The `impact` field uses axe-core severity levels: `"critical"`, `"serious"`, `"moderate"`, `"minor"`. For static fallback, map: High→`"serious"`, Medium→`"moderate"`. Both runtime and static fallback paths MUST populate the `violations` array (use `[]` when no violations found).
+
+`per_page_reviews` is populated by the runtime path only (static fallback does not navigate a live page). In the static-fallback path, omit the `per_page_reviews` key entirely — downstream readers treat absence as "not applicable" rather than "empty coverage".

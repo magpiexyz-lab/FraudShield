@@ -36,17 +36,66 @@ Poll `http://localhost:3096` until it responds (max 15 seconds, then abort).
 
 Read `experiment/experiment.yaml` to get the list of pages from `golden_path`.
 
-For each page, write an inline Node.js script using Playwright + `@axe-core/playwright`:
+For each page, write an inline Node.js script using Playwright +
+`@axe-core/playwright`. Before running axe on a page, call the render-review
+detection procedure from `.claude/patterns/render-review-detection.md` and
+skip the axe scan when it returns `source-only` or `unknown` — a scan of a
+`/login` redirect is not a scan of the requested page.
 
 ```javascript
 const { chromium } = require('playwright');
 const { AxeBuilder } = require('@axe-core/playwright');
+// Inline the detection helper from render-review-detection.md Sections 1-5
+// as `renderReviewDetect({ browser, requested_route, base_url, is_first_page })`.
 
-// For each golden_path page:
-// 1. Navigate to the page
-// 2. Run: const results = await new AxeBuilder({ page }).analyze()
-// 3. Collect results.violations (each has: id, impact, description, nodes[].html, nodes[].target)
+const BASE_URL = 'http://localhost:3096';
+const browser = await chromium.launch({ headless: true });
+
+const perPageReviews = [];
+const violations = [];
+let firstAuthGatedSeen = false;
+
+for (const { page: pageName, route } of goldenPathPages) {
+  // Treat the first NON-public route as the diagnostic page
+  const isAuthGated = !PUBLIC_PATHS.has(route);
+  const is_first_page = isAuthGated && !firstAuthGatedSeen;
+  if (is_first_page) firstAuthGatedSeen = true;
+
+  const result = await renderReviewDetect({
+    browser,
+    requested_route: route,
+    base_url: BASE_URL,
+    is_first_page,
+  });
+
+  perPageReviews.push({
+    page: pageName,
+    review_method: result.review_method,
+    review_evidence: result.review_evidence,
+  });
+
+  if (result.review_method === 'source-only' || result.review_method === 'unknown') {
+    // SKIP scan — this page was never rendered; do NOT increment pages_scanned
+    await result.context.close();
+    continue;
+  }
+
+  const axeResults = await new AxeBuilder({ page: result.page }).analyze();
+  for (const v of axeResults.violations) {
+    for (const node of v.nodes) {
+      violations.push({
+        rule: v.id, impact: v.impact, page: route,
+        element: node.html, wcag: (v.tags.find(t => /^wcag\d/.test(t)) || '').toUpperCase(),
+        detail: v.description,
+      });
+    }
+  }
+  await result.context.close();
+}
 ```
+
+Populate the trace's `per_page_reviews` array from `perPageReviews`.
+`pages_scanned` = count of entries where `review_method` ∈ {`rendered-authed`, `rendered-demo`}.
 
 axe-core auto-detects 50+ WCAG 2.1 AA rules including: alt text, form labels, color contrast, ARIA attributes, heading hierarchy, lang attribute, and more.
 
@@ -60,6 +109,10 @@ For each golden_path page, write a Playwright script that:
    - **Focus jumps out of visual order** — element position regresses significantly (bounding box Y decreases by >200px)
    - **Focus trapped** — same element appears 3 consecutive times
    - **Focus skips visible interactive element** — a button/link/input visible in the viewport was never focused
+
+**Skip pages with `review_method ∈ {"source-only", "unknown"}`** from R1 —
+tabbing through a `/login` redirect produces a tab report for the wrong
+page. Reuse `perPageReviews` from R1 to decide which pages to tab-test.
 
 ### Cleanup
 

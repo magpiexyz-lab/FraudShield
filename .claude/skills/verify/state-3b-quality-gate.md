@@ -24,7 +24,9 @@ except:
 merged = {'agent': 'design-critic', 'pages_reviewed': 0, 'min_score': 10, 'verdict': 'pass',
           'checks_performed': [], 'pages': len(batches), 'consistency_fixes': 0,
           'sections_below_8': 0, 'fixes_applied': 0, 'unresolved_sections': 0,
-          'min_score_all': 10, 'pre_existing_debt': [], 'fixes': [], 'run_id': run_id}
+          'min_score_all': 10, 'pre_existing_debt': [], 'fixes': [],
+          'per_page_review_methods': {}, 'per_page_review_evidence': [],
+          'run_id': run_id}
 worst_verdicts = {'unresolved': 3, 'fixed': 2, 'pass': 1}
 for b in batches:
     d = json.load(open(b))
@@ -35,6 +37,11 @@ for b in batches:
     merged['sections_below_8'] += d.get('sections_below_8', 0)
     merged['fixes_applied'] += d.get('fixes_applied', 0)
     merged['unresolved_sections'] += d.get('unresolved_sections', 0)
+    # render-review-detection aggregation (render-review-detection.md)
+    page_key = d.get('page') or d.get('weakest_page') or os.path.basename(b).replace('design-critic-', '').replace('.json', '')
+    if d.get('review_method'):
+        merged['per_page_review_methods'][page_key] = d.get('review_method')
+        merged['per_page_review_evidence'].append({'page': page_key, **(d.get('review_evidence') or {})})
     debt = d.get('pre_existing_debt', [])
     if isinstance(debt, list):
         merged['pre_existing_debt'].extend(debt)

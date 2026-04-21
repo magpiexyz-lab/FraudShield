@@ -22,6 +22,40 @@ DEMO_MODE=true NEXT_PUBLIC_DEMO_MODE=true npm run start -- -p 3099 &
 
 Poll the base URL (either provided or `http://localhost:3099`) until it responds (max 15 seconds, then abort).
 
+### 3.5. Classify Review Method (per page, before screenshot)
+
+For each route, before screenshotting, run the detection procedure in
+`.claude/patterns/render-review-detection.md`. The pattern loads the optional
+Playwright storageState (if `e2e/.auth.json` is a valid Supabase session),
+navigates to the route with a post-networkidle 500 ms settle wait, classifies
+the render, and returns `{review_method, review_evidence, context, page}`.
+
+Inputs to pass:
+- `requested_route`: the route you were told to review
+- `base_url`: the provided `base_url` or `http://localhost:3099`
+- `is_first_page`: `true` only for the first auth-gated route in your list
+  (so `demo-mode-bypass-failed` fires exactly once when the upstream bug is
+  present; `false` for every subsequent page)
+
+Merge the returned `{review_method, review_evidence}` into this page's
+`design-critic-<page_name>.json` trace.
+
+**Branch on the classification:**
+
+- If `review_method ∈ {"source-only", "unknown"}`:
+  - Still take the desktop + mobile screenshots for evidence (Step 4 viewport
+    loop using the `page` returned by the pattern), so the trace has a visual
+    record of what was actually rendered.
+  - Skip Layer 1 / Layer 2 / Layer 3 reviews entirely for this page — the
+    target source was never rendered, any "fix" would be blind.
+  - Set `verdict = "unresolved"` and `caveat = review_evidence.fallback_reason`
+    in the trace. Do NOT apply fixes. Move to the next page.
+
+- If `review_method ∈ {"rendered-authed", "rendered-demo"}`:
+  - Continue to Step 4 with the `context` and `page` from the pattern — do
+    NOT create a fresh BrowserContext in Step 4, reuse the one that already
+    has the optional storageState injected.
+
 ### 4. Screenshot All Pages
 
 Read `experiment/experiment.yaml` to get the list of pages and their routes. Write a small

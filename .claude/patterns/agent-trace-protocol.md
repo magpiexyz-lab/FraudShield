@@ -86,6 +86,10 @@ Agents may add fields beyond the base schema to capture agent-specific metrics:
 |-------|------------|------|-------------|
 | observer | `fixes_evaluated` | number | Count of fixes evaluated from fix-log |
 | build-info-collector | `files_collected` | number | Count of files in diff collection |
+| design-critic | `review_method` | enum | `"rendered-authed"` / `"rendered-demo"` / `"source-only"` / `"unknown"` — render classification from `.claude/patterns/render-review-detection.md` |
+| design-critic | `review_evidence` | object | `{requested_route, final_url, auth_source, fallback_reason, content_density}` — see render-review-detection.md |
+| design-critic | `caveat` | string | Present ONLY when `review_method ∈ {"source-only","unknown"}`; value = `review_evidence.fallback_reason`. Omitted otherwise. |
+| accessibility-scanner | `per_page_reviews` | array | Runtime path only. One entry per golden_path page: `{page, review_method, review_evidence}`. Omitted in static-fallback path. |
 
 ### Verdict Values
 

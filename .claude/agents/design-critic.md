@@ -157,6 +157,35 @@ Weakest section: <name> (<score>/10)
 - <unresolved issue per line>
 ```
 
+## Rendered-Review Contract
+
+Every reviewed page MUST record its render classification in the trace.
+Detection procedure: `.claude/patterns/render-review-detection.md`. Call it
+in Step 3.5 of `.claude/procedures/design-critic.md` — before screenshotting.
+
+### Required trace extension fields
+
+- `review_method`: `"rendered-authed" | "rendered-demo" | "source-only" | "unknown"`
+- `review_evidence`: `{requested_route, final_url, auth_source, fallback_reason, content_density}`
+
+### Verdict gate (tight)
+
+- If `review_method ∈ {"source-only", "unknown"}`: `verdict` MUST be `"unresolved"`, AND
+  the trace MUST include a `caveat` field set to `review_evidence.fallback_reason`.
+  Do NOT apply any fixes on such pages — the target source was never rendered,
+  so a "fix" would be blind.
+- If `review_method ∈ {"rendered-authed", "rendered-demo"}`: the standard
+  Layer 1 / 2 / 3 logic is authoritative for the verdict — no override.
+- `content_density` is observational in this change; NOT gated.
+
+### Diagnostic: demo-mode bypass failure
+
+On the FIRST auth-gated page per run, if the URL assertion fails AND the
+final pathname is an auth route (`/login`, `/signup`, `/auth/callback`,
+`/auth/reset-password`), `fallback_reason` MUST be `"demo-mode-bypass-failed"`.
+This surfaces upstream middleware / env-propagation bugs loudly instead of
+silently accepting source-only reviews across every page.
+
 ## Trace Output
 
 After completing all work, write a trace file:
@@ -189,6 +218,15 @@ trace = {
     "image_fixes": <IF>,
     "page": "<page_name>",
     "run_id": run_id,
+    "review_method": "<review_method>",       # rendered-authed | rendered-demo | source-only | unknown — see Rendered-Review Contract
+    "review_evidence": {                       # see .claude/patterns/render-review-detection.md
+        "requested_route": "<route>",
+        "final_url": "<page.url() after settle>",
+        "auth_source": "<storageState|demo-mode|null>",
+        "fallback_reason": "<string or null>",
+        "content_density": <int or null>
+    },
+    "caveat": "<fallback_reason if review_method is source-only|unknown; else omit>",
     "fixes": [
         # One entry per fix applied. Example:
         # {"file": "src/app/landing/page.tsx", "symptom": "low contrast ratio", "fix": "changed bg-gray-100 to bg-slate-900"}
@@ -215,6 +253,9 @@ Replace placeholders with actual values:
 - `candidates_tried`: number of pre-generated candidates tried from sidecar (0 if sidecar absent or no candidates tried)
 - `new_candidates_generated`: number of new candidates generated with page-context-informed prompts (0 if none)
 - `image_issues_for_landing`: JSON array of `{"slot":"<image-slot>","issue":"<description>"}` — for non-landing critics only, records image issues to be addressed by the landing-page critic (use `[]` if landing-page critic or no issues)
+- `review_method`: one of `"rendered-authed"` / `"rendered-demo"` / `"source-only"` / `"unknown"` (from render-review-detection)
+- `review_evidence`: object with `requested_route`, `final_url`, `auth_source`, `fallback_reason`, `content_density` — see `.claude/patterns/render-review-detection.md`
+- `caveat`: string — included ONLY when `review_method` is `"source-only"` or `"unknown"`; value is the `fallback_reason` from `review_evidence`. Omit the key entirely otherwise.
 
 
 ## Self-Degradation Handler
