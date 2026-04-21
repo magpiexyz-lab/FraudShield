@@ -64,6 +64,62 @@ try:
 except Exception as e:
     print(f"Warning: could not read project_id from {conf_path}: {e}", file=sys.stderr)
 
+def resolve_skill_identity():
+    """Return (run_id, ancestors_rids) from the active skill context, or ("", [])."""
+    lib_path = os.path.join(project_dir, ".claude", "hooks", "lib-state.sh")
+    if not os.path.isfile(lib_path):
+        return "", []
+    env = os.environ.copy()
+    env["CLAUDE_PROJECT_DIR"] = project_dir
+    try:
+        ident = subprocess.run(
+            ["bash", "-c", f"source '{lib_path}' && resolve_active_identity"],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except Exception as e:
+        print(f"Warning: resolve_active_identity failed: {e}", file=sys.stderr)
+        return "", []
+    if ident.returncode != 0 or not ident.stdout.strip():
+        return "", []
+    parts = ident.stdout.strip().split("\t")
+    if len(parts) < 4:
+        return "", []
+    rid = parts[1]
+    try:
+        ancestors = [
+            a.get("run_id", "")
+            for a in json.loads(parts[3])
+            if isinstance(a, dict) and a.get("run_id")
+        ]
+    except Exception:
+        ancestors = []
+    return rid, ancestors
+
+
+def write_marker(owner, run_id, ancestors_rids):
+    marker = {}
+    if os.path.exists(marker_path):
+        try:
+            with open(marker_path) as f:
+                marker = json.load(f)
+        except Exception:
+            marker = {}
+    marker["supabase"] = {
+        "owner": owner,
+        "started_at": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "run_id": run_id,
+        "ancestors_run_ids": ancestors_rids,
+        "started_by_script": "ensure-supabase-start.sh",
+        "repo_root": project_dir,
+        "project_id": project_id,
+    }
+    with open(marker_path, "w") as f:
+        json.dump(marker, f, indent=2)
+
+
 lf = open(lock_path, "w")
 try:
     fcntl.flock(lf, fcntl.LOCK_EX)
@@ -81,8 +137,17 @@ try:
     except Exception:
         already_running = False
 
+    # Resolve the caller's context — empty iff no active skill (manual wrapper run).
+    skill_run_id, ancestors_rids = resolve_skill_identity()
+    has_skill_context = bool(skill_run_id)
+
     if already_running:
-        print("[ensure-supabase] already running — not claiming ownership (user-owned).", file=sys.stderr)
+        # Already-running stack: we did NOT start it. Treat as user-owned so that
+        # finalize/orphan-cleanup never touch it. Writing the marker explicitly
+        # makes ownership visible across worktrees (previously this path wrote
+        # nothing, leaving the next init's orphan-cleanup blind — fixed post-#1010).
+        write_marker("user", "", [])
+        print("[ensure-supabase] already running — recorded owner=user (wrapper did not start it).", file=sys.stderr)
         sys.exit(0)
 
     # --- Start supabase + apply migrations ---
@@ -96,61 +161,20 @@ try:
     )
     subprocess.check_call(["npx", "supabase", "db", "reset"], cwd=project_dir)
 
-    # --- Resolve active skill identity via lib-state.sh ---
-    lib_path = os.path.join(project_dir, ".claude", "hooks", "lib-state.sh")
-    run_id = ""
-    ancestors_rids = []
-    if os.path.isfile(lib_path):
-        env = os.environ.copy()
-        env["CLAUDE_PROJECT_DIR"] = project_dir
-        try:
-            ident = subprocess.run(
-                ["bash", "-c", f"source '{lib_path}' && resolve_active_identity"],
-                env=env,
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-            if ident.returncode == 0 and ident.stdout.strip():
-                parts = ident.stdout.strip().split("\t")
-                if len(parts) >= 4:
-                    run_id = parts[1]
-                    try:
-                        ancestors_rids = [
-                            a.get("run_id", "")
-                            for a in json.loads(parts[3])
-                            if isinstance(a, dict) and a.get("run_id")
-                        ]
-                    except Exception:
-                        ancestors_rids = []
-        except Exception as e:
-            print(f"Warning: resolve_active_identity failed: {e}", file=sys.stderr)
-
-    # --- Write marker ---
-    marker = {}
-    if os.path.exists(marker_path):
-        try:
-            with open(marker_path) as f:
-                marker = json.load(f)
-        except Exception:
-            marker = {}
-
-    marker["supabase"] = {
-        "owner": "skill",
-        "started_at": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "run_id": run_id,
-        "ancestors_run_ids": ancestors_rids,
-        "started_by_script": "ensure-supabase-start.sh",
-        "repo_root": project_dir,
-        "project_id": project_id,
-    }
-    with open(marker_path, "w") as f:
-        json.dump(marker, f, indent=2)
-
-    print(
-        f"[ensure-supabase] started; owner=skill run_id={run_id or '(no active context)'} project_id={project_id or '(unknown)'}",
-        file=sys.stderr,
-    )
+    # Without a skill context, the wrapper was invoked outside any skill (e.g.
+    # via `make supabase-start`). Record owner=user so nothing reclaims it later.
+    if has_skill_context:
+        write_marker("skill", skill_run_id, ancestors_rids)
+        print(
+            f"[ensure-supabase] started; owner=skill run_id={skill_run_id} project_id={project_id or '(unknown)'}",
+            file=sys.stderr,
+        )
+    else:
+        write_marker("user", "", [])
+        print(
+            f"[ensure-supabase] started; owner=user (no active skill context) project_id={project_id or '(unknown)'}",
+            file=sys.stderr,
+        )
 
 finally:
     try:

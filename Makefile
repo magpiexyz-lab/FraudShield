@@ -156,16 +156,8 @@ distribute: ## Validate experiment/ads.yaml (valid YAML, schema, budget limits)
 	sys.exit(1) if errors else print(f'experiment/ads.yaml looks good — valid {channel} schema.'); \
 	"
 
-supabase-start: ## Start local Supabase for testing (requires Docker)
-	@if [ ! -f supabase/config.toml ]; then \
-		echo "Error: supabase/config.toml not found. Run 'npx supabase init' first (bootstrap does this automatically)."; \
-		exit 1; \
-	fi
-	@echo "Starting local Supabase..."
-	npx supabase start -x realtime,storage,imgproxy,inbucket,pgadmin-schema-diff,migra,postgres-meta,studio,edge-runtime,logflare,pgbouncer,vector
-	@echo "Applying migrations..."
-	npx supabase db reset
-	@echo "Local Supabase is ready."
+supabase-start: ## Start local Supabase (delegates to ensure-supabase-start.sh for skill-ownership tracking)
+	@bash .claude/scripts/ensure-supabase-start.sh
 
 supabase-stop: ## Stop local Supabase
 	-npx supabase stop

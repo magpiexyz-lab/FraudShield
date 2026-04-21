@@ -376,16 +376,42 @@ class TestTransientTeardown(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self._assert_stop_called(project_id="myproj")
 
-    # Case 9: defensive reclaim — no marker, supabase running, no recent flag -> stop
-    def test_defensive_reclaim_bypass_wrapper(self):
-        # No marker file is written.
-        # Ensure no finalize-completed-*.flag exists (fresh common_dir).
+    # Case 9: no-marker path must PRESERVE running supabase (user-started but
+    # hasn't invoked the wrapper yet). This is the Issue A fix: we reverted the
+    # earlier "defensive reclaim" that would kill the user's stack.
+    def test_no_marker_preserves_running_supabase(self):
+        # No marker file is written. Supabase reports running.
+        # Expected: no stop, exit 0. The earlier defensive reclaim was removed
+        # because it could not distinguish a user-manually-started stack from
+        # a Claude-bypassed-wrapper stack.
         proc = self._run_stop(
             "--orphan-cleanup",
             env_extra={"SUPABASE_RUNNING": "1"},
         )
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        self._assert_stop_called()  # no project_id snapshot when defensive-reclaim
+        self._assert_stop_not_called()
+
+    # Case 9b: owner=user marker survives orphan-cleanup (Issues B & C fix —
+    # wrapper now writes owner=user when already-running or when no skill is
+    # active; orphan-cleanup must treat these as untouchable).
+    def test_user_owned_marker_survives_orphan_cleanup(self):
+        self._write_marker({"supabase": {
+            "owner": "user",
+            "started_at": now_iso(),
+            "run_id": "",
+            "ancestors_run_ids": [],
+            "started_by_script": "ensure-supabase-start.sh",
+            "repo_root": str(self.tmp),
+            "project_id": "myproj",
+        }})
+        proc = self._run_stop("--orphan-cleanup")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self._assert_stop_not_called()
+        self.assertEqual(
+            self._read_marker().get("supabase", {}).get("owner"),
+            "user",
+            "owner=user marker must be preserved verbatim",
+        )
 
     # Case 10: stale flag GC — mtime > 7 days should be deleted at top of orphan-cleanup
     def test_stale_flag_gc(self):

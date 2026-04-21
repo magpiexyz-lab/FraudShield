@@ -174,19 +174,13 @@ fi
 
 # --- Marker absent ---
 if [[ ! -f "$MARKER" ]]; then
-  # Defensive reclaim: wrapper was bypassed and a stack is left running.
-  if [[ "$MODE" == "orphan" ]]; then
-    if npx supabase status -o json >/dev/null 2>&1; then
-      RECENT_FLAGS=$(find "$COMMON_DIR" -maxdepth 1 -name 'finalize-completed-*.flag' -mtime -7 2>/dev/null | wc -l | tr -d ' ')
-      if [[ "$RECENT_FLAGS" == "0" ]]; then
-        echo "[stop-transient] defensive reclaim: supabase running, no marker, no recent flag — inferring orphan" >&2
-        reclaim_cmd="$(make_stop_cmd "$PROJECT_DIR" "")"
-        # shellcheck disable=SC2064
-        trap "rm -f '$reclaim_cmd'" EXIT
-        with_lock "$reclaim_cmd" || true
-      fi
-    fi
-  fi
+  # No marker present → nothing we own is running from our perspective.
+  # We deliberately do NOT "defensively reclaim" an unmarked running stack:
+  # without a marker we cannot distinguish "user started supabase manually and
+  # hasn't invoked the wrapper yet" (must preserve) from "Claude bypassed the
+  # wrapper and left a stack running" (a leak). Preserving user state wins —
+  # the Claude-bypass leak is documented as the Makefile path's known cost and
+  # must be caught by the Makefile-delegates-to-wrapper change or manual cleanup.
   exit 0
 fi
 
