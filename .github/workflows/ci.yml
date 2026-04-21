@@ -24,6 +24,7 @@ jobs:
     outputs:
       e2e_present: ${{ steps.probe.outputs.e2e_present }}
       migrations_present: ${{ steps.probe.outputs.migrations_present }}
+      nvmrc_present: ${{ steps.probe.outputs.nvmrc_present }}
     steps:
       - uses: actions/checkout@v4
       - id: probe
@@ -37,6 +38,14 @@ jobs:
             echo "migrations_present=true" >> "$GITHUB_OUTPUT"
           else
             echo "migrations_present=false" >> "$GITHUB_OUTPUT"
+          fi
+          # .nvmrc gates the build job: the template repo itself has no Node
+          # app to build, so setup-node@v4 (which requires the file) must be
+          # skipped entirely rather than crash on a missing file.
+          if [ -f .nvmrc ]; then
+            echo "nvmrc_present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "nvmrc_present=false" >> "$GITHUB_OUTPUT"
           fi
 
   validate:
@@ -138,7 +147,8 @@ jobs:
           fi
 
   build:
-    needs: validate
+    needs: [validate, detect]
+    if: needs.detect.outputs.nvmrc_present == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     # Dummy env vars so `npm run build` can compile without real credentials.
