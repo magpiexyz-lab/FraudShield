@@ -49,6 +49,30 @@ executing the skill:
    that triggers the bug
 3. Identify the exact step and line where behavior diverges from expectation
 4. Record: `divergence_point` (file:line), `expected` behavior, `actual` behavior
+
+> **`divergence_point` format contract (machine-enforced by VERIFY below):**
+> Each reproduction record MUST have `divergence_point` of the form
+> `<file>:<line_token>`, where:
+>
+> - `<file>` is a single repo-relative path. The file portion must not
+>   contain whitespace or embedded separators like ` and `, ` & `, ` vs `,
+>   ` + `, or `;`. If an observation cites multiple files, emit one
+>   reproduction record per file — downstream analyzers do not split
+>   bundles (they extract the first integer only and flag the rest as
+>   unanalyzed).
+> - `<line_token>` is one of: a single 1-based integer (`34`), a range
+>   (`34-55`), or a CSV of integers (`180,217,261`). A parenthesized
+>   annotation is allowed (`144 (G6)`) and is ignored by the line parser.
+>
+> `.claude/scripts/resolve-causal-analyzer.py::parse_line_part` extracts
+> the first integer from range/CSV forms and attaches a `line_parse_note`
+> on the analysis record so the graceful degradation stays observable in
+> downstream artifacts (including the PR body — see state-11-commit-pr.md).
+> Producers MUST NOT rely on this fallback: bundled multi-file forms with
+> embedded separators are rejected by the VERIFY regex below. Prior to
+> this contract, non-integer line parts silently skipped 66% of records
+> (see issue #985).
+
 5. **Validator evidence** (machine-verifiable baseline):
    Run all 3 validators and capture output as `pre_fix_baseline`:
    - `python3 scripts/validate-frontmatter.py 2>&1`
@@ -91,7 +115,7 @@ issues.
 
 **VERIFY:**
 ```bash
-python3 -c "import json; d=json.load(open('.runs/resolve-reproduction.json')); rs=d.get('reproductions',[]); assert isinstance(rs, list) and len(rs)>0, 'reproductions empty'; r=rs[0]; assert 'divergence_point' in r, 'divergence_point missing'; assert 'expected' in r, 'expected missing'; assert 'actual' in r, 'actual missing'; b=d.get('pre_fix_baseline',{}); assert 'frontmatter' in b and 'semantics' in b and 'consistency' in b, 'pre_fix_baseline incomplete'"
+python3 -c "import json,re; d=json.load(open('.runs/resolve-reproduction.json')); rs=d.get('reproductions',[]); assert isinstance(rs, list) and len(rs)>0, 'reproductions empty'; r=rs[0]; assert 'divergence_point' in r, 'divergence_point missing'; assert 'expected' in r, 'expected missing'; assert 'actual' in r, 'actual missing'; b=d.get('pre_fix_baseline',{}); assert 'frontmatter' in b and 'semantics' in b and 'consistency' in b, 'pre_fix_baseline incomplete'; bad=re.compile(r'\s+(?:and|&|vs|\+|;)\s+',re.IGNORECASE); offenders=[x.get('divergence_point','') for x in rs if isinstance(x,dict) and bad.search(x.get('divergence_point',''))]; assert not offenders, 'divergence_point contract violated - embedded separator: ' + repr(offenders)"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

@@ -62,6 +62,7 @@ OUTPUT_PATH = os.path.join(REPO_ROOT, ".runs", "resolve-causal-analysis.json")
 STACKS_DIR = os.path.join(REPO_ROOT, ".claude", "stacks")
 
 ISSUE_NUM_RE = re.compile(r"#(\d+)")
+LINE_PART_INT_RE = re.compile(r"\d+")
 
 # Set by main() to the config-driven budget; each subprocess call must return
 # within this budget, otherwise the whole analysis is abandoned and the
@@ -313,6 +314,58 @@ def anti_pattern_match_for(
     return None
 
 
+def parse_line_part(s: str) -> tuple[int | None, str]:
+    """Extract a 1-based integer line number from a divergence_point line-part token.
+
+    Accepts the following forms (per state-3-reproduce.md producer contract):
+
+    - ``"34"``            → (34, "integer")
+    - ``"34-55"``         → (34, "range: start of 34-55")
+    - ``"180,217,261"``   → (180, "csv: first of 180,217,261")
+    - ``"144 (G6)"``      → (144, "integer")   # parenthesized annotation ignored
+    - ``"34-55 and …"``   → (34, "bundled_fragment: start of 34-55")
+                             (the ' and ' form is forbidden by the state-3 contract,
+                              but the analyzer degrades gracefully if a legacy
+                              record slips through — extracts the first integer)
+
+    Returns ``(None, "no-digits")`` when no integer can be extracted, so the
+    caller keeps the ``skipped_reason`` flow from the pre-fix behavior.
+
+    Values less than 1 are clamped to 1 (git log -L requires 1-based lines).
+    """
+    stripped = s.strip()
+    if not stripped:
+        return None, "no-digits"
+    match = LINE_PART_INT_RE.search(stripped)
+    if not match:
+        return None, "no-digits"
+    first = int(match.group(0))
+    if first < 1:
+        first = 1
+    has_dash_between_digits = "-" in stripped and re.search(r"\d\s*-\s*\d", stripped)
+    has_comma = "," in stripped
+    # Detect legacy bundled-fragment separators. Whitespace required around
+    # word-like separators (and/vs/&/+) to avoid matching legitimate '&' or
+    # '+' inside file paths. ';' is detected with only trailing whitespace
+    # since producers commonly write 'file1:10; file2:20' with no leading
+    # space before the semicolon. The state-3-reproduce.md contract forbids
+    # all of these forms in divergence_point; this heuristic is graceful
+    # degradation only so legacy records before the contract still get
+    # first-integer extraction.
+    has_bundled_sep = re.search(
+        r"(?:\s+(?:and|&|vs|\+)\s+|\s*;\s+)", stripped, re.IGNORECASE
+    )
+    if has_bundled_sep:
+        note = f"bundled_fragment: start of {stripped.split()[0]}"
+    elif has_dash_between_digits:
+        note = f"range: start of {stripped}"
+    elif has_comma:
+        note = f"csv: first of {stripped}"
+    else:
+        note = "integer"
+    return first, note
+
+
 def analyze_divergence_point(
     divergence_point: str,
     anti_patterns: list[dict],
@@ -332,19 +385,17 @@ def analyze_divergence_point(
             "skipped_reason": "malformed divergence_point (no colon)",
         }
     file_part, line_part = divergence_point.split(":", 1)
-    try:
-        line_num = int(line_part)
-    except ValueError:
+    line_num, line_parse_note = parse_line_part(line_part)
+    if line_num is None:
         return {
             "divergence_point": divergence_point,
             "touching_commits": [],
             "reversal_detected": False,
             "oscillation_count": 0,
             "anti_pattern_match": None,
-            "skipped_reason": f"non-integer line {line_part!r}",
+            "skipped_reason": f"no-digits line_part {line_part!r}",
+            "line_parse_note": line_parse_note,
         }
-    if line_num < 1:
-        line_num = 1
 
     if not os.path.exists(os.path.join(REPO_ROOT, file_part)):
         return {
@@ -354,6 +405,7 @@ def analyze_divergence_point(
             "oscillation_count": 0,
             "anti_pattern_match": ap_match(),
             "skipped_reason": "file not found at HEAD",
+            "line_parse_note": line_parse_note,
         }
 
     commits = git_log_at_line_with_patches(file_part, line_num, max_commits=10)
@@ -367,6 +419,7 @@ def analyze_divergence_point(
             "oscillation_count": 0,
             "anti_pattern_match": ap_match(),
             "skipped_reason": "no git history at line",
+            "line_parse_note": line_parse_note,
         }
 
     flips = count_flip_pairs(commits, window_days=window_days)
@@ -378,6 +431,7 @@ def analyze_divergence_point(
         "reversal_detected": resolve_c is not None and flips >= 1,
         "oscillation_count": flips,
         "anti_pattern_match": ap_match(),
+        "line_parse_note": line_parse_note,
     }
 
 

@@ -34,10 +34,35 @@ Configure services using `canonical_url` (custom domain if added in Step 4.2, ot
 
 > **Surface-only gate:** If the archetype's `excluded_stacks` includes `hosting` and surface is `detached` (surface-only deployment): skip Step 5b entirely — no hosting infrastructure was provisioned. Proceed to Step 5c (health check verifies the surface URL).
 
+**Read orchestrator-state handoff from state-3b.** Before assembling the shared context, read `.runs/deploy-provision-3b.json.collected_secrets` — this is the source of truth for secrets that Agent A / Agent B / Agent D receive. Do NOT read these values from `.env.local` (which may not exist on CI / fresh-clone / rotation-only deploys):
+
+```bash
+python3 -c "
+import json, os
+secrets = {}
+if os.path.exists('.runs/deploy-provision-3b.json'):
+    d = json.load(open('.runs/deploy-provision-3b.json'))
+    secrets = d.get('collected_secrets') or {}
+print('Shared-context secrets:', sorted(secrets.keys()))
+"
+```
+
 Assemble the shared context block (read-only inputs for all agents):
-- `canonical_url`, experiment.yaml contents (name, description, variants, stack, type), `experiment/EVENTS.yaml` contents, archetype type
+- `canonical_url`, experiment.yaml contents (name, description, variants, stack, type), `experiment/EVENTS.yaml` contents, archetype type, `deploy.domain` (from experiment.yaml)
 - If Steps 3–4 were executed (not skipped for CLI detached): hosting env var method (from hosting stack file's `## Deploy Interface > Environment Variables`), database refs/keys (from Step 3), hosting project `name` and team/account (from Step 4), hosting and database stack file paths
+- `collected_secrets` from state-3b (per-key availability follows experiment.yaml `stack`):
+  - `RESEND_API_KEY` — when `stack.email: resend`
+  - `RESEND_FROM` — when `stack.email` is present
+  - `CRON_SECRET` — when `stack.email` is present
+  - Plus any other secrets Step 4.4 collected for this deploy
+- `oauth_credentials` from state-3a Step 3.5 (if collected) — passed via orchestrator state, not `.env.local`
 - CLI statuses from Step 0 (if Step 0.10 was executed)
+
+> The shared-context bullets above MUST match every spawned agent's
+> `Receives:` docstring. When adding a new Agent (Agent E, F, …) that
+> receives a secret, update both the agent's `Receives:` and this
+> preamble list — drift here is the root cause of silent-skip bugs like
+> issue #986.
 
 Determine which agents to launch based on experiment.yaml stack (all use
 `subagent_type: general-purpose`):
@@ -64,8 +89,10 @@ Launch all applicable agents **simultaneously** using parallel Agent tool calls.
 #### Agent A — Database Auth config
 
 **Spawn condition:** `stack.auth: supabase`
-**Receives:** `canonical_url`, database refs/keys (from Step 3, if supabase) OR user-provided Supabase URL/anon key (from Step 4.4, if database is not supabase), experiment.yaml `name`, database stack file path, `oauth_credentials` from Step 1/3.5, `stack.auth_providers`, `stack.email` value (from experiment.yaml), `RESEND_API_KEY` (from Step 4.4, when `stack.email: resend`), `deploy.domain` (from experiment.yaml, for SMTP sender address)
-**Returns:** `{status: "ok"|"failed"|"skipped", message: "<details>", env_vars_added: [], oauth_configured: ["google", ...], oauth_skipped: ["github", ...], smtp_configured: true|false, templates_configured: true|false}`
+**Receives (from the Step 5b preamble shared-context block):** `canonical_url`; database refs/keys (from Step 3, if supabase) OR user-provided Supabase URL/anon key (from Step 4.4, if database is not supabase); experiment.yaml `name`; database stack file path; `oauth_credentials` from state-3a Step 3.5 (orchestrator state, not re-read from disk); `stack.auth_providers`; `stack.email` value (from experiment.yaml); `collected_secrets.RESEND_API_KEY` from `.runs/deploy-provision-3b.json` (when `stack.email: resend`); `deploy.domain` (from experiment.yaml, for SMTP sender address)
+**Returns:** `{status: "ok"|"partial"|"failed"|"skipped", message: "<details>", env_vars_added: [], oauth_configured: ["google", ...], oauth_skipped: ["github", ...], smtp_configured: true|false, templates_configured: true|false}`
+
+> `status: "partial"` — base PATCH succeeded (site_url, uri_allow_list, mailer subjects) but a declared-optional extension (SMTP, email templates, or OAuth) was silently dropped because its required input was missing from the shared context. The `message` field MUST name the missing input (e.g., "SMTP skipped: RESEND_API_KEY absent from shared-context collected_secrets"). This makes gap bugs like issue #986 observable in the Step 6 summary instead of hiding behind `status: "ok"`.
 
 Instructions for Agent A:
 
@@ -84,6 +111,38 @@ Include in the same PATCH call to `/v1/projects/{ref}/config/auth`:
 ```
 For skipped providers (user typed **skip**), do not include them in the PATCH call.
 Record configured providers in `oauth_configured` and skipped providers in `oauth_skipped`.
+
+**Branded email templates (always include — independent of SMTP wiring):**
+Per the database stack file's Auth Config section, the branded
+`mailer_templates_{confirmation,recovery,magic_link}_content` HTML MUST be
+included in the PATCH call regardless of whether SMTP wiring succeeds. If
+the templates are applied, set `templates_configured: true` in the return
+object.
+
+**Self-audit before returning (prevents silent-skip bugs like issue #986):**
+Run the audit AFTER the PATCH call succeeds but BEFORE returning. If any
+declared-optional extension was silently dropped because its input was
+missing from the shared context, elevate `status` from `"ok"` to
+`"partial"` and include the missing-input name in `message`:
+
+1. If `stack.email: resend` AND `collected_secrets.RESEND_API_KEY` was
+   absent in the shared context AND `smtp_configured=false`: elevate to
+   `status: "partial"`, `message: "SMTP skipped: RESEND_API_KEY absent
+   from shared-context collected_secrets (state-3b did not collect it, or
+   state-3b was skipped for surface-only deployment)"`.
+2. If `templates_configured=false` (templates were not successfully
+   PATCHed): elevate to `status: "partial"`, `message: "Branded email
+   templates not applied — <specific error>"`. Templates are always-include
+   per the stack file, so this being `false` is a real regression.
+3. If `stack.auth_providers` declared a provider but `oauth_credentials`
+   was absent in the shared context AND that provider is not in
+   `oauth_configured` or `oauth_skipped`: elevate to `status: "partial"`,
+   `message: "OAuth provider <name> dropped — credentials absent from
+   shared-context oauth_credentials"`.
+
+Return with the possibly-elevated `status` so the Step 6 summary
+(state-5-manifest-write.md) renders the condition instead of hiding it
+behind `status: "ok"`.
 
 ---
 

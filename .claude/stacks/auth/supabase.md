@@ -589,11 +589,12 @@ const publicPaths = ["/", "/login", "/signup", "/auth/callback", "/auth/reset-pa
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Skip public paths, static files, and API routes
+  // Skip public paths, static files, API routes, analytics proxy, and variant routes
   if (
     publicPaths.some((p) => pathname === p) ||
     pathname.startsWith("/_next") ||
     pathname.startsWith("/api/") ||
+    pathname.startsWith("/ingest/") ||
     pathname.startsWith("/v/") ||
     pathname.includes(".")
   ) {
@@ -642,6 +643,7 @@ export const config = {
 Notes:
 - `publicPaths` should be updated by bootstrap to include all non-authenticated pages from golden_path (landing page variants, marketing pages)
 - `/v/` variant routes are excluded via `pathname.startsWith("/v/")` — these are A/B test landing pages that must be publicly accessible
+- `/ingest/` is excluded via `pathname.startsWith("/ingest/")` — this is the client-side analytics reverse-proxy prefix defined by the analytics stack file's `next.config.ts` rewrite (see `.claude/stacks/analytics/posthog.md` Reverse Proxy Setup). Without this skip, unauthenticated PostHog event POSTs from landing/demo/signup pages would 307-redirect to `/login?next=/ingest/...` and return 405, silently breaking top-of-funnel analytics in production (was issue #983). Any auth stack file authoring its own middleware template must replicate this skip-list entry when `stack.analytics` uses a client-side reverse proxy.
 - API routes are excluded — they use server-side auth checks in route handlers instead. **Do not add middleware auth for `/api/` routes.** Middleware and API route handlers create separate Supabase clients from the same request cookies. Supabase refresh tokens are single-use: if the access token expires, middleware consumes the refresh token, and the API route handler's subsequent refresh attempt fails silently (returns 401). API routes must handle auth independently via `createServerSupabaseClient()` + `getUser()`.
 - The `matcher` config excludes static assets for performance
 - Redirects to `/login?next=<path>` so the login page can redirect back after auth

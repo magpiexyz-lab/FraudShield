@@ -38,6 +38,9 @@ Print a deployment summary:
   Events: checkout.session.completed
 [If any health check failed] **Action needed:** [list failing services with fix commands]
 
+[If any agent returned status: "partial"] **Partially configured (declared-optional extension dropped):**
+- [service]: partial — [message naming the missing input, e.g., "SMTP skipped: RESEND_API_KEY absent from shared-context collected_secrets"]. The base configuration succeeded but the extension silently dropped because state-3b did not propagate its input to state-3c. Re-run `/deploy` after ensuring the input is provided (e.g., `stack.email: resend` declared AND you supply `RESEND_API_KEY` when prompted), or set up the extension manually via the stack file's dashboard instructions.
+
 [If any agent returned status: "failed"] **Failed (needs manual setup):**
 - [service]: failed — [error message]. Set up manually: [instructions from stack file]
 

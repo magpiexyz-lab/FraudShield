@@ -70,16 +70,37 @@ Collect all env vars and set them using the hosting provider's method:
       'domain_added': True,      # or False if failed
       'canonical_url': '<url or null>',
       'git_connect_failed': False,
-      'env_vars_set': True
+      'env_vars_set': True,
+      # Secrets collected in Step 4.4 that downstream agents in state-3c need
+      # in their shared-context block (Agent A Receives: RESEND_API_KEY,
+      # RESEND_FROM, CRON_SECRET when stack.email:resend). Values are the
+      # actual secrets just collected from the user — source of truth for
+      # the orchestrator between state-3b and state-3c. Omit a key when it
+      # was not collected (e.g., stack.email absent). When this state is
+      # skipped for surface-only deployment, write collected_secrets = {}.
+      'collected_secrets': {
+          # 'RESEND_API_KEY': '<value>',  # when stack.email:resend
+          # 'RESEND_FROM': '<value>',     # when stack.email is present
+          # 'CRON_SECRET': '<value>',     # when stack.email is present
+          # Other stack-scoped secrets that state-3c agents Receive: can go
+          # here — this artifact is gitignored (.runs/ is in .gitignore).
+      }
   }
   json.dump(artifact, open('.runs/deploy-provision-3b.json', 'w'), indent=2)
   "
   ```
 
+  > `.runs/` is gitignored and overwritten per deploy run. `collected_secrets`
+  > is in-memory orchestrator state scoped to the current deploy — it is the
+  > source of truth for state-3c Step 5b preamble, not `.env.local` (which
+  > may not exist on CI / fresh-clone / rotation-only deploys).
+
 **POSTCONDITIONS:**
 - Hosting project created/linked
 - Domain configured (or fallback recorded)
 - All environment variables set on hosting provider
+- `collected_secrets` dict written into `.runs/deploy-provision-3b.json`
+  (empty when state-3b is skipped for surface-only deployment)
 - `.runs/deploy-provision-3b.json` exists
 
 **VERIFY:**

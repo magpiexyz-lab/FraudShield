@@ -79,6 +79,12 @@ Include additional sections in PR body:
 ### Root Cause Analysis
 For each issue: root cause, divergence point, and why the fix addresses it.
 
+When a divergence point record from `.runs/resolve-causal-analysis.json.divergence_points_analyzed[i]` includes a non-empty `line_parse_note` (e.g., `"range: start of 34-55"`, `"csv: first of 180,217,261"`), surface it in parentheses alongside the divergence point so the graceful-degradation is observable at the most visible output surface:
+
+> `divergence_point: f.md:34-55 (line_parse_note=range, analyzed at line 34)`
+
+When the note is absent, `"integer"`, or `"no-digits"`, render the divergence point plainly. See `.claude/scripts/resolve-causal-analyzer.py::parse_line_part` for the full set of notes (resolves issue #985's visibility gap).
+
 ### Blast Radius
 Files checked, confirmed matches fixed, potential matches evaluated.
 
