@@ -38,6 +38,7 @@ Files to read:
 - Glob `.claude/procedures/*.md` — read each procedure file
 - Glob `.claude/agents/*.md` — read each agent definition
 - Glob `.claude/hooks/*.sh` — read each hook script
+- Glob `.claude/skills/**/state-*.md` — read each state file (look for contradictions between a state's VERIFY and ACTIONS, between a state's CHECKPOINT and an upstream state's VERIFY, and between POSTCONDITIONS promises and ACTIONS write steps)
 
 After reading: for each potential finding, identify which archetype and stack
 configuration triggers the contradiction. Record the config alongside the finding.

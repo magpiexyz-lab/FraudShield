@@ -93,7 +93,10 @@
     "0": "test -f .runs/review-context.json",
     "1": "python3 -c \"import json; d=json.load(open('.runs/review-baseline.json')); assert isinstance(d.get('baseline_errors'), int) and d['baseline_errors']>=0, 'baseline_errors not valid'; assert isinstance(d.get('health_clean'), bool), 'health_clean not bool'; mi=d.get('max_iterations'); assert isinstance(mi, int) and mi>=0, 'max_iterations invalid'; mf=d.get('max_findings_per_dimension'); assert isinstance(mf, int) and mf>=0, 'max_findings_per_dimension invalid'\"",
     "2a": "python3 -c \"import json; d=json.load(open('.runs/review-findings.json')); fs=d.get('findings',[]); assert isinstance(fs, list), 'findings not a list'; tc=d.get('total_count'); assert isinstance(tc, int) and tc>=0, 'total_count invalid'; assert tc==len(fs), 'total_count=%d but len(findings)=%d' % (tc, len(fs)); [f.get('severity') in ('HIGH','MEDIUM','LOW') or (_ for _ in ()).throw(AssertionError('finding %s has bad severity: %s' % (f.get('title','?'), f.get('severity')))) for f in fs]\"",
-    "2b": "python3 -c \"import json; d=json.load(open('.runs/review-findings.json')); assert d.get('filtered') is not None, 'filtered field missing'\"",
+    "2b": {
+      "verify": "python3 -c \"import json; d=json.load(open('.runs/review-findings.json')); assert d.get('filtered') is not None, 'filtered field missing'\"",
+      "allows_early_exit_when": "zero_findings"
+    },
     "2c": "python3 .claude/scripts/verify-review-adversarial.py  # review-adversarial.json, review-challenger.json",
     "2d": "git branch --show-current | grep -q 'chore/review-fixes'",
     "2e": "git diff --name-only HEAD 2>/dev/null | grep -q . || git diff --cached --name-only 2>/dev/null | grep -q .",

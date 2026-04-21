@@ -1,0 +1,24 @@
+name: State Consistency
+
+on:
+  pull_request:
+    paths:
+      - '.claude/patterns/state-registry.json'
+      - '.claude/skills/**/state-*.md'
+      - '.claude/scripts/verify-linter.sh'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: state-consistency-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify-linter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run verify-linter
+        run: bash .claude/scripts/verify-linter.sh

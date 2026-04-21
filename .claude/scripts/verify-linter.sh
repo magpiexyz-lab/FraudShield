@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # verify-linter.sh — Detect VERIFY-postcondition drift in state files.
-# Checks: artifact coverage, state-file/registry divergence, unjustified true VERIFY.
-# Exit 0 if clean, exit 1 if UNCOVERED, UNJUSTIFIED_TRUE, or DIVERGED.
+# Checks: artifact coverage, state-file/registry divergence, unjustified true VERIFY,
+# declared-field / prose drift (allows_early_exit_when, verify_semantics).
+# Exit 0 if clean, exit 1 if UNCOVERED, UNJUSTIFIED_TRUE, DIVERGED, or DRIFT_DECLARED_VS_PROSE.
 
 set -euo pipefail
 
@@ -28,6 +29,24 @@ SKIP_KEYS = {"trace_schemas"}
 uncovered = []
 diverged = []
 unjustified_true = []
+drift_declared = []
+
+# Phrases that count as matching prose for a declared `allows_early_exit_when` value.
+# The declared value itself (with _ replaced by space) is always matched; this dict
+# augments with common synonyms for known values.
+SYNONYMS = {
+    "no_fixes": ["no fixes succeeded", "0 fixes", "zero fixes", "no fixes applied"],
+    "zero_findings": ["0 remaining findings", "zero findings", "no findings"],
+    "baseline_unchanged": ["error count same or decreased", "final_errors <= baseline", "no regression"],
+}
+
+# Regex markers that must appear in a state's VERIFY for a declared `verify_semantics` value.
+VERIFY_SEMANTIC_MARKERS = {
+    "strict_zero": [r"exit\s+0", r"&&\s*python3\s+scripts/validate", r"==\s*0"],
+    "no_regression_from_baseline": [r"baseline", r"<=\s*baseline", r"no regression", r"final_errors"],
+    "artifact_exists": [r"\btest -f\b", r"os\.path\.exists", r"os\.path\.isfile"],
+    "non_empty_diff": [r"git diff.*grep -q", r"diff.*--name-only"],
+}
 
 def extract_verify_cmd(value):
     """Extract the VERIFY command string from a registry entry."""
@@ -166,6 +185,43 @@ def commands_diverge(file_verify, registry_verify):
     # Compare the substantive content
     return norm_file != norm_reg
 
+def check_declared_drift(skill, state_id, value, file_text):
+    """Detect drift between declarative fields in state-registry.json and state-file prose.
+
+    Declarations are ESCAPE HATCHES that tell cross-file consistency audits
+    (e.g. /review Dimension A) that a pattern is intentional. They must stay in
+    sync with state-file prose, or they become silent false-negatives.
+
+    Checked fields:
+      - allows_early_exit_when: must have matching phrase in ACTIONS
+      - verify_semantics: must have matching regex marker in VERIFY
+    """
+    out = []
+    if not isinstance(value, dict):
+        return out
+
+    actions_text = extract_section(file_text, "ACTIONS").lower()
+    verify_text = (extract_verify_from_file(file_text) + " " + extract_section(file_text, "VERIFY")).lower()
+
+    declared_exit = value.get("allows_early_exit_when")
+    if declared_exit:
+        phrases = [declared_exit.replace("_", " ")] + SYNONYMS.get(declared_exit, [])
+        if not any(p.lower() in actions_text for p in phrases):
+            out.append(
+                f"  [{skill}:{state_id}] allows_early_exit_when='{declared_exit}' "
+                f"but ACTIONS prose lacks matching phrase (tried: {phrases})"
+            )
+
+    declared_sem = value.get("verify_semantics")
+    if declared_sem:
+        pats = VERIFY_SEMANTIC_MARKERS.get(declared_sem, [])
+        if pats and not any(re.search(p, verify_text) for p in pats):
+            out.append(
+                f"  [{skill}:{state_id}] verify_semantics='{declared_sem}' "
+                f"but VERIFY lacks matching markers (expected one of: {pats})"
+            )
+    return out
+
 for skill, states in registry.items():
     if skill in SKIP_KEYS:
         continue
@@ -227,6 +283,9 @@ for skill, states in registry.items():
                     f"  [{skill}:{state_id}] -- VERIFY is \"true\" but no justification comment found"
                 )
 
+        # --- Check 4: Declared field / prose drift ---
+        drift_declared.extend(check_declared_drift(skill, state_id, value, file_text))
+
 # --- Output report ---
 print("VERIFY Linter Report")
 print("====================")
@@ -250,9 +309,18 @@ if unjustified_true:
         print(line)
     print()
 
-print(f"Summary: {len(uncovered)} uncovered, {len(diverged)} diverged, {len(unjustified_true)} unjustified_true")
+if drift_declared:
+    print("DRIFT_DECLARED_VS_PROSE (registry declaration disagrees with state-file prose):")
+    for line in drift_declared:
+        print(line)
+    print()
 
-# Exit code: 1 if UNCOVERED, UNJUSTIFIED_TRUE, or DIVERGED, 0 otherwise
-if uncovered or unjustified_true or diverged:
+print(
+    f"Summary: {len(uncovered)} uncovered, {len(diverged)} diverged, "
+    f"{len(unjustified_true)} unjustified_true, {len(drift_declared)} drift_declared"
+)
+
+# Exit code: 1 if any category non-empty, 0 otherwise
+if uncovered or unjustified_true or diverged or drift_declared:
     sys.exit(1)
 PYTHON_SCRIPT
