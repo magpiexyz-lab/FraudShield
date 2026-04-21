@@ -54,15 +54,22 @@ else:
       echo "INFO: init-context.sh — $CTX already has run_id, skipping" >&2
       exit 0
     else
-      # Merge extra fields into existing context, protecting base infrastructure fields
+      # Merge extra fields into existing context, protecting base infrastructure fields.
+      # skill is protected: callers must not override identity (the #941 bug source).
+      # Q-score attribution uses the separate attributed_to field.
       printf '%s' "$EXTRA" | python3 -c "
 import json, sys
 ctx = json.load(open('$CTX'))
 extra = json.loads(sys.stdin.read())
-protected = {'branch', 'timestamp', 'run_id'}
+protected = {'branch', 'timestamp', 'run_id', 'skill'}
+dropped = []
 for k, v in extra.items():
-    if k not in protected:
-        ctx[k] = v
+    if k in protected:
+        dropped.append(k)
+        continue
+    ctx[k] = v
+if dropped:
+    sys.stderr.write('INFO: init-context.sh — ignored protected fields from extra: ' + ','.join(dropped) + '\n')
 json.dump(ctx, open('$CTX', 'w'))
 "
       exit 0
@@ -79,18 +86,48 @@ TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 BRANCH="$(git branch --show-current)"
 
 # --- Write context file ---
+# Base schema includes identity fields (issue #941 fix):
+#   skill           — physical running skill (never overridden by extra)
+#   run_id          — $SKILL-$TS, authoritative id
+#   parent          — {skill, run_id} of immediate parent, null when top-level
+#   ancestors       — [{skill, run_id}, ...] root→parent chain, empty when top-level
+#   attributed_to   — Q-score attribution, defaults to skill (see context-init.md)
+#   completed       — false at init; set true by lifecycle-next.sh on EMBED_COMPLETE
+#                     or by lifecycle-finalize.sh when the run ends
+#
+# Parent/ancestors are derived by lifecycle-init.sh --embed by reading the
+# parent's context file directly (never trust a CLI-arg chain — R2 C8).
 if [[ -z "$EXTRA" || "$EXTRA" == "{}" ]]; then
   # Pure bash — no python3 needed
   cat > "$CTX" << CTXEOF
-{"skill":"$SKILL","branch":"$BRANCH","timestamp":"$TS","run_id":"$SKILL-$TS","completed_states":[]}
+{"skill":"$SKILL","branch":"$BRANCH","timestamp":"$TS","run_id":"$SKILL-$TS","completed_states":[],"parent":null,"ancestors":[],"attributed_to":"$SKILL","completed":false}
 CTXEOF
 else
-  # Merge base + extra via python3 (extra passed through stdin to avoid shell quoting issues)
+  # Merge base + extra via python3. skill/branch/timestamp/run_id are protected
+  # (issue #941: callers must not override identity via extra_json).
   printf '%s' "$EXTRA" | python3 -c "
 import json, sys
-base = {'skill': '$SKILL', 'branch': '$BRANCH', 'timestamp': '$TS', 'run_id': '$SKILL-$TS', 'completed_states': []}
+base = {
+    'skill': '$SKILL',
+    'branch': '$BRANCH',
+    'timestamp': '$TS',
+    'run_id': '$SKILL-$TS',
+    'completed_states': [],
+    'parent': None,
+    'ancestors': [],
+    'attributed_to': '$SKILL',
+    'completed': False,
+}
 extra = json.loads(sys.stdin.read())
-base.update(extra)
+protected = {'branch', 'timestamp', 'run_id', 'skill'}
+dropped = []
+for k, v in extra.items():
+    if k in protected:
+        dropped.append(k)
+        continue
+    base[k] = v
+if dropped:
+    sys.stderr.write('INFO: init-context.sh — ignored protected fields from extra: ' + ','.join(dropped) + '\n')
 json.dump(base, open('$CTX', 'w'))
 "
 fi

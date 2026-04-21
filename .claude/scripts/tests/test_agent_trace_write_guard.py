@@ -1,0 +1,196 @@
+#!/usr/bin/env python3
+"""test_agent_trace_write_guard.py — runtime guard on agent-traces writes.
+
+Simulates Bash PreToolUse payloads and checks the hook's allow/deny behavior.
+The hook's exit code is the Claude Code hook protocol signal:
+  0 = allow
+  non-zero (typically 2) = deny
+
+Covers:
+  1. Fast path: command that doesn't mention agent-traces → allow
+  2. Allowed: write-recovery-trace.sh with --reason
+  3. Allowed: write-recovery-trace.sh via `bash` wrapper with --reason
+  4. Denied: write-recovery-trace.sh WITHOUT --reason
+  5. Allowed: write-degraded-trace.py with --reason
+  6. Denied: write-degraded-trace.py WITHOUT --reason
+  7. Allowed: init-trace.py
+  8. Allowed: validate-recovery.sh (stamps recovery_validated:true)
+  9. Allowed: migrate-legacy-traces.py
+ 10. Denied: raw redirect `echo {} > .runs/agent-traces/foo.json`
+ 11. Denied: python open(...,'w') on agent-traces
+ 12. Denied: chained write after harmless command
+ 13. Allowed: reading an agent-traces file (no write operator)
+
+Run: python3 .claude/scripts/tests/test_agent_trace_write_guard.py
+"""
+from __future__ import annotations
+
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[3]
+HOOK = ROOT / ".claude/hooks/agent-trace-write-guard.sh"
+
+
+class TestAgentTraceWriteGuard(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="test_atwg_"))
+        subprocess.run(["git", "init", "-q", str(self.tmp)], check=True)
+        shutil.copytree(ROOT / ".claude", self.tmp / ".claude", dirs_exist_ok=True)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _invoke(self, command: str) -> tuple[int, str]:
+        payload = json.dumps({
+            "tool_name": "Bash",
+            "tool_input": {"command": command},
+        })
+        env = os.environ.copy()
+        env["CLAUDE_PROJECT_DIR"] = str(self.tmp)
+        proc = subprocess.run(
+            ["bash", str(HOOK)],
+            input=payload,
+            capture_output=True, text=True, env=env, timeout=10,
+        )
+        return proc.returncode, proc.stderr
+
+    def _assert_allowed(self, cmd: str, msg: str = ""):
+        rc, err = self._invoke(cmd)
+        self.assertEqual(rc, 0, f"expected allow for {cmd!r}; stderr={err} {msg}")
+
+    def _assert_denied(self, cmd: str, substr: str = ""):
+        rc, err = self._invoke(cmd)
+        self.assertNotEqual(rc, 0, f"expected deny for {cmd!r}")
+        if substr:
+            self.assertIn(substr, err, f"expected deny reason to mention {substr!r}; got {err}")
+
+    # ---- Fast path ----
+
+    def test_fast_path_no_mention(self):
+        self._assert_allowed("ls .runs/", "fast-path: unrelated command")
+
+    def test_fast_path_mentions_traces_but_no_write(self):
+        # Reading an agent-trace file is allowed
+        self._assert_allowed("cat .runs/agent-traces/design-critic.json",
+                             "read of agent-traces")
+        self._assert_allowed("ls .runs/agent-traces/", "list of agent-traces")
+
+    # ---- Allowed writers ----
+
+    def test_write_recovery_with_reason_allowed(self):
+        self._assert_allowed(
+            'bash .claude/scripts/write-recovery-trace.sh design-critic --reason "image limit"',
+        )
+
+    def test_write_recovery_direct_invocation_allowed(self):
+        self._assert_allowed(
+            '.claude/scripts/write-recovery-trace.sh design-critic --reason "x"',
+        )
+
+    def test_write_degraded_with_reason_allowed(self):
+        self._assert_allowed(
+            'python3 .claude/scripts/write-degraded-trace.py design-critic --reason "timeout" --checks-performed "a,b"',
+        )
+
+    def test_init_trace_allowed(self):
+        self._assert_allowed("python3 scripts/init-trace.py design-critic")
+
+    def test_validate_recovery_allowed(self):
+        self._assert_allowed("bash .claude/scripts/validate-recovery.sh design-critic")
+
+    def test_migrate_legacy_traces_allowed(self):
+        self._assert_allowed("python3 .claude/scripts/migrate-legacy-traces.py")
+
+    # ---- --reason enforcement (hook fires only when command mentions agent-traces) ----
+    # Note: when the script is invoked without any agent-traces path in the
+    # command string, the hook's fast-path allows it. The script's own
+    # argument check is responsible for --reason enforcement in that case.
+    # These tests cover the rare but possible case where the command ALSO
+    # references agent-traces (e.g., in an embedded echo / diagnostic).
+
+    def test_write_recovery_without_reason_and_traces_mention_denied(self):
+        self._assert_denied(
+            'bash .claude/scripts/write-recovery-trace.sh design-critic # targets agent-traces/design-critic.json',
+            "--reason",
+        )
+
+    def test_write_degraded_without_reason_and_traces_mention_denied(self):
+        self._assert_denied(
+            "python3 .claude/scripts/write-degraded-trace.py design-critic --checks-performed x # writes agent-traces",
+            "--reason",
+        )
+
+    # ---- Denied: raw writes ----
+
+    def test_raw_redirect_denied(self):
+        # Single-segment raw redirect is caught by the chain-check awk pattern
+        # (which matches any segment containing both agent-traces/ and a write
+        # operator — a single segment qualifies).
+        self._assert_denied(
+            "echo '{\"agent\":\"fake\"}' > .runs/agent-traces/fake.json",
+        )
+
+    def test_append_redirect_denied(self):
+        self._assert_denied(
+            "echo x >> .runs/agent-traces/fake.json",
+        )
+
+    def test_cp_into_traces_denied(self):
+        self._assert_denied(
+            "cp /tmp/x.json .runs/agent-traces/fake.json",
+        )
+
+    def test_python_open_for_write_denied(self):
+        self._assert_denied(
+            "python3 -c \"open('.runs/agent-traces/fake.json', 'w').write('{}')\"",
+            "python open-for-write",
+        )
+
+    def test_python_open_for_append_denied(self):
+        self._assert_denied(
+            "python3 -c \"open('.runs/agent-traces/fake.json', 'a').write('{}')\"",
+        )
+
+    # ---- Chained command segments ----
+
+    def test_chained_write_after_innocent_cmd_denied(self):
+        self._assert_denied(
+            "ls .runs/ && echo {} > .runs/agent-traces/fake.json",
+            "chained command segment",
+        )
+
+    def test_chained_write_after_allowed_writer_denied(self):
+        # Even if the chain starts with an allowed writer, a trailing raw write must be denied.
+        self._assert_denied(
+            'bash .claude/scripts/write-recovery-trace.sh x --reason "y" ; echo {} > .runs/agent-traces/forged.json',
+            "chained command segment",
+        )
+
+    def test_chained_write_before_allowed_writer_denied(self):
+        self._assert_denied(
+            'echo {} > .runs/agent-traces/forged.json && bash .claude/scripts/write-recovery-trace.sh x --reason "y"',
+        )
+
+    # ---- Pattern obfuscation attempts ----
+
+    def test_leading_spaces_denied(self):
+        self._assert_denied(
+            "   echo {} > .runs/agent-traces/fake.json",
+        )
+
+    def test_pipe_tee_denied(self):
+        self._assert_denied(
+            "echo x | tee .runs/agent-traces/fake.json",
+        )
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

@@ -215,3 +215,25 @@ Replace placeholders with actual values:
 - `candidates_tried`: number of pre-generated candidates tried from sidecar (0 if sidecar absent or no candidates tried)
 - `new_candidates_generated`: number of new candidates generated with page-context-informed prompts (0 if none)
 - `image_issues_for_landing`: JSON array of `{"slot":"<image-slot>","issue":"<description>"}` — for non-landing critics only, records image issues to be addressed by the landing-page critic (use `[]` if landing-page critic or no issues)
+
+
+## Self-Degradation Handler
+
+If you detect that you cannot complete all declared checks — image-dimension limit exceeded, Playwright screenshot failure, turn-budget exhausted before reviewing all required sections, reference-image unreadable — stop the normal trace-write and call the shared self-degraded helper instead. This produces a `provenance: "self-degraded"` trace so downstream gates can distinguish "agent self-reported partial" from "agent crashed silently" (issue #958).
+
+**Do NOT call write-recovery-trace.sh yourself.** That path is for the orchestrator when an agent has crashed so hard it cannot self-report. You self-degrade.
+
+```bash
+python3 .claude/scripts/write-degraded-trace.py design-critic \
+  --reason "<specific cause, e.g.: 'landing-page image exceeded 2000px limit'>" \
+  --checks-performed "<comma-separated list of checks that DID complete>" \
+  --verdict degraded \
+  # Omit --fixes-json (defaults no_fixes_claimed:true)
+```
+
+- `--reason` must be specific (e.g., `"playwright-timeout after 60s on /pricing"`), not generic.
+- `--checks-performed` lists exactly what ran — matches the `checks_performed` array on a normal completion trace.
+- `--verdict` defaults to `degraded`. Use `fail` only when the partial-work result itself failed (rare).
+- Agent is in `non_fixer_agents` by default — pass `--fixes-json '[]'` only when you did apply code changes; otherwise omit `--fixes-json` entirely (defaults to `no_fixes_claimed: true`).
+
+The orchestrator will later run `validate-recovery.sh` against this trace to stamp `recovery_validated:true` when build+test+diff evidence supports the claim.

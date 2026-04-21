@@ -147,6 +147,69 @@ detect_skill_for_branch() {
   _detect_skill_for_branch_impl "$1" "true"
 }
 
+# --- resolve_active_identity ---
+# Resolves the active execution identity for the current branch.
+# Returns tab-separated: <skill>\t<run_id>\t<attributed_to>\t<ancestors_json>
+# Empty line when no active context is found on this branch.
+#
+# Algorithm (single source of truth for agent-trace identity):
+#   1. Scan .runs/*-context.json on current branch
+#   2. Skip completed contexts (completed == true)
+#   3. Skip epilogue-context.json
+#   4. Skip stale contexts (timestamp older than 48h)
+#   5. Return the one with latest timestamp
+#
+# Used by skill-agent-gate.sh (authoritative) and state-completion-gate.sh
+# (cross-check only). Replaces ad-hoc timestamp-walks that diverged across
+# hooks and caused embed-verify run_id mismatch (issue #941).
+#
+# Usage: IFS=$'\t' read -r SKILL RUN_ID ATTR ANCESTORS < <(resolve_active_identity)
+resolve_active_identity() {
+  local branch project_dir
+  branch="$(get_branch)"
+  project_dir="${CLAUDE_PROJECT_DIR:-.}"
+  python3 -c "
+import json, glob, os, datetime
+branch = '$branch'
+project = '$project_dir'
+now = datetime.datetime.now(datetime.timezone.utc)
+best = None
+best_ts = ''
+for f in glob.glob(os.path.join(project, '.runs', '*-context.json')):
+    if 'epilogue-context' in f:
+        continue
+    try:
+        d = json.load(open(f))
+    except:
+        continue
+    if d.get('branch') and d.get('branch') != branch:
+        continue
+    if d.get('completed') is True:
+        continue
+    ts = d.get('timestamp', '')
+    if not ts:
+        continue
+    # 48h staleness cap — protects against abandoned contexts from crashed runs
+    try:
+        ctx_time = datetime.datetime.strptime(ts, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=datetime.timezone.utc)
+        if (now - ctx_time).total_seconds() > 48 * 3600:
+            continue
+    except:
+        pass
+    if ts > best_ts:
+        best_ts = ts
+        best = d
+if best is None:
+    print('')
+else:
+    skill = best.get('skill', '')
+    run_id = best.get('run_id', '')
+    attr = best.get('attributed_to') or skill
+    ancestors = best.get('ancestors') or []
+    print('\t'.join([skill, run_id, attr, json.dumps(ancestors)]))
+" 2>/dev/null || echo ""
+}
+
 # --- get_observation_gate ---
 # Derives observation gate metadata from skill.yaml for a skill.
 # Fields: gate_mechanism, gate_artifacts, pr_checks, strategy.

@@ -67,6 +67,20 @@ _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../scripts" && pwd)"
 source "$_SCRIPT_DIR/lifecycle-lib.sh"
 CTX_FILE=$(resolve_context_path "$SKILL")
 
+# --- Identity cross-check (issue #941 defense-in-depth) ---
+# $SKILL is authoritative (from advance-state.sh args). When the active
+# identity from resolve_active_identity disagrees, warn — it indicates a
+# stale or crossed context that should be investigated, but don't block
+# (the chain check / VERIFY command below are the real gates).
+ACTIVE_IDENTITY="$(resolve_active_identity)"
+if [[ -n "$ACTIVE_IDENTITY" ]]; then
+  IFS=$'\t' read -r _SCG_ACTIVE_SKILL _ _ _ <<< "$ACTIVE_IDENTITY"
+  if [[ -n "$_SCG_ACTIVE_SKILL" && "$_SCG_ACTIVE_SKILL" != "$SKILL" ]]; then
+    echo "WARN: state-completion-gate: args-skill='$SKILL' but resolve_active_identity returned '$_SCG_ACTIVE_SKILL' — possible stale context" >&2
+  fi
+  unset _SCG_ACTIVE_SKILL
+fi
+
 # --- _log_verify_trace ---
 # Append a verify pass/fail entry to the execution trace.
 # Args: <skill> <state_id> <result> [verify_cmd]
@@ -211,10 +225,15 @@ for tf in sorted(glob.glob(os.path.join(traces_dir, '*.json'))):
     except: continue
     agent_name = td.get('agent', '')
     if not agent_name: continue
-    # Skip recovery traces (written by controlled script)
-    if td.get('recovery'): continue
     # Skip started-only init traces (no verdict yet)
     if td.get('status') == 'started' and 'verdict' not in td: continue
+    # NOTE: recovery traces are NO LONGER skipped here (issue #960 fix).
+    # Recovery is now an audit marker, not a spawn-check bypass: recovery
+    # traces require a real skill-agent-gate spawn-log entry (per
+    # write-recovery-trace.sh preconditions), so they SHOULD pass the
+    # universal provenance check below. Semantic validity of a recovery
+    # trace is owned by verify-report-gate.sh / validate-recovery.sh.
+    # See also the lead-merge exemption in the "base == bn" block below.
     # Skip traces from prior runs (stale run_id)
     trace_run_id = td.get('run_id', '')
     if current_run_id and trace_run_id and trace_run_id != current_run_id: continue
@@ -230,19 +249,40 @@ for tf in sorted(glob.glob(os.path.join(traces_dir, '*.json'))):
     # Only check manifest-declared agents
     if base not in declared: continue
 
-    # Skip lead-written merge artifacts from per-item parallel fan-out.
-    # Canonical example: verify STATE 3b merges per-page design-critic-<page>.json
-    # traces (each individually spawned via the Agent tool, each with its own
-    # spawn-log entry) into an aggregate design-critic.json written by the
-    # orchestrator in code — NOT via an Agent spawn, so it carries no spawn
-    # record. This exception keeps the aggregate valid provided sibling
-    # <base>-*.json traces exist (each sibling already satisfies provenance).
-    # Same shape applies to bootstrap state-11b scaffold-pages-<page>.json ->
-    # scaffold-pages.json, and any future per-item parallel-agent merge.
-    # Do NOT remove this block without updating every skill that fans out
-    # per-item — otherwise every merged-aggregate trace will be rejected as
-    # "no spawn record" and the skill cannot advance.
+    # Lead-merge aggregate exemption (now explicit via provenance — R2 C3/C7 fix).
+    # When a trace filename equals a declared base agent AND sibling <base>-*.json
+    # files exist, this is an orchestrator-composed aggregate (verify STATE 3b
+    # merges per-page design-critic-<page>.json into design-critic.json; same
+    # shape for scaffold-pages/scaffold-images/implementer in other skills).
+    # Aggregates have no direct spawn-log entry. Their validity comes from the
+    # sibling spawns, not their own.
+    #
+    # Invariant (new): if provenance is declared, it MUST be "lead-merge" for
+    # this exemption. If contributing_spawn_indexes is declared, its count must
+    # equal the number of skill-agent-gate entries for this base in the
+    # current run_id (prevents forged aggregates claiming non-existent spawns).
+    # Legacy aggregates missing provenance/contributing_spawn_indexes are
+    # accepted for backward compatibility until migration runs.
     if bn == base and glob.glob(os.path.join(traces_dir, base + '-*.json')):
+        prov = td.get('provenance')
+        if prov and prov != 'lead-merge':
+            errors.append(f'{bn}: aggregate trace has provenance={prov}, expected lead-merge')
+            continue
+        csi = td.get('contributing_spawn_indexes')
+        if isinstance(csi, list):
+            # Count spawn-log entries for this base in current run_id
+            expected = 0
+            with open('$SPAWN_LOG') as _f:
+                for _line in _f:
+                    try:
+                        _e = json.loads(_line)
+                    except:
+                        continue
+                    if _e.get('agent') == base and (not current_run_id or _e.get('run_id') == current_run_id) and _e.get('hook') == 'skill-agent-gate':
+                        expected += 1
+            if len(csi) != expected:
+                errors.append(f'{bn}: lead-merge claims {len(csi)} spawns but spawn-log has {expected} for {base} in current run')
+                continue
         continue
 
     # Provenance check: base agent must appear in spawn-log

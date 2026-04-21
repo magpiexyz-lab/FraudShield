@@ -9,16 +9,42 @@ parse_payload
 
 FILE_PATH=$(read_payload_field "tool_input.file_path")
 
-# Only fire when file_path contains "verify-report"
-if [[ "$FILE_PATH" != *"verify-report"* ]]; then
-  exit 0
-fi
+# Only fire when file_path targets the verify-report markdown/json artifact.
+# Must NOT match this hook file itself (verify-report-gate.sh) or helpers.
+case "$FILE_PATH" in
+  *verify-report.md|*verify-report.json) ;;
+  *) exit 0 ;;
+esac
 
 # --- verify-report.md write detected — run artifact checks ---
 
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-.}"
 ERRORS=()
 WARNINGS=()
+
+# Self-heal: if agent traces predate the v2 schema (no provenance field),
+# run the legacy migration in-place rather than hard-refusing this write.
+# Avoids bricking multi-hour workflows after a /upgrade bump (R2 C4 fix).
+UNMIGRATED=$(python3 -c "
+import json, glob, os
+project = os.environ.get('CLAUDE_PROJECT_DIR', '.')
+receipt = os.path.join(project, '.runs', 'trace-migration.json')
+if os.path.isfile(receipt):
+    print(0)
+else:
+    n = 0
+    for f in glob.glob(os.path.join(project, '.runs', 'agent-traces', '*.json')):
+        try:
+            d = json.load(open(f))
+            if 'provenance' not in d:
+                n += 1
+        except: pass
+    print(n)
+" 2>/dev/null || echo "0")
+if [[ "${UNMIGRATED:-0}" -gt 0 ]]; then
+  echo "WARN: verify-report-gate: detected $UNMIGRATED legacy trace(s) without provenance — running migration in-place" >&2
+  python3 "$PROJECT_DIR/.claude/scripts/migrate-legacy-traces.py" >&2 || true
+fi
 
 extract_write_content
 
@@ -53,11 +79,17 @@ if [[ -f "$PROJECT_DIR/.runs/verify-context.json" ]]; then
     fi
   fi
 
-  # Hard gate checks — read from agent registry
-  while IFS=$'\t' read -r _hg_agent _hg_condition _hg_fields; do
+  # Hard gate checks — v2 predicate-based, driven by agent-registry.json.
+  # Each hard_gates[] entry declares allow_predicates (named predicates like
+  # pass_self_pass_or_fail / validated_fallback / aggregate_ok /
+  # legacy_pass_no_recovery) and optional additional_block_conditions.
+  # check_hard_gate_predicates evaluates both: the report is allowed only
+  # when at least one allow_predicate passes AND no additional_block_condition
+  # fires. See .claude/patterns/agent-trace-protocol.md §Provenance for the
+  # coherent model; v1 block_rules form was replaced by this v2 dispatch.
+  while IFS= read -r _hg_agent; do
     [[ -z "$_hg_agent" ]] && continue
-    # shellcheck disable=SC2086
-    check_hard_gate_trace "$_hg_agent" "$TRACE_DIR" "$_hg_condition" $_hg_fields
+    check_hard_gate_predicates "$_hg_agent" "$TRACE_DIR"
   done < <(python3 -c "
 import json, os
 reg_path = os.path.join(os.environ.get('CLAUDE_PROJECT_DIR', '.'), '.claude/patterns/agent-registry.json')
@@ -65,22 +97,10 @@ try:
     reg = json.load(open(reg_path))
 except Exception:
     exit(0)
-def rule_to_expr(r):
-    f = r['field']
-    if 'eq' in r: return '\"\$F_{0}\" == \"{1}\"'.format(f, r['eq'])
-    if 'gt' in r: return '\"\$F_{0}\" -gt {1}'.format(f, r['gt'])
-    return 'false'
 for hg in reg.get('hard_gates', []):
-    parts, fields = [], set()
-    for rule in hg.get('block_rules', []):
-        if 'all' in rule:
-            sub = ' && '.join(rule_to_expr(sr) for sr in rule['all'])
-            parts.append('(' + sub + ')')
-            for sr in rule['all']: fields.add(sr['field'])
-        else:
-            parts.append(rule_to_expr(rule))
-            fields.add(rule['field'])
-    print(hg['agent'] + '\t' + ' || '.join(parts) + '\t' + ' '.join(sorted(fields)))
+    a = hg.get('agent')
+    if a:
+        print(a)
 " 2>/dev/null)
 
   # Trace existence checks — read from agent registry

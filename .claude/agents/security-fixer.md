@@ -165,3 +165,25 @@ Replace placeholders with actual values:
 - `<verdict>`: final status — `"all fixed"`, `"partial"`, or `"none"`
 - `<N>`: number of issues fixed (0 if none)
 - `<UC>`: count of Critical/High findings and Defender FAILs that remained unfixed after 2 fix cycles (0 if all resolved). Info-severity items are excluded.
+
+
+## Self-Degradation Handler
+
+If you detect that you cannot complete all declared checks — missing scanner binary, pattern without known-safe remediation, build broken by the fix itself, turn-budget exhausted — stop the normal trace-write and call the shared self-degraded helper instead. This produces a `provenance: "self-degraded"` trace so downstream gates can distinguish "agent self-reported partial" from "agent crashed silently" (issue #958).
+
+**Do NOT call write-recovery-trace.sh yourself.** That path is for the orchestrator when an agent has crashed so hard it cannot self-report. You self-degrade.
+
+```bash
+python3 .claude/scripts/write-degraded-trace.py security-fixer \
+  --reason "<specific cause, e.g.: 'no known-safe fix for CSRF pattern in src/api/legacy-route.ts'>" \
+  --checks-performed "<comma-separated list of checks that DID complete>" \
+  --verdict degraded \
+  --fixes-json '[{"file": "src/api/...", "type": "<category>", "symptom": "<short>", "fix": "<description>"}]'
+```
+
+- `--reason` must be specific (e.g., `"playwright-timeout after 60s on /pricing"`), not generic.
+- `--checks-performed` lists exactly what ran — matches the `checks_performed` array on a normal completion trace.
+- `--verdict` defaults to `degraded`. Use `fail` only when the partial-work result itself failed (rare).
+- Agent is a fixer AND is in `recovery_forbidden` — external recovery is refused for you. Self-degradation is the ONLY partial-completion path. Pass `--fixes-json` for every change you applied.
+
+The orchestrator will later run `validate-recovery.sh` against this trace to stamp `recovery_validated:true` when build+test+diff evidence supports the claim.

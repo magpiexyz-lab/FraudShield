@@ -8,6 +8,30 @@
 
 **ACTIONS:**
 
+### Evidence validation for recovery / self-degraded traces
+
+Before extracting verdicts, stamp `recovery_validated` on every trace whose
+`provenance ∈ {recovery, self-degraded}` — the hard-gate predicate rules in
+`agent-registry.json` require this for the report to pass
+`verify-report-gate.sh` with `hard_gate_failure: false`. The validator
+cross-checks `build-result.json`, `e2e-result.json`, and `git diff` /
+`git status --porcelain` against the trace's `fixes[]` (or `no_fixes_claimed`
+path for findings-only agents).
+
+```bash
+for tf in .runs/agent-traces/*.json; do
+  [ -f "$tf" ] || continue
+  prov=$(python3 -c "import json,sys;print(json.load(open(sys.argv[1])).get('provenance',''))" "$tf" 2>/dev/null || echo "")
+  case "$prov" in
+    recovery|self-degraded)
+      name=$(basename "$tf" .json)
+      bash .claude/scripts/validate-recovery.sh "$name" || \
+        echo "WARN: validate-recovery $name FAILED — trace keeps recovery_validated:false (hard gate will require hard_gate_failure:true)"
+      ;;
+  esac
+done
+```
+
 Before writing the report, extract agent verdicts from traces:
 
 ```bash

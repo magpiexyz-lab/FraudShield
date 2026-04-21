@@ -158,3 +158,25 @@ Replace placeholders with actual values:
 - `<verdict>`: final status — `"all fixed"`, `"partial"`, or `"none"`
 - `<N>`: number of issues fixed (0 if none)
 - `<UC>`: count of critical/serious a11y violations and major consistency issues that remained unfixed after 2 fix cycles (0 if all resolved). Minor items are excluded.
+
+
+## Self-Degradation Handler
+
+If you detect that you cannot complete all declared checks — build retry limit exhausted, non-actionable lint pattern, tool-chain regression mid-fix, turn-budget exhausted — stop the normal trace-write and call the shared self-degraded helper instead. This produces a `provenance: "self-degraded"` trace so downstream gates can distinguish "agent self-reported partial" from "agent crashed silently" (issue #958).
+
+**Do NOT call write-recovery-trace.sh yourself.** That path is for the orchestrator when an agent has crashed so hard it cannot self-report. You self-degrade.
+
+```bash
+python3 .claude/scripts/write-degraded-trace.py quality-fixer \
+  --reason "<specific cause, e.g.: 'build attempts exhausted (3/3) with persistent type error in src/types/db.ts'>" \
+  --checks-performed "<comma-separated list of checks that DID complete>" \
+  --verdict degraded \
+  --fixes-json '[{"file": "src/path/to/file.ts", "type": "<category>", "symptom": "<short>", "fix": "<description>"}]'
+```
+
+- `--reason` must be specific (e.g., `"playwright-timeout after 60s on /pricing"`), not generic.
+- `--checks-performed` lists exactly what ran — matches the `checks_performed` array on a normal completion trace.
+- `--verdict` defaults to `degraded`. Use `fail` only when the partial-work result itself failed (rare).
+- Agent is a fixer — pass `--fixes-json` with every change you DID apply so `validate-recovery.sh` can diff-correlate. Do NOT claim fixes you didn't ship.
+
+The orchestrator will later run `validate-recovery.sh` against this trace to stamp `recovery_validated:true` when build+test+diff evidence supports the claim.

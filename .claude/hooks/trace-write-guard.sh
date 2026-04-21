@@ -1,10 +1,16 @@
 #!/usr/bin/env bash
 # trace-write-guard.sh — Claude Code PreToolUse hook for Bash commands.
 # Blocks Bash commands that write to agent-spawn-log.jsonl.
+#
 # The spawn-log is hook-managed: only skill-agent-gate.sh (a PreToolUse:Agent
 # hook) may write to it. Hook execution does not trigger PreToolUse hooks,
 # so the gate's own writes pass through while LLM-initiated Bash writes are
 # caught here.
+#
+# Issue #963 fix: this hook no longer whitelists write-recovery-trace.sh
+# (that script no longer mutates the spawn-log; it relies on the existing
+# skill-agent-gate entry). Detection is also tightened — we inspect
+# write-operator patterns rather than trusting any leading command name.
 
 set -euo pipefail
 
@@ -19,17 +25,21 @@ case "$COMMAND" in
   *) exit 0 ;;
 esac
 
-# Allow the controlled recovery trace script
-case "$COMMAND" in
-  *write-recovery-trace.sh*) exit 0 ;;
-esac
-
-# Block writes targeting spawn-log (redirects, python open, copy/move)
-if echo "$COMMAND" | grep -qE '(>|>>|tee |cp |mv ).*agent-spawn-log'; then
+# Block shell redirect / file-copy writes to spawn-log (redirects, tee, cp, mv, dd)
+if echo "$COMMAND" | grep -qE '(>|>>|[[:space:]]tee[[:space:]]|[[:space:]]cp[[:space:]]|[[:space:]]mv[[:space:]]|[[:space:]]dd[[:space:]]).*agent-spawn-log'; then
   deny "Trace write guard: agent-spawn-log.jsonl is hook-managed. Only skill-agent-gate.sh may write to it."
 fi
-if echo "$COMMAND" | grep -qE 'open\(.*agent-spawn-log'; then
-  deny "Trace write guard: agent-spawn-log.jsonl is hook-managed. Only skill-agent-gate.sh may write to it."
+
+# Block Python open(...) for write/append mode
+if echo "$COMMAND" | grep -qE "open\([^)]*agent-spawn-log[^)]*,[[:space:]]*['\"][wa]"; then
+  deny "Trace write guard: agent-spawn-log.jsonl is hook-managed (Python open-for-write detected)."
+fi
+
+# Block chained writes: if the command contains && / ; / | and any segment
+# afterwards mentions spawn-log with a write operator, reject. Conservative
+# AWK split — splits on any chain delimiter and inspects each segment.
+if echo "$COMMAND" | awk 'BEGIN{RS="[&|;]"} /agent-spawn-log/ && /(>|>>|tee|cp|mv|dd)/ {found=1} END{exit !found}'; then
+  deny "Trace write guard: agent-spawn-log.jsonl cannot be written from a chained command segment."
 fi
 
 exit 0

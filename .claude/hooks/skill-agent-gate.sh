@@ -22,27 +22,15 @@ if [[ ${#CTX_FILES[@]} -eq 0 ]]; then
   exit 0
 fi
 
-# ── Detect active skill (most recent non-completed context) ──
-export _SAG_PROJECT="$PROJECT_DIR"
-ACTIVE_SKILL=$(python3 -c "
-import json, glob, os
-project = os.environ['_SAG_PROJECT']
-best_skill = ''
-best_ts = ''
-for f in glob.glob(os.path.join(project, '.runs', '*-context.json')):
-    if 'epilogue-context' in f: continue
-    try:
-        d = json.load(open(f))
-        if d.get('completed'): continue
-        ts = d.get('timestamp', '')
-        if ts > best_ts:
-            best_ts = ts
-            best_skill = d.get('skill', os.path.basename(f).replace('-context.json', ''))
-    except: pass
-print(best_skill)
-" 2>/dev/null || echo "")
-unset _SAG_PROJECT
-
+# ── Detect active skill via single-source identity helper ──
+# Replaces a prior timestamp-walk that disagreed with state-completion-gate's
+# arg-driven lookup on embed-verify (issue #941). The helper filters by
+# current branch + completed flag + 48h staleness cap (R2 C2).
+ACTIVE_IDENTITY="$(resolve_active_identity)"
+if [[ -z "$ACTIVE_IDENTITY" ]]; then
+  exit 0
+fi
+IFS=$'\t' read -r ACTIVE_SKILL ACTIVE_RUN_ID ACTIVE_ATTR ACTIVE_ANCESTORS <<< "$ACTIVE_IDENTITY"
 if [[ -z "$ACTIVE_SKILL" ]]; then
   exit 0
 fi
@@ -95,7 +83,7 @@ done < <(echo "$GATE_RESULT" | tail -n +2)
 # All values passed via environment variables to avoid shell injection in Python literals.
 export _SAG_MANIFEST="$MANIFEST" _SAG_AGENT="$SUBAGENT_TYPE"
 export _SAG_PROJECT="$PROJECT_DIR" _SAG_TRACES="$TRACES_DIR"
-export _SAG_SKILL="$ACTIVE_SKILL"
+export _SAG_SKILL="$ACTIVE_SKILL" _SAG_RUN_ID="$ACTIVE_RUN_ID"
 DECL_ERRORS=$(python3 -c "
 import json, os
 
@@ -136,15 +124,14 @@ def check_traces(trace_names, context_label=''):
             continue
         if 'verdict' not in td:
             errors.append(f'{tn}.json missing verdict — agent may still be running{suffix}')
-        # run_id freshness check
+        # run_id freshness check — compare trace run_id against the resolved
+        # active identity (not a hardcoded verify-context.json). This matches
+        # the spawn-log write on line 188+ and closes the embed-verify
+        # divergence that motivated issue #941.
         run_id = td.get('run_id', '')
-        vctx_path = os.path.join(project, '.runs', 'verify-context.json')
-        if os.path.isfile(vctx_path) and run_id:
-            try:
-                expected = json.load(open(vctx_path)).get('run_id', '')
-                if expected and run_id != expected:
-                    errors.append(f'{tn}.json has stale run_id={run_id}, expected {expected}{suffix}')
-            except: pass
+        expected = os.environ.get('_SAG_RUN_ID', '')
+        if expected and run_id and run_id != expected:
+            errors.append(f'{tn}.json has stale run_id={run_id}, expected {expected}{suffix}')
 
 check_traces(agent.get('requires_traces', []))
 
@@ -166,7 +153,7 @@ if sc:
 for e in errors:
     print(e)
 " 2>/dev/null || echo "")
-unset _SAG_MANIFEST _SAG_AGENT _SAG_PROJECT _SAG_TRACES _SAG_SKILL
+unset _SAG_MANIFEST _SAG_AGENT _SAG_PROJECT _SAG_TRACES _SAG_SKILL _SAG_RUN_ID
 
 while IFS= read -r line; do
   [[ -n "$line" ]] && ERRORS+=("$line")
@@ -201,21 +188,48 @@ fi
 # This file is guarded by trace-write-guard.sh (Bash) and artifact-integrity-gate.sh
 # (Write/Edit). Only this hook can write to it because hook execution does not
 # trigger PreToolUse hooks.
+#
+# run_id is the active embedded skill's run_id (from resolve_active_identity —
+# authoritative, issue #941 fix).
+# spawn_index is monotonic per run, binding aggregate lead-merge traces to
+# specific spawns so forged siblings can't pass (R2 C3).
+# head_sha is git rev-parse HEAD at spawn time, used by validate-recovery.sh
+# diff-fix correlation (R2 C6).
 _SAG_SPAWN_LOG="$PROJECT_DIR/.runs/agent-spawn-log.jsonl"
-_SAG_CTX="$PROJECT_DIR/.runs/${ACTIVE_SKILL}-context.json"
-_SAG_RUN_ID=""
-if [[ -f "$_SAG_CTX" ]]; then
-  _SAG_RUN_ID=$(python3 -c "import json; print(json.load(open('$_SAG_CTX')).get('run_id',''))" 2>/dev/null || echo "")
-fi
 mkdir -p "$PROJECT_DIR/.runs"
+
+# Compute next spawn_index for this run_id (count of existing entries + 1)
+_SAG_SPAWN_INDEX=$(python3 -c "
+import json, os
+log = '$_SAG_SPAWN_LOG'
+run_id = '$ACTIVE_RUN_ID'
+if not os.path.isfile(log) or not run_id:
+    print(1)
+else:
+    n = 0
+    with open(log) as f:
+        for line in f:
+            try:
+                e = json.loads(line)
+                if e.get('run_id') == run_id:
+                    n += 1
+            except: pass
+    print(n + 1)
+" 2>/dev/null || echo "1")
+
+_SAG_HEAD_SHA=$(git rev-parse HEAD 2>/dev/null || echo "")
+
 python3 -c "
 import json, datetime
 entry = {
     'agent': '$SUBAGENT_TYPE',
     'skill': '$ACTIVE_SKILL',
-    'run_id': '$_SAG_RUN_ID',
+    'run_id': '$ACTIVE_RUN_ID',
+    'attributed_to': '$ACTIVE_ATTR',
+    'spawn_index': $_SAG_SPAWN_INDEX,
+    'head_sha': '$_SAG_HEAD_SHA',
     'timestamp': datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
-    'hook': 'skill-agent-gate'
+    'hook': 'skill-agent-gate',
 }
 with open('$_SAG_SPAWN_LOG', 'a') as f:
     f.write(json.dumps(entry) + '\n')

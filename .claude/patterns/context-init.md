@@ -6,13 +6,28 @@ Shared procedure for creating a skill's `.runs/<skill>-context.json` file during
 
 | Field | Type | Value |
 |-------|------|-------|
-| `skill` | string | Skill name (e.g., `"solve"`, `"change"`) |
+| `skill` | string | Physical running skill (e.g., `"solve"`, `"verify"`). **Protected** — callers cannot override via `extra_json`. |
 | `branch` | string | `$(git branch --show-current)` |
 | `timestamp` | string | ISO 8601 UTC: `$(date -u +%Y-%m-%dT%H:%M:%SZ)` |
 | `run_id` | string | `<skill>-<timestamp>` (e.g., `"solve-2026-04-08T03:30:56Z"`) |
 | `completed_states` | array | `[]` |
+| `parent` | object \| null | `{skill, run_id}` of the immediate parent when embedded; `null` when top-level |
+| `ancestors` | array | Full chain root→immediate-parent as `[{skill, run_id}, ...]`; `[]` when top-level |
+| `attributed_to` | string | Q-score / retrospective attribution target; defaults to `skill` when top-level |
+| `completed` | boolean | `false` at init; set `true` by `lifecycle-next.sh` on `EMBED_COMPLETE` or by `lifecycle-finalize.sh` at end-of-run |
 
-All five fields are consumed by infrastructure (`advance-state.sh`, `lib-state.sh`, `state-completion-gate.sh`, `verify-pr-gate.sh`, `agent-gate-check.py`).
+All fields are consumed by infrastructure (`advance-state.sh`, `lib-state.sh`, `lib-core.sh::resolve_active_identity`, `state-completion-gate.sh`, `verify-pr-gate.sh`, `agent-gate-check.py`).
+
+### `skill` vs `attributed_to`
+
+Two different questions get two different fields:
+
+| Purpose | Read field |
+|---|---|
+| "Which skill's state machine is running right now?" (logging, hook logic, state-registry lookup) | `skill` |
+| "Which skill should Q-score / retrospective / analytics attribute this run to?" (metrics, dashboards) | `attributed_to` |
+
+In the top-level case (no embedding) they are equal by default. Only when skill X embeds skill Y do they diverge: Y's context has `skill=Y` and `attributed_to=X`. This separation is the coherent fix for issue #941, which was rooted in a single `skill` field trying to serve both purposes simultaneously.
 
 ## Script Interface
 
@@ -42,7 +57,7 @@ bash .claude/scripts/init-context.sh <skill> [extra_json]
 | distribute | `phase` (integer: 1 or 2) |
 | resolve | `issue_list` ([]) |
 | upgrade | `dry_run` (false) |
-| verify | `skill` (overrides base — set to calling skill e.g. "bootstrap"), `scope`, `archetype`, `quality` ("production"), `mode`, `baseline_available` |
+| verify | `scope`, `archetype`, `quality` ("production"), `mode`, `baseline_available`. **Note**: `skill` is no longer an extra-json-overridable field — callers embedding verify must use `--embed` (lifecycle-init derives `parent`/`ancestors`/`attributed_to` from the calling skill's context automatically). |
 | iterate-check | `mode` ("check"), `channel`, `campaign_name`, `campaign_id`, `campaign_age_days`, `budget_total_cents`, `budget_daily_cents`, `max_cpc_cents`, `completed_states` (["c0"]) |
 | iterate-cross | `mode` ("cross"), `mvp_count`, `mvps` (array), `completed_states` (["x0"]) — uses @file mechanism |
 

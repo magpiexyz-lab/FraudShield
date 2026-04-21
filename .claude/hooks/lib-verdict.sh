@@ -239,3 +239,173 @@ check_hard_gate_trace() {
     fi
   fi
 }
+
+# --- check_hard_gate_predicates ---
+# v2 (agent-trace lifecycle contract): predicate-based hard gate evaluation.
+# Reads agent-registry.json's hard_gates[].allow_predicates and
+# additional_block_conditions for a single agent; blocks the report when no
+# allow_predicate passes OR when any additional_block_condition fires.
+# Unlike check_hard_gate_trace (v1), this function understands the four
+# provenance values and the recovery_validated field introduced for issues
+# #958 / #960 / #963 — recovery:true is NO LONGER a blanket block trigger.
+#
+# Uses caller's $CONTENT, $ERRORS (global), $PROJECT_DIR.
+# $1: agent name (e.g., "design-critic")
+# $2: trace directory path
+# Usage: check_hard_gate_predicates "design-critic" "$TRACE_DIR"
+check_hard_gate_predicates() {
+  local agent="$1" trace_dir="$2"
+  local trace_file="$trace_dir/${agent}.json"
+  [[ ! -f "$trace_file" ]] && return 0
+
+  local reg="${CLAUDE_PROJECT_DIR:-.}/.claude/patterns/agent-registry.json"
+  [[ ! -f "$reg" ]] && return 0
+
+  # Shell out to Python for predicate evaluation — keeps the logic readable
+  # and shared with tests.
+  local eval_result
+  eval_result=$(AGENT_ENV="$agent" TRACE_ENV="$trace_file" TRACES_DIR_ENV="$trace_dir" REG_ENV="$reg" python3 - << 'PYEOF'
+import json, os, sys
+
+agent = os.environ['AGENT_ENV']
+trace_file = os.environ['TRACE_ENV']
+traces_dir = os.environ['TRACES_DIR_ENV']
+reg = json.load(open(os.environ['REG_ENV']))
+
+# Find hard gate entry
+gate = next((g for g in reg.get('hard_gates', []) if g.get('agent') == agent), None)
+if gate is None:
+    sys.exit(0)
+
+try:
+    trace = json.load(open(trace_file))
+except Exception as exc:
+    print('READ_ERROR:' + str(exc))
+    sys.exit(0)
+
+# --- Predicate definitions (must match agent-registry._hard_gates_predicate_docs) ---
+
+def pass_self_pass_or_fail(t):
+    return t.get('verdict') in ('pass', 'fail') and t.get('provenance') == 'self'
+
+def pass_self_strict(t):
+    return t.get('verdict') == 'pass' and t.get('provenance') == 'self'
+
+def validated_fallback(t):
+    return (t.get('provenance') in ('recovery', 'self-degraded')
+            and t.get('recovery_validated') is True)
+
+def legacy_pass_no_recovery(t):
+    # Pre-migration traces lack provenance; accept verdict==pass without recovery
+    if t.get('provenance') is not None:
+        return False
+    return t.get('verdict') == 'pass' and not t.get('recovery')
+
+def aggregate_ok(t, agent):
+    if t.get('provenance') != 'lead-merge':
+        return False
+    csi = t.get('contributing_spawn_indexes')
+    if not isinstance(csi, list) or len(csi) == 0:
+        return False
+    # Each contributing sibling trace must satisfy pass_self_* or validated_fallback
+    import glob
+    sibs = glob.glob(os.path.join(traces_dir, agent + '-*.json'))
+    if not sibs:
+        return False
+    ok = True
+    for sf in sibs:
+        try:
+            sib = json.load(open(sf))
+        except Exception:
+            ok = False
+            break
+        if not (pass_self_pass_or_fail(sib) or validated_fallback(sib) or legacy_pass_no_recovery(sib)):
+            ok = False
+            break
+    return ok
+
+predicate_fns = {
+    'pass_self_pass_or_fail': lambda t: pass_self_pass_or_fail(t),
+    'pass_self_strict': lambda t: pass_self_strict(t),
+    'validated_fallback': lambda t: validated_fallback(t),
+    'legacy_pass_no_recovery': lambda t: legacy_pass_no_recovery(t),
+    'aggregate_ok': lambda t: aggregate_ok(t, agent),
+}
+
+allow_predicates = gate.get('allow_predicates', [])
+any_allowed = False
+for p in allow_predicates:
+    fn = predicate_fns.get(p)
+    if fn is None:
+        print(f'UNKNOWN_PREDICATE:{p}')
+        sys.exit(0)
+    if fn(trace):
+        any_allowed = True
+        break
+
+# Additional block conditions (agent-specific field thresholds)
+blocks = []
+for cond in gate.get('additional_block_conditions', []) or []:
+    if 'all' in cond:
+        sub_all_hit = True
+        detail = []
+        for sub in cond['all']:
+            fld = sub.get('field')
+            val = trace.get(fld)
+            if 'eq' in sub:
+                hit = str(val) == str(sub['eq'])
+            elif 'gt' in sub:
+                try:
+                    hit = int(val) > int(sub['gt'])
+                except (TypeError, ValueError):
+                    hit = False
+            else:
+                hit = False
+            if not hit:
+                sub_all_hit = False
+                break
+            detail.append(f'{fld}={val}')
+        if sub_all_hit:
+            blocks.append(' AND '.join(detail))
+    else:
+        fld = cond.get('field')
+        val = trace.get(fld)
+        if 'eq' in cond:
+            hit = str(val) == str(cond['eq'])
+        elif 'gt' in cond:
+            try:
+                hit = int(val) > int(cond['gt'])
+            except (TypeError, ValueError):
+                hit = False
+        else:
+            hit = False
+        if hit:
+            blocks.append(f'{fld}={val}')
+
+# Output result: OK | BLOCK:<reason>
+if not any_allowed and blocks:
+    print('BLOCK:no allow_predicate satisfied AND additional block triggered (' + '; '.join(blocks) + ')')
+elif not any_allowed:
+    reasons = [f'{k}={trace.get(k)}' for k in ('verdict', 'provenance', 'recovery_validated', 'recovery')]
+    print('BLOCK:no allow_predicate satisfied (' + ', '.join(reasons) + ')')
+elif blocks:
+    print('BLOCK:additional block triggered (' + '; '.join(blocks) + ')')
+else:
+    print('OK')
+PYEOF
+)
+
+  case "$eval_result" in
+    OK|"")
+      return 0
+      ;;
+    BLOCK:*)
+      if ! echo "$CONTENT" | grep -q 'hard_gate_failure: *true'; then
+        ERRORS+=("${agent} hard gate: ${eval_result#BLOCK:}")
+      fi
+      ;;
+    READ_ERROR:*|UNKNOWN_PREDICATE:*)
+      ERRORS+=("${agent} hard gate evaluation error: ${eval_result}")
+      ;;
+  esac
+}

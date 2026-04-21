@@ -1,11 +1,27 @@
 {
   "_description": "Canonical agent metadata — hooks read from here instead of hardcoding names",
+  "_schema_version": 2,
+  "_schema_version_notes": "v2 (agent-trace lifecycle contract): adds non_fixer_agents, recovery_forbidden, lead_merge_aggregate_agents; hard_gates use structured predicates (pass_self / validated_fallback / aggregate_ok) rather than blanket field-value ORs. See .claude/patterns/agent-trace-protocol.md.",
   "verdict_agents": [
     "observer", "spec-reviewer", "design-critic", "design-consistency-checker",
     "ux-journeyer", "security-fixer", "quality-fixer", "security-attacker", "security-defender",
     "behavior-verifier", "performance-reporter", "accessibility-scanner",
     "build-info-collector", "pattern-classifier",
     "resolve-challenger", "review-challenger", "solve-critic"
+  ],
+  "non_fixer_agents": [
+    "observer", "spec-reviewer", "behavior-verifier",
+    "performance-reporter", "accessibility-scanner",
+    "design-critic", "design-consistency-checker",
+    "ux-journeyer", "security-defender", "security-attacker",
+    "solve-critic", "resolve-challenger", "review-challenger",
+    "build-info-collector", "pattern-classifier"
+  ],
+  "recovery_forbidden": [
+    "security-fixer", "quality-fixer"
+  ],
+  "lead_merge_aggregate_agents": [
+    "design-critic", "scaffold-pages", "scaffold-images", "implementer", "visual-implementer"
   ],
   "merge_gates": {
     "design_ux": {
@@ -94,46 +110,57 @@
       }
     }
   },
+  "_hard_gates_docs": "Rules block verify-report-gate from allowing hard_gate_failure:false when ANY of them fires. v2 gates use structured predicates (see _hard_gates_predicate_docs) that make recovery an audit marker validated by evidence, not a blanket fail trigger.",
+  "_hard_gates_predicate_docs": {
+    "pass_self_pass_or_fail": "verdict in {pass,fail} AND provenance == self. For agents where a recorded fail is acceptable as long as it was self-reported.",
+    "pass_self_strict": "verdict == pass AND provenance == self. For agents where anything but a clean self-reported pass requires investigation.",
+    "validated_fallback": "provenance in {recovery, self-degraded} AND recovery_validated == true. Acceptable replacement for pass_self_* when evidence confirms the verdict.",
+    "aggregate_ok": "provenance == lead-merge AND contributing_spawn_indexes present AND each contributing sibling trace satisfies either pass_self_* or validated_fallback.",
+    "legacy_pass_no_recovery": "verdict == pass AND recovery != true. Backward-compat predicate for traces missing provenance (pre-migration). Drops after legacy migration completes."
+  },
   "hard_gates": [
     {
       "agent": "design-critic",
-      "block_rules": [
-        {"field": "verdict", "eq": "unresolved"},
-        {"field": "recovery", "eq": "True"}
-      ]
+      "allow_predicates": ["pass_self_pass_or_fail", "validated_fallback", "aggregate_ok", "legacy_pass_no_recovery"],
+      "_block_explanation": "Blocked unless: (a) self-reported pass or fail, or (b) recovery/degraded with validated evidence, or (c) lead-merge aggregate where all siblings satisfy the rule, or (d) legacy pre-migration pass without recovery flag."
     },
     {
       "agent": "ux-journeyer",
-      "block_rules": [
+      "allow_predicates": ["pass_self_pass_or_fail", "validated_fallback", "aggregate_ok", "legacy_pass_no_recovery"],
+      "additional_block_conditions": [
         {"field": "verdict", "eq": "blocked"},
-        {"field": "unresolved_dead_ends", "gt": 0},
-        {"field": "recovery", "eq": "True"}
+        {"field": "unresolved_dead_ends", "gt": 0}
       ]
     },
     {
       "agent": "security-fixer",
-      "block_rules": [
+      "allow_predicates": ["pass_self_pass_or_fail", "validated_fallback", "aggregate_ok", "legacy_pass_no_recovery"],
+      "additional_block_conditions": [
         {
           "all": [
             {"field": "verdict", "eq": "partial"},
             {"field": "unresolved_critical", "gt": 0}
           ]
-        },
-        {"field": "recovery", "eq": "True"}
-      ]
+        }
+      ],
+      "_note": "security-fixer is in recovery_forbidden — recovery provenance is refused by write-recovery-trace.sh. Only self / self-degraded / lead-merge paths are reachable."
     },
     {
       "agent": "quality-fixer",
-      "block_rules": [
+      "allow_predicates": ["pass_self_pass_or_fail", "validated_fallback", "aggregate_ok", "legacy_pass_no_recovery"],
+      "additional_block_conditions": [
         {
           "all": [
             {"field": "verdict", "eq": "partial"},
             {"field": "unresolved_critical", "gt": 0}
           ]
-        },
-        {"field": "recovery", "eq": "True"}
-      ]
+        }
+      ],
+      "_note": "quality-fixer is in recovery_forbidden — see security-fixer note."
     }
+  ],
+  "_legacy_hard_gates_v1": [
+    "The v1 block_rules form is preserved below only for reference during migration. Do not read from it — verify-report-gate.sh reads hard_gates (v2) above."
   ],
   "trace_required": [
     {

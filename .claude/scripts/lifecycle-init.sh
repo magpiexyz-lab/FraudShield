@@ -44,6 +44,13 @@ if [[ ! -f "$SKILL_YAML" ]]; then
   exit 0
 fi
 
+# --- Step 1.5: Legacy trace migration (idempotent, runs in BOTH primary and
+# --embed paths so embedded verify runs don't carry forward unmigrated traces
+# from the parent skill — R2 C4 fix). The script writes
+# .runs/trace-migration.json as a receipt and becomes a no-op on subsequent
+# invocations.
+python3 "$PROJECT_DIR/.claude/scripts/migrate-legacy-traces.py" >&2 || true
+
 # --- Step 2: Parse YAML → manifest.json ---
 mkdir -p "$PROJECT_DIR/.runs"
 
@@ -297,4 +304,51 @@ if [[ -n "$EXTRA" ]]; then
   MODE=$(python3 -c "import json; d=json.loads('''$EXTRA'''); m=d.get('mode',''); print(m if m and m!='default' else '')" 2>/dev/null || echo "")
   [[ -n "$MODE" ]] && CTX_SKILL="${SKILL}-${MODE}"
 fi
-bash "$PROJECT_DIR/.claude/scripts/init-context.sh" "$CTX_SKILL"
+
+# In embed mode: derive parent/ancestors/attributed_to from the parent's
+# on-disk context file (issue #941 fix + R2 C8: NEVER trust a CLI-arg chain).
+# The parent is identified as the latest non-completed *-context.json on the
+# current branch, excluding the child we are about to create and the epilogue.
+EMBED_EXTRA_JSON=""
+if [[ -n "$EMBED_MODE" ]]; then
+  CURRENT_BRANCH="$(git branch --show-current 2>/dev/null || echo "")"
+  EMBED_EXTRA_JSON=$(CTX_SKILL_ENV="$CTX_SKILL" BRANCH_ENV="$CURRENT_BRANCH" PROJECT_DIR_ENV="$PROJECT_DIR" python3 - << 'PYEOF'
+import json, glob, os
+project = os.environ['PROJECT_DIR_ENV']
+child_ctx_file = os.environ['CTX_SKILL_ENV'] + '-context.json'
+branch = os.environ.get('BRANCH_ENV', '')
+best = None
+best_ts = ''
+for f in glob.glob(os.path.join(project, '.runs', '*-context.json')):
+    if os.path.basename(f) == child_ctx_file:
+        continue
+    if 'epilogue-context' in f:
+        continue
+    try:
+        d = json.load(open(f))
+    except:
+        continue
+    if branch and d.get('branch') and d.get('branch') != branch:
+        continue
+    if d.get('completed') is True:
+        continue
+    ts = d.get('timestamp', '')
+    if ts > best_ts:
+        best_ts = ts
+        best = d
+if best is None:
+    print('{}')
+else:
+    parent = {'skill': best.get('skill', ''), 'run_id': best.get('run_id', '')}
+    ancestors = list(best.get('ancestors') or []) + [parent]
+    attr = best.get('attributed_to') or best.get('skill', '') or ''
+    print(json.dumps({'parent': parent, 'ancestors': ancestors, 'attributed_to': attr}))
+PYEOF
+)
+fi
+
+if [[ -n "$EMBED_EXTRA_JSON" && "$EMBED_EXTRA_JSON" != "{}" ]]; then
+  bash "$PROJECT_DIR/.claude/scripts/init-context.sh" "$CTX_SKILL" "$EMBED_EXTRA_JSON"
+else
+  bash "$PROJECT_DIR/.claude/scripts/init-context.sh" "$CTX_SKILL"
+fi

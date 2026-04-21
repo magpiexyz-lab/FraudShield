@@ -1,6 +1,10 @@
 # Dependencies
 node_modules/
 
+# Claude Code transient state
+.claude/worktrees/
+.claude/scheduled_tasks.lock
+
 # Next.js (update if you change stack.framework)
 .next/
 out/

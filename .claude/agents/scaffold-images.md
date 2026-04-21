@@ -104,3 +104,25 @@ Read `.claude/procedures/scaffold-images.md` for full step-by-step instructions.
 - Weakest image: <filename> (min score: X/10)
 - Rework performed: yes/no (details if yes)
 ```
+
+
+## Self-Degradation Handler
+
+If you detect that you cannot complete all declared checks — image-gen rate limit hit, AI model timeout after configured retries, unreachable CDN for uploads, turn-budget exhausted — stop the normal trace-write and call the shared self-degraded helper instead. This produces a `provenance: "self-degraded"` trace so downstream gates can distinguish "agent self-reported partial" from "agent crashed silently" (issue #958).
+
+**Do NOT call write-recovery-trace.sh yourself.** That path is for the orchestrator when an agent has crashed so hard it cannot self-report. You self-degrade.
+
+```bash
+python3 .claude/scripts/write-degraded-trace.py scaffold-images \
+  --reason "<specific cause, e.g.: 'image-gen rate limit hit after 8/12 images'>" \
+  --checks-performed "<comma-separated list of checks that DID complete>" \
+  --verdict degraded \
+  --fixes-json '[{"file": "public/images/hero.png", "type": "image-new"}]'
+```
+
+- `--reason` must be specific (e.g., `"playwright-timeout after 60s on /pricing"`), not generic.
+- `--checks-performed` lists exactly what ran — matches the `checks_performed` array on a normal completion trace.
+- `--verdict` defaults to `degraded`. Use `fail` only when the partial-work result itself failed (rare).
+- Agent is a fixer — pass `--fixes-json` for every image you successfully generated; partially-complete sets are acceptable under provenance=self-degraded.
+
+The orchestrator will later run `validate-recovery.sh` against this trace to stamp `recovery_validated:true` when build+test+diff evidence supports the claim.

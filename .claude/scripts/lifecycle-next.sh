@@ -146,6 +146,17 @@ if [[ "$RESULT" == EMBED:* ]]; then
   EMBED_NEXT=$(bash "$0" "$EMBED_SKILL")
 
   if [[ "$EMBED_NEXT" == "FINALIZE" ]]; then
+    # Mark embedded skill's context as completed BEFORE signaling parent.
+    # This lets resolve_active_identity() correctly skip the finished embedded
+    # context on subsequent hook invocations and pick the parent as active.
+    if [[ -f "$EMBED_CTX" ]]; then
+      python3 -c "
+import json
+d = json.load(open('$EMBED_CTX'))
+d['completed'] = True
+json.dump(d, open('$EMBED_CTX', 'w'))
+" 2>/dev/null || true
+    fi
     # Embedded skill complete — signal parent to advance this state
     echo "EMBED_COMPLETE:${SKILL}:${EMBED_AT}"
   else

@@ -143,3 +143,25 @@ Replace placeholders with actual values:
 - `<P>`: percentage of golden_path steps successfully completed (integer 0-100)
 - `<F>`: total number of fixes applied (0 if none)
 - `<UDE>`: count of real (non-fake-door) dead ends that remained after fixes (0 if all resolved or all are intentional fake-doors)
+
+
+## Self-Degradation Handler
+
+If you detect that you cannot complete all declared checks — browser navigation timeout, infinite redirect loop, unreachable authenticated route, turn-budget exhausted — stop the normal trace-write and call the shared self-degraded helper instead. This produces a `provenance: "self-degraded"` trace so downstream gates can distinguish "agent self-reported partial" from "agent crashed silently" (issue #958).
+
+**Do NOT call write-recovery-trace.sh yourself.** That path is for the orchestrator when an agent has crashed so hard it cannot self-report. You self-degrade.
+
+```bash
+python3 .claude/scripts/write-degraded-trace.py ux-journeyer \
+  --reason "<specific cause, e.g.: 'navigation to /dashboard timed out after 30s'>" \
+  --checks-performed "<comma-separated list of checks that DID complete>" \
+  --verdict degraded \
+  # Omit --fixes-json (defaults no_fixes_claimed:true)
+```
+
+- `--reason` must be specific (e.g., `"playwright-timeout after 60s on /pricing"`), not generic.
+- `--checks-performed` lists exactly what ran — matches the `checks_performed` array on a normal completion trace.
+- `--verdict` defaults to `degraded`. Use `fail` only when the partial-work result itself failed (rare).
+- Agent is in `non_fixer_agents` — omit `--fixes-json` (defaults to `no_fixes_claimed: true`).
+
+The orchestrator will later run `validate-recovery.sh` against this trace to stamp `recovery_validated:true` when build+test+diff evidence supports the claim.

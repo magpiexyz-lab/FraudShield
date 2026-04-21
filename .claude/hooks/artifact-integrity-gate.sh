@@ -123,13 +123,45 @@ elif is_agent_trace:
         elif not isinstance(d["checks_performed"], list):
             errors.append("agent trace checks_performed must be an array")
         elif len(d["checks_performed"]) == 0:
-            # Allow empty for recovery traces
-            if not d.get("recovery"):
-                errors.append("agent trace checks_performed is empty (set recovery: true if exhausted)")
+            # Allow empty for recovery / self-degraded / lead-merge traces
+            prov = d.get("provenance")
+            if not d.get("recovery") and prov not in ("recovery", "self-degraded", "lead-merge"):
+                errors.append("agent trace checks_performed is empty (set recovery: true or use provenance: self-degraded/recovery if exhausted)")
 
         # run_id: warn but do not block (backward compat)
         if "run_id" not in d or not d.get("run_id"):
             sys.stderr.write("WARNING: agent trace has empty run_id — trace freshness cannot be verified\n")
+
+        # --- Per-provenance schema validation (v2: agent-trace lifecycle contract) ---
+        # Legacy traces (no provenance field) are accepted here and will be
+        # migrated later by scripts/migrate-legacy-traces.py.
+        prov = d.get("provenance")
+        if prov is not None:
+            valid_prov = {"self", "self-degraded", "recovery", "lead-merge"}
+            if prov not in valid_prov:
+                errors.append(f"provenance must be one of {sorted(valid_prov)}; got {prov!r}")
+            else:
+                # partial flag must be true when provenance != self
+                if prov != "self":
+                    if not d.get("partial"):
+                        errors.append(f"provenance={prov} requires partial:true")
+                # self-degraded and recovery both need degraded_reason
+                if prov in ("self-degraded", "recovery"):
+                    if not d.get("degraded_reason"):
+                        errors.append(f"provenance={prov} requires degraded_reason (short cause string)")
+                # recovery traces must set the legacy mirror
+                if prov == "recovery" and d.get("recovery") is not True:
+                    errors.append("provenance=recovery requires recovery:true (legacy mirror)")
+                # lead-merge must have contributing_spawn_indexes array
+                if prov == "lead-merge":
+                    csi = d.get("contributing_spawn_indexes")
+                    if not isinstance(csi, list) or len(csi) == 0:
+                        errors.append("provenance=lead-merge requires contributing_spawn_indexes (non-empty integer array)")
+                    elif not all(isinstance(i, int) for i in csi):
+                        errors.append("contributing_spawn_indexes must be integers")
+                # self traces should not claim partial
+                if prov == "self" and d.get("partial") is True:
+                    errors.append("provenance=self with partial:true is contradictory — use provenance=self-degraded instead")
 
     else:
         # Unknown agent type — validate minimal fields only

@@ -78,3 +78,25 @@ Blocked reasons:
 ## Trace Output
 
 After returning the Output Contract to the lead, the **lead** (not the implementer) writes a trace to `.runs/agent-traces/` based on the Output Contract fields above. The implementer runs in a worktree and cannot write to the main working tree's trace directory. See `change-feature.md` for the lead-side trace writing procedure.
+
+
+## Self-Degradation Handler
+
+If you detect that you cannot complete all declared checks — AI image-gen API timeout, reference image unreadable, screenshot failed repeatedly, turn-budget exhausted — stop the normal trace-write and call the shared self-degraded helper instead. This produces a `provenance: "self-degraded"` trace so downstream gates can distinguish "agent self-reported partial" from "agent crashed silently" (issue #958).
+
+**Do NOT call write-recovery-trace.sh yourself.** That path is for the orchestrator when an agent has crashed so hard it cannot self-report. You self-degrade.
+
+```bash
+python3 .claude/scripts/write-degraded-trace.py visual-implementer \
+  --reason "<specific cause, e.g.: 'image generation API returned 504 after 3 retries'>" \
+  --checks-performed "<comma-separated list of checks that DID complete>" \
+  --verdict degraded \
+  --fixes-json '[{"file": "public/images/...", "type": "image-regenerate", "fix": "replaced with 1800px candidate"}]'
+```
+
+- `--reason` must be specific (e.g., `"playwright-timeout after 60s on /pricing"`), not generic.
+- `--checks-performed` lists exactly what ran — matches the `checks_performed` array on a normal completion trace.
+- `--verdict` defaults to `degraded`. Use `fail` only when the partial-work result itself failed (rare).
+- Agent is a fixer — pass `--fixes-json` for every component or asset you actually produced/modified.
+
+The orchestrator will later run `validate-recovery.sh` against this trace to stamp `recovery_validated:true` when build+test+diff evidence supports the claim.

@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# run-all.sh — run every test in .claude/scripts/tests/ and report the aggregate.
+# Fails on first failing suite so CI can surface the root cause quickly.
+set -euo pipefail
+
+cd "$(dirname "$0")/../../.."
+
+SUITES=(
+  ".claude/scripts/tests/test_trace_schema.py"
+  ".claude/scripts/tests/test_resolve_active_identity.py"
+  ".claude/scripts/tests/test_write_recovery.py"
+  ".claude/scripts/tests/test_forgery_surface.py"
+  ".claude/scripts/tests/test_validate_recovery.py"
+  ".claude/scripts/tests/test_migrate_legacy_traces.py"
+  ".claude/scripts/tests/test_hard_gate_predicates.py"
+  ".claude/scripts/tests/test_agent_trace_write_guard.py"
+)
+
+FAIL=0
+for s in "${SUITES[@]}"; do
+  echo "━━━ $s ━━━"
+  if python3 "$s"; then
+    echo "PASS: $s"
+  else
+    echo "FAIL: $s"
+    FAIL=1
+    break
+  fi
+  echo
+done
+
+if [[ $FAIL -eq 0 ]]; then
+  echo
+  echo "ALL AGENT-TRACE LIFECYCLE TESTS PASSED"
+else
+  exit 1
+fi
