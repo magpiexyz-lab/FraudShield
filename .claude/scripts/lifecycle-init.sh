@@ -37,6 +37,16 @@ PROJECT_DIR="$(git rev-parse --show-toplevel 2>/dev/null || echo "${CLAUDE_PROJE
 SKILL_YAML="$PROJECT_DIR/.claude/skills/$SKILL/skill.yaml"
 MANIFEST="$PROJECT_DIR/.runs/$SKILL-manifest.json"
 
+# --- Step 0.5: Orphan transient-service cleanup from prior uncleaned run ---
+# Catches Supabase stacks left running by a skill that crashed, was Ctrl-C'd,
+# or had finalize itself die before Step 7. Also runs a defensive reclaim when
+# a stack is running with no ownership marker (Claude-bypassed-wrapper path).
+# Skipped in embed mode because the parent's init already handled it.
+# Non-blocking: init must never fail on cleanup.
+if [[ -z "${EMBED_MODE:-}" ]] && [[ -x "$PROJECT_DIR/.claude/scripts/stop-transient-services.sh" ]]; then
+  bash "$PROJECT_DIR/.claude/scripts/stop-transient-services.sh" --orphan-cleanup 2>&1 | sed 's/^/[init-cleanup] /' || true
+fi
+
 # --- Step 1: Check for skill.yaml ---
 if [[ ! -f "$SKILL_YAML" ]]; then
   echo "WARN: lifecycle-init.sh — $SKILL_YAML not found, falling back to v1 (init-context.sh only)" >&2

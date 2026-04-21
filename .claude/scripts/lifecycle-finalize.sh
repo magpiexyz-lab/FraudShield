@@ -404,4 +404,19 @@ except Exception as e:
     print('WARN: Failed to write verify-recheck.json: %s' % e, file=sys.stderr)
 " || echo "WARN: verify-recheck.json assembly failed — remediation phase will have no structured input" >&2
 
+# --- Step 7: Teardown transient local services started by this skill ---
+# Stops skill-owned Supabase stacks matching the current run_id (or an ancestor
+# run_id for /change->embed /verify). No-op in CI and when the stack combo is
+# not supabase+playwright. See .claude/scripts/stop-transient-services.sh.
+# Writes <git-common-dir>/finalize-completed-<run_id>.flag AFTER stop succeeds
+# so that a crash between Step 6 and Step 7 is detected by the next skill's
+# lifecycle-init.sh Step 0.5.
+TEARDOWN_RUN_ID=$(python3 -c "import json; print(json.load(open('$CTX')).get('run_id',''))" 2>/dev/null || echo "")
+TEARDOWN_COMMON_DIR=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || echo "")
+if [[ -n "$TEARDOWN_RUN_ID" && -n "$TEARDOWN_COMMON_DIR" ]]; then
+  bash "$PROJECT_DIR/.claude/scripts/stop-transient-services.sh" --for-run "$TEARDOWN_RUN_ID" 2>&1 | sed 's/^/[teardown] /' || \
+    echo "WARN: transient-service teardown failed (non-blocking)" >&2
+  touch "$TEARDOWN_COMMON_DIR/finalize-completed-$TEARDOWN_RUN_ID.flag" 2>/dev/null || true
+fi
+
 echo "FINALIZE_COMPLETE"

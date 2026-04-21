@@ -985,10 +985,22 @@ Alternatively, assert on the redirect destination with `page.waitForURL(/\/login
 
 ## PR Instructions
 - Install [Docker Desktop](https://www.docker.com/products/docker-desktop/) if not already installed
-- Start local Supabase: `make supabase-start` (or `npx supabase start -x realtime,storage,imgproxy,inbucket,pgadmin-schema-diff,migra,postgres-meta,studio,edge-runtime,logflare,pgbouncer,vector && npx supabase db reset`)
+- Start local Supabase (recommended): `bash .claude/scripts/ensure-supabase-start.sh` — registers skill ownership so `/verify`, `/change`, `/bootstrap` finalize can stop the stack automatically when they're done
+  - Lower-level alternative: `make supabase-start` (equivalent to `npx supabase start -x … && npx supabase db reset`). Skills that start via `make` or raw `npx supabase start` do NOT write the ownership marker; the init-cleanup defensive reclaim in `lifecycle-init.sh` Step 0.5 will catch them on the next skill run, but the wrapper path is preferred.
 - Run `npm run test:e2e` locally to verify tests pass
-- Stop local Supabase: `make supabase-stop` (or `npx supabase stop`)
+- Stop local Supabase: `make supabase-stop` (or `npx supabase stop`) — skill-owned stacks stop automatically on `/verify` / `/change` finalize
 - No CI secrets needed for database/auth E2E — CI starts local Supabase automatically
 - If `stack.payment` is present: add Stripe CI secrets (`E2E_STRIPE_SECRET_KEY`, `E2E_STRIPE_PUBLISHABLE_KEY`, `E2E_STRIPE_WEBHOOK_SECRET`) to GitHub repo settings (Settings → Secrets and variables → Actions)
+
+## Local dev container lifecycle
+
+The skill lifecycle owns a transient-services teardown contract so Supabase containers don't accumulate across `/verify` / `/change` runs (see closed issue #968 for the leak history):
+
+- **How it works.** `ensure-supabase-start.sh` writes an ownership marker at `<git-common-dir>/transient-resources.json` when it starts the stack (fields: `owner`, `run_id`, `ancestors_run_ids`, `project_id`, `repo_root`). On normal skill completion, `lifecycle-finalize.sh` Step 7 reads the marker and stops only `owner=skill` stacks via `npx supabase stop --project-id <snapshot>`. A matching `<git-common-dir>/finalize-completed-<run_id>.flag` file is written after the stop succeeds; the next skill's `lifecycle-init.sh` Step 0.5 detects orphaned markers (no matching flag) and cleans them up — covering Ctrl-C, crash, and wrapper-bypass paths. The 7-day flag GC runs at the top of orphan-cleanup so `.git/common-dir` never fills up.
+- **Important — race window.** Do not run `npx supabase start` in another shell while a skill is running. The marker assumes single-owner semantics. If you need a long-lived local Supabase for manual work, start it **before** invoking any skill — `ensure-supabase-start.sh` detects "already running" and unconditionally classifies the instance as user-owned (no marker written), so skills will not touch it.
+- **Cross-worktree safety.** Two worktrees of the same repo share one Docker daemon, so start/stop is serialized with a python3 `fcntl.flock` on `<git-common-dir>/supabase.lock` (macOS has no `/usr/bin/flock`). Concurrent skill runs line up behind the lock.
+- **Docker hang protection.** Both scripts preflight `docker info` and skip the teardown when the daemon is unreachable; the stop step also runs under a 60-second background kill watchdog (macOS has no `timeout(1)`).
+- **Manual cleanup across all projects:** `docker ps --filter name=supabase_ -q | xargs -r docker stop`
+- **CI note.** The teardown script skips automatically when `GITHUB_ACTIONS=true` or `CI=true`. CI workflows continue to own their own `if: always()` supabase-stop step (see the CI template above).
 
 **When using the No-Auth Fallback path:** Docker and local Supabase are not required — tests run unconditionally. Just run `npm run test:e2e` locally to verify.
