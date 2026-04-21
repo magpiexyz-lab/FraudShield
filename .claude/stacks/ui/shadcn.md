@@ -347,23 +347,38 @@ export function FakeDoorIntentModal({
 ```tsx
 // src/app/dashboard/page.tsx — dashboard already has a primary CTA on the hero,
 // so the Fake Door uses the subordinate ghost variant.
-<FakeDoorIntentModal
-  feature="SMS notifications"
-  service="Twilio"
-  actionLabel="sms_intent"
-  pageName="Dashboard"
-  variant="ghost"
-/>
+import { FakeDoorIntentModal } from "./sms-fake-door";
 
+export function DashboardPrompt() {
+  return (
+    <FakeDoorIntentModal
+      feature="SMS notifications"
+      service="Twilio"
+      actionLabel="sms_intent"
+      pageName="Dashboard"
+      variant="ghost"
+    />
+  );
+}
+```
+
+```tsx
 // src/app/settings/page.tsx — settings page has no competing primary CTA,
-// so the default `primary` variant is appropriate.
-<FakeDoorIntentModal
-  feature="Team billing"
-  service="Stripe"
-  actionLabel="team_billing_intent"
-  pageName="Settings"
-  successHeadline="Cool — we will reach out."
-/>
+// so the default `primary` variant is appropriate. Demonstrates the
+// optional `successHeadline` copy override.
+import { FakeDoorIntentModal } from "./weekly-digest-fake-door";
+
+export function WeeklyDigestPrompt() {
+  return (
+    <FakeDoorIntentModal
+      feature="Weekly digest email"
+      service="Mailchimp"
+      actionLabel="weekly_digest_intent"
+      pageName="Settings"
+      successHeadline="Cool — we will reach out."
+    />
+  );
+}
 ```
 
 ## Stack Knowledge
