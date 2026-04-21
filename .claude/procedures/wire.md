@@ -234,7 +234,17 @@ Re-read `.runs/current-plan.md` and `experiment/experiment.yaml` now. Verify eac
 - If surface ≠ none and archetype is `cli`: confirm `site/index.html` exists
 - If `stack.payment` is present: confirm the webhook handler does not contain `// TODO: Update user's payment status` (this compiles silently — verify it was resolved in Step 5/6)
 - If `stack.email` is present: confirm `vercel.json` contains the cron config, email routes exist, and welcome email is wired to auth callback
-- If Fake Door features exist: confirm Fake Door components exist, fire `activate` with `fake_door: true`, and render polished UI with a "coming soon" dialog
+- If Fake Door features exist (per `externals-decisions.json`): for each Fake Door component, confirm:
+  - the component exists at its expected path and the parent page imports and renders it
+  - fires `track("activate", { ..., fake_door: true })` on submit (or the `track` call is intentionally omitted when `stack.analytics` is absent — per Rule 4 of the Intent Capture Contract)
+  - renders a "coming soon" dialog / success panel pair
+  - satisfies the Intent Capture Contract (see `.claude/procedures/scaffold-externals.md` § Intent Capture Contract):
+    - **Tier 1 Rule 1** — live region element (`role="alert"` or `aria-live="..."`) is present WITHOUT a conditional gate that short-circuits the element itself (forbid `{cond ? <... role="alert"> : null}` and `{cond && <... role="alert">}` patterns inside the component — the container must render at every phase, only the text toggles)
+    - **Tier 1 Rule 2** — component contains `useRef` + `useEffect` with a `status` dependency; the success region has `tabIndex={-1}` + `ref={...}` + `aria-live="polite"`
+    - **Tier 1 Rule 3** — success region contains an interactive element (`<Button>` or `<a>`) whose visible text begins with `Back to ` (case-insensitive) OR uses the `` `Back to ${pageName}` `` template-literal idiom
+    - **Tier 2 Rule 5** (disjunction — pass if ANY one matches): (a) `<DialogTrigger render={...}>` composition (shadcn idiom per `.claude/stacks/ui/shadcn.md` § *Trigger + interactive element*), (b) `<DialogTrigger asChild>` composed with a non-Button child, OR (c) an `onOpenChange` callback that invokes `triggerRef.current?.focus()` when the open argument is `false`
+    - **Tier 2 Rule 6** — the trigger's `className={cn(...)}` expression does NOT inject page-supplied `bg-*|ring-*|border-*|text-*` color/emphasis utilities — the page file MUST NOT be the source of visual-weight class injection on the trigger (pages use the `variant` prop instead)
+  If any MUST rule fails, fix using the canonical template in `.claude/stacks/ui/<stack.ui>.md` § Fake Door Component.
 - If core "Provision at deploy" routes exist: confirm they compile without real credentials and return 503 with actionable error when env vars are missing
 
 **API contract checks (if archetype is `web-app` or `service`):**

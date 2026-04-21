@@ -34,7 +34,33 @@ Before API routes are generated, assess whether experiment.yaml features require
    - **Provision at deploy** — Step 5 builds full integration code referencing env vars; credentials are obtained during `/deploy` Step 5b. Code must compile without real credentials (guard with runtime check → 503 `{ error: "Service not configured" }` + `console.error(\`[503] [name] not configured — run /deploy to provision\`)`).
 
 5. **Non-core features — three options:**
-   - **Fake Door** (default) — real UI + `activate` event with `fake_door: true` + "Coming soon" dialog. Collects intent data from paid traffic. See Fake Door output format below.
+   - **Fake Door** (default) — real UI + `activate` event with `fake_door: true` + intent-capture dialog. Collects intent data from paid traffic. See Fake Door output format below.
+
+     Fake Door and any other form-to-success intent-capture surface shipped by the template (auth, waitlist, newsletter, feedback, inline email banner) MUST satisfy the **Intent Capture Contract** below. The contract is split into Tier 1 (surface-agnostic — dialog OR inline) and Tier 2 (dialog/sheet/drawer only).
+
+     **Tier 1 — Surface-agnostic rules**
+
+     - **Rule 1: Live region unconditionally mounted (WCAG 4.1.3).** Status/error text is rendered as children of a `<p role="alert" aria-live="assertive">` element that is present in the DOM at every render phase. NEVER conditionally mount the container:
+       - BAD:  `{status === "error" ? <p role="alert">{msg}</p> : null}`
+       - GOOD: `<p role="alert" aria-live="assertive" className="min-h-[1em]">{status === "error" ? msg : ""}</p>`
+
+       Reason: screen readers do not announce content injected into nodes that were not present at subscription time.
+
+     - **Rule 2: Focus moves to the success region on form→success (WCAG 2.4.3).** Declare `successRef` + `useEffect(() => { if (status === "success") successRef.current?.focus(); }, [status])`. The success region carries `ref={successRef}`, `tabIndex={-1}`, `aria-live="polite"`, and a visible `focus-visible` ring. Reason: keyboard and SR users lose context when the form unmounts and focus defaults to `<body>`.
+
+     - **Rule 3: Success region includes a forward action.** Render a primary CTA labelled `Back to {pageName}` (adapted per stack vocabulary) that either closes the dialog (Tier 2 surfaces) or resets the component to its idle form and scrolls the user back into the page flow (Tier 1 inline surfaces). NO dead-end success states. A secondary reassurance hint (e.g. "We will email when it ships") is optional.
+
+     - **Rule 4: Analytics graceful-absence.** When `stack.analytics` is present, the form submit MUST call the analytics library's untyped `track("activate", { fake_door: true, action: actionLabel, service, email })` (see your analytics stack file at `.claude/stacks/analytics/<value>.md` for the exact import path and client-side export). This matches the existing Fake Door pattern in `.claude/skills/bootstrap/state-12-externals-decisions.md` and `.claude/procedures/change-upgrade.md`; `activate`/`fake_door` is an ephemeral scaffold event intentionally NOT routed through the typed-wrapper layer. When `stack.analytics` is absent, bootstrap-lead / change-lead omits both the analytics import and the `track()` call — the form still transitions to success without a tracking call. The component MUST compile and function with either configuration.
+
+     **Tier 2 — Dialog-specific rules (Dialog / Sheet / Drawer)**
+
+     - **Rule 5: Focus returns to the trigger on ANY close path.** Esc, overlay click, explicit Back button, X button. Achieve this by wiring the trigger via the primitive's composition API. For shadcn this means `<DialogTrigger render={<Button .../>}>` per `.claude/stacks/ui/shadcn.md` § *Trigger + interactive element* — NOT `asChild` with a Button child, which produces nested `<button>` elements (HTML validity violation). Do NOT drive the dialog with a plain `<Button onClick={() => setOpen(true)}>` trigger that bypasses the primitive's focus-return machinery.
+
+     - **Rule 6: Trigger exposes a visual-hierarchy variant, not a className override.** The trigger accepts a `variant` prop with at least two emphasis levels: `primary` (high visual weight, default) and `ghost` (low visual weight). Pages that already spent their primary-action budget on a real CTA pass `variant="ghost"`. Pages MUST NOT override the trigger's `className` with ad-hoc Tailwind utilities to change visual weight — that produces cross-page drift. Stack-specific class constants (e.g. a ghost-trigger border) belong inside the canonical template, not in page files. The abstract `primary`/`ghost` vocabulary is translated by each stack file to its primitive's own vocabulary (e.g. shadcn: `primary`→`default`, `ghost`→`ghost`; Mantine: `primary`→`filled`, `ghost`→`subtle`). The stack file MUST publish this mapping table inside its `## Fake Door Component` section.
+
+     **Canonical implementation.** The UI stack file (`.claude/stacks/ui/<stack.ui>.md` § `Fake Door Component`) provides a stack-appropriate TSX template that satisfies Tier 1 + Tier 2. Bootstrap-lead (state-12) and change-lead (`change-feature.md`) copy this template into `src/app/<page>/<component>.tsx` (project-owned — NOT inside `.claude/`, so `/upgrade` does not touch the generated file) and adapt the props: `feature`, `service`, `actionLabel`, `pageName`, `variant`, `triggerLabel?`, `successHeadline?`, `successBody?`.
+
+     **Customization extension points.** The three optional props `triggerLabel?`, `successHeadline?`, `successBody?` cover per-feature copy customization. Novel customization vectors require filing a template observation via `/observe` — do NOT edit the stack file's `## Fake Door Component` section in a project, because `/upgrade` overwrites `.claude/stacks/ui/*.md` (template-owned per `.template-owned-dirs.txt`).
    - **Skip** — omit the feature from the UI entirely (not a 501 stub — the feature is simply not built)
    - **Full Integration** — same as core "Provide now" (user gives credentials, Step 5 builds it)
 

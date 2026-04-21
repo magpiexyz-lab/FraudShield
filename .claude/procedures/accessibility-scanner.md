@@ -123,3 +123,17 @@ Within each page file, check heading levels. Flag if:
 Check the root `layout.tsx` file for `<html lang="...">`. The `lang` attribute must be present and non-empty. Missing `lang` is a violation.
 
 **Severity:** High
+
+### A7. Conditionally-Mounted Live Regions in Form-State Components (WCAG 4.1.3)
+
+Scan files under `src/app/` and `src/components/` whose enclosing component ALSO contains form-state-machine markers (one or more of: `status === "success"`, `setStatus(`, or a type alias of the shape `Status = "idle" | "submitting" | "success" | "error"`). Within those files only, flag any `role="alert"` or `aria-live="<polite|assertive>"` element whose render is gated by a conditional or short-circuit expression:
+
+- `{condition ? <p role="alert">...</p> : null}` (ternary gating)
+- `{condition && <p aria-live="...">...</p>}` (&& gating)
+- `<... role="alert">` placed inside an `if (status === "...") return (...)` branch with no equivalent fallback container in the other branch
+
+**Scope filter rationale**: co-occurrence with form-state-machine markers narrows the heuristic to components that match the Intent Capture Contract surface (see `.claude/procedures/scaffold-externals.md` § Intent Capture Contract Rule 1). This reduces false positives from legitimate conditional flash banners, notification-list items, and server-error banners that exist outside form-to-success flows.
+
+Fix hint in scanner output: "Mount the container unconditionally; toggle text content only. Example: `<p role='alert' aria-live='assertive' className='min-h-[1em] ...'>{status === 'error' ? msg : ''}</p>`."
+
+**Severity:** Medium (heuristic; narrow scope filter + multiline regex means some false positives are inevitable. Runtime axe-core R1 is the authoritative confirmation when an error state is triggered during the test run. Flags but does not block `/verify`.)

@@ -181,6 +181,191 @@ The `render` prop replaces the trigger's default `<button>` wrapper with the pro
 <div className="border border-white/10 bg-black/10">
 ```
 
+## Fake Door Component
+
+> Used by bootstrap-lead (`.claude/skills/bootstrap/state-12-externals-decisions.md`) and change-lead (`.claude/procedures/change-feature.md`) when `stack.ui: shadcn` AND a non-core external feature is classified as Fake Door (per `.claude/procedures/scaffold-externals.md` § Intent Capture Contract).
+>
+> **Do NOT edit this section in a project — `/upgrade` will overwrite it.** Customize at the callsite via the documented props (`feature`, `service`, `actionLabel`, `pageName`, `variant`, `triggerLabel?`, `successHeadline?`, `successBody?`). If a novel customization vector is needed, file a template observation via `/observe` rather than editing the stack file in the project.
+>
+> **Instantiation workflow:**
+> 1. Copy the TSX template below verbatim to `src/app/<page>/<component>.tsx` (project-owned).
+> 2. Fill in feature-specific props at the callsite (not inside the file).
+> 3. If `stack.analytics` is absent, delete the `@/lib/analytics` import line AND the `track("activate", ...)` call line. The remaining code compiles and the form still transitions to success.
+
+### Variant mapping (Rule 6 of the Intent Capture Contract)
+
+| Intent Capture variant | shadcn Button variant | Class augmentation |
+|------------------------|-----------------------|--------------------|
+| `primary` (default)    | `default`             | (none) |
+| `ghost`                | `ghost`               | `border border-border/40` (keeps the trigger legible on backgrounds where `ghost` alone disappears) |
+
+### Template
+
+```tsx
+"use client";
+import { useEffect, useRef, useState } from "react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
+// If stack.analytics is absent: delete this import AND the trackCall below.
+import { track } from "@/lib/analytics";
+
+type Variant = "primary" | "ghost";
+type Status = "idle" | "submitting" | "success" | "error";
+
+export interface FakeDoorIntentModalProps {
+  feature: string;             // e.g. "SMS notifications"
+  service: string;             // e.g. "Twilio"
+  actionLabel: string;         // e.g. "sms_intent"
+  pageName: string;            // e.g. "Dashboard"
+  variant?: Variant;           // default: "primary"
+  triggerLabel?: string;       // default: `Enable ${feature}`
+  successHeadline?: string;    // default: "You are on the list."
+  successBody?: string;        // default: `We will email when ${feature} is ready.`
+}
+
+export function FakeDoorIntentModal({
+  feature, service, actionLabel, pageName,
+  variant = "primary", triggerLabel,
+  successHeadline, successBody,
+}: FakeDoorIntentModalProps) {
+  const [open, setOpen] = useState(false);
+  const [status, setStatus] = useState<Status>("idle");
+  const [errorMessage, setErrorMessage] = useState("");
+  const successRef = useRef<HTMLDivElement>(null);
+
+  // Rule 2: focus moves to success region when status becomes success.
+  useEffect(() => {
+    if (status === "success") successRef.current?.focus();
+  }, [status]);
+
+  async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const email = (new FormData(event.currentTarget).get("email") || "")
+      .toString().trim();
+    if (!email) {
+      setStatus("error");
+      setErrorMessage("Please enter your email.");
+      return;
+    }
+    setStatus("submitting");
+    try {
+      // Rule 4: if stack.analytics is absent, delete this line AND the import.
+      track("activate", { fake_door: true, action: actionLabel, service, email });
+      setStatus("success");
+    } catch {
+      setStatus("error");
+      setErrorMessage("Something went wrong. Please try again.");
+    }
+  }
+
+  // Rule 5: trigger wired via DialogTrigger `render` prop per shadcn § Trigger + interactive element.
+  // Radix handles focus return on Esc / overlay click / explicit close via the render-prop composition.
+  //
+  // Reset semantics: status resets ONLY on explicit "Back to {pageName}" click.
+  // Closing via Esc / overlay leaves status alone — reopening shows the success panel if previously
+  // submitted. This prevents double-firing of track("activate", ...) on reopen.
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger
+        render={
+          <Button
+            type="button"
+            className={cn(
+              buttonVariants({ variant: variant === "primary" ? "default" : "ghost" }),
+              variant === "ghost" && "border border-border/40"
+            )}
+          />
+        }
+      >
+        {triggerLabel ?? `Enable ${feature}`}
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{feature} — coming soon</DialogTitle>
+        </DialogHeader>
+
+        {status !== "success" ? (
+          <form onSubmit={onSubmit} className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              We are building {feature} with {service}. Leave your email and we will notify you when it ships.
+            </p>
+            <label htmlFor="fakedoor-email" className="sr-only">Email</label>
+            <Input
+              id="fakedoor-email"
+              name="email"
+              type="email"
+              placeholder="you@example.com"
+              required
+              disabled={status === "submitting"}
+            />
+
+            {/* Rule 1: live region is unconditionally mounted. Text toggles; container stays. */}
+            <p role="alert" aria-live="assertive" className="min-h-[1.25rem] text-xs text-destructive">
+              {status === "error" ? errorMessage : ""}
+            </p>
+
+            <Button type="submit" disabled={status === "submitting"}>
+              {status === "submitting" ? "Sending..." : "Notify me"}
+            </Button>
+          </form>
+        ) : (
+          // Rule 2 + Rule 3: focusable success region with forward CTA.
+          <div
+            ref={successRef}
+            tabIndex={-1}
+            aria-live="polite"
+            className="space-y-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <h3 className="text-base font-medium">
+              {successHeadline ?? "You are on the list."}
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              {successBody ?? `We will email when ${feature} is ready.`}
+            </p>
+            <div className="flex items-center gap-2">
+              {/* Rule 3 + Rule 5: forward CTA. Resets status AND closes the dialog;
+                  Radix returns focus to the trigger via render-prop composition. */}
+              <Button type="button" onClick={() => { setStatus("idle"); setOpen(false); }}>
+                Back to {pageName}
+              </Button>
+              <span className="text-xs text-muted-foreground">
+                Keep exploring — the rest of the app is live.
+              </span>
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+```
+
+### Callsite examples
+
+```tsx
+// src/app/dashboard/page.tsx — dashboard already has a primary CTA on the hero,
+// so the Fake Door uses the subordinate ghost variant.
+<FakeDoorIntentModal
+  feature="SMS notifications"
+  service="Twilio"
+  actionLabel="sms_intent"
+  pageName="Dashboard"
+  variant="ghost"
+/>
+
+// src/app/settings/page.tsx — settings page has no competing primary CTA,
+// so the default `primary` variant is appropriate.
+<FakeDoorIntentModal
+  feature="Team billing"
+  service="Stripe"
+  actionLabel="team_billing_intent"
+  pageName="Settings"
+  successHeadline="Cool — we will reach out."
+/>
+```
+
 ## Stack Knowledge
 
 ### When a shadcn component variant class string is used in multiple page callsites
