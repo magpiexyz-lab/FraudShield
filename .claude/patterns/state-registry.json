@@ -32,7 +32,7 @@
     "11": "python3 -c \"import json,os; a=json.load(open('.runs/bootstrap-context.json')).get('archetype','web-app'); assert a!='web-app' or os.path.isfile('.runs/gate-verdicts/phase-a-sentinel.json'), 'phase-a-sentinel missing'\"",
     "11a": "python3 -c \"import json,glob; assert len(glob.glob('src/lib/*.ts'))>=1, 'no .ts in src/lib/'\" && (test ! -f .runs/image-manifest.json || python3 -c \"import json; m=json.load(open('.runs/image-manifest.json')); s=m.get('status'); assert s in ('complete','placeholders','skipped'), f'bad status: {s}'; ic=len(m.get('images',[])); assert s!='complete' or ic>=7, f'expected >=7 images, got {ic}'\")",
     "11b": "python3 -c \"import json,os,glob; a=json.load(open('.runs/bootstrap-context.json')).get('archetype','web-app'); assert (a!='web-app' or os.path.isfile('src/app/layout.tsx')), 'web-app missing layout.tsx'; assert (a!='service' or os.path.isdir('src/app/api')), 'service missing api/'; assert (a!='cli' or any(os.path.isfile(f) for f in ['src/index.ts','src/cli.ts'])), 'cli missing entry'\"",
-    "12": "python3 -c \"import json; d=json.load(open('.runs/gate-verdicts/bg2.5.json')); assert d.get('verdict')=='PASS', 'BG2.5 verdict is %s' % d.get('verdict'); assert d.get('timestamp','')!='', 'timestamp empty'\"",
+    "12": "python3 -c \"import json; d=json.load(open('.runs/gate-verdicts/bg2.5.json')); assert d.get('verdict')=='PASS', 'BG2.5 verdict is %s' % d.get('verdict'); assert d.get('timestamp','')!='', 'timestamp empty'\" && test -f .runs/bootstrap-state12-stack-knowledge-hints.json",
     "13": "python3 -c \"import json; d=json.load(open('.runs/bootstrap-build-result.json')); assert d['exit_code']==0, 'build exit_code=%d' % d['exit_code']\"",
     "13a": "python3 -c \"import json; d=json.load(open('.runs/bootstrap-design-validated.json')); assert all(v in (True, 'skipped') for v in d.values()), f'failed checks: {d}'\"",
     "13b": "grep -q 'phase2-wire' .runs/current-plan.md",
@@ -49,7 +49,7 @@
     "0": "test -f .runs/change-context.json && test -f package.json && test -f experiment/EVENTS.yaml",
     "1": "git branch --show-current | grep -q 'change/'",
     "2": {
-      "verify": "python3 -c \"import json,os; d=json.load(open('.runs/exploration-trace.json')); required=['archetype','archetype_constraints','stacks_read','affected_files','affected_imports','exploration_steps_completed']; missing=[k for k in required if k not in d]; assert not missing,'exploration-trace.json missing: %s'%missing; bad=[f for f in d['affected_files'] if f and not os.path.exists(f)]; assert not bad,'affected_files not on disk: %s'%bad; ctx=json.load(open('.runs/change-context.json')); assert ctx.get('preliminary_type') is not None; assert isinstance(ctx.get('affected_areas'),int)\"",
+      "verify": "python3 -c \"import json,os; d=json.load(open('.runs/exploration-trace.json')); required=['archetype','archetype_constraints','stacks_read','affected_files','affected_imports','exploration_steps_completed']; missing=[k for k in required if k not in d]; assert not missing,'exploration-trace.json missing: %s'%missing; bad=[f for f in d['affected_files'] if f and not os.path.exists(f)]; assert not bad,'affected_files not on disk: %s'%bad; ctx=json.load(open('.runs/change-context.json')); assert ctx.get('preliminary_type') is not None; assert isinstance(ctx.get('affected_areas'),int)\" && test -f .runs/change-stack-knowledge-hints.json",
       "calls": [
         {
           "path": "procedures/plan-exploration.md",

@@ -30,7 +30,7 @@ ACTIVE_IDENTITY="$(resolve_active_identity)"
 if [[ -z "$ACTIVE_IDENTITY" ]]; then
   exit 0
 fi
-IFS=$'\t' read -r ACTIVE_SKILL ACTIVE_RUN_ID ACTIVE_ATTR ACTIVE_ANCESTORS <<< "$ACTIVE_IDENTITY"
+IFS=$'\t' read -r ACTIVE_SKILL ACTIVE_RUN_ID ACTIVE_ATTR _ACTIVE_ANCESTORS <<< "$ACTIVE_IDENTITY"
 if [[ -z "$ACTIVE_SKILL" ]]; then
   exit 0
 fi
