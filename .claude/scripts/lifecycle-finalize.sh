@@ -208,7 +208,35 @@ PR_TITLE="$PROJECT_DIR/.runs/pr-title.txt"
 PR_BODY="$PROJECT_DIR/.runs/pr-body.md"
 SKIP_FLAG="$PROJECT_DIR/.runs/delivery-skip.flag"
 
-if [[ -f "$SKIP_FLAG" ]]; then
+# Skill-type gate — read `type:` from .claude/commands/<skill>.md frontmatter.
+# Analysis-only skills MUST never ship code even if stale delivery artifacts are
+# present (see observation #1004). Fail-closed: on read error, treat as unknown
+# (proceed to existing gates) so a malformed frontmatter does not block
+# legitimate code-writing skills.
+SKILL_TYPE=""
+SKILL_CMD_FILE="$PROJECT_DIR/.claude/commands/$SKILL.md"
+if [[ -f "$SKILL_CMD_FILE" ]]; then
+  SKILL_TYPE=$(python3 -c "
+import sys, re
+try:
+    txt = open(sys.argv[1]).read()
+    m = re.match(r'---\n(.*?)\n---', txt, re.DOTALL)
+    if m:
+        for line in m.group(1).splitlines():
+            k, _, v = line.partition(':')
+            if k.strip() == 'type':
+                print(v.strip().strip('\"\\''))
+                break
+except Exception:
+    pass
+" "$SKILL_CMD_FILE" 2>/dev/null || echo "")
+fi
+
+if [[ "$SKILL_TYPE" == "analysis-only" ]]; then
+  echo "INFO: $SKILL is analysis-only — skipping delivery (stale delivery artifacts ignored)" >&2
+  DELIVERY_STATUS="skipped-analysis-only"
+  echo "DELIVERY=skipped-analysis-only"
+elif [[ -f "$SKIP_FLAG" ]]; then
   echo "INFO: delivery-skip.flag present — skipping delivery" >&2
   DELIVERY_STATUS="skipped"
   echo "DELIVERY=skipped"

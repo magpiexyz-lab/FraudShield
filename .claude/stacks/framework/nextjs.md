@@ -355,6 +355,28 @@ function verifySecret(provided: string, expected: string): boolean {
 ### When a page fails the checkNoHorizontalOverflow smoke test on Mobile Chrome
 Add `overflow-x-hidden` to the outermost wrapper `<div>` of the page component. Wide flex rows, animated elements, and shadcn Card grids are the most common cause of horizontal overflow on mobile viewports. This is the standard first fix; if overflow persists, audit for elements with fixed pixel widths or negative margins.
 
+**If `overflow-x-hidden` on the outer wrapper does not fix the overflow:** check for `position: absolute` decorative elements (radial glows, blobs, geometric shapes — commonly 600–900px wide) inside child containers that lack `position: relative`. The absolute element's containing block falls through to the nearest positioned ancestor, which may be the `<body>` or viewport — NOT the wrapper you added `overflow-x-hidden` to. The element therefore escapes the clipping region and keeps causing horizontal scroll.
+
+Fix: add `relative` to the nearest ancestor wrapper of the absolute-positioned decoration so it establishes the containing block. The scope stays local:
+
+```tsx
+// WRONG — glow escapes clipping because inner div is not positioned
+<div className="overflow-x-hidden">
+  <div>
+    <div className="absolute w-[820px] h-[820px] bg-gradient-radial ..." />
+    {children}
+  </div>
+</div>
+
+// CORRECT — inner div is position:relative, glow is clipped by the ancestor
+<div className="overflow-x-hidden">
+  <div className="relative">
+    <div className="absolute w-[820px] h-[820px] bg-gradient-radial ..." />
+    {children}
+  </div>
+</div>
+```
+
 ### Place rate limiting after auth and API key checks in AI routes
 In API routes that call external AI services (Anthropic, OpenAI, etc.), run authentication and API key validation *before* `rateLimit()`. If rate limiting runs first:
 1. An unconfigured deployment (missing API key) returns 429 instead of the correct 503, hiding the real problem
@@ -471,6 +493,37 @@ const schema = z.object({
 
 ### When API routes performing expensive operations lack rate limiting
 CLAUDE.md Rule 6 specifies rate limiting for auth and payment routes, but any API route performing expensive operations (AI calls, email sends, database writes from anonymous users, quote generation) is equally vulnerable to abuse. Add rate limiting to all write routes and routes that call external services, not just auth and payment.
+
+### When a project emits schema.org `Offer` objects in JSON-LD structured data
+Derive `price` values from the same constant that drives the visible pricing UI (`PLAN_PRICES` when `stack.payment: stripe` is present — see `.claude/stacks/payment/stripe.md`; otherwise whichever pricing source the project uses). **Never** hard-code price strings inside the LD+JSON block. When prices change, stale JSON-LD is invisible to visual QA but crawlers and LLM agents see the contradiction and may surface wrong prices in search results or AI summaries.
+
+For enterprise / custom tiers that have no fixed price, use a `PriceSpecification` object with a `description` field instead of a numeric `price`:
+
+```json
+{
+  "@type": "Offer",
+  "name": "Enterprise",
+  "priceCurrency": "USD",
+  "priceSpecification": {
+    "@type": "PriceSpecification",
+    "description": "Custom pricing — contact sales"
+  }
+}
+```
+
+When a unit test / build-time assertion is easy to add, compare `JSON.parse(ldJson).offers[*].price` against `PLAN_PRICES[tier].priceUsd` to catch drift during future refactors. Skip the assertion for single-page MVPs where the Offer list is inline — the static-source derivation is the primary guard.
+
+### When rendering non-text Unicode glyphs (∞, ×, ©, →, etc.) as visible UI values
+Screen readers announce the Unicode name verbatim — NVDA/JAWS/VoiceOver say "mathematical infinity sign", "multiplication sign", "right-pointing arrow" — which fails WCAG 1.1.1 non-text content when the glyph carries semantic meaning (e.g., `∞` meaning "unlimited"). Wrap the glyph in `aria-hidden="true"` and add a `<span className="sr-only">` sibling with a descriptive word:
+
+```tsx
+<span aria-hidden="true">∞</span>
+<span className="sr-only">unlimited</span>
+```
+
+The `sr-only` utility (Tailwind v4 ships this by default) clips the text visually but keeps it in the accessibility tree. Do NOT substitute `visibility: hidden` or `display: none` — those remove the text from both visual AND accessibility trees, breaking the screen-reader announcement.
+
+Apply to quota displays (`∞` → "unlimited"), close buttons (`×` → "close dialog"), copyright footers (`©` → "copyright"), and arrow indicators (`→` → "leads to"). For purely decorative arrows between cards where no meaning is carried, `aria-hidden="true"` alone without the sr-only sibling is sufficient.
 
 ## PR Instructions
 - No additional framework setup needed after merging — `npm install && npm run dev` is sufficient

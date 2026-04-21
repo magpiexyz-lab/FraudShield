@@ -233,6 +233,21 @@ with open(manifest_path, "w") as f:
     f.write("\n")
 PYEOF
 
+# --- Step 3a-unconditional: Delivery artifact cleanup (runs even in embed mode) ---
+# These files gate delivery in lifecycle-finalize.sh Step 5. A stale copy from a
+# prior code-writing skill MUST NOT survive into a subsequent run (analysis-only
+# or code-writing) where finalize could interpret it as a ship signal. See
+# observation #1004.
+DELIVERY_ARTIFACTS=(
+  "$PROJECT_DIR/.runs/commit-message.txt"
+  "$PROJECT_DIR/.runs/pr-body.md"
+  "$PROJECT_DIR/.runs/pr-title.txt"
+  "$PROJECT_DIR/.runs/delivery-skip.flag"
+)
+for f in "${DELIVERY_ARTIFACTS[@]}"; do
+  rm -f "$f"
+done
+
 # --- Steps 3a-4 skipped in embed mode (parent skill already ran them) ---
 if [[ -z "$EMBED_MODE" ]]; then
 
@@ -244,10 +259,6 @@ STALE_ARTIFACTS=(
   "$PROJECT_DIR/.runs/observe-evidence-check.json"
   "$PROJECT_DIR/.runs/compliance-audit-result.json"
   "$PROJECT_DIR/.runs/q-dimensions.json"
-  "$PROJECT_DIR/.runs/commit-message.txt"
-  "$PROJECT_DIR/.runs/pr-body.md"
-  "$PROJECT_DIR/.runs/pr-title.txt"
-  "$PROJECT_DIR/.runs/delivery-skip.flag"
   "$PROJECT_DIR/.runs/verify-context.json"
   "$PROJECT_DIR/.runs/verify-manifest.json"
   "$PROJECT_DIR/.runs/verify-report.md"

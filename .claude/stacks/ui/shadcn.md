@@ -427,6 +427,37 @@ import { Skeleton } from "@/components/ui/skeleton";
 </div>
 ```
 
+### When a shadcn Button (or any Tailwind element) has an inline `style` prop, hover and focus-visible states silently stop working
+When a project sets a custom background or color via an inline `style` object (e.g., `style={{ backgroundColor: "#fbfaf5" }}` on an OAuth provider button), inline styles take precedence over class-based rules — so `hover:bg-*` and `focus-visible:ring-*` Tailwind utilities applied via `className` have no effect at runtime. The button appears non-interactive: no hover background change, no focus ring.
+
+**Fix:** Move the color to a scoped CSS class in `globals.css` that explicitly declares the base, `:hover`, and `:focus-visible` states, then apply the class (instead of `style={}`):
+
+```css
+/* src/app/globals.css */
+.oauth-button-google {
+  background-color: #fbfaf5;
+}
+.oauth-button-google:hover {
+  background-color: #f3f1e8;
+}
+.oauth-button-google:focus-visible {
+  outline: 2px solid #f59e0b;
+  outline-offset: 2px;
+}
+```
+
+```tsx
+import { Button } from "@/components/ui/button";
+
+// WRONG — inline style kills hover states
+<Button variant="outline" style={{ backgroundColor: "#fbfaf5" }}>Continue with Google</Button>
+
+// CORRECT — scoped class preserves interactive states
+<Button variant="outline" className="oauth-button-google">Continue with Google</Button>
+```
+
+This applies to any shadcn component (Button, Card, Input) that needs a branded custom color outside the `--primary` / `--secondary` theme tokens. If the custom color is reused in 2+ places, promote to a Tailwind `@theme` token in `globals.css` rather than a named class — see Theme Setup above.
+
 ### MagicUI post-install fixes
 After installing MagicUI components via `npx shadcn@latest add`, some components require manual fixes:
 

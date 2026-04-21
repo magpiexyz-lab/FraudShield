@@ -954,6 +954,35 @@ if (!isAdmin) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
 `app_metadata` is set server-side via the Supabase service role client and cannot be modified by users — it is safe for authorization decisions. The `ADMIN_EMAILS` fallback allows admin operations before Supabase role metadata is configured. Missing this check allows any authenticated user to call admin-only routes, returning 200 instead of 403.
 
+### When Google (or any OAuth provider) fails with `oauth_email_missing`
+If a user declines to share their Google account email during OAuth consent — or signs in with a Google account that has no primary email — Supabase redirects to `/auth/callback?error=oauth_email_missing`. Without explicit handling the user lands on a generic error banner or a bare login form with no recovery path.
+
+**Required wiring:**
+
+1. In `/auth/callback` (`src/app/auth/callback/route.ts`), forward the `error` query param to `/login` instead of collapsing to the generic `?error=auth`:
+
+   ```ts
+   const error = searchParams.get("error");
+   if (error) return NextResponse.redirect(`${origin}/login?error=${encodeURIComponent(error)}`);
+   ```
+
+2. On the login page (`src/app/login/page.tsx`), read the `error` param and render a provider-specific banner when it equals `oauth_email_missing`:
+
+   ```tsx
+   {error === "oauth_email_missing" ? (
+     <div role="alert" className="rounded-md bg-crimson-50 p-4 text-sm text-crimson-900">
+       <p className="font-medium">We need your email to create an account.</p>
+       <p className="mt-2">Two ways forward:</p>
+       <ul className="mt-1 ml-4 list-disc">
+         <li>Use the email + password form below.</li>
+         <li>Retry Google sign-in and allow access to your email address on the consent screen.</li>
+       </ul>
+     </div>
+   ) : null}
+   ```
+
+The specific copy and styling come from the project's design system — what matters is that the banner (a) names the failure mode in plain language, (b) offers at least two recovery paths, and (c) uses a `role="alert"` region so screen readers announce it on arrival. Applies to any OAuth provider that can return this error (`stack.auth_providers: [google, apple, ...]`).
+
 ## PR Instructions
 - Email confirmation is enabled by default in Supabase. The signup form handles this: when `signUp()` returns `session: null`, it shows a "check your email" message instead of redirecting. Users who confirm their email can then log in normally.
 - The signup form passes `emailRedirectTo` pointing to `/auth/callback`, which exchanges the PKCE code for a session and redirects to `/`. This requires the production URL to be in Supabase's redirect allow-list (configured by `/deploy`).

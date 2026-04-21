@@ -137,7 +137,49 @@ The `/change fix` command string is constructed from the `behavior_verification.
 **On timeout:** Record `behavior_verification: { ran: true, mode: "production", timed_out: true }`. Report:
 > Production behavior verification timed out after 5 minutes. This may indicate slow page loads or hanging requests in production. Check application logs.
 
-#### 5d.9: Synthetic webhook endpoint verification
+#### 5d.9a: Auth-provider config health check (conditional)
+
+**Gate:** Only run when ALL of the following are true (otherwise skip silently with log `Skipping 5d.9a — prerequisites not met`):
+
+- `stack.auth_providers` is present in experiment.yaml
+- `stack.database: supabase` AND `stack.auth: supabase`
+- `.runs/deploy-provision-3b.json` `collected_secrets` contains OAuth credentials for each declared provider (e.g., `GOOGLE_CLIENT_ID` for `google`). If ANY provider lacks credentials in `collected_secrets`, skip — state-3c Agent A never PATCHed the config for that provider, so there is nothing to verify.
+
+**Test:** Read the Supabase access token using the same cascade as state-3c Auth Config step 1 (`~/.supabase/access-token` → macOS Keychain → prompt). On token failure, record `auth_provider_verification: { ran: false, reason: 'access-token unavailable' }` in deploy-health.json and continue — this step is non-blocking.
+
+Query `GET /v1/projects/{ref}/config/auth` and for each provider in `stack.auth_providers` assert:
+- `external_<provider>_enabled == true`
+- `external_<provider>_client_id` is non-empty
+
+```bash
+SUPABASE_TOKEN=<resolved-from-cascade>
+PROJECT_REF=<supabase-ref-from-deploy-provision-3a.json>
+AUTH_CFG=$(curl -s -H "Authorization: Bearer $SUPABASE_TOKEN" \
+  "https://api.supabase.com/v1/projects/$PROJECT_REF/config/auth")
+PROVIDERS=$(python3 -c "import yaml,json; s=yaml.safe_load(open('experiment/experiment.yaml')).get('stack',{}).get('auth_providers',[]); print(json.dumps(s))")
+FAILURES=()
+for provider in $(echo "$PROVIDERS" | python3 -c "import json,sys; print(' '.join(json.load(sys.stdin)))"); do
+  enabled=$(echo "$AUTH_CFG" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('external_${provider}_enabled', False))")
+  client_id=$(echo "$AUTH_CFG" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('external_${provider}_client_id') or '')")
+  [[ "$enabled" == "True" ]] || FAILURES+=("$provider: external_${provider}_enabled is not True (read: $enabled)")
+  [[ -n "$client_id" ]] || FAILURES+=("$provider: client_id empty on read-back (PATCH silently dropped)")
+done
+```
+
+**On success:** Record `auth_provider_verification: { ran: true, passed: true, providers: [<list>] }` in deploy-health.json.
+
+**On failure** (any assertion failed — typically means the state-3c Management API PATCH silently failed or the OAuth credentials were rejected by Supabase): Record `auth_provider_verification: { ran: true, passed: false, failures: [<list>] }`. Report to user:
+
+> **Auth provider configuration incomplete.** The Management API read-back shows some providers are not fully enabled on Supabase. This commonly means: PATCH silently failed, the Google Cloud OAuth client's redirect URI is misconfigured, or the client secret was not accepted.
+>
+> Failures:
+> - [provider]: [reason]
+>
+> Recovery: re-run `/deploy` (it will re-PATCH the auth config) OR manually configure at Supabase Dashboard → Authentication → Providers.
+
+Continue to 5d.9b regardless — this step does not block other validation. Non-Supabase auth (future auth providers) skips this block via the `stack.auth: supabase` gate.
+
+#### 5d.9b: Synthetic webhook endpoint verification
 
 **Gate:** Only run when webhook endpoints exist. Check: `stack.payment` is present in experiment.yaml, OR `ls src/app/api/webhooks/*/route.ts 2>/dev/null` returns files. Skip with log "No webhook endpoints detected — skipping synthetic webhook test" when neither condition is met.
 

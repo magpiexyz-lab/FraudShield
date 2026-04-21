@@ -105,7 +105,7 @@ Collect all env vars and set them using the hosting provider's method:
 
 **VERIFY:**
 ```bash
-python3 -c "import json; d=json.load(open('.runs/deploy-provision-3b.json')); assert d.get('hosting_created') is True, 'hosting_created not True'; assert d.get('env_vars_set') is True, 'env_vars_set not True'; assert d.get('domain_added') is not None, 'domain_added missing'; assert d.get('domain_added') is True or d.get('canonical_url') is None or d.get('canonical_url') == '', 'domain_added False but canonical_url set unexpectedly'; assert d.get('domain_added') is not True or (d.get('canonical_url') not in (None, '')), 'domain_added True but canonical_url empty'"
+python3 .claude/scripts/verify-deploy-3b.py
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
