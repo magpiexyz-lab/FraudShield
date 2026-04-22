@@ -66,81 +66,106 @@ reachable in the right auth state before running the behavioral probes.
 This avoids verifying a behavior in demo mode when the spec says
 "logged-in user" — that's a SKIP, not a FAIL.
 
-Implementation pseudocode (Python in the inline Playwright script,
+Implementation pattern (JavaScript inside the inline Playwright script,
 running once per behavior **at the start** of the step loop, before
 the existing 5-step per-step probe sequence):
 
-```python
-# Single canonical phrase classifier — DO NOT inline phrases here.
-from given_auth_matcher import requires_auth  # see .claude/patterns/given-auth-matcher.md
+```javascript
+// Inline these helpers from .claude/patterns/given-auth-matcher.md (JS port).
+// Both AUTH_PHRASES/NON_AUTH_PHRASES lists and the requiresAuth() function
+// must be COPIED VERBATIM — do not re-author. The drift test
+// (.claude/scripts/tests/test_given_auth_matcher.py) flags any divergent
+// phrase-matching code.
+//   const AUTH_PHRASES = [...];
+//   const NON_AUTH_PHRASES = [...];
+//   function requiresAuth(given) { ... }
 
-firstAuthGatedSeen = False
-per_behavior_reviews = []
-unmatched_phrases = []
+// Inline these helpers from .claude/patterns/render-review-detection.md
+// (Sections 1, 6.1, 6.4). The combined wrapper handles setup + navigate +
+// classify per behavior. The AUTH_PATHS Set must be COPIED VERBATIM from
+// the canonical declaration in render-review-detection.md (drift test:
+// .claude/scripts/tests/test_auth_paths_drift.py). DO NOT redeclare
+// the Set here — copy the // SHARED:AUTH_PATHS block from the pattern
+// file so the anchor travels with the literal.
+//   /* AUTH_PATHS — see render-review-detection.md Section 3 SHARED:AUTH_PATHS block */
+//   async function setupAuthContext(browser, opts) { ... }
+//   async function detectRenderAt(context, opts) { ... }
+//   async function renderReviewDetect(opts) { ... }
 
-for i, behavior in enumerate(behaviors):
-    if not behavior.get("entry_route"):
-        continue  # skip behaviors without a UI entry point
+let firstAuthGatedSeen = false;
+const perBehaviorReviews = [];
+let unmatchedGivenPhrase = null;
 
-    auth = requires_auth(behavior.get("given") or "")
-    auth_requirement = "required" if auth["result"] else "optional"
-    if auth["unmatched"]:
-        unmatched_phrases.append(behavior["given"])
+for (const [i, behavior] of behaviors.entries()) {
+  if (!behavior.entry_route) continue;  // skip behaviors without a UI entry point
 
-    # firstAuthGatedSeen pattern (NOT i === 0); see render-review-detection.md
-    isAuthGated = (auth_requirement == "required")
-    is_first_page = isAuthGated and not firstAuthGatedSeen
-    if isAuthGated:
-        firstAuthGatedSeen = True
+  const auth = requiresAuth(behavior.given || "");
+  const authRequirement = auth.result ? "required" : "optional";
+  if (auth.unmatched && unmatchedGivenPhrase === null) {
+    unmatchedGivenPhrase = behavior.given;  // surface first unmatched for diagnostic
+  }
 
-    # Call the wrapper (handles setup + navigate + classify in one go)
-    result = render_review_detect(
-        browser=browser,
-        base_url=BASE_URL,
-        requested_route=behavior["entry_route"],
-        expected_destination=behavior["entry_route"],
-        auth_requirement=auth_requirement,
-        is_first_page=is_first_page,
-    )
-    review_method = result["review_method"]
-    review_evidence = result["review_evidence"]
+  // firstAuthGatedSeen pattern (NOT i === 0). See
+  // .claude/procedures/accessibility-scanner.md:56-62 for the reference
+  // implementation. R2-A3 critic concern is locked down by this pattern.
+  const isAuthGated = (authRequirement === "required");
+  const isFirstPage = isAuthGated && !firstAuthGatedSeen;
+  if (isAuthGated) firstAuthGatedSeen = true;
 
-    # Map review_method -> per-behavior verdict (per the policy table in
-    # .claude/agents/behavior-verifier.md). The shared
-    # review-verdict-gate.md will auto-correct any verdict drift after
-    # the trace lands.
-    if review_method in ("rendered-authed", "rendered-demo"):
-        verdict = "PASS"  # proceed with given/when/then probes (Steps 1-5 below)
-        # ... (existing per-step probes go here)
-    elif review_method == "prereq-unmet":
-        verdict = "SKIPPED"  # session needed, not a failure
-        # do NOT run probes
-    elif review_method == "source-only":
-        final_path = (review_evidence or {}).get("final_url", "")
-        # AUTH_PATHS is the canonical set in render-review-detection.md
-        if any(final_path.endswith(p) for p in AUTH_PATHS):
-            verdict = "FAIL"  # B3 Silent Failure: auth-redirect on expected route
-        else:
-            verdict = "DEGRADED"  # product-level redirect (e.g., /pricing → /pricing/individual)
-    else:  # "unknown"
-        verdict = "FAIL"
+  // Combined wrapper from render-review-detection.md Section 6.4
+  const result = await renderReviewDetect({
+    browser,
+    base_url: BASE_URL,
+    requested_route: behavior.entry_route,
+    expected_destination: behavior.entry_route,
+    auth_requirement: authRequirement,
+    is_first_page: isFirstPage,
+  });
+  const { review_method, review_evidence, context } = result;
 
-    per_behavior_reviews.append({
-        "behavior_id": behavior.get("id"),
-        "given": behavior.get("given"),
-        "requires_auth": auth["result"],
-        "matched_phrase": auth["matched_phrase"],
-        "unmatched_given_phrase": behavior["given"] if auth["unmatched"] else None,
-        "review_method": review_method,
-        "review_evidence": review_evidence,
-        "verdict": verdict,
-    })
+  // Map review_method -> per-behavior verdict (mirrors the policy table
+  // in .claude/agents/behavior-verifier.md). The shared review-verdict-gate
+  // will auto-correct any verdict drift after the trace lands; emit the
+  // right value here to keep traces clean.
+  let verdict;
+  if (review_method === "rendered-authed" || review_method === "rendered-demo") {
+    verdict = "PASS";
+    // ... run the existing 5-step per-step probe sequence (below) ...
+  } else if (review_method === "prereq-unmet") {
+    verdict = "SKIPPED";  // auth required, session missing — NOT a failure
+    // do NOT run probes
+  } else if (review_method === "source-only") {
+    let finalPath = "";
+    try { finalPath = new URL(review_evidence.final_url || "").pathname; } catch {}
+    if (AUTH_PATHS.has(finalPath)) {
+      verdict = "FAIL";  // B3 Silent Failure: expected route bounced to auth
+    } else {
+      verdict = "DEGRADED";  // product-level redirect (e.g., /pricing → /pricing/individual)
+    }
+  } else {  // "unknown"
+    verdict = "FAIL";
+  }
+
+  perBehaviorReviews.push({
+    behavior_id: behavior.id,
+    given: behavior.given,
+    requires_auth: auth.result,
+    matched_phrase: auth.matched_phrase,
+    unmatched_given_phrase: auth.unmatched ? behavior.given : null,
+    review_method,
+    review_evidence,
+    verdict,
+  });
+
+  // Caller owns context cleanup (per render-review-detection.md "Caller cleanup")
+  await context.close();
+}
 ```
 
-The `per_behavior_reviews[]` array goes directly into the trace JSON
-(see `.claude/agents/behavior-verifier.md` Trace Output). The
-`unmatched_given_phrase` top-level diagnostic (first unmatched phrase
-encountered) is also recorded so a maintainer can extend
+The `perBehaviorReviews` array becomes `per_behavior_reviews` in the
+trace JSON (see `.claude/agents/behavior-verifier.md` Trace Output), and
+`unmatchedGivenPhrase` (first unmatched phrase encountered) becomes the
+top-level `unmatched_given_phrase` diagnostic so a maintainer can extend
 `.claude/patterns/given-auth-matcher.md`.
 
 #### Then per-step probes (existing 5-step sequence, unchanged)

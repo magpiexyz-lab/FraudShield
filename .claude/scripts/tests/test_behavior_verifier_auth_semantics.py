@@ -249,13 +249,24 @@ class TestBehaviorVerifierAuthSemantics(unittest.TestCase):
             self.assertIn(rm, content)
 
     def test_procedure_invokes_requires_auth(self):
+        """The procedure must invoke the canonical requires_auth/requiresAuth
+        function from given-auth-matcher.md. Accept either case (Python
+        snake_case for procedures that shell out, JS camelCase for
+        procedures that inline the function into a Playwright script)."""
         content = PROC_FILE.read_text()
-        self.assertIn("requires_auth", content)
-        self.assertIn("given_auth_matcher", content)
+        self.assertTrue(
+            "requires_auth" in content or "requiresAuth" in content,
+            "Procedure must invoke requires_auth or requiresAuth (canonical phrase classifier)",
+        )
+        self.assertIn("given-auth-matcher", content)
 
     def test_procedure_invokes_render_review_detect(self):
+        """Same casing-flexibility for renderReviewDetect/render_review_detect."""
         content = PROC_FILE.read_text()
-        self.assertIn("render_review_detect", content)
+        self.assertTrue(
+            "renderReviewDetect" in content or "render_review_detect" in content,
+            "Procedure must invoke renderReviewDetect (combined wrapper from render-review-detection.md)",
+        )
 
     def test_procedure_uses_firstAuthGatedSeen(self):
         """R2-A3: behavior-verifier loop must use firstAuthGatedSeen, not i===0."""

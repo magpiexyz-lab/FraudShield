@@ -42,24 +42,26 @@ Poll `http://localhost:3098` until it responds (max 15 seconds, then abort).
 Write an inline Playwright script that:
 
 1. Launches Chromium (headless)
-2. Determines journey-level `auth_requirement` based on first step's route:
-   - First step's route ∈ `PUBLIC_PATHS` (e.g., `/`, `/pricing`, `/about`) → `"anonymous"`
-   - First step's route is auth-gated by middleware → `"required"`
-   - Otherwise → `"optional"`
+2. Determines journey-level `auth_requirement` based on first step's route. To classify a route as "auth-gated" or "public", read `src/middleware.ts` once at journey start to extract the matcher patterns (Next.js convention). Routes matched by middleware that redirect unauthed traffic are auth-gated; routes outside the matcher are public. Fall back to the canonical `AUTH_PATHS` set (`/login`, `/signup`, `/auth/callback`, `/auth/reset-password`) — these are always auth-related, but ARE public landing surfaces, NOT auth-gated:
+   - First step's route is in the project's public surface (`/`, `/pricing`, `/about`, anything outside the middleware matcher) → `"anonymous"` (do NOT inject storageState — anonymous journeys must run on a fresh context to avoid session leakage from prior `e2e/.auth.json`)
+   - First step's route IS matched by middleware as auth-gated (e.g., `/dashboard`, `/settings`) → `"required"`
+   - Cannot determine (no middleware file, ambiguous) → `"optional"` (preserves pre-PR-3 behavior — fall back to demo-mode tolerance)
 3. Calls `setupAuthContext(browser, {auth_requirement})` (per `.claude/patterns/render-review-detection.md` Section 6.1) to create the BrowserContext.
 4. **If `setupAuthContext` returns `reviewMethodEarly === "prereq-unmet"`**:
    - Write trace with `verdict="blocked"`, `caveat="prereq-unmet:<fallback_reason>"`, empty `per_step_reviews`. Exit. The journey cannot start.
 5. Starts at first step's route (use `page.goto` ONCE for the entry point; subsequent navigation is click-driven).
 6. Per-step loop:
-   - **Compute `is_first_page` via the `firstAuthGatedSeen` pattern** (NOT `i === 0`):
+   - **Compute `is_first_page` via the `firstAuthGatedSeen` pattern** (NOT `i === 0`).
+     `step.destination_route` is auth-gated if (a) it appears in the middleware matcher set built in Step 2 above, OR (b) absent that file, the route is not in the project's public surface. The flag fires `demo-mode-bypass-failed` exactly once per journey:
      ```javascript
+     // Initialized BEFORE the per-step loop:
      let firstAuthGatedSeen = false;
-     // for each step:
-     const isAuthGated = (step.is_auth_route === true);  // computed from route + middleware knowledge
+     // Inside the loop, per step:
+     const isAuthGated = middlewareAuthRoutes.has(step.destination_route);
      const is_first_page = isAuthGated && !firstAuthGatedSeen;
      if (isAuthGated) firstAuthGatedSeen = true;
      ```
-     This preserves the hard-constraint #7 semantic. Anonymous journeys never fire `demo-mode-bypass-failed` — `render-review-detection.md` Section 3 additionally suppresses that diagnostic when `auth_requirement="anonymous"`.
+     This preserves the hard-constraint #7 semantic. Anonymous journeys never fire `demo-mode-bypass-failed` — `render-review-detection.md` Section 3 additionally suppresses that diagnostic when `auth_requirement="anonymous"`, so even if step 0 is mistakenly classified as auth-gated the diagnostic stays silent.
    - Find the primary CTA on current page.
    - Click the CTA (Playwright **native click — NOT `page.goto`**). The detection contract demands click-driven navigation so dynamically-rewritten hrefs (e.g., JS-driven A/B redirects) get observed correctly.
    - Wait for `networkidle` + 500ms (same settle window as `render-review-detection.md` Section 2).

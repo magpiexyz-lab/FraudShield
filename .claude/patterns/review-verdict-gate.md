@@ -77,183 +77,85 @@ on accessibility-scanner.json as a tripwire.
 
 ### ux-journeyer
 
-| review_method | `final_path` bucket | Required verdict contribution |
+| review_method | `final_path` bucket | Required `per_step_status` |
 |---|---|---|
-| `rendered-authed` / `rendered-demo` | — | step passes |
-| `source-only` | `∈ AUTH_PATHS` | step marked "dead-end + auth-redirect error" |
-| `source-only` | `∉ AUTH_PATHS` | step marked "dead-end" |
-| `unknown` | — | step marked "error" |
-| `prereq-unmet` | — | top-level trace verdict forced to `"blocked"` |
+| `rendered-authed` | — | `pass` |
+| `rendered-demo` | — | `pass` |
+| `source-only` | `∈ AUTH_PATHS` | `dead-end-auth` |
+| `source-only` | `∉ AUTH_PATHS` | `dead-end` |
+| `unknown` | — | `error` |
+| `prereq-unmet` | — | `blocked` (also forces top-level `verdict="blocked"`) |
 
 Implementation: gate walks `per_step_reviews[]` and ensures every entry's
-per-step status field matches the table. Top-level `verdict="blocked"`
-enforced when any step has `review_method="prereq-unmet"`.
+per-step `status` field matches the table. Top-level `verdict="blocked"`
+enforced when any step has `review_method="prereq-unmet"`. The spec
+values above are LITERAL keywords — they appear byte-for-byte in
+`.claude/scripts/run-review-verdict-gate.py`'s `POLICY` dict
+(drift-tested by `test_review_verdict_gate_policy_drift.py`).
 
 ### behavior-verifier
 
-| review_method | `final_path` bucket | Required verdict |
+| review_method | `final_path` bucket | Required `per_item_verdict` |
 |---|---|---|
-| `rendered-authed` / `rendered-demo` | — | `"PASS"` (proceed with given/when/then) |
-| `prereq-unmet` | — | `"SKIPPED"` |
-| `source-only` | `∈ AUTH_PATHS` | `"FAIL"` (B3 Silent Failure — expected route unreachable) |
-| `source-only` | `∉ AUTH_PATHS` | `"DEGRADED"` (product-level redirect — route reachable at different path) |
-| `unknown` | — | `"FAIL"` (navigation-failed) |
+| `rendered-authed` | — | `PASS` |
+| `rendered-demo` | — | `PASS` |
+| `prereq-unmet` | — | `SKIPPED` |
+| `source-only` | `∈ AUTH_PATHS` | `FAIL` |
+| `source-only` | `∉ AUTH_PATHS` | `DEGRADED` |
+| `unknown` | — | `FAIL` |
+
+Semantics by row: `PASS` → proceed with given/when/then probes;
+`SKIPPED` → auth required but session missing (NOT a failure);
+`FAIL ∈ AUTH_PATHS` → B3 Silent Failure (expected route unreachable);
+`DEGRADED ∉ AUTH_PATHS` → product-level redirect (route still reachable
+at a different path); `FAIL unknown` → navigation failed. The verdict
+column above lists LITERAL keywords used by the script's `POLICY` dict
+(drift-tested).
 
 Implementation: gate walks `per_behavior_reviews[]` and overwrites each
 entry's per-behavior verdict. Top-level trace verdict is the
 worst-cardinality across all entries (FAIL > DEGRADED > SKIPPED > PASS).
 
-## Procedure (Python — runs in the state that spawned the reviewer)
+## Procedure (single executable source — runs in the state that spawned the reviewer)
 
-```python
-import json
-import sys
-import os
+> **Single source of truth**: `.claude/scripts/run-review-verdict-gate.py`
+> is the canonical executable. This markdown carries the SPECIFICATION
+> (policy tables above + sentinel/idempotency contracts below); the
+> script carries the IMPLEMENTATION. Neither file should embed a parallel
+> POLICY dict — the drift test
+> `.claude/scripts/tests/test_review_verdict_gate_policy_drift.py`
+> enforces this single-source rule.
+>
+> If you need to extend the policy:
+> 1. Update the policy tables in this file's "Policy tables" section above.
+> 2. Update the `POLICY` dict in `.claude/scripts/run-review-verdict-gate.py`.
+> 3. Run `python3 .claude/scripts/tests/test_review_verdict_gate_policy_drift.py`
+>    to verify the spec and implementation agree.
 
-# SHARED:AUTH_PATHS
-AUTH_PATHS = {"/login", "/signup", "/auth/callback", "/auth/reset-password"}
+State files invoke the gate as:
 
-# Per-agent policy tables. Keys are tuples: (agent, review_method, final_path_bucket).
-# final_path_bucket is "auth" if final_path ∈ AUTH_PATHS, else "non-auth", else "any".
-POLICY = {
-    # ux-journeyer: per_step_reviews
-    ("ux-journeyer", "rendered-authed", "any"): {"per_step_status": "pass"},
-    ("ux-journeyer", "rendered-demo", "any"): {"per_step_status": "pass"},
-    ("ux-journeyer", "source-only", "auth"): {"per_step_status": "dead-end-auth"},
-    ("ux-journeyer", "source-only", "non-auth"): {"per_step_status": "dead-end"},
-    ("ux-journeyer", "unknown", "any"): {"per_step_status": "error"},
-    ("ux-journeyer", "prereq-unmet", "any"): {"per_step_status": "blocked", "top_level_verdict": "blocked"},
-
-    # behavior-verifier: per_behavior_reviews
-    ("behavior-verifier", "rendered-authed", "any"): {"per_item_verdict": "PASS"},
-    ("behavior-verifier", "rendered-demo", "any"): {"per_item_verdict": "PASS"},
-    ("behavior-verifier", "source-only", "auth"): {"per_item_verdict": "FAIL"},
-    ("behavior-verifier", "source-only", "non-auth"): {"per_item_verdict": "DEGRADED"},
-    ("behavior-verifier", "unknown", "any"): {"per_item_verdict": "FAIL"},
-    ("behavior-verifier", "prereq-unmet", "any"): {"per_item_verdict": "SKIPPED"},
-}
-
-
-def bucket_final_path(review_evidence):
-    final_url = review_evidence.get("final_url") if review_evidence else None
-    if not final_url:
-        return "any"
-    try:
-        from urllib.parse import urlparse
-        path = urlparse(final_url).path
-    except Exception:
-        return "any"
-    return "auth" if path in AUTH_PATHS else "non-auth"
-
-
-def lookup_policy(agent, review_method, review_evidence):
-    bucket = bucket_final_path(review_evidence)
-    # Try specific bucket first, fall back to "any"
-    for key in [(agent, review_method, bucket), (agent, review_method, "any")]:
-        if key in POLICY:
-            return POLICY[key]
-    return None
-
-
-def enforce_review_verdict(trace_path, agent):
-    """
-    Read trace, apply policy, write back. Idempotent (sentinel short-circuits
-    repeat invocation). Returns {'corrections_applied': N}.
-
-    IMPORTANT: this function writes to `.runs/agent-traces/<agent>.json`.
-    The `agent-trace-write-guard.sh` hook blocks direct writes from a chained
-    command. This function must be called from a plain Python script invoked
-    by the state lead agent (not chained in a shell). The lead is exempt
-    from the per-agent write guard because it is the orchestrator.
-    """
-    if not os.path.exists(trace_path):
-        return {"corrections_applied": 0, "skipped_reason": "trace-missing"}
-
-    with open(trace_path) as f:
-        trace = json.load(f)
-
-    # Idempotency guard
-    if trace.get("review_method_gate_evaluated") is True:
-        return {"corrections_applied": 0, "skipped_reason": "already-evaluated"}
-
-    corrections = []
-
-    # Walk fan-out arrays first, then flat top-level review_method
-    array_keys = ["per_step_reviews", "per_behavior_reviews", "per_page_reviews"]
-    for array_key in array_keys:
-        entries = trace.get(array_key)
-        if not isinstance(entries, list):
-            continue
-        for i, entry in enumerate(entries):
-            rm = entry.get("review_method")
-            if not rm:
-                continue  # forward-compat: old traces without review_method pass through
-            policy = lookup_policy(agent, rm, entry.get("review_evidence") or {})
-            if not policy:
-                continue
-
-            # Apply per_item_verdict (behavior-verifier)
-            if "per_item_verdict" in policy:
-                required = policy["per_item_verdict"]
-                emitted = entry.get("verdict")
-                if emitted and emitted != required:
-                    corrections.append({
-                        "location": f"{array_key}[{i}]",
-                        "review_method": rm,
-                        "original_verdict": emitted,
-                        "corrected_to": required,
-                    })
-                    entry["verdict"] = required
-                elif not emitted:
-                    entry["verdict"] = required  # fill missing, no correction log
-
-            # Apply per_step_status (ux-journeyer)
-            if "per_step_status" in policy:
-                required = policy["per_step_status"]
-                emitted = entry.get("status")
-                if emitted and emitted != required:
-                    corrections.append({
-                        "location": f"{array_key}[{i}]",
-                        "review_method": rm,
-                        "original_status": emitted,
-                        "corrected_to": required,
-                    })
-                    entry["status"] = required
-                elif not emitted:
-                    entry["status"] = required
-
-            # Top-level verdict forcing (e.g., prereq-unmet → blocked)
-            if "top_level_verdict" in policy:
-                required_top = policy["top_level_verdict"]
-                emitted_top = trace.get("verdict")
-                if emitted_top and emitted_top != required_top:
-                    corrections.append({
-                        "location": "top-level",
-                        "review_method": rm,
-                        "original_verdict": emitted_top,
-                        "corrected_to": required_top,
-                    })
-                    trace["verdict"] = required_top
-
-    # Write sentinel + corrections list + trace back
-    trace["review_method_gate_evaluated"] = True
-    if corrections:
-        existing = trace.get("review_method_gate_corrections") or []
-        trace["review_method_gate_corrections"] = existing + corrections
-
-    with open(trace_path, "w") as f:
-        json.dump(trace, f, indent=2)
-
-    return {"corrections_applied": len(corrections)}
-
-
-if __name__ == "__main__":
-    if len(sys.argv) != 3:
-        print("usage: python3 review-verdict-gate.py <trace_path> <agent_name>", file=sys.stderr)
-        sys.exit(2)
-    result = enforce_review_verdict(sys.argv[1], sys.argv[2])
-    print(json.dumps(result))
+```bash
+python3 .claude/scripts/run-review-verdict-gate.py <trace_path> <agent_name>
 ```
+
+The script:
+- Reads the trace JSON
+- Looks up policy via `(agent, review_method, final_path_bucket)`
+  where `final_path_bucket` is `"auth"` if `final_path ∈ AUTH_PATHS`,
+  else `"non-auth"`, else `"any"` for path-agnostic policies
+- Walks `per_step_reviews[]`, `per_behavior_reviews[]`,
+  `per_page_reviews[]` arrays (in that fixed order)
+- Auto-corrects per-item verdicts/statuses on policy mismatch and logs
+  to `review_method_gate_corrections[]`
+- Forces top-level `verdict` when policy specifies `top_level_verdict`
+  (e.g., `prereq-unmet` on any ux-journeyer step → top-level
+  `verdict="blocked"`)
+- Always writes the `review_method_gate_evaluated: true` sentinel
+- Returns `{"corrections_applied": N}` JSON
+
+The script is the canonical reference for the AUTH_PATHS Set
+(carries the `// SHARED:AUTH_PATHS` anchor matching
+`render-review-detection.md`) and for the POLICY dict.
 
 ## Sentinel field — `review_method_gate_evaluated`
 
