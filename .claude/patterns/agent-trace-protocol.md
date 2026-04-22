@@ -92,6 +92,8 @@ Agents may add fields beyond the base schema to capture agent-specific metrics:
 | accessibility-scanner | `per_page_reviews` | array | Runtime path only. One entry per golden_path page: `{page, review_method, review_evidence}`. Omitted in static-fallback path. |
 | ux-journeyer | `per_step_reviews` | array | One entry per golden_path step: `{step_index, source_route, expected_destination, review_method, review_evidence, status}`. `status` enforced by `review-verdict-gate.md` per the policy table in `.claude/agents/ux-journeyer.md`. |
 | ux-journeyer | `caveat` | string | Present ONLY when `verdict == "blocked"` (e.g., from `prereq-unmet` at journey start). Format: `"prereq-unmet:<fallback_reason>"`. Omitted otherwise. |
+| behavior-verifier | `per_behavior_reviews` | array | One entry per behavior with an `entry_route`: `{behavior_id, given, requires_auth, matched_phrase, unmatched_given_phrase, review_method, review_evidence, verdict}`. `verdict` enforced by `review-verdict-gate.md` per the policy table in `.claude/agents/behavior-verifier.md`. |
+| behavior-verifier | `unmatched_given_phrase` | string \| null | Top-level diagnostic — first behavior `given` phrase that hit the fail-closed default in `.claude/patterns/given-auth-matcher.md`. When non-null, a maintainer should extend the matcher's whitelist. Omitted when no unmatched phrases were encountered. |
 | any reviewer agent | `review_method_gate_evaluated` | boolean | Sentinel written by `.claude/patterns/review-verdict-gate.md` proving the gate ran on this trace. Asserted by `state-registry.json` VERIFY commands for state 2 and state 3c. Always `true` once present. |
 | any reviewer agent | `review_method_gate_corrections` | array | One entry per verdict the gate auto-corrected: `{location, review_method, original_verdict, corrected_to}`. Omitted when 0 corrections were applied. |
 
@@ -111,6 +113,7 @@ normalization (`.upper()` / `.lower()`), but agents must match the canonical for
 | spec-reviewer | `"PASS"`, `"FAIL"` |
 | build-info-collector | `"collected"`, `"no-fixes"` |
 | ux-journeyer | `"all pass"`, `"all fixed"`, `"partial"`, `"blocked"` |
+| behavior-verifier | `"PASS"`, `"FAIL"`, `"DEGRADED"`, `"SKIPPED"` |
 | resolve-challenger | `"N fixes sound, M challenged"` (summary) |
 | review-challenger | `"N confirmed, M disputed"` (summary) |
 | solve-critic | `"N TYPE A, M TYPE B, K TYPE C"` (summary) |

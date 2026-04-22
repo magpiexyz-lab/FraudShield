@@ -59,7 +59,93 @@ Read `experiment/experiment.yaml` `golden_path` and `behaviors` to determine inp
 - **Payment behaviors**: Skip behaviors with `trigger: stripe webhook` when in production mode — webhook simulation against production Stripe is out of scope. Classify these as `skipped` with reason "stripe webhook trigger skipped in production mode".
 - **Test data**: All test-generated data (form submissions, signups) is created under the production test user. No special prefix needed — RLS scopes data to the authenticated user.
 
-For each step:
+#### Per-behavior render-review check (BEFORE running given/when/then probes)
+
+For every behavior with an `entry_route`, verify the route is actually
+reachable in the right auth state before running the behavioral probes.
+This avoids verifying a behavior in demo mode when the spec says
+"logged-in user" — that's a SKIP, not a FAIL.
+
+Implementation pseudocode (Python in the inline Playwright script,
+running once per behavior **at the start** of the step loop, before
+the existing 5-step per-step probe sequence):
+
+```python
+# Single canonical phrase classifier — DO NOT inline phrases here.
+from given_auth_matcher import requires_auth  # see .claude/patterns/given-auth-matcher.md
+
+firstAuthGatedSeen = False
+per_behavior_reviews = []
+unmatched_phrases = []
+
+for i, behavior in enumerate(behaviors):
+    if not behavior.get("entry_route"):
+        continue  # skip behaviors without a UI entry point
+
+    auth = requires_auth(behavior.get("given") or "")
+    auth_requirement = "required" if auth["result"] else "optional"
+    if auth["unmatched"]:
+        unmatched_phrases.append(behavior["given"])
+
+    # firstAuthGatedSeen pattern (NOT i === 0); see render-review-detection.md
+    isAuthGated = (auth_requirement == "required")
+    is_first_page = isAuthGated and not firstAuthGatedSeen
+    if isAuthGated:
+        firstAuthGatedSeen = True
+
+    # Call the wrapper (handles setup + navigate + classify in one go)
+    result = render_review_detect(
+        browser=browser,
+        base_url=BASE_URL,
+        requested_route=behavior["entry_route"],
+        expected_destination=behavior["entry_route"],
+        auth_requirement=auth_requirement,
+        is_first_page=is_first_page,
+    )
+    review_method = result["review_method"]
+    review_evidence = result["review_evidence"]
+
+    # Map review_method -> per-behavior verdict (per the policy table in
+    # .claude/agents/behavior-verifier.md). The shared
+    # review-verdict-gate.md will auto-correct any verdict drift after
+    # the trace lands.
+    if review_method in ("rendered-authed", "rendered-demo"):
+        verdict = "PASS"  # proceed with given/when/then probes (Steps 1-5 below)
+        # ... (existing per-step probes go here)
+    elif review_method == "prereq-unmet":
+        verdict = "SKIPPED"  # session needed, not a failure
+        # do NOT run probes
+    elif review_method == "source-only":
+        final_path = (review_evidence or {}).get("final_url", "")
+        # AUTH_PATHS is the canonical set in render-review-detection.md
+        if any(final_path.endswith(p) for p in AUTH_PATHS):
+            verdict = "FAIL"  # B3 Silent Failure: auth-redirect on expected route
+        else:
+            verdict = "DEGRADED"  # product-level redirect (e.g., /pricing → /pricing/individual)
+    else:  # "unknown"
+        verdict = "FAIL"
+
+    per_behavior_reviews.append({
+        "behavior_id": behavior.get("id"),
+        "given": behavior.get("given"),
+        "requires_auth": auth["result"],
+        "matched_phrase": auth["matched_phrase"],
+        "unmatched_given_phrase": behavior["given"] if auth["unmatched"] else None,
+        "review_method": review_method,
+        "review_evidence": review_evidence,
+        "verdict": verdict,
+    })
+```
+
+The `per_behavior_reviews[]` array goes directly into the trace JSON
+(see `.claude/agents/behavior-verifier.md` Trace Output). The
+`unmatched_given_phrase` top-level diagnostic (first unmatched phrase
+encountered) is also recorded so a maintainer can extend
+`.claude/patterns/given-auth-matcher.md`.
+
+#### Then per-step probes (existing 5-step sequence, unchanged)
+
+For each step (only when the behavior's pre-check returned `PASS` above):
 
 1. **Navigate/interact** as specified by the golden path
 2. **Capture evidence**: screenshot to `/tmp/behavior-verify/<step-N>.png`, current URL, HTTP status, all console errors/warnings

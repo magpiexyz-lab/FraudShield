@@ -125,12 +125,47 @@ Each step receives one verdict:
 | **degraded** | Correct outcome but console errors present OR response >3s |
 | **skipped** | System behavior (no trigger), missing prerequisite (prior step failed), or archetype N/A |
 
+## Per-Behavior Render Review Policy Table
+
+For each behavior with an `entry_route`, this agent calls
+`renderReviewDetect` (per `.claude/patterns/render-review-detection.md`)
+to verify the route is actually reachable in the right auth state
+before running the given/when/then probes. The shared
+`review-verdict-gate.md` (invoked at state-2 after this agent returns)
+enforces the following per-behavior verdict mapping:
+
+| `review_method` | `final_url ∈ AUTH_PATHS`? | per-behavior verdict |
+|---|---|---|
+| `rendered-authed` / `rendered-demo` | — | `PASS` (proceed with given/when/then probes) |
+| `prereq-unmet` | — | `SKIPPED` (auth required by `given`, but `e2e/.auth.json` absent/invalid — NOT a failure) |
+| `source-only` | yes | `FAIL [B3 Silent Failure]` (expected route unreachable; redirected to auth) |
+| `source-only` | no | `DEGRADED` (route reachable at a different path — product-level redirect, e.g. `/pricing` → `/pricing/individual`) |
+| `unknown` | — | `FAIL [B3 Silent Failure]` (navigation failed entirely) |
+
+**`auth_requirement` per behavior** is derived from the behavior's
+`given` field via `.claude/patterns/given-auth-matcher.md`:
+- `requiresAuth(given).result === true` (known auth phrase OR
+  fail-closed unmatched) → `auth_requirement = "required"`
+- `requiresAuth(given).result === false` (known non-auth phrase) →
+  `auth_requirement = "optional"`
+- When `requiresAuth(given).unmatched === true` (unknown phrase, default
+  fail-closed to required), record the diagnostic
+  `unmatched_given_phrase: <given>` in the trace so a maintainer can
+  extend the phrase whitelist.
+
+**`is_first_page` per behavior** uses the `firstAuthGatedSeen` pattern
+(per `.claude/procedures/accessibility-scanner.md:56-62`), gated on
+`auth_requirement === "required"`. Behaviors with `auth_requirement="optional"`
+never fire `demo-mode-bypass-failed` (the pattern suppresses the
+diagnostic when `auth_requirement` is anonymous/optional).
+
 ## Overall Verdict
 
 | Condition | Verdict |
 |---|---|
-| All steps pass | **pass** |
-| All steps pass but some degraded | **pass with warnings** |
+| All steps pass | **PASS** |
+| All steps pass but some degraded | **DEGRADED** (per-behavior DEGRADED carried up if no FAIL) |
+| Any behavior SKIPPED (prereq-unmet) but no FAIL | **SKIPPED** if all skipped, else PASS with `skipped_count` field |
 | Any step FAIL | **FAIL** |
 
 ## Output Contract
@@ -214,11 +249,67 @@ If any FAIL:
 
 ## Trace Output
 
-After completing all work, write a trace file:
+After completing all work, write a trace file. Use the Python heredoc
+form so `per_behavior_reviews` and other complex fields stay readable:
 
 ```bash
-RUN_ID=$(python3 -c "import json;print(json.load(open('.runs/verify-context.json')).get('run_id',''))" 2>/dev/null || echo "")
-mkdir -p .runs/agent-traces && echo '{"agent":"behavior-verifier","timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","verdict":"<verdict>","checks_performed":["state_model","happy_path","error_path","system_smoke","state_continuity"],"tests_run":<N>,"tests_passed":<M>,"run_id":"'"$RUN_ID"'"}' > .runs/agent-traces/behavior-verifier.json
+python3 << 'TRACE_EOF'
+import json, os
+from datetime import datetime, timezone
+run_id = ""
+try:
+    with open(".runs/verify-context.json") as f:
+        run_id = json.load(f).get("run_id", "")
+except: pass
+os.makedirs(".runs/agent-traces", exist_ok=True)
+trace = {
+    "agent": "behavior-verifier",
+    "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    "verdict": "<verdict>",  # PASS / FAIL / DEGRADED / SKIPPED
+    "checks_performed": ["state_model", "happy_path", "error_path", "system_smoke", "state_continuity"],
+    "tests_run": <N>,
+    "tests_passed": <M>,
+    "run_id": run_id,
+    "per_behavior_reviews": [
+        # One entry per behavior with an entry_route. Required when web-app
+        # archetype is in scope. Skipped behaviors still get an entry with
+        # verdict="SKIPPED" so the gate can verify the policy mapping.
+        # Example:
+        # {
+        #   "behavior_id": "b1",
+        #   "given": "logged-in user opens dashboard",
+        #   "requires_auth": true,
+        #   "matched_phrase": "logged-in user",
+        #   "unmatched_given_phrase": null,
+        #   "review_method": "rendered-authed",
+        #   "review_evidence": {
+        #     "requested_route": "/dashboard",
+        #     "final_url": "http://localhost:3097/dashboard",
+        #     "auth_source": "storageState",
+        #     "fallback_reason": null,
+        #     "content_density": null,
+        #     "expected_destination": "/dashboard"
+        #   },
+        #   "verdict": "PASS"
+        # }
+    ],
+    # Top-level diagnostic: phrase that was treated as required via the
+    # fail-closed default (i.e., unknown to given-auth-matcher whitelist).
+    # When non-null, a maintainer should extend
+    # .claude/patterns/given-auth-matcher.md to recognize the phrase.
+    # Omit when null (none of the behaviors hit fail-closed).
+    "unmatched_given_phrase": None,
+}
+if trace["unmatched_given_phrase"] is None:
+    trace.pop("unmatched_given_phrase")
+with open(".runs/agent-traces/behavior-verifier.json", "w") as f:
+    json.dump(trace, f, indent=2)
+TRACE_EOF
 ```
 
-Replace `<verdict>` with your overall verdict: `"pass"`, `"pass with warnings"`, or `"FAIL"`.
+Replace placeholders with actual values:
+- `<verdict>`: overall verdict — `"PASS"`, `"FAIL"`, `"DEGRADED"`, or `"SKIPPED"`
+- `<N>`: total number of step-level tests run
+- `<M>`: number of tests that passed
+- `per_behavior_reviews`: array of `{behavior_id, given, requires_auth, matched_phrase, unmatched_given_phrase, review_method, review_evidence, verdict}` per behavior with an `entry_route`. Verdict values per the Per-Behavior Render Review Policy Table above.
+- `unmatched_given_phrase`: top-level diagnostic; when any behavior's `given` was treated as fail-closed required, surface the first one here (helps the maintainer extend the phrase whitelist). Omit when no unmatched phrases were encountered.
