@@ -474,7 +474,7 @@ When the `openGraph` config object in `layout.tsx` is written without an `images
 openGraph: {
   title: "...",
   description: "...",
-  images: [{ url: "/images/og-photo.webp", width: 1200, height: 630 }],
+  images: [{ url: "/images/og-photo.png", width: 1200, height: 640 }],
 },
 ```
 

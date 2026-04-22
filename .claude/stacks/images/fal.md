@@ -37,8 +37,8 @@ Each image type uses the optimal model. All models share one `FAL_KEY` via fal.a
 | Hero (photography) | FLUX.2 Pro | `fal-ai/flux-2-pro` | Best photorealism, JSON prompts, HEX colors |
 | Feature illustrations | Recraft V4 Pro | `fal-ai/recraft/v4/pro/text-to-image` | Native design taste, RGB color control |
 | Logo (SVG) | Recraft V4 Vector | `fal-ai/recraft/v4/pro/text-to-vector` | Only model producing native SVG paths |
-| OG/Social (with text) | Ideogram V3 | `fal-ai/ideogram/v3` | ~90% text rendering accuracy |
-| Product mockup | GPT Image 1.5 | `fal-ai/gpt-image-1.5` | Superior instruction-following, transparent BG |
+| OG/Social (with text) | GPT Image 2 | `fal-ai/gpt-image-2` | ~99% text rendering accuracy (validated 2026-04-22 bakeoff) |
+| Product mockup | GPT Image 2 | `fal-ai/gpt-image-2` | True alpha via prompt, perfect spelling (validated 2026-04-22 bakeoff) |
 | Empty state | Recraft V4 Pro | `fal-ai/recraft/v4/pro/text-to-image` | Design taste for friendly illustrations |
 
 **Fallback chain:** Specialized model fails → retry with FLUX.2 Pro → SVG placeholder.
@@ -86,13 +86,13 @@ const MODEL_CONFIGS: Record<ImageType, ModelConfig> = {
     outputFormat: "svg",
   },
   og: {
-    modelId: "fal-ai/ideogram/v3",
-    defaultParams: { style: "DESIGN", expand_prompt: false, rendering_speed: "QUALITY" },
+    modelId: "fal-ai/gpt-image-2",
+    defaultParams: { quality: "high", output_format: "png" },
     outputFormat: "png",
   },
   mockup: {
-    modelId: "fal-ai/gpt-image-1.5",
-    defaultParams: { quality: "high", background: "opaque", output_format: "png" },
+    modelId: "fal-ai/gpt-image-2",
+    defaultParams: { quality: "high", output_format: "png" },
     outputFormat: "png",
   },
   "empty-state": {
@@ -196,12 +196,10 @@ export async function generateImage(
     ...config.defaultParams,
   };
 
-  // Size handling differs per model
-  if (config.modelId === "fal-ai/gpt-image-1.5") {
-    input.image_size = `${width}x${height}`;
-  } else {
-    input.image_size = { width, height };
-  }
+  // Align to 16-pixel multiples (required by GPT-Image-2; harmless for other models)
+  const alignedW = Math.round(width / 16) * 16;
+  const alignedH = Math.round(height / 16) * 16;
+  input.image_size = { width: alignedW, height: alignedH };
 
   // Recraft color support
   if (colors && config.modelId.includes("recraft")) {
@@ -275,12 +273,12 @@ export async function generateSvgPlaceholder(options: {
 
 | Path | Purpose | Dimensions | Model |
 |------|---------|-----------|-------|
-| `public/images/hero.webp` (or `.svg`) | Landing page hero | 1920x1080 | FLUX.2 Pro |
-| `public/images/feature-1.webp` (or `.svg`) | Feature section 1 | 800x600 | Recraft V4 Pro |
-| `public/images/feature-2.webp` (or `.svg`) | Feature section 2 | 800x600 | Recraft V4 Pro |
-| `public/images/feature-3.webp` (or `.svg`) | Feature section 3 | 800x600 | Recraft V4 Pro |
+| `public/images/hero.webp` (or `.svg`) | Landing page hero | 1920x1088 | FLUX.2 Pro (+ GPT-2 alt) |
+| `public/images/feature-1.webp` (or `.svg`) | Feature section 1 | 800x608 | Recraft V4 Pro |
+| `public/images/feature-2.webp` (or `.svg`) | Feature section 2 | 800x608 | Recraft V4 Pro |
+| `public/images/feature-3.webp` (or `.svg`) | Feature section 3 | 800x608 | Recraft V4 Pro |
 | `public/images/logo.svg` | Brand logo icon | 512x512 | Recraft V4 Vector |
-| `public/images/og-photo.webp` (or `.svg`) | OG social share image | 1200x630 | Ideogram V3 |
+| `public/images/og-photo.png` (or `.svg`) | OG social share image | 1200x640 | GPT Image 2 |
 | `public/images/empty-state.webp` (or `.svg`) | Empty state illustration | 400x400 | Recraft V4 Pro |
 
 The image manifest (`.runs/image-manifest.json`) records actual filenames and models used.
@@ -362,19 +360,27 @@ to the original single-candidate flow. The main manifest schema is unchanged.
 - **Key params**: `colors` (RGB array), `background_color` (null for transparent)
 - **Best with constraint-driven prompts**: "flat colors only, no gradients, no shadows"
 
-### Ideogram V3 — OG cards, ad creative (text-heavy)
-- **Model ID**: `fal-ai/ideogram/v3`
-- **~90% text rendering accuracy** — far ahead of competitors
-- **Key params**: `style: "DESIGN"`, `expand_prompt: false` (disable MagicPrompt for control), `rendering_speed: "QUALITY"`, `negative_prompt`
-- **Put text in quotation marks early in prompt**: `'"SHIP FASTER" in bold white sans-serif'`
-- **Prompt limit**: ~160 words (excess silently truncated)
+### GPT Image 2 — OG cards, ad creative (text-heavy) — PRIMARY for og + mockup
+- **Model ID**: `fal-ai/gpt-image-2`
+- **~99% text rendering accuracy** — validated via 2026-04-22 bakeoff (only model to achieve 60/60 on og-photo slot)
+- **Key params**: `quality: "high"`, `output_format: "png"`
+- **Image size**: custom `{ width, height }` with **16-pixel-multiple constraint**, max 3840px/edge
+- **Strengths**: Pixel-perfect typography across small fonts, dense paragraphs, multilingual layouts
+- **Transparent background**: triggered via prompt phrase (e.g., `"transparent background outside the panel"`); no API param needed — verified true alpha output in bakeoff
+- **Edit endpoint**: `fal-ai/gpt-image-2/edit` accepts `image_urls` + optional `mask_image_url` for in-place refinement
+- **Prompt style**: Prose description with explicit color hex codes and font weight; no special enum params
 
-### GPT Image 1.5 — Product mockups
+### Ideogram V3 — Alternative for OG (kept for reference, not default)
+- **Model ID**: `fal-ai/ideogram/v3`
+- **~90% text rendering accuracy** — observed 3 visible errors on small typography during bakeoff
+- **Key params**: `style: "DESIGN"`, `expand_prompt: false`, `rendering_speed: "QUALITY"`, `negative_prompt`
+- May be revisited if GPT-Image-2 cost becomes a concern (~$0.13 cheaper per og image)
+
+### GPT Image 1.5 — Alternative for mockup (kept for reference, not default)
 - **Model ID**: `fal-ai/gpt-image-1.5`
-- **Key params**: `quality: "high"`, `background: "transparent"` (for compositing), `output_format`
-- **Fixed pixel sizes**: `"1024x1024"`, `"1536x1024"`, `"1024x1536"` (not named enum)
-- **Hard constraint phrases**: `"No watermark. No extra text. Preserve exact product shape."`
-- **32,000 char prompt limit** — far longer than any other model
+- Has explicit `background: "transparent"` param but produced spelling errors in bakeoff
+- 32,000 char prompt limit — far longer than any other model
+- May be revisited for cost reasons (GPT-2 is +65% per image: $0.13 → $0.22 high quality)
 
 ## Prompt Engineering Patterns
 
@@ -426,21 +432,22 @@ readable at 16px favicon size. {Color count: 2-3 colors on transparent backgroun
 ```
 API: `colors: [{r:X, g:Y, b:Z}, ...]`, `background_color: null`
 
-**Ideogram V3 (OG/social cards) — text-first, control params:**
+**GPT Image 2 (OG/social cards) — text-first, prose with explicit typography:**
 ```
 Professional social media card design. {Background description with HEX color}.
-Large bold "{HEADLINE TEXT}" in {color} {font style}, {position}.
-{Subtext}. {Visual elements}. {Style and mood}. Landscape 16:9 composition.
+Large bold "{HEADLINE TEXT}" in {color hex} {sans-serif/serif} {weight}, {position}.
+{Subtext in lighter weight}. {Visual elements with brand colors}. Clean editorial layout, generous margins.
 ```
-API: `style: "DESIGN"`, `expand_prompt: false`, `rendering_speed: "QUALITY"`
+API: `quality: "high"`, `output_format: "png"`. No `style` enum or `expand_prompt` flag — GPT-2 reads natural-language style direction directly.
 
-**GPT Image 1.5 (product mockups) — Background→Subject→Details→Constraints:**
+**GPT Image 2 (product mockups) — Background→Subject→Details→Constraints:**
 ```
 {Scene/background setup}. {Product subject in detail: materials, colors, state}.
 {Lighting: studio lighting from upper left, soft shadows}. {Camera angle and framing}.
-{Visual System Prefix}. No watermark. No extra text. No background clutter.
+{Visual System Prefix}. Transparent background outside the {panel/window/object}.
+No watermark. No extra text. No background clutter.
 ```
-API: `quality: "high"`, `background: "transparent"` for cutouts
+API: `quality: "high"`, `output_format: "png"`. Transparent BG triggered via the prompt phrase (`"transparent background outside the X"`), no API param needed.
 
 **Recraft V4 Pro (empty states) — friendly, encouraging:**
 ```

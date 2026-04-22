@@ -88,12 +88,12 @@ For each image slot, generate candidates in two phases: **explore** (maximize di
 
 | # | Filename | Type | Model | Dimensions | Explore | Sources |
 |---|----------|------|-------|-----------|---------|---------|
-| 1 | `hero.webp` | hero | FLUX.2 Pro | 1920x1080 | 3 | 2 AI prompt variants + 1 Unsplash |
-| 2 | `feature-1.webp` | feature | Recraft V4 Pro | 800x600 | 2 | 1 AI + 1 Unsplash (ensemble anchor) |
-| 3 | `feature-2.webp` | feature | Recraft V4 Pro | 800x600 | 2 | 1 AI + 1 Unsplash (style-match feature-1) |
-| 4 | `feature-3.webp` | feature | Recraft V4 Pro | 800x600 | 2 | 1 AI + 1 Unsplash (style-match feature-1) |
+| 1 | `hero.webp` | hero | FLUX.2 Pro (+ GPT-2 alt) | 1920x1088 | 3 | 1 FLUX + 1 GPT-2 + 1 Unsplash |
+| 2 | `feature-1.webp` | feature | Recraft V4 Pro | 800x608 | 2 | 1 AI + 1 Unsplash (ensemble anchor) |
+| 3 | `feature-2.webp` | feature | Recraft V4 Pro | 800x608 | 2 | 1 AI + 1 Unsplash (style-match feature-1) |
+| 4 | `feature-3.webp` | feature | Recraft V4 Pro | 800x608 | 2 | 1 AI + 1 Unsplash (style-match feature-1) |
 | 5 | `logo.svg` | logo | Recraft V4 Vector | 512x512 | 3 | 3 AI variants (no Unsplash for logos) |
-| 6 | `og-photo.webp` | og | Ideogram V3 | 1200x630 | 2 | 1 AI + 1 Unsplash |
+| 6 | `og-photo.png` | og | GPT Image 2 | 1200x640 | 2 | 1 AI + 1 Unsplash |
 | 7 | `empty-state.webp` | empty-state | Recraft V4 Pro | 400x400 | 2 | 1 AI + 1 Unsplash |
 
 **Phase 2 (EXPLOIT) — refine the winning direction with AI-only variants:**
@@ -105,7 +105,7 @@ For each image slot, generate candidates in two phases: **explore** (maximize di
 | 3 | `feature-2.webp` | 1 AI | Style-matched to feature-1 |
 | 4 | `feature-3.webp` | 1 AI | Style-matched to feature-1 |
 | 5 | `logo.svg` | 2 AI | Brand mark precision |
-| 6 | `og-photo.webp` | 1 AI | Social sharing refinement |
+| 6 | `og-photo.png` | 1 AI | Social sharing refinement |
 | 7 | `empty-state.webp` | 0 | Low-frequency display — skip exploit |
 
 **Execution order:** Process each slot sequentially — complete all three phases (explore → direction extraction → exploit → winner selection) for one slot before moving to the next. This is required because feature-1 must have a selected winner before feature-2/3 can begin (style anchor dependency). Process slots in table order (hero first, empty-state last).
@@ -125,6 +125,11 @@ For each image slot, generate candidates in two phases: **explore** (maximize di
    - explore-2 (composition): "Aerial view of a runner on a coastal path, vast landscape, sense of freedom and possibility"
    
    All prompts share the visual system prefix for color/style consistency but MUST differ in primary axis.
+
+   **Hero slot specifically** (Phase 1 table: 1 FLUX + 1 GPT-2 + 1 Unsplash):
+   - The FLUX.2 Pro candidate prompt should focus on photographic mood, lighting, and human subject — FLUX's photorealism + JSON-structured prompt + HEX object-level color binding are its strengths
+   - The GPT-Image-2 candidate prompt should include legible brand text, a UI element with text, or a poster/sign in-scene — GPT-2's ~99% text rendering is its differentiator (validated 2026-04-22 bakeoff)
+   - This intentional FLUX-vs-GPT-2 split prevents the two AI candidates from collapsing into similar prompts. Design-critic picks the winner from page context during /verify.
 
 2. **Generate AI explore candidates** into `.runs/image-candidates/`:
    ```bash
@@ -231,7 +236,7 @@ Before writing the manifest, verify all images from the Phase 1 table exist on d
 
 1. Count image files in `public/images/` — must equal the row count from the Phase 1 table (7 images)
 2. For each row in the table, verify the expected filename exists in `public/images/`:
-   - `hero.webp`, `feature-1.webp`, `feature-2.webp`, `feature-3.webp`, `logo.svg`, `og-photo.webp`, `empty-state.webp`
+   - `hero.webp`, `feature-1.webp`, `feature-2.webp`, `feature-3.webp`, `logo.svg`, `og-photo.png`, `empty-state.webp`
 3. If any image is missing, generate it now using the same explore-exploit cycle from Steps 4.1-4.2 before proceeding
 
 Do NOT proceed to Step 5 until all images are present on disk.

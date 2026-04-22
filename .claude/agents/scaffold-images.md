@@ -97,7 +97,7 @@ Read `.claude/procedures/scaffold-images.md` for full step-by-step instructions.
 - (same 5 dimensions)
 ### logo.svg (Recraft V4 Vector) — <N> candidates
 - (same 5 dimensions)
-### og-photo.webp (Ideogram V3) — <N> candidates
+### og-photo.png (GPT Image 2) — <N> candidates
 - (same 5 dimensions)
 ### empty-state.webp (Recraft V4 Pro) — <N> candidates
 - (same 5 dimensions)
