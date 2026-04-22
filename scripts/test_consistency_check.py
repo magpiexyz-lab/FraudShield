@@ -222,6 +222,23 @@ class TestCheck20MakefileCiParity:
         result = run_consistency_check(tmp_path)
         assert "Check 20: Makefile lint-template ↔ CI validators parity... ok" in result.stdout
 
+    def test_passes_when_validator_split_across_lint_template_targets(self, tmp_path):
+        # Multi-target case: lint-template has one validator, lint-template-tests has another.
+        # Check 20 should union both under the lint-template* family.
+        _minimal_clean_layout(tmp_path)
+        (tmp_path / ".github" / "workflows").mkdir(parents=True)
+        write_file(
+            str(tmp_path / ".github" / "workflows" / "ci.yml"),
+            "name: CI\nsteps:\n  - run: python3 scripts/validate-foo.py\n  - run: python3 -m pytest scripts/\n",
+        )
+        write_file(
+            str(tmp_path / "Makefile"),
+            "lint-template:\n\t@python3 scripts/validate-foo.py\n\n"
+            "lint-template-tests:\n\t@python3 -m pytest scripts/\n",
+        )
+        result = run_consistency_check(tmp_path)
+        assert "Check 20: Makefile lint-template ↔ CI validators parity... ok" in result.stdout
+
     def test_fails_when_ci_only_lists_stale_entry(self, tmp_path):
         _minimal_clean_layout(tmp_path)
         (tmp_path / ".github" / "workflows").mkdir(parents=True)

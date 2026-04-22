@@ -270,11 +270,16 @@ mk = set()
 ci_only = set()
 if mk_path.is_file():
     mk_text = mk_path.read_text()
-    m = re.search(r'^lint-template:.*?(?=^[A-Za-z_][A-Za-z0-9_-]*:|\Z)', mk_text, re.M | re.S)
-    if m: mk = extract(m.group(0))
+    # Union the body of every target whose name starts with `lint-template`
+    # (lint-template, lint-template-tests, lint-template-full). Splitting the
+    # local mirror into fast + heavy targets is legitimate — Check 20 treats
+    # the lint-template* family as a single allowed set.
+    for m in re.finditer(r'^(lint-template[A-Za-z0-9_-]*):.*?(?=^[A-Za-z_][A-Za-z0-9_-]*:|\Z)', mk_text, re.M | re.S):
+        mk |= extract(m.group(0))
     lines = mk_text.splitlines()
     for i, line in enumerate(lines):
-        if line.strip().startswith('lint-template:') and i > 0:
+        # Find the CI-ONLY comment above the first lint-template* target
+        if re.match(r'^lint-template[A-Za-z0-9_-]*:', line) and i > 0:
             for j in range(i - 1, -1, -1):
                 s = lines[j].strip()
                 if not s.startswith('#'): break

@@ -4,7 +4,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help validate distribute verify-local test-e2e deploy setup-prod migrate clean clean-all supabase-start supabase-stop sync-verify lint-template
+.PHONY: help validate distribute verify-local test-e2e deploy setup-prod migrate clean clean-all supabase-start supabase-stop sync-verify lint-template lint-template-tests lint-template-full
 
 help: ## Show this help message
 	@echo "Usage: make <command>"
@@ -27,7 +27,7 @@ sync-verify: ## Sync VERIFY commands from state-registry.json to state files
 
 # CI-ONLY: python3 scripts/ci-check-graduation-atomicity.py, bash .claude/scripts/stack-knowledge-audit.sh
 # (validators that require PR context or run on a schedule — parsed by scripts/consistency-check.sh Check 20)
-lint-template: ## Run the same template validators CI runs (before pushing .claude/ edits)
+lint-template: ## Fast: run validators against .claude/ content (~1-3s; no validator unit tests)
 	@echo "== lint-template: running all CI-bound template validators =="
 	@echo "-- validate-frontmatter --"
 	@python3 scripts/validate-frontmatter.py
@@ -53,10 +53,14 @@ lint-template: ## Run the same template validators CI runs (before pushing .clau
 	else \
 	  echo "  no drift"; \
 	fi
-	@echo "-- pytest scripts/ (validator unit tests) --"
-	@python3 -m pytest scripts/ -v --tb=short
 	@echo ""
 	@echo "== All CI-bound template validators passed. Safe to push .claude/ edits. =="
+
+lint-template-tests: ## Slow: run pytest on validator unit tests (~27s; include when scripts/ changes)
+	@echo "== lint-template-tests: running pytest scripts/ =="
+	@python3 -m pytest scripts/ -v --tb=short
+
+lint-template-full: lint-template lint-template-tests ## Full local mirror of CI (both targets)
 
 validate: ## Check experiment.yaml for valid YAML, TODOs, name format, and structure
 	@echo "Validating experiment/experiment.yaml..."

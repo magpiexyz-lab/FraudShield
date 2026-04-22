@@ -42,13 +42,27 @@ fi
 Why: CI runs gitleaks on PRs. Local verification uses LLM-based security
 review which may miss secrets that deterministic scanning catches.
 
-### Gate 3: Template-lint parity (when PR touches `.claude/`)
+### Gate 3: Template-lint parity (diff-dispatched)
 
 ```bash
 if command -v make >/dev/null 2>&1; then
-  if gh pr diff --name-only 2>/dev/null | grep -q '^\.claude/'; then
-    if ! make lint-template; then
-      echo "make lint-template failed — skipping auto-merge."
+  MERGE_BASE=$(git merge-base origin/main HEAD 2>/dev/null || git merge-base main HEAD 2>/dev/null || echo "")
+  if [[ -z "$MERGE_BASE" ]]; then
+    LINT_TARGET="lint-template-full"   # unknown state → fail-closed
+  else
+    DIFF_FILES=$(git diff --name-only "$MERGE_BASE..HEAD" 2>/dev/null || echo "")
+    if [[ -z "$DIFF_FILES" ]]; then
+      LINT_TARGET="lint-template-full"  # unknown state → fail-closed
+    elif echo "$DIFF_FILES" | grep -qE '^scripts/'; then
+      LINT_TARGET="lint-template-full"  # validator code changed → include pytest
+    elif echo "$DIFF_FILES" | grep -qE '^\.claude/|^\.github/workflows/|^Makefile$'; then
+      LINT_TARGET="lint-template"       # template content / CI config only → fast
+    fi
+    # else: pure src/ → LINT_TARGET empty → skip gate
+  fi
+  if [[ -n "$LINT_TARGET" ]]; then
+    if ! make "$LINT_TARGET"; then
+      echo "make $LINT_TARGET failed — skipping auto-merge."
       # SKIP — do not merge
     fi
   fi
@@ -59,12 +73,23 @@ Why: local `/verify` only covers app-level checks (build, design-critic,
 ux-journeyer, security agents). The template-semantic validators that CI
 runs (`validate-semantics.py`, `validate-convergence-config.py`,
 `consistency-check.sh`, `ci-check-stack-knowledge.py`,
-`validate-stack-knowledge.py`, `verify-linter.sh` drift) are disjoint from
-`/verify`. A PR that touches `.claude/` and passes `/verify` can still fail
-CI on those validators, landing a broken `main` (issue #1003). `make
-lint-template` mirrors the CI template-validator set so the gate blocks
-locally before merge. PRs that only touch `src/` skip this gate — no
-`.claude/` diff, no template-semantic risk.
+`validate-stack-knowledge.py`, `verify-linter.sh` drift, `pytest scripts/`)
+are disjoint from `/verify`. A PR that passes `/verify` can still fail CI
+on those validators, landing a broken `main` (issue #1003).
+
+The diff dispatch keeps the common case cheap. Most skill PRs touch only
+`.claude/` files; those get the fast `lint-template` path (~1–3s). PRs
+that touch the validator code under `scripts/` get the full path including
+pytest (~50s) because validator-code regressions are exactly what pytest
+catches. Unknown diff state (empty output, unresolvable merge-base) falls
+through to `lint-template-full` — fail-closed, because unknown state is
+how the original bug slipped through.
+
+`git diff` is used instead of `gh pr diff` to avoid the same silent-failure
+class the original bug had: if `gh` auth expires mid-session or GitHub
+blips, `gh pr diff` returns empty stdout + exit 0, which looks
+indistinguishable from "no diff." `git diff` against the local merge-base
+is deterministic and network-free.
 
 ### Why not wait for remote CI instead? (considered and rejected)
 

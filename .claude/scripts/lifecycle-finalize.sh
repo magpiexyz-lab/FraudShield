@@ -344,15 +344,36 @@ if d.get('exit_code') != 0:
     fi
 
     # Guard 3: template-lint parity. Runs the same validators CI runs on
-    # .claude/ files (validate-semantics.py, validate-stack-knowledge.py, etc.).
-    # Only fires when the PR diff includes .claude/ — pure src/ PRs skip this.
+    # template files. Dispatches by diff type to keep the common case fast:
+    #   - .claude/ / .github/workflows/ / Makefile touched -> make lint-template (~1-3s)
+    #   - scripts/ touched (validator code or shell tools) -> make lint-template-full (~50s, includes pytest)
+    #   - pure src/ -> skip (covered by local /verify)
+    #   - diff detection fails -> run lint-template-full (fail-closed)
+    # Uses git diff (local, no network) instead of gh pr diff (silent-fails on
+    # auth/network blip and would bypass the gate, same class as the bug we fixed).
     # DO_NOT add --auto to the merge command below: repo allow_auto_merge=false
     # makes --auto silently become an immediate non-gated merge. See issue #1003
     # and feedback_gh_pr_merge_auto_fallback memory.
     if [[ -z "$SKIP_MERGE" ]] && command -v make >/dev/null 2>&1; then
-      if gh pr diff --name-only 2>/dev/null | grep -q '^\.claude/'; then
-        if ! make lint-template >&2; then
-          echo "INFO: make lint-template failed — skipping auto-merge" >&2
+      LINT_TARGET=""
+      MERGE_BASE=$(git merge-base origin/main HEAD 2>/dev/null || git merge-base main HEAD 2>/dev/null || echo "")
+      if [[ -z "$MERGE_BASE" ]]; then
+        LINT_TARGET="lint-template-full"
+        echo "INFO: merge-base not resolvable — running lint-template-full (fail-closed)" >&2
+      else
+        DIFF_FILES=$(git diff --name-only "$MERGE_BASE..HEAD" 2>/dev/null || echo "")
+        if [[ -z "$DIFF_FILES" ]]; then
+          LINT_TARGET="lint-template-full"
+          echo "INFO: diff empty/unreadable — running lint-template-full (fail-closed)" >&2
+        elif echo "$DIFF_FILES" | grep -qE '^scripts/'; then
+          LINT_TARGET="lint-template-full"
+        elif echo "$DIFF_FILES" | grep -qE '^\.claude/|^\.github/workflows/|^Makefile$'; then
+          LINT_TARGET="lint-template"
+        fi
+      fi
+      if [[ -n "$LINT_TARGET" ]]; then
+        if ! make "$LINT_TARGET" >&2; then
+          echo "INFO: make $LINT_TARGET failed — skipping auto-merge" >&2
           SKIP_MERGE="template-lint"
         fi
       fi
