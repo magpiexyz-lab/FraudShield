@@ -212,6 +212,30 @@ const { success } = rateLimit(ip, { limit: 5, windowMs: 60_000 });
 if (!success) return NextResponse.json({ error: "Too many requests" }, { status: 429 });
 ```
 
+#### When an AI route uses a session-keyed rate limit, add an IP floor in front
+
+Session-keyed limits (keyed on a user's session_id cookie or auth subject) give each user their own budget — but they are bypassable via **session_id rotation**: an attacker that rotates the session_id cookie on every request resets the session-keyed counter and can drive unlimited inference costs from a single IP. Always apply an IP-based floor **before** the session-keyed check when both layers are used:
+
+```ts
+// 1. IP floor — prevents session rotation abuse. Sized higher than the session
+//    limit (e.g., 3x) to allow legitimate multi-session use from shared NAT.
+const ip = request.headers.get("x-forwarded-for") ?? "unknown";
+const ipCheck = rateLimit(ip, { limit: 30, windowMs: 60_000 });
+if (!ipCheck.success) {
+  return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+}
+
+// 2. Session-keyed limit — per-user enforcement for shared-IP scenarios.
+const sessionId = request.cookies.get("session_id")?.value ?? ip;
+const sessionCheck = rateLimit(sessionId, { limit: 10, windowMs: 60_000 });
+if (!sessionCheck.success) {
+  return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+}
+// TODO: Upgrade to Upstash Redis for cross-instance rate limiting
+```
+
+**Residual risk — cross-instance bypass.** The layered pattern above provides **same-instance burst protection only** — it inherits the in-memory caveat documented for `src/lib/rate-limit.ts` above. An attacker that hits multiple Vercel serverless instances in parallel bypasses both layers because each instance maintains its own counter map. For production workloads with genuine cost exposure (paid AI inference, per-request provider fees), upgrade to a durable store (Upstash Redis or similar) per the TODO already in `src/lib/rate-limit.ts`. The IP-floor + session-keyed pattern is necessary but not sufficient at serverless scale.
+
 ## Security Headers
 
 Add a `vercel.json` with baseline security headers. These apply to all responses automatically.

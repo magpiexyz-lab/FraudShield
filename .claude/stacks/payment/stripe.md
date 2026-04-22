@@ -288,6 +288,22 @@ Notes:
 ### When deduplicating Stripe webhook replays, use INSERT + catch PG `23505` (already baked into the template)
 Stripe delivers at-least-once, so webhook replays are expected. The route template above uses the correct pattern: `INSERT INTO stripe_events(stripe_event_id)` and catch PostgreSQL error code `23505` (unique_violation) as a successful no-op. **Do NOT rewrite this as a SELECT-then-INSERT check** — that is a Time-of-Check-Time-of-Use (TOCTOU) race: two concurrent deliveries of the same event ID can both pass the SELECT and both INSERT, causing duplicate side-effects (double payment processing, double `trackServerEvent("pay_success")`). The INSERT + catch-`23505` pattern is atomic at the database level via the `PRIMARY KEY` on `stripe_event_id`; keep it.
 
+### When a Stripe key appears as a literal in a test fixture, avoid the sk_test_ / pk_test_ prefix
+Hardcoded values like `sk_test_demo`, `sk_test_abc123`, or any string beginning with `sk_test_` / `pk_test_` trigger secret-scanning false positives in CI, in `gitleaks`-style audits, and in GitHub's push-protection secret-scanning. The scanners match the Stripe key prefix pattern regardless of whether the value is a real key. Use a descriptive placeholder that does NOT match the Stripe key format — prefer the `placeholder-stripe-*` family already declared in this stack's frontmatter `ci_placeholders` (line 15) for self-consistency.
+
+```ts
+// WRONG — `sk_test_` prefix triggers secret-scanning FPs
+process.env.STRIPE_SECRET_KEY = "sk_test_demo";
+process.env.STRIPE_SECRET_KEY = "sk_test_abc123";
+
+// CORRECT — re-use the placeholder name declared in the stack frontmatter
+process.env.STRIPE_SECRET_KEY = "placeholder-stripe-secret";
+process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY = "placeholder-stripe-publishable";
+process.env.STRIPE_WEBHOOK_SECRET = "placeholder-stripe-webhook-secret";
+```
+
+This applies to ALL test files (Vitest, Jest, Playwright global setup) that hardcode a mock Stripe key, and to any inline docs/README code samples. The stack file's own `loadStripe` fallback on line 79 already uses the safe `placeholder-stripe-publishable` — do the same for fixtures.
+
 ### When NEXT_PUBLIC_SITE_URL is missing, Stripe checkout redirect URLs become "undefined/path"
 The checkout route template uses a `localhost:3000` fallback when building Stripe redirect URLs. Without it, the env var evaluates to `undefined` and produces `undefined/dashboard/setup` — a URL Stripe accepts silently, causing post-payment redirects to fail. The fallback is a defensive measure for local development before `NEXT_PUBLIC_SITE_URL` is configured. In production, the env var should always be set.
 

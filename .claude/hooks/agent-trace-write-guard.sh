@@ -34,12 +34,21 @@ case "$COMMAND" in
   *) exit 0 ;;
 esac
 
+# Normalize fd-to-fd redirects (2>&1, >&1, 3>&2, 2>>&1, etc.) before write-op
+# detection. These are stderr/fd redirection tokens, not file writes — but
+# their bare `>` character falsely matches the write-operator regex below,
+# and their embedded `&` falsely splits the awk chain-record (RS="[&|;]").
+# Strip them at the source so both checks see the command without fd tokens.
+# File writes (>file, >>file, &>file, >&file GNU extension, tee, cp, mv) do
+# NOT match the `>+&[digit]` pattern and are preserved intact.
+NORM=$(printf '%s' "$COMMAND" | sed -E 's/[0-9]*>+&[0-9]+//g')
+
 # ── Pre-allow checks (MUST run before allow-writer short-circuit) ──
 
 # Reject chained writes even when one side is a legitimate writer.
 # Split on &&/;/| and deny if any segment contains both agent-traces/ and
 # a write operator (>, >>, tee, cp, mv).
-if echo "$COMMAND" | awk 'BEGIN{RS="[&|;]"} /agent-traces\// && /(>|>>|tee|cp|mv)/ {found=1} END{exit !found}'; then
+if echo "$NORM" | awk 'BEGIN{RS="[&|;]"} /agent-traces\// && /(>|>>|tee|cp|mv)/ {found=1} END{exit !found}'; then
   deny "Agent trace write guard: agent-traces/*.json cannot be written from a chained command segment (raw write operator detected alongside agent-traces path)."
 fi
 
@@ -93,8 +102,11 @@ if echo "$COMMAND" | grep -qE "$ALLOWED_REGEX_MIGRATE"; then
 fi
 
 # ── Final catch-all: any direct write operator targeting agent-traces ──
+# Use the fd-redirect-stripped NORM so `cmd 2>&1 > agent-traces/foo.json` still
+# denies correctly (on the real `>` that writes the file) but
+# `ls agent-traces/ 2>&1` is not falsely flagged.
 
-if echo "$COMMAND" | grep -qE '(>|>>|[[:space:]]tee[[:space:]]|[[:space:]]cp[[:space:]]|[[:space:]]mv[[:space:]]).*agent-traces/[^[:space:]]+\.json'; then
+if echo "$NORM" | grep -qE '(>|>>|[[:space:]]tee[[:space:]]|[[:space:]]cp[[:space:]]|[[:space:]]mv[[:space:]]).*agent-traces/[^[:space:]]+\.json'; then
   deny "Agent trace write guard: .runs/agent-traces/*.json writes must go through init-trace.py / write-recovery-trace.sh / write-degraded-trace.py. Direct shell writes are blocked."
 fi
 

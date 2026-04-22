@@ -468,6 +468,19 @@ After installing MagicUI components via `npx shadcn@latest add`, some components
 
 These fixes are needed because MagicUI CLI generates components with import paths and dependency assumptions that don't match the shadcn/ui project structure. The `|| true` in the bulk install script prevents installation failures from stopping the batch, but the generated files still need post-install corrections.
 
+### When text-foreground opacity on dark backgrounds drops below /60, WCAG 1.4.3 contrast fails
+On dark-theme projects (`--background` near slate-950, warm-obsidian, or any custom dark token), `text-foreground/30`, `/40`, and `/50` utilities produce text that falls below the WCAG 1.4.3 Minimum Contrast ratio of 4.5:1. axe-core flags these as violations during accessibility-scanner runs. As a starting heuristic, keep `text-foreground` at **/60 or higher** for body and secondary text on dark backgrounds.
+
+```tsx
+// WRONG on dark bg (contrast ratio < 4.5:1 — axe-core flags as WCAG 1.4.3)
+<p className="text-foreground/30">Secondary label</p>
+
+// CORRECT — /60 is the next-higher valid opacity step and clears 4.5:1 on most dark tokens
+<p className="text-foreground/60">Secondary label</p>
+```
+
+The minimum valid step is enforced by Tailwind's default opacity scale (see `Opacity modifier values` above — `/60` is in the scale; `/55` is NOT and would be silently dropped). The exact minimum ratio depends on the specific background color — run an axe-core scan (accessibility-scanner agent) after any opacity change on dark backgrounds to verify the actual ratio. Heuristic /60 is safe for most dark themes; lighter tokens may tolerate /50.
+
 ## Import Example
 ```tsx
 import { Button } from "@/components/ui/button";

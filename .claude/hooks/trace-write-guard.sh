@@ -25,8 +25,17 @@ case "$COMMAND" in
   *) exit 0 ;;
 esac
 
+# Normalize fd-to-fd redirects (2>&1, >&1, 3>&2, etc.) before write-op
+# detection. These are stderr/fd redirection tokens, not file writes — but
+# their bare `>` character falsely matches the write-operator regex, and
+# their embedded `&` falsely splits the awk chain-record (RS="[&|;]").
+# Strip them so both checks see the command without fd tokens. File writes
+# (>file, >>file, &>file, >&file GNU extension, tee, cp, mv, dd) are
+# preserved intact.
+NORM=$(printf '%s' "$COMMAND" | sed -E 's/[0-9]*>+&[0-9]+//g')
+
 # Block shell redirect / file-copy writes to spawn-log (redirects, tee, cp, mv, dd)
-if echo "$COMMAND" | grep -qE '(>|>>|[[:space:]]tee[[:space:]]|[[:space:]]cp[[:space:]]|[[:space:]]mv[[:space:]]|[[:space:]]dd[[:space:]]).*agent-spawn-log'; then
+if echo "$NORM" | grep -qE '(>|>>|[[:space:]]tee[[:space:]]|[[:space:]]cp[[:space:]]|[[:space:]]mv[[:space:]]|[[:space:]]dd[[:space:]]).*agent-spawn-log'; then
   deny "Trace write guard: agent-spawn-log.jsonl is hook-managed. Only skill-agent-gate.sh may write to it."
 fi
 
@@ -38,7 +47,7 @@ fi
 # Block chained writes: if the command contains && / ; / | and any segment
 # afterwards mentions spawn-log with a write operator, reject. Conservative
 # AWK split — splits on any chain delimiter and inspects each segment.
-if echo "$COMMAND" | awk 'BEGIN{RS="[&|;]"} /agent-spawn-log/ && /(>|>>|tee|cp|mv|dd)/ {found=1} END{exit !found}'; then
+if echo "$NORM" | awk 'BEGIN{RS="[&|;]"} /agent-spawn-log/ && /(>|>>|tee|cp|mv|dd)/ {found=1} END{exit !found}'; then
   deny "Trace write guard: agent-spawn-log.jsonl cannot be written from a chained command segment."
 fi
 

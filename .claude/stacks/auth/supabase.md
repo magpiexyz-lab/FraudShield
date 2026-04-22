@@ -983,6 +983,26 @@ If a user declines to share their Google account email during OAuth consent — 
 
 The specific copy and styling come from the project's design system — what matters is that the banner (a) names the failure mode in plain language, (b) offers at least two recovery paths, and (c) uses a `role="alert"` region so screen readers announce it on arrival. Applies to any OAuth provider that can return this error (`stack.auth_providers: [google, apple, ...]`).
 
+### When a project extends /auth/callback to persist user_metadata to the database
+Validate `user_metadata` fields with zod before any database write. The shipped `/auth/callback` template (above) only exchanges the PKCE code and redirects — it does NOT persist `user_metadata`. If a project adds a code path in the callback that reads `user_metadata` (e.g., to mirror signup into a `profiles` or `practices` table), the values cannot be trusted. An attacker can supply arbitrary values (e.g., a 50KB string in a name field) via a direct Supabase API call, bypassing UI form limits entirely. This is an A1 (OWASP) validation-bypass.
+
+```ts
+import { z } from "zod";
+
+const metaSchema = z.object({
+  practice_name: z.string().min(2).max(120),
+  // add other user_metadata fields your callback persists
+});
+
+const parsed = metaSchema.safeParse(session.user.user_metadata);
+if (!parsed.success) {
+  return NextResponse.redirect(`${origin}/signup?error=invalid_metadata`);
+}
+// Use parsed.data for the database upsert
+```
+
+Apply this pattern whenever the callback route reads any `user_metadata` field and writes it to a database column. The shipped signup form already constrains values through UI length limits, but any direct Supabase API call bypasses those limits — zod validation on the server is the only defense.
+
 ## PR Instructions
 - Email confirmation is enabled by default in Supabase. The signup form handles this: when `signUp()` returns `session: null`, it shows a "check your email" message instead of redirecting. Users who confirm their email can then log in normally.
 - The signup form passes `emailRedirectTo` pointing to `/auth/callback`, which exchanges the PKCE code for a session and redirects to `/`. This requires the production URL to be in Supabase's redirect allow-list (configured by `/deploy`).

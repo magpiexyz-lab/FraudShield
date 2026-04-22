@@ -83,6 +83,44 @@ class TestAgentTraceWriteGuard(unittest.TestCase):
                              "read of agent-traces")
         self._assert_allowed("ls .runs/agent-traces/", "list of agent-traces")
 
+    # ---- fd-to-fd redirects (not file writes) must not false-positive ----
+    # The write-op regex includes a bare `>` that previously matched the `>`
+    # inside `2>&1`, and the awk chain splitter's RS=[&|;] previously split
+    # on the `&` inside `2>&1`. Fix: the hook strips `\d*>+&\d+` tokens from
+    # the command before running the awk/grep checks.
+
+    def test_ls_traces_with_stderr_redirect_allowed(self):
+        self._assert_allowed("ls .runs/agent-traces/ 2>&1",
+                             "ls with 2>&1 is a read, not a write")
+
+    def test_cat_trace_file_with_stderr_redirect_allowed(self):
+        self._assert_allowed("cat .runs/agent-traces/design-critic.json 2>&1",
+                             "cat with 2>&1 is a read, not a write")
+
+    def test_chained_read_then_ls_with_stderr_redirect_allowed(self):
+        self._assert_allowed(
+            "wc -l .runs/observer-diffs.txt ; ls .runs/agent-traces/ 2>&1",
+            "chained reads with 2>&1 must pass")
+
+    def test_ls_traces_with_bare_fd_redirect_allowed(self):
+        # `>&1` (no leading digit) is the rare but valid bash form.
+        self._assert_allowed("ls .runs/agent-traces/ >&1",
+                             "bare >&1 is an fd redirect, not a file write")
+
+    def test_trace_path_with_fd3_to_fd2_allowed(self):
+        # `3>&2` redirects an arbitrary fd, not a file write.
+        self._assert_allowed("ls .runs/agent-traces/ 3>&2",
+                             "3>&2 is fd-to-fd, not a file write")
+
+    def test_csh_ampgt_into_traces_still_denied(self):
+        # `cmd >& file` is a GNU bash extension meaning
+        # `cmd > file 2>&1` — a real file write that must still deny.
+        # No digit follows `&`, so the sed fd-strip does NOT remove it, and
+        # the `>` survives to match the write-operator regex.
+        self._assert_denied(
+            "echo x >& .runs/agent-traces/fake.json",
+        )
+
     # ---- Allowed writers ----
 
     def test_write_recovery_with_reason_allowed(self):
