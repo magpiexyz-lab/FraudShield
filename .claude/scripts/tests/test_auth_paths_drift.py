@@ -102,47 +102,82 @@ class TestAuthPathsDrift(unittest.TestCase):
                 f"  {fp}: {sorted(s)}",
             )
 
-    def test_no_inline_auth_paths_outside_anchors(self):
-        """Any file in .claude/patterns/ or .claude/procedures/ that
-        references AUTH_PATHS (by symbol name) without the anchor is a
-        drift regression.
+    def test_no_inline_auth_paths_set_literal_outside_anchors(self):
+        """Any file outside the canonical patterns + tests that DECLARES
+        a new AUTH_PATHS set literal is a drift regression.
+
+        We distinguish DECLARATIONS (which drift) from REFERENCES (which
+        don't):
+          - Declaration: `const AUTH_PATHS = new Set([...])` (JS) or
+            `AUTH_PATHS = {"...", "..."}` (Python set literal). These
+            redeclare the set and can drift from the canonical source.
+          - Reference: `final_url ∈ AUTH_PATHS` in prose, or a markdown
+            table cell mentioning AUTH_PATHS. These are doc references,
+            don't drift, and are fine.
+
+        Pattern-match for declarations, ignore mere references.
         """
         import subprocess
 
+        # Look for set literal declarations: JS `new Set([...])` or
+        # Python `AUTH_PATHS = {`/`AUTH_PATHS = set([` assigned to
+        # AUTH_PATHS specifically.
+        declaration_patterns = [
+            # JS: AUTH_PATHS = new Set([...])  — the redeclaration shape
+            r"\bAUTH_PATHS\s*=\s*new\s+Set\s*\(",
+            # Python: AUTH_PATHS = {  (note: only when followed by string
+            # to disambiguate from a generic dict)
+            r'\bAUTH_PATHS\s*=\s*\{\s*[\'"]',
+            # Python: AUTH_PATHS = set( ...
+            r"\bAUTH_PATHS\s*=\s*set\s*\(",
+        ]
+
         result = subprocess.run(
-            ["git", "-C", str(ROOT), "grep", "-l", "AUTH_PATHS", "--", ".claude/"],
+            ["git", "-C", str(ROOT), "ls-files", ".claude/"],
             capture_output=True,
             text=True,
         )
-        if result.returncode not in (0, 1):
-            self.skipTest(f"git grep failed: {result.stderr}")
+        if result.returncode != 0:
+            self.skipTest(f"git ls-files failed: {result.stderr}")
             return
 
+        violations: list[tuple[str, str]] = []
         for line in result.stdout.strip().splitlines():
-            path = Path(ROOT / line.strip())
-            if not path.exists():
+            path = ROOT / line.strip()
+            if not path.is_file():
                 continue
-            # Skip test files and the canonical patterns themselves
+            # Skip test files (they may declare fixtures)
             if "scripts/tests/" in str(path):
                 continue
+            # Skip canonical patterns themselves
             if path in PATTERN_FILES:
                 continue
-            # Allow accessibility-scanner procedure to reference PUBLIC_PATHS
-            # (distinct set, not AUTH_PATHS)
-            content = path.read_text()
-            if re.search(r"\bAUTH_PATHS\b", content):
-                # Any file that references AUTH_PATHS outside the two canonical
-                # patterns must also carry the anchor comment for traceability.
-                # (Future-proofing: if a 4th reviewer's procedure needs AUTH_PATHS
-                # inline, it should reference one of the canonical files via
-                # a comment rather than redeclare the set.)
-                if ANCHOR not in content:
-                    self.fail(
-                        f"{path} references AUTH_PATHS without the '{ANCHOR}' "
-                        f"anchor. Either add the anchor (if this is a shared "
-                        f"canonical source) or reference one of the canonical "
-                        f"pattern files in a comment."
-                    )
+            # Skip the gate script (it's the executable extraction; carries
+            # the anchor)
+            if str(path).endswith("run-review-verdict-gate.py"):
+                continue
+
+            try:
+                content = path.read_text()
+            except (UnicodeDecodeError, IsADirectoryError):
+                continue
+
+            for pat in declaration_patterns:
+                m = re.search(pat, content)
+                if m:
+                    if ANCHOR not in content:
+                        violations.append((line.strip(), m.group(0)))
+
+        if violations:
+            msg = (
+                "AUTH_PATHS set declarations found outside canonical anchors:\n"
+                + "\n".join(f"  {p} — declares: {decl}" for p, decl in violations)
+                + f"\n\nEither add the '{ANCHOR}' anchor comment (if this is a "
+                "shared canonical source), or use one of the canonical pattern "
+                "files (render-review-detection.md, review-verdict-gate.md, or "
+                "run-review-verdict-gate.py) instead of redeclaring."
+            )
+            self.fail(msg)
 
 
 if __name__ == "__main__":
