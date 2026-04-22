@@ -42,18 +42,41 @@ Poll `http://localhost:3098` until it responds (max 15 seconds, then abort).
 Write an inline Playwright script that:
 
 1. Launches Chromium (headless)
-2. Starts at `/` (landing)
-3. At each step: finds the primary CTA, clicks it, records where it goes
-4. Compares actual navigation against golden_path steps — report deviations (e.g., "golden_path says landing -> signup, but CTA goes to /pricing")
-5. Tracks for each step:
-   - Step number
-   - Action taken (e.g., "Click 'Get Started'")
-   - Source route
-   - Destination route
-   - Status: `pass` / `dead-end` / `error`
-5. Stops when reaching the value moment OR after 10 steps (whichever first)
+2. Determines journey-level `auth_requirement` based on first step's route:
+   - First step's route ∈ `PUBLIC_PATHS` (e.g., `/`, `/pricing`, `/about`) → `"anonymous"`
+   - First step's route is auth-gated by middleware → `"required"`
+   - Otherwise → `"optional"`
+3. Calls `setupAuthContext(browser, {auth_requirement})` (per `.claude/patterns/render-review-detection.md` Section 6.1) to create the BrowserContext.
+4. **If `setupAuthContext` returns `reviewMethodEarly === "prereq-unmet"`**:
+   - Write trace with `verdict="blocked"`, `caveat="prereq-unmet:<fallback_reason>"`, empty `per_step_reviews`. Exit. The journey cannot start.
+5. Starts at first step's route (use `page.goto` ONCE for the entry point; subsequent navigation is click-driven).
+6. Per-step loop:
+   - **Compute `is_first_page` via the `firstAuthGatedSeen` pattern** (NOT `i === 0`):
+     ```javascript
+     let firstAuthGatedSeen = false;
+     // for each step:
+     const isAuthGated = (step.is_auth_route === true);  // computed from route + middleware knowledge
+     const is_first_page = isAuthGated && !firstAuthGatedSeen;
+     if (isAuthGated) firstAuthGatedSeen = true;
+     ```
+     This preserves the hard-constraint #7 semantic. Anonymous journeys never fire `demo-mode-bypass-failed` — `render-review-detection.md` Section 3 additionally suppresses that diagnostic when `auth_requirement="anonymous"`.
+   - Find the primary CTA on current page.
+   - Click the CTA (Playwright **native click — NOT `page.goto`**). The detection contract demands click-driven navigation so dynamically-rewritten hrefs (e.g., JS-driven A/B redirects) get observed correctly.
+   - Wait for `networkidle` + 500ms (same settle window as `render-review-detection.md` Section 2).
+   - Call `classifyCurrentPage(context, page, {requested_route: step.source_route, expected_destination: step.destination_route, is_first_page})` (per Section 6.3 — does NOT call `page.goto`, classifies the already-navigated page).
+   - Receive `{review_method, review_evidence}` from Section 3 classification.
+   - Record the per-step result with: `step_index`, `source_route`, `expected_destination` (= step.destination_route), `review_method`, `review_evidence`, plus the status derived from the Render Review Policy Table in `.claude/agents/ux-journeyer.md`:
+     - `rendered-authed` / `rendered-demo` (final == expected) → `pass`
+     - `source-only` with `final_url ∈ AUTH_PATHS` → `dead-end-auth`
+     - `source-only` with `final_url ∉ AUTH_PATHS` → `dead-end`
+     - `unknown` → `error`
+   - Append the result to the `per_step_reviews` array for the trace.
+7. Stops when reaching the value moment OR after 10 steps (whichever first).
+8. Always close the BrowserContext at the end (the same context is reused across all steps for session continuity).
 
-Save the trace as a structured array for the report.
+Save the trace as a structured array for the report. The `per_step_reviews` array goes directly into the trace file (see `.claude/agents/ux-journeyer.md` Trace Output).
+
+> **Why click and not `page.goto`?** `page.goto` would navigate to the static `href`, missing JavaScript-driven rewrites, conditional redirects, or programmatic navigation. ux-journeyer's job is to verify the user's actual click leads where it should — that's only observable via real click + post-click classification. `classifyCurrentPage` exists precisely to support this caller pattern (it does the URL comparison without re-navigating).
 
 ### 6. Check Flow Quality
 

@@ -49,6 +49,37 @@ If any real (non-fake-door) dead end remains after fixes, verdict MUST be `"part
 - Server crashes (500 errors on 3+ consecutive steps) → stop, report crash location
 - Redirect loop (same page appears 3 times) → stop, report loop
 - Form submission timeout (>30s with no response) → abort, report timeout
+- Auth prerequisite unmet (`auth_requirement="required"` and storageState missing) → write trace with `verdict="blocked"`, `caveat="prereq-unmet:<fallback_reason>"`, exit. Treat as a hard gate — the journey cannot start without a session.
+
+## Render Review Policy Table
+
+This agent calls `.claude/patterns/render-review-detection.md` per step using
+the `classifyCurrentPage` primitive after each click. The shared
+`review-verdict-gate.md` (invoked at state-3c after this agent returns)
+enforces the following per-step status mapping:
+
+| `review_method` | `final_url ∈ AUTH_PATHS`? | per-step status |
+|---|---|---|
+| `rendered-authed` / `rendered-demo` | — | `pass` |
+| `source-only` | yes | `dead-end-auth` (click landed on auth route — bad redirect) |
+| `source-only` | no | `dead-end` (click landed elsewhere — broken navigation) |
+| `unknown` | — | `error` (navigation failed) |
+| `prereq-unmet` | — | `blocked` (auth needed but session missing — also forces top-level `verdict="blocked"`) |
+
+The agent MAY emit any `status` value; the gate auto-corrects on
+mismatch and logs to `review_method_gate_corrections[]`. The agent
+should still emit the right value to keep traces clean — corrections
+are a tripwire, not a normal flow.
+
+`auth_requirement` for the journey is computed once at journey start:
+- First step's route is in `PUBLIC_PATHS` (e.g., `/`) → `"anonymous"` (do NOT inject storageState — anonymous journeys must run on a fresh context)
+- First step's route is auth-gated → `"required"`
+- Otherwise → `"optional"`
+
+`is_first_page` per step uses the `firstAuthGatedSeen` pattern (see
+`.claude/procedures/accessibility-scanner.md:56-62`), NOT `i === 0`.
+Anonymous journeys never fire `demo-mode-bypass-failed` (the pattern
+suppresses that diagnostic when `auth_requirement="anonymous"`).
 
 ## Instructions
 
@@ -124,11 +155,39 @@ trace = {
     "fixes_applied": <F>,
     "unresolved_dead_ends": <UDE>,
     "run_id": run_id,
+    "per_step_reviews": [
+        # One entry per golden_path step. Required when scope is full or visual.
+        # See render-review-detection.md Section 6.3 (classifyCurrentPage) for
+        # the source of review_method and review_evidence.
+        # Example:
+        # {
+        #   "step_index": 0,
+        #   "source_route": "/",
+        #   "expected_destination": "/signup",
+        #   "review_method": "rendered-demo",
+        #   "review_evidence": {
+        #     "requested_route": "/",
+        #     "final_url": "http://localhost:3098/signup",
+        #     "auth_source": "demo-mode",
+        #     "fallback_reason": null,
+        #     "content_density": null,
+        #     "expected_destination": "/signup"
+        #   },
+        #   "status": "pass"
+        # }
+    ],
+    # caveat: REQUIRED when verdict == "blocked" (e.g., prereq-unmet).
+    # Format: "prereq-unmet:<fallback_reason>" or other short blocker description.
+    # Omit when verdict != "blocked".
+    "caveat": None,
     "fixes": [
         # One entry per fix applied. Example:
         # {"file": "src/app/landing/page.tsx", "symptom": "dead-end navigation", "fix": "added back button"}
     ]
 }
+# Drop caveat when null (keeps traces clean for non-blocked verdicts)
+if trace["caveat"] is None:
+    trace.pop("caveat")
 with open(".runs/agent-traces/ux-journeyer.json", "w") as f:
     json.dump(trace, f, indent=2)
 TRACE_EOF
@@ -143,6 +202,8 @@ Replace placeholders with actual values:
 - `<P>`: percentage of golden_path steps successfully completed (integer 0-100)
 - `<F>`: total number of fixes applied (0 if none)
 - `<UDE>`: count of real (non-fake-door) dead ends that remained after fixes (0 if all resolved or all are intentional fake-doors)
+- `per_step_reviews`: array of `{step_index, source_route, expected_destination, review_method, review_evidence, status}` per step. Status values per the Render Review Policy Table above.
+- `caveat`: REQUIRED when `verdict == "blocked"` (e.g., from prereq-unmet at journey start). Omit otherwise.
 
 
 ## Self-Degradation Handler

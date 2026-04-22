@@ -87,9 +87,13 @@ Agents may add fields beyond the base schema to capture agent-specific metrics:
 | observer | `fixes_evaluated` | number | Count of fixes evaluated from fix-log |
 | build-info-collector | `files_collected` | number | Count of files in diff collection |
 | design-critic | `review_method` | enum | `"rendered-authed"` / `"rendered-demo"` / `"source-only"` / `"unknown"` — render classification from `.claude/patterns/render-review-detection.md` |
-| design-critic | `review_evidence` | object | `{requested_route, final_url, auth_source, fallback_reason, content_density}` — see render-review-detection.md |
+| design-critic | `review_evidence` | object | `{requested_route, final_url, auth_source, fallback_reason, content_density, expected_destination}` — see render-review-detection.md |
 | design-critic | `caveat` | string | Present ONLY when `review_method ∈ {"source-only","unknown"}`; value = `review_evidence.fallback_reason`. Omitted otherwise. |
 | accessibility-scanner | `per_page_reviews` | array | Runtime path only. One entry per golden_path page: `{page, review_method, review_evidence}`. Omitted in static-fallback path. |
+| ux-journeyer | `per_step_reviews` | array | One entry per golden_path step: `{step_index, source_route, expected_destination, review_method, review_evidence, status}`. `status` enforced by `review-verdict-gate.md` per the policy table in `.claude/agents/ux-journeyer.md`. |
+| ux-journeyer | `caveat` | string | Present ONLY when `verdict == "blocked"` (e.g., from `prereq-unmet` at journey start). Format: `"prereq-unmet:<fallback_reason>"`. Omitted otherwise. |
+| any reviewer agent | `review_method_gate_evaluated` | boolean | Sentinel written by `.claude/patterns/review-verdict-gate.md` proving the gate ran on this trace. Asserted by `state-registry.json` VERIFY commands for state 2 and state 3c. Always `true` once present. |
+| any reviewer agent | `review_method_gate_corrections` | array | One entry per verdict the gate auto-corrected: `{location, review_method, original_verdict, corrected_to}`. Omitted when 0 corrections were applied. |
 
 ### Verdict Values
 
@@ -106,6 +110,7 @@ normalization (`.upper()` / `.lower()`), but agents must match the canonical for
 | observer | `"filed"`, `"commented"`, `"no observations"`, `"prerequisite-unavailable"` |
 | spec-reviewer | `"PASS"`, `"FAIL"` |
 | build-info-collector | `"collected"`, `"no-fixes"` |
+| ux-journeyer | `"all pass"`, `"all fixed"`, `"partial"`, `"blocked"` |
 | resolve-challenger | `"N fixes sound, M challenged"` (summary) |
 | review-challenger | `"N confirmed, M disputed"` (summary) |
 | solve-critic | `"N TYPE A, M TYPE B, K TYPE C"` (summary) |
