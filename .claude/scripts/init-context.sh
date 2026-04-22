@@ -33,12 +33,21 @@ if [[ -z "$SKILL" ]]; then
 fi
 
 # --- State-reset guard + identity check ---
+# Status values:
+#   completed    — prior run of THIS skill finished (completed=True). Re-invocation is
+#                  a new run — reset to fresh context (issue #1006 FINALIZE-pin fix).
+#   has_identity — in-flight run (run_id set, completed=False). Preserve.
+#   block        — corrupt (no run_id but multiple completed_states). Exit.
+#   no_identity  — stub / first run. Fall through to create.
 if [[ -f "$CTX" ]]; then
   GUARD=$(python3 -c "
 import json
 d = json.load(open('$CTX'))
 has_rid = bool(d.get('run_id', ''))
-if has_rid:
+is_completed = d.get('completed', False) is True
+if has_rid and is_completed:
+    print('completed')
+elif has_rid:
     print('has_identity')
 else:
     cs = d.get('completed_states', [])
@@ -48,7 +57,12 @@ else:
     echo "ERROR: init-context.sh — $CTX exists with multiple completed states but no run_id (corrupt state). Delete it manually to re-initialize." >&2
     exit 1
   fi
-  if [[ "$GUARD" == "has_identity" ]]; then
+  if [[ "$GUARD" == "completed" ]]; then
+    # Prior run of this skill completed — re-invocation is a fresh run.
+    # Emit a visible notice so the user knows prior state was cleared, then
+    # fall through to write a new canonical context (overwriting $CTX).
+    echo "INFO: init-context.sh — prior $SKILL run completed; resetting $CTX for fresh re-run." >&2
+  elif [[ "$GUARD" == "has_identity" ]]; then
     if [[ -z "$EXTRA" || "$EXTRA" == "{}" ]]; then
       # Already initialized, nothing to merge — skip
       echo "INFO: init-context.sh — $CTX already has run_id, skipping" >&2
@@ -75,7 +89,7 @@ json.dump(ctx, open('$CTX', 'w'))
       exit 0
     fi
   fi
-  # no_identity — fall through to create (overwrite stub with canonical context)
+  # completed or no_identity — fall through to create (overwrite stub/prior with canonical context)
 fi
 
 # --- Ensure .runs/ exists ---

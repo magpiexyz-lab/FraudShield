@@ -61,7 +61,7 @@ fi
 # invocations.
 python3 "$PROJECT_DIR/.claude/scripts/migrate-legacy-traces.py" >&2 || true
 
-# --- Step 2: Parse YAML → manifest.json ---
+# --- Step 2: Parse YAML → lifecycle.json ---
 mkdir -p "$PROJECT_DIR/.runs"
 
 EXTRA_ENV="$EXTRA" python3 - "$SKILL_YAML" "$MANIFEST" << 'PYEOF'
