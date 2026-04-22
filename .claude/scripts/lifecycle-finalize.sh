@@ -23,10 +23,11 @@ fi
 
 PROJECT_DIR="$(git rev-parse --show-toplevel 2>/dev/null || echo "${CLAUDE_PROJECT_DIR:-.}")"
 
-MANIFEST="$PROJECT_DIR/.runs/${SKILL}-manifest.json"
+# Source lifecycle-lib first so resolve_framework_manifest is available below.
+source "$(dirname "$0")/lifecycle-lib.sh"
+MANIFEST=$(resolve_framework_manifest "$SKILL")
 
 # Determine context file — mode-aware for iterate --check/--cross
-source "$(dirname "$0")/lifecycle-lib.sh"
 CTX=$(resolve_context_path "$SKILL" "$MANIFEST")
 
 if [[ ! -f "$CTX" ]]; then

@@ -18,7 +18,8 @@ fi
 
 PROJECT_DIR="$(git rev-parse --show-toplevel 2>/dev/null || echo "${CLAUDE_PROJECT_DIR:-.}")"
 
-MANIFEST="$PROJECT_DIR/.runs/${SKILL}-manifest.json"
+source "$(dirname "$0")/lifecycle-lib.sh"
+MANIFEST=$(resolve_framework_manifest "$SKILL")
 
 # --- Check prerequisites ---
 if [[ ! -f "$MANIFEST" ]]; then
@@ -27,7 +28,6 @@ if [[ ! -f "$MANIFEST" ]]; then
 fi
 
 # Determine context file — mode-aware for iterate --check/--cross
-source "$(dirname "$0")/lifecycle-lib.sh"
 CTX=$(resolve_context_path "$SKILL" "$MANIFEST")
 
 # Missing context = no states completed yet (first dispatch before state-0 creates it)

@@ -187,7 +187,7 @@ fi
 # traces, merge artifacts, and non-manifest agents.
 # This is the Option B universal check — works for ALL skills, zero config.
 SPAWN_LOG="$PROJECT_DIR/.runs/agent-spawn-log.jsonl"
-_SCG_MANIFEST="$PROJECT_DIR/.runs/${SKILL}-manifest.json"
+_SCG_MANIFEST=$(resolve_framework_manifest "$SKILL")
 if [[ -f "$SPAWN_LOG" && -f "$_SCG_MANIFEST" ]]; then
   PROVENANCE_RESULT=$(python3 -c "
 import json, glob, os, sys

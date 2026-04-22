@@ -13,7 +13,7 @@ PROJECT_DIR="$(git rev-parse --show-toplevel 2>/dev/null || echo "${CLAUDE_PROJE
 # Determine context file — mode-aware for iterate --check/--cross
 source "$(dirname "$0")/lifecycle-lib.sh"
 read -r SKILL_DIR _SKILL_MODE <<< "$(resolve_skill_dir "$SKILL")"
-MANIFEST="$PROJECT_DIR/.runs/${SKILL_DIR}-manifest.json"
+MANIFEST=$(resolve_framework_manifest "$SKILL_DIR")
 CTX=$(resolve_context_path "$SKILL")
 
 # Fail-closed: verify STATE_NUM exists in registry

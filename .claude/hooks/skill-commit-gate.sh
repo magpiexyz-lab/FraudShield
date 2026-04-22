@@ -6,6 +6,10 @@
 
 set -euo pipefail
 
+# Source lifecycle-lib.sh for resolve_framework_manifest (issue #1006).
+_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../scripts" && pwd)"
+source "$_SCRIPT_DIR/lifecycle-lib.sh"
+
 source "$(dirname "$0")/lib.sh"
 parse_payload
 
@@ -27,7 +31,7 @@ if [[ -z "$ACTIVE_SKILL" ]]; then
 fi
 
 # ── Load manifest ──
-MANIFEST="$PROJECT_DIR/.runs/${ACTIVE_SKILL}-manifest.json"
+MANIFEST=$(resolve_framework_manifest "$ACTIVE_SKILL")
 
 if [[ ! -f "$MANIFEST" ]]; then
   # No manifest = no active skill lifecycle — allow

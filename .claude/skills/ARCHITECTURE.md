@@ -176,12 +176,14 @@ Deterministic operations are code; creative work (state ACTIONS) remains LLM-dri
 
 ```
 Input:  skill name + optional extra JSON (e.g., mode selection, scope)
-Output: .runs/<skill>-manifest.json + .runs/<skill>-context.json + branch (if applicable)
+Output: .runs/<skill>-lifecycle.json + .runs/<skill>-context.json + branch (if applicable)
 
 Steps:
 1. Find and parse .claude/skills/<skill>/skill.yaml
 2. If modes present + extra_json has mode field → select that mode's states
-3. Write .runs/<skill>-manifest.json (JSON copy of skill.yaml, for hooks to read)
+3. Write .runs/<skill>-lifecycle.json (JSON copy of skill.yaml, for hooks to read).
+   NOTE: .runs/<skill>-manifest.json is reserved for each skill's domain output
+   (e.g., deploy resources, iterate verdicts, audit findings) — see issue #1006.
 4. If branch field present and not in worktree → create branch
 5. Create canonical context (run_id, branch, timestamp) via init-context.sh
 
@@ -196,7 +198,7 @@ Output: path to next state file, or "FINALIZE", or "NO_MANIFEST"
 
 Steps:
 1. Read .runs/<skill>-context.json → completed_states
-2. Read .runs/<skill>-manifest.json → states list
+2. Read .runs/<skill>-lifecycle.json → states list
 3. Find first state_id in states not in completed_states
    - For loop states: allow re-entry (check manifest loop field)
 4. Find state file: .claude/skills/<skill>/state-<id>-*.md
@@ -256,7 +258,7 @@ state, NOT in lifecycle-finalize.sh. Finalize handles delivery gate + git ops on
 
 ## 8. Gate System (3 Gates)
 
-Gates are skill-agnostic. They read `manifest.json` and `state-registry.json`, never skill names.
+Gates are skill-agnostic. They read `<skill>-lifecycle.json` and `state-registry.json`, never skill names.
 
 ### Progression Gate
 
@@ -310,10 +312,10 @@ and are retained unchanged from v1.
 ### Execution Model (all universal hooks)
 
 ```
-1. Read .runs/<skill>-manifest.json
+1. Read .runs/<skill>-lifecycle.json
 2. Apply declarative checks (pure data lookup, <10ms)
 3. Run convention gate script if exists (≤30s timeout)
-4. If no manifest found → fallback to old hook logic (migration compat)
+4. If no manifest found → fallback to old hook logic (v1→v2 hook migration compat; unrelated to the 2026-04 framework-path rename)
 5. If no active skill → exit 0 (pass-through)
 ```
 

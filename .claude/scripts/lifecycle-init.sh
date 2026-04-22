@@ -8,7 +8,7 @@
 #   bash .claude/scripts/lifecycle-init.sh verify --embed
 #
 # Steps:
-#   1. Parse .claude/skills/<skill>/skill.yaml → .runs/<skill>-manifest.json
+#   1. Parse .claude/skills/<skill>/skill.yaml → .runs/<skill>-lifecycle.json
 #   2. If modes present + extra has mode field → select that mode's states
 #   3. If branch field present + not in worktree → create branch
 #   4. Create canonical context via init-context.sh <skill>
@@ -35,7 +35,7 @@ fi
 
 PROJECT_DIR="$(git rev-parse --show-toplevel 2>/dev/null || echo "${CLAUDE_PROJECT_DIR:-.}")"
 SKILL_YAML="$PROJECT_DIR/.claude/skills/$SKILL/skill.yaml"
-MANIFEST="$PROJECT_DIR/.runs/$SKILL-manifest.json"
+MANIFEST="$PROJECT_DIR/.runs/$SKILL-lifecycle.json"
 
 # --- Step 0.5: Orphan transient-service cleanup from prior uncleaned run ---
 # Catches Supabase stacks left running by a skill that crashed, was Ctrl-C'd,
@@ -260,7 +260,7 @@ STALE_ARTIFACTS=(
   "$PROJECT_DIR/.runs/compliance-audit-result.json"
   "$PROJECT_DIR/.runs/q-dimensions.json"
   "$PROJECT_DIR/.runs/verify-context.json"
-  "$PROJECT_DIR/.runs/verify-manifest.json"
+  "$PROJECT_DIR/.runs/verify-lifecycle.json"
   "$PROJECT_DIR/.runs/verify-report.md"
   "$PROJECT_DIR/.runs/fix-log.md"
   "$PROJECT_DIR/.runs/quality-merge.json"
