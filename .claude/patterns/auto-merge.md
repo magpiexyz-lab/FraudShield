@@ -42,31 +42,47 @@ fi
 Why: CI runs gitleaks on PRs. Local verification uses LLM-based security
 review which may miss secrets that deterministic scanning catches.
 
-### Gate 3: Build verification
-
-`verify-pr-gate.sh` blocks PR creation without passing runtime verification.
-But `/verify`'s scope is build + runtime agents — it does NOT run the
-template-lint validators that CI runs (`validate-semantics.py`,
-`validate-convergence-config.py`, `consistency-check.sh`, etc.). A PR
-that passes `/verify` but contains a `.claude/` edit with a semantic
-defect will be auto-merged and CI will fail on main.
-
-### Gate 4: Template-lint parity (when PR touches `.claude/`)
+### Gate 3: Template-lint parity (when PR touches `.claude/`)
 
 ```bash
-if git diff --name-only "$(git merge-base main HEAD)..HEAD" | grep -q '^\.claude/'; then
-  if ! make lint-template; then
-    echo "make lint-template failed — skipping auto-merge."
-    echo "Fix the template-lint failures locally, then re-push."
-    # SKIP — do not merge
+if command -v make >/dev/null 2>&1; then
+  if gh pr diff --name-only 2>/dev/null | grep -q '^\.claude/'; then
+    if ! make lint-template; then
+      echo "make lint-template failed — skipping auto-merge."
+      # SKIP — do not merge
+    fi
   fi
 fi
 ```
 
-Why: `make lint-template` mirrors the CI workflow's validator set (see
-`.github/workflows/ci.yml` and `.github/workflows/stack-knowledge-validate.yml`).
-Running it locally before merge prevents broken template changes from
-landing on main and avoids the follow-up-fix-PR pattern.
+Why: local `/verify` only covers app-level checks (build, design-critic,
+ux-journeyer, security agents). The template-semantic validators that CI
+runs (`validate-semantics.py`, `validate-convergence-config.py`,
+`consistency-check.sh`, `ci-check-stack-knowledge.py`,
+`validate-stack-knowledge.py`, `verify-linter.sh` drift) are disjoint from
+`/verify`. A PR that touches `.claude/` and passes `/verify` can still fail
+CI on those validators, landing a broken `main` (issue #1003). `make
+lint-template` mirrors the CI template-validator set so the gate blocks
+locally before merge. PRs that only touch `src/` skip this gate — no
+`.claude/` diff, no template-semantic risk.
+
+### Why not wait for remote CI instead? (considered and rejected)
+
+<!-- DO_NOT example discussion: the `--auto` flag is mentioned below as something
+     we must NOT use on this repo. Check 21 excludes DO_NOT-marked lines. -->
+An alternative design polls `gh pr checks --watch --fail-fast` between PR
+creation and merge. Advantages: CI is the single source of truth, zero drift
+risk. Disadvantages: +30s–2m per merge (CI median on this repo is ~77s), and
+this private repo has `allow_auto_merge=false` + no GitHub Pro (branch
+protection unavailable, 403), so the usual `gh pr merge` + `--auto` path is <!-- DO_NOT -->
+booby-trapped — it silently falls back to immediate non-gated merge.
+
+For this single-maintainer template repo, the local-mirror approach's only
+real hazard — drift between `Makefile` and `.github/workflows/*.yml` — is
+closed by the parity assertion in `scripts/consistency-check.sh` (Check 20),
+which CI runs on every PR. Net result: ~79s/merge saved with equivalent
+safety. See plan `distributed-wibbling-pebble.md` for the first-principles
+analysis.
 
 ## Merge
 
@@ -75,6 +91,8 @@ FEATURE_BRANCH=$(git branch --show-current)
 
 # All skills use --squash for clean single-commit history.
 # /upgrade tracks sync state via .claude/template-sync-meta.json instead of merge ancestry.
+# DO_NOT add --auto: repo allow_auto_merge=false — --auto silently becomes
+# an immediate non-gated merge (see issue #1003, feedback_gh_pr_merge_auto_fallback).
 if [[ -n "${CLAUDE_WORKTREE:-}" ]]; then
   # In worktree: --delete-branch triggers local checkout of main which fails
   # (main is checked out in primary worktree). Branch is cleaned up by ExitWorktree.
@@ -109,7 +127,36 @@ After merge completes:
 Skills skip auto-merge entirely when:
 - **Upgrade dry-run**: No PR was created (`dry_run == true`)
 - **Review no-findings**: No branch exists (no findings across iterations)
-- **Any safety gate fails**: PR left open with reason reported
+- **Any safety gate fails**: PR left open with reason reported. Reason codes:
+  - `migrations` — Gate 1 detected a `supabase/migrations/` change
+  - `gitleaks` — Gate 2 detected a potential secret
+  - `template-lint` — Gate 3 `make lint-template` failed on a `.claude/` diff
+  - `merge-failed` — `gh pr merge` itself returned non-zero
+
+## Regression Guards
+
+Three invariants protect this procedure from future regressions. All three
+live in `scripts/consistency-check.sh` and run on every PR via the
+`Consistency check` step in `.github/workflows/ci.yml`:
+
+- **Check 20 — Makefile ↔ CI parity.** Every template validator invoked by
+  any `.github/workflows/*.yml` must also appear in the `lint-template:`
+  target in `Makefile`, unless it is deliberately declared in a `# CI-ONLY:`
+  comment directly above the target (for validators that require PR context,
+  are scheduled nightly, etc.). Prevents silent drift between the local
+  mirror and CI.
+
+- **Check 21 — No `--auto` flag.** No file under `.claude/scripts/`,
+  `.claude/patterns/`, or `.claude/hooks/` may add the `--auto` flag to a
+  merge command. Lines containing a `DO_NOT` marker (comments, HTML
+  comments, or inline doc prose) are skipped so this document can discuss
+  the forbidden pattern without tripping the check.
+
+- **Check 22 — Merge-caller allowlist.** All `gh pr merge` invocations under
+  `.claude/` must live in either `.claude/scripts/lifecycle-finalize.sh` or
+  `.claude/patterns/auto-merge.md`. Prevents a future skill/hook from
+  sneaking in a second merge caller that bypasses the Guard chain above.
+  Same `DO_NOT` exclusion applies.
 
 ## User-Facing Messages
 

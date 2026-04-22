@@ -243,6 +243,121 @@ else
   echo "skip (no registry)"
 fi
 
+# 20. Makefile lint-template target must cover every template validator CI runs.
+# Rationale (issue #1003): auto-merge Guard 3 delegates to `make lint-template`
+# as a local mirror of CI. If CI gains a new validator without a matching
+# Makefile edit, the local mirror drifts and auto-merge lets CI-red PRs land.
+# Validators that cannot meaningfully run outside CI (require PR SHAs, scheduled
+# nightly, etc.) are declared in a `# CI-ONLY:` comment directly above the
+# Makefile `lint-template:` target and skipped from the parity assertion.
+echo -n "Check 20: Makefile lint-template ↔ CI validators parity... "
+PARITY_ERR=""
+PARITY_RC=0
+# Wrap command-substitution in `if` so `set -e` treats a non-zero Python exit
+# as ordinary control flow, not a fatal error that terminates the script.
+if PARITY_ERR=$(python3 - <<'PY' 2>&1
+import re, pathlib, sys
+VAL_RE = re.compile(r'(python3\s+-m\s+pytest\s+scripts/|python3\s+scripts/[A-Za-z0-9_-]+\.py|bash\s+scripts/[A-Za-z0-9_-]+\.sh|bash\s+\.claude/scripts/[A-Za-z0-9_-]+\.sh)')
+def extract(text):
+    return {re.sub(r'\s+', ' ', m.group(1)).strip() for m in VAL_RE.finditer(text)}
+ci = set()
+wf_dir = pathlib.Path('.github/workflows')
+if wf_dir.is_dir():
+    for p in sorted(wf_dir.glob('*.yml')):
+        ci |= extract(p.read_text())
+mk_path = pathlib.Path('Makefile')
+mk = set()
+ci_only = set()
+if mk_path.is_file():
+    mk_text = mk_path.read_text()
+    m = re.search(r'^lint-template:.*?(?=^[A-Za-z_][A-Za-z0-9_-]*:|\Z)', mk_text, re.M | re.S)
+    if m: mk = extract(m.group(0))
+    lines = mk_text.splitlines()
+    for i, line in enumerate(lines):
+        if line.strip().startswith('lint-template:') and i > 0:
+            for j in range(i - 1, -1, -1):
+                s = lines[j].strip()
+                if not s.startswith('#'): break
+                if s.startswith('# CI-ONLY:'):
+                    for v in s.split(':', 1)[1].split(','):
+                        v = v.strip()
+                        if v: ci_only.add(re.sub(r'\s+', ' ', v))
+            break
+missing = ci - mk - ci_only
+extra = ci_only - ci
+if missing or extra:
+    if missing:
+        print('MISSING: ' + '; '.join(sorted(missing)))
+    if extra:
+        print('STALE-CI-ONLY: ' + '; '.join(sorted(extra)))
+    sys.exit(1)
+PY
+); then
+  PARITY_RC=0
+else
+  PARITY_RC=1
+fi
+if [ "$PARITY_RC" -ne 0 ]; then
+  echo ""
+  echo "  FAIL: Makefile lint-template drifted from CI validators:"
+  echo "$PARITY_ERR" | sed 's/^/    /'
+  echo "  Add missing validators to Makefile lint-template target, or declare them in a '# CI-ONLY:' comment."
+  ERRORS=$((ERRORS + 1))
+else
+  echo "ok"
+fi
+
+# 21. No `gh pr merge --auto` anywhere under .claude/. Repo allow_auto_merge=false
+# makes --auto silently fire an immediate non-gated merge — see issue #1003 and
+# feedback_gh_pr_merge_auto_fallback memory. Lines with a DO_NOT comment marker
+# are skipped so auto-merge.md can document "do not use this" without tripping.
+# .claude/worktrees/ (transient, gitignored) is excluded.
+echo -n "Check 21: No gh pr merge --auto under .claude/... "
+AUTO_HITS=$(
+  grep -rnE 'pr merge[^\n]*--auto' \
+    --include='*.sh' --include='*.md' \
+    --exclude-dir=worktrees \
+    .claude/scripts/ .claude/patterns/ .claude/hooks/ 2>/dev/null \
+    | grep -vE '\bDO_NOT\b' \
+    || true
+)
+if [ -n "$AUTO_HITS" ]; then
+  echo ""
+  echo "  FAIL: forbidden --auto flag (repo allow_auto_merge=false — silent immediate-merge):"
+  echo "$AUTO_HITS" | sed 's/^/    /'
+  ERRORS=$((ERRORS + 1))
+else
+  echo "ok"
+fi
+
+# 22. gh pr merge callers restricted to an explicit allowlist.
+# Prevents a future script from adding a merge call that bypasses the Guard chain
+# in lifecycle-finalize.sh. DO_NOT-marked lines are skipped (doc mentions).
+# .claude/worktrees/ (transient, gitignored) is excluded.
+echo -n "Check 22: gh pr merge callers restricted to allowlist... "
+MERGE_HITS=$(
+  grep -rnE 'gh pr merge\b' \
+    --include='*.sh' --include='*.md' \
+    --exclude-dir=worktrees \
+    .claude/ 2>/dev/null \
+    | grep -vE '\bDO_NOT\b' \
+    || true
+)
+VIOLATIONS=$(
+  echo "$MERGE_HITS" \
+    | grep -vE '^\.claude/scripts/lifecycle-finalize\.sh:|^\.claude/patterns/auto-merge\.md:' \
+    | grep -v '^$' \
+    || true
+)
+if [ -n "$VIOLATIONS" ]; then
+  echo ""
+  echo "  FAIL: gh pr merge called outside allowlist (lifecycle-finalize.sh, auto-merge.md):"
+  echo "$VIOLATIONS" | sed 's/^/    /'
+  ERRORS=$((ERRORS + 1))
+else
+  echo "ok"
+fi
+
 echo ""
 if [ "$WARNINGS" -gt 0 ]; then
   echo "WARNINGS: $WARNINGS weak postcondition(s) detected (non-blocking)."

@@ -25,6 +25,8 @@ help: ## Show this help message
 sync-verify: ## Sync VERIFY commands from state-registry.json to state files
 	@bash .claude/scripts/sync-verify-to-state-files.sh
 
+# CI-ONLY: python3 scripts/ci-check-graduation-atomicity.py, bash .claude/scripts/stack-knowledge-audit.sh
+# (validators that require PR context or run on a schedule — parsed by scripts/consistency-check.sh Check 20)
 lint-template: ## Run the same template validators CI runs (before pushing .claude/ edits)
 	@echo "== lint-template: running all CI-bound template validators =="
 	@echo "-- validate-frontmatter --"
@@ -51,6 +53,8 @@ lint-template: ## Run the same template validators CI runs (before pushing .clau
 	else \
 	  echo "  no drift"; \
 	fi
+	@echo "-- pytest scripts/ (validator unit tests) --"
+	@python3 -m pytest scripts/ -v --tb=short
 	@echo ""
 	@echo "== All CI-bound template validators passed. Safe to push .claude/ edits. =="
 

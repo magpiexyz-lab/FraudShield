@@ -343,6 +343,21 @@ if d.get('exit_code') != 0:
       fi
     fi
 
+    # Guard 3: template-lint parity. Runs the same validators CI runs on
+    # .claude/ files (validate-semantics.py, validate-stack-knowledge.py, etc.).
+    # Only fires when the PR diff includes .claude/ — pure src/ PRs skip this.
+    # DO_NOT add --auto to the merge command below: repo allow_auto_merge=false
+    # makes --auto silently become an immediate non-gated merge. See issue #1003
+    # and feedback_gh_pr_merge_auto_fallback memory.
+    if [[ -z "$SKIP_MERGE" ]] && command -v make >/dev/null 2>&1; then
+      if gh pr diff --name-only 2>/dev/null | grep -q '^\.claude/'; then
+        if ! make lint-template >&2; then
+          echo "INFO: make lint-template failed — skipping auto-merge" >&2
+          SKIP_MERGE="template-lint"
+        fi
+      fi
+    fi
+
     # Merge
     if [[ -z "$SKIP_MERGE" ]]; then
       FEATURE_BRANCH=$(git branch --show-current)

@@ -156,3 +156,163 @@ class TestCheck13ProviderNamesInHeadings:
         result = run_consistency_check(tmp_path)
         assert result.returncode == 1
         assert "provider name" in result.stdout
+
+
+def _minimal_clean_layout(tmp_path):
+    """Create just enough for the other checks to pass so we can isolate 20/21/22."""
+    (tmp_path / ".claude" / "commands").mkdir(parents=True)
+    write_file(
+        str(tmp_path / ".claude" / "commands" / "test.md"),
+        "---\ntype: code-writing\n---\nFollow patterns/verify.md.\n",
+    )
+    write_file(str(tmp_path / "CLAUDE.md"), "# Rules\n")
+
+
+class TestCheck20MakefileCiParity:
+    """Makefile lint-template must cover every template validator CI runs."""
+
+    def test_passes_when_no_ci_workflows(self, tmp_path):
+        # No .github/workflows → nothing to mirror, Check 20 is vacuously ok.
+        _minimal_clean_layout(tmp_path)
+        result = run_consistency_check(tmp_path)
+        assert "Check 20: Makefile lint-template ↔ CI validators parity... ok" in result.stdout
+
+    def test_passes_when_makefile_mirrors_ci(self, tmp_path):
+        _minimal_clean_layout(tmp_path)
+        (tmp_path / ".github" / "workflows").mkdir(parents=True)
+        write_file(
+            str(tmp_path / ".github" / "workflows" / "ci.yml"),
+            "name: CI\nsteps:\n  - run: python3 scripts/validate-foo.py\n",
+        )
+        write_file(
+            str(tmp_path / "Makefile"),
+            "lint-template:\n\t@python3 scripts/validate-foo.py\n",
+        )
+        result = run_consistency_check(tmp_path)
+        assert "Check 20: Makefile lint-template ↔ CI validators parity... ok" in result.stdout
+
+    def test_fails_when_makefile_missing_validator(self, tmp_path):
+        _minimal_clean_layout(tmp_path)
+        (tmp_path / ".github" / "workflows").mkdir(parents=True)
+        write_file(
+            str(tmp_path / ".github" / "workflows" / "ci.yml"),
+            "name: CI\nsteps:\n  - run: python3 scripts/validate-foo.py\n  - run: python3 scripts/validate-bar.py\n",
+        )
+        write_file(
+            str(tmp_path / "Makefile"),
+            "lint-template:\n\t@python3 scripts/validate-foo.py\n",
+        )
+        result = run_consistency_check(tmp_path)
+        assert result.returncode == 1
+        assert "Makefile lint-template drifted from CI validators" in result.stdout
+        assert "validate-bar.py" in result.stdout
+
+    def test_passes_when_ci_only_comment_covers_gap(self, tmp_path):
+        _minimal_clean_layout(tmp_path)
+        (tmp_path / ".github" / "workflows").mkdir(parents=True)
+        write_file(
+            str(tmp_path / ".github" / "workflows" / "ci.yml"),
+            "name: CI\nsteps:\n  - run: python3 scripts/validate-foo.py\n  - run: python3 scripts/validate-bar.py\n",
+        )
+        write_file(
+            str(tmp_path / "Makefile"),
+            "# CI-ONLY: python3 scripts/validate-bar.py\n"
+            "lint-template:\n\t@python3 scripts/validate-foo.py\n",
+        )
+        result = run_consistency_check(tmp_path)
+        assert "Check 20: Makefile lint-template ↔ CI validators parity... ok" in result.stdout
+
+    def test_fails_when_ci_only_lists_stale_entry(self, tmp_path):
+        _minimal_clean_layout(tmp_path)
+        (tmp_path / ".github" / "workflows").mkdir(parents=True)
+        write_file(
+            str(tmp_path / ".github" / "workflows" / "ci.yml"),
+            "name: CI\nsteps:\n  - run: python3 scripts/validate-foo.py\n",
+        )
+        write_file(
+            str(tmp_path / "Makefile"),
+            "# CI-ONLY: python3 scripts/validate-gone.py\n"
+            "lint-template:\n\t@python3 scripts/validate-foo.py\n",
+        )
+        result = run_consistency_check(tmp_path)
+        assert result.returncode == 1
+        assert "STALE-CI-ONLY" in result.stdout
+        assert "validate-gone.py" in result.stdout
+
+
+class TestCheck21NoAutoFlag:
+    """No gh pr merge --auto anywhere under .claude/ (allow_auto_merge=false footgun)."""
+
+    def test_passes_when_clean(self, tmp_path):
+        _minimal_clean_layout(tmp_path)
+        (tmp_path / ".claude" / "scripts").mkdir(parents=True)
+        write_file(
+            str(tmp_path / ".claude" / "scripts" / "finalize.sh"),
+            "#!/bin/bash\ngh pr merge --squash\n",
+        )
+        result = run_consistency_check(tmp_path)
+        assert "Check 21: No gh pr merge --auto under .claude/... ok" in result.stdout
+
+    def test_fails_when_auto_flag_present(self, tmp_path):
+        _minimal_clean_layout(tmp_path)
+        (tmp_path / ".claude" / "scripts").mkdir(parents=True)
+        write_file(
+            str(tmp_path / ".claude" / "scripts" / "bad.sh"),
+            "#!/bin/bash\ngh pr merge --auto --squash\n",
+        )
+        result = run_consistency_check(tmp_path)
+        assert result.returncode == 1
+        assert "forbidden --auto flag" in result.stdout
+
+    def test_passes_when_auto_is_behind_do_not_marker(self, tmp_path):
+        # DO_NOT marker in doc prose should be skipped (this is how auto-merge.md
+        # discusses the forbidden pattern without tripping the check).
+        _minimal_clean_layout(tmp_path)
+        (tmp_path / ".claude" / "patterns").mkdir(parents=True)
+        write_file(
+            str(tmp_path / ".claude" / "patterns" / "auto-merge.md"),
+            "# Auto-Merge\n\n# DO_NOT: gh pr merge --auto  # silently immediate-merges\n",
+        )
+        result = run_consistency_check(tmp_path)
+        assert "Check 21: No gh pr merge --auto under .claude/... ok" in result.stdout
+
+
+class TestCheck22MergeCallerAllowlist:
+    """gh pr merge must only be called from lifecycle-finalize.sh or auto-merge.md."""
+
+    def test_passes_when_only_allowlisted_callers(self, tmp_path):
+        _minimal_clean_layout(tmp_path)
+        (tmp_path / ".claude" / "scripts").mkdir(parents=True)
+        (tmp_path / ".claude" / "patterns").mkdir(parents=True)
+        write_file(
+            str(tmp_path / ".claude" / "scripts" / "lifecycle-finalize.sh"),
+            "#!/bin/bash\ngh pr merge --squash\n",
+        )
+        write_file(
+            str(tmp_path / ".claude" / "patterns" / "auto-merge.md"),
+            "# Auto-Merge\n```bash\ngh pr merge --squash\n```\n",
+        )
+        result = run_consistency_check(tmp_path)
+        assert "Check 22: gh pr merge callers restricted to allowlist... ok" in result.stdout
+
+    def test_fails_when_rogue_caller_added(self, tmp_path):
+        _minimal_clean_layout(tmp_path)
+        (tmp_path / ".claude" / "scripts").mkdir(parents=True)
+        write_file(
+            str(tmp_path / ".claude" / "scripts" / "rogue.sh"),
+            "#!/bin/bash\ngh pr merge --squash\n",
+        )
+        result = run_consistency_check(tmp_path)
+        assert result.returncode == 1
+        assert "gh pr merge called outside allowlist" in result.stdout
+        assert "rogue.sh" in result.stdout
+
+    def test_passes_when_rogue_mention_is_behind_do_not_marker(self, tmp_path):
+        _minimal_clean_layout(tmp_path)
+        (tmp_path / ".claude" / "hooks").mkdir(parents=True)
+        write_file(
+            str(tmp_path / ".claude" / "hooks" / "some-hook.sh"),
+            "#!/bin/bash\n# DO_NOT: do not call 'gh pr merge' here — use lifecycle-finalize.sh\n",
+        )
+        result = run_consistency_check(tmp_path)
+        assert "Check 22: gh pr merge callers restricted to allowlist... ok" in result.stdout
