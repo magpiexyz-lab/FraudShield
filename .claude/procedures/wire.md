@@ -140,7 +140,7 @@ If `stack.testing` is present in experiment.yaml:
   - Read the behaviors test template from the testing stack file
   - For each behavior with `actor: user` (or `actor` absent — default is user):
     - Create a `test.describe` block labeled `"<id>: <when clause summary>"`
-    - Determine auth requirement from `given` field: phrases like "logged-in user", "authenticated user", "user on dashboard" → add `test.use({ storageState: "e2e/.auth.json" })`. Otherwise → anonymous (no storageState).
+    - Determine auth requirement from `given` field via `.claude/patterns/given-auth-matcher.md` — that file is the single canonical source of auth-phrase classification (both this scaffolding step and `.claude/procedures/behavior-verifier.md` consume it). If `requiresAuth(given).result === true` → add `test.use({ storageState: "e2e/.auth.json" })`; otherwise → anonymous (no storageState).
     - For each entry in `behavior.tests` array: create a `test()` case with the entry as the test name
     - Read actual page source (from the page associated with the behavior's golden_path step or from the behavior's `given`/`when` context) to extract real Playwright selectors
     - **Assertion depth**: Read the behavior's `then` clause to determine assertion pattern. Every `test()` must include at least one assertion beyond `toBeVisible()`:
