@@ -111,6 +111,8 @@ KNOWN_OBJECT_ENTRIES = {
     ("change", "3"),
     ("change", "6"),
     ("review", "2b"),
+    ("review", "2e"),  # #928 fix: allows_early_exit_when=no_fixes
+    ("review", "4"),   # #928 fix: verify_semantics=no_regression_from_baseline
     ("verify", "7b"),
 }
 

@@ -289,6 +289,52 @@ Write `.runs/retrospective-result.json`:
 }
 ```
 
+### Step 5b-coherence: Cross-File Coherence Findings
+
+**Activates:** when `.runs/template-coherence-cache.json` exists (written by
+`lifecycle-finalize.sh` Step 4.5) AND contains non-empty findings.
+
+**Skip when:** cache absent (no template files changed since last run) OR all
+finding categories are empty.
+
+The cache contains static cross-file analysis from `verify-linter.sh`,
+including the `cross_file_contradiction` category populated by rules in
+`.claude/patterns/template-coherence-rules.json` (e.g., `field_role_map`,
+`artifact_lifecycle`). These findings catch defects #931 / #1024 (template
+file A says X, template file B says ¬X) that runtime artifacts cannot
+surface.
+
+```bash
+python3 - <<'PYEOF'
+import json, os
+cache = '.runs/template-coherence-cache.json'
+if not os.path.isfile(cache):
+    print('NO_COHERENCE_CACHE')
+else:
+    d = json.load(open(cache))
+    findings = d.get('cross_file_contradiction', [])
+    if findings:
+        print(f'COHERENCE_FINDINGS={len(findings)}')
+        for f in findings:
+            print(f'  {f}')
+    else:
+        print('COHERENCE_CLEAN')
+PYEOF
+```
+
+**For each finding** that emerges from this step, apply the standard
+3-condition test from `.claude/patterns/observe.md`:
+- **A.** Template file is root cause (yes — coherence rules only fire on `.claude/` files)
+- **B.** Not an environment issue (yes — static analysis, no runtime dependency)
+- **C.** Not a user code issue (yes — operates only on template files)
+
+All cross-file contradictions trivially satisfy A/B/C. Apply the standard
+**Redaction** and **Dedup** procedures from observe.md, then file qualifying
+findings via the observer agent in Step 6 (Unified Filing).
+
+**Counted in `observe-result.json`:** each filed finding increments
+`observations_filed`.
+
 ### Step 5b: Deterministic Compliance Audit
 
 **Activates:** Always (all scopes).

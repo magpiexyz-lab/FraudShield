@@ -13,6 +13,8 @@ clean:
   dirs: []
 gitignore: []
 ---
+<!-- coherence-allow: raw-golden_path (sequence-step) — google-ads sitelinks are derived from golden_path step descriptions in funnel order (landing → value → retention) for click priority. LIST semantics, not SET. -->
+
 # Distribution: Google Ads
 > Used when `/distribute` is run with channel `google-ads`
 > Assumes: None — distribution stacks create no source code or packages; they generate config only

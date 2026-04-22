@@ -16,6 +16,9 @@ SUITES=(
   ".claude/scripts/tests/test_agent_trace_write_guard.py"
   ".claude/scripts/tests/test_transient_teardown.py"
   ".claude/scripts/tests/test_state3b_review_method_merge.py"
+  ".claude/scripts/tests/test_derive_pages.py"
+  ".claude/scripts/tests/test_verify_semantics.py"
+  ".claude/scripts/tests/test_field_role_map_rule.py"
 )
 
 FAIL=0

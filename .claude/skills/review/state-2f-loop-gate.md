@@ -59,28 +59,35 @@ Termination decision (evaluate in order — first match wins):
 
 State which condition triggered your decision before proceeding.
 
-- **Write loop decision artifact** (`.runs/review-loop-decision.json`):
+- **Extend loop decision artifact** (`.runs/review-loop-decision.json`):
+  STATE 2e wrote the per-batch fields (`fixes_succeeded`, `fixes_reverted`,
+  `fixes_skipped`, `exit_reason`). STATE 2f reads that file and extends it
+  with iteration/yield/termination fields. **Use `d.update({...})`, not full
+  overwrite** — overwriting would silently drop 2e's fields and break the
+  state-2e VERIFY contract.
   ```bash
-  python3 -c "
-  import json
-  decision = {
-      'iteration': 0,
-      'yield_rate': 0.0,
-      'termination_condition': '<condition that triggered>',
-      'continue': False
-  }
-  json.dump(decision, open('.runs/review-loop-decision.json', 'w'), indent=2)
-  "
+  python3 - <<'PYEOF'
+  import json, os
+  p = '.runs/review-loop-decision.json'
+  d = json.load(open(p)) if os.path.isfile(p) else {}   # tolerate 2e being skipped
+  d.update({
+      'iteration': 0,                              # <int — current iteration number>
+      'yield_rate': 0.0,                           # <float — yield this iteration>
+      'termination_condition': '<which rule>',     # <"minimum_floor"|"zero_yield"|"regression_trend"|"diminishing_returns"|"hard_cap"|"continue">
+      'continue': False                            # <bool — True if loop continues, False if exiting>
+  })
+  json.dump(d, open(p, 'w'), indent=2)
+  PYEOF
   ```
 
 **POSTCONDITIONS:**
 - Compact state summary emitted
 - Termination decision made and stated with triggering condition
-- `.runs/review-loop-decision.json` exists
+- `.runs/review-loop-decision.json` exists with both 2e fields preserved AND 2f fields added
 
 **VERIFY:**
 ```bash
-python3 -c "import json; d=json.load(open('.runs/review-loop-decision.json')); assert isinstance(d.get('iteration'), int) and d['iteration']>=1, 'iteration missing or <1'; assert isinstance(d.get('yield_rate'), (int, float)), 'yield_rate missing or not numeric'; assert d.get('termination_condition'), 'termination_condition empty'; assert isinstance(d.get('continue'), bool), 'continue missing or not bool'"
+python3 -c "import json; d=json.load(open('.runs/review-loop-decision.json')); assert 'fixes_succeeded' in d and 'exit_reason' in d, '2e fields lost in 2f overwrite'; assert isinstance(d.get('iteration'), int) and d['iteration']>=1, 'iteration missing or <1'; assert isinstance(d.get('yield_rate'), (int, float)), 'yield_rate missing or not numeric'; assert d.get('termination_condition'), 'termination_condition empty'; assert isinstance(d.get('continue'), bool), 'continue missing or not bool'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

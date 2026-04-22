@@ -18,8 +18,13 @@ If new validator checks were implemented in State 2e:
 
 **VERIFY:**
 ```bash
-python3 -c "import json; d=json.load(open('.runs/review-complete.json')); assert d.get('timestamp'), 'timestamp empty'; assert isinstance(d.get('iterations'), int) and d['iterations'] >= 1, 'iterations invalid'; assert isinstance(d.get('findings_fixed'), int) and d['findings_fixed']>=0, 'findings_fixed invalid'; assert isinstance(d.get('findings_disputed'), int) and d['findings_disputed']>=0, 'findings_disputed invalid'; assert isinstance(d.get('final_errors'), int) and d['final_errors']>=0, 'final_errors invalid'"
+test -f scripts/check-inventory.md && python3 -c "import os; assert os.path.getsize('scripts/check-inventory.md') > 0, 'check-inventory.md is empty'"
 ```
+
+> **VERIFY rationale:** STATE 3 only updates `scripts/check-inventory.md` —
+> it does NOT write `.runs/review-complete.json`. STATE 4 writes that file.
+> The previous VERIFY checked `review-complete.json` which fails if STATE 3
+> runs immediately after STATE 2f (loop exit), since STATE 4 hasn't run yet.
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
 ```bash

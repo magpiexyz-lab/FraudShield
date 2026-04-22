@@ -1,3 +1,5 @@
+<!-- coherence-allow: raw-golden_path (sequence-step) — ux-journeyer walks golden_path steps in order, recording coverage_pct as percentage of sequential steps successfully completed. LIST semantics, not SET. -->
+
 # UX Journeyer Procedure
 
 > Executed by the ux-journeyer agent. See `.claude/agents/ux-journeyer.md` for identity and output contract.

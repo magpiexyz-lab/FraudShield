@@ -24,9 +24,17 @@ Each agent prompt (single page or batched group):
   `.runs/current-visual-brief.md`, `.runs/image-manifest.json`
 - Follow CLAUDE.md Rules 3, 4, 6, 7, 9
 
-**Scope guard -- MANDATORY DERIVATION**: Read `golden_path` from experiment.yaml NOW. Extract the unique page names (excluding landing). Write them as a numbered list below before spawning any agents. Spawn scaffold-pages agents for EXACTLY these pages -- no more, no fewer. Use the batching policy to determine agent grouping. Do NOT use the `pages:` field or any other source. BG2 check 3b will independently count pages on disk and BLOCK if actual count exceeds golden_path count.
+**Scope guard -- MANDATORY DERIVATION**: Compute the canonical page list by calling `derive_scope_pages()` from `.claude/scripts/lib/derive_pages.py`:
 
-**Auth-derived page exception**: When `stack.auth` is present, also include `login` and `signup` pages in the spawn list if they are not already in golden_path. These are infrastructure pages required by the auth stack (see auth stack file) and owned by scaffold-pages. Do NOT include scaffold-wire-owned routes (`auth/callback`, `auth/reset-password`) — those are created in STATE 14. Count auth-derived pages separately from the golden_path limit in BG2 check 3b.
+```bash
+python3 .claude/scripts/lib/derive_pages.py scope < experiment/experiment.yaml
+```
+
+The output is the canonical SET of pages that must exist on disk: the union of `golden_path[*].page`, `behaviors[*].pages`, and auth-derived pages (login/signup if stack.auth is set), with `landing` excluded (scaffold-landing owns it). Write the returned list as a numbered list below before spawning any agents. Spawn scaffold-pages agents for EXACTLY these pages -- no more, no fewer. Use the batching policy to determine agent grouping. BG2 check 3b will independently re-derive via the same function and BLOCK if actual count exceeds expected count; BG2 check 3c additionally enforces that every behavior.pages reference exists on disk.
+
+> **Why this changed (#1024 fix):** Previously this state read `golden_path` directly and explicitly forbade the `pages:` field. That made any behavior referencing a page outside `golden_path` (e.g., admin, dashboard, portfolio, public invoice page) get backend + RLS + tests scaffolded by scaffold-wire but its frontend page silently blocked, causing 404 traps after deploy. The canonical derivation now reads `behaviors[*].pages` (REQUIRED for web-app + actor:user) so every user-referenced page gets scaffolded. See `.claude/templates/experiment-yaml.md` for schema.
+
+**Auth-derived page exception**: `derive_scope_pages()` already adds `login` and `signup` when `stack.auth` is set, so they appear in the canonical list automatically. Do NOT include scaffold-wire-owned routes (`auth/callback`, `auth/reset-password`) — those are created in STATE 14.
 
 **Batching policy:**
 - **6 or fewer pages** (excluding landing): spawn one agent per page.
@@ -84,13 +92,13 @@ print(f'Merged {len(batches)} per-page traces into scaffold-pages.json')
 **Post-fan-out trace verification** (before proceeding):
 Verify each subagent produced its expected output:
 - `test -f .runs/agent-traces/scaffold-libs.json` (already verified in STATE 11a)
-- `test -f .runs/agent-traces/scaffold-pages-<page>.json` for each golden_path page
+- `test -f .runs/agent-traces/scaffold-pages-<page>.json` for each page in `derive_scope_pages()`
 - Landing subagent reported completion: `test -f .runs/agent-traces/scaffold-landing.json && python3 -c "import json;d=json.load(open('.runs/agent-traces/scaffold-landing.json'));assert d.get('status')=='complete';print('scaffold-landing trace: OK')"`. If trace missing: log "WARN: scaffold-landing did not write trace -- continuing with file-based verification".
 
 If any trace is missing or output was truncated: note the gap for STATE 13 to address.
 
 **Post-fan-out disk audit** (verify files actually exist on disk -- traces alone are not proof):
-- For each golden_path page (excluding landing): run `test -f src/app/<page_name>/page.tsx`.
+- For each page in `derive_scope_pages()` (landing already excluded): run `test -f src/app/<page_name>/page.tsx`.
   If the file is missing but the trace file exists (agent claimed success):
   - Re-create the page file directly as the bootstrap lead (budget: 1 attempt per page)
   - Use the trace's metadata and experiment.yaml context to generate the page

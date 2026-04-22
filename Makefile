@@ -25,6 +25,9 @@ help: ## Show this help message
 sync-verify: ## Sync VERIFY commands from state-registry.json to state files
 	@bash .claude/scripts/sync-verify-to-state-files.sh
 
+test-verify-semantics: ## Behavioral tests for review skill VERIFY semantics (#928 regression guard)
+	@python3 .claude/scripts/tests/test_verify_semantics.py
+
 # CI-ONLY: python3 scripts/ci-check-graduation-atomicity.py, bash .claude/scripts/stack-knowledge-audit.sh
 # (validators that require PR context or run on a schedule — parsed by scripts/consistency-check.sh Check 20)
 lint-template: ## Fast: run validators against .claude/ content (~1-3s; no validator unit tests)
@@ -46,12 +49,14 @@ lint-template: ## Fast: run validators against .claude/ content (~1-3s; no valid
 	else \
 	  echo "  (no live stack files — skipped)"; \
 	fi
-	@echo "-- state-registry drift (DRIFT_DECLARED_VS_PROSE) --"
-	@if bash .claude/scripts/verify-linter.sh 2>&1 | grep -q '^DRIFT_DECLARED_VS_PROSE'; then \
-	  echo "FAIL: DRIFT_DECLARED_VS_PROSE detected in state-registry.json vs state files"; \
+	@echo "-- state-registry drift + cross-file coherence (DRIFT_DECLARED_VS_PROSE | CROSS_FILE_CONTRADICTION) --"
+	@OUTPUT=$$(bash .claude/scripts/verify-linter.sh 2>&1); \
+	echo "$$OUTPUT" | grep -E '^(DRIFT_DECLARED_VS_PROSE|CROSS_FILE_CONTRADICTION)' || true; \
+	if echo "$$OUTPUT" | grep -qE '^(DRIFT_DECLARED_VS_PROSE|CROSS_FILE_CONTRADICTION)'; then \
+	  echo "FAIL: template coherence violations detected (see above)"; \
 	  exit 1; \
 	else \
-	  echo "  no drift"; \
+	  echo "  no drift, no cross-file contradictions"; \
 	fi
 	@echo ""
 	@echo "== All CI-bound template validators passed. Safe to push .claude/ edits. =="

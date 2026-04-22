@@ -31,8 +31,14 @@
 
 **VERIFY:**
 ```bash
-test -f .runs/review-complete.json && python3 scripts/validate-frontmatter.py > /dev/null 2>&1 && python3 scripts/validate-semantics.py > /dev/null 2>&1 && bash scripts/consistency-check.sh > /dev/null 2>&1
+test -f .runs/review-complete.json && python3 -c "import json; d=json.load(open('.runs/review-complete.json')); assert d.get('final_errors',0) <= d.get('baseline_errors',0), 'final_errors %d > baseline_errors %d (no regression allowed)' % (d.get('final_errors',0), d.get('baseline_errors',0))"
 ```
+
+> **VERIFY rationale:** ACTIONS allow `final_errors <= baseline_errors` (some
+> validators have non-zero baselines on legacy projects). The previous VERIFY
+> re-ran the 3 validators and demanded all exit 0, which contradicted ACTIONS
+> on baseline-error projects. The new VERIFY reads the artifact and asserts
+> non-regression, matching ACTIONS intent (verify_semantics: no_regression_from_baseline).
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
 ```bash

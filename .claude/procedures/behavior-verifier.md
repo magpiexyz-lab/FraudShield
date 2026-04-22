@@ -1,3 +1,5 @@
+<!-- coherence-allow: raw-golden_path (sequence-step) — behavior-verifier walks each golden_path step in a single browser context with state carried forward. LIST semantics, not SET. -->
+
 # Behavior Verifier Procedure
 
 > Executed by the behavior-verifier agent. See `.claude/agents/behavior-verifier.md` for identity, failure taxonomy, and output contract.

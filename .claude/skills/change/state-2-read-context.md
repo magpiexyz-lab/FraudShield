@@ -12,7 +12,7 @@
 
 > REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
 
-- Read `experiment/experiment.yaml` — understand the current scope, pages (derived from golden_path), existing behaviors, target user, thesis
+- Read `experiment/experiment.yaml` — understand the current scope, the canonical page set (computed by `derive_scope_pages()` over `golden_path` + `behaviors[*].pages` — see `.claude/templates/experiment-yaml.md`), existing behaviors, target user, thesis
 - Read `experiment/EVENTS.yaml` — understand existing analytics events (this is the canonical event list)
 - CALL: `.claude/archetypes/<type>.md` — read the archetype file (type from experiment.yaml, default `web-app`). Apply archetype behavior per `patterns/archetype-behavior-check.md`. (Key: web-app=pages+landing, service=API-only, cli=commands). Record key constraints extracted from the archetype.
 - Resolve the stack: read experiment.yaml `stack`. For each category, read `.claude/stacks/<category>/<value>.md`. If a stack file doesn't exist for a given value, generate it: read `.claude/stacks/TEMPLATE.md` for the schema, read existing files in the same category as reference, and create `.claude/stacks/<category>/<value>.md` with complete frontmatter and code templates. Run `python3 scripts/validate-frontmatter.py` to verify (max 2 fix attempts). If validation fails, stop: "Could not generate a valid stack file for `<category>/<value>`. Create it manually using TEMPLATE.md as a guide." File an observation (REF: `.claude/patterns/observe.md`) for the missing stack file.

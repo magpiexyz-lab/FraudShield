@@ -140,7 +140,7 @@ The root `route.ts` is created only when surface is `co-located` (the default fo
   - **service / cli** (plain HTML): write `<script type="application/ld+json">...</script>` directly in the inline HTML `<head>` — no React, so the prop concern does not apply (see `procedures/scaffold-landing.md` per-archetype JSON-LD embedding).
 
   Schema.org type per archetype: `WebApplication` (web-app), `WebAPI` (service), `SoftwareApplication` (cli).
-- `src/app/sitemap.ts`: export a default function returning `MetadataRoute.Sitemap` — URLs derived from golden_path pages
+- `src/app/sitemap.ts`: export a default function returning `MetadataRoute.Sitemap` — URLs derived from `derive_scope_pages(experiment)` (call `python3 .claude/scripts/lib/derive_pages.py scope < experiment/experiment.yaml`); see `.claude/procedures/scaffold-pages.md` Step 3b for the contract
 - `src/app/robots.ts`: export a default function returning `MetadataRoute.Robots` — allow all crawlers for MVP (`{ rules: { userAgent: '*', allow: '/' } }`)
 
 ## React 19 Patterns

@@ -1,3 +1,5 @@
+<!-- coherence-allow: raw-golden_path (sequence-step) — wire reads golden_path as the ordered funnel sequence for nav-bar links, e2e funnel tests, and step-by-step assertions; this is LIST semantics, not SET semantics. SCOPE consumers (page count cap, sitemap inventory) call derive_scope_pages() instead — see .claude/scripts/lib/derive_pages.py. -->
+
 # Wire Procedure
 
 ## Prerequisites

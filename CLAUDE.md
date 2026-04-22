@@ -7,7 +7,7 @@ Rules are in priority order. When two rules conflict, the lower-numbered rule wi
 ## Rule 0: Scope Lock
 - Only build what is described in `experiment/experiment.yaml`
 - If a behavior isn't listed in `behaviors`, don't build it
-- Pages are derived from `golden_path` — don't create pages not referenced there
+- Pages are derived from `derive_scope_pages()` (`.claude/scripts/lib/derive_pages.py`) — see `.claude/templates/experiment-yaml.md` for the canonical schema. The page set is the union of `golden_path[*].page`, `behaviors[*].pages` (web-app archetype, required field), and auth-derived pages.
 - If you're unsure whether something is in scope, it isn't
 - To add a new behavior, use the /change skill — it updates experiment.yaml first, then implements
 - When asked to do something outside a defined skill (/audit, /spec, /bootstrap, /change, /deploy, /distribute, /iterate, /observe, /optimize-prompt, /resolve, /retro, /review, /rollback, /solve, /teardown, /upgrade, /verify), ask the user to clarify before proceeding
@@ -137,7 +137,8 @@ Template-rooted issues are detected and filed automatically.
 `lifecycle-finalize.sh` runs the epilogue for all skills:
 1. The command file reads `.claude/patterns/finalize-epilogue.md` which calls `.claude/patterns/skill-epilogue.md`
 2. `skill-epilogue.md` derives observation scope from `skill.yaml` and calls `.claude/patterns/observation-phase.md` — the unified observation procedure for all skills
-3. **Manual observation** (/observe): Use `/observe --file <path> --symptom "<desc>"` to manually file observations outside of automated flows
+3. **Cross-file coherence findings** (Step 5b-coherence in observation-phase.md): `lifecycle-finalize.sh` Step 4.5 runs `verify-linter.sh` against declarative rules in `.claude/patterns/template-coherence-rules.json` (cached, content-addressed). Findings emit as the `cross_file_contradiction` category and are folded into observation candidates via the same 3-condition test as fix-log entries.
+4. **Manual observation** (/observe): Use `/observe --file <path> --symptom "<desc>"` to manually file observations outside of automated flows
 
 No manual note-taking is required during skill execution. For ad-hoc fixes
 outside of a skill context, use `/observe` to evaluate and file template

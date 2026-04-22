@@ -1,25 +1,59 @@
 #!/usr/bin/env bash
-# verify-linter.sh — Detect VERIFY-postcondition drift in state files.
+# verify-linter.sh — Detect VERIFY-postcondition drift AND cross-file contradictions.
 # Checks: artifact coverage, state-file/registry divergence, unjustified true VERIFY,
-# declared-field / prose drift (allows_early_exit_when, verify_semantics).
-# Exit 0 if clean, exit 1 if UNCOVERED, UNJUSTIFIED_TRUE, DIVERGED, or DRIFT_DECLARED_VS_PROSE.
+# declared-field / prose drift, cross-file contradictions (rule-driven).
+# Exit 0 if clean, exit 1 if any category non-empty (overridden by --warn-only).
+#
+# CLI flags:
+#   --json              Emit machine-readable JSON to stdout (no human report)
+#   --cache <path>      Write findings to cache file (used by lifecycle-finalize.sh)
+#   --warn-only         Always exit 0 (still print findings; for non-blocking checks)
+#   --rules <path>      Override default rules file path
 
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 REGISTRY="$REPO_ROOT/.claude/patterns/state-registry.json"
 SKILLS_DIR="$REPO_ROOT/.claude/skills"
+RULES="$REPO_ROOT/.claude/patterns/template-coherence-rules.json"
+
+JSON_OUT=""
+CACHE_FILE=""
+WARN_ONLY=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --json)        JSON_OUT="1"; shift ;;
+    --cache)       CACHE_FILE="$2"; shift 2 ;;
+    --warn-only)   WARN_ONLY="1"; shift ;;
+    --rules)       RULES="$2"; shift 2 ;;
+    *)             echo "ERROR: unknown flag: $1" >&2; exit 2 ;;
+  esac
+done
 
 if [[ ! -f "$REGISTRY" ]]; then
   echo "ERROR: state-registry.json not found at $REGISTRY" >&2
   exit 1
 fi
 
+export VL_JSON_OUT="$JSON_OUT"
+export VL_CACHE_FILE="$CACHE_FILE"
+export VL_WARN_ONLY="$WARN_ONLY"
+export VL_RULES_PATH="$RULES"
+export VL_REPO_ROOT="$REPO_ROOT"
+
 python3 - "$REGISTRY" "$SKILLS_DIR" <<'PYTHON_SCRIPT'
 import json, sys, os, glob, re
 
 registry_path = sys.argv[1]
 skills_dir = sys.argv[2]
+
+# CLI flags exported from the bash wrapper
+JSON_OUT = bool(os.environ.get("VL_JSON_OUT"))
+CACHE_FILE = os.environ.get("VL_CACHE_FILE", "")
+WARN_ONLY = bool(os.environ.get("VL_WARN_ONLY"))
+RULES_PATH = os.environ.get("VL_RULES_PATH", "")
+REPO_ROOT = os.environ.get("VL_REPO_ROOT", os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 registry = json.load(open(registry_path))
 
@@ -30,6 +64,7 @@ uncovered = []
 diverged = []
 unjustified_true = []
 drift_declared = []
+cross_file = []
 
 # Phrases that count as matching prose for a declared `allows_early_exit_when` value.
 # The declared value itself (with _ replaced by space) is always matched; this dict
@@ -286,41 +321,248 @@ for skill, states in registry.items():
         # --- Check 4: Declared field / prose drift ---
         drift_declared.extend(check_declared_drift(skill, state_id, value, file_text))
 
-# --- Output report ---
-print("VERIFY Linter Report")
-print("====================")
-print()
 
-if uncovered:
-    print("UNCOVERED (artifact in postcondition but not in VERIFY):")
-    for line in uncovered:
-        print(line)
-    print()
+# ---------------------------------------------------------------------------
+# Check 5: Cross-file contradictions (rule-driven)
+# ---------------------------------------------------------------------------
 
-if diverged:
-    print("DIVERGED (state file VERIFY != registry VERIFY):")
-    for line in diverged:
-        print(line)
-    print()
+def check_field_role_map(rule):
+    """Verify each consumer mentions the canonical derivation function and
+    contains no count-based raw access patterns to the named field.
 
-if unjustified_true:
-    print("UNJUSTIFIED_TRUE:")
-    for line in unjustified_true:
-        print(line)
-    print()
+    Rule shape:
+      {
+        "id": "<rule_id>",
+        "type": "field_role_map",
+        "field": "<field_name>",         # e.g. "golden_path"
+        "canonical_function": "<name>",  # e.g. "derive_scope_pages"
+        "consumers": ["<file>", ...]     # paths relative to repo root
+      }
 
-if drift_declared:
-    print("DRIFT_DECLARED_VS_PROSE (registry declaration disagrees with state-file prose):")
-    for line in drift_declared:
-        print(line)
-    print()
+    Mention check (consumer must call canonical OR have explicit pragma):
+      `<canonical>(` substring OR `<!-- coherence-allow: raw-<field>` pragma
 
-print(
-    f"Summary: {len(uncovered)} uncovered, {len(diverged)} diverged, "
-    f"{len(unjustified_true)} unjustified_true, {len(drift_declared)} drift_declared"
+    Forbidden patterns (UNCONDITIONAL — pragma cannot whitelist these):
+      `len(... <field> ...)` and `set(... <field> ...)`
+      Count-based access defeats the centralization purpose.
+    """
+    out = []
+    canonical = rule.get("canonical_function", "")
+    field = rule.get("field", "")
+    rid = rule.get("id", "<unknown>")
+    if not canonical or not field:
+        out.append(f"  [{rid}] rule definition incomplete (need canonical_function and field)")
+        return out
+
+    forbidden = [
+        re.compile(rf"\blen\s*\(\s*[^)]*\b{re.escape(field)}\b"),
+        re.compile(rf"\bset\s*\(\s*[^)]*\b{re.escape(field)}\b"),
+    ]
+    pragma_marker = f"<!-- coherence-allow: raw-{field}"
+
+    for consumer_path in rule.get("consumers", []):
+        full = os.path.join(REPO_ROOT, consumer_path)
+        if not os.path.isfile(full):
+            out.append(f"  [{rid}] consumer not found on disk: {consumer_path}")
+            continue
+        text = open(full).read()
+        has_canonical = canonical in text
+        has_pragma = pragma_marker in text
+        if not has_canonical and not has_pragma:
+            out.append(
+                f"  [{rid}] {consumer_path} doesn't mention {canonical}() and has no "
+                f"`{pragma_marker} (...)` pragma"
+            )
+        for pat in forbidden:
+            for m in pat.finditer(text):
+                # Find which line for human-friendly reporting
+                line_num = text[: m.start()].count("\n") + 1
+                out.append(
+                    f"  [{rid}] {consumer_path}:{line_num} forbidden count-based access: "
+                    f"{m.group(0)!r} (pragma cannot whitelist this)"
+                )
+    return out
+
+
+# Patterns that indicate an artifact reference is NOT a real consumption
+# (used to filter false positives in artifact_lifecycle check). Mirrors the
+# existing `extract_artifacts_from_postconditions` skip_patterns precedent.
+_ARTIFACT_SKIP_PATTERNS = re.compile(
+    r"(?:not\s+os\.path\.exists|"
+    r"not\s+os\.path\.isfile|"
+    r"deleted|cleaned|rm\s+-f|"
+    r"if\s+.*exists\s+from\s+a\s+prior\s+run)",
+    re.IGNORECASE,
 )
 
-# Exit code: 1 if any category non-empty, 0 otherwise
-if uncovered or unjustified_true or diverged or drift_declared:
+
+def check_artifact_lifecycle(rule):
+    """Verify artifact producer/consumer ordering across states in a skill.
+
+    Rule shape:
+      {
+        "id": "<rule_id>",
+        "type": "artifact_lifecycle",
+        "skill": "<skill_name>"     # which skill's states to scan
+      }
+
+    For the named skill: each state can declare optional `produces: [...]`
+    and `do_not_modify: [...]` arrays in state-registry.json. The check:
+      (a) every artifact appearing in a state's VERIFY (regex-extracted)
+          MUST be in some upstream state's `produces` declaration, OR
+          NOT be `do_not_modify` flagged anywhere upstream
+      (b) `do_not_modify[X]` declared in state B + `produces[X]` declared
+          in any state after B = DO_NOT_MODIFY_VIOLATION
+
+    Conservative: only fires when both `produces` and `do_not_modify` are
+    explicitly declared. Pure prose (e.g. "do not write to X" in ACTIONS)
+    is intentionally NOT parsed — too brittle.
+    """
+    out = []
+    skill = rule.get("skill", "")
+    rid = rule.get("id", "<unknown>")
+    if not skill or skill not in registry or not isinstance(registry[skill], dict):
+        return out
+
+    states = registry[skill]
+    # Build state ordering from registry key order (insertion order is preserved
+    # in Python 3.7+ JSON load and reflects the canonical skill flow).
+    ordered_states = [s for s in states if not s.startswith("_") and isinstance(states[s], (dict, str))]
+    state_position = {s: i for i, s in enumerate(ordered_states)}
+
+    produces_at = {}     # artifact -> earliest state position that produces it
+    forbids_at = {}      # artifact -> earliest state position that forbids it
+
+    for sid in ordered_states:
+        val = states[sid]
+        if not isinstance(val, dict):
+            continue
+        for a in (val.get("produces") or []):
+            produces_at.setdefault(a, []).append(state_position[sid])
+        for a in (val.get("do_not_modify") or []):
+            forbids_at.setdefault(a, []).append(state_position[sid])
+
+    # Check (a): VERIFY-referenced artifacts must have a producer upstream
+    artifact_re = re.compile(r"\.runs/[a-z0-9-]+\.(?:json|md|jsonl|txt|flag)")
+    for sid in ordered_states:
+        val = states[sid]
+        verify_cmd = extract_verify_cmd(val)
+        if not verify_cmd or verify_cmd.strip() == "true":
+            continue
+        if _ARTIFACT_SKIP_PATTERNS.search(verify_cmd):
+            # Verify contains negated/skip patterns; conservative — skip
+            continue
+        for m in artifact_re.finditer(verify_cmd):
+            artifact = m.group(0)
+            sid_pos = state_position[sid]
+            producer_positions = produces_at.get(artifact, [])
+            if producer_positions and not any(p <= sid_pos for p in producer_positions):
+                out.append(
+                    f"  [{rid}] {skill}:{sid} VERIFY references {artifact} "
+                    f"but no upstream state declares produces"
+                )
+
+    # Check (b): do_not_modify[X] cannot precede produces[X]
+    for artifact, forbid_positions in forbids_at.items():
+        producer_positions = produces_at.get(artifact, [])
+        for fp in forbid_positions:
+            for pp in producer_positions:
+                if fp < pp:
+                    forbid_state = ordered_states[fp]
+                    produce_state = ordered_states[pp]
+                    out.append(
+                        f"  [{rid}] {skill}:{forbid_state} do_not_modify includes {artifact} "
+                        f"but {skill}:{produce_state} (later) declares produces"
+                    )
+    return out
+
+
+# Load and run cross-file rules
+if os.path.isfile(RULES_PATH):
+    try:
+        rules_data = json.load(open(RULES_PATH))
+        for rule in rules_data.get("rules", []):
+            rtype = rule.get("type")
+            if rtype == "field_role_map":
+                cross_file.extend(check_field_role_map(rule))
+            elif rtype == "artifact_lifecycle":
+                cross_file.extend(check_artifact_lifecycle(rule))
+            else:
+                cross_file.append(f"  [{rule.get('id','<unknown>')}] unknown rule type: {rtype}")
+    except (OSError, json.JSONDecodeError) as e:
+        cross_file.append(f"  [framework] failed to load rules from {RULES_PATH}: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Output: JSON or human-readable report
+# ---------------------------------------------------------------------------
+
+if JSON_OUT or CACHE_FILE:
+    payload = {
+        "uncovered": uncovered,
+        "diverged": diverged,
+        "unjustified_true": unjustified_true,
+        "drift_declared": drift_declared,
+        "cross_file_contradiction": cross_file,
+        "summary": {
+            "uncovered": len(uncovered),
+            "diverged": len(diverged),
+            "unjustified_true": len(unjustified_true),
+            "drift_declared": len(drift_declared),
+            "cross_file_contradiction": len(cross_file),
+        },
+    }
+    if CACHE_FILE:
+        os.makedirs(os.path.dirname(CACHE_FILE) or ".", exist_ok=True)
+        with open(CACHE_FILE, "w") as f:
+            json.dump(payload, f, indent=2)
+    if JSON_OUT:
+        print(json.dumps(payload, indent=2))
+
+# Human report (suppressed when JSON_OUT is set)
+if not JSON_OUT:
+    print("VERIFY Linter Report")
+    print("====================")
+    print()
+
+    if uncovered:
+        print("UNCOVERED (artifact in postcondition but not in VERIFY):")
+        for line in uncovered:
+            print(line)
+        print()
+
+    if diverged:
+        print("DIVERGED (state file VERIFY != registry VERIFY):")
+        for line in diverged:
+            print(line)
+        print()
+
+    if unjustified_true:
+        print("UNJUSTIFIED_TRUE:")
+        for line in unjustified_true:
+            print(line)
+        print()
+
+    if drift_declared:
+        print("DRIFT_DECLARED_VS_PROSE (registry declaration disagrees with state-file prose):")
+        for line in drift_declared:
+            print(line)
+        print()
+
+    if cross_file:
+        print("CROSS_FILE_CONTRADICTION (template-coherence-rules.json violations):")
+        for line in cross_file:
+            print(line)
+        print()
+
+    print(
+        f"Summary: {len(uncovered)} uncovered, {len(diverged)} diverged, "
+        f"{len(unjustified_true)} unjustified_true, {len(drift_declared)} drift_declared, "
+        f"{len(cross_file)} cross_file_contradiction"
+    )
+
+# Exit code: 1 if any category non-empty, 0 otherwise (overridden by --warn-only)
+has_findings = bool(uncovered or unjustified_true or diverged or drift_declared or cross_file)
+if has_findings and not WARN_ONLY:
     sys.exit(1)
 PYTHON_SCRIPT

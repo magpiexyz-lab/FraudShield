@@ -1,0 +1,25 @@
+{
+  "$comment": "Declarative cross-file coherence rules consumed by .claude/scripts/verify-linter.sh check_field_role_map() and check_artifact_lifecycle(). Each rule is a static-analysis assertion across template files. Findings are reported as CROSS_FILE_CONTRADICTION category and folded into observation-phase Step 5b-coherence. See .claude/templates/experiment-yaml.md and .claude/scripts/lib/derive_pages.py for the canonical golden_path semantics.",
+  "rules": [
+    {
+      "id": "golden-path-role-map",
+      "type": "field_role_map",
+      "field": "golden_path",
+      "canonical_function": "derive_scope_pages",
+      "description": "SCOPE consumers (count-based / set-based access) must call derive_scope_pages() rather than reading golden_path directly. FUNNEL consumers (sequence/order-based access) declare a coherence-allow pragma. Count-based regex (len(golden_path), set(golden_path)) is forbidden unconditionally — pragma cannot whitelist these. See #1024.",
+      "consumers": [
+        ".claude/skills/bootstrap/state-11b-page-scaffold.md",
+        ".claude/agents/gate-keeper.md",
+        ".claude/procedures/scaffold-pages.md",
+        ".claude/stacks/auth/supabase.md",
+        ".claude/procedures/wire.md",
+        ".claude/procedures/ux-journeyer.md",
+        ".claude/procedures/behavior-verifier.md",
+        ".claude/agents/ux-journeyer.md",
+        ".claude/agents/accessibility-scanner.md",
+        ".claude/stacks/testing/playwright.md",
+        ".claude/stacks/distribution/google-ads.md"
+      ]
+    }
+  ]
+}

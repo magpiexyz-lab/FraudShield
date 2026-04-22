@@ -79,6 +79,7 @@ hypotheses:
 behaviors:
   - id: b-01
     hypothesis_id: h-01
+    pages: [landing]                        # web-app + actor:user → required (see .claude/templates/experiment-yaml.md)
     given: "A freelancer visits the QuickBill landing page"
     when: "They read the value proposition"
     then: "They click 'Start Invoicing Free' CTA (>5% of visitors)"
@@ -88,6 +89,7 @@ behaviors:
     level: 1
   - id: b-02
     hypothesis_id: h-01
+    pages: [signup, dashboard]              # spans signup form → dashboard landing
     given: "A visitor clicks the CTA"
     when: "They fill in email and password"
     then: "Account is created and they land on the dashboard"
@@ -97,6 +99,7 @@ behaviors:
     level: 2
   - id: b-03
     hypothesis_id: h-02
+    pages: [dashboard, invoice-create]      # starts on dashboard → invoice-create form
     given: "A signed-up freelancer is on the dashboard"
     when: "They click 'New Invoice' and fill in line items"
     then: "An invoice is created and send-link is generated in <60 seconds"
@@ -106,6 +109,7 @@ behaviors:
     level: 2
   - id: b-04
     hypothesis_id: h-03
+    pages: [invoice-pay]                    # public invoice page (NOT in golden_path — exactly the #1024 case)
     given: "A client receives an invoice link"
     when: "They click 'Pay Now' and complete Stripe checkout"
     then: "Invoice status updates to 'paid' and freelancer is notified"

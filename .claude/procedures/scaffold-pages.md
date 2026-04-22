@@ -26,7 +26,7 @@ The `src/lib/events.ts` file exists when this agent runs — import typed wrappe
 - **Error boundary**: user-friendly message and retry button
 
 #### SEO baseline (Step 3b, web-app only)
-- Generate `src/app/sitemap.ts` — export a default function returning `MetadataRoute.Sitemap` with URLs derived from golden_path pages (each page entry maps to a URL path)
+- Generate `src/app/sitemap.ts` — export a default function returning `MetadataRoute.Sitemap` with URLs derived from `derive_scope_pages(experiment)` (call `python3 .claude/scripts/lib/derive_pages.py scope < experiment/experiment.yaml`). Each page in the canonical set maps to a URL path. This includes pages declared in `behavior.pages` that are not on the golden_path (e.g., admin, dashboard, public invoice page).
 - Generate `src/app/robots.ts` — export a default function returning `MetadataRoute.Robots` allowing all crawlers (`{ rules: { userAgent: '*', allow: '/' } }`)
 - Generate `public/llms.txt` — content per messaging.md Section E (display name, meta description, behaviors list)
 - Ensure layout.tsx `metadata` export uses messaging.md Section E derivation: `title` = meta title, `description` = meta description, `openGraph` = `{ title, description }`

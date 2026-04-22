@@ -56,7 +56,7 @@ golden_path:
 ```
 
 - `step:` replaces the old `action:` field
-- Pages are derived from golden_path — no separate `pages` section
+- The canonical page set is computed by `derive_scope_pages()` (see `.claude/templates/experiment-yaml.md` and `.claude/scripts/lib/derive_pages.py`) which unions `golden_path[*].page`, `behaviors[*].pages`, and auth-derived pages. This is what scaffold-pages spawns and what gate-keeper BG2 check 3b/3c enforces. There is no separate top-level `pages:` section.
 
 **POSTCONDITIONS:**
 - Golden path derived from behaviors

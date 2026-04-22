@@ -65,7 +65,7 @@ Every experiment.yaml `behavior` has corresponding implementation. Grep for feat
 
 **S2. Page/endpoint/command existence**
 First, validate the archetype-required field is present and non-empty:
-- **web-app**: `golden_path` must exist with ≥1 entry (pages are derived from golden_path)
+- **web-app**: `golden_path` must exist with ≥1 entry; the canonical page set is computed by `derive_scope_pages()` (see `.claude/templates/experiment-yaml.md`) which also reads `behaviors[*].pages`
 - **service**: `endpoints` must exist with ≥1 entry
 - **cli**: `commands` must exist with ≥1 entry
 

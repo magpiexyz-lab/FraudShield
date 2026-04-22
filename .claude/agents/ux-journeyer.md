@@ -14,6 +14,7 @@ disallowedTools:
 maxTurns: 500
 memory: project
 ---
+<!-- coherence-allow: raw-golden_path (sequence-step) — see procedures/ux-journeyer.md for the full pragma rationale. LIST semantics. -->
 
 # UX Journeyer
 

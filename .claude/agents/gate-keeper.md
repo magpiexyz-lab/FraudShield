@@ -225,18 +225,26 @@ Verify scaffold subagents produced expected outputs. File checks first, build la
 1. `src/lib/` contains ≥1 `.ts` file (scaffold-libs ran)
 2. `.runs/current-visual-brief.md` exists (scaffold-init ran)
 3. Archetype-specific: web-app → `src/app/layout.tsx` + each golden_path page; service → `src/app/api/` with route files; cli → `src/index.ts` + `src/commands/`
-3b. Page count scope guard (web-app only): count directories matching `src/app/*/page.tsx` — run `find src/app -mindepth 2 -name page.tsx | wc -l`. Compute expected as the sum of all scaffolding exceptions documented in `.claude/skills/bootstrap/state-11b-page-scaffold.md` and in scaffold-wire's auth-route ownership (keep this formula in sync when new exception classes are added):
+3b. Page count scope guard (web-app only): count directories matching `src/app/*/page.tsx` — run `find src/app -mindepth 2 -name page.tsx | wc -l`. Compute expected as the size of the canonical page set (`derive_scope_pages()` already accounts for `golden_path[*].page`, `behaviors[*].pages`, and auth-derived login/signup) plus scaffolding exceptions owned by other agents:
 
 ```
-expected = len(unique non-landing golden_path pages)
-         + (1 if surface != "none" else 0)                          # scaffold-landing owns src/app/page.tsx
-         + (1 if stack.auth and "login"  not in golden_path else 0) # scaffold-pages auth-derived
-         + (1 if stack.auth and "signup" not in golden_path else 0) # scaffold-pages auth-derived
+expected = len(derive_scope_pages(experiment))                       # scaffold-pages owns these
+         + (1 if surface != "none" else 0)                           # scaffold-landing owns src/app/page.tsx
          + (1 if stack.auth else 0)                                  # scaffold-wire owns src/app/auth/reset-password/page.tsx (always when stack.auth)
          + (1 if experiment.yaml has variants else 0)                # src/app/v/[variant]/page.tsx
 ```
 
-BLOCK if actual count > expected count — list the extra page directories: `find src/app -mindepth 2 -name page.tsx` and diff against the expected set. Skip for service/cli archetypes. Note: `src/app/auth/callback/route.ts` is a route handler (not a page) so `find -name page.tsx` correctly excludes it — no extra term needed.
+Get the canonical set via `python3 .claude/scripts/lib/derive_pages.py scope < experiment/experiment.yaml`. BLOCK if actual count > expected count — list the extra page directories: `find src/app -mindepth 2 -name page.tsx` and diff against the expected set. Skip for service/cli archetypes. Note: `src/app/auth/callback/route.ts` is a route handler (not a page) so `find -name page.tsx` correctly excludes it — no extra term needed.
+
+3c. **Behavior page reference enforcement** (web-app only) — three sub-checks that close the #1024 404 trap:
+
+3c-1. **Pages declared.** For each `behavior` in `experiment.yaml` with `actor: user` (or actor field omitted, since `user` is the default): assert `behavior.pages` is present and a non-empty list. BLOCK with message:
+> behavior `<id>` is missing required `pages: [...]` field. Add `pages: [<page>]` listing every page this behavior interacts with, or remove the behavior if no longer needed. See `.claude/templates/experiment-yaml.md`.
+
+3c-2. **Set self-consistent.** For each `behavior.pages` element: assert it appears in `derive_scope_pages(experiment)`. (Trivially true given the function's definition; defense-in-depth catches schema corruption or `derive_pages.py` bugs.) BLOCK with diagnostic showing the missing element and `derive_scope_pages()` output.
+
+3c-3. **Page exists on disk.** For each page in `derive_scope_pages(experiment)` (excluding auth-derived `login`/`signup` which scaffold-pages handles via the auth stack template): assert `src/app/<page>/page.tsx` exists. BLOCK with message:
+> page `<name>` is declared in `derive_scope_pages()` but `src/app/<name>/page.tsx` is missing. Re-run scaffold-pages for this page (state-11b), or remove its declaration from `behavior.pages` / `golden_path`.
 4. If `stack.analytics`: (a) grep `src/lib/analytics` for `PROJECT_NAME` and `PROJECT_OWNER` — neither must equal `"TODO"`; (b) read `experiment/EVENTS.yaml`, for each event filtered by `requires` (match stack) and `archetypes` (match type), grep event name in `src/` — BLOCK if any missing; (c) grep `src/app/*/page.tsx` for raw `track(` calls not from typed wrappers — BLOCK if found (pages must use typed wrappers from `@/lib/events`, not raw `track()`)
 5. If surface ≠ `none`: landing page file exists
 6. `.runs/current-plan.md` frontmatter `checkpoint` is `phase2-scaffold` or later
@@ -245,8 +253,8 @@ BLOCK if actual count > expected count — list the extra page directories: `fin
 9. scaffold-wire contract: if mutation behaviors exist in experiment.yaml (behaviors with `actor: user` that imply writes), `src/app/api/` has route files — run `ls src/app/api/`
 10. Process Checklist: `.runs/current-plan.md` contains `## Process Checklist` with ≥ 10 checklist items — run `grep -c '^\- \[' .runs/current-plan.md`
 11. `npm run build` passes
-12. (web-app only) Component usage: each golden_path `page.tsx` has at least one import from `@/components/ui/` — run `grep -l '@/components/ui/' src/app/*/page.tsx` and compare count against golden_path page count. BLOCK if any page has zero shadcn/ui component imports.
-13. (web-app only) Theme token usage: each golden_path `page.tsx` contains at least one Tailwind theme class (`primary`, `secondary`, `background`, `foreground`, `muted`, `accent`, `destructive`, `card`, `border`) in className — run `grep -lE '(primary|secondary|background|foreground|muted|accent|destructive|card|border)' src/app/*/page.tsx` and compare count against golden_path page count. BLOCK if any page has zero theme token references.
+12. (web-app only) Component usage: each page in `derive_scope_pages(experiment)` has at least one import from `@/components/ui/` — for each `<page>` returned by `python3 .claude/scripts/lib/derive_pages.py scope`, run `grep -l '@/components/ui/' src/app/<page>/page.tsx`. BLOCK if any page has zero shadcn/ui component imports.
+13. (web-app only) Theme token usage: each page in `derive_scope_pages(experiment)` contains at least one Tailwind theme class (`primary`, `secondary`, `background`, `foreground`, `muted`, `accent`, `destructive`, `card`, `border`) in className — for each `<page>` from `derive_scope_pages()`, run `grep -lE '(primary|secondary|background|foreground|muted|accent|destructive|card|border)' src/app/<page>/page.tsx`. BLOCK if any page has zero theme token references.
 14. (web-app only) Internal href validity: grep all page files for `href="/` patterns — run `grep -roh 'href="/[^"]*"' src/app/*/page.tsx | sort -u`. For each extracted path, verify a corresponding directory exists under `src/app/`. Exclude `href="http`, `href="mailto:`, and **scaffold-wire-owned routes that state-13b cannot see yet**: `/auth/callback` and `/auth/reset-password` (created in STATE 14, after state-13b runs and after BG2 runs if BG2 fires before STATE 14). These routes are part of the documented auth/supabase stack file contract — treat them as expected-missing. BLOCK if any OTHER internal link targets a non-existent route.
 15. (web-app only, if variants defined) Variant integration: if experiment.yaml defines `variants`, grep landing page source for at least one variant slug — run `grep -l '<slug>' src/app/page.tsx src/components/landing-content.tsx 2>/dev/null`. BLOCK if no variant slug found. Skip if no variants defined or surface = `none`.
 16. (web-app only) **Content quality floor** — for each golden_path page (excluding `auth/*` routes), `src/app/<page>/page.tsx` has ≥15 lines (`wc -l`) and does not contain `TODO`, `PLACEHOLDER`, or `FIXME` as whole-word UPPERCASE-only tokens. Run `grep -E '\b(TODO|PLACEHOLDER|FIXME)\b'` (case-sensitive). Do NOT use `grep -i` — case-insensitive matching false-positives on the HTML `placeholder="..."` attribute which is a legitimate form-UX element. BLOCK if violated, listing the offending pages.

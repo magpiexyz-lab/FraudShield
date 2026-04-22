@@ -202,6 +202,40 @@ fi
 
 echo "EPILOGUE_STRATEGY=$EPILOGUE_STRATEGY"
 
+# --- Step 4.5: Cross-file coherence lint (cached, gated, warn-only) ---
+# Runs verify-linter.sh in --warn-only mode, writing findings to a cache file
+# that observation-phase Step 5b-coherence reads. Gated on:
+#   (a) cache miss (no prior run), OR
+#   (b) template files (.claude/) changed on this branch since last run
+# Cache key: git rev-parse HEAD:.claude/  (content-addressed, not mtime)
+# Findings are folded into observe-result.json downstream — never blocks here.
+COHERENCE_CACHE="$PROJECT_DIR/.runs/template-coherence-cache.json"
+if [[ -z "${SKIP_COHERENCE_LINT:-}" ]]; then
+  TEMPLATE_HASH=$(git rev-parse HEAD:.claude/ 2>/dev/null || echo "uncommitted")
+  CACHED_HASH=""
+  if [[ -f "$COHERENCE_CACHE" ]]; then
+    CACHED_HASH=$(python3 -c "import json; print(json.load(open('$COHERENCE_CACHE')).get('template_hash',''))" 2>/dev/null || echo "")
+  fi
+  DIFF_TOUCHES_TEMPLATE="no"
+  if [[ -n "$HAS_BRANCH" ]] && [[ -n "${MERGE_BASE:-}" ]]; then
+    if git diff "$MERGE_BASE"...HEAD --name-only 2>/dev/null | grep -q '^\.claude/'; then
+      DIFF_TOUCHES_TEMPLATE="yes"
+    fi
+  fi
+  if [[ "$TEMPLATE_HASH" != "$CACHED_HASH" ]] || [[ "$DIFF_TOUCHES_TEMPLATE" == "yes" ]]; then
+    bash "$PROJECT_DIR/.claude/scripts/verify-linter.sh" --warn-only --cache "$COHERENCE_CACHE" >/dev/null 2>&1 || true
+    # Annotate cache with the hash that produced it (so next run can compare)
+    if [[ -f "$COHERENCE_CACHE" ]]; then
+      python3 -c "
+import json
+d = json.load(open('$COHERENCE_CACHE'))
+d['template_hash'] = '$TEMPLATE_HASH'
+json.dump(d, open('$COHERENCE_CACHE', 'w'), indent=2)
+" 2>/dev/null || true
+    fi
+  fi
+fi
+
 # --- Step 5: Delivery (code-writing skills only) ---
 DELIVERY_STATUS="none"
 COMMIT_MSG="$PROJECT_DIR/.runs/commit-message.txt"

@@ -22,6 +22,8 @@ clean:
   dirs: [e2e, test-results, playwright-report, blob-report]
 gitignore: [/test-results/, /playwright-report/, /blob-report/, /e2e/.auth.json]
 ---
+<!-- coherence-allow: raw-golden_path (sequence-step) — playwright funnel tests are populated from golden_path as a sequential state machine; expected events fire in funnel-journey order. LIST semantics, not SET. -->
+
 # Testing: Playwright
 > Used when experiment.yaml has `stack.testing: playwright` or when the `/change` skill is invoked for test changes
 > Assumes: `database/supabase` and `auth/supabase` (test user lifecycle uses Supabase Admin API), `analytics/posthog` (`blockAnalytics` route pattern targets PostHog)

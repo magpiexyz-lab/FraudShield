@@ -14,6 +14,7 @@ disallowedTools:
   - Agent
 maxTurns: 500
 ---
+<!-- coherence-allow: raw-golden_path (sequence-step) — accessibility-scanner walks pages in golden_path order, generating one entry per step. LIST semantics, not SET. -->
 
 # Accessibility Scanner
 

@@ -78,6 +78,31 @@ Categorize each differing line as:
 
 Report only — do not auto-modify `.gitignore`.
 
+### Sub-step 1c: experiment.yaml migration check
+
+Run the migration helper to detect schema drift introduced by the synced
+template (e.g., new required fields like `behavior.pages` per #1024 fix):
+
+```bash
+python3 .claude/scripts/migrate-experiment-yaml.py
+```
+
+The helper writes `.runs/upgrade-migration-applied.json` with a `migration_status`:
+
+- `not-applicable` — non-web-app archetype (service/cli) → continue
+- `no-experiment` — no experiment.yaml in project → continue
+- `clean` — all behaviors already have required fields → continue
+- `suggestions-pending` — present each suggestion to the user as a Plan item:
+  > For behavior `<id>`: suggested `pages: <list>` based on heuristic. Accept / edit / reject?
+
+  For each accepted suggestion: apply the change to `experiment/experiment.yaml`.
+  After all decisions, re-run `python3 .claude/scripts/migrate-experiment-yaml.py`
+  to confirm `migration_status == "clean"`.
+
+If the user defers (rejects all suggestions), they can run /bootstrap or /change
+later — those skills will BLOCK at gate-keeper BG2 check 3c-1 with a clear
+message pointing back to this migration helper.
+
 ### Output
 
 Write `.runs/upgrade-diff-report.json`:
