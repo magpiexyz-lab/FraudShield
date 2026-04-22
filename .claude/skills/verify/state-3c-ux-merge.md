@@ -17,10 +17,18 @@ Run `npm run build`. If build fails, fix (max 2 attempts) before next agent.
 #### Lead-side validation (ux-journeyer)
 
 1. Read `.runs/agent-traces/ux-journeyer.json` trace.
-2. If `verdict` == `"blocked"`, this is a **hard gate failure** — the golden path cannot be completed. Report the blocked location to the user. Skip STATEs 4-5 but still write verify-report.md (STATE 7a) and execute STATE 8 (Save Patterns).
-3. If `unresolved_dead_ends` > 0, this is a **hard gate failure** — real dead ends remain after fixes. Skip STATEs 4-5 but still write verify-report.md (STATE 7a) and execute STATE 8 (Save Patterns).
-4. If `dead_ends` > 0 AND `unresolved_dead_ends` == 0, all dead ends are intentional fake-door pages. Note in verify report (informational, does not block).
-5. Extract Fix Summaries from the agent's return message. Append each fix to `.runs/fix-log.md` with the prefix `Fix (ux-journeyer):`.
+2. **Invoke review-verdict-gate** (per `.claude/patterns/review-verdict-gate.md`):
+   ```bash
+   python3 .claude/scripts/run-review-verdict-gate.py .runs/agent-traces/ux-journeyer.json ux-journeyer
+   ```
+   This walks the trace's `per_step_reviews[]` (when present), enforces
+   the `review_method → verdict` policy table from `.claude/agents/ux-journeyer.md`,
+   and writes the `review_method_gate_evaluated: true` sentinel asserted
+   by this state's VERIFY. Idempotent and safe to run unconditionally.
+3. If `verdict` == `"blocked"`, this is a **hard gate failure** — the golden path cannot be completed. Report the blocked location to the user. Skip STATEs 4-5 but still write verify-report.md (STATE 7a) and execute STATE 8 (Save Patterns).
+4. If `unresolved_dead_ends` > 0, this is a **hard gate failure** — real dead ends remain after fixes. Skip STATEs 4-5 but still write verify-report.md (STATE 7a) and execute STATE 8 (Save Patterns).
+5. If `dead_ends` > 0 AND `unresolved_dead_ends` == 0, all dead ends are intentional fake-door pages. Note in verify report (informational, does not block).
+6. Extract Fix Summaries from the agent's return message. Append each fix to `.runs/fix-log.md` with the prefix `Fix (ux-journeyer):`.
 
 ### Design-UX Merge (if scope is `full` or `visual`, AND archetype is `web-app`)
 
@@ -46,7 +54,7 @@ After both design-critic and ux-journeyer have completed and their builds pass:
 
 **VERIFY:**
 ```bash
-python3 -c "import json,os; ctx=json.load(open('.runs/verify-context.json')); needs_ux=ctx.get('scope') in ('full','visual') and ctx.get('archetype')=='web-app'; assert not needs_ux or os.path.exists('.runs/agent-traces/ux-journeyer.json'), 'ux-journeyer.json missing (scope=%s, archetype=%s)' % (ctx.get('scope'),ctx.get('archetype')); assert not needs_ux or os.path.exists('.runs/design-ux-merge.json'), 'design-ux-merge.json missing'; fl=open('.runs/fix-log.md').read() if os.path.exists('.runs/fix-log.md') else ''; checks=[('design-critic','.runs/agent-traces/design-critic.json'),('ux-journeyer','.runs/agent-traces/ux-journeyer.json'),('security-fixer','.runs/agent-traces/security-fixer.json')]; errs=[n+': trace has fixes but fix-log missing Fix ('+n+')' for n,p in checks if os.path.exists(p) and len(json.load(open(p)).get('fixes',[]))>0 and 'Fix ('+n not in fl]; assert not errs, '; '.join(errs)"
+python3 -c "import json,os; ctx=json.load(open('.runs/verify-context.json')); needs_ux=ctx.get('scope') in ('full','visual') and ctx.get('archetype')=='web-app'; assert not needs_ux or os.path.exists('.runs/agent-traces/ux-journeyer.json'), 'ux-journeyer.json missing (scope=%s, archetype=%s)' % (ctx.get('scope'),ctx.get('archetype')); assert not needs_ux or os.path.exists('.runs/design-ux-merge.json'), 'design-ux-merge.json missing'; assert (not needs_ux) or json.load(open('.runs/agent-traces/ux-journeyer.json')).get('review_method_gate_evaluated') is True, 'review-verdict-gate did not run on ux-journeyer trace (review_method_gate_evaluated sentinel missing)'; fl=open('.runs/fix-log.md').read() if os.path.exists('.runs/fix-log.md') else ''; checks=[('design-critic','.runs/agent-traces/design-critic.json'),('ux-journeyer','.runs/agent-traces/ux-journeyer.json'),('security-fixer','.runs/agent-traces/security-fixer.json')]; errs=[n+': trace has fixes but fix-log missing Fix ('+n+')' for n,p in checks if os.path.exists(p) and len(json.load(open(p)).get('fixes',[]))>0 and 'Fix ('+n not in fl]; assert not errs, '; '.join(errs)"
 ```
 Build command exited 0 after last Phase 2 agent.
 

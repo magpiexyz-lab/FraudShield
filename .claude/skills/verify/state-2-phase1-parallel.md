@@ -59,11 +59,44 @@ After each agent returns, use [Trace State Detection](../verify.md#trace-state-d
 > **Template enforcement:** Read `.claude/agent-prompt-footer.md` and append its full content
 > to every agent spawn prompt. The skill-agent-gate hook checks for the directive marker.
 
+### Invoke review-verdict-gate (after each reviewer trace lands)
+
+Per `.claude/patterns/review-verdict-gate.md`, the lead must run the
+shared `review_method → verdict` enforcement gate against every reviewer
+agent trace that may carry `review_method` fields. The gate is
+idempotent and writes a `review_method_gate_evaluated: true` sentinel
+that downstream VERIFY commands assert.
+
+For each Phase 1 reviewer trace (when its agent was spawned per scope),
+invoke the gate:
+
+```bash
+# behavior-verifier (when scope ∈ {full, security})
+if [ -f .runs/agent-traces/behavior-verifier.json ]; then
+  python3 .claude/scripts/run-review-verdict-gate.py .runs/agent-traces/behavior-verifier.json behavior-verifier
+fi
+# accessibility-scanner (when scope ∈ {full, visual} AND archetype=web-app)
+if [ -f .runs/agent-traces/accessibility-scanner.json ]; then
+  python3 .claude/scripts/run-review-verdict-gate.py .runs/agent-traces/accessibility-scanner.json accessibility-scanner
+fi
+```
+
+`run-review-verdict-gate.py` is the executable extraction of
+`review-verdict-gate.md`'s `enforce_review_verdict` function.
+Idempotency means re-invocation on a trace that already has the
+sentinel is a no-op — safe to run unconditionally.
+
+design-critic does NOT use this gate at this state — its existing
+`source-only/unknown → unresolved` invariant is enforced in state-3b's
+merge code (unchanged).
+
 **POSTCONDITIONS:** All scope-required Phase 1 traces exist in `.runs/agent-traces/`.
+Each reviewer trace (behavior-verifier, accessibility-scanner) that exists
+carries `review_method_gate_evaluated: true` proving the gate ran.
 
 **VERIFY:**
 ```bash
-python3 -c "import json,os; ctx=json.load(open('.runs/verify-context.json')); scope=ctx.get('scope',''); arch=ctx.get('archetype',''); req=['build-info-collector']; req.extend(['security-defender','security-attacker','behavior-verifier','spec-reviewer'] if scope in ('full','security') else []); req.extend(['performance-reporter','accessibility-scanner'] if scope in ('full','visual') and arch=='web-app' else []); missing=[a for a in req if not os.path.exists('.runs/agent-traces/'+a+'.json')]; assert not missing, 'missing Phase 1 agent traces: %s (scope=%s, archetype=%s)' % (missing,scope,arch)"
+python3 -c "import json,os; ctx=json.load(open('.runs/verify-context.json')); scope=ctx.get('scope',''); arch=ctx.get('archetype',''); req=['build-info-collector']; req.extend(['security-defender','security-attacker','behavior-verifier','spec-reviewer'] if scope in ('full','security') else []); req.extend(['performance-reporter','accessibility-scanner'] if scope in ('full','visual') and arch=='web-app' else []); missing=[a for a in req if not os.path.exists('.runs/agent-traces/'+a+'.json')]; assert not missing, 'missing Phase 1 agent traces: %s (scope=%s, archetype=%s)' % (missing,scope,arch); needs_bv=scope in ('full','security'); needs_a11y=scope in ('full','visual') and arch=='web-app'; assert (not needs_bv) or json.load(open('.runs/agent-traces/behavior-verifier.json')).get('review_method_gate_evaluated') is True, 'review-verdict-gate did not run on behavior-verifier trace (review_method_gate_evaluated sentinel missing)'; assert (not needs_a11y) or json.load(open('.runs/agent-traces/accessibility-scanner.json')).get('review_method_gate_evaluated') is True, 'review-verdict-gate did not run on accessibility-scanner trace (review_method_gate_evaluated sentinel missing)'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
