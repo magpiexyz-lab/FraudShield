@@ -175,8 +175,11 @@ fi
 
 # ── Cross-skill agent checks ──
 if [[ "$SUBAGENT_TYPE" == "pattern-classifier" ]]; then
-  if [[ ! -f "$PROJECT_DIR/.runs/fix-log.md" ]]; then
-    ERRORS+=("fix-log.md missing — required for pattern-classifier")
+  # AOC v1: pattern-classifier classifies from the canonical ledger; fix-log
+  # is a rendered artifact. Ledger preferred; fix-log.md accepted as
+  # transitional fallback for pre-AOC-v1 skill runs.
+  if [[ ! -f "$PROJECT_DIR/.runs/fix-ledger.jsonl" ]] && [[ ! -f "$PROJECT_DIR/.runs/fix-log.md" ]]; then
+    ERRORS+=("fix-ledger.jsonl and fix-log.md both missing — required for pattern-classifier (AOC v1 FLS v1)")
   fi
 fi
 

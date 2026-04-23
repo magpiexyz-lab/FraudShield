@@ -90,12 +90,15 @@ os.makedirs(".runs/agent-traces", exist_ok=True)
 trace = {
     "agent": "design-consistency-checker",
     "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-    "verdict": "<verdict>",
+    "verdict": "<verdict>",          # AOC v1 AVS v1: "pass" (inconsistent_count==0) | "fail" (inconsistent_count>0), lowercase
+    "result": "count_summary",        # AOC v1: always count_summary for this scanner
+    "provenance": "self",
     "checks_performed": ["C1_color", "C2_typography", "C3_spacing", "C4_component", "C5_layout"],
     "pages_reviewed": <N>,
     "passed_count": <P>,
     "failed_count": <F>,
     "severity": "<none|minor|major>",
+    "inconsistent_count": <N>,       # AOC v1: required structured field for gate additional_block_conditions
     "inconsistencies_found": <N>,
     "inconsistencies": [
         # One entry per inconsistency found. Example:

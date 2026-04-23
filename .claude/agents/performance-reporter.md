@@ -159,11 +159,16 @@ If any pages exceed 200KB, add a note:
 
 ## Trace Output
 
-After completing all work, write a trace file:
+After completing all work, write a trace file per AOC v1
+(`agent-registry.json.verdict_agents_schema.performance-reporter`).
+
+AVS v1: `result="count_summary"` always; `verdict="pass"` iff `warnings_count==0`, else `verdict="fail"`.
 
 ```bash
 RUN_ID=$(python3 -c "import json;print(json.load(open('.runs/verify-context.json')).get('run_id',''))" 2>/dev/null || echo "")
-mkdir -p .runs/agent-traces && echo '{"agent":"performance-reporter","timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","verdict":"<verdict>","checks_performed":["P1_build","P2_routes","P3_large_pages","P4_deps","P5_lighthouse","P6_api"],"metrics_checked":<N>,"run_id":"'"$RUN_ID"'"}' > .runs/agent-traces/performance-reporter.json
+mkdir -p .runs/agent-traces && echo '{"agent":"performance-reporter","timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","verdict":"<pass|fail>","result":"count_summary","provenance":"self","checks_performed":["P1_build","P2_routes","P3_large_pages","P4_deps","P5_lighthouse","P6_api"],"metrics_checked":<N>,"warnings_count":<W>,"run_id":"'"$RUN_ID"'"}' > .runs/agent-traces/performance-reporter.json
 ```
 
-Replace `<verdict>` with `"pass"` if no warnings, or `"N warnings"` with the count.
+- `verdict`: `"pass"` if `warnings_count==0`, `"fail"` otherwise (lowercase).
+- `result`: always `"count_summary"`.
+- `warnings_count`: required structured field per registry (the number of P-check warnings).

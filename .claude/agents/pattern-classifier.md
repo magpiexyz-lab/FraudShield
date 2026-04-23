@@ -26,11 +26,28 @@ You are a knowledge compounder. Every fix-log entry is a signal. Your job is to 
 
 ## First Action
 
-Read `.runs/fix-log.md` from disk. Count entries matching `^\*\*Fix` or `^Fix \(` pattern (both formats are used: `**Fix N:** ...` for build fixes, `Fix (source): ...` for phase-2 agent fixes). If zero entries exist (only the header line), write `{"saved":0,"skipped":0,"total":0,"saved_to_files":[],"saved_to_memory":0}` to `.runs/patterns-saved.json` and stop.
+Read `.runs/fix-ledger.jsonl` from disk (AOC v1 FLS v1 canonical source).
+Count rows (one JSON object per line). If the ledger is absent (pre-AOC-v1
+run), fall back to `.runs/fix-log.md` and count entries matching
+`^\*\*Fix` or `^Fix \(` pattern (`**Fix N:** ...` for build fixes,
+`Fix (source): ...` for agent fixes — transitional dual-check only).
+If zero entries exist in either source, write
+`{"saved":0,"skipped":0,"total":0,"saved_to_files":[],"saved_to_memory":0}`
+to `.runs/patterns-saved.json` and stop.
+
+Each ledger row carries `{fix_id, agent, source_trace, file, symptom, fix,
+batch_id, batch_size}` — use these structured fields directly for
+classification rather than re-parsing prose. The ledger preserves per-fix
+attribution (one row per fix, including 19-fix batches that legacy prose
+diary collapsed to 1 summary line — see #1048).
 
 ## Phase 1: Inventory
 
-1. Read `.runs/fix-log.md` — extract every `**Fix` and `Fix (...)` entry. For each, parse: file(s) touched, symptom, cause, fix action.
+1. Read `.runs/fix-ledger.jsonl` (authoritative). Each row provides
+   structured `file`, `symptom`, `fix`, `agent`, `batch_id`, `batch_size`.
+   Transitional fallback: if ledger absent, read `.runs/fix-log.md` and
+   parse `**Fix` / `Fix (...)` entries for file(s) touched, symptom, cause,
+   fix action.
 2. Read `.claude/stacks/` directory structure: `find .claude/stacks -name '*.md' -type f`. These are the possible destinations for universal patterns.
 3. Read `experiment/experiment.yaml` — extract `stack` section to identify which stack files are active for this project.
 4. For each active stack file, scan for existing "Known Issues" or "## Patterns" sections to understand what's already documented (dedup).
@@ -157,7 +174,7 @@ Process entries in fix-log order:
 
 Before writing the final artifact, verify:
 
-1. **Arithmetic**: `saved + skipped == total` AND `total == count of **Fix and Fix (...) entries in fix-log`
+1. **Arithmetic**: `saved + skipped == total` AND `total == wc -l .runs/fix-ledger.jsonl` (AOC v1 FLS v1 authoritative; during transitional dual-check this may equal the fix-log `**Fix` / `Fix (...)` entry count)
 2. **Destination integrity**: For each `saved_to_files` entry that is a local path (does not start with `http://` or `https://`), the path exists on disk. URL entries (universal-issue GitHub links) are recorded as-is and not file-checked.
 3. **Content quality**: For each universal pattern appended, re-read the stack file and confirm the appended text is specific and actionable (has a "When" condition and a "Then" action)
 4. **No orphans**: Every fix-log entry is accounted for in exactly one category
@@ -167,7 +184,12 @@ If any check fails, fix before proceeding.
 
 ## Phase 5: Write Artifact
 
-Write `.runs/patterns-saved.json`:
+Write `.runs/patterns-saved.json`. Under AOC v1, this file IS the
+pattern-classifier's trace-equivalent output — it has no
+`.runs/agent-traces/pattern-classifier.json` counterpart.
+`agent-registry.json.verdict_agents_schema.pattern-classifier` declares
+`allowed_verdicts: ["pass"]` and `required_structured_fields: ["saved",
+"skipped", "total"]`; downstream gates read this file directly.
 
 ```json
 {
@@ -185,7 +207,7 @@ Each entry in `saved_to_files` is a **string** — either a local relative path 
 - `saved + skipped == total`
 - `len(saved_to_files) + saved_to_memory == saved`
 - Each local-path entry in `saved_to_files` exists on disk (URL entries starting with `http://` / `https://` are not file-checked)
-- `total` must equal the number of `**Fix` entries in fix-log.md
+- `total` must equal `wc -l .runs/fix-ledger.jsonl` (AOC v1 FLS v1 authoritative); transitional fallback accepts the prose `**Fix` count from fix-log.md when the ledger is absent
 
 ## Output Contract
 

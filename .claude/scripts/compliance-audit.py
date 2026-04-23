@@ -85,29 +85,49 @@ def check_artifact_mtime(skill):
     return {"name": "artifact_mtime", "result": "pass", "detail": f"{len(traces)} traces checked"}
 
 
-# --- Check (b): Fix-log count matching ---
+# --- Check (b): Fix-log count matching (AOC v1 FLS v1 authoritative) ---
 def check_fix_log_count(skill):
+    # AOC v1: .runs/fix-ledger.jsonl is the authoritative per-fix ledger.
+    # Transitional dual-check falls back to fix-log.md prose regex when
+    # ledger is absent.
+    ledger_path = os.path.join(RUNS_DIR, "fix-ledger.jsonl")
     fix_log_path = os.path.join(RUNS_DIR, "fix-log.md")
-    if not os.path.exists(fix_log_path):
-        return {"name": "fix_log_count", "result": "skip", "detail": "no fix-log.md"}
 
-    with open(fix_log_path) as f:
-        content = f.read()
-    fix_entries = len(re.findall(r"^\*\*Fix \d+\*\*", content, re.MULTILINE))
+    fix_count = None
+    source = None
+    if os.path.exists(ledger_path):
+        try:
+            with open(ledger_path) as f:
+                fix_count = sum(1 for line in f if line.strip())
+            source = "ledger"
+        except OSError:
+            fix_count = None
+    if fix_count is None:
+        if not os.path.exists(fix_log_path):
+            return {"name": "fix_log_count", "result": "skip",
+                    "detail": "no fix-ledger.jsonl and no fix-log.md"}
+        try:
+            with open(fix_log_path) as f:
+                content = f.read()
+            fix_count = len(re.findall(r"^\*\*Fix \d+\*\*", content, re.MULTILINE))
+            source = "prose"
+        except OSError:
+            return {"name": "fix_log_count", "result": "skip",
+                    "detail": "cannot read fix-log.md"}
 
     # Find observer trace fixes_evaluated
     observer_path = os.path.join(RUNS_DIR, "agent-traces", "observer.json")
     observer = load_json(observer_path)
     if not observer or "fixes_evaluated" not in observer:
         return {"name": "fix_log_count", "result": "skip",
-                "detail": f"fix-log has {fix_entries} entries but no observer trace with fixes_evaluated"}
+                "detail": f"{source} has {fix_count} entries but no observer trace with fixes_evaluated"}
 
     observer_count = observer.get("fixes_evaluated", 0)
-    if fix_entries != observer_count:
+    if fix_count != observer_count:
         return {"name": "fix_log_count", "result": "fail",
-                "detail": f"fix-log has {fix_entries} entries but observer.fixes_evaluated={observer_count}"}
+                "detail": f"{source} has {fix_count} entries but observer.fixes_evaluated={observer_count}"}
     return {"name": "fix_log_count", "result": "pass",
-            "detail": f"fix-log and observer agree: {fix_entries} entries"}
+            "detail": f"{source} and observer agree: {fix_count} entries"}
 
 
 # --- Check (c): Behavior claims ---

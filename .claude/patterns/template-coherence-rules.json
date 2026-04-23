@@ -1,9 +1,10 @@
 {
-  "$comment": "Declarative cross-file coherence rules consumed by .claude/scripts/verify-linter.sh check_field_role_map() and check_artifact_lifecycle(). Each rule is a static-analysis assertion across template files. Findings are reported as CROSS_FILE_CONTRADICTION category and folded into observation-phase Step 5b-coherence. See .claude/templates/experiment-yaml.md and .claude/scripts/lib/derive_pages.py for the canonical golden_path semantics.",
+  "$comment": "Declarative cross-file coherence rules consumed by .claude/scripts/verify-linter.sh. Each rule is a static-analysis assertion across template files. Findings are reported as CROSS_FILE_CONTRADICTION category and folded into observation-phase Step 5b-coherence. Rule types: field_role_map, artifact_lifecycle, verdict_vocab_consistency (AOC v1 R1), ledger_ownership (AOC v1 R2), consumer_coverage (AOC v1 R3). See .claude/patterns/coherence-rule-schema.json for per-type shape.",
   "rules": [
     {
       "id": "golden-path-role-map",
       "type": "field_role_map",
+      "severity": "block",
       "field": "golden_path",
       "canonical_function": "derive_scope_pages",
       "description": "SCOPE consumers (count-based / set-based access) must call derive_scope_pages() rather than reading golden_path directly. FUNNEL consumers (sequence/order-based access) declare a coherence-allow pragma. Count-based regex (len(golden_path), set(golden_path)) is forbidden unconditionally — pragma cannot whitelist these. See #1024.",
@@ -20,6 +21,52 @@
         ".claude/stacks/testing/playwright.md",
         ".claude/stacks/distribution/google-ads.md"
       ]
+    },
+    {
+      "id": "aoc-verdict-vocab-consistency",
+      "type": "verdict_vocab_consistency",
+      "severity": "block",
+      "registry_path": ".claude/patterns/agent-registry.json",
+      "agent_files_glob": ".claude/agents/*.md",
+      "predicate_file": ".claude/hooks/lib-verdict.sh",
+      "description": "AOC v1 R1: per-agent verdict declarations in .claude/agents/*.md must use only values from verdict_agents_schema.<agent>.allowed_verdicts (lowercase: pass/fail/blocked/unresolved). result qualifiers must come from allowed_results. lib-verdict.sh predicate functions must reference only verdict values declared in the registry. Catches drift like #1044 (agent emits 'all fixed' while gate keys on 'pass')."
+    },
+    {
+      "id": "aoc-fix-ledger-ownership",
+      "type": "ledger_ownership",
+      "severity": "block",
+      "allowed_writers": [
+        ".claude/scripts/write-fix-ledger.py",
+        ".claude/scripts/render-fix-log.py",
+        ".claude/skills/verify/state-0-read-context.md",
+        ".claude/skills/verify/state-5-e2e-tests.md"
+      ],
+      "_transitional_note": "state-0 (init with empty header) and state-5 (inline e2e/spec fix entries) are allowed during the AOC v1 transition period. Follow-up observation to migrate state-5 e2e/spec fix writes through a proper agent trace so the renderer can own fix-log.md outright.",
+      "gated_paths": [
+        ".runs/fix-ledger.jsonl",
+        ".runs/fix-log.md"
+      ],
+      "description": "AOC v1 R2: fix-ledger.jsonl and fix-log.md may only be written by the canonical writers. Catches any template file or script that writes directly to either path (e.g., echo >> .runs/fix-log.md, open('.runs/fix-log.md','a')). Complemented at runtime by .claude/hooks/fix-ledger-write-guard.sh."
+    },
+    {
+      "id": "aoc-consumer-coverage",
+      "type": "consumer_coverage",
+      "severity": "block",
+      "canonical_source": ".runs/fix-ledger.jsonl",
+      "consumers": [
+        ".claude/agents/pattern-classifier.md",
+        ".claude/scripts/write-q-score.py",
+        ".claude/scripts/check-artifact-presence.py",
+        ".claude/scripts/check-cross-artifact-consistency.py",
+        ".claude/hooks/verify-report-gate.sh",
+        ".claude/patterns/state-registry.json",
+        ".claude/hooks/lib-verdict.sh",
+        ".claude/hooks/lib-artifacts.sh",
+        ".claude/scripts/compliance-audit.py",
+        ".claude/hooks/patterns-saved-gate.sh",
+        ".claude/hooks/skill-agent-gate.sh"
+      ],
+      "description": "AOC v1 R3: every fix-count consumer must reference fix-ledger.jsonl as canonical source (closes #1048). Consumers that regex fix-log.md without also referencing the ledger are flagged as stale."
     }
   ]
 }

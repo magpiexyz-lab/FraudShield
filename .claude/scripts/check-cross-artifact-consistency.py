@@ -41,29 +41,52 @@ def main():
         except json.JSONDecodeError:
             pass
 
-    # --- Check 14: Fix count cross-reference (WARN only) ---
+    # --- Check 14: Fix count cross-reference (AOC v1 FLS v1 authoritative) ---
+    # Authoritative source: .runs/fix-ledger.jsonl. Transitional dual-check
+    # falls back to fix-log.md prose regex when ledger absent.
+    ledger_path = os.path.join(project, '.runs/fix-ledger.jsonl')
     fix_log_path = os.path.join(project, '.runs/fix-log.md')
-    if os.path.isdir(traces_dir) and os.path.exists(fix_log_path):
-        try:
-            fix_log = open(fix_log_path).read()
-            prefix_map = {
-                'design-critic': 'Fix (design-critic):',
-                'ux-journeyer': 'Fix (ux-journeyer):',
-                'security-fixer': 'Fix (security-fixer):',
-                'quality-fixer': 'Fix (quality-fixer):'
-            }
-            for tf in glob.glob(os.path.join(traces_dir, '*.json')):
-                name = os.path.basename(tf).replace('.json', '')
-                if name.startswith('design-critic-'): continue
-                try:
-                    d = json.load(open(tf))
-                    fixes = d.get('fixes', None)
-                    if fixes is None: continue
-                    prefix = prefix_map.get(name, 'Fix (' + name + '):')
+    if os.path.isdir(traces_dir):
+        by_agent = None
+        source = None
+        if os.path.exists(ledger_path):
+            by_agent = {}
+            try:
+                for line in open(ledger_path):
+                    line = line.strip()
+                    if not line: continue
+                    try:
+                        r = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    a = r.get('agent')
+                    by_agent[a] = by_agent.get(a, 0) + 1
+                source = 'ledger'
+            except Exception:
+                by_agent = None
+        if by_agent is None and os.path.exists(fix_log_path):
+            try:
+                fix_log = open(fix_log_path).read()
+                source = 'prose'
+            except Exception:
+                fix_log = ''
+        for tf in glob.glob(os.path.join(traces_dir, '*.json')):
+            name = os.path.basename(tf).replace('.json', '')
+            if name.startswith('design-critic-'): continue
+            try:
+                d = json.load(open(tf))
+                fixes = d.get('fixes', None)
+                if fixes is None: continue
+                if source == 'ledger':
+                    ledger_n = by_agent.get(name, 0)
+                    if len(fixes) != ledger_n:
+                        warnings.append(name + ': trace=' + str(len(fixes)) + ', ledger=' + str(ledger_n))
+                elif source == 'prose':
+                    prefix = 'Fix (' + name + '):'
                     if len(fixes) != fix_log.count(prefix):
                         warnings.append(name + ': trace=' + str(len(fixes)) + ', log=' + str(fix_log.count(prefix)))
-                except: pass
-        except: pass
+                # source is None → silently skip; Check 14 was never authoritative
+            except: pass
 
     # --- Check 16: hard_gate_failure field present ---
     if content and 'hard_gate_failure:' not in content:

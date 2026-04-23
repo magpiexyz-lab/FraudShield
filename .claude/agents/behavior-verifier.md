@@ -265,7 +265,9 @@ os.makedirs(".runs/agent-traces", exist_ok=True)
 trace = {
     "agent": "behavior-verifier",
     "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-    "verdict": "<verdict>",  # PASS / FAIL / DEGRADED / SKIPPED
+    "verdict": "<verdict>",   # AOC v1 AVS v1: "pass" | "fail" (lowercase; legacy DEGRADED→pass+degraded, SKIPPED→pass+skipped)
+    "result": "<result>",      # AOC v1: "clean" | "degraded" | "skipped" | "partial"
+    "provenance": "self",      # or "self-degraded" when result=="degraded" AND recovery_validated=true (per AOC v1)
     "checks_performed": ["state_model", "happy_path", "error_path", "system_smoke", "state_continuity"],
     "tests_run": <N>,
     "tests_passed": <M>,
@@ -290,7 +292,7 @@ trace = {
         #     "content_density": null,
         #     "expected_destination": "/dashboard"
         #   },
-        #   "verdict": "PASS"
+        #   "verdict": "pass"   # per-behavior entries use AOC v1 lowercase: pass | fail | degraded | skipped
         # }
     ],
     # Top-level diagnostic: phrase that was treated as required via the

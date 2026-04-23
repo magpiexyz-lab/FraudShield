@@ -63,7 +63,12 @@ If no evidence of failure found across all three vectors, label the fix "sound".
 
 ## Trace Output
 
-After completing all work, write the final trace:
+After completing all work, write the final trace per AOC v1
+(`agent-registry.json.verdict_agents_schema.resolve-challenger`).
+
+AVS v1: `verdict="pass"` (challenger always completes), `result="count_summary"`,
+plus required structured fields `confirmed_count` (sum of `label=="sound"`) and
+`disputed_count` (sum of `label in {"challenged","needs-revision"}`).
 
 ```bash
 RUN_ID=$(python3 -c "import json;print(json.load(open('.runs/resolve-context.json')).get('run_id',''))" 2>/dev/null || echo "")
@@ -72,8 +77,12 @@ import json, datetime
 trace = {
     'agent': 'resolve-challenger',
     'timestamp': datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
-    'verdict': '<VERDICT>',
+    'verdict': 'pass',
+    'result': 'count_summary',
+    'provenance': 'self',
     'checks_performed': ['configuration_counterexample', 'blast_radius_gap', 'regression_vector'],
+    'confirmed_count': <N>,
+    'disputed_count': <M>,
     'verdicts': [
         {'issue': '<N>', 'label': '<sound|challenged|needs-revision>', 'challenge': '<text>', 'evidence': '<text>'}
     ],
@@ -83,5 +92,6 @@ json.dump(trace, open('.runs/agent-traces/resolve-challenger.json', 'w'), indent
 "
 ```
 
-Replace `<VERDICT>` with a summary like `"2 fixes sound, 1 challenged"`.
-Replace placeholders in `verdicts` with one entry per fix reviewed.
+- `confirmed_count`: number of fixes labeled `"sound"`.
+- `disputed_count`: number of fixes labeled `"challenged"` or `"needs-revision"`.
+- `verdicts[]`: one entry per fix reviewed with the original label for traceability.

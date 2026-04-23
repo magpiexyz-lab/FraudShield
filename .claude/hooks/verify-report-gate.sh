@@ -46,6 +46,45 @@ if [[ "${UNMIGRATED:-0}" -gt 0 ]]; then
   python3 "$PROJECT_DIR/.claude/scripts/migrate-legacy-traces.py" >&2 || true
 fi
 
+# AOC v1 FLS v1: ensure the canonical ledger (.runs/fix-ledger.jsonl) is
+# consolidated before downstream checks read it. Idempotent and cheap.
+if [[ -d "$PROJECT_DIR/.runs/agent-traces" ]]; then
+  python3 "$PROJECT_DIR/.claude/scripts/write-fix-ledger.py" >/dev/null 2>&1 || true
+fi
+
+# AOC v1: refuse to proceed when migration marked traces unresolved.
+# migrate-legacy-traces.py writes .runs/trace-migration-unresolved.json
+# when a known verdict_agent emitted a verdict that the mapping table
+# cannot parse (fail-closed — see .claude/patterns/agent-output-contract.md).
+UNRESOLVED_COUNT=$(python3 -c "
+import json, os
+project = os.environ.get('CLAUDE_PROJECT_DIR', '.')
+receipt = os.path.join(project, '.runs', 'trace-migration.json')
+if os.path.isfile(receipt):
+    try:
+        d = json.load(open(receipt))
+        print(d.get('unresolved_count', 0))
+    except Exception:
+        print(0)
+else:
+    print(0)
+" 2>/dev/null || echo "0")
+if [[ "${UNRESOLVED_COUNT:-0}" -gt 0 ]]; then
+  UNRESOLVED_FILE="$PROJECT_DIR/.runs/trace-migration-unresolved.json"
+  echo "BLOCK: verify-report-gate: migrate-legacy-traces left $UNRESOLVED_COUNT trace(s) unresolved" >&2
+  if [[ -f "$UNRESOLVED_FILE" ]]; then
+    echo "Details at: $UNRESOLVED_FILE" >&2
+    python3 -c "
+import json
+d = json.load(open('$UNRESOLVED_FILE'))
+for u in d.get('unresolved', []):
+    print('  -', u.get('agent'), ':', u.get('reason'))
+" >&2 2>/dev/null || true
+  fi
+  echo "Fix each listed verdict in .claude/scripts/migrate-legacy-traces.py LEGACY_VERDICT_MAP or add structured count fields, then re-run migration with --force." >&2
+  exit 1
+fi
+
 extract_write_content
 
 # Detect hard_gate_failure in report content — when true, STATEs 4-5 artifacts

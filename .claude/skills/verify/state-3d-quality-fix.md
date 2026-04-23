@@ -96,7 +96,17 @@ After each fix, append to `.runs/fix-log.md`.
 
 **VERIFY:**
 ```bash
-python3 -c "import json,os; d=json.load(open('.runs/quality-merge.json')); assert 'run_id' in d, 'run_id missing'; has_source=d.get('source')=='no-quality-agents'; assert has_source or (isinstance(d.get('issues'), list) and isinstance(d.get('merged_issues'), int)), 'full-scope merge missing issues or merged_issues'; fl=open('.runs/fix-log.md').read() if os.path.exists('.runs/fix-log.md') else ''; checks=[('quality-fixer','.runs/agent-traces/quality-fixer.json')]; errs=[n+': trace has fixes but fix-log missing Fix ('+n+')' for n,p in checks if os.path.exists(p) and len(json.load(open(p)).get('fixes',[]))>0 and 'Fix ('+n not in fl]; assert not errs, '; '.join(errs)"
+python3 -c "import json,os; ctx=json.load(open('.runs/verify-context.json')); run_id=ctx.get('run_id',''); d=json.load(open('.runs/quality-merge.json')); assert 'run_id' in d, 'run_id missing'; has_source=d.get('source')=='no-quality-agents'; assert has_source or (isinstance(d.get('issues'), list) and isinstance(d.get('merged_issues'), int)), 'full-scope merge missing issues or merged_issues'; ledger=[json.loads(l) for l in open('.runs/fix-ledger.jsonl') if l.strip()] if os.path.exists('.runs/fix-ledger.jsonl') else None; by_agent={}; [by_agent.update({r.get('agent'): by_agent.get(r.get('agent'),0)+1}) for r in (ledger or []) if r.get('run_id')==run_id]; fl=open('.runs/fix-log.md').read() if os.path.exists('.runs/fix-log.md') else ''; checks=[('quality-fixer','.runs/agent-traces/quality-fixer.json')]; errs=[]
+for n,p in checks:
+    if not os.path.exists(p): continue
+    tf=len(json.load(open(p)).get('fixes',[]))
+    if tf==0: continue
+    if ledger is not None:
+        lf=by_agent.get(n,0)
+        if lf!=tf: errs.append(n+': trace='+str(tf)+' ledger='+str(lf))
+    else:
+        if 'Fix ('+n not in fl: errs.append(n+': trace has fixes but fix-log missing Fix ('+n+')')
+assert not errs, '; '.join(errs)"
 ```
 
 > **Hook-enforced:** `skill-agent-gate.sh` validates STATE 3d postconditions before allowing security-fixer to spawn.

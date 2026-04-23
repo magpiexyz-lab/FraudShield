@@ -20,12 +20,14 @@ RULES="$REPO_ROOT/.claude/patterns/template-coherence-rules.json"
 JSON_OUT=""
 CACHE_FILE=""
 WARN_ONLY=""
+STRICT_AOC=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --json)        JSON_OUT="1"; shift ;;
     --cache)       CACHE_FILE="$2"; shift 2 ;;
     --warn-only)   WARN_ONLY="1"; shift ;;
+    --strict-aoc)  STRICT_AOC="1"; shift ;;
     --rules)       RULES="$2"; shift 2 ;;
     *)             echo "ERROR: unknown flag: $1" >&2; exit 2 ;;
   esac
@@ -39,6 +41,7 @@ fi
 export VL_JSON_OUT="$JSON_OUT"
 export VL_CACHE_FILE="$CACHE_FILE"
 export VL_WARN_ONLY="$WARN_ONLY"
+export VL_STRICT_AOC="$STRICT_AOC"
 export VL_RULES_PATH="$RULES"
 export VL_REPO_ROOT="$REPO_ROOT"
 
@@ -52,7 +55,13 @@ skills_dir = sys.argv[2]
 JSON_OUT = bool(os.environ.get("VL_JSON_OUT"))
 CACHE_FILE = os.environ.get("VL_CACHE_FILE", "")
 WARN_ONLY = bool(os.environ.get("VL_WARN_ONLY"))
+STRICT_AOC = bool(os.environ.get("VL_STRICT_AOC"))
 RULES_PATH = os.environ.get("VL_RULES_PATH", "")
+STRICT_AOC_TYPES = {
+    "verdict_vocab_consistency",
+    "ledger_ownership",
+    "consumer_coverage",
+}
 REPO_ROOT = os.environ.get("VL_REPO_ROOT", os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 registry = json.load(open(registry_path))
@@ -477,6 +486,256 @@ def check_artifact_lifecycle(rule):
     return out
 
 
+# ---------------------------------------------------------------------------
+# AOC v1 rule dispatchers (R1/R2/R3)
+# ---------------------------------------------------------------------------
+
+def _emit_finding(rule, message):
+    """Emit a finding string tagged with rule id + type so downstream
+    exit-logic can partition by rule type for --strict-aoc."""
+    rid = rule.get("id", "<unknown>")
+    rtype = rule.get("type", "<unknown>")
+    sev = rule.get("severity", "block")
+    return f"  [{rid}] ({rtype}/{sev}) {message}"
+
+
+def check_verdict_vocab_consistency(rule):
+    """AOC v1 R1: agent definitions must emit only verdicts/results declared
+    in verdict_agents_schema, and lib-verdict.sh predicates must reference
+    only declared verdict values."""
+    findings = []
+    rid = rule.get("id", "<unknown>")
+
+    reg_path = os.path.join(REPO_ROOT, rule.get("registry_path", ""))
+    if not os.path.isfile(reg_path):
+        findings.append(_emit_finding(rule, f"registry file missing: {reg_path}"))
+        return findings
+    try:
+        reg = json.load(open(reg_path))
+    except (OSError, json.JSONDecodeError) as e:
+        findings.append(_emit_finding(rule, f"cannot read registry: {e}"))
+        return findings
+
+    schema = reg.get("verdict_agents_schema", {})
+    if not schema:
+        findings.append(_emit_finding(rule, "verdict_agents_schema missing from registry"))
+        return findings
+
+    # Build a union of all declared verdicts/results across agents.
+    all_verdicts = set()
+    all_results = set()
+    for agent_name, spec in schema.items():
+        for v in spec.get("allowed_verdicts", []):
+            if v is not None:
+                all_verdicts.add(v)
+        for r in spec.get("allowed_results", []):
+            if r is not None:
+                all_results.add(r)
+
+    # Core verdict vocabulary is fixed at 4 values per AOC v1.
+    AOC_CORE_VERDICTS = {"pass", "fail", "blocked", "unresolved"}
+    for v in all_verdicts:
+        if v not in AOC_CORE_VERDICTS:
+            findings.append(_emit_finding(
+                rule,
+                f"verdict_agents_schema contains non-AVS-v1 verdict: {v!r}. "
+                f"Allowed core verdicts are {sorted(AOC_CORE_VERDICTS)}."
+            ))
+
+    # Scan predicate file for verdict literals and confirm they are in the
+    # core vocabulary (predicates should never reference legacy verdicts).
+    pred_path = os.path.join(REPO_ROOT, rule.get("predicate_file", ""))
+    if os.path.isfile(pred_path):
+        try:
+            pred_content = open(pred_path).read()
+        except OSError:
+            pred_content = ""
+        # Find all double-quoted or single-quoted strings compared to t.get('verdict')
+        # Heuristic: look for patterns like: t.get('verdict') == 'VALUE' or 'VALUE' in (...)
+        verdict_literal_re = re.compile(
+            r"t\.get\(['\"]verdict['\"]\)\s*==?\s*['\"]([a-zA-Z_\-]+)['\"]"
+        )
+        tuple_literal_re = re.compile(
+            r"t\.get\(['\"]verdict['\"]\)\s+in\s*\(([^)]*)\)"
+        )
+        for m in verdict_literal_re.finditer(pred_content):
+            lit = m.group(1)
+            if lit not in AOC_CORE_VERDICTS and lit not in all_verdicts:
+                findings.append(_emit_finding(
+                    rule,
+                    f"{rule.get('predicate_file')} references non-registry verdict {lit!r}"
+                ))
+        for m in tuple_literal_re.finditer(pred_content):
+            tuple_body = m.group(1)
+            for lit_m in re.finditer(r"['\"]([a-zA-Z_\-]+)['\"]", tuple_body):
+                lit = lit_m.group(1)
+                if lit not in AOC_CORE_VERDICTS and lit not in all_verdicts:
+                    findings.append(_emit_finding(
+                        rule,
+                        f"{rule.get('predicate_file')} references non-registry verdict {lit!r}"
+                    ))
+
+    # Scan agent files (under agent_files_glob) for verdict values emitted.
+    # We look for `"verdict":"<value>"` patterns; values like `<verdict>`
+    # or `<pass|fail>` are templates and excluded.
+    agent_glob = rule.get("agent_files_glob", "")
+    if agent_glob:
+        abs_glob = os.path.join(REPO_ROOT, agent_glob)
+        verdict_agents = set(schema.keys())
+        for agent_file in sorted(glob.glob(abs_glob)):
+            agent_base = os.path.basename(agent_file).replace(".md", "")
+            if agent_base not in verdict_agents:
+                continue  # Only enforce the declared 17 verdict_agents.
+            try:
+                content = open(agent_file).read()
+            except OSError:
+                continue
+            spec = schema.get(agent_base, {})
+            allowed_v = set(spec.get("allowed_verdicts", []))
+            # Detect `"verdict":"<literal>"` (legacy uppercase, multi-word, or unknown-value emissions).
+            # Values starting with `<` are template placeholders (e.g. <pass|fail>, <verdict>) — skip.
+            # Values containing `|` alone are template alternation — skip.
+            for m in re.finditer(r'"verdict"\s*:\s*"([^"<>]+)"', content):
+                lit = m.group(1).strip()
+                if not lit:
+                    continue
+                if "|" in lit:
+                    continue
+                # Normalize casing
+                lit_norm = lit.lower() if lit.lower() in {"pass", "fail", "blocked", "unresolved"} else lit
+                if lit_norm not in allowed_v and lit not in allowed_v:
+                    findings.append(_emit_finding(
+                        rule,
+                        f"{os.path.relpath(agent_file, REPO_ROOT)}: emits verdict {lit!r} not in allowed_verdicts {sorted(allowed_v)}"
+                    ))
+
+    return findings
+
+
+def check_ledger_ownership(rule):
+    """AOC v1 R2: gated_paths must be written only by allowed_writers.
+    Scans template directories (.claude/agents, .claude/hooks,
+    .claude/scripts, .claude/skills, .claude/patterns) for writes targeting
+    gated_paths and reports any outside the allowed_writers list."""
+    findings = []
+    allowed = set(rule.get("allowed_writers", []))
+    gated_paths = rule.get("gated_paths", [])
+    # Build per-path escaped regex segments (literal paths).
+    # Detect writes: patterns like "> .runs/fix-log.md", ">> .runs/fix-log.md",
+    # "open('.runs/fix-log.md'", "open(\".runs/fix-log.md\"", and "with open('.runs/fix-log.md', 'a')".
+    scan_roots = [
+        ".claude/agents",
+        ".claude/hooks",
+        ".claude/scripts",
+        ".claude/skills",
+        ".claude/patterns",
+    ]
+    # Test directories contain fixture strings that intentionally reference
+    # gated paths; do not scan them.
+    SKIP_PREFIXES = (
+        ".claude/scripts/tests/",
+        ".claude/scripts/lib/tests/",
+    )
+    for gated in gated_paths:
+        esc = re.escape(gated)
+        write_patterns = [
+            re.compile(r">{1,2}\s*" + esc),                             # shell redirect
+            re.compile(r"open\(\s*['\"]" + esc + r"['\"]\s*,\s*['\"][wa]\+?b?['\"]"),  # open(path, 'w'/'a')
+            re.compile(r"open\(\s*['\"]" + esc + r"['\"]\)[^)]*\.write\("),  # open(path).write( — rare
+        ]
+        for root in scan_roots:
+            root_abs = os.path.join(REPO_ROOT, root)
+            if not os.path.isdir(root_abs):
+                continue
+            for dirpath, _dirs, files in os.walk(root_abs):
+                for fn in files:
+                    if not (fn.endswith(".md") or fn.endswith(".sh")
+                            or fn.endswith(".py") or fn.endswith(".json")):
+                        continue
+                    fpath = os.path.join(dirpath, fn)
+                    relpath = os.path.relpath(fpath, REPO_ROOT)
+                    # Skip the coherence rules file itself (declares paths as strings)
+                    # and the contract docs.
+                    if relpath == "/".join([".claude/patterns",
+                                            "template-coherence-rules.json"]):
+                        continue
+                    if relpath == "/".join([".claude/patterns",
+                                            "agent-output-contract.md"]):
+                        continue
+                    # Skip the linter itself: its regex patterns literally
+                    # contain the gated paths for detection purposes.
+                    if relpath == "/".join([".claude/scripts",
+                                            "verify-linter.sh"]):
+                        continue
+                    # Skip the runtime write guard: it contains the gated
+                    # paths in its detection/deny regexes.
+                    if relpath == "/".join([".claude/hooks",
+                                            "fix-ledger-write-guard.sh"]):
+                        continue
+                    # Skip test fixtures.
+                    if any(relpath.startswith(p) for p in SKIP_PREFIXES):
+                        continue
+                    if relpath in allowed:
+                        continue  # Allowed writer; its writes are legitimate.
+                    try:
+                        content = open(fpath).read()
+                    except OSError:
+                        continue
+                    for pat in write_patterns:
+                        for m in pat.finditer(content):
+                            # Skip when the mention is inside a code comment
+                            # that references AOC v1 contract.
+                            line_start = content.rfind("\n", 0, m.start()) + 1
+                            line_end = content.find("\n", m.end())
+                            if line_end == -1:
+                                line_end = len(content)
+                            line = content[line_start:line_end]
+                            low = line.lower()
+                            if "aoc v1" in low or "# documented pattern" in low:
+                                continue
+                            findings.append(_emit_finding(
+                                rule,
+                                f"{relpath}: writes to gated path {gated} outside allowed writers"
+                            ))
+                            break  # one finding per file+path
+                        else:
+                            continue
+                        break
+    return findings
+
+
+def check_consumer_coverage(rule):
+    """AOC v1 R3: every consumer must reference canonical_source (path string)."""
+    findings = []
+    canonical = rule.get("canonical_source", "")
+    consumers = rule.get("consumers", [])
+    canonical_basename = os.path.basename(canonical)
+    # The literal canonical path or its basename is sufficient evidence.
+    needles = [canonical, canonical_basename]
+    for consumer in consumers:
+        fpath = os.path.join(REPO_ROOT, consumer)
+        if not os.path.isfile(fpath):
+            findings.append(_emit_finding(
+                rule,
+                f"{consumer}: consumer file missing"
+            ))
+            continue
+        try:
+            content = open(fpath).read()
+        except OSError as e:
+            findings.append(_emit_finding(
+                rule,
+                f"{consumer}: cannot read ({e})"
+            ))
+            continue
+        if not any(n and n in content for n in needles):
+            findings.append(_emit_finding(
+                rule,
+                f"{consumer}: does not reference canonical source {canonical}"
+            ))
+    return findings
+
+
 # Load and run cross-file rules
 if os.path.isfile(RULES_PATH):
     try:
@@ -487,6 +746,12 @@ if os.path.isfile(RULES_PATH):
                 cross_file.extend(check_field_role_map(rule))
             elif rtype == "artifact_lifecycle":
                 cross_file.extend(check_artifact_lifecycle(rule))
+            elif rtype == "verdict_vocab_consistency":
+                cross_file.extend(check_verdict_vocab_consistency(rule))
+            elif rtype == "ledger_ownership":
+                cross_file.extend(check_ledger_ownership(rule))
+            elif rtype == "consumer_coverage":
+                cross_file.extend(check_consumer_coverage(rule))
             else:
                 cross_file.append(f"  [{rule.get('id','<unknown>')}] unknown rule type: {rtype}")
     except (OSError, json.JSONDecodeError) as e:
@@ -561,8 +826,32 @@ if not JSON_OUT:
         f"{len(cross_file)} cross_file_contradiction"
     )
 
-# Exit code: 1 if any category non-empty, 0 otherwise (overridden by --warn-only)
-has_findings = bool(uncovered or unjustified_true or diverged or drift_declared or cross_file)
-if has_findings and not WARN_ONLY:
+# Exit code — layered semantics:
+#   default (no flags): any finding blocks (exit 1).
+#   --warn-only: downgrades ALL findings to warnings (exit 0).
+#   --strict-aoc: forces AOC findings (R1/R2/R3) to block regardless of
+#                 --warn-only; other findings still honor --warn-only.
+#
+# AOC findings are tagged in their message string by _emit_finding with
+# "(<rule_type>/<severity>)". Partition cross_file by presence of STRICT_AOC_TYPES.
+
+def _is_aoc_finding(msg):
+    return any(f"({t}/" in msg for t in STRICT_AOC_TYPES)
+
+
+aoc_findings = [m for m in cross_file if _is_aoc_finding(m)]
+non_aoc_findings = (
+    uncovered + unjustified_true + diverged + drift_declared +
+    [m for m in cross_file if not _is_aoc_finding(m)]
+)
+
+should_block = False
+# AOC findings: block when not warn-only OR when strict-aoc is set.
+if aoc_findings and (not WARN_ONLY or STRICT_AOC):
+    should_block = True
+# Non-AOC findings: block only when not warn-only (strict-aoc does not apply).
+if non_aoc_findings and not WARN_ONLY:
+    should_block = True
+if should_block:
     sys.exit(1)
 PYTHON_SCRIPT

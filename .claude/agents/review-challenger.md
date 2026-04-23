@@ -75,7 +75,12 @@ Output per finding:
 
 ## Trace Output
 
-After completing all work, write the final trace:
+After completing all work, write the final trace per AOC v1
+(`agent-registry.json.verdict_agents_schema.review-challenger`).
+
+AVS v1: `verdict="pass"` (challenger always completes), `result="count_summary"`,
+plus required structured fields `confirmed_count` (sum of `label=="confirmed"`)
+and `disputed_count` (sum of `label in {"disputed","needs-evidence"}`).
 
 ```bash
 RUN_ID=$(python3 -c "import json;print(json.load(open('.runs/review-context.json')).get('run_id',''))" 2>/dev/null || echo "")
@@ -84,8 +89,12 @@ import json, datetime
 trace = {
     'agent': 'review-challenger',
     'timestamp': datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
-    'verdict': '<VERDICT>',
+    'verdict': 'pass',
+    'result': 'count_summary',
+    'provenance': 'self',
     'checks_performed': ['cross_file', 'edge_case', 'user_journey'],
+    'confirmed_count': <N>,
+    'disputed_count': <M>,
     'verdicts': [
         {'finding': '<title>', 'label': '<confirmed|disputed|needs-evidence>', 'counterexample': '<text>', 'evidence': '<text>'}
     ],
@@ -95,5 +104,6 @@ json.dump(trace, open('.runs/agent-traces/review-challenger.json', 'w'), indent=
 "
 ```
 
-Replace `<VERDICT>` with a summary like `"3 confirmed, 1 disputed"`.
-Replace placeholders in `verdicts` with one entry per finding reviewed.
+- `confirmed_count`: number of findings labeled `"confirmed"`.
+- `disputed_count`: number of findings labeled `"disputed"` or `"needs-evidence"`.
+- `verdicts[]`: one entry per finding reviewed with the original label for traceability.

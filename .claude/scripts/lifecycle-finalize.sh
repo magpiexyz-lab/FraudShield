@@ -148,6 +148,18 @@ except Exception as e:
     print('WARN: failed to write .verify-results-raw.json: %s' % e, file=sys.stderr)
 "
 
+# --- Step 2.5: AOC v1 FLS v1 — consolidate agent trace fixes[] into ledger ---
+# Ensures every skill (not just /verify) ends with a fresh .runs/fix-ledger.jsonl
+# for downstream consumers (pattern-classifier, observation-phase, write-q-score,
+# verify-report-gate). Idempotent: safe to run unconditionally. Writes an empty
+# ledger if no traces exist. The renderer is invoked by observation-phase's
+# fallback when fix-log.md is empty; we do NOT regenerate fix-log.md here so
+# that state-5 inline WARN entries and procedure-emitted `Fix (agent): ...`
+# prose entries are preserved during the transitional dual-check period.
+if [[ -d "$PROJECT_DIR/.runs/agent-traces" ]]; then
+  python3 "$PROJECT_DIR/.claude/scripts/write-fix-ledger.py" >/dev/null 2>&1 || true
+fi
+
 # --- Step 3: Q-score — read q-dimensions.json, call write-q-score.py ---
 Q_DIMS_PATH="$PROJECT_DIR/.runs/q-dimensions.json"
 if [[ -f "$Q_DIMS_PATH" ]]; then
@@ -223,7 +235,12 @@ if [[ -z "${SKIP_COHERENCE_LINT:-}" ]]; then
     fi
   fi
   if [[ "$TEMPLATE_HASH" != "$CACHED_HASH" ]] || [[ "$DIFF_TOUCHES_TEMPLATE" == "yes" ]]; then
-    bash "$PROJECT_DIR/.claude/scripts/verify-linter.sh" --warn-only --cache "$COHERENCE_CACHE" >/dev/null 2>&1 || true
+    # AOC v1: --strict-aoc escalates aoc-verdict-vocab-consistency /
+    # aoc-fix-ledger-ownership / aoc-consumer-coverage findings to blocking
+    # regardless of --warn-only. Other drift classes continue as warn-only
+    # discovery. See .claude/patterns/agent-output-contract.md.
+    LINTER_EXIT=0
+    bash "$PROJECT_DIR/.claude/scripts/verify-linter.sh" --warn-only --strict-aoc --cache "$COHERENCE_CACHE" >/dev/null 2>&1 || LINTER_EXIT=$?
     # Annotate cache with the hash that produced it (so next run can compare)
     if [[ -f "$COHERENCE_CACHE" ]]; then
       python3 -c "
@@ -232,6 +249,12 @@ d = json.load(open('$COHERENCE_CACHE'))
 d['template_hash'] = '$TEMPLATE_HASH'
 json.dump(d, open('$COHERENCE_CACHE', 'w'), indent=2)
 " 2>/dev/null || true
+    fi
+    if [[ "$LINTER_EXIT" -ne 0 ]]; then
+      echo "BLOCK: AOC v1 coherence violation (aoc-verdict-vocab-consistency / aoc-fix-ledger-ownership / aoc-consumer-coverage)." >&2
+      bash "$PROJECT_DIR/.claude/scripts/verify-linter.sh" --strict-aoc 2>&1 | tail -40 >&2 || true
+      echo "Re-run: bash .claude/scripts/verify-linter.sh --strict-aoc" >&2
+      exit 1
     fi
   fi
 fi

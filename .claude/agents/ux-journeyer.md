@@ -116,8 +116,12 @@ Clicks-to-value: N (target: ≤ 3)
 ## Fixes Applied
 - [one-line summary per fix]
 
-## Verdict
-<"all pass" | "all fixed" | "partial" | "blocked">
+## Verdict (AOC v1 AVS v1)
+- no dead ends, nothing to fix → `verdict="pass"`, `result="clean"`
+- dead ends found and all fixed → `verdict="pass"`, `result="fixed"`
+- some fixed, non-critical remain → `verdict="pass"`, `result="partial"`
+- fixes exhausted turn budget, unresolved_dead_ends>0 → `verdict="fail"`, `result="partial"`
+- prereq-unmet at start → `verdict="blocked"`, `result="none"`, `caveat="prereq-unmet:<reason>"`
 
 ## Remaining Issues (if partial/blocked)
 - [unresolved issue]
@@ -146,7 +150,9 @@ os.makedirs(".runs/agent-traces", exist_ok=True)
 trace = {
     "agent": "ux-journeyer",
     "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-    "verdict": "<verdict>",
+    "verdict": "<verdict>",           # AOC v1 AVS v1: "pass" | "fail" | "blocked" (lowercase)
+    "result": "<result>",              # AOC v1: "clean" | "fixed" | "partial" | "none"
+    "provenance": "self",
     "checks_performed": ["golden_path_trace", "flow_issues", "clicks_to_value"],
     "journeys_tested": <N>,
     "clicks_to_value": <C>,

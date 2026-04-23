@@ -86,7 +86,13 @@ For each concern: type, description, evidence, and (for TYPE A) suggested fix.
 
 ## Trace Output
 
-After completing all work, write the final trace. This trace is critical for adversarial integrity -- it records your independent assessment that the lead agent cannot modify.
+After completing all work, write the final trace. This trace is critical for
+adversarial integrity — it records your independent assessment that the lead
+agent cannot modify.
+
+AOC v1 (`agent-registry.json.verdict_agents_schema.solve-critic`):
+`verdict="pass"` (critic always completes), `result="count_summary"`, plus
+required structured fields `type_a_count`, `type_b_count`, `type_c_count`.
 
 ```bash
 CONTEXT_FILE="<from your spawn prompt>"
@@ -96,7 +102,9 @@ import json, datetime
 trace = {
     'agent': 'solve-critic',
     'timestamp': datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
-    'verdict': '<VERDICT>',
+    'verdict': 'pass',
+    'result': 'count_summary',
+    'provenance': 'self',
     'checks_performed': ['type_a_analysis', 'type_b_analysis', 'type_c_analysis']
         + (['prevention_root_cause', 'prevention_recurrence', 'prevention_scope'] if problem_type == 'defect' else []),
     'round': <1 or 2>,

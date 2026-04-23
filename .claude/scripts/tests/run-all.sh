@@ -19,6 +19,7 @@ SUITES=(
   ".claude/scripts/tests/test_derive_pages.py"
   ".claude/scripts/tests/test_verify_semantics.py"
   ".claude/scripts/tests/test_field_role_map_rule.py"
+  ".claude/scripts/tests/test_aoc_coherence_rules.py"
 )
 
 FAIL=0

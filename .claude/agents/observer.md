@@ -119,9 +119,21 @@ Return one of:
 
 ## Trace Output
 
-Write a completion trace per `.claude/patterns/agent-trace-protocol.md`. Use the base schema plus the `fixes_evaluated` extension field. `checks_performed`: `["prerequisites","fix_evaluation","redaction","dedup","issue_filing"]`. Replace `<verdict>` with `"filed"`, `"commented"`, `"no observations"`, or `"prerequisite-unavailable"`.
+Write a completion trace per `.claude/patterns/agent-trace-protocol.md` and
+[AOC v1](../patterns/agent-output-contract.md). Use the base schema plus
+the `fixes_evaluated` extension field.
+`checks_performed`: `["prerequisites","fix_evaluation","redaction","dedup","issue_filing"]`.
+
+AVS v1 mapping (per `agent-registry.json.verdict_agents_schema.observer`):
+
+| Legacy verdict | `verdict` | `result` |
+|---|---|---|
+| `"filed"` | `"pass"` | `"none"` |
+| `"commented"` | `"pass"` | `"none"` |
+| `"no observations"` | `"pass"` | `"clean"` |
+| `"prerequisite-unavailable"` | `"blocked"` | `"none"` |
 
 ```bash
 RUN_ID=$(python3 -c "import json;print(json.load(open('.runs/verify-context.json')).get('run_id',''))" 2>/dev/null || echo "")
-mkdir -p .runs/agent-traces && echo '{"agent":"observer","timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","verdict":"<verdict>","checks_performed":["prerequisites","fix_evaluation","redaction","dedup","issue_filing"],"fixes_evaluated":<N>,"run_id":"'"$RUN_ID"'"}' > .runs/agent-traces/observer.json
+mkdir -p .runs/agent-traces && echo '{"agent":"observer","timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","verdict":"<pass|blocked>","result":"<clean|none>","provenance":"self","checks_performed":["prerequisites","fix_evaluation","redaction","dedup","issue_filing"],"fixes_evaluated":<N>,"run_id":"'"$RUN_ID"'"}' > .runs/agent-traces/observer.json
 ```

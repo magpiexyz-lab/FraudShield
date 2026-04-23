@@ -3,6 +3,13 @@
 Canonical schema for agent trace initialization and completion output.
 Referenced by all agent definitions that write traces to `.runs/agent-traces/`.
 
+> **Verdict vocabulary and fix-ledger semantics are governed by
+> [Agent Output Contract v1 (AOC v1)](./agent-output-contract.md).**
+> This file defines the trace schema plumbing (identity, provenance,
+> required fields). The contract defines `allowed_verdicts` /
+> `allowed_results` per agent and the `.runs/fix-ledger.jsonl` format.
+> Agent definitions should reference both.
+
 ## The Three Axes
 
 Every trace is an **authenticated assertion** about what one spawned agent did.
@@ -45,7 +52,8 @@ mkdir -p .runs/agent-traces && echo '{"agent":"<agent-name>","timestamp":"'$(dat
 | `agent` | string | Agent name (e.g., `"observer"`, `"spec-reviewer"`) |
 | `timestamp` | string | ISO 8601 UTC timestamp |
 | `status` | `"started"` \| `"completed"` \| `"abandoned"` | `"started"` at init; `"completed"` after normal or self-degraded completion; `"abandoned"` for recovery traces |
-| `verdict` | string | Agent-specific verdict (see below); required when `status != "started"` |
+| `verdict` | string | Core protocol vocabulary (lowercase): `pass` / `fail` / `blocked` / `unresolved`. Required when `status != "started"`. Governed by AOC v1 AVS v1. Gate predicates key on this field only. |
+| `result` | string \| null | AOC v1 qualifier: `clean` / `fixed` / `partial` / `degraded` / `skipped` / `none` / `count_summary` / `null`. Required when `agent ∈ verdict_agents` and `status == "completed"`. Preserves pass-clean vs pass-after-fixes distinction. See per-agent `allowed_results` in `agent-registry.json.verdict_agents_schema`. |
 | `provenance` | `"self"` \| `"self-degraded"` \| `"recovery"` \| `"lead-merge"` | Who wrote this trace. See §Provenance below. Omitted at `init-trace.py`; required at completion |
 | `partial` | boolean | `true` when the trace reflects less than the agent's full declared work; MUST be `true` when `provenance != "self"` |
 | `checks_performed` | string[] | List of check/step identifiers actually completed |
@@ -69,7 +77,7 @@ mkdir -p .runs/agent-traces && echo '{"agent":"<agent-name>","timestamp":"'$(dat
 | Provenance | Who writes | When | Preconditions enforced by |
 |-----------|-----------|------|---------------------------|
 | `self` | The agent itself, at end of run | Normal completion | `artifact-integrity-gate.sh` (schema) + universal provenance check in `state-completion-gate.sh` (spawn evidence) |
-| `self-degraded` | The agent itself, on detected partial | Agent self-detected partial (image-limit, screenshot crash, turn-budget, tool unavailable) and calls `scripts/write-degraded-trace.py` | Same as `self` + `status == "completed"` + `partial == true` + `degraded_reason != null` (enforced by artifact-integrity-gate) |
+| `self-degraded` | The agent itself, on detected partial | Agent self-detected degradation. AOC v1 formalizes **two sub-cases**: (a) **execution degradation** — original recovery semantics (image-limit, screenshot crash, turn-budget, tool unavailable); (b) **input degradation** — subject-under-review is degraded (fixture short-circuit, DEMO_MODE dynamic-route 404, stale fixture — introduced by #1042 via Session C). Both call `scripts/write-degraded-trace.py` | Same as `self` + `status == "completed"` + `partial == true` + `degraded_reason != null` (enforced by artifact-integrity-gate) + `recovery_validated == true` for downstream `validated_fallback` acceptance |
 | `recovery` | Orchestrator via `scripts/write-recovery-trace.sh` | Agent crashed so hard it could not self-report | (a) spawn-log entry from `skill-agent-gate` exists for this agent in current run_id; (b) target trace absent or stub (`status:"started"` no `verdict`); (c) `--reason` mandatory; (d) agent NOT in `recovery_forbidden` list (enforced by the script) |
 | `lead-merge` | Orchestrator, composing from sibling traces | Aggregate from per-item parallel fan-out (e.g., design-critic.json merged from design-critic-landing.json / design-critic-pricing.json), or implementer worktree trace | `contributing_spawn_indexes.length == count(spawn-log entries for base in run_id)` (enforced by state-completion-gate `lead-merge` exemption) |
 
@@ -97,26 +105,34 @@ Agents may add fields beyond the base schema to capture agent-specific metrics:
 | any reviewer agent | `review_method_gate_evaluated` | boolean | Sentinel written by `.claude/patterns/review-verdict-gate.md` proving the gate ran on this trace. Asserted by `state-registry.json` VERIFY commands for state 2 and state 3c. Always `true` once present. |
 | any reviewer agent | `review_method_gate_corrections` | array | One entry per verdict the gate auto-corrected: `{location, review_method, original_verdict, corrected_to}`. Omitted when 0 corrections were applied. |
 
-### Verdict Values
+### Verdict Values (AOC v1)
 
-Each agent defines its own verdict vocabulary. **Casing is normative** — write
-verdicts exactly as shown in the table below. Consumers perform defensive
-normalization (`.upper()` / `.lower()`), but agents must match the canonical form.
+Agent verdict vocabulary is declared in
+**`.claude/patterns/agent-output-contract.md`** (AVS v1) and enumerated
+per-agent in **`agent-registry.json.verdict_agents_schema`**
+(`allowed_verdicts`, `allowed_results`, `required_structured_fields`).
 
-> **Scope note:** This casing requirement applies to agent-trace verdicts
-> (LLM-generated). Gate verdicts (written by template-controlled gate-keeper
-> code) use their own casing convention and are not governed by this table.
+Core rules (AOC v1):
 
-| Agent | Possible verdicts |
-|-------|------------------|
-| observer | `"filed"`, `"commented"`, `"no observations"`, `"prerequisite-unavailable"` |
-| spec-reviewer | `"PASS"`, `"FAIL"` |
-| build-info-collector | `"collected"`, `"no-fixes"` |
-| ux-journeyer | `"all pass"`, `"all fixed"`, `"partial"`, `"blocked"` |
-| behavior-verifier | `"PASS"`, `"FAIL"`, `"DEGRADED"`, `"SKIPPED"` |
-| resolve-challenger | `"N fixes sound, M challenged"` (summary) |
-| review-challenger | `"N confirmed, M disputed"` (summary) |
-| solve-critic | `"N TYPE A, M TYPE B, K TYPE C"` (summary) |
+- `verdict` is one of the **lowercase** four core values: `pass` / `fail` /
+  `blocked` / `unresolved`. Gate predicates key on this field only.
+- `result` carries the qualifier that preserves pass-clean vs
+  pass-after-fixes and other distinctions (see AOC v1 Invariants table).
+- **Count-summary agents** (scanner / adversarial) emit `result =
+  "count_summary"` plus structured count fields per AOC v1 (e.g.,
+  `fails_count`, `findings_count`, `type_a_count`). Gate predicates
+  reference those counts via the existing `additional_block_conditions`
+  mechanism — no new DSL.
+- **Legacy uppercase emissions** (`PASS`, `FAIL`, `DEGRADED`, `SKIPPED`) are
+  case-normalized to lowercase by `migrate-legacy-traces.py` on first
+  encounter. Self-healing migration is triggered by `verify-report-gate.sh`
+  when legacy traces are detected.
+
+> **Scope note:** Gate verdicts (written by template-controlled gate-keeper
+> code) use their own casing convention and are not governed by AOC v1.
+
+For legacy-verdict → AVS v1 mappings, see
+`.claude/scripts/migrate-legacy-traces.py.LEGACY_VERDICT_MAP`.
 
 ## Adversarial Agent Extensions
 

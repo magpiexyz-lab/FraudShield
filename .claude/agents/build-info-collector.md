@@ -61,9 +61,22 @@ Return one of:
 
 ## Trace Output
 
-Write a completion trace per `.claude/patterns/agent-trace-protocol.md`. Use the base schema plus the `files_collected` extension field. `checks_performed`: `["diff_collected","summaries_written","template_files_listed"]`. Replace `<verdict>` with `"collected"` if fixes existed, or `"no-fixes"` if none.
+Write a completion trace per `.claude/patterns/agent-trace-protocol.md` and
+[AOC v1](../patterns/agent-output-contract.md)
+(`agent-registry.json.verdict_agents_schema.build-info-collector`).
+
+AVS v1 mapping:
+
+| Legacy verdict | `verdict` | `result` |
+|---|---|---|
+| `"collected"` | `"pass"` | `"clean"` |
+| `"no-fixes"` | `"pass"` | `"clean"` |
+
+(Both legacy verdicts map to the same AVS v1 tuple because AOC v1 does not
+distinguish "collected N files" from "no fixes" at the core-verdict level —
+the `files_collected` extension field carries the count.)
 
 ```bash
 RUN_ID=$(python3 -c "import json;print(json.load(open('.runs/verify-context.json')).get('run_id',''))" 2>/dev/null || echo "")
-mkdir -p .runs/agent-traces && echo '{"agent":"build-info-collector","timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","verdict":"<verdict>","checks_performed":["diff_collected","summaries_written","template_files_listed"],"files_collected":<N>,"run_id":"'"$RUN_ID"'"}' > .runs/agent-traces/build-info-collector.json
+mkdir -p .runs/agent-traces && echo '{"agent":"build-info-collector","timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","verdict":"pass","result":"clean","provenance":"self","checks_performed":["diff_collected","summaries_written","template_files_listed"],"files_collected":<N>,"run_id":"'"$RUN_ID"'"}' > .runs/agent-traces/build-info-collector.json
 ```

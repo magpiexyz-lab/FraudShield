@@ -103,12 +103,17 @@ Applies to ALL archetypes (web-app, service, cli).
 
 ## Trace Output
 
-After completing all work, write a trace file. The trace includes a `fails` array with structured details for each FAIL check (for automated security merge):
+After completing all work, write a trace file per AOC v1
+(`agent-registry.json.verdict_agents_schema.security-defender`).
+
+AVS v1: `result="count_summary"` always; `verdict="pass"` iff `fails_count==0`, else `verdict="fail"` (lowercase).
 
 ```bash
 RUN_ID=$(python3 -c "import json;print(json.load(open('.runs/verify-context.json')).get('run_id',''))" 2>/dev/null || echo "")
-mkdir -p .runs/agent-traces && echo '{"agent":"security-defender","timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","verdict":"<verdict>","checks_performed":["D1_secrets","D2_validation","D3_rls","D4_client_server","D5_rate_limit","D6_deps"],"fails_count":<N>,"fails":[<array of {"check":"D<N>","file":"<path>","desc":"<description>"} for each FAIL>],"run_id":"'"$RUN_ID"'"}' > .runs/agent-traces/security-defender.json
+mkdir -p .runs/agent-traces && echo '{"agent":"security-defender","timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","verdict":"<pass|fail>","result":"count_summary","provenance":"self","checks_performed":["D1_secrets","D2_validation","D3_rls","D4_client_server","D5_rate_limit","D6_deps"],"fails_count":<N>,"findings_count":<N>,"fails":[<array of {"check":"D<N>","file":"<path>","desc":"<description>"} for each FAIL>],"run_id":"'"$RUN_ID"'"}' > .runs/agent-traces/security-defender.json
 ```
 
-Replace `<verdict>` with your summary: `"pass"` if all checks passed, or `"N FAILs"` with the count.
-Replace `<N>` with the number of FAILs. The `fails` array must contain one entry per FAIL with `check` (e.g., "D2"), `file` (path to offending file), and `desc` (what failed). If 0 FAILs, use an empty array `[]`.
+- `verdict`: `"pass"` if `fails_count==0`, `"fail"` otherwise (lowercase).
+- `result`: always `"count_summary"`.
+- `fails_count`/`findings_count`: number of FAILs (required structured fields per registry).
+- `fails[]`: one entry per FAIL with `check` (e.g., "D2"), `file`, `desc`. Empty array if zero.

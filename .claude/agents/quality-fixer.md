@@ -139,7 +139,9 @@ os.makedirs(".runs/agent-traces", exist_ok=True)
 trace = {
     "agent": "quality-fixer",
     "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-    "verdict": "<verdict>",
+    "verdict": "<verdict>",         # AOC v1 AVS v1: "pass" | "fail" (lowercase)
+    "result": "<result>",            # AOC v1: "clean" | "fixed" | "partial" | "none"
+    "provenance": "self",
     "checks_performed": ["fix_code", "rebuild", "recheck", "collect_changes", "generate_tables"],
     "issues_fixed": <N>,
     "unresolved_critical": <UC>,
@@ -154,8 +156,13 @@ with open(".runs/agent-traces/quality-fixer.json", "w") as f:
 TRACE_EOF
 ```
 
-Replace placeholders with actual values:
-- `<verdict>`: final status — `"all fixed"`, `"partial"`, or `"none"`
+Replace placeholders with actual values (AOC v1 AVS v1, per
+`agent-registry.json.verdict_agents_schema.quality-fixer`):
+- no issues found → `verdict="pass"`, `result="clean"`
+- issues found, all fixed → `verdict="pass"`, `result="fixed"`
+- issues found, some remain non-critical → `verdict="pass"`, `result="partial"`, `unresolved_critical=0`
+- issues found, unresolved criticals remain → `verdict="fail"`, `result="partial"`, `unresolved_critical>0`
+- no work attempted (pre-flight failure) → `verdict="fail"`, `result="none"`
 - `<N>`: number of issues fixed (0 if none)
 - `<UC>`: count of critical/serious a11y violations and major consistency issues that remained unfixed after 2 fix cycles (0 if all resolved). Minor items are excluded.
 

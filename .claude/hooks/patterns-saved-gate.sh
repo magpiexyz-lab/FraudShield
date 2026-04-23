@@ -69,14 +69,24 @@ for path in saved_to_files:
     if not os.path.exists(full_path):
         errors.append("saved_to_files path does not exist: %s" % path)
 
-# Invariant 4: total must match actual fix-log entry count
-fix_log_path = os.path.join(project_dir, ".claude", "runs", "fix-log.md")
-if os.path.exists(fix_log_path):
+# Invariant 4: total must match authoritative fix ledger count (AOC v1 FLS v1).
+# Prefers .runs/fix-ledger.jsonl; falls back to fix-log.md prose regex during
+# the transitional dual-check period.
+ledger_path = os.path.join(project_dir, ".runs", "fix-ledger.jsonl")
+fix_log_path = os.path.join(project_dir, ".runs", "fix-log.md")
+fix_count = None
+if os.path.exists(ledger_path):
+    try:
+        with open(ledger_path) as _f:
+            fix_count = sum(1 for ln in _f if ln.strip())
+    except OSError:
+        fix_count = None
+if fix_count is None and os.path.exists(fix_log_path):
     import re
     fix_log = open(fix_log_path).read()
     fix_count = len(re.findall(r"^(?:\*\*Fix|Fix \()", fix_log, re.MULTILINE))
-    if d.get("total", 0) != fix_count:
-        errors.append("Invariant 4: total (%d) != fix-log entry count (%d)" % (d.get("total", 0), fix_count))
+if fix_count is not None and d.get("total", 0) != fix_count:
+    errors.append("Invariant 4: total (%d) != fix ledger/log entry count (%d)" % (d.get("total", 0), fix_count))
 
 if errors:
     print("FAIL:" + "; ".join(errors))

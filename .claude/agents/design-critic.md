@@ -203,7 +203,9 @@ os.makedirs(".runs/agent-traces", exist_ok=True)
 trace = {
     "agent": "design-critic",
     "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-    "verdict": "<verdict>",
+    "verdict": "<verdict>",       # AOC v1 AVS v1: "pass" | "fail" | "unresolved" (lowercase)
+    "result": "<result>",          # AOC v1: "clean" | "fixed" | "partial" | null (null for unresolved)
+    "provenance": "self",          # self | self-degraded (see #1042 fixture short-circuit) | lead-merge
     "checks_performed": ["layer1_functional", "layer2_taste", "layer3_antipattern", "visual_regression"],
     "pages_reviewed": 1,
     "min_score": <S>,
@@ -238,7 +240,14 @@ TRACE_EOF
 ```
 
 Replace placeholders with actual values:
-- `<verdict>`: final verdict — `"pass"`, `"fixed"`, or `"unresolved"`
+- `<verdict>` + `<result>` per AOC v1 AVS v1 (see `agent-registry.json.verdict_agents_schema.design-critic`):
+  - no issues found → `verdict="pass"`, `result="clean"`
+  - issues found and all fixed → `verdict="pass"`, `result="fixed"`
+  - issues found, some fixes remain (non-critical) → `verdict="pass"`, `result="partial"`
+  - review determined unresolvable → `verdict="unresolved"`, `result=null`
+  - #1042 DEMO_MODE dynamic-route 404 short-circuit → emit normal verdict/result AND set
+    `provenance="self-degraded"`, `degraded_reason="demo-mode-fixture-short-circuit"`,
+    `recovery_validated=true` (stamped by `validate-recovery.sh`)
 - `<N>`: number of pages reviewed
 - `<S>`: lowest Layer 2 score across **in-boundary pages** after fixes (integer 1-10)
 - `<page-name>`: page containing the weakest-scoring section after fixes (in-boundary only)

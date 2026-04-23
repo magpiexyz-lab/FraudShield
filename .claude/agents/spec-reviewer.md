@@ -146,9 +146,21 @@ is a FAIL — report the missing entry and behavior ID.
 
 ## Trace Output
 
-Write a completion trace per `.claude/patterns/agent-trace-protocol.md`. Use the base schema (no extension fields). `checks_performed`: `["S1_features","S2_pages","S3_analytics","S4_golden_path","S5_system","S6_plan","S7_tdd","S8_process"]`. Replace `<verdict>` with `"PASS"` or `"FAIL"`.
+Write a completion trace per `.claude/patterns/agent-trace-protocol.md` and
+[AOC v1](../patterns/agent-output-contract.md). Use the base schema
+(no extension fields).
+`checks_performed`: `["S1_features","S2_pages","S3_analytics","S4_golden_path","S5_system","S6_plan","S7_tdd","S8_process"]`.
+
+AVS v1 mapping (per `agent-registry.json.verdict_agents_schema.spec-reviewer`):
+
+| Legacy verdict | `verdict` | `result` |
+|---|---|---|
+| `"PASS"` | `"pass"` | `"clean"` |
+| `"FAIL"` | `"fail"` | `"partial"` |
+
+Write `verdict` lowercase. Legacy uppercase values are migrated automatically.
 
 ```bash
 RUN_ID=$(python3 -c "import json;print(json.load(open('.runs/verify-context.json')).get('run_id',''))" 2>/dev/null || echo "")
-mkdir -p .runs/agent-traces && echo '{"agent":"spec-reviewer","timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","verdict":"<verdict>","checks_performed":["S1_features","S2_pages","S3_analytics","S4_golden_path","S5_system","S6_plan","S7_tdd","S8_process"],"run_id":"'"$RUN_ID"'"}' > .runs/agent-traces/spec-reviewer.json
+mkdir -p .runs/agent-traces && echo '{"agent":"spec-reviewer","timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","verdict":"<pass|fail>","result":"<clean|partial>","provenance":"self","checks_performed":["S1_features","S2_pages","S3_analytics","S4_golden_path","S5_system","S6_plan","S7_tdd","S8_process"],"run_id":"'"$RUN_ID"'"}' > .runs/agent-traces/spec-reviewer.json
 ```

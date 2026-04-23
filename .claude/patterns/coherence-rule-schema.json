@@ -1,0 +1,85 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Template Coherence Rule Schema",
+  "description": "Declarative schema for rules in .claude/patterns/template-coherence-rules.json. Consumed by .claude/scripts/verify-linter.sh. Each rule type dispatches to a dedicated function that emits findings into the cross_file_contradiction category with structured {category, rule_type, message, severity} objects.",
+  "definitions": {
+    "severity": { "enum": ["block", "warn"] },
+    "rule_field_role_map": {
+      "description": "Pre-AOC rule type: SCOPE consumers must call canonical_function; count-based regex forbidden.",
+      "required": ["id", "type", "field", "canonical_function", "consumers"],
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "const": "field_role_map" },
+        "severity": { "$ref": "#/definitions/severity" },
+        "field": { "type": "string" },
+        "canonical_function": { "type": "string" },
+        "description": { "type": "string" },
+        "consumers": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "rule_artifact_lifecycle": {
+      "description": "Pre-AOC rule type: VERIFY-referenced artifacts must have upstream produces declaration; do_not_modify[X] cannot precede produces[X].",
+      "required": ["id", "type"],
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "const": "artifact_lifecycle" },
+        "severity": { "$ref": "#/definitions/severity" },
+        "description": { "type": "string" }
+      }
+    },
+    "rule_verdict_vocab_consistency": {
+      "description": "AOC v1 R1: per-agent verdict/result declarations must match registry.verdict_agents_schema; lib-verdict.sh predicates must reference only registry values.",
+      "required": ["id", "type", "registry_path", "agent_files_glob", "predicate_file"],
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "const": "verdict_vocab_consistency" },
+        "severity": { "$ref": "#/definitions/severity" },
+        "registry_path": { "type": "string", "description": "Path to agent-registry.json." },
+        "agent_files_glob": { "type": "string", "description": "Glob of agent definition files to scan for verdict emissions." },
+        "predicate_file": { "type": "string", "description": "Path to lib-verdict.sh (scan for predicate verdict literals)." },
+        "description": { "type": "string" }
+      }
+    },
+    "rule_ledger_ownership": {
+      "description": "AOC v1 R2: gated_paths are written only by allowed_writers. Runtime fix-ledger-write-guard.sh enforces at tool-invocation time; this rule catches template-level authorship.",
+      "required": ["id", "type", "allowed_writers", "gated_paths"],
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "const": "ledger_ownership" },
+        "severity": { "$ref": "#/definitions/severity" },
+        "allowed_writers": { "type": "array", "items": { "type": "string" } },
+        "gated_paths": { "type": "array", "items": { "type": "string" } },
+        "description": { "type": "string" }
+      }
+    },
+    "rule_consumer_coverage": {
+      "description": "AOC v1 R3: every file in consumers[] must reference canonical_source as authoritative input. Regex on legacy source alone triggers a stale-consumer finding.",
+      "required": ["id", "type", "canonical_source", "consumers"],
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "const": "consumer_coverage" },
+        "severity": { "$ref": "#/definitions/severity" },
+        "canonical_source": { "type": "string" },
+        "consumers": { "type": "array", "items": { "type": "string" } },
+        "description": { "type": "string" }
+      }
+    }
+  },
+  "type": "object",
+  "required": ["rules"],
+  "properties": {
+    "$comment": { "type": "string" },
+    "rules": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          { "$ref": "#/definitions/rule_field_role_map" },
+          { "$ref": "#/definitions/rule_artifact_lifecycle" },
+          { "$ref": "#/definitions/rule_verdict_vocab_consistency" },
+          { "$ref": "#/definitions/rule_ledger_ownership" },
+          { "$ref": "#/definitions/rule_consumer_coverage" }
+        ]
+      }
+    }
+  }
+}

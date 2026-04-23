@@ -256,6 +256,21 @@ def main():
     ts = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
     run_id = args.run_id if args.run_id else f"{args.skill}-{ts}"
 
+    # AOC v1 FLS v1: when --fix-log-entries is 0 (default), auto-source from
+    # the authoritative ledger. If the ledger is absent, fall back to the
+    # CLI value (which remains 0 in the default case).
+    fix_log_entries = args.fix_log_entries
+    if fix_log_entries == 0:
+        import os
+        ledger_path = os.path.join(os.environ.get('CLAUDE_PROJECT_DIR', '.'),
+                                   '.runs', 'fix-ledger.jsonl')
+        if os.path.isfile(ledger_path):
+            try:
+                with open(ledger_path) as _f:
+                    fix_log_entries = sum(1 for ln in _f if ln.strip())
+            except OSError:
+                pass
+
     entry = {
         'timestamp': ts,
         'run_id': run_id,
@@ -263,7 +278,7 @@ def main():
         'scope': args.scope or args.skill,
         'archetype': args.archetype,
         'build_attempts': args.build_attempts,
-        'fix_log_entries': args.fix_log_entries,
+        'fix_log_entries': fix_log_entries,
         'hard_gate_failure': args.hard_gate_failure,
         'process_violation': args.process_violation,
         'overall_verdict': args.overall_verdict,

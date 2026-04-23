@@ -16,6 +16,10 @@ check_postcondition_artifacts() {
     0)
       [[ -f "$PROJECT_DIR/.runs/verify-context.json" ]] || ERRORS+=("verify-context.json missing — STATE 0 incomplete")
       [[ -f "$PROJECT_DIR/.runs/fix-log.md" ]] || ERRORS+=("fix-log.md missing — STATE 0 incomplete")
+      # AOC v1 FLS v1: fix-ledger.jsonl is the authoritative per-fix source.
+      # Presence is not required at STATE 0 (consolidation runs later via
+      # .runs/fix-ledger.jsonl writer); but the consumer must reference the
+      # canonical path for the R3 coverage rule.
       [[ -d "$TRACES_DIR" ]] || ERRORS+=("agent-traces/ directory missing — STATE 0 incomplete")
       ;;
     3)

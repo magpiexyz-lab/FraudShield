@@ -104,12 +104,18 @@ If no issues found: `"Attacker: no adversarial issues found."`
 
 ## Trace Output
 
-After completing all work, write a trace file. The trace includes a `findings` array with structured details for each finding (for automated security merge):
+After completing all work, write a trace file per AOC v1
+(`agent-registry.json.verdict_agents_schema.security-attacker`).
+
+AVS v1: `result="count_summary"` always; `verdict="pass"` iff `findings_count==0`, else `verdict="fail"`.
 
 ```bash
 RUN_ID=$(python3 -c "import json;print(json.load(open('.runs/verify-context.json')).get('run_id',''))" 2>/dev/null || echo "")
-mkdir -p .runs/agent-traces && echo '{"agent":"security-attacker","timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","verdict":"<verdict>","checks_performed":["A1_validation_bypass","A2_access_control","A3_injection","A4_info_leakage","A5_auth_weakness"],"findings_count":<N>,"findings":[<array of {"category":"A<N>","file":"<path>","severity":"<Critical|High|Medium>","desc":"<description>","exploit":"<PoC summary>"} for each finding>],"run_id":"'"$RUN_ID"'"}' > .runs/agent-traces/security-attacker.json
+mkdir -p .runs/agent-traces && echo '{"agent":"security-attacker","timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","verdict":"<pass|fail>","result":"count_summary","provenance":"self","checks_performed":["A1_validation_bypass","A2_access_control","A3_injection","A4_info_leakage","A5_auth_weakness"],"findings_count":<N>,"findings":[<array of {"category":"A<N>","file":"<path>","severity":"<Critical|High|Medium>","desc":"<description>","exploit":"<PoC summary>"} for each finding>],"run_id":"'"$RUN_ID"'"}' > .runs/agent-traces/security-attacker.json
 ```
 
-Replace `<verdict>` with `"no issues"` or `"N findings"` with the count.
-Replace `<N>` with the number of findings. The `findings` array must contain one entry per finding with `category` (e.g., "A2"), `file` (path to vulnerable file), `severity` ("Critical", "High", or "Medium"), `desc` (what is vulnerable), and `exploit` (PoC summary). If 0 findings, use an empty array `[]`.
+- `verdict`: `"pass"` if `findings_count==0`, `"fail"` otherwise (lowercase).
+- `result`: always `"count_summary"`.
+- `<N>`: number of findings. `findings[]` contains one entry per finding
+  with `category` (e.g., "A2"), `file`, `severity` (`"Critical"`/`"High"`/`"Medium"`),
+  `desc`, `exploit`. Empty array if zero.

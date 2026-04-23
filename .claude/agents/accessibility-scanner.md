@@ -114,7 +114,9 @@ os.makedirs(".runs/agent-traces", exist_ok=True)
 trace = {
     "agent": "accessibility-scanner",
     "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-    "verdict": "<verdict>",
+    "verdict": "<verdict>",     # AOC v1 AVS v1: "pass" iff violations_count==0 else "fail" (lowercase)
+    "result": "count_summary",   # AOC v1: always count_summary (violations_count is the gated field)
+    "provenance": "self",
     "checks_performed": ["axe_scan", "tab_order"],
     "pages_scanned": <N>,
     "violations_count": <VC>,

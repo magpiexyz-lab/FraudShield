@@ -26,23 +26,29 @@ check_verdict_error() {
   fi
 }
 
-# --- check_fixlog_verdict_consistency ---
-# Blocks if: fix-log.md has entries but verdict is "clean" (not execution-audit).
-# Catches the case where observation-phase.md was skipped but agents produced
-# fixes that went unobserved.
+# --- check_fixlog_verdict_consistency (AOC v1 FLS v1 canonical) ---
+# Blocks if: fix-ledger.jsonl has entries (or, transitional fallback,
+# fix-log.md has entries) but verdict is "clean" (not execution-audit).
+# Catches the case where observation-phase.md was skipped but agents
+# produced fixes that went unobserved.
 # Appends to global ERRORS array. Does not exit — caller decides.
 # Usage: check_fixlog_verdict_consistency
 check_fixlog_verdict_consistency() {
   local project_dir="${CLAUDE_PROJECT_DIR:-.}"
   local obs_file="$project_dir/.runs/observe-result.json"
+  local ledger="$project_dir/.runs/fix-ledger.jsonl"
   local fixlog="$project_dir/.runs/fix-log.md"
 
   [[ ! -f "$obs_file" ]] && return 0
-  [[ ! -f "$fixlog" ]] && return 0
 
-  # Count non-empty, non-header lines in fix-log
-  local entry_count
-  entry_count=$(grep -c -v '^\s*$\|^#' "$fixlog" 2>/dev/null || echo "0")
+  # Authoritative count: ledger row count (one JSON per line).
+  # Transitional fallback: prose fix-log non-empty non-header lines.
+  local entry_count=0
+  if [[ -f "$ledger" ]]; then
+    entry_count=$(grep -c -v '^\s*$' "$ledger" 2>/dev/null || echo "0")
+  elif [[ -f "$fixlog" ]]; then
+    entry_count=$(grep -c -v '^\s*$\|^#' "$fixlog" 2>/dev/null || echo "0")
+  fi
   [[ "$entry_count" -eq 0 ]] && return 0
 
   local verdict strategy
@@ -50,7 +56,7 @@ check_fixlog_verdict_consistency() {
   strategy=$(read_json_field "$obs_file" "strategy")
 
   if [[ "$verdict" == "clean" ]] && [[ "$strategy" != "execution-audit" ]]; then
-    ERRORS+=("Verdict inconsistency: fix-log.md has $entry_count entries but verdict is 'clean'. Observation was skipped or incomplete.")
+    ERRORS+=("Verdict inconsistency: fix ledger/log has $entry_count entries but verdict is 'clean'. Observation was skipped or incomplete.")
   fi
 }
 
@@ -285,6 +291,23 @@ except Exception as exc:
 
 # --- Predicate definitions (must match agent-registry._hard_gates_predicate_docs) ---
 
+def pass_clean(t):
+    # AOC v1: agent found nothing to do. No work performed.
+    return (t.get('verdict') == 'pass'
+            and t.get('result') == 'clean'
+            and t.get('provenance') == 'self')
+
+def pass_after_fixes(t):
+    # AOC v1: agent found issues and resolved them; no unresolved criticals.
+    try:
+        unresolved_critical = int(t.get('unresolved_critical', 0))
+    except (TypeError, ValueError):
+        unresolved_critical = 0
+    return (t.get('verdict') == 'pass'
+            and t.get('result') in ('fixed', 'partial')
+            and t.get('provenance') == 'self'
+            and unresolved_critical == 0)
+
 def pass_self_pass_or_fail(t):
     return t.get('verdict') in ('pass', 'fail') and t.get('provenance') == 'self'
 
@@ -319,12 +342,14 @@ def aggregate_ok(t, agent):
         except Exception:
             ok = False
             break
-        if not (pass_self_pass_or_fail(sib) or validated_fallback(sib) or legacy_pass_no_recovery(sib)):
+        if not (pass_clean(sib) or pass_after_fixes(sib) or pass_self_pass_or_fail(sib) or validated_fallback(sib) or legacy_pass_no_recovery(sib)):
             ok = False
             break
     return ok
 
 predicate_fns = {
+    'pass_clean': lambda t: pass_clean(t),
+    'pass_after_fixes': lambda t: pass_after_fixes(t),
     'pass_self_pass_or_fail': lambda t: pass_self_pass_or_fail(t),
     'pass_self_strict': lambda t: pass_self_strict(t),
     'validated_fallback': lambda t: validated_fallback(t),

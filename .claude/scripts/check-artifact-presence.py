@@ -39,10 +39,27 @@ def main():
     scope = ctx.get('scope', '')
     arch = ctx.get('archetype', '')
 
-    # --- Check 2: fix-log.md exists ---
+    # --- Check 2: fix-log.md exists (rendered artifact) ---
     fix_log_path = os.path.join(project, '.runs/fix-log.md')
     if not os.path.exists(fix_log_path):
         errors.append('fix-log.md not found — STATE 0 (Read Context) did not run')
+
+    # --- Check 2b: AOC v1 FLS v1 ledger exists when any trace has fixes[] ---
+    ledger_path = os.path.join(project, '.runs/fix-ledger.jsonl')
+    traces_dir_check = os.path.join(project, '.runs/agent-traces')
+    if os.path.isdir(traces_dir_check):
+        trace_has_fixes = False
+        for tf in glob.glob(os.path.join(traces_dir_check, '*.json')):
+            try:
+                dd = json.load(open(tf))
+                if isinstance(dd.get('fixes'), list) and len(dd['fixes']) > 0:
+                    trace_has_fixes = True
+                    break
+            except Exception:
+                continue
+        if trace_has_fixes and not os.path.exists(ledger_path):
+            errors.append('fix-ledger.jsonl not found but agent traces have fixes[] — run '
+                          '.claude/scripts/write-fix-ledger.py to consolidate (AOC v1 FLS v1)')
 
     # --- Check 3: agent-traces/ has >= 1 trace ---
     traces_dir = os.path.join(project, '.runs/agent-traces')
