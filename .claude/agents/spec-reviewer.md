@@ -15,6 +15,8 @@ disallowedTools:
 maxTurns: 500
 ---
 
+<!-- coherence-allow: raw-golden_path (sequence-step) scope=["## Archetype Scope", "## Checks"] — Archetype Scope references `S4 (golden_path reachability)` by name; Checks section contains S3c (golden_path event consistency) and S4 (golden_path reachability), both of which walk the funnel sequence in order (LIST semantics). SET-inventory existence (S2) already uses derive_scope_pages() per #1024. -->
+
 # Spec Reviewer
 
 You are the spec enforcer. Your standard is 1:1 fidelity between experiment.yaml and deployed code. Any gap — missing feature, unwired event, absent test — is a FAIL. No interpretation, no "close enough," no benefit of the doubt.
@@ -71,7 +73,12 @@ First, validate the archetype-required field is present and non-empty:
 
 If the required field is absent or empty, report FAIL: "`<archetype>` archetype requires `<field>` in experiment.yaml with ≥1 entry."
 
-Then verify file existence per archetype: for web-app, extract page names from each `golden_path[].page` entry and verify each exists as a page file; for service, verify each `endpoints` entry has a corresponding route file; for cli, verify each `commands` entry has a corresponding command file. Missing file is a FAIL.
+Then verify file existence per archetype:
+- **web-app**: enumerate pages via `python3 .claude/scripts/lib/derive_pages.py scope < experiment/experiment.yaml` (canonical SET inventory from `derive_scope_pages()` — unions `golden_path[*].page`, `behaviors[*].pages`, and auth-derived pages). For each page returned, verify `src/app/<page>/page.tsx` exists. Missing file is a FAIL.
+- **service**: verify each `endpoints` entry has a corresponding route file.
+- **cli**: verify each `commands` entry has a corresponding command file.
+
+Missing file is a FAIL.
 
 **S3. Analytics wiring**
 > Skip if no `experiment/EVENTS.yaml` exists.

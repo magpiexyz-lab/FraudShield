@@ -34,7 +34,13 @@ Poll `http://localhost:3096` until it responds (max 15 seconds, then abort).
 
 ### R1. axe-core Violations
 
-Read `experiment/experiment.yaml` to get the list of pages from `golden_path`.
+Enumerate pages to scan via the canonical SET inventory (every surface a user can reach — not just the funnel):
+
+```bash
+python3 .claude/scripts/lib/derive_pages.py scope < experiment/experiment.yaml
+```
+
+This yields `derive_scope_pages(experiment)` = union of `golden_path[*].page`, `behaviors[*].pages`, and auth-derived pages, with `landing` excluded (scaffold-landing owns it). Walk the returned pages in this deterministic order: first every page that appears in `golden_path` (in funnel sequence), then behavior-only pages sorted alphabetically. This preserves funnel-first trace readability while ensuring accessibility coverage on admin/dashboard/portfolio surfaces named in `behaviors[*].pages`.
 
 For each page, write an inline Node.js script using Playwright +
 `@axe-core/playwright`. Before running axe on a page, call the render-review
@@ -101,7 +107,7 @@ axe-core auto-detects 50+ WCAG 2.1 AA rules including: alt text, form labels, co
 
 ### R2. Tab Order Test
 
-For each golden_path page, write a Playwright script that:
+For each page in the same canonical SET from R1 (derived via `derive_scope_pages()`), write a Playwright script that:
 
 1. Focus the page body
 2. Press Tab up to 50 times, recording `document.activeElement` tag, text, and bounding box after each press

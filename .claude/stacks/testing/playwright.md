@@ -22,7 +22,7 @@ clean:
   dirs: [e2e, test-results, playwright-report, blob-report]
 gitignore: [/test-results/, /playwright-report/, /blob-report/, /e2e/.auth.json]
 ---
-<!-- coherence-allow: raw-golden_path (sequence-step) — playwright funnel tests are populated from golden_path as a sequential state machine; expected events fire in funnel-journey order. LIST semantics, not SET. -->
+<!-- coherence-allow: raw-golden_path (sequence-step) scope=["## Files to Create", "## Critical Flow Integration Tests"] — playwright funnel tests (e2e/smoke.spec.ts, e2e/funnel.spec.ts) are populated from golden_path as a sequential state machine; expected events fire in funnel-journey order. Critical Flow Integration Tests section references golden_path as the customer-journey LIST semantics contrast to the system/cron delivery chain. LIST semantics throughout. -->
 
 # Testing: Playwright
 > Used when experiment.yaml has `stack.testing: playwright` or when the `/change` skill is invoked for test changes

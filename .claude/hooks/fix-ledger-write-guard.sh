@@ -48,9 +48,9 @@ NORM=$(printf '%s' "$COMMAND" | sed -E 's/[0-9]*>+&[0-9]+//g')
 if echo "$NORM" | awk '
     BEGIN{RS="[&|;]"}
     /(fix-ledger\.jsonl|fix-log\.md)/ && /(>|>>|tee|cp|mv)/ {
-        # Allow STATE 0 init: `echo '# Error Fix Log' > .runs/fix-log.md`
+        # Allow STATE 0 init (echo header into fix-log.md via single >).
         if ($0 ~ /echo[[:space:]]+['\''"]?# Error Fix Log/ && $0 ~ />[[:space:]]*\.runs\/fix-log\.md/) next
-        # Allow STATE 5 inline warn: `echo 'WARN ...' >> .runs/fix-log.md`
+        # Allow STATE 5 inline warn (echo WARN ... into fix-log.md via >>).
         if ($0 ~ /echo[[:space:]]+['\''"]?WARN/ && $0 ~ />>[[:space:]]*\.runs\/fix-log\.md/) next
         found=1
     }

@@ -17,7 +17,7 @@
    ```
 
 3. Read context files:
-   - Read `experiment/experiment.yaml` — understand pages (from golden_path), behaviors, stack
+   - Read `experiment/experiment.yaml` — understand pages (via `derive_scope_pages()` canonical SET, sourced from `golden_path` + `behaviors[*].pages` + auth), behaviors, stack
    - Read `experiment/EVENTS.yaml` — understand tracked events
    - Read the archetype file at `.claude/archetypes/<type>.md` (type from experiment.yaml, default `web-app`)
    - If in bootstrap-verify or change-verify mode: read all files listed in current-plan.md `context_files`
@@ -55,12 +55,12 @@
    ```
 
 8. Extract context digest (in-memory, passed to agents in STATE 2/3):
-   - Pages: list all page names and routes (union of `golden_path` and filesystem scan of `src/app/**/page.tsx`, excluding `/api/`)
+   - Pages: canonical SET inventory via `derive_scope_pages()` — run `python3 .claude/scripts/lib/derive_pages.py scope < experiment/experiment.yaml` (unions `golden_path[*].page`, `behaviors[*].pages`, and auth-derived pages). Cross-reference with filesystem scan of `src/app/**/page.tsx` to detect orphans; missing pages from the canonical set indicate a #1024-class scope mismatch to surface in STATE 2/3 agent prompts.
    - Behavior IDs: list all behavior IDs from `behaviors`
    - Event names: list event names from `experiment/EVENTS.yaml`
    - Source file list: `find src/ -type f \( -name '*.ts' -o -name '*.tsx' \) | head -100`
    - PR changed files: `git diff --name-only $(git merge-base HEAD main)...HEAD`
-   - Golden path steps: ordered list of steps from `golden_path`
+   - Golden path steps: ordered list of funnel steps via `python3 .claude/scripts/lib/derive_pages.py funnel < experiment/experiment.yaml` (used for LIST-semantic consumers like funnel tests and step-by-step assertions).
 
 **POSTCONDITIONS:** All 4 artifacts exist on disk (agent-traces dir, verify-context.json with `skill` field, fix-log.md). Context digest is available in-memory. If `verify-history.jsonl` has a previous entry matching the current skill, baseline data is available for STATE 7 delta reporting.
 

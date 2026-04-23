@@ -335,9 +335,95 @@ for skill, states in registry.items():
 # Check 5: Cross-file contradictions (rule-driven)
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Helpers for per-section field_role_map check (#1024 follow-up)
+# ---------------------------------------------------------------------------
+
+_HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$", re.MULTILINE)
+_PRAGMA_RE_TEMPLATE = (
+    r"<!--\s*coherence-allow:\s*raw-{field}"
+    r"(?:\s*\(([^)]*)\))?"
+    r"(?:\s*scope=(\[[^\]]*\]))?"
+    r"\s*(?:[—-]\s*(.*?))?\s*-->"
+)
+
+
+def _scan_headings(text):
+    """Return [(line_num, level, heading_text)] for all markdown headings."""
+    out = []
+    for m in _HEADING_RE.finditer(text):
+        line = text[: m.start()].count("\n") + 1
+        out.append((line, len(m.group(1)), m.group(2).strip()))
+    return out
+
+
+def _enclosing_block(headings, occurrence_line):
+    """Return (containing, block_end_line_inclusive_or_None).
+
+    Considered scope: H2/H3 only. H1 is the file title — not a semantic
+    block boundary. H4+ is sub-content of the nearest H2/H3.
+
+    `containing` is None when the occurrence precedes any H2/H3 heading;
+    in that case the caller treats the extent as "preamble" (or whole
+    file when no H2/H3 exists at all).
+    """
+    scoped = [(ln, lvl, txt) for ln, lvl, txt in headings if lvl in (2, 3)]
+    containing = None
+    containing_idx = -1
+    for i, (ln, lvl, txt) in enumerate(scoped):
+        if ln > occurrence_line:
+            break
+        containing = (ln, lvl, txt)
+        containing_idx = i
+    if containing is None:
+        return None, None
+    _, containing_lvl, _ = containing
+    end = None
+    for ln, lvl, _ in scoped[containing_idx + 1:]:
+        if lvl <= containing_lvl:
+            end = ln - 1
+            break
+    return containing, end
+
+
+def _parse_pragmas(text, field):
+    """Return list of {line, qualifier, scope, raw, end_line} for pragmas."""
+    out = []
+    pat = re.compile(
+        _PRAGMA_RE_TEMPLATE.format(field=re.escape(field)),
+        re.DOTALL,
+    )
+    for m in pat.finditer(text):
+        start_line = text[: m.start()].count("\n") + 1
+        end_line = text[: m.end()].count("\n") + 1
+        scope_raw = m.group(2)
+        scope = None
+        if scope_raw:
+            try:
+                scope = json.loads(scope_raw)
+                if not (isinstance(scope, list)
+                        and all(isinstance(x, str) for x in scope)):
+                    scope = "MALFORMED"
+            except Exception:
+                scope = "MALFORMED"
+        out.append({
+            "line": start_line,
+            "end_line": end_line,
+            "qualifier": m.group(1),
+            "scope": scope,
+            "raw": m.group(0),
+        })
+    return out
+
+
+def _normalize_heading(h):
+    """Strip leading `#`+space prefix so `"## Step 3"` and `"Step 3"` match."""
+    return re.sub(r"^#+\s+", "", h).strip()
+
+
 def check_field_role_map(rule):
-    """Verify each consumer mentions the canonical derivation function and
-    contains no count-based raw access patterns to the named field.
+    """Verify SET-semantic consumers of `field` either call the canonical
+    function or declare a heading-scoped pragma covering the section.
 
     Rule shape:
       {
@@ -348,8 +434,19 @@ def check_field_role_map(rule):
         "consumers": ["<file>", ...]     # paths relative to repo root
       }
 
-    Mention check (consumer must call canonical OR have explicit pragma):
-      `<canonical>(` substring OR `<!-- coherence-allow: raw-<field>` pragma
+    Per-occurrence check (#1024 follow-up — catches mixed-semantic files):
+      For each raw `<field>` occurrence outside a pragma comment, the
+      enclosing ## / ### block must contain EITHER a
+      `<!-- coherence-allow: raw-<field> ... scope=["## Heading", ...] -->`
+      pragma whose scope list matches the block heading, OR a
+      `<canonical>(` call in the same block.
+
+      Legacy file-scope pragmas (no scope=[...]) still allow raw access
+      anywhere in the file but emit a DEPRECATION WARN so templates
+      can be migrated incrementally. Future versions will BLOCK.
+
+      Any `scope=[...]` entry that does not match a heading currently
+      present in the file is flagged immediately — catches renames.
 
     Forbidden patterns (UNCONDITIONAL — pragma cannot whitelist these):
       `len(... <field> ...)` and `set(... <field> ...)`
@@ -360,14 +457,17 @@ def check_field_role_map(rule):
     field = rule.get("field", "")
     rid = rule.get("id", "<unknown>")
     if not canonical or not field:
-        out.append(f"  [{rid}] rule definition incomplete (need canonical_function and field)")
+        out.append(
+            f"  [{rid}] rule definition incomplete "
+            f"(need canonical_function and field)"
+        )
         return out
 
     forbidden = [
         re.compile(rf"\blen\s*\(\s*[^)]*\b{re.escape(field)}\b"),
         re.compile(rf"\bset\s*\(\s*[^)]*\b{re.escape(field)}\b"),
     ]
-    pragma_marker = f"<!-- coherence-allow: raw-{field}"
+    occ_re = re.compile(rf"\b{re.escape(field)}\b")
 
     for consumer_path in rule.get("consumers", []):
         full = os.path.join(REPO_ROOT, consumer_path)
@@ -375,21 +475,281 @@ def check_field_role_map(rule):
             out.append(f"  [{rid}] consumer not found on disk: {consumer_path}")
             continue
         text = open(full).read()
-        has_canonical = canonical in text
-        has_pragma = pragma_marker in text
-        if not has_canonical and not has_pragma:
-            out.append(
-                f"  [{rid}] {consumer_path} doesn't mention {canonical}() and has no "
-                f"`{pragma_marker} (...)` pragma"
-            )
+        lines = text.splitlines()
+
+        # 1. Unconditional forbidden patterns (pragma cannot whitelist)
         for pat in forbidden:
             for m in pat.finditer(text):
-                # Find which line for human-friendly reporting
                 line_num = text[: m.start()].count("\n") + 1
                 out.append(
-                    f"  [{rid}] {consumer_path}:{line_num} forbidden count-based access: "
-                    f"{m.group(0)!r} (pragma cannot whitelist this)"
+                    f"  [{rid}] {consumer_path}:{line_num} forbidden "
+                    f"count-based access: {m.group(0)!r} "
+                    f"(pragma cannot whitelist this)"
                 )
+
+        headings = _scan_headings(text)
+        heading_texts_norm = {_normalize_heading(t) for _, _, t in headings}
+        pragmas = _parse_pragmas(text, field)
+
+        # 2. Validate scope=[...] integrity — every listed heading must
+        # match a current heading (catches renames).
+        for p in pragmas:
+            if p["scope"] == "MALFORMED":
+                out.append(
+                    f"  [{rid}] {consumer_path}:{p['line']} malformed "
+                    f"scope=[...] JSON in pragma"
+                )
+            elif isinstance(p["scope"], list):
+                for h in p["scope"]:
+                    if _normalize_heading(h) not in heading_texts_norm:
+                        out.append(
+                            f"  [{rid}] {consumer_path}:{p['line']} "
+                            f"pragma scope=[...] references heading "
+                            f"not found in file: {h!r} — rename or "
+                            f"remove. Current H2/H3 headings: "
+                            f"{sorted(_normalize_heading(t) for _, lvl, t in headings if lvl in (2,3))}"
+                        )
+
+        has_legacy_file_scope_pragma = any(
+            p["scope"] is None for p in pragmas
+        )
+        legacy_reported = False
+
+        # 3. For each raw occurrence, check the enclosing block
+        for m in occ_re.finditer(text):
+            ln = text[: m.start()].count("\n") + 1
+
+            # Skip occurrences inside pragma comments themselves
+            in_pragma = any(
+                p["line"] <= ln <= p["end_line"] for p in pragmas
+            )
+            if in_pragma:
+                continue
+
+            # Skip occurrences in markdown comments that are NOT pragmas
+            # (conservative: a `<!-- ... golden_path ... -->` block is prose
+            # about the field, not a consumption point).
+            # Find enclosing `<!--` / `-->` on the same "HTML comment".
+            # We scan backward from the occurrence to the nearest `<!--`
+            # and forward to `-->` and check if they bracket the match.
+            pre = text[: m.start()]
+            last_open = pre.rfind("<!--")
+            last_close_in_pre = pre.rfind("-->")
+            if last_open != -1 and last_open > last_close_in_pre:
+                # We are inside an open HTML comment — check if it closes
+                # after the occurrence
+                rest = text[m.end():]
+                next_close = rest.find("-->")
+                if next_close != -1:
+                    # Occurrence is inside <!-- ... --> and NOT one of
+                    # our tracked pragmas — skip (prose, not consumption).
+                    continue
+
+            block, _ = _enclosing_block(headings, ln)
+            scoped_hs = [(h_ln, h_lvl) for h_ln, h_lvl, _ in headings if h_lvl in (2, 3)]
+            if block is None:
+                # Preamble: from file start to the first H2/H3 (exclusive),
+                # or whole file when no H2/H3 exists at all.
+                block_head_norm = None
+                block_head_display = "<preamble>"
+                block_start = 1
+                if scoped_hs:
+                    block_end = scoped_hs[0][0] - 1
+                else:
+                    block_end = len(lines)
+            else:
+                block_head_line, block_head_lvl, block_head_text = block
+                block_head_norm = _normalize_heading(block_head_text)
+                block_head_display = block_head_text
+                block_start = block_head_line
+                block_end = None
+                for h_ln, h_lvl in scoped_hs:
+                    if h_ln > block_head_line and h_lvl <= block_head_lvl:
+                        block_end = h_ln - 1
+                        break
+                if block_end is None:
+                    block_end = len(lines)
+            block_text = "\n".join(lines[block_start - 1:block_end])
+
+            # Ancestor heading chain: when inside an H3, also check the
+            # nearest ancestor H2. A pragma scoping ## Section X covers
+            # every ### nested under it.
+            ancestor_norms = set()
+            if block is not None:
+                block_head_line, block_head_lvl, block_head_text = block
+                ancestor_norms.add(_normalize_heading(block_head_text))
+                if block_head_lvl == 3:
+                    for h_ln, h_lvl, h_txt in headings:
+                        if h_ln >= block_head_line:
+                            break
+                        if h_lvl == 2:
+                            ancestor_norms.add(_normalize_heading(h_txt))
+                        else:
+                            # Reset ancestor when another H2 opens above
+                            pass
+                    # Narrow to the most recent H2 ancestor above this H3
+                    latest_h2 = None
+                    for h_ln, h_lvl, h_txt in headings:
+                        if h_ln >= block_head_line:
+                            break
+                        if h_lvl == 2:
+                            latest_h2 = _normalize_heading(h_txt)
+                    # latest_h2 is already in ancestor_norms above; keep
+                    # just the chain (block + its H2 ancestor) for
+                    # deterministic matching.
+                    ancestor_norms = {_normalize_heading(block_head_text)}
+                    if latest_h2:
+                        ancestor_norms.add(latest_h2)
+
+            has_canonical_in_block = canonical in block_text
+
+            pragma_covers = False
+            for p in pragmas:
+                if isinstance(p["scope"], list):
+                    normed = {_normalize_heading(h) for h in p["scope"]}
+                    if ancestor_norms & normed:
+                        pragma_covers = True
+                        break
+
+            if has_canonical_in_block or pragma_covers:
+                continue
+
+            if has_legacy_file_scope_pragma:
+                # Legacy file-scope pragma — WARN once per file, still ALLOW
+                if not legacy_reported:
+                    out.append(
+                        f"  [{rid}] {consumer_path}:{ln} WARN: raw "
+                        f"{field} under block {block_head_display!r} "
+                        f"is currently allowed by a legacy file-scope "
+                        f"pragma (no scope=[...]). Migrate the pragma "
+                        f"to scope=[\"## Heading\", ...] syntax or "
+                        f"switch the block to {canonical}(). Future "
+                        f"versions will BLOCK."
+                    )
+                    legacy_reported = True
+                continue
+
+            out.append(
+                f"  [{rid}] {consumer_path}:{ln} raw {field} in block "
+                f"{block_head_display!r} has neither {canonical}() "
+                f"call nor a scope-covering pragma. Add "
+                f"scope=[\"## {block_head_display}\"] to a pragma or "
+                f"switch the block to {canonical}()."
+            )
+
+    return out
+
+
+def check_discover_consumers(rule):
+    """Grep-discover files mentioning `field` in a consumption context;
+    report drift vs the authoritative consumers list in `against_rule`.
+
+    Rule shape:
+      {
+        "id": "<rule_id>",
+        "type": "discover_consumers",
+        "field": "<field_name>",
+        "against_rule": "<field_role_map rule id>",
+        "path_excludes": ["<prefix>", ...],
+        "consumption_patterns": ["<regex>", ...]
+      }
+
+    WARN-only: real violations are caught by the field_role_map rule.
+    This check is purely for maintaining the consumers list over time.
+    """
+    out = []
+    rid = rule.get("id", "<unknown>")
+    field = rule.get("field", "")
+    against = rule.get("against_rule")
+    excludes = rule.get("path_excludes", [])
+    patterns_raw = rule.get("consumption_patterns", [])
+    if not field or not against or not patterns_raw:
+        out.append(
+            f"  [{rid}] rule definition incomplete "
+            f"(need field, against_rule, consumption_patterns)"
+        )
+        return out
+    try:
+        patterns = [re.compile(p) for p in patterns_raw]
+    except re.error as exc:
+        out.append(f"  [{rid}] invalid consumption_patterns regex: {exc}")
+        return out
+
+    authoritative = set()
+    try:
+        with open(RULES_PATH) as f:
+            for r in json.load(f).get("rules", []):
+                if r.get("id") == against:
+                    authoritative = set(r.get("consumers", []))
+                    break
+    except (OSError, json.JSONDecodeError) as exc:
+        out.append(
+            f"  [{rid}] failed to read authoritative list from "
+            f"{RULES_PATH}: {exc}"
+        )
+        return out
+
+    def _excluded(rel):
+        rel_posix = rel.replace(os.sep, "/")
+        for ex in excludes:
+            ex_posix = ex.replace(os.sep, "/").rstrip("/")
+            if rel_posix == ex_posix or rel_posix.startswith(ex_posix + "/"):
+                return True
+        return False
+
+    search_root = os.path.join(REPO_ROOT, ".claude")
+    allowed_ext = (".md", ".py", ".sh", ".ts", ".tsx", ".json")
+    field_word_re = re.compile(rf"\b{re.escape(field)}\b")
+    found = set()
+    has_any_reference = set()
+    for root, dirs, files in os.walk(search_root):
+        # Prune excluded subtrees
+        pruned = []
+        for d in list(dirs):
+            rel_d = os.path.relpath(os.path.join(root, d), REPO_ROOT)
+            if _excluded(rel_d):
+                pruned.append(d)
+        for d in pruned:
+            dirs.remove(d)
+        for fn in files:
+            if not fn.endswith(allowed_ext):
+                continue
+            full = os.path.join(root, fn)
+            rel = os.path.relpath(full, REPO_ROOT)
+            if _excluded(rel):
+                continue
+            try:
+                with open(full, encoding="utf-8", errors="ignore") as f:
+                    text = f.read()
+            except OSError:
+                continue
+            if field_word_re.search(text):
+                has_any_reference.add(rel)
+            if any(p.search(text) for p in patterns):
+                found.add(rel)
+
+    missing = found - authoritative
+    # Intentionally do NOT flag "stale" entries — a consumer that has
+    # been fully migrated to the canonical function may legitimately
+    # have zero bare-word references. Keeping it in the consumers
+    # list serves as regression vigilance: if a future author
+    # reintroduces raw access, the field_role_map rule fires. We
+    # surface drift only in one direction (grep-found files that are
+    # NOT listed) to avoid churning the consumers list on migration.
+    stale = set()
+    for m in sorted(missing):
+        out.append(
+            f"  [{rid}] WARN: {m} contains consumption-pattern for "
+            f"{field!r} but is not listed in {against!r} consumers. "
+            f"Either add it to the consumers list or audit whether "
+            f"the read is a drift violation."
+        )
+    for s in sorted(stale):
+        out.append(
+            f"  [{rid}] WARN: {s} is listed in {against!r} consumers "
+            f"but no longer matches consumption patterns for "
+            f"{field!r}. Remove from consumers list (stale entry)."
+        )
     return out
 
 
@@ -744,6 +1104,8 @@ if os.path.isfile(RULES_PATH):
             rtype = rule.get("type")
             if rtype == "field_role_map":
                 cross_file.extend(check_field_role_map(rule))
+            elif rtype == "discover_consumers":
+                cross_file.extend(check_discover_consumers(rule))
             elif rtype == "artifact_lifecycle":
                 cross_file.extend(check_artifact_lifecycle(rule))
             elif rtype == "verdict_vocab_consistency":

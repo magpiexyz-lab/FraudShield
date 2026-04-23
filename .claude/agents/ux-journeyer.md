@@ -14,7 +14,7 @@ disallowedTools:
 maxTurns: 500
 memory: project
 ---
-<!-- coherence-allow: raw-golden_path (sequence-step) — see procedures/ux-journeyer.md for the full pragma rationale. LIST semantics. -->
+<!-- coherence-allow: raw-golden_path (sequence-step) scope=["## Golden Path Trace", "## Trace Output"] — trace output schema references sequential step entries (one entry per golden_path step, with coverage_pct denominator). LIST semantics. See procedures/ux-journeyer.md for the full pragma rationale. -->
 
 # UX Journeyer
 

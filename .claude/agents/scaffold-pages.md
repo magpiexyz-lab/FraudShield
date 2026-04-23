@@ -18,6 +18,8 @@ memory: project
 skills: [frontend-design]
 ---
 
+<!-- coherence-allow: raw-golden_path (sequence-step) scope=["## Key Constraints"] — Forward-navigation rule (Key Constraints) walks golden_path as the ordered funnel sequence to determine the next step's page route; LIST semantics. SET-inventory scaffold loops use derive_scope_pages() via .claude/procedures/scaffold-pages.md Step 4 per #1024. -->
+
 # Scaffold Pages Agent
 
 You create **one or more pages** as specified in the spawn prompt. The page name(s) and route(s) are provided there.
@@ -35,7 +37,16 @@ You are a world-champion of utility. Every page you create should make users fee
 - Do NOT write to `src/lib/`, `.env*`, `src/components/`, or `.claude/stacks/`
 - Import from `src/lib/events.ts` using function signatures derived from experiment/EVENTS.yaml (file created by libs subagent in parallel)
 - If `stack.analytics` is present: every page MUST fire its experiment/EVENTS.yaml events — no deferring
-- **Forward navigation:** If this page is not the last step in `golden_path`, include a prominent forward CTA (button or link) navigating to the next golden_path step's page route. Read `golden_path` from experiment.yaml to determine the next step.
+- **Forward navigation:**
+  - If this page is ON `golden_path` AND is NOT the last golden_path step:
+    include a prominent forward CTA (button or link) navigating to the next
+    golden_path step's page route. Read `golden_path` from experiment.yaml to
+    determine the next step.
+  - Otherwise (behavior-only page, or last golden_path step): include a
+    contextual CTA derived from this page's `purpose` in experiment.yaml.
+    Behavior-only pages are destinations, not transits — pick the action
+    that most advances the user's intent on THIS page (complete a task, go
+    back to dashboard, etc.).
 - For empty states (empty tables, lists, dashboards): read `.runs/image-manifest.json` and use the empty-state image at the `publicPath` listed there — do NOT hardcode the file extension (it may be `.svg` or `.webp` depending on whether AI image generation ran). Use `next/image` `Image` component for `.webp` files and `<img>` for `.svg` files.
 
 > These criteria are evaluated from source code only — no build or screenshot is required.

@@ -32,7 +32,15 @@ The `src/lib/events.ts` file exists when this agent runs — import typed wrappe
 - Ensure layout.tsx `metadata` export uses messaging.md Section E derivation: `title` = meta title, `description` = meta description, `openGraph` = `{ title, description }`
 
 #### Pages (Step 4)
-For each page derived from experiment.yaml `golden_path`:
+For each page in the canonical SET — compute via:
+
+```bash
+python3 .claude/scripts/lib/derive_pages.py scope < experiment/experiment.yaml
+```
+
+This yields `derive_scope_pages(experiment)` = union of `golden_path[*].page`,
+`behaviors[*].pages`, and auth-derived pages, with `landing` excluded
+(scaffold-landing owns it). For each returned page:
 - If `name` is `landing` → create the root page
 - Otherwise → create a page at the appropriate route
 - Every page file must:

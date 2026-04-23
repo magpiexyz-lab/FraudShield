@@ -9,8 +9,8 @@ files:
   - src/app/auth/reset-password/page.tsx     # always; scaffold-wire
   - src/components/nav-bar.tsx               # always; scaffold-wire
   # --- scaffold-pages creates (user-facing pages, STATE 11b) ---
-  - src/app/signup/page.tsx                  # only if "signup" in golden_path; scaffold-pages
-  - src/app/login/page.tsx                   # only if "login" in golden_path; scaffold-pages
+  - src/app/signup/page.tsx                  # auto-included in derive_scope_pages() when stack.auth is set; scaffold-pages
+  - src/app/login/page.tsx                   # auto-included in derive_scope_pages() when stack.auth is set; scaffold-pages
   # --- scaffold-libs creates (library + proxy, STATE 11a) ---
   - src/proxy.ts                             # always; scaffold-libs (Next.js 16+ filename; legacy 15 uses src/middleware.ts)
   - src/lib/supabase-auth.ts                 # only when stack.database is NOT supabase; scaffold-libs
@@ -149,7 +149,7 @@ import { createAuthClient as createClient } from "@/lib/supabase-auth";
 ```
 The rest of the component code remains identical — only the import changes.
 
-### `src/app/signup/page.tsx` — Signup page (if `signup` is in golden_path)
+### `src/app/signup/page.tsx` — Signup page (auto-included in `derive_scope_pages()` when `stack.auth` is set)
 
 When `stack.analytics` is absent: remove the `@/lib/events` import and all `trackSignupStart()`/`trackSignupComplete()` calls from the template below. The signup flow works without analytics.
 
@@ -277,7 +277,7 @@ The `handleOAuthLogin` function (in the "OAuth / Social Login" section below) an
 
 When `stack.auth_providers` is absent, do not add OAuth buttons — email/password only.
 
-### `src/app/login/page.tsx` — Login page (if `login` is in golden_path)
+### `src/app/login/page.tsx` — Login page (auto-included in `derive_scope_pages()` when `stack.auth` is set)
 
 Follows the same structure as the signup page above, with these differences:
 - Calls `supabase.auth.signInWithPassword()` instead of `signUp()`
@@ -474,7 +474,11 @@ export function NavBar() {
 
   const navLinks = (
     <>
-      {/* Bootstrap adds page links here from golden_path */}
+      {/* DERIVED-FROM: derive_scope_pages */}
+      {/* Bootstrap emits <Link href="/<page>">{LABEL}</Link> for each page
+          in derive_scope_pages(experiment), excluding landing/auth routes.
+          Ordering: golden_path pages first in funnel sequence; behavior-only
+          pages appended alphabetically. See procedures/wire.md Step 5b.3. */}
     </>
   );
 
@@ -540,7 +544,7 @@ import { createAuthClient as createClient } from "@/lib/supabase-auth";
 Notes:
 - Bootstrap replaces `APP_NAME` with experiment.yaml `name` and adds page-specific navigation links
 - Bootstrap reads `.runs/image-manifest.json` for the logo path and updates the `<Image>` `src` attribute
-- The `navLinks` and `authSection` are shared between desktop and mobile layouts — add golden_path links to `navLinks`
+- The `navLinks` and `authSection` are shared between desktop and mobile layouts — bootstrap populates `navLinks` from `derive_scope_pages(experiment)` (canonical SET inventory), ordered golden_path pages first in funnel sequence and behavior-only pages appended alphabetically. See `.claude/procedures/wire.md` Step 5b.3 and `.claude/scripts/lib/derive_pages.py`
 - `getSession()` on mount sets initial auth state; `onAuthStateChange()` reacts to login/logout
 - Loading state prevents flash of "Log in" button before auth state is known
 - `router.refresh()` after logout clears server-side cached session data

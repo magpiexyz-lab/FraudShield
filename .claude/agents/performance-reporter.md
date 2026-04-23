@@ -84,9 +84,39 @@ If available:
    ```
    Poll `http://localhost:3095` until it responds (max 15 seconds, then abort).
 
-2. Read `experiment/experiment.yaml` to get the list of pages from `golden_path`.
+2. Compute the Lighthouse sample set with a bounded budget (canonical SET inventory + seeded rotation over behavior-only pages):
 
-3. For each golden_path page:
+   ```bash
+   RUN_ID=$(python3 -c "import json,os; ctx=os.environ.get('VERIFY_CONTEXT','.runs/verify-context.json'); print(json.load(open(ctx)).get('run_id','perf-0'))" 2>/dev/null || echo "perf-0")
+   python3 <<PYEOF
+   import hashlib, json, sys, yaml
+   sys.path.insert(0, '.claude/scripts/lib')
+   from derive_pages import derive_scope_pages, derive_funnel_steps
+
+   exp = yaml.safe_load(open('experiment/experiment.yaml'))
+   scope = [p for p in derive_scope_pages(exp) if p not in ('login','signup')]
+   funnel = [s['page'] for s in derive_funnel_steps(exp)
+             if isinstance(s, dict) and s.get('page')
+             and s['page'] not in ('landing','login','signup')]
+   behavior_only = sorted(set(scope) - set(funnel))
+
+   seed = int(hashlib.sha256('$RUN_ID'.encode()).hexdigest()[:8], 16)
+   if behavior_only:
+       offset = seed % len(behavior_only)
+       rotated = behavior_only[offset:] + behavior_only[:offset]
+       sample = rotated[:min(3, len(behavior_only))]
+   else:
+       sample = []
+
+   result = {'funnel_pages': funnel, 'sampled_behavior_pages': sample, 'sample_seed': '$RUN_ID'}
+   json.dump(result, open('.runs/perf-lighthouse-targets.json', 'w'), indent=2)
+   print(json.dumps(result, indent=2))
+   PYEOF
+   ```
+
+   The sample is `funnel_pages ∪ sampled_behavior_pages` — upper bound `len(funnel) + 3`. Seeded by `run_id` so consecutive verify runs rotate through behavior-only pages (blind spots covered over time). Record `sampled_behavior_pages` and `sample_seed` in your trace so auditors can reproduce the sample.
+
+3. For each page in the sample set:
    ```bash
    npx lighthouse http://localhost:3095/<route> --output=json --quiet --chrome-flags="--headless --no-sandbox" --only-categories=performance
    ```

@@ -1,4 +1,4 @@
-<!-- coherence-allow: raw-golden_path (sequence-step) — wire reads golden_path as the ordered funnel sequence for nav-bar links, e2e funnel tests, and step-by-step assertions; this is LIST semantics, not SET semantics. SCOPE consumers (page count cap, sitemap inventory) call derive_scope_pages() instead — see .claude/scripts/lib/derive_pages.py. -->
+<!-- coherence-allow: raw-golden_path (sequence-step) scope=["### Step 7b: Test scaffolding (if stack.testing is present)", "### Step 7c: System/cron behavior integration tests (if behaviors with `actor: system/cron` present in experiment.yaml)"] — wire reads golden_path as the ordered funnel sequence for e2e funnel tests and step-by-step assertions in those sections only; this is LIST semantics, not SET. Nav-bar links migrated to derive_scope_pages() per #1024 follow-up; SCOPE consumers (nav-bar, page count cap, sitemap inventory) call derive_scope_pages() — see .claude/scripts/lib/derive_pages.py. -->
 
 # Wire Procedure
 
@@ -51,7 +51,17 @@ Create auth infrastructure files not owned by scaffold-libs or scaffold-pages:
 
 1. **Auth callback route** (`src/app/auth/callback/route.ts`): from auth stack file's callback handler template. Use shared-client or standalone-client variant based on whether `stack.database` matches the auth provider.
 2. **Reset password page** (`src/app/auth/reset-password/page.tsx`): from auth stack file's reset password template.
-3. **Auth-aware nav bar** (`src/components/nav-bar.tsx`): from auth stack file's NavBar template. Replace `APP_NAME` with experiment.yaml `name`. Add nav links for each golden_path page (excluding landing and auth routes).
+3. **Auth-aware nav bar** (`src/components/nav-bar.tsx`): from auth stack file's NavBar template. Replace `APP_NAME` with experiment.yaml `name`. Emit nav links from the canonical SET inventory (NOT the funnel sequence):
+
+   ```bash
+   python3 .claude/scripts/lib/derive_pages.py scope < experiment/experiment.yaml
+   ```
+
+   This returns `derive_scope_pages(experiment)` — the union of golden_path pages, `behaviors[*].pages`, and auth-derived pages. Exclude from nav: `landing`, `login`, `signup`, `auth/callback`, `auth/reset-password`.
+
+   **Ordering**: pages that appear in `golden_path` come FIRST, in funnel sequence (iterate `golden_path` steps in order, extract `.page`). Behavior-only pages (in `derive_scope_pages()` but not on golden_path) come AFTER, sorted alphabetically. This preserves funnel affordance while ensuring every reachable surface has a nav entry.
+
+   **Marker comment (REQUIRED — non-negotiable)**: the generated `src/components/nav-bar.tsx` MUST contain the literal string `{/* DERIVED-FROM: derive_scope_pages */}` somewhere inside the `navLinks` fragment (adjacent to or interleaved with the `<Link>` elements). The auth stack template (e.g., `.claude/stacks/auth/supabase.md`) already includes this marker inside the `navLinks` JSX — when generating nav-bar.tsx from the template, **preserve this comment verbatim**; do NOT strip JSX comments during codegen. gate-keeper BG2 check 3d greps for this literal string and BLOCKs if absent, acting as a static regression guard against future re-introduction of golden_path-only nav derivation. If you generate nav-bar.tsx without the template (non-Supabase auth stacks), emit the marker explicitly.
    - **Logo:** The NavBar template includes an `<Image>` component for the logo. Read `.runs/image-manifest.json` for the actual logo path (typically `/images/logo.svg`) and update the `src` attribute. The logo links to `/`.
    - **Mobile menu:** The NavBar template includes a Sheet-based hamburger menu for viewports below the `md` breakpoint. Ensure nav links and auth controls are duplicated inside the Sheet content.
 

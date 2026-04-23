@@ -1,4 +1,4 @@
-<!-- coherence-allow: raw-golden_path (sequence-step) — ux-journeyer walks golden_path steps in order, recording coverage_pct as percentage of sequential steps successfully completed. LIST semantics, not SET. -->
+<!-- coherence-allow: raw-golden_path (sequence-step) scope=["### 2. Read Context", "### 3. Read or Derive Golden Path", "### 5. Navigate the Golden Path", "### 10. Compute Trace Metrics"] — ux-journeyer walks golden_path steps in funnel order and computes coverage_pct as percentage of sequential steps completed. LIST semantics, not SET. -->
 
 # UX Journeyer Procedure
 

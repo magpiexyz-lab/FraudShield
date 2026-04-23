@@ -1,4 +1,4 @@
-<!-- coherence-allow: raw-golden_path (sequence-step) — behavior-verifier walks each golden_path step in a single browser context with state carried forward. LIST semantics, not SET. -->
+<!-- coherence-allow: raw-golden_path (sequence-step) scope=["## Archetype Gate", "## Procedure: web-app", "## Procedure: service", "## Procedure: cli"] — behavior-verifier walks each golden_path step in a single browser context (web-app), a single API session (service), or a single CLI invocation sequence (cli) with state carried forward. LIST semantics, not SET. -->
 
 # Behavior Verifier Procedure
 

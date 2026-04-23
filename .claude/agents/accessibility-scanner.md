@@ -14,7 +14,7 @@ disallowedTools:
   - Agent
 maxTurns: 500
 ---
-<!-- coherence-allow: raw-golden_path (sequence-step) — accessibility-scanner walks pages in golden_path order, generating one entry per step. LIST semantics, not SET. -->
+<!-- coherence-allow: raw-golden_path (sequence-step) scope=["## Rendered-Review Contract", "## Trace Output"] — accessibility-scanner walks pages in golden_path funnel order, emitting one trace entry per step (Required trace extension field + Trace Output schema). LIST semantics, not SET. -->
 
 # Accessibility Scanner
 

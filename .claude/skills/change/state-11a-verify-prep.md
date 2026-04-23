@@ -19,7 +19,7 @@
   - **Production quality**: verify.md spawns spec-reviewer in addition to scope-determined agents. Pass experiment.yaml + `.runs/current-plan.md` to spec-reviewer.
   - **Test**: verify test discovery works by running the testing stack file's test command in dry-run/list mode (e.g., `npx playwright test --list` for Playwright, `npx vitest run --reporter=verbose` for Vitest). If test discovery fails, treat it as a build error — fix the test files and re-run. If still failing after the verify.md retry budget, report to the user with the error output.
   - **Feature (spec compliance)**: Re-read `.runs/current-plan.md` and `experiment/experiment.yaml`. Verify implementation matches the archetype's primary units:
-    - If archetype requires pages: confirm `src/app/<page-name>/page.tsx` exists for each unique page referenced in experiment.yaml `golden_path`
+    - If archetype requires pages: enumerate via `python3 .claude/scripts/lib/derive_pages.py scope < experiment/experiment.yaml` and confirm `src/app/<page-name>/page.tsx` exists for each returned page. The canonical set includes `behaviors[*].pages` — #1024 scope fix.
     - If archetype requires `endpoints`: confirm API route exists for each endpoint in experiment.yaml `endpoints` (path depends on framework stack file)
     - If archetype requires `commands` (cli): confirm `src/commands/<command-name>.ts` exists for each entry in the experiment.yaml command list
     - For each behavior in `behaviors`, confirm the implementation addresses it. For each event in `experiment/EVENTS.yaml`, confirm tracking calls are intact. If anything is missing, fix it before proceeding.

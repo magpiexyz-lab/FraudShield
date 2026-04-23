@@ -62,7 +62,7 @@ For system or scheduled behaviors, add `actor` and `trigger` (no `pages` needed 
 
 **VERIFY:**
 ```bash
-python3 -c "import yaml; d=yaml.safe_load(open('experiment/experiment.yaml')); bs=d.get('behaviors',[]); assert isinstance(bs, list) and len(bs)>0, 'no behaviors'; assert all(b.get('id') and b.get('hypothesis_id') for b in bs), 'behavior missing required fields'; archetype=d.get('type','web-app'); assert archetype != 'web-app' or all((b.get('actor') in ('system','cron')) or (isinstance(b.get('pages'), list) and len(b.get('pages',[]))>0) for b in bs), 'web-app: every actor:user behavior must have non-empty pages list (see .claude/templates/experiment-yaml.md)'"
+python3 -c "import yaml; d=yaml.safe_load(open('experiment/experiment.yaml')); bs=d.get('behaviors',[]); assert isinstance(bs, list) and len(bs)>0, 'no behaviors'; assert all(b.get('id') and b.get('hypothesis_id') for b in bs), 'behavior missing required fields'; archetype=d.get('type','web-app'); assert archetype != 'web-app' or all((b.get('actor') in ('system','cron')) or (isinstance(b.get('pages'), list) and len(b.get('pages',[]))>0) for b in bs), 'web-app: every actor:user behavior must have non-empty pages list (run `python3 .claude/scripts/validate-behavior-pages.py --all` for detailed diagnostic + migration hint; see .claude/templates/experiment-yaml.md)'" && python3 .claude/scripts/validate-behavior-pages.py --all
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

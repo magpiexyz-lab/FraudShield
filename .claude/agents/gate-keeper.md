@@ -15,6 +15,8 @@ disallowedTools:
 maxTurns: 500
 ---
 
+<!-- coherence-allow: raw-golden_path (sequence-step) scope=["### BG1 Validation Gate"] — BG1 check 5 reads golden_path as a schema-level presence probe ("web-app → golden_path with page: landing"), not as an inventory iterator. SET-inventory enforcement lives in BG2 3b/3c/3d/3e which all use derive_scope_pages(). See #1024. -->
+
 # Gate Keeper
 
 ## Why You Exist
@@ -238,13 +240,23 @@ Get the canonical set via `python3 .claude/scripts/lib/derive_pages.py scope < e
 
 3c. **Behavior page reference enforcement** (web-app only) — three sub-checks that close the #1024 404 trap:
 
-3c-1. **Pages declared.** For each `behavior` in `experiment.yaml` with `actor: user` (or actor field omitted, since `user` is the default): assert `behavior.pages` is present and a non-empty list. BLOCK with message:
+3c-1. **Pages declared.** Run `python3 .claude/scripts/validate-behavior-pages.py --all` — this is the same shared validator that `spec/3` VERIFY invokes; non-zero exit indicates one or more `actor: user` behaviors are missing non-empty `pages: [...]`. BLOCK with the script's stderr (which already includes the legacy-hint pointing to `/upgrade` + `migrate-experiment-yaml.py` for pre-#1024 experiments). Manual fallback when the script is unavailable: for each behavior with `actor: user` (or actor field omitted, since `user` is the default): assert `behavior.pages` is present and a non-empty list. BLOCK with message:
 > behavior `<id>` is missing required `pages: [...]` field. Add `pages: [<page>]` listing every page this behavior interacts with, or remove the behavior if no longer needed. See `.claude/templates/experiment-yaml.md`.
 
 3c-2. **Set self-consistent.** For each `behavior.pages` element: assert it appears in `derive_scope_pages(experiment)`. (Trivially true given the function's definition; defense-in-depth catches schema corruption or `derive_pages.py` bugs.) BLOCK with diagnostic showing the missing element and `derive_scope_pages()` output.
 
 3c-3. **Page exists on disk.** For each page in `derive_scope_pages(experiment)` (excluding auth-derived `login`/`signup` which scaffold-pages handles via the auth stack template): assert `src/app/<page>/page.tsx` exists. BLOCK with message:
 > page `<name>` is declared in `derive_scope_pages()` but `src/app/<name>/page.tsx` is missing. Re-run scaffold-pages for this page (state-11b), or remove its declaration from `behavior.pages` / `golden_path`.
+
+3d. **Nav-bar inventory coverage** (web-app only) — verify NavBar links cover the canonical set:
+- `src/components/nav-bar.tsx` MUST contain the marker comment `{/* DERIVED-FROM: derive_scope_pages */}` (emitted by scaffold-wire Step 5b.3). BLOCK if absent: > `src/components/nav-bar.tsx` is missing the `{/* DERIVED-FROM: derive_scope_pages */}` marker. Re-run scaffold-wire; nav-bar must be generated from the canonical SET.
+- For each `<page>` in `derive_scope_pages(experiment)` excluding `landing`, `login`, `signup`, `auth/callback`, `auth/reset-password`: assert the page slug appears as a whole path segment in an `href` in `src/components/nav-bar.tsx` — run `grep -E 'href=(\"/(<page>)(/|\"|\\?)|\\{[^}]*\"/?<page>[\"/]?[^}]*\\})' src/components/nav-bar.tsx`. BLOCK with list of missing pages.
+- Skip for service/cli archetypes.
+
+3e. **Sitemap inventory coverage** (web-app only) — verify sitemap derives from canonical:
+- `src/app/sitemap.ts` MUST reference the canonical derivation (either the `derive_scope_pages` function symbol or a `derive_pages.py` invocation). BLOCK if absent: > `src/app/sitemap.ts` does not reference `derive_scope_pages` — sitemap must be generated from the canonical SET (see `.claude/procedures/scaffold-pages.md` Step 3b).
+- For each `<page>` in `derive_scope_pages(experiment)` excluding `landing`, `login`, `signup`, `auth/callback`, `auth/reset-password`: assert the page slug appears in `src/app/sitemap.ts`. BLOCK with list of missing pages.
+- Skip for service/cli archetypes.
 4. If `stack.analytics`: (a) grep `src/lib/analytics` for `PROJECT_NAME` and `PROJECT_OWNER` — neither must equal `"TODO"`; (b) read `experiment/EVENTS.yaml`, for each event filtered by `requires` (match stack) and `archetypes` (match type), grep event name in `src/` — BLOCK if any missing; (c) grep `src/app/*/page.tsx` for raw `track(` calls not from typed wrappers — BLOCK if found (pages must use typed wrappers from `@/lib/events`, not raw `track()`)
 5. If surface ≠ `none`: landing page file exists
 6. `.runs/current-plan.md` frontmatter `checkpoint` is `phase2-scaffold` or later
@@ -257,7 +269,7 @@ Get the canonical set via `python3 .claude/scripts/lib/derive_pages.py scope < e
 13. (web-app only) Theme token usage: each page in `derive_scope_pages(experiment)` contains at least one Tailwind theme class (`primary`, `secondary`, `background`, `foreground`, `muted`, `accent`, `destructive`, `card`, `border`) in className — for each `<page>` from `derive_scope_pages()`, run `grep -lE '(primary|secondary|background|foreground|muted|accent|destructive|card|border)' src/app/<page>/page.tsx`. BLOCK if any page has zero theme token references.
 14. (web-app only) Internal href validity: grep all page files for `href="/` patterns — run `grep -roh 'href="/[^"]*"' src/app/*/page.tsx | sort -u`. For each extracted path, verify a corresponding directory exists under `src/app/`. Exclude `href="http`, `href="mailto:`, and **scaffold-wire-owned routes that state-13b cannot see yet**: `/auth/callback` and `/auth/reset-password` (created in STATE 14, after state-13b runs and after BG2 runs if BG2 fires before STATE 14). These routes are part of the documented auth/supabase stack file contract — treat them as expected-missing. BLOCK if any OTHER internal link targets a non-existent route.
 15. (web-app only, if variants defined) Variant integration: if experiment.yaml defines `variants`, grep landing page source for at least one variant slug — run `grep -l '<slug>' src/app/page.tsx src/components/landing-content.tsx 2>/dev/null`. BLOCK if no variant slug found. Skip if no variants defined or surface = `none`.
-16. (web-app only) **Content quality floor** — for each golden_path page (excluding `auth/*` routes), `src/app/<page>/page.tsx` has ≥15 lines (`wc -l`) and does not contain `TODO`, `PLACEHOLDER`, or `FIXME` as whole-word UPPERCASE-only tokens. Run `grep -E '\b(TODO|PLACEHOLDER|FIXME)\b'` (case-sensitive). Do NOT use `grep -i` — case-insensitive matching false-positives on the HTML `placeholder="..."` attribute which is a legitimate form-UX element. BLOCK if violated, listing the offending pages.
+16. (web-app only) **Content quality floor** — for each page in `derive_scope_pages(experiment)` (excluding `auth/*` routes, `login`, `signup`), `src/app/<page>/page.tsx` has ≥15 lines (`wc -l`) and does not contain `TODO`, `PLACEHOLDER`, or `FIXME` as whole-word UPPERCASE-only tokens. Run `grep -E '\b(TODO|PLACEHOLDER|FIXME)\b'` (case-sensitive). Do NOT use `grep -i` — case-insensitive matching false-positives on the HTML `placeholder="..."` attribute which is a legitimate form-UX element. BLOCK if violated, listing the offending pages.
 17. (web-app only) **CTA presence** — `src/app/page.tsx` OR `src/components/landing-content.tsx` contains at least one `<Button` or `<Link` component (`grep`). BLOCK if neither file contains a CTA.
 18. (web-app only) **Restricted asChild** — use multi-line ripgrep (`rg -U --multiline`) to find `asChild` occurrences in user-authored files (exclude `src/components/ui/` and `src/components/magicui/`). For each match, inspect the IMMEDIATE child element: ALLOW when the child is `<Link` (from `next/link`) or a bare `<a ` anchor — this is the sanctioned shadcn Button+Link / Trigger+Link composition. BLOCK when the child is any other element (e.g., `<Button asChild><div>` — which is the anti-pattern the check is trying to catch). List `file:line` for each blocking match. The multi-line flag is required because prettier frequently formats the pattern across multiple lines (`<Button asChild>\n  <Link href="/go">...`).
 

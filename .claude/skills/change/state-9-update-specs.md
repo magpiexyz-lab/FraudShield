@@ -31,7 +31,7 @@ Update checkpoint in `.runs/current-plan.md` frontmatter to `phase2-step6`.
 
 **VERIFY:**
 ```bash
-grep -q 'checkpoint: phase2-step6' .runs/current-plan.md && python3 -c "import json; pt=json.load(open('.runs/change-context.json')).get('preliminary_type',''); assert pt!='Feature' or '  - id:' in open('experiment/experiment.yaml').read(), 'Feature requires behaviors'"
+grep -q 'checkpoint: phase2-step6' .runs/current-plan.md && python3 -c "import json; pt=json.load(open('.runs/change-context.json')).get('preliminary_type',''); assert pt!='Feature' or '  - id:' in open('experiment/experiment.yaml').read(), 'Feature requires behaviors'" && python3 .claude/scripts/validate-behavior-pages.py --diff-vs-main
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

@@ -13,7 +13,7 @@ clean:
   dirs: []
 gitignore: []
 ---
-<!-- coherence-allow: raw-golden_path (sequence-step) — google-ads sitelinks are derived from golden_path step descriptions in funnel order (landing → value → retention) for click priority. LIST semantics, not SET. -->
+<!-- coherence-allow: raw-golden_path (sequence-step) scope=["## Ad Format Constraints", "## Phase 1 Playbook"] — google-ads sitelinks are derived from golden_path step descriptions in funnel order (landing → value → retention) for click priority. Ad Format Constraints documents the derivation; Phase 1 Playbook's Sitelink Strategy subsection (### Sitelink Strategy) uses it. LIST semantics, not SET. -->
 
 # Distribution: Google Ads
 > Used when `/distribute` is run with channel `google-ads`
