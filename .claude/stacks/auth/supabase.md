@@ -54,7 +54,11 @@ Exchanges PKCE authorization codes for sessions. Required for email confirmation
 #### When `stack.database` is also `supabase` (shared client):
 ```ts
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
+
+// PKCE codes are URL-safe base64, typically 40-200 chars. Cap generously.
+const codeSchema = z.string().min(20).max(512).regex(/^[A-Za-z0-9_-]+$/);
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
@@ -62,13 +66,15 @@ export async function GET(request: Request) {
     throw new Error("DEMO_MODE is not allowed in production");
   }
   if (process.env.DEMO_MODE === "true") return NextResponse.redirect(`${origin}/`);
-  const code = searchParams.get("code");
+
+  const rawCode = searchParams.get("code");
   const rawNext = searchParams.get("next") ?? "/";
   const next = rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "/";
 
-  if (code) {
+  const parsedCode = rawCode ? codeSchema.safeParse(rawCode) : null;
+  if (parsedCode?.success) {
     const supabase = await createServerSupabaseClient();
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    const { error } = await supabase.auth.exchangeCodeForSession(parsedCode.data);
     if (!error) return NextResponse.redirect(`${origin}${next}`);
   }
   return NextResponse.redirect(`${origin}/login?error=auth`);
@@ -76,12 +82,12 @@ export async function GET(request: Request) {
 ```
 
 #### When `stack.database` is NOT supabase (standalone client):
-Replace the import on line 2:
+Replace the `createServerSupabaseClient` import (the third `import` line in the template above):
 ```ts
 // Instead of: import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { createServerAuthClient as createServerSupabaseClient } from "@/lib/supabase-auth-server";
 ```
-This aliasing keeps the rest of the route handler code identical — only the import changes.
+This aliasing keeps the rest of the route handler code identical — only that one import changes. The zod import and `codeSchema` constant stay as shown.
 
 ### `src/app/auth/reset-password/page.tsx` — Reset password page (always created)
 

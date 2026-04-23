@@ -88,10 +88,16 @@ validate: ## Check experiment.yaml for valid YAML, TODOs, name format, and struc
 		echo "Check for indentation errors or missing colons."; \
 		exit 1; \
 	}
-	@if grep -q 'TODO' experiment/experiment.yaml; then \
+	@# Exclude YAML comment lines (^<whitespace>#) before checking for TODO so the
+	@# template preamble sentence "Replace every TODO value…" does not trip a false
+	@# positive. Inline comments on value lines (e.g., `name: foo  # TODO`) and
+	@# block-literal continuations still match. Line numbers reflect the original
+	@# file so users see the real placeholder locations. (#1053)
+	@NON_COMMENT_TODOS=$$(awk '!/^[[:space:]]*#/ && /TODO/ { printf "%d:%s\n", NR, $$0 }' experiment/experiment.yaml); \
+	if [ -n "$$NON_COMMENT_TODOS" ]; then \
 		echo ""; \
 		echo "Found TODO placeholders that need to be filled in:"; \
-		grep -n 'TODO' experiment/experiment.yaml; \
+		echo "$$NON_COMMENT_TODOS"; \
 		echo ""; \
 		echo "Replace every TODO before running make bootstrap."; \
 		exit 1; \
