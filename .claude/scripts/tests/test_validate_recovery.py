@@ -179,6 +179,35 @@ class TestValidateRecovery(unittest.TestCase):
         t = json.loads((self.traces / "quality-fixer.json").read_text())
         self.assertFalse(t["recovery_validated"])
 
+    def test_pass_e2e_failed_but_agent_is_non_fixer(self):
+        """Issue #1046: read-only (non_fixer) agents skip the e2e-result.json.passed
+        precondition — e2e outcome doesn't semantically bear on whether their
+        analysis completed correctly. Otherwise every read-only agent's trace
+        stays stuck at recovery_validated:false during bootstrap-verify."""
+        self._write_build(0)
+        self._write_e2e(False)  # e2e failed — acceptable for non-fixer
+        # design-critic is a non-fixer AND a sibling trace proves scope ran
+        self._write_trace("ux-journeyer-sibling", {
+            "agent": "ux-journeyer",
+            "provenance": "self",
+            "verdict": "pass",
+            "checks_performed": ["journey"],
+        })
+        self._write_trace("design-critic", {
+            "agent": "design-critic",
+            "provenance": "recovery",
+            "verdict": "recovery",
+            "partial": True,
+            "recovery": True,
+            "recovery_validated": False,
+            "no_fixes_claimed": True,
+            "spawn_sha": self.spawn_sha,
+        })
+        proc = self._run("design-critic")
+        self.assertEqual(proc.returncode, 0, f"stderr={proc.stderr}")
+        t = json.loads((self.traces / "design-critic.json").read_text())
+        self.assertTrue(t["recovery_validated"])
+
     def test_fail_e2e_not_passed(self):
         self._write_build(0)
         self._write_e2e(False)
@@ -233,10 +262,33 @@ class TestValidateRecovery(unittest.TestCase):
         self.assertNotEqual(proc.returncode, 0)
         self.assertIn("non_fixer_agents", proc.stderr)
 
-    def test_fail_no_fixes_claimed_without_sibling_pass(self):
+    def test_pass_no_fixes_claimed_without_sibling_but_build_ok(self):
+        """Issue #1046 Option B: when no non-degraded sibling exists (e.g., ALL
+        agents self-degrade because the guard blocks all trace writes), accept
+        a successful build-result.json as alternative evidence that the scope
+        actually executed."""
         self._write_build(0)
         self._write_e2e(True)
-        # design-critic is a non-fixer, but no sibling trace exists
+        # design-critic is a non-fixer, no sibling trace, but build is green
+        self._write_trace("design-critic", {
+            "agent": "design-critic",
+            "provenance": "recovery",
+            "verdict": "recovery",
+            "partial": True,
+            "recovery": True,
+            "recovery_validated": False,
+            "no_fixes_claimed": True,
+            "spawn_sha": self.spawn_sha,
+        })
+        proc = self._run("design-critic")
+        self.assertEqual(proc.returncode, 0,
+                         f"expected pass when no sibling but build=0: stderr={proc.stderr}")
+
+    def test_fail_no_fixes_claimed_without_sibling_and_build_fails(self):
+        """When there's neither a non-degraded sibling nor a successful build,
+        the findings-only path must still fail — the scope didn't execute."""
+        self._write_build(1)  # build failed
+        self._write_e2e(True)
         self._write_trace("design-critic", {
             "agent": "design-critic",
             "provenance": "recovery",
@@ -249,7 +301,11 @@ class TestValidateRecovery(unittest.TestCase):
         })
         proc = self._run("design-critic")
         self.assertNotEqual(proc.returncode, 0)
-        self.assertIn("at least one sibling trace", proc.stderr)
+        # Either the build-result failure or the sibling fallback message is acceptable
+        self.assertTrue(
+            "non-degraded sibling" in proc.stderr or "build-result.json" in proc.stderr or "exit_code" in proc.stderr,
+            f"expected sibling/build error in stderr: {proc.stderr}"
+        )
 
     def test_fail_missing_build_result(self):
         # No build-result.json written

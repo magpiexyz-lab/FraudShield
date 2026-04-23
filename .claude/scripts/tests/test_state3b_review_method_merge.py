@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""test_state3b_review_method_merge.py — validate state-3b merge aggregation
+"""test_state3b_review_method_merge.py — validate the design-critic merge script
 and the source-only → unresolved invariant enforcement.
 
-Extracts the inline Python merge script from
-`.claude/skills/verify/state-3b-quality-gate.md`, runs it against synthetic
+Invokes `.claude/scripts/merge-design-critic-traces.py` (extracted from
+`state-3b-quality-gate.md` inline python per issue #1045) against synthetic
 per-page design-critic traces, and asserts:
 
 1. per_page_review_methods aggregates correctly per page.
@@ -21,35 +21,19 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import subprocess
 import sys
 import tempfile
-import textwrap
 import unittest
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[3]
-STATE_FILE = ROOT / ".claude/skills/verify/state-3b-quality-gate.md"
-
-
-def extract_merge_script() -> str:
-    """Extract the first `python3 -c "..."` block from state-3b-quality-gate.md."""
-    content = STATE_FILE.read_text()
-    m = re.search(r'python3 -c "\n(.*?)\n"\n```', content, re.DOTALL)
-    if not m:
-        raise RuntimeError("could not locate merge script in state-3b-quality-gate.md")
-    return m.group(1)
+MERGE_SCRIPT = ROOT / ".claude/scripts/merge-design-critic-traces.py"
 
 
 def run_merge(per_page_traces: list[dict]) -> tuple[dict, str]:
-    """Write synthetic traces to a tmp dir, run the merge, return (merged_json, stderr).
-
-    Uses a throwaway CWD so `.runs/agent-traces/` inside the tmp doesn't collide
-    with the real project state. Patches the glob path in the extracted script
-    to read from the tmp dir.
-    """
+    """Write synthetic traces to a tmp dir, run the merge, return (merged_json, stderr)."""
     with tempfile.TemporaryDirectory() as tmp:
         traces_dir = Path(tmp) / ".runs" / "agent-traces"
         traces_dir.mkdir(parents=True)
@@ -61,9 +45,8 @@ def run_merge(per_page_traces: list[dict]) -> tuple[dict, str]:
             page = t.get("page", "unknown")
             (traces_dir / f"design-critic-{page}.json").write_text(json.dumps(t))
 
-        script = extract_merge_script()
         result = subprocess.run(
-            ["python3", "-c", script],
+            ["python3", str(MERGE_SCRIPT)],
             capture_output=True,
             text=True,
             cwd=tmp,

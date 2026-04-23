@@ -215,6 +215,23 @@ deploy:
   domain: <custom domain>
 ```
 
+### `design` (optional, dict)
+
+User-supplied visual direction persisted by `/spec` from input flags (`--theme`, `--design-lineage`, `--aesthetic`) and honoured by `scaffold-init` during `/bootstrap`. When a field is set here, it is a **hard constraint** — `scaffold-init` must respect it rather than judging aesthetic direction from `target_user` + `description` alone. Unset fields fall back to agent judgment. Issue #1050.
+
+```yaml
+design:
+  theme: light | dark | auto      # default auto = scaffold-init decides
+  design_lineage: [string]        # e.g., [Linear, Vercel, Rauno Freiberg]
+  aesthetic_notes: string         # freeform creative direction, appended to visual brief
+```
+
+- `theme: dark` or `theme: light` overrides `globals.css` color tokens regardless of product domain reasoning.
+- `design_lineage` is a mandatory reference set for the visual brief (e.g., agent consults those brands' known aesthetics).
+- `aesthetic_notes` is a soft override to the agent's own aesthetic reasoning — e.g., "editorial with engineering precision, not minimalist".
+
+All three fields are optional. When the block is entirely absent, no behavior change.
+
 ## Page Inventory Derivation
 
 The canonical page set is computed by `derive_scope_pages()` in

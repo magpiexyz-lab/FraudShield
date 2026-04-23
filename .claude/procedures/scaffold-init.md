@@ -9,7 +9,14 @@
 ## Steps
 
 ### Step 1: Design decisions
-1. Derive the three design constraints per `.claude/patterns/design.md` (color direction, design philosophy, optimization target) from experiment.yaml's product domain.
+0. **Read user-supplied design constraints from `experiment.yaml.design`** (issue #1050).
+   When the block is present it is a hard constraint on subsequent choices — it overrides any judgment you would otherwise make from `target_user` or `description`:
+   - `design.theme: dark | light | auto` — if `dark` or `light`, the theme is fixed; skip product-domain reasoning that would flip it. Record the forced theme in the visual brief and enforce it in `globals.css` color tokens.
+   - `design.design_lineage: [Brand, ...]` — mandatory reference set for the visual brief. Consult those brands' known aesthetics (e.g., Linear = editorial precision; Vercel = monochrome-first; Rauno Freiberg = dense information design) and cite them in the brief.
+   - `design.aesthetic_notes: "<freeform>"` — soft override to your own aesthetic reasoning. Incorporate into the Design Constraints section as a guiding principle.
+
+   When the block is absent or a field is unset, fall back to full judgment (unchanged behavior).
+1. Derive the three design constraints per `.claude/patterns/design.md` (color direction, design philosophy, optimization target) from experiment.yaml's product domain, **filtered by the user-supplied constraints from Step 0 above**.
 2. Apply the preloaded `frontend-design` guidelines (injected via skills)
    for visual direction within the derived constraints. If not available,
    use your own judgment — match the product's personality, not framework defaults.

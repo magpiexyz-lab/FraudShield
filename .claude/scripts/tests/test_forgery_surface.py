@@ -7,15 +7,16 @@ Scans the repository for any file that writes to
 Fails if any unauthorized writer appears.
 
 Authorized writers:
-  - .claude/scripts/init-trace.py              (stub)
-  - .claude/hooks/skill-agent-gate.sh          (spawn-log — hook-managed)
-  - .claude/scripts/write-recovery-trace.sh    (recovery trace)
-  - .claude/scripts/write-degraded-trace.py    (self-degraded trace)
-  - .claude/scripts/validate-recovery.sh       (recovery_validated stamp only)
-  - .claude/scripts/migrate-legacy-traces.py   (legacy migration)
-  - .claude/scripts/tests/*                    (fixtures — writes to tmp dirs)
-  - scripts/init-trace.py                      (alternate root stub location)
-  - scripts/tests/*                            (fixtures)
+  - .claude/scripts/init-trace.py                  (stub)
+  - .claude/hooks/skill-agent-gate.sh              (spawn-log — hook-managed)
+  - .claude/scripts/write-recovery-trace.sh        (recovery trace)
+  - .claude/scripts/write-degraded-trace.py        (self-degraded trace)
+  - .claude/scripts/validate-recovery.sh           (recovery_validated stamp only)
+  - .claude/scripts/migrate-legacy-traces.py       (legacy migration)
+  - .claude/scripts/merge-design-critic-traces.py  (verify state-3b lead-merge)
+  - .claude/scripts/tests/*                        (fixtures — writes to tmp dirs)
+  - scripts/init-trace.py                          (alternate root stub location)
+  - scripts/tests/*                                (fixtures)
 
 Any other file touching these artifacts is a regression.
 
@@ -39,6 +40,7 @@ AUTHORIZED = {
     ".claude/scripts/write-degraded-trace.py",
     ".claude/scripts/validate-recovery.sh",
     ".claude/scripts/migrate-legacy-traces.py",
+    ".claude/scripts/merge-design-critic-traces.py",
     "scripts/init-trace.py",
 }
 

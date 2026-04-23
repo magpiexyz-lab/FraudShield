@@ -44,10 +44,10 @@ Poll `http://localhost:3098` until it responds (max 15 seconds, then abort).
 Write an inline Playwright script that:
 
 1. Launches Chromium (headless)
-2. Determines journey-level `auth_requirement` based on first step's route. To classify a route as "auth-gated" or "public", read `src/middleware.ts` once at journey start to extract the matcher patterns (Next.js convention). Routes matched by middleware that redirect unauthed traffic are auth-gated; routes outside the matcher are public. Fall back to the canonical `AUTH_PATHS` set (`/login`, `/signup`, `/auth/callback`, `/auth/reset-password`) — these are always auth-related, but ARE public landing surfaces, NOT auth-gated:
+2. Determines journey-level `auth_requirement` based on first step's route. To classify a route as "auth-gated" or "public", read the Next.js route-protection file once at journey start to extract the matcher patterns (Next.js convention). Probe `src/proxy.ts` first (Next.js 16+ filename); fall back to `src/middleware.ts` (legacy Next.js 15 filename) if the first does not exist. Use whichever exists — treat both as the same concept. Routes matched by this file that redirect unauthed traffic are auth-gated; routes outside the matcher are public. Fall back to the canonical `AUTH_PATHS` set (`/login`, `/signup`, `/auth/callback`, `/auth/reset-password`) — these are always auth-related, but ARE public landing surfaces, NOT auth-gated:
    - First step's route is in the project's public surface (`/`, `/pricing`, `/about`, anything outside the middleware matcher) → `"anonymous"` (do NOT inject storageState — anonymous journeys must run on a fresh context to avoid session leakage from prior `e2e/.auth.json`)
-   - First step's route IS matched by middleware as auth-gated (e.g., `/dashboard`, `/settings`) → `"required"`
-   - Cannot determine (no middleware file, ambiguous) → `"optional"` (preserves pre-PR-3 behavior — fall back to demo-mode tolerance)
+   - First step's route IS matched by proxy/middleware as auth-gated (e.g., `/dashboard`, `/settings`) → `"required"`
+   - Cannot determine (neither file exists, ambiguous) → `"optional"` (preserves pre-PR-3 behavior — fall back to demo-mode tolerance)
 3. Calls `setupAuthContext(browser, {auth_requirement})` (per `.claude/patterns/render-review-detection.md` Section 6.1) to create the BrowserContext.
 4. **If `setupAuthContext` returns `reviewMethodEarly === "prereq-unmet"`**:
    - Write trace with `verdict="blocked"`, `caveat="prereq-unmet:<fallback_reason>"`, empty `per_step_reviews`. Exit. The journey cannot start.

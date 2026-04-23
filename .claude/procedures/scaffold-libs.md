@@ -11,15 +11,16 @@
 
 ## Instructions
 
-Create ONLY the `src/lib/` files (and `src/middleware.ts` when `stack.auth` is present) from each stack file's "Files to Create" section. Skip files outside these paths — pages are owned by scaffold-pages, infrastructure routes and components by scaffold-wire.
+Create ONLY the `src/lib/` files (and `src/proxy.ts` when `stack.auth` is present; on legacy Next.js 15 projects the file is `src/middleware.ts`) from each stack file's "Files to Create" section. Skip files outside these paths — pages are owned by scaffold-pages, infrastructure routes and components by scaffold-wire.
 
 1. **Analytics library** (if `stack.analytics` is present): create from the analytics stack file.
 
 2. **Database clients** (if `stack.database` is present): create from the database stack file.
 
 3. **Auth files** (if `stack.auth` is present): create from the auth stack file using the correct conditional path:
-   - If `stack.database` matches the auth provider (e.g., both `supabase`): auth shares the database client files — create only `src/middleware.ts` (from the auth stack file's "Middleware" section)
-   - If `stack.database` is absent or a different provider: create standalone auth library files from the "Standalone Client" section (e.g., `supabase-auth.ts`, `supabase-auth-server.ts`) AND `src/middleware.ts`
+   - The route-protection filename is `src/proxy.ts` on Next.js 16+ (template default) or `src/middleware.ts` on legacy Next.js 15 projects — the exported function and `config` are identical regardless of filename. Detect the installed Next.js major version from `package.json` (e.g. `node -p "require('./package.json').dependencies.next"` → parse); write `src/proxy.ts` when major >= 16, else `src/middleware.ts`. See `.claude/stacks/framework/nextjs.md` Stack Knowledge entry "Next.js 16+: scaffold src/proxy.ts (default)".
+   - If `stack.database` matches the auth provider (e.g., both `supabase`): auth shares the database client files — create only the route-protection file (from the auth stack file's "Proxy" section)
+   - If `stack.database` is absent or a different provider: create standalone auth library files from the "Standalone Client" section (e.g., `supabase-auth.ts`, `supabase-auth-server.ts`) AND the route-protection file
    - Do NOT create auth pages (signup, login), auth infrastructure (auth/callback, auth/reset-password), or components (nav-bar) — those are created by scaffold-pages and scaffold-wire respectively
 
 4. **Auth before payment ordering**: if both `stack.auth` and `stack.payment` are present, create auth library files first — payment templates reference `user.id` which requires auth.

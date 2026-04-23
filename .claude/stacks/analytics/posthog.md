@@ -212,8 +212,8 @@ Notes:
 
 When `stack.auth` is present AND the project uses client-side PostHog (`stack.analytics: posthog` + `type: web-app`), the auth stack's route-protection middleware MUST include `pathname.startsWith("/ingest/")` in its skip list. Otherwise the middleware sees unauthenticated PostHog event POSTs from top-of-funnel pages (landing, demo, signup) and 307-redirects them to `/login?next=/ingest/...` — since `/login` handles GET only, it returns **405 Method Not Allowed**. Every client-side analytics event from unauthenticated visitors fails silently in production, making funnel metrics like `visit_landing → signup_start` impossible to measure.
 
-- `auth/supabase.md` already whitelists `/ingest/` in its middleware template — look for the `pathname.startsWith("/ingest/")` entry beside the other startsWith checks.
-- Any new auth stack file authoring its own middleware template must replicate this skip-list entry. The PostHog proxy only works end-to-end when `next.config.ts` (rewrite rule) AND `src/middleware.ts` (auth skip list) agree on the `/ingest/` prefix.
+- `auth/supabase.md` already whitelists `/ingest/` in its route-protection template — look for the `pathname.startsWith("/ingest/")` entry beside the other startsWith checks.
+- Any new auth stack file authoring its own route-protection template must replicate this skip-list entry. The PostHog proxy only works end-to-end when `next.config.ts` (rewrite rule) AND the route-protection file (`src/proxy.ts` on Next.js 16+, `src/middleware.ts` on legacy Next.js 15; auth skip list) agree on the `/ingest/` prefix.
 - This cross-file contract exists because both files are independently authored by their respective stacks; changing the proxy prefix requires coordinated edits in both. (See issue #983 for the failure mode when the contract was silently broken.)
 
 ## When framework is NOT nextjs (server-only analytics)

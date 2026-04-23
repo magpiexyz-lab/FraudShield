@@ -74,7 +74,21 @@ except Exception as exc:
     errors.append(f'build-result.json malformed: {exc}')
 
 # Evidence 2: e2e (skip if not applicable — heuristic: file exists means tests in scope)
-if os.path.isfile(e2e_path):
+# Agent-role carve-out: read-only (non-fixer) agents produce analysis, not fixes.
+# e2e outcome is not semantically coupled to whether their scan completed correctly,
+# so we skip the e2e precondition for any agent listed in agent-registry.json
+# non_fixer_agents. This prevents the deadlock where every read-only agent's trace
+# gets stuck at recovery_validated:false during bootstrap-verify (issue #1046).
+try:
+    reg = json.load(open(reg_path))
+    non_fixers = set(reg.get('non_fixer_agents', []))
+except Exception:
+    non_fixers = set()
+
+agent_for_role_check = trace.get('agent', '')
+is_non_fixer = agent_for_role_check in non_fixers
+
+if os.path.isfile(e2e_path) and not is_non_fixer:
     try:
         er = json.load(open(e2e_path))
         # Accept either passed:true or skipped:true
@@ -82,7 +96,7 @@ if os.path.isfile(e2e_path):
             errors.append(f'e2e-result.json shows failure (passed={er.get("passed")}, skipped={er.get("skipped")})')
     except Exception as exc:
         errors.append(f'e2e-result.json malformed: {exc}')
-# If e2e-result.json is missing, don't fail — it may not be applicable to this scope
+# If e2e-result.json is missing OR agent is a non-fixer, don't fail on e2e evidence
 
 # Evidence 3: diff-fix correlation
 fixes = trace.get('fixes') or []
@@ -137,13 +151,11 @@ if fixes:
     if missing:
         errors.append(f'fixes[].file not present in diff: {missing}')
 elif trace.get('no_fixes_claimed') is True:
-    # Findings-only path: agent must be in non_fixer_agents AND at least one
-    # non-degraded sibling trace must exist (to confirm scope actually executed).
-    try:
-        reg = json.load(open(reg_path))
-        non_fixers = set(reg.get('non_fixer_agents', []))
-    except Exception:
-        non_fixers = set()
+    # Findings-only path: agent must be in non_fixer_agents. To confirm scope
+    # actually executed, require either (a) a non-degraded sibling trace, OR
+    # (b) build-result.json shows success — the latter covers the case where
+    # every agent in a session self-degrades (e.g., guard blocks all trace
+    # writes, see #1045) and no non-degraded sibling exists. Issue #1046.
     if agent not in non_fixers:
         errors.append(f'no_fixes_claimed:true requires agent in non_fixer_agents (got {agent!r})')
     # Check sibling traces: any trace in agent-traces/ with provenance=self
@@ -163,7 +175,15 @@ elif trace.get('no_fixes_claimed') is True:
                 sibling_ok = True
                 break
     if not sibling_ok:
-        errors.append('no_fixes_claimed:true requires at least one sibling trace with provenance=self and verdict in {pass,fail}')
+        # Fallback: accept when the session's build succeeded
+        build_ok = False
+        try:
+            br = json.load(open(build_path))
+            build_ok = br.get('exit_code') == 0
+        except Exception:
+            pass
+        if not build_ok:
+            errors.append('no_fixes_claimed:true requires at least one non-degraded sibling trace OR a successful build-result.json')
 else:
     # Neither fixes[] nor no_fixes_claimed:true — fixer agents need one or the other
     errors.append('recovery/self-degraded trace must have either fixes[] array or no_fixes_claimed:true')

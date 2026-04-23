@@ -8,6 +8,28 @@
 Parse `$ARGUMENTS` for:
 - **Idea text**: the main argument (everything except flags)
 - **Level**: always `3` (Full MVP). The `--level` flag is accepted for backwards compatibility but the value is always overridden to 3.
+- **Design preferences** (optional, persisted to `experiment.yaml.design` in STATE 7):
+  - `--theme <light|dark|auto>` — hard constraint on globals.css color tokens
+  - `--design-lineage "<Brand1, Brand2, ...>"` — comma-separated list of reference brands (e.g., `"Linear, Vercel, Rauno Freiberg"`). Parsed into a list.
+  - `--aesthetic "<freeform notes>"` — soft creative direction for `scaffold-init`
+
+Persist parsed design fields into `.runs/spec-context.json.input` (create `input` dict if absent):
+```bash
+python3 -c "
+import json, os
+ctx_path = '.runs/spec-context.json'
+ctx = json.load(open(ctx_path)) if os.path.exists(ctx_path) else {}
+ctx.setdefault('input', {})
+# Set only when the corresponding flag was provided — omit the key otherwise so
+# STATE 7 can distinguish 'unset' from 'explicit empty'.
+# theme = <parsed from --theme>
+# design_lineage = <parsed list from --design-lineage, split on comma, stripped>
+# aesthetic_notes = <parsed from --aesthetic>
+json.dump(ctx, open(ctx_path, 'w'), indent=2)
+"
+```
+
+If none of the design flags are provided, omit the `input.theme` / `input.design_lineage` / `input.aesthetic_notes` keys entirely — STATE 7 checks for presence.
 
 Level 3 — Full MVP: auth + database + core feature + payments (if applicable). Tests the complete funnel from reach to monetization. This is the default because a full MVP takes ~2 hours to build with the template, and running ads against anything less wastes budget on incomplete funnels.
 

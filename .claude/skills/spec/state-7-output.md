@@ -13,6 +13,42 @@ state's VERIFY gate required its fields to be on disk). This step confirms the
 on-disk file matches the approved spec — re-write only if the STATE 6 approval
 round captured a last-minute revision that has not yet been persisted.
 
+### 7a.0: Persist user-supplied design preferences
+
+Read `.runs/spec-context.json.input` for design preferences (parsed from STATE 0
+`--theme` / `--design-lineage` / `--aesthetic` flags). If any of `theme`,
+`design_lineage`, `aesthetic_notes` are present, persist them to the
+`design` block in `experiment/experiment.yaml` (create block if absent). This
+closes the silent-drop gap from issue #1050.
+
+```bash
+python3 -c "
+import json, os, yaml
+ctx = json.load(open('.runs/spec-context.json'))
+inp = ctx.get('input', {}) or {}
+theme = inp.get('theme')
+lineage = inp.get('design_lineage')
+notes = inp.get('aesthetic_notes')
+if not (theme or lineage or notes):
+    exit(0)  # no preferences to persist
+exp_path = 'experiment/experiment.yaml'
+with open(exp_path) as f:
+    exp = yaml.safe_load(f) or {}
+design = exp.setdefault('design', {})
+if theme: design['theme'] = theme
+if lineage: design['design_lineage'] = lineage
+if notes: design['aesthetic_notes'] = notes
+with open(exp_path, 'w') as f:
+    yaml.safe_dump(exp, f, sort_keys=False)
+print(f'Persisted design preferences: {list(design.keys())}')
+"
+```
+
+If input has design fields but the write fails (YAML parse error, file missing),
+emit a visible warning so the user knows preferences were dropped — do not
+silently proceed:
+> `WARN: /spec: failed to persist design preferences (theme / design_lineage / aesthetic_notes). These will NOT propagate to /bootstrap. Edit experiment/experiment.yaml manually before running /bootstrap.`
+
 ### 7a.1: Write EVENTS.yaml
 Write the approved EVENTS.yaml to `experiment/EVENTS.yaml`.
 This overwrites the template example file entirely with project-specific events.

@@ -42,7 +42,7 @@ npm install -D typescript @types/react @types/node eslint@9 @eslint/js typescrip
 ## Project Setup
 - `.nvmrc`: containing `20` (used by CI and local version managers)
 - `package.json`: `scripts` with `dev`, `build`, `start`, `lint` (`eslint src/`); `engines: { "node": ">=20" }`. Stack-specific scripts (e.g., `prebuild` for database auto-migrate) are added by the owning scaffold-libs stage together with the target file it invokes — scaffold-setup must NOT write such script entries ahead of the helper file's creation, which would leave a fragile window where any intermediate `npm run build` fails at an unresolvable `prebuild`.
-- `tsconfig.json`: enable `strict: true` and `@/` path alias mapping to `src/`
+- `tsconfig.json`: enable `strict: true`, `@/` path alias mapping to `src/`, and `exclude: ["node_modules", ".next", ".runs"]` — see the Stack Knowledge entry "tsconfig.json must exclude .runs/" for the rationale
 - `next.config.ts`: minimal, no custom config
 
 ### `eslint.config.mjs`
@@ -404,8 +404,36 @@ const key = `uploads/${crypto.randomUUID()}/${sanitizeFilename(file.name)}`;
 ### Zod v4: use top-level string-format validators (`z.uuid()`, `z.url()`, `z.email()`)
 Zod v4 promoted all string-format validators to top-level factories: `z.string().uuid()` → `z.uuid()`, `z.string().url()` → `z.url()`, `z.string().email()` → `z.email()`, `z.string().cuid()` → `z.cuid()`, `z.string().nanoid()` → `z.nanoid()`. The old `.string().<format>()` forms are deprecated (console warning) but still functional. Use the top-level forms in all new code. If a project pins Zod v3 in `package-lock.json`, the top-level forms cause compile errors — revert to `z.string().<format>()`.
 
-### Next.js 16: `src/middleware.ts` → `src/proxy.ts`
-Next.js 16 deprecated the `middleware.ts` filename in favour of `proxy.ts`. The exported function and `config` are unchanged — only the filename moves. New projects on Next.js 16+ should scaffold `src/proxy.ts` directly. Existing projects on Next.js 16 emit a console warning on every `npm run dev` / `npm run build` until renamed. When migrating, do one `git mv src/middleware.ts src/proxy.ts` — no code changes required. Update `package-lock.json`-pinned projects on Next.js 15 or earlier stay on `middleware.ts`.
+### When validating user-supplied URLs with Zod, always chain `.refine()` for scheme
+`z.url()` only validates that a string is a well-formed URL; it does NOT restrict the URL scheme. A field validated with bare `z.url()` accepts `javascript:alert(1)` and `data:text/html,...` values. When such a URL is stored in the database and later rendered in an anchor `href` or `window.open()` call, it executes arbitrary JavaScript (XSS). Always chain a scheme refinement:
+
+```typescript
+const safeUrl = z.url().refine(
+  (v) => {
+    try { const u = new URL(v); return u.protocol === "http:" || u.protocol === "https:"; }
+    catch { return false; }
+  },
+  { message: "URL must use http or https" }
+);
+```
+
+Defense-in-depth: at render time, also gate anchor `href` with a helper `isSafeHref(url)` that re-checks scheme — covers legacy rows that were persisted before the validator landed. This applies to any user-supplied URL field (portfolio links, milestone links, webhook URLs, OAuth redirect URIs). The schema-level `.refine()` is the primary guard; render-time re-check is belt-and-suspenders.
+
+### Next.js 16+: scaffold `src/proxy.ts` (default). Next.js 15 legacy: `src/middleware.ts`
+The template's default `npm install next` pulls Next.js 16+, which deprecated the `middleware.ts` filename in favour of `proxy.ts`. The exported function and `config` are unchanged — only the filename moves. **New bootstraps scaffold `src/proxy.ts` directly.** Projects that explicitly pin Next.js 15 or earlier in `package-lock.json` must keep `src/middleware.ts` — on Next.js 16 you'd see a deprecation warning on every `npm run dev` / `npm run build` until renamed, and on Next.js 17+ only `proxy.ts` is recognised. Runtime consumers (ux-journeyer, CLAUDE.md references) must probe `src/proxy.ts` first, then fall back to `src/middleware.ts` for legacy projects. When migrating a legacy project: `git mv src/middleware.ts src/proxy.ts` — no code changes required.
+
+### When configuring tsconfig.json, always exclude `.runs/` to prevent LSP diagnostic noise
+The `.runs/` directory is a scratch/gitignored workspace for skill execution artifacts (JSON traces, design-critic screenshot `.js` scripts, transient merge files). TypeScript's language server picks these files up by default because `tsconfig.json` has no `exclude` for `.runs/`. This produces false-positive LSP diagnostics on files that are not part of the build. Add `.runs` to the `exclude` array in the bootstrap `tsconfig.json` template:
+
+```json
+{
+  "compilerOptions": { ... },
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+  "exclude": ["node_modules", ".next", ".runs"]
+}
+```
+
+Without this exclusion, any `.js` helper file written to `.runs/` during skill execution emits spurious TypeScript errors in editors and LSP clients, making real diagnostics harder to scan.
 
 ### React 19: use `React.SyntheticEvent<HTMLFormElement>` for onSubmit handler types
 `React.FormEvent<HTMLFormElement>` is deprecated in React 19 types — it emits a TypeScript deprecation warning during `npm run build`. The correct replacement is `React.SyntheticEvent<HTMLFormElement>`, which covers the same surface and does not trigger the warning. Write the handler signature as `async function onSubmit(e: React.SyntheticEvent<HTMLFormElement>) { ... }` (never `React.FormEvent<...>`).

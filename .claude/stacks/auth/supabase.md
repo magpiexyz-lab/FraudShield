@@ -11,8 +11,8 @@ files:
   # --- scaffold-pages creates (user-facing pages, STATE 11b) ---
   - src/app/signup/page.tsx                  # only if "signup" in golden_path; scaffold-pages
   - src/app/login/page.tsx                   # only if "login" in golden_path; scaffold-pages
-  # --- scaffold-libs creates (library + middleware, STATE 11a) ---
-  - src/middleware.ts                        # always; scaffold-libs
+  # --- scaffold-libs creates (library + proxy, STATE 11a) ---
+  - src/proxy.ts                             # always; scaffold-libs (Next.js 16+ filename; legacy 15 uses src/middleware.ts)
   - src/lib/supabase-auth.ts                 # only when stack.database is NOT supabase; scaffold-libs
   - src/lib/supabase-auth-server.ts          # only when stack.database is NOT supabase; scaffold-libs
 env:
@@ -573,11 +573,13 @@ if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 // Use user.id for database queries and metadata
 ```
 
-## Middleware (Route Protection)
+## Proxy (Route Protection)
 
 Protect authenticated pages at the routing level so unauthenticated users are redirected before the page renders. Bootstrap creates this file when `stack.auth: supabase` is present.
 
-### `src/middleware.ts` — Route protection middleware (always created)
+On Next.js 16+ (the template default), this file is `src/proxy.ts`. On legacy projects pinned to Next.js 15 or earlier, the filename is `src/middleware.ts` — the exported function name (`middleware`) and `config` export are unchanged regardless of filename. See `.claude/stacks/framework/nextjs.md` Stack Knowledge entry "Next.js 16+: scaffold src/proxy.ts (default)" for the version-switch rationale.
+
+### `src/proxy.ts` — Route protection (always created; named `src/middleware.ts` on legacy Next.js 15 projects)
 
 #### When `stack.database` is also `supabase` (shared client):
 ```ts

@@ -60,7 +60,7 @@ result = {
 }
 with open('.runs/quality-merge.json', 'w') as f:
     json.dump(result, f)
-print(f'Quality merge: {result[\"a11y_violations\"]} a11y violations + {result[\"consistency_issues\"]} consistency issues -> {result[\"merged_issues\"]} merged issues')
+print(f'Quality merge: {result[\"a11y_violations\"]} a11y violations + {result[\"consistency_issues\"]} consistency issues to {result[\"merged_issues\"]} merged issues')
 "
 ```
 

@@ -8,79 +8,13 @@
 
 ##### Step A: Lead merges per-page traces
 
-Before spawning the consistency checker, the lead merges per-page traces into `design-critic.json`:
+Before spawning the consistency checker, the lead merges per-page traces into `design-critic.json`. The merge logic lives in a dedicated script so `agent-trace-write-guard.sh` can authorise exactly this write (issue #1045 — inline `python3 -c` blocks that open `agent-traces/*` for write are blocked by the guard's open-for-write regex):
 
 ```bash
-python3 -c "
-import json, glob, os
-batches = sorted(glob.glob('.runs/agent-traces/design-critic-*.json'))
-if not batches:
-    exit(1)
-run_id = ''
-try:
-    run_id = json.load(open('.runs/verify-context.json')).get('run_id', '')
-except:
-    pass
-merged = {'agent': 'design-critic', 'pages_reviewed': 0, 'min_score': 10, 'verdict': 'pass',
-          'checks_performed': [], 'pages': len(batches), 'consistency_fixes': 0,
-          'sections_below_8': 0, 'fixes_applied': 0, 'unresolved_sections': 0,
-          'min_score_all': 10, 'pre_existing_debt': [], 'fixes': [],
-          'per_page_review_methods': {}, 'per_page_review_evidence': [],
-          'run_id': run_id}
-worst_verdicts = {'unresolved': 3, 'fixed': 2, 'pass': 1}
-for b in batches:
-    d = json.load(open(b))
-    merged['pages_reviewed'] += d.get('pages_reviewed', 1)
-    merged['min_score'] = min(merged['min_score'], d.get('min_score', 10))
-    merged['min_score_all'] = min(merged['min_score_all'], d.get('min_score_all', 10))
-    merged['checks_performed'].extend(d.get('checks_performed', []))
-    merged['sections_below_8'] += d.get('sections_below_8', 0)
-    merged['fixes_applied'] += d.get('fixes_applied', 0)
-    merged['unresolved_sections'] += d.get('unresolved_sections', 0)
-    # render-review-detection aggregation (render-review-detection.md)
-    page_key = d.get('page') or d.get('weakest_page') or os.path.basename(b).replace('design-critic-', '').replace('.json', '')
-    rm = d.get('review_method')
-    if rm:
-        merged['per_page_review_methods'][page_key] = rm
-        merged['per_page_review_evidence'].append({'page': page_key, **(d.get('review_evidence') or {})})
-        # Invariant enforcement (tight gate): source-only/unknown MUST be unresolved.
-        # When an agent emits a non-unresolved verdict on a degraded render, self-heal
-        # the in-memory trace AND log so the agent bug surfaces.
-        original_verdict = d.get('verdict', '')
-        if rm in ('source-only', 'unknown') and original_verdict.lower() != 'unresolved':
-            print('WARN: [' + page_key + '] review_method=' + rm + ' but verdict=' + original_verdict + '; forcing verdict=unresolved per Rendered-Review Contract')
-            d['verdict'] = 'unresolved'
-            merged.setdefault('review_method_gate_corrections', []).append({'page': page_key, 'review_method': rm, 'original_verdict': original_verdict})
-    debt = d.get('pre_existing_debt', [])
-    if isinstance(debt, list):
-        merged['pre_existing_debt'].extend(debt)
-    page_fixes = d.get('fixes', [])
-    if isinstance(page_fixes, list):
-        merged['fixes'].extend(page_fixes)
-    bv = d.get('verdict', 'pass').lower()
-    if worst_verdicts.get(bv, 0) > worst_verdicts.get(merged['verdict'], 0):
-        merged['verdict'] = bv
-        merged['weakest_page'] = d.get('weakest_page', d.get('page', ''))
-    if d.get('retry_attempted'):
-        merged['retry_attempted'] = True
-# Stage 1c shared-component verdict upgrade
-shared_path = '.runs/agent-traces/design-critic-shared.json'
-if os.path.exists(shared_path):
-    shared = json.load(open(shared_path))
-    shared_v = shared.get('verdict', '').lower()
-    shared_fixes = shared.get('fixes_applied', 0)
-    merged['shared_fixes_applied'] = shared_fixes
-    # If only unresolved issues were shared-component, and shared agent fixed them:
-    if merged['verdict'] == 'unresolved' and shared_v in ('pass', 'fixed'):
-        if shared_fixes > 0 and merged['unresolved_sections'] <= shared_fixes:
-            merged['verdict'] = 'fixed'
-            merged['unresolved_sections'] = 0
-import datetime
-merged['timestamp'] = datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
-with open('.runs/agent-traces/design-critic.json', 'w') as f:
-    json.dump(merged, f)
-"
+python3 .claude/scripts/merge-design-critic-traces.py
 ```
+
+Exit codes: `0` merge succeeded, `1` no per-page traces found, `2` per-page trace parse error. Preserves every field the prior inline merge produced (pages_reviewed, min_score, checks_performed, per_page_review_methods, per_page_review_evidence, review_method_gate_corrections, pre_existing_debt, fixes, shared_fixes_applied, run_id, timestamp).
 
 After writing the merged trace, validate merge correctness:
 ```bash

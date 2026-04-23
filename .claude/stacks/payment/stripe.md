@@ -304,6 +304,22 @@ process.env.STRIPE_WEBHOOK_SECRET = "placeholder-stripe-webhook-secret";
 
 This applies to ALL test files (Vitest, Jest, Playwright global setup) that hardcode a mock Stripe key, and to any inline docs/README code samples. The stack file's own `loadStripe` fallback on line 79 already uses the safe `placeholder-stripe-publishable` — do the same for fixtures.
 
+### Never use client-submitted bounds for amount validation — re-read authoritative values from the database
+API routes that accept client-submitted numeric bounds (price ranges, discount bounds, quantity limits, quote-tier floors/ceilings) and use those bounds to validate or clamp a final value are vulnerable to fraud: the client controls both the submitted value AND the bounds it is validated against. A client can submit `{range_low: 0, range_high: 1e9, final: 1}` and bypass the intended tier constraints entirely. The authoritative bounds must be sourced from the database (server-computed values tied to a user/tier/product), not from the request body.
+
+```typescript
+// WRONG — client-submitted bounds used for CLAMP validation
+const { range_low, range_high, final } = await req.json();
+if (final < range_low || final > range_high) return error();  // client controls both sides
+
+// CORRECT — re-read authoritative bounds from DB keyed on a server-known entity
+const { quoteId, final } = await req.json();
+const { range_low, range_high } = await db.quotes.findOne({ id: quoteId, userId });
+if (final < range_low || final > range_high) return error();  // bounds come from DB
+```
+
+This applies to checkout confirm routes, quote confirm/finalize routes, admin amount-adjust routes, discount-apply routes, and any route where a client posts a numeric value alongside its own "intended range." The pattern also applies to non-Stripe payment flows — it is the general principle for server-authoritative numeric constraints. The Zod schema can still validate shape (`range_low: z.number().nonnegative()`) but must not validate the relationship between client fields; the relationship check must use server-sourced bounds.
+
 ### When NEXT_PUBLIC_SITE_URL is missing, Stripe checkout redirect URLs become "undefined/path"
 The checkout route template uses a `localhost:3000` fallback when building Stripe redirect URLs. Without it, the env var evaluates to `undefined` and produces `undefined/dashboard/setup` — a URL Stripe accepts silently, causing post-payment redirects to fail. The fallback is a defensive measure for local development before `NEXT_PUBLIC_SITE_URL` is configured. In production, the env var should always be set.
 

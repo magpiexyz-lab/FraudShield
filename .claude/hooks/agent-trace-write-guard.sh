@@ -2,12 +2,13 @@
 # agent-trace-write-guard.sh — Claude Code PreToolUse hook for Bash commands.
 # Blocks arbitrary Bash writes to .runs/agent-traces/*.json.
 #
-# Only four scripts are allowed to write agent traces:
+# Only these scripts are allowed to write agent traces:
 #   - scripts/init-trace.py          (start-of-run stub)
 #   - .claude/scripts/write-recovery-trace.sh  (orchestrator recovery path)
 #   - .claude/scripts/write-degraded-trace.py  (agent self-degradation path)
 #   - .claude/scripts/validate-recovery.sh     (stamps recovery_validated only)
 #   - .claude/scripts/migrate-legacy-traces.py (one-shot legacy migration)
+#   - .claude/scripts/merge-design-critic-traces.py  (verify state-3b lead-merge)
 #
 # This is the runtime half of the R2 C7 fix (static test_forgery_surface.py
 # handles CI). Together they ensure no new script silently becomes an
@@ -98,6 +99,14 @@ fi
 # Allow the legacy-trace migrator (read-modify-write, no new traces created)
 ALLOWED_REGEX_MIGRATE='(^|[[:space:]]|&&|;|\|)[[:space:]]*python3?[[:space:]]+[./]*\.?claude/scripts/migrate-legacy-traces\.py'
 if echo "$COMMAND" | grep -qE "$ALLOWED_REGEX_MIGRATE"; then
+  exit 0
+fi
+
+# Allow the official design-critic merge script (lead-merge aggregation at
+# verify state-3b — issue #1045 extracted this from an inline python3 -c
+# block that tripped the open-for-write regex below).
+ALLOWED_REGEX_MERGE_DESIGN_CRITIC='(^|[[:space:]]|&&|;|\|)[[:space:]]*python3?[[:space:]]+[./]*\.?claude/scripts/merge-design-critic-traces\.py'
+if echo "$COMMAND" | grep -qE "$ALLOWED_REGEX_MERGE_DESIGN_CRITIC"; then
   exit 0
 fi
 
