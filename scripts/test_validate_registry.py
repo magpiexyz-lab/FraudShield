@@ -113,8 +113,14 @@ KNOWN_OBJECT_ENTRIES = {
     ("review", "2b"),
     ("review", "2e"),  # #928 fix: allows_early_exit_when=no_fixes
     ("review", "4"),   # #928 fix: verify_semantics=no_regression_from_baseline
+    ("resolve", "7"),  # #1043 sibling fix: allows_early_exit_when=all_fixes_rejected
     ("verify", "7b"),
 }
+
+# State IDs that refer to shared state files in .claude/patterns/ rather than
+# a per-skill file under .claude/skills/<skill>/. State 99 is the shared
+# terminal epilogue state (see state-99-epilogue.md + #1043 fix).
+SHARED_TERMINAL_STATE_IDS = {"99"}
 
 
 class TestRegistryBaseline:
@@ -159,7 +165,12 @@ class TestRegistryBaseline:
 
 
 def _state_sort_key(state_id):
-    """Sort key for state IDs: numeric first, then alpha suffixes."""
+    """Sort key for state IDs: numeric first, then alpha suffixes.
+    The shared terminal epilogue state ("99") always sorts LAST so it can
+    coexist with alpha-prefixed state ids (iterate-check uses c0, c1, ...;
+    iterate-cross uses x0, x1, ...)."""
+    if state_id in SHARED_TERMINAL_STATE_IDS:
+        return (float('inf'), "")
     m = re.match(r"^(\d+)(.*)$", state_id)
     if m:
         return (int(m.group(1)), m.group(2))
@@ -250,6 +261,18 @@ class TestReverseSync:
     def test_every_registry_entry_has_state_file(self):
         reg = load_registry()
         skip = {"trace_schemas"}
+
+        # Discover shared terminal state files under .claude/patterns/
+        import glob as _glob
+        patterns_dir = os.path.join(
+            os.path.dirname(__file__), "..", ".claude", "patterns"
+        )
+        shared_state_ids_present = set()
+        for path in _glob.glob(os.path.join(patterns_dir, "state-*.md")):
+            m = re.match(r"state-([0-9a-z]+)-.*\.md$", os.path.basename(path))
+            if m and m.group(1) in SHARED_TERMINAL_STATE_IDS:
+                shared_state_ids_present.add(m.group(1))
+
         file_map = {}
         for f in _discover_state_files():
             for skill, state_id in _extract_advance_state_calls(f):
@@ -259,6 +282,10 @@ class TestReverseSync:
             if skill in skip:
                 continue
             for state_id in states:
+                # Shared terminal states are dispatched from .claude/patterns/
+                # via the find_state_file fallback in lifecycle-next.sh
+                if state_id in shared_state_ids_present:
+                    continue
                 if (skill, state_id) not in file_map:
                     missing.append(f"{skill}.{state_id}")
         assert not missing, (

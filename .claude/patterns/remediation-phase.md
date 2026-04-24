@@ -41,7 +41,8 @@ If `failed == 0` AND `missing_states` is empty: **skip to Step 3**.
 
 For each entry in `verify_results` where `passed == false`:
 
-1. Locate the state file: glob `.claude/skills/{skill}/state-{state_id}-*.md`
+1. Locate the state file: glob `.claude/skills/{skill}/state-{state_id}-*.md`; fall back
+   to `.claude/patterns/state-{state_id}-*.md` for shared terminal states (e.g. state 99)
 2. Extract text between `**POSTCONDITIONS:**` and the next line starting with `**`
 3. Each bullet line (starting with `- `) is one postcondition
 
@@ -55,6 +56,9 @@ def extract_postconditions(skill, state_id):
         # Try base skill name for mode-qualified skills (iterate-check -> iterate)
         base = skill.split('-')[0] if '-' in skill else skill
         files = glob.glob(f'.claude/skills/{base}/state-{state_id}-*.md')
+    if not files:
+        # Shared terminal states (e.g. state-99-epilogue.md) live under .claude/patterns/
+        files = glob.glob(f'.claude/patterns/state-{state_id}-*.md')
     if not files:
         return []
     content = open(files[0]).read()

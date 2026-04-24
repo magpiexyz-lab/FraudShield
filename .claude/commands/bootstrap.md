@@ -30,15 +30,13 @@ Bootstrap the MVP from experiment.yaml.
 1. Run `bash .claude/scripts/lifecycle-init.sh bootstrap '{"skill":"bootstrap"}'`
 2. State execution loop:
    a. Run: `NEXT=$(bash .claude/scripts/lifecycle-next.sh bootstrap)`
-   b. If NEXT is "FINALIZE" → go to step 3
+   b. If NEXT is "FINALIZE" → skill complete
    c. If NEXT starts with "EMBED_COMPLETE:" → parse the suffix as `<skill>:<state>`, run `bash .claude/scripts/advance-state.sh <skill> <state>`, then return to step 2a
    d. If NEXT does not start with "/" → STOP with error (print NEXT for diagnosis)
    e. Read the state file at $NEXT and execute its ACTIONS section
    f. After ACTIONS complete, run the state's STATE TRACKING command
       (the `bash .claude/scripts/advance-state.sh` call in the state file)
    g. Return to step 2a
-3. Run `bash .claude/scripts/lifecycle-finalize.sh bootstrap`
-4. Read `.claude/patterns/finalize-epilogue.md` and execute
 
 **Note:** STATE 6 (USER_APPROVAL) pauses for user input. The lifecycle loop resumes when the user responds with approval.
 

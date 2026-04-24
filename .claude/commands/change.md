@@ -66,9 +66,7 @@ Before entering the lifecycle, check `.runs/current-plan.md`:
    f. After ACTIONS complete, run the state's STATE TRACKING command
       (the `bash .claude/scripts/advance-state.sh` call in the state file)
    g. Return to step 3a
-4. Run `bash .claude/scripts/lifecycle-finalize.sh change`
-5. Read `.claude/patterns/finalize-epilogue.md` and execute
-6. If worktree was entered in step 1:
+4. If worktree was entered in step 1:
    a. Run `bash .claude/scripts/lifecycle-worktree-sync.sh`
    b. Call `ExitWorktree` with action `"remove"` and `discard_changes: true`
 

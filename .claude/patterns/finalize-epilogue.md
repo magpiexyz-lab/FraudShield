@@ -1,77 +1,38 @@
-# Finalize Epilogue — LLM-side post-finalize procedure
+# Finalize Epilogue (DEPRECATED — kept as compatibility shim)
 
-After `lifecycle-finalize.sh` returns, execute this procedure to run the
-skill epilogue (template observation). This is the single entry point for
-all skill epilogues — all skills use the same observation path via
-`observation-phase.md`.
+> **This file is deprecated as of state-99 enforcement (fix #1043).**
+>
+> Skill epilogues now run as state `"99"` per skill; the canonical state
+> file is `.claude/patterns/state-99-epilogue.md`, dispatched by
+> `lifecycle-next.sh` via the patterns-dir fallback in `find_state_file`
+> and enforced by `state-completion-gate.sh` on `advance-state.sh
+> <skill> 99`.
+>
+> Command files no longer reference this file. It remains only so that
+> old docs, stale agent prompts, or third-party tooling that hard-coded
+> a read of `.claude/patterns/finalize-epilogue.md` keep working (they
+> will read this shim and harmlessly do nothing).
+>
+> **Delete target: after the template-upgrade window expires for all
+> downstream projects.** Tracked by observation follow-up to #1043.
 
-## Step 1: Parse finalize output
+## Migration for legacy callers
 
-Read the output of `lifecycle-finalize.sh` for:
-- `EPILOGUE_STRATEGY=A` — skill produced committed diffs vs main (code observation)
-- `EPILOGUE_STRATEGY=B` — no diffs (execution audit)
+If you maintain a script or agent prompt that does `Read
+.claude/patterns/finalize-epilogue.md`, replace that step with the
+lifecycle-loop idiom:
 
-> Note: The A/B distinction is informational only. `observation-phase.md`
-> derives its own scope from skill.yaml, so the strategy value is not passed
-> through. It is retained in finalize output for backward compatibility with
-> logging and diagnostics.
-
-## Step 1.5: Skip check
-
-Skip epilogue entirely for:
-- **optimize-prompt** — stateless utility, no state machine, no observation
-
-If the current skill is `optimize-prompt`, stop.
-
-## Step 2: Execute epilogue
-
-Read `.claude/patterns/skill-epilogue.md` and follow the procedure. **Skip
-Step 0** (state completion check) — `lifecycle-finalize.sh` already verified
-state completion.
-
-## Step 2a: Validate observation artifacts
-
-Run the deterministic artifact enforcement check:
 ```bash
-bash .claude/scripts/check-observation-artifacts.sh
+# Instead of "read finalize-epilogue.md and execute", just let the loop
+# dispatch state 99:
+while true; do
+  NEXT=$(bash .claude/scripts/lifecycle-next.sh <skill>)
+  [[ "$NEXT" == "FINALIZE" ]] && break
+  # ... execute $NEXT ...
+done
 ```
 
-This validates that observation-phase.md Steps 5a/5b/5c produced their
-expected artifacts based on the skill's observation scope. Warnings are
-emitted to stderr for any missing artifacts. This check is non-blocking
-(the epilogue continues regardless) but writes
-`.runs/observation-enforcement.json` for audit trail.
-
-**Expected artifacts by scope:**
-| Scope | compliance-audit-result.json | retrospective-result.json | observe-result.json |
-|-------|:---:|:---:|:---:|
-| full | required | required (if agent traces exist) | required |
-| process | required | required (if agent traces exist) | required |
-| code | required | not expected | required |
-| audit-only | required | not expected | required |
-
-When the fast-path fired (Step 3 of observation-phase.md: no diffs, no
-fix-log entries, no agent trace fixes), no intermediate artifacts are
-expected — the check passes automatically.
-
-## Step 2b: Remediation suggestions
-
-If `.runs/verify-recheck.json` exists, read `.claude/patterns/remediation-phase.md`
-and follow the procedure with the current skill name.
-
-Skip when: skill is `optimize-prompt` (already exited at Step 1.5).
-
-Remediation execution is mandatory. If any part fails, retry once. If it still
-fails, log the failure reason and continue to Step 3 — do not silently skip.
-
-## Step 3: Done
-
-Epilogue execution is **mandatory**. Every skill must complete the observation
-epilogue before the skill is considered done. If a step fails, retry once.
-If it still fails, write `observe-result.json` with `"verdict": "error"` and
-`"error_reason"` — do NOT silently write `"clean"`. Report the failure to
-the user. External service failures (GitHub API, template repo access) degrade
-to local logging but do not skip the evaluation.
-
-If remediation suggestions were generated, they have been printed to the
-terminal and saved to `.runs/remediation.json`.
+`lifecycle-next.sh` returns the path to `state-99-epilogue.md` as the
+last dispatch before `FINALIZE`. Its ACTIONS run
+`lifecycle-finalize.sh`, the observation scope derivation, and
+remediation — everything this epilogue used to list as prose.

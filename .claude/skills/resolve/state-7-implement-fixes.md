@@ -71,9 +71,22 @@ If new validator checks were added:
   json.dump(ctx, open('.runs/resolve-context.json', 'w'), indent=2)
   "
   ```
-- If ALL fixes were rejected (no changes in git working tree): report
-  "All fixes were rejected — no changes to commit. Issues remain open."
-  Advance state and **TERMINAL** — skill ends, no PR created.
+- If ALL fixes were rejected (no changes in git working tree):
+  1. Report: "All fixes were rejected — no changes to commit. Issues remain open."
+  2. Write the no-fixes marker to resolve-context.json so VERIFY recognises the
+     legitimate early-exit path (registry declares
+     `allows_early_exit_when: "all_fixes_rejected"`):
+     ```bash
+     python3 -c "
+     import json
+     ctx = json.load(open('.runs/resolve-context.json'))
+     ctx['all_fixes_rejected'] = True
+     if ctx.get('fixtures_evaluated') is None:
+         ctx['fixtures_evaluated'] = ['not_needed: all_fixes_rejected']
+     json.dump(ctx, open('.runs/resolve-context.json', 'w'), indent=2)
+     "
+     ```
+  3. Advance state and **TERMINAL** — skill ends, no PR created.
 
 **POSTCONDITIONS:**
 - All approved fixes implemented (or reverted with logged reason)
@@ -84,7 +97,7 @@ If new validator checks were added:
 
 **VERIFY:**
 ```bash
-(git diff --name-only HEAD 2>/dev/null | grep -q . || git diff --cached --name-only 2>/dev/null | grep -q .) && python3 -c "import json; ctx=json.load(open('.runs/resolve-context.json')); fe=ctx.get('fixtures_evaluated'); assert fe is not None, 'fixtures_evaluated missing from resolve-context.json'"
+python3 -c "import json,subprocess; ctx=json.load(open('.runs/resolve-context.json')); has_diff=bool(subprocess.run(['git','diff','--name-only','HEAD'],capture_output=True,text=True).stdout.strip() or subprocess.run(['git','diff','--cached','--name-only'],capture_output=True,text=True).stdout.strip()); all_rejected=ctx.get('all_fixes_rejected') is True; assert has_diff or all_rejected, 'no diff and no all_fixes_rejected marker in resolve-context.json'; fe=ctx.get('fixtures_evaluated'); assert fe is not None, 'fixtures_evaluated missing from resolve-context.json'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

@@ -70,10 +70,15 @@ if isinstance(embeds, list):
 
 
 def find_state_file(sk, state_id):
-    """Find state file in .claude/skills/<skill>/."""
+    """Find state file in .claude/skills/<skill>/; fall back to .claude/patterns/
+    for shared terminal states (e.g. "99" → state-99-epilogue.md)."""
     pattern = os.path.join(project_dir, ".claude", "skills", sk,
                           "state-%s-*.md" % state_id)
     matches = sorted(glob.glob(pattern))
+    if not matches:
+        patterns_pattern = os.path.join(project_dir, ".claude", "patterns",
+                                        "state-%s-*.md" % state_id)
+        matches = sorted(glob.glob(patterns_pattern))
     return matches[0] if matches else None
 
 
@@ -102,6 +107,12 @@ if loop_continue:
 # If context specifies states to skip, treat them as completed
 skip_states = set(str(s) for s in ctx.get("skip_states", []))
 completed = completed | skip_states
+
+# Defense-in-depth: if a mid-run state writes skip_states wholesale (e.g. some
+# resolve states re-derive the list), embed_skip_epilogue=True still forces
+# state "99" to be treated as completed. Only skips for truly-embedded runs.
+if ctx.get("embed_skip_epilogue") is True:
+    completed = completed | {"99"}
 
 # --- Find next state ---
 for state_id in states:

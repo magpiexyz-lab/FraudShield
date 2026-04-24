@@ -105,6 +105,12 @@ for state_id, raw in skill_states.items():
         continue
     if state_id in skip:
         continue
+    # State 99 (epilogue) is currently in flight — its VERIFY checks artifacts
+    # that THIS script writes (verify-recheck.json at Step 6). Verifying it
+    # here would fail self-referentially. State 99's own advance-state hook
+    # is the real gate.
+    if state_id == '99':
+        continue
     if isinstance(raw, str):
         cmd = raw
     elif isinstance(raw, dict):

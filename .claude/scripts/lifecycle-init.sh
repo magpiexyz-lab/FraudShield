@@ -373,3 +373,27 @@ if [[ -n "$EMBED_EXTRA_JSON" && "$EMBED_EXTRA_JSON" != "{}" ]]; then
 else
   bash "$PROJECT_DIR/.claude/scripts/init-context.sh" "$CTX_SKILL"
 fi
+
+# --- Step 5b: Embed → auto-skip the shared epilogue state (state 99) ---
+# When a skill is embedded inside another (e.g. /verify inside /bootstrap at
+# state 19b), only the parent runs the observation/delivery epilogue. Adding
+# "99" to the embedded context's skip_states ensures lifecycle-next.sh returns
+# FINALIZE for the embed (triggering EMBED_COMPLETE upstream) instead of
+# dispatching to state-99-epilogue.md. Also sets embed_skip_epilogue=true as
+# a belt-and-suspenders flag that survives state-level wholesale rewrites of
+# skip_states (e.g. resolve/state-3b).
+if [[ -n "$EMBED_MODE" ]]; then
+  EMBED_CTX_PATH="$PROJECT_DIR/.runs/${CTX_SKILL}-context.json"
+  if [[ -f "$EMBED_CTX_PATH" ]]; then
+    python3 - "$EMBED_CTX_PATH" <<'PYEOF'
+import json, sys
+path = sys.argv[1]
+d = json.load(open(path))
+skip = set(str(s) for s in d.get('skip_states', []))
+skip.add('99')
+d['skip_states'] = sorted(skip)
+d['embed_skip_epilogue'] = True
+json.dump(d, open(path, 'w'), indent=2)
+PYEOF
+  fi
+fi

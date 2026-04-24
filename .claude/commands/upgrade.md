@@ -20,14 +20,12 @@ Upgrade the project to the latest template version. $ARGUMENTS
 1. Run `bash .claude/scripts/lifecycle-init.sh upgrade`
 2. State execution loop:
    a. Run: `NEXT=$(bash .claude/scripts/lifecycle-next.sh upgrade)`
-   b. If NEXT is "FINALIZE" → go to step 3
+   b. If NEXT is "FINALIZE" → skill complete
    c. If NEXT does not start with "/" → STOP with error (print NEXT for diagnosis)
    d. Read the state file at $NEXT and execute its ACTIONS section
    e. After ACTIONS complete, run the state's STATE TRACKING command
       (the `bash .claude/scripts/advance-state.sh` call in the state file)
    f. Return to step 2a
-3. Run `bash .claude/scripts/lifecycle-finalize.sh upgrade`
-4. Read `.claude/patterns/finalize-epilogue.md` and execute
 
 ## Do NOT
 - Auto-delete any files without explicit user confirmation

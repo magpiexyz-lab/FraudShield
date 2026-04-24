@@ -15,6 +15,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 REGISTRY="$REPO_ROOT/.claude/patterns/state-registry.json"
 SKILLS_DIR="$REPO_ROOT/.claude/skills"
+PATTERNS_DIR="$REPO_ROOT/.claude/patterns"
 RULES="$REPO_ROOT/.claude/patterns/template-coherence-rules.json"
 
 JSON_OUT=""
@@ -45,11 +46,12 @@ export VL_STRICT_AOC="$STRICT_AOC"
 export VL_RULES_PATH="$RULES"
 export VL_REPO_ROOT="$REPO_ROOT"
 
-python3 - "$REGISTRY" "$SKILLS_DIR" <<'PYTHON_SCRIPT'
+python3 - "$REGISTRY" "$SKILLS_DIR" "$PATTERNS_DIR" <<'PYTHON_SCRIPT'
 import json, sys, os, glob, re
 
 registry_path = sys.argv[1]
 skills_dir = sys.argv[2]
+patterns_dir = sys.argv[3]
 
 # CLI flags exported from the bash wrapper
 JSON_OUT = bool(os.environ.get("VL_JSON_OUT"))
@@ -82,6 +84,7 @@ SYNONYMS = {
     "no_fixes": ["no fixes succeeded", "0 fixes", "zero fixes", "no fixes applied"],
     "zero_findings": ["0 remaining findings", "zero findings", "no findings"],
     "baseline_unchanged": ["error count same or decreased", "final_errors <= baseline", "no regression"],
+    "all_fixes_rejected": ["all fixes were rejected", "no changes to commit", "no changes in git working tree"],
 }
 
 # Regex markers that must appear in a state's VERIFY for a declared `verify_semantics` value.
@@ -101,7 +104,8 @@ def extract_verify_cmd(value):
     return None
 
 def find_state_file(skill, state_id):
-    """Glob for .claude/skills/<dir>/state-<id>-*.md."""
+    """Glob for .claude/skills/<dir>/state-<id>-*.md; fall back to
+    .claude/patterns/ for shared terminal states (e.g. "99" → state-99-epilogue.md)."""
     SKILL_DIR_MAP = {
         "iterate-check": "iterate",
         "iterate-cross": "iterate",
@@ -109,6 +113,9 @@ def find_state_file(skill, state_id):
     directory = SKILL_DIR_MAP.get(skill, skill)
     pattern = os.path.join(skills_dir, directory, f"state-{state_id}-*.md")
     matches = glob.glob(pattern)
+    if not matches:
+        patterns_pattern = os.path.join(patterns_dir, f"state-{state_id}-*.md")
+        matches = glob.glob(patterns_pattern)
     return matches[0] if matches else None
 
 def extract_section(text, header):
@@ -140,8 +147,12 @@ def extract_section(text, header):
                 result.append(after)
             continue
         if capturing:
-            # Stop at the next bold section header
-            if re.match(r'\*\*\w', stripped):
+            # Stop at the next STANDARD section header. Real section headers
+            # (ACTIONS, VERIFY, POSTCONDITIONS, PRECONDITIONS, STATE TRACKING,
+            # NEXT) always start at column 0 with **UPPERCASE. Indented or
+            # camelcase `**bold**` inline prose (e.g. `   **Present fix...**`)
+            # is bullet formatting inside the section, not a section header.
+            if line.startswith('**') and re.match(r'^\*\*[A-Z][A-Z_ ]*?:?\*\*', line):
                 break
             result.append(line)
     return '\n'.join(result).strip()
@@ -266,6 +277,82 @@ def check_declared_drift(skill, state_id, value, file_text):
             )
     return out
 
+
+# -- CHECK-X1: forward early-exit discovery (#928 + #1043 gap closure) --
+# If ACTIONS prose describes an early-exit path with a TERMINAL verb, the
+# registry entry MUST declare allows_early_exit_when=<condition> -- otherwise
+# state-completion-gate.sh will block the legitimate branch (review.2e bug
+# class; resolve.7 is the third instance found during /solve Phase 1 scan).
+#
+# Regex explicitly excludes forward motion ("proceed to STATE N"), mode
+# branches ("use direct mode", "proceed silently"), and fallbacks.
+EARLY_EXIT_TRIGGER = re.compile(
+    r'\bIf (?:ALL |no |zero |0 |none |the .*? is empty|there are no )'
+    r'.{0,300}?'
+    r'(?:exit loop|exit early|'
+    r'advance state.{0,100}?TERMINAL|skill ends|'
+    r'no PR created|terminate)\b',
+    re.IGNORECASE | re.DOTALL
+)
+
+# -- CHECK-X2: baseline/parity semantics discovery (#928 gap closure) --
+# If the outer state VERIFY enforces a non-strict baseline/pre-fix comparison,
+# registry MUST declare verify_semantics=<name> -- otherwise VERIFY will
+# enforce strict zero instead of no-regression-from-baseline (review.4 bug
+# class).
+#
+# Regex is deliberately tight: matches only *outcome* prose ("final_errors <=
+# baseline", "no regression from baseline") that describes a state-level
+# exit invariant. Does NOT match per-iteration keep/revert phrases like
+# "if error count same or decreased -> keep the fix" which are internal
+# operations of a loop state, not the state's VERIFY semantics.
+BASELINE_PARITY_TRIGGER = re.compile(
+    r'\b(?:'
+    r'<=\s*(?:baseline|pre.?fix)'
+    r'|no regression\s+(?:from|vs|against)\s+baseline'
+    r'|final_errors\s*<=\s*baseline'
+    r'|error count does not exceed baseline'
+    r')',
+    re.IGNORECASE
+)
+
+
+def check_x1_forward_early_exit(skill, state_id, value, file_text):
+    """Flag state files whose ACTIONS contain early-exit TERMINAL prose but
+    whose registry entry lacks allows_early_exit_when declaration."""
+    out = []
+    actions_text = extract_section(file_text, "ACTIONS")
+    if not actions_text:
+        return out
+    declared = value.get("allows_early_exit_when") if isinstance(value, dict) else None
+    m = EARLY_EXIT_TRIGGER.search(actions_text)
+    if m and not declared:
+        snippet = m.group(0).replace('\n', ' ')[:70]
+        out.append(
+            f"  [{skill}:{state_id}] ACTIONS contain early-exit TERMINAL prose "
+            f"(matched: {snippet!r}) but registry lacks allows_early_exit_when"
+        )
+    return out
+
+
+def check_x2_baseline_parity(skill, state_id, value, file_text):
+    """Flag state files whose ACTIONS describe a baseline/parity comparison
+    but whose registry entry lacks verify_semantics declaration."""
+    out = []
+    actions_text = extract_section(file_text, "ACTIONS")
+    if not actions_text:
+        return out
+    declared = value.get("verify_semantics") if isinstance(value, dict) else None
+    m = BASELINE_PARITY_TRIGGER.search(actions_text)
+    if m and not declared:
+        snippet = m.group(0).replace('\n', ' ')[:70]
+        out.append(
+            f"  [{skill}:{state_id}] ACTIONS contain baseline/parity comparison "
+            f"(matched: {snippet!r}) but registry lacks verify_semantics"
+        )
+    return out
+
+
 for skill, states in registry.items():
     if skill in SKIP_KEYS:
         continue
@@ -329,6 +416,12 @@ for skill, states in registry.items():
 
         # --- Check 4: Declared field / prose drift ---
         drift_declared.extend(check_declared_drift(skill, state_id, value, file_text))
+
+        # --- Check 4b: Forward early-exit discovery (CHECK-X1) ---
+        drift_declared.extend(check_x1_forward_early_exit(skill, state_id, value, file_text))
+
+        # --- Check 4c: Baseline/parity semantics discovery (CHECK-X2) ---
+        drift_declared.extend(check_x2_baseline_parity(skill, state_id, value, file_text))
 
 
 # ---------------------------------------------------------------------------

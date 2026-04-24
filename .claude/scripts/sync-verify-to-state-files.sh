@@ -8,6 +8,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 REGISTRY="$REPO_ROOT/.claude/patterns/state-registry.json"
 SKILLS_DIR="$REPO_ROOT/.claude/skills"
+PATTERNS_DIR="$REPO_ROOT/.claude/patterns"
 DRY_RUN="${1:-}"
 
 if [[ ! -f "$REGISTRY" ]]; then
@@ -15,12 +16,13 @@ if [[ ! -f "$REGISTRY" ]]; then
   exit 1
 fi
 
-python3 - "$REGISTRY" "$SKILLS_DIR" "$DRY_RUN" <<'PYTHON_SCRIPT'
+python3 - "$REGISTRY" "$SKILLS_DIR" "$PATTERNS_DIR" "$DRY_RUN" <<'PYTHON_SCRIPT'
 import json, sys, os, glob, re
 
 registry_path = sys.argv[1]
 skills_dir = sys.argv[2]
-dry_run = len(sys.argv) > 3 and sys.argv[3] == "--dry-run"
+patterns_dir = sys.argv[3]
+dry_run = len(sys.argv) > 4 and sys.argv[4] == "--dry-run"
 
 registry = json.load(open(registry_path))
 SKIP_KEYS = {"trace_schemas"}
@@ -59,10 +61,14 @@ for skill, states in registry.items():
             skipped_true += 1
             continue
 
-        # Find state file
+        # Find state file (skill dir first, then patterns dir for shared terminal
+        # states like state-99-epilogue.md)
         directory = SKILL_DIR_MAP.get(skill, skill)
         pattern = os.path.join(skills_dir, directory, f"state-{state_id}-*.md")
         matches = glob.glob(pattern)
+        if not matches:
+            patterns_pattern = os.path.join(patterns_dir, f"state-{state_id}-*.md")
+            matches = glob.glob(patterns_pattern)
         if not matches:
             print(f"WARNING: No state file for [{skill}:{state_id}]", file=sys.stderr)
             errors += 1

@@ -30,15 +30,66 @@ REGISTRY_PATH = os.path.join(PROJECT_DIR, ".claude/patterns/state-registry.json"
 
 
 def _read_skill_states(skill):
-    """Read states list from skill.yaml."""
-    skill_yaml = os.path.join(PROJECT_DIR, ".claude/skills", skill, "skill.yaml")
+    """Read states list from skill.yaml. Handles both flat `states: [...]`
+    and modes-qualified structure (iterate, iterate-check, iterate-cross).
+
+    For mode-qualified skill names like 'iterate-check', read the 'check'
+    mode's states list from iterate/skill.yaml. For the plain 'iterate' key,
+    collect states from all modes.
+    """
+    # Mode-qualified skill → read parent yaml, look up specific mode.
+    # Plain `iterate` maps to the `default` mode only (modes are invoked
+    # separately via their own context files: iterate-check, iterate-cross).
+    SKILL_DIR_MAP = {
+        "iterate-check": ("iterate", "check"),
+        "iterate-cross": ("iterate", "cross"),
+        "iterate":       ("iterate", "default"),
+    }
+    mode = None
+    if skill in SKILL_DIR_MAP:
+        dir_name, mode = SKILL_DIR_MAP[skill]
+    else:
+        dir_name = skill
+
+    skill_yaml = os.path.join(PROJECT_DIR, ".claude/skills", dir_name, "skill.yaml")
     if not os.path.isfile(skill_yaml):
         return []
     text = open(skill_yaml).read()
-    m = re.search(r'states:\s*\[([^\]]+)\]', text)
-    if not m:
-        return []
-    return [s.strip().strip('"').strip("'") for s in m.group(1).split(',')]
+
+    # Flat states list at top level
+    flat_match = re.search(r'^states:\s*\[([^\]]+)\]', text, re.MULTILINE)
+    if flat_match and mode is None:
+        return [s.strip().strip('"').strip("'") for s in flat_match.group(1).split(',') if s.strip()]
+
+    # Modes structure. The regex must tolerate intermediate lines (e.g. a
+    # `trigger:` line) between `  <mode>:` and `    states: [...]`.
+    # Pattern matches a mode header and any following lines at deeper indent
+    # up to the next `  <word>:` sibling or EOF, then extracts the first
+    # `states: [...]` found within that block.
+    if 'modes:' in text:
+        if mode is not None:
+            # Block extraction: from `  <mode>:` up to next sibling mode at same indent
+            block_pat = (
+                r'^  %s:\s*\n'  # header line
+                r'((?:^    [^\n]*\n)+)'  # body (indented 4 spaces)
+                % re.escape(mode)
+            )
+            bm = re.search(block_pat, text, re.MULTILINE)
+            if bm:
+                states_match = re.search(r'states:\s*\[([^\]]+)\]', bm.group(1))
+                if states_match:
+                    return [s.strip().strip('"').strip("'") for s in states_match.group(1).split(',') if s.strip()]
+            return []
+        # Plain 'iterate' (no mode): collect all modes' states
+        collected = []
+        for mode_match in re.finditer(r'^  (\w+):\s*\n((?:^    [^\n]*\n)+)', text, re.MULTILINE):
+            body = mode_match.group(2)
+            states_match = re.search(r'states:\s*\[([^\]]+)\]', body)
+            if states_match:
+                collected.extend(s.strip().strip('"').strip("'") for s in states_match.group(1).split(',') if s.strip())
+        return collected
+
+    return []
 
 
 def load_json(path):
