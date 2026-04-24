@@ -37,15 +37,28 @@ json.dump({
 trap _write_fallback_artifact EXIT
 
 # ── Derive skill name ──
-SKILL=$(python3 -c "
-import json, glob
+# Primary: accept active skill as $1 from the caller (fix #1071/def1). This is
+# the ONLY deterministic source — glob.glob() below returns results in
+# arbitrary filesystem order, so files[0] can be a stale spec-context.json
+# from an earlier /spec run. Caller at .claude/patterns/state-99-epilogue.md
+# passes "$SKILL_KEY" already derived at that pattern's Step 4.
+# Fallback: mtime-sorted glob for defense-in-depth (older callers that don't
+# yet pass the arg). The mtime fallback is not 100% reliable but beats the
+# indeterminate filesystem ordering we used before.
+SKILL="${1:-}"
+if [[ -z "$SKILL" ]]; then
+  SKILL=$(python3 -c "
+import json, glob, os
 files = [f for f in glob.glob('$RUNS_DIR/*-context.json')
          if 'epilogue' not in f and 'verify' not in f]
+# Sort by mtime desc — most recently written context is most likely the active skill.
+files.sort(key=lambda f: os.path.getmtime(f), reverse=True)
 if files:
     print(json.load(open(files[0])).get('skill', 'unknown'))
 else:
     print('unknown')
 " 2>/dev/null || echo "unknown")
+fi
 
 # ── Early exit: optimize-prompt (no observation) ──
 if [[ "$SKILL" == "optimize-prompt" ]]; then
@@ -186,6 +199,49 @@ else
     if [[ -n "$TRACES_EXIST" ]] && [[ ! -f "$RUNS_DIR/retrospective-result.json" ]]; then
       MISSING+=("retrospective-result.json")
       echo "WARN: observation-enforcement: missing retrospective-result.json — Step 5a may have been skipped (scope=$SCOPE, agent traces exist)" >&2
+    fi
+
+    # Hard-gate enforcement (fix #1066): when hard_gate_failure=true, the
+    # retrospective MUST have populated Q1/Q2/Q3 fields — sentinel entries are
+    # allowed for degraded evidence, but empty arrays / 'skipped-hard-gate'
+    # sentinel values are NOT. The inverse-policy in observation-phase.md
+    # Step 5a requires the lead to execute the full retrospective when a hard
+    # gate fires, not to self-silence it.
+    if [[ -f "$RUNS_DIR/retrospective-result.json" ]]; then
+      CTX_HARD_GATE=$(python3 -c "
+import json, glob
+for f in glob.glob('$RUNS_DIR/*-context.json'):
+    if 'epilogue' in f: continue
+    try:
+        d = json.load(open(f))
+        if d.get('hard_gate_failure') is True:
+            print('true')
+            break
+    except Exception:
+        pass
+" 2>/dev/null || true)
+      if [[ "$CTX_HARD_GATE" == "true" ]]; then
+        RETRO_OK=$(python3 -c "
+import json
+try:
+    d = json.load(open('$RUNS_DIR/retrospective-result.json'))
+    pc = d.get('process_compliance', '')
+    aic = d.get('agent_instruction_compliance', [])
+    tf = d.get('trace_fidelity', '')
+    # Reject the legacy skipped-hard-gate sentinel; require non-empty populated fields.
+    ok = (pc and pc != 'skipped-hard-gate' and
+          isinstance(aic, list) and len(aic) > 0 and
+          tf and tf != 'skipped-hard-gate' and
+          d.get('skipped') is not True)
+    print('ok' if ok else 'bad')
+except Exception:
+    print('bad')
+" 2>/dev/null || echo "bad")
+        if [[ "$RETRO_OK" != "ok" ]]; then
+          MISSING+=("retrospective-result.json (populated Q1/Q2/Q3 required on hard_gate_failure)")
+          echo "WARN: observation-enforcement: hard_gate_failure=true but retrospective-result.json has empty or skipped-hard-gate fields — Step 5a required path not executed (#1066)" >&2
+        fi
+      fi
     fi
   fi
 fi

@@ -515,12 +515,17 @@ export function NavBar() {
         {authSection}
       </div>
       {/* Mobile hamburger menu */}
+      {/* SheetTrigger renders its own <button> element (Base UI Dialog.Trigger primitive from @/components/ui/sheet.tsx). */}
+      {/* Do NOT wrap a <Button> inside — that produces nested <button><button> and a React hydration error on every page */}
+      {/* that renders <NavBar/>, which cascades to disable client-side analytics events (fix #1068). */}
+      {/* Style the trigger directly via buttonVariants() — or use the `render` prop if you need Button behavior (see shadcn.md). */}
       <div className="md:hidden">
         <Sheet>
-          <SheetTrigger>
-            <Button variant="ghost" size="icon">
-              <Menu className="h-5 w-5" />
-            </Button>
+          <SheetTrigger
+            aria-label="Open menu"
+            className={buttonVariants({ variant: "ghost", size: "icon" })}
+          >
+            <Menu className="h-5 w-5" />
           </SheetTrigger>
           <SheetContent side="right" className="w-[280px]">
             <div className="flex flex-col gap-4 mt-8">
@@ -587,7 +592,7 @@ if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
 Protect authenticated pages at the routing level so unauthenticated users are redirected before the page renders. Bootstrap creates this file when `stack.auth: supabase` is present.
 
-On Next.js 16+ (the template default), this file is `src/proxy.ts`. On legacy projects pinned to Next.js 15 or earlier, the filename is `src/middleware.ts` — the exported function name (`middleware`) and `config` export are unchanged regardless of filename. See `.claude/stacks/framework/nextjs.md` Stack Knowledge entry "Next.js 16+: scaffold src/proxy.ts (default)" for the version-switch rationale.
+On Next.js 16+ (the template default), this file is `src/proxy.ts` and the exported function must be named `proxy` (function name must match filename on Next.js 16+ — see `.claude/stacks/framework/nextjs.md` Stack Knowledge entry "Next.js 16+: scaffold src/proxy.ts (default)"). On legacy projects pinned to Next.js 15 or earlier, the filename is `src/middleware.ts` and the exported function is named `middleware`. The `config` export is unchanged regardless of filename.
 
 ### `src/proxy.ts` — Route protection (always created; named `src/middleware.ts` on legacy Next.js 15 projects)
 
@@ -598,7 +603,7 @@ import { createServerClient } from "@supabase/ssr";
 
 const publicPaths = ["/", "/login", "/signup", "/auth/callback", "/auth/reset-password", "/api/health"];
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Skip public paths, static files, API routes, analytics proxy, and variant routes

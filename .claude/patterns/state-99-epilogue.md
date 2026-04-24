@@ -13,6 +13,37 @@ via the patterns-dir fallback in `lifecycle-next.sh` → `find_state_file`.
 
 **ACTIONS:**
 
+### Step 0 — Derive SKILL_KEY (shared across all steps)
+
+Derive the active skill identity once at the top so every downstream step
+(finalize, observation enforcement, advance-99) uses the same deterministic
+value. Fix #1071/def1 — previously each step re-derived SKILL from an
+indeterminate glob, picking stale spec-context.json when multiple contexts
+existed in `.runs/`.
+
+```bash
+SKILL_KEY=$(python3 -c "
+import json, glob, os, sys
+best = None
+best_ts = ''
+for f in glob.glob('.runs/*-context.json'):
+    if f.endswith('/epilogue-context.json'):
+        continue
+    try:
+        d = json.load(open(f))
+    except Exception:
+        continue
+    if d.get('completed') is True:
+        continue
+    ts = d.get('timestamp', '') or ''
+    if ts >= best_ts:
+        best = d
+        best_ts = ts
+sys.stdout.write((best or {}).get('skill', ''))
+")
+[ -n "$SKILL_KEY" ] || { echo 'ERROR: state-99 could not derive SKILL_KEY from .runs/*-context.json' >&2; exit 1; }
+```
+
 ### Step 1 — Delivery & recheck
 
 Run finalize: delivers for code-writing skills (commit → push → PR →
@@ -42,8 +73,14 @@ Read `.claude/patterns/skill-epilogue.md` and follow its procedure,
 ### Step 2a — Deterministic artifact enforcement
 
 ```bash
-bash .claude/scripts/check-observation-artifacts.sh
+bash .claude/scripts/check-observation-artifacts.sh "$SKILL_KEY"
 ```
+
+Pass the active skill as `$1` (fix #1071/def1). Without the explicit arg, the
+script falls back to an mtime-sorted glob of `.runs/*-context.json` — better
+than the original indeterminate filesystem ordering, but still racy when
+multiple contexts are touched in the same second. The explicit arg is the
+deterministic source.
 
 This script is intentionally non-blocking (always exits 0). It writes
 `.runs/observation-enforcement.json` — trap-guaranteed on any exit path
@@ -86,32 +123,11 @@ no silent skip is possible.
 
 ### Step 4 — Mark complete
 
-Derive the correct registry key (handles mode-qualified skills: `iterate-check`,
-`iterate-cross`) by reading the in-progress context's `skill` field. Then call
-`advance-state.sh` with that key so `state-completion-gate.sh` resolves VERIFY
-against the right registry entry.
+Use the `$SKILL_KEY` derived at Step 0 (handles mode-qualified skills:
+`iterate-check`, `iterate-cross`) and call `advance-state.sh` with that key
+so `state-completion-gate.sh` resolves VERIFY against the right registry entry.
 
 ```bash
-SKILL_KEY=$(python3 -c "
-import json, glob, os, sys
-best = None
-best_ts = ''
-for f in glob.glob('.runs/*-context.json'):
-    if f.endswith('/epilogue-context.json'):
-        continue
-    try:
-        d = json.load(open(f))
-    except Exception:
-        continue
-    if d.get('completed') is True:
-        continue
-    ts = d.get('timestamp', '') or ''
-    if ts >= best_ts:
-        best = d
-        best_ts = ts
-sys.stdout.write((best or {}).get('skill', ''))
-")
-[ -n "$SKILL_KEY" ] || { echo 'ERROR: state-99 could not derive SKILL_KEY from .runs/*-context.json' >&2; exit 1; }
 bash .claude/scripts/advance-state.sh "$SKILL_KEY" 99
 ```
 

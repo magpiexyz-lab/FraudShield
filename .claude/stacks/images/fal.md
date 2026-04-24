@@ -477,5 +477,21 @@ When `DEMO_MODE=true` or `FAL_KEY` is not available, all calls return SVG placeh
   - Or use the fal CLI (`~/.fal/key` is auto-detected)
   - Get your key from [fal.ai](https://fal.ai) > Dashboard > Keys
 - For deployment: set `FAL_KEY` in your hosting provider's environment variables
+
+## tsconfig.json exclude for `scripts/bakeoff/`
+
+When a bakeoff subdirectory is scaffolded under `scripts/bakeoff/` (has its own `package.json` + `@fal-ai/client` dependency), it MUST be added to the root `tsconfig.json` `exclude` array. The default root `tsconfig.json` from `.claude/stacks/framework/nextjs.md` has `include: ["**/*.ts", "**/*.tsx", ...]` which picks up `scripts/bakeoff/*.ts`, but the root `node_modules` does not contain `@fal-ai/client` (that dep lives only in `scripts/bakeoff/package.json`). Result: `npm run build` type-check fails with `Cannot find module '@fal-ai/client'`.
+
+**Required change to root `tsconfig.json` when `scripts/bakeoff/` is present:**
+
+```json
+{
+  "compilerOptions": { ... },
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+  "exclude": ["node_modules", ".next", ".runs", "scripts/bakeoff"]
+}
+```
+
+This is fal-stack-local guidance — the root `tsconfig.json` in `nextjs.md` stays unconditional. Apply this exclude extension at the same time the bakeoff subdir + its `package.json` are scaffolded (see `.claude/procedures/scaffold-images.md`). Alternative: scaffold a scoped `tsconfig.json` inside `scripts/bakeoff/` — either approach resolves the build failure, but the root `exclude` is smaller-diff and matches the existing single-tsconfig convention.
   - Images are generated at bootstrap time and committed as static assets
   - The deployed app does NOT need `FAL_KEY` at runtime

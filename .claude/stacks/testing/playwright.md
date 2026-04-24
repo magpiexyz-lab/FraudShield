@@ -80,6 +80,24 @@ function getSupabaseConfig() {
 const supabase = getSupabaseConfig();
 const port = process.env.E2E_PORT || "3099";
 
+// Port-probe (fix #1070 Gap 1): reuseExistingServer is unreliable when a dev
+// server is still booting on the target port (the HTTP ping races against
+// Next.js startup). If :<port> is already bound, treat the existing process
+// as the server and leave webServer undefined — Playwright will run tests
+// against the pre-existing dev. When :<port> is idle, start our own dev via
+// webServer.command with reuseExistingServer honouring CI semantics. Uses
+// execFileSync with explicit argv (no shell) so the port string cannot be
+// interpreted as a shell metachar.
+const portOccupied = (() => {
+  try {
+    const { execFileSync } = require("child_process");
+    execFileSync("lsof", ["-nPi", `:${port}`, "-sTCP:LISTEN"], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+})();
+
 // Make keys available to global-setup/teardown (run in Playwright main process, not webServer)
 process.env.NEXT_PUBLIC_SUPABASE_URL = supabase.url;
 process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = supabase.anonKey;
@@ -116,7 +134,7 @@ export default defineConfig({
     },
     { name: "Mobile Chrome", use: { ...devices["Pixel 5"] } },
   ],
-  webServer: process.env.E2E_BASE_URL
+  webServer: process.env.E2E_BASE_URL || portOccupied
     ? undefined
     : {
         command: `PORT=${port} npm run dev`,
@@ -159,6 +177,17 @@ const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const AUTH_FILE = path.join(__dirname, ".auth.json");
 
 export default async function globalSetup() {
+  // DEMO_MODE short-circuit (fix #1070 Gap 2): when the app is running in demo
+  // mode (fresh bootstrap without Docker, zero-external-deps contract), there
+  // is no Supabase admin API to probe. Skip the probe entirely — writing blank
+  // credentials and returning avoids the misleading "failed to inspect
+  // container health" stderr storm that other agents (behavior-verifier,
+  // spec-reviewer) mistake for a real auth-stack regression.
+  if (process.env.NEXT_PUBLIC_DEMO_MODE === "true" || process.env.DEMO_MODE === "true") {
+    console.log("[global-setup] DEMO_MODE active — skipping Supabase test user creation");
+    writeFileSync(AUTH_FILE, JSON.stringify({ email: "", password: "", userId: "" }));
+    return;
+  }
   if (!SERVICE_ROLE_KEY) {
     console.warn("SUPABASE_SERVICE_ROLE_KEY not set — writing empty test credentials (local Supabase may not be running)");
     writeFileSync(AUTH_FILE, JSON.stringify({ email: "", password: "", userId: "" }));

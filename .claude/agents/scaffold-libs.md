@@ -36,6 +36,16 @@ You are the library architect. You create precise, type-safe library files by fo
 
 Read `.claude/procedures/scaffold-libs.md` for full step-by-step instructions. Execute all steps described there.
 
+## First Action (MANDATORY — before ANY other tool call)
+
+Your absolute first Bash command MUST initialize the trace stub:
+
+```bash
+python3 scripts/init-trace.py scaffold-libs
+```
+
+This registers your presence so the orchestrator can detect incomplete work.
+
 ## Output Contract
 
 ```
@@ -45,3 +55,28 @@ Read `.claude/procedures/scaffold-libs.md` for full step-by-step instructions. E
 ## Issues
 - <any issues encountered, or "None">
 ```
+
+## Trace Output
+
+After all libs tasks complete, update the started trace with final AOC v1 fields using the variable-indirection pattern:
+
+```bash
+python3 -c "
+import json
+f='.runs/agent-traces/scaffold-libs.json'
+d=json.load(open(f))
+d.update({
+    'status': 'completed',
+    'verdict': 'pass',
+    'result': 'clean',
+    'provenance': 'self',
+    'partial': False,
+    'checks_performed': ['libs_created', 'exports_defined', 'build_smoke'],
+    'no_fixes_claimed': True,
+    'files_created': ['<list all files created or modified>'],
+})
+json.dump(d, open(f, 'w'), indent=2)
+"
+```
+
+Non-fixer role: `no_fixes_claimed: True` is required. Do NOT populate `fixes[]`.

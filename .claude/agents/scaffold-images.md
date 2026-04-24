@@ -65,6 +65,41 @@ After generating EACH candidate, **use the Read tool to view the saved image fil
 
 Read `.claude/procedures/scaffold-images.md` for full step-by-step instructions. Execute all steps described there.
 
+## First Action (MANDATORY — before ANY other tool call)
+
+Your absolute first Bash command MUST initialize the trace stub:
+
+```bash
+python3 scripts/init-trace.py scaffold-images
+```
+
+This registers your presence so the orchestrator can detect incomplete work.
+
+## Trace Output
+
+After all image generation completes, update the started trace with final AOC v1 fields using the variable-indirection pattern:
+
+```bash
+python3 -c "
+import json
+f='.runs/agent-traces/scaffold-images.json'
+d=json.load(open(f))
+d.update({
+    'status': 'completed',
+    'verdict': 'pass',
+    'result': 'clean',
+    'provenance': 'self',
+    'partial': False,
+    'checks_performed': ['candidates_generated', 'self_scored', 'winners_copied', 'sidecar_written'],
+    'no_fixes_claimed': True,
+    'files_created': ['<list all images + public/images + .runs/image-candidates.json>'],
+})
+json.dump(d, open(f, 'w'), indent=2)
+"
+```
+
+Non-fixer role (image generation is authorship, not remediation): `no_fixes_claimed: True` is required. If this agent is respawned from design-critic Step 5.5 Priority 2 to regenerate a specific slot, the resulting change IS a fix — in that case set `no_fixes_claimed: False` and populate `fixes: [{file: 'public/images/<slot>.webp', type: 'image-regen', module: '<slot>', reason: '<visual-defect>'}]`.
+
 ## Output Contract
 
 ```

@@ -1189,6 +1189,70 @@ def check_consumer_coverage(rule):
     return findings
 
 
+def check_internal_href_validity(rule):
+    """#1069 cross-agent fixture contract: walk scaffold-emitted files for
+    href="/<route>/<slug-or-id>" patterns; for each route matching a configured
+    prefix, parse the canonical fixture file (if it exists) and verify every
+    referenced identifier appears as a literal string. Fabricated IDs emit a
+    cross_file_contradiction finding at WARN severity."""
+    findings = []
+    scaffold_glob = rule.get("scaffold_glob", "")
+    hints = rule.get("route_owner_hints", [])
+    if not scaffold_glob or not hints:
+        return findings
+
+    import glob as _glob
+    import re as _re
+    scaffold_files = []
+    for pattern in scaffold_glob.split(","):
+        pattern = pattern.strip()
+        if pattern:
+            scaffold_files.extend(_glob.glob(pattern, recursive=True))
+    if not scaffold_files:
+        return findings
+
+    # Pre-load canonical fixture contents (first matching candidate wins).
+    route_to_fixture = {}
+    for hint in hints:
+        prefix = hint.get("route_prefix", "")
+        if not prefix:
+            continue
+        for candidate in hint.get("fixture_candidates", []):
+            if os.path.isfile(candidate):
+                try:
+                    with open(candidate) as f:
+                        route_to_fixture[prefix] = (candidate, f.read())
+                    break
+                except OSError:
+                    continue
+
+    # Walk scaffold files for href patterns per configured prefix.
+    href_re = _re.compile(r'href\s*=\s*[{"`]\s*[`"]?(/[a-zA-Z0-9_-]+/[a-zA-Z0-9_-]+)[`"]?')
+    template_re = _re.compile(r'href\s*=\s*\{\s*`(/[a-zA-Z0-9_-]+/)\$\{([^}]+)\}`\s*\}')
+    for sf in scaffold_files:
+        try:
+            with open(sf) as f:
+                content = f.read()
+        except OSError:
+            continue
+        for m in href_re.finditer(content):
+            route = m.group(1)
+            for prefix, (fixture_path, fixture_content) in route_to_fixture.items():
+                if not route.startswith(prefix):
+                    continue
+                slug = route[len(prefix):]
+                # Skip template-literal-looking values ($, {, }).
+                if any(ch in slug for ch in "${}`"):
+                    continue
+                if slug and slug not in fixture_content:
+                    findings.append(_emit_finding(
+                        rule,
+                        f"{sf}: href {route!r} references {slug!r} which does not appear in canonical fixture {fixture_path}"
+                    ))
+                break
+    return findings
+
+
 # Load and run cross-file rules
 if os.path.isfile(RULES_PATH):
     try:
@@ -1207,6 +1271,8 @@ if os.path.isfile(RULES_PATH):
                 cross_file.extend(check_ledger_ownership(rule))
             elif rtype == "consumer_coverage":
                 cross_file.extend(check_consumer_coverage(rule))
+            elif rtype == "internal_href_validity":
+                cross_file.extend(check_internal_href_validity(rule))
             else:
                 cross_file.append(f"  [{rule.get('id','<unknown>')}] unknown rule type: {rtype}")
     except (OSError, json.JSONDecodeError) as e:

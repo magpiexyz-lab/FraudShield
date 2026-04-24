@@ -31,6 +31,7 @@ You are a world-champion of persuasion. Your landing page is the absolute limit 
 - Read `.runs/image-manifest.json` for available generated images. Use the `publicPath` from each manifest entry — do NOT hardcode file extensions (images may be `.webp` or `.svg` depending on whether AI generation ran). Use `next/image` `Image` component for `.webp` raster images and `<img>` tags for `.svg` files. These image paths are guaranteed to exist -- do not add conditional logic for missing images.
 - If a file you need to create already exists: stop and report the conflict. Do not overwrite.
 - If `src/app/v/[variant]/page.tsx` exists: variant routing is active. Create `src/components/landing-content.tsx` only -- do NOT create `src/app/page.tsx`.
+- **Cross-agent fixture contract (#1069):** if you emit an `href` to a dynamic-segment route owned by another agent (any route matching `/<owner-base>/<slug-or-id>`, e.g., `/portfolio/<case-slug>`, `/projects/<id>`, `/catalog/<sku>`), you MUST read that route's canonical fixture file (typically `src/app/<owner-base>/<entities>.ts` or `.../cases.ts`, `.../items.ts`) and reference its identifiers verbatim. Do NOT fabricate identifiers for routes you do not own. If the canonical fixture file does not yet exist when you run (concurrent B2 fan-out), pick identifiers from the behavior's demo-data contract in experiment.yaml and cross-check after all B2 agents complete. This gap used to 404 every cross-page link from landing featured-content strips to portfolio/projects detail pages (see `.claude/patterns/template-coherence-rules.json` `internal_href_validity` rule as post-scaffold defense-in-depth).
 
 > These criteria are evaluated from source code only — no build or screenshot is required.
 
@@ -50,6 +51,16 @@ Any section below 8 on ANY dimension → rework before shipping.
 ## Instructions
 
 Read `.claude/procedures/scaffold-landing.md` for full step-by-step instructions. Execute all steps described there.
+
+## First Action (MANDATORY — before ANY other tool call)
+
+Your absolute first Bash command MUST initialize the trace stub:
+
+```bash
+python3 scripts/init-trace.py scaffold-landing
+```
+
+This registers your presence so the orchestrator can detect incomplete work.
 
 ## Output Contract
 
@@ -75,3 +86,29 @@ Read `.claude/procedures/scaffold-landing.md` for full step-by-step instructions
 - Scroll dynamism: X/10
 - Rework performed: yes/no (details if yes)
 ```
+
+## Trace Output
+
+After the landing is scaffolded, update the started trace with final AOC v1 fields using the variable-indirection pattern:
+
+```bash
+python3 -c "
+import json
+f='.runs/agent-traces/scaffold-landing.json'
+d=json.load(open(f))
+d.update({
+    'status': 'completed',
+    'verdict': 'pass',
+    'result': 'clean',
+    'provenance': 'self',
+    'partial': False,
+    'checks_performed': ['surface_authored', 'build_smoke', 'self_check_scored'],
+    'no_fixes_claimed': True,
+    'files_created': ['<list all files created or modified>'],
+    'surface_type': '<co-located | detached | none>',
+})
+json.dump(d, open(f, 'w'), indent=2)
+"
+```
+
+Non-fixer role: `no_fixes_claimed: True` is required. Do NOT populate `fixes[]`.

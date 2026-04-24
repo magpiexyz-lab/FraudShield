@@ -95,7 +95,8 @@
     "design-critic", "design-consistency-checker",
     "ux-journeyer", "security-defender", "security-attacker",
     "solve-critic", "resolve-challenger", "review-challenger",
-    "build-info-collector", "pattern-classifier"
+    "build-info-collector", "pattern-classifier",
+    "scaffold-externals"
   ],
   "recovery_forbidden": [
     "security-fixer", "quality-fixer"

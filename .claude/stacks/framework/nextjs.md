@@ -420,7 +420,7 @@ const safeUrl = z.url().refine(
 Defense-in-depth: at render time, also gate anchor `href` with a helper `isSafeHref(url)` that re-checks scheme — covers legacy rows that were persisted before the validator landed. This applies to any user-supplied URL field (portfolio links, milestone links, webhook URLs, OAuth redirect URIs). The schema-level `.refine()` is the primary guard; render-time re-check is belt-and-suspenders.
 
 ### Next.js 16+: scaffold `src/proxy.ts` (default). Next.js 15 legacy: `src/middleware.ts`
-The template's default `npm install next` pulls Next.js 16+, which deprecated the `middleware.ts` filename in favour of `proxy.ts`. The exported function and `config` are unchanged — only the filename moves. **New bootstraps scaffold `src/proxy.ts` directly.** Projects that explicitly pin Next.js 15 or earlier in `package-lock.json` must keep `src/middleware.ts` — on Next.js 16 you'd see a deprecation warning on every `npm run dev` / `npm run build` until renamed, and on Next.js 17+ only `proxy.ts` is recognised. Runtime consumers (ux-journeyer, CLAUDE.md references) must probe `src/proxy.ts` first, then fall back to `src/middleware.ts` for legacy projects. When migrating a legacy project: `git mv src/middleware.ts src/proxy.ts` — no code changes required.
+The template's default `npm install next` pulls Next.js 16+, which deprecated the `middleware.ts` filename in favour of `proxy.ts`. **On Next.js 16+, the exported function name must match the filename** — `src/proxy.ts` must `export async function proxy(request: NextRequest)`, not `export async function middleware(...)`. The `config` export is unchanged. **New bootstraps scaffold `src/proxy.ts` with `export async function proxy(...)` directly.** Projects that explicitly pin Next.js 15 or earlier in `package-lock.json` must keep `src/middleware.ts` with `export async function middleware(...)` — on Next.js 16 you'd see a deprecation warning on every `npm run dev` / `npm run build` until renamed, and on Next.js 17+ only `proxy.ts` + `proxy()` is recognised. Runtime consumers (ux-journeyer, CLAUDE.md references) must probe `src/proxy.ts` first, then fall back to `src/middleware.ts` for legacy projects. When migrating a legacy project: `git mv src/middleware.ts src/proxy.ts` AND rename the exported function from `middleware` to `proxy` (and any test imports that reference it by name).
 
 ### When configuring tsconfig.json, always exclude `.runs/` to prevent LSP diagnostic noise
 The `.runs/` directory is a scratch/gitignored workspace for skill execution artifacts (JSON traces, design-critic screenshot `.js` scripts, transient merge files). TypeScript's language server picks these files up by default because `tsconfig.json` has no `exclude` for `.runs/`. This produces false-positive LSP diagnostics on files that are not part of the build. Add `.runs` to the `exclude` array in the bootstrap `tsconfig.json` template:
@@ -552,6 +552,27 @@ Screen readers announce the Unicode name verbatim — NVDA/JAWS/VoiceOver say "m
 The `sr-only` utility (Tailwind v4 ships this by default) clips the text visually but keeps it in the accessibility tree. Do NOT substitute `visibility: hidden` or `display: none` — those remove the text from both visual AND accessibility trees, breaking the screen-reader announcement.
 
 Apply to quota displays (`∞` → "unlimited"), close buttons (`×` → "close dialog"), copyright footers (`©` → "copyright"), and arrow indicators (`→` → "leads to"). For purely decorative arrows between cards where no meaning is carried, `aria-hidden="true"` alone without the sr-only sibling is sufficient.
+
+### Suppress the global NavBar on landing/marketing and auth routes
+When the root layout mounts a global `<NavBar />` AND a landing/variant page has its own in-page navigation (e.g., `VariantLanding`'s `StickyNav`), both render simultaneously above the fold — producing doubled brand marks, colliding CTAs, and stacked navs. The fix is route-conditional suppression in `src/components/nav-bar.tsx`:
+
+```tsx
+"use client";
+import { usePathname } from "next/navigation";
+
+const AUTH_ROUTES = ["/login", "/signup", "/auth/"];
+const MARKETING_ROUTE_PREFIXES = ["/v/"];  // variant routes
+
+export function NavBar() {
+  const pathname = usePathname();
+  const isAuth = AUTH_ROUTES.some((r) => pathname === r || pathname.startsWith(r));
+  const isMarketing = pathname === "/" || MARKETING_ROUTE_PREFIXES.some((p) => pathname.startsWith(p));
+  if (isAuth || isMarketing) return null;
+  // ... rest of NavBar
+}
+```
+
+The returned `null` is evaluated on the client after hydration, so the server-rendered output may briefly include the global nav before React decides to hide it. Acceptable tradeoff for the simpler implementation; if flash-of-unstyled-content is unacceptable, move the gate to the root layout's server component using `headers()` to read the path. The alternative `body:has(#sentinel-id) .global-nav { display: none }` CSS pattern also works but is fragile — it depends on a sentinel element being present and is less obvious to future maintainers. Without this gate, every marketing/auth page ships with duplicate navigation bars (fix #1072).
 
 ## PR Instructions
 - No additional framework setup needed after merging — `npm install && npm run dev` is sufficient

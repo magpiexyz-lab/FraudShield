@@ -49,6 +49,12 @@ try:
     else:
         states = manifest.get('states', [])
     missing = [str(s) for s in states if str(s) not in completed and str(s) not in skip]
+    # Exclude in-flight epilogue state 99: it is currently running this script, and
+    # its VERIFY (state-completion-gate) is the real gate for advancing 99 — see
+    # Step 2's same self-skip at L103-L113 and PR #1059 design intent. Without this
+    # exclusion, the has_agents branch below hard-errors on every skill entering 99
+    # for the first time (fix #1063).
+    missing = [s for s in missing if str(s) != '99']
     if missing:
         has_agents = bool(manifest.get('agents', {}))
         if has_agents:

@@ -105,8 +105,9 @@ After `shadcn init` completes and post-setup checks pass, apply these customizat
 ### 1. Font (in layout.tsx — created in Step 3)
 Import the chosen font(s) from `next/font/google` (ships with Next.js — no extra package). Choose a font that matches the product domain — distinctive and intentional, not generic.
 - Example: `const displayFont = YourChosenFont({ subsets: ["latin"], variable: "--font-sans" })`
-- Apply `className={displayFont.variable}` to the `<html>` tag
-- If using a display + body font pair, apply both variables: `className={\`${displayFont.variable} ${bodyFont.variable}\`}`
+- Apply `className={displayFont.variable}` to the `<html>` tag (NOT `<body>`) so the CSS variable is bound at `:root` scope — this is the only scope where Tailwind v4's `@theme inline { --font-sans: ...; }` and any `:root` / `html` CSS rules can resolve it. Binding on `<body>` causes `:root`-scoped rules to resolve to empty and text falls back to Times.
+- If using a display + body font pair, apply both variables: `className={\`${displayFont.variable} ${bodyFont.variable}\`}` on `<html>`.
+- **Tailwind v4 + next/font footgun:** prefer writing `font-family: var(--font-<chosen-name>), ui-sans-serif, system-ui, ...;` directly against the concrete variable name on `html, body, input, textarea, button, select` rules in `globals.css`. The `@theme inline { --font-sans: var(--font-sans), ... }` indirection only works if the referenced variable is bound at the rule's scope — which requires `<html className={displayFont.variable}>` above. If the variable is bound on `<body>` instead, `:root` / `html` rules resolve empty and every page renders in Times.
 
 ### 2. CSS overrides (in globals.css — exists after shadcn init)
 Override CSS custom properties to match the product domain. There are no hardcoded default values — choose a color palette, border radius, and other theme tokens that feel distinctive and intentional.
@@ -480,6 +481,25 @@ On dark-theme projects (`--background` near slate-950, warm-obsidian, or any cus
 ```
 
 The minimum valid step is enforced by Tailwind's default opacity scale (see `Opacity modifier values` above — `/60` is in the scale; `/55` is NOT and would be silently dropped). The exact minimum ratio depends on the specific background color — run an axe-core scan (accessibility-scanner agent) after any opacity change on dark backgrounds to verify the actual ratio. Heuristic /60 is safe for most dark themes; lighter tokens may tolerate /50.
+
+### When a `<Tabs>` component renders more tabs than fit on a mobile viewport
+shadcn `<TabsList>` natural width expands with each trigger; on mobile viewports (iPhone 12-class ≈375px) a 3-tab list with moderate label lengths easily exceeds the viewport. When the parent container has `overflow-x-hidden` (a common horizontal-overflow prevention pattern), the rightmost tab(s) clip off-screen and become unreachable — users cannot scroll horizontally to access them.
+
+Wrap `<TabsList>` in a negative-margin horizontal-scroll container scoped to mobile:
+
+```tsx
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
+<div className="-mx-6 overflow-x-auto px-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:mx-0 md:overflow-visible md:px-0">
+  <TabsList>
+    <TabsTrigger value="tab1">Tab 1</TabsTrigger>
+    <TabsTrigger value="tab2">Tab 2</TabsTrigger>
+    <TabsTrigger value="tab3">Tab 3</TabsTrigger>
+  </TabsList>
+</div>
+```
+
+The `-mx-6 px-6` bleed the scroll region to the page edge while keeping content gutters aligned. `[scrollbar-width:none]` + `[&::-webkit-scrollbar]:hidden` removes the visible scrollbar (preserves scrollability via touch/trackpad). `md:overflow-visible md:px-0` restores normal layout on desktop where the list fits naturally. Without this wrapper, ancestor `overflow-x-hidden` clips off-viewport tabs with no scroll affordance (fix #1073).
 
 ## Import Example
 ```tsx

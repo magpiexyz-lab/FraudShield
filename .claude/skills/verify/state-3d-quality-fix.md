@@ -29,6 +29,33 @@ consistency = json.load(open(os.path.join(traces, 'design-consistency-checker.js
 a11y_violations = a11y.get('violations', [])
 c_inconsistencies = consistency.get('inconsistencies', [])
 
+# Text-fallback parser (fix #1075): when the degraded-trace path dropped the
+# structured inconsistencies[] field but the agent reported verdict='fail',
+# parse its text report for the canonical findings table. Defense-in-depth —
+# the primary path via write-degraded-trace.py --extra-json keeps this
+# unused on well-formed runs, but stops silent-drops when the canonical
+# field is empty. Permissive header regex accepts 'Pages' or 'Pages Affected'
+# to tolerate column-header drift.
+if not c_inconsistencies and consistency.get('verdict') == 'fail':
+    import re
+    text = consistency.get('text_report', '') or consistency.get('report', '')
+    header_re = re.compile(r'\|\s*Check\s*\|\s*Status\s*\|\s*Severity\s*\|\s*Pages[^|]*\|\s*Detail\s*\|', re.IGNORECASE)
+    row_re = re.compile(r'^\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|', re.MULTILINE)
+    if header_re.search(text):
+        for m in row_re.finditer(text):
+            check, status, severity, pages, detail = [x.strip() for x in m.groups()]
+            if check.lower() == 'check' or set(check) == {'-'}:
+                continue  # skip header and separator rows
+            if status.lower() not in ('fail', 'warn'):
+                continue
+            c_inconsistencies.append({
+                'check': check,
+                'severity': severity.lower(),
+                'pages': [p.strip() for p in pages.split(',') if p.strip()],
+                'detail': detail,
+                'source': 'text-fallback',
+            })
+
 # Normalize into unified findings array
 merged = []
 for v in a11y_violations:

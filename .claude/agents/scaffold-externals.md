@@ -51,15 +51,37 @@ Read `.claude/procedures/scaffold-externals.md` for full step-by-step instructio
 - <any issues encountered, or "None">
 ```
 
+## First Action (MANDATORY — before ANY other tool call)
+
+Your absolute first Bash command MUST initialize the trace stub:
+
+```bash
+python3 scripts/init-trace.py scaffold-externals
+```
+
+This registers your presence so the orchestrator can detect incomplete work.
+
 ## Trace Output
 
-After analysis completes, write trace to `.runs/agent-traces/scaffold-externals.json`:
+After analysis completes, update the started trace with final AOC v1 fields using the variable-indirection pattern:
 
 ```bash
 python3 -c "
-import json, datetime, os
-os.makedirs('.runs/agent-traces', exist_ok=True)
-trace = {'agent': 'scaffold-externals', 'status': 'complete', 'timestamp': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'), 'classifications': [{'service': '<name>', 'classification': '<core/non-core>'}]}
-json.dump(trace, open('.runs/agent-traces/scaffold-externals.json', 'w'))
+import json
+f='.runs/agent-traces/scaffold-externals.json'
+d=json.load(open(f))
+d.update({
+    'status': 'completed',
+    'verdict': 'pass',
+    'result': 'clean',
+    'provenance': 'self',
+    'partial': False,
+    'checks_performed': ['external_deps_scanned', 'services_classified'],
+    'no_fixes_claimed': True,
+    'classifications': [{'service': '<name>', 'classification': '<core/non-core>'}],
+})
+json.dump(d, open(f, 'w'), indent=2)
 "
 ```
+
+Non-fixer role (read-only by construction — `disallowedTools` includes `Edit`, `Write`, `NotebookEdit`): `no_fixes_claimed: True` is always required. This agent scans and classifies, never fixes. See also fix #1071/def2 — this agent is also whitelisted in `.claude/patterns/agent-registry.json` `non_fixer_agents`.

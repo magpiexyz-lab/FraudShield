@@ -260,20 +260,38 @@ For each finding from Q1-Q3, apply the 3-condition test (observe.md):
 For findings passing all 3 conditions, follow observe.md's Redaction, Dedup,
 and Issue Creation sections.
 
-#### Hard gate skip path
+#### Hard gate required path
 
-Read the skill's context JSON. If `hard_gate_failure` is true:
-- Write minimal `.runs/retrospective-result.json`:
+Read the skill's context JSON. If `hard_gate_failure` is true AND the Step 5a
+scope gate above activates (scope in {full, process}):
+
+Hard-gate trips are the **strongest** trigger for the 3-question retrospective,
+not a reason to skip it. The lead has full causality context (hook blocks
+applied, workarounds accumulated, which specific gate fired and why); only this
+step can convert that context into template-rooted observations. Skipping it
+self-silences the diagnostic exactly when it would be most valuable (#1066).
+
+- Execute the full Q1/Q2/Q3 retrospective above with the failing gate as the
+  central causal question. Identify which hard gate fired
+  (design-critic unresolved, ux-journeyer blocked, security-fixer partial,
+  quality-fixer exhausted, etc.) and cross-reference with completed_states,
+  each agent trace's verdict/checks_performed/fixes[], hook log entries, and
+  any recovery trace.
+- File diagnostic observations for findings passing the 3-condition test.
+- Write `.runs/retrospective-result.json` with `skipped: false` and populated
+  `process_compliance`, `agent_instruction_compliance` (non-empty array),
+  `trace_fidelity` fields. **Degraded-evidence tolerance:** when specific
+  agent traces are missing/malformed (often the cause of the hard gate), use
+  sentinel entries so the array stays non-empty:
   ```json
-  {
-    "process_compliance": "skipped-hard-gate",
-    "agent_instruction_compliance": [],
-    "trace_fidelity": "skipped-hard-gate",
-    "observations_filed": 0,
-    "skipped": true
-  }
+  {"agent": "<name>", "compliant": "unknown", "finding": null, "root_cause": "trace-unavailable"}
   ```
-- Skip to Step 5b.
+  This keeps Step 5a observable even when traces themselves are the defect.
+
+When scope is `code` or `audit-only`, retrospective is skipped per the Step 5a
+scope gate above (not overridden by hard_gate_failure).
+
+- Proceed to Step 5b after writing the full retrospective artifact.
 
 #### Write result
 

@@ -48,6 +48,7 @@ You are a world-champion of utility. Every page you create should make users fee
     that most advances the user's intent on THIS page (complete a task, go
     back to dashboard, etc.).
 - For empty states (empty tables, lists, dashboards): read `.runs/image-manifest.json` and use the empty-state image at the `publicPath` listed there — do NOT hardcode the file extension (it may be `.svg` or `.webp` depending on whether AI image generation ran). Use `next/image` `Image` component for `.webp` files and `<img>` for `.svg` files.
+- **Canonical fixture ownership + cross-agent fixture contract (#1069):** if your assigned page owns a list-type canonical resource (e.g., a portfolio/case-study list, a catalog, a projects list, a menu) that other pages link INTO via `/<your-page>/<slug-or-id>` routes, you MUST write a stable-path fixture file (e.g., `src/app/<page>/<entities>.ts` or `.../cases.ts`, `.../items.ts`) with named exports containing the canonical slug/id strings for downstream pages to import. If your page instead links OUT to a dynamic-segment route owned by another agent (`/<owner-base>/<slug-or-id>`), you MUST read that owner's canonical fixture file and reference its identifiers verbatim — do NOT fabricate identifiers for routes you do not own. When the canonical fixture file does not yet exist at your spawn time (concurrent B2 fan-out), pick identifiers from experiment.yaml's demo-data contract and cross-check after all B2 traces complete. This contract prevents the 404 cross-page link failure pattern surfaced by ux-journeyer when parallel scaffold agents independently fabricate slugs (see `.claude/patterns/template-coherence-rules.json` `internal_href_validity` rule for post-scaffold defense-in-depth).
 
 > These criteria are evaluated from source code only — no build or screenshot is required.
 
@@ -75,6 +76,16 @@ Any section below 8 on ANY dimension → rework before shipping.
 
 Read `.claude/procedures/scaffold-pages.md` for full step-by-step instructions. Execute all steps for the appropriate archetype.
 
+## First Action (MANDATORY — before ANY other tool call)
+
+Your absolute first Bash command MUST initialize the trace stub:
+
+```bash
+python3 scripts/init-trace.py scaffold-pages "scaffold-pages-<page-slug>.json"
+```
+
+This registers your presence so the orchestrator can detect incomplete work. Use a page-specific trace filename when multiple scaffold-pages agents run in parallel.
+
 ## Output Contract
 
 ```
@@ -93,3 +104,29 @@ Read `.claude/procedures/scaffold-pages.md` for full step-by-step instructions. 
 - Functional animation: X/10
 - Rework performed: yes/no (details if yes)
 ```
+
+## Trace Output
+
+After the page is scaffolded, update the started trace with final AOC v1 fields using the variable-indirection pattern:
+
+```bash
+python3 -c "
+import json
+f='.runs/agent-traces/scaffold-pages-<page-slug>.json'
+d=json.load(open(f))
+d.update({
+    'status': 'completed',
+    'verdict': 'pass',
+    'result': 'clean',
+    'provenance': 'self',
+    'partial': False,
+    'checks_performed': ['page_authored', 'events_wired', 'build_smoke', 'self_check_scored'],
+    'no_fixes_claimed': True,
+    'files_created': ['<list all files created or modified>'],
+    'page': '<page-slug>',
+})
+json.dump(d, open(f, 'w'), indent=2)
+"
+```
+
+Non-fixer role: `no_fixes_claimed: True` is required. Do NOT populate `fixes[]`.

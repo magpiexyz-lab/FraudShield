@@ -176,24 +176,24 @@ Use the original `base_url` for all non-candidate operations (initial review,
 post-fix re-screenshots). The production server serves `public/` at runtime,
 so no `npm run build` is needed between candidate swaps — only a server restart.
 
-#### Landing-page critic — full candidate evaluation
+#### Landing-page critic — full candidate evaluation (CONFIRMATION flow)
 
-If you are reviewing the **landing page** AND `.runs/image-candidates.json` exists:
+If you are reviewing the **landing page** AND `.runs/image-candidates.json` exists, this step runs as a **confirmation** pass, not remediation (fix #1076). Always compare the currently selected candidate against every unused candidate for that slot using Pareto dominance — do NOT wait for the selected candidate to score below a threshold before trying alternates.
 
-1. Read `.runs/image-candidates.json` — this sidecar contains pre-generated candidates from the scaffold-images agent
+**Polish-scoring rule (fix #1076 Fix B — masking-as-polish prohibition):**
+
+> Polish scoring MUST reflect the raw asset as it ships to `public/`. Render-time CSS mitigations (opacity, filter, mix-blend-mode, masks) MUST NOT be used to justify a polish score above what the raw image earns. If the raw image contains AI-gibberish text, malformed anatomy, visible seams, or inconsistent lighting, polish is capped at 7 regardless of in-context rendering. Masking does not travel to OG-share, high-DPI screenshots, or zoomed views — the raw file ships.
+
+1. Read `.runs/image-candidates.json` — this sidecar contains pre-generated candidates from the scaffold-images agent.
 2. For each image slot with `candidates.length > 1`:
-   a. Identify the current winner rendered on the page (the image at `public/images/<canonical filename>`)
-   b. Assess the current winner's quality IN page context using the Layer 2 image integration criteria (image fusion, color temperature match, visual weight)
-   c. If the current winner scores **≥ 8** in context AND no unused candidate scored within 1 point of the winner → keep it, skip to next slot
-   c2. If the current winner scores **≥ 8** in context BUT an unused candidate scored within 1 point → try those close-scoring candidates using the Candidate Image Swap Protocol above. Keep the highest scorer; on equal scores, prefer the current winner to minimize churn.
-   d. If the current winner scores **< 8** in context → systematically try each alternate candidate using the Candidate Image Swap Protocol:
-      - Follow the swap protocol (copy → start production server → screenshot → score → kill server)
-      - Score the candidate IN page context (image fusion + color temperature + visual weight)
-   e. Select the candidate that scores highest in context
-   f. Update `.runs/image-manifest.json` with the winner's source, model, and scores
-   g. Update `.runs/image-candidates.json` sidecar: set `"selected": true` on the new winner, `"selected": false` on the old winner
-
-3. If NO candidate for a slot reaches ≥ 8 in context: flag the slot for new generation in Step 6
+   a. Identify the current winner rendered on the page (the image at `public/images/<canonical filename>`).
+   b. Score the current winner IN page context using the Layer 2 image integration criteria (subject relevance, style cohesion, color harmony, composition, polish). Apply the polish-scoring rule above.
+   c. Score every unused candidate IN page context using the Candidate Image Swap Protocol (copy → start production server → screenshot → score → kill server).
+   d. **Pareto comparison (fix #1076 Fix A):** for each unused candidate, check whether it Pareto-dominates the current winner on any axis — strictly ≥ on all five axes AND strictly > on at least one. Ties break by polish first, then total. If an unused candidate Pareto-dominates the current winner: swap. This activates whenever a strictly-better alternate exists, not only when the current winner drops below a threshold.
+   e. After the Pareto pass, record the final winner. Update `.runs/image-manifest.json` with the winner's source, model, and scores.
+   f. Update `.runs/image-candidates.json` sidecar: set `"selected": true` on the new winner, `"selected": false` on the old winner.
+3. **Polish-floor escalation (fix #1076 Fix C):** if the post-comparison winner still has polish < 9, spawn `scaffold-images` for one-off regeneration with a tightened direction signal derived from the detected defect (e.g., "only short real English labels; no synthetic body text"). Budget: 1 regeneration per slot per verify run. Score the regenerated candidate IN context. If the regenerated candidate reaches polish ≥ 9, swap; otherwise keep the best available and emit `unresolved_images: [{slot, reason, best_score}]` in the trace so downstream gates (verify-report, auto-merge) can block.
+4. Populate `candidates_tried` and `new_candidates_generated` in the trace with actual counts — these being `0` across all agents is the signal that Step 5.5 did not run (the #1076 regression vector).
 
 #### og-photo — metadata-based evaluation (landing-page critic only)
 

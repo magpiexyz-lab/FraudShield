@@ -259,8 +259,6 @@ STALE_ARTIFACTS=(
   "$PROJECT_DIR/.runs/observe-evidence-check.json"
   "$PROJECT_DIR/.runs/compliance-audit-result.json"
   "$PROJECT_DIR/.runs/q-dimensions.json"
-  "$PROJECT_DIR/.runs/verify-context.json"
-  "$PROJECT_DIR/.runs/verify-lifecycle.json"
   "$PROJECT_DIR/.runs/verify-report.md"
   "$PROJECT_DIR/.runs/fix-log.md"
   "$PROJECT_DIR/.runs/quality-merge.json"
@@ -270,6 +268,16 @@ STALE_ARTIFACTS=(
 for f in "${STALE_ARTIFACTS[@]}"; do
   rm -f "$f"
 done
+# Carve-out (fix #1074 + regression of #877): when SKILL=verify, verify-lifecycle.json
+# and verify-context.json are the current run's own artifacts — Step 2 (PYEOF block
+# at L64-L234) just wrote MANIFEST, and init-context.sh writes context at Step 5.
+# Deleting them unconditionally makes standalone /verify self-break on the very next
+# lifecycle-next.sh call with NO_MANIFEST. When SKILL != verify, the stale copies
+# from an earlier embedded verify should go.
+if [[ "$SKILL" != "verify" ]]; then
+  rm -f "$PROJECT_DIR/.runs/verify-context.json"
+  rm -f "$PROJECT_DIR/.runs/verify-lifecycle.json"
+fi
 rm -rf "$PROJECT_DIR/.runs/gate-verdicts/"
 rm -rf "$PROJECT_DIR/.runs/agent-traces/"
 

@@ -40,18 +40,42 @@ You are a world-champion design director. Your visual decisions — palette, typ
 
 Read `.claude/procedures/scaffold-init.md` for full step-by-step instructions. Execute all steps described there.
 
+## First Action (MANDATORY — before ANY other tool call)
+
+Your absolute first Bash command MUST initialize the trace stub:
+
+```bash
+python3 scripts/init-trace.py scaffold-init
+```
+
+This registers your presence so the orchestrator can detect incomplete work.
+
 ## Trace Output
 
-After all init tasks complete, write trace to `.runs/agent-traces/scaffold-init.json`:
+After all init tasks complete, update the started trace with final AOC v1 fields.
+
+Use the variable-indirection pattern (matches `design-critic.md` / `observer.md`):
 
 ```bash
 python3 -c "
-import json, datetime, os
-os.makedirs('.runs/agent-traces', exist_ok=True)
-trace = {'agent': 'scaffold-init', 'status': 'complete', 'timestamp': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'), 'files_created': ['<list all files created or modified>']}
-json.dump(trace, open('.runs/agent-traces/scaffold-init.json', 'w'))
+import json
+f='.runs/agent-traces/scaffold-init.json'
+d=json.load(open(f))
+d.update({
+    'status': 'completed',
+    'verdict': 'pass',
+    'result': 'clean',
+    'provenance': 'self',
+    'partial': False,
+    'checks_performed': ['visual_brief_authored', 'global_styles_applied', 'design_tokens_seeded'],
+    'no_fixes_claimed': True,
+    'files_created': ['<list all files created or modified>'],
+})
+json.dump(d, open(f, 'w'), indent=2)
 "
 ```
+
+Non-fixer role: `no_fixes_claimed: True` is required. Do NOT populate `fixes[]`.
 
 ## Output Contract
 

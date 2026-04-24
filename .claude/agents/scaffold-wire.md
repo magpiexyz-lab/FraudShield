@@ -29,6 +29,7 @@ You wire the backend: API routes with input validation, database schema with acc
 - EXCEPTION: when `stack.auth` is present, create auth infrastructure files that no other agent owns: `src/app/auth/callback/route.ts`, `src/app/auth/reset-password/page.tsx`, and `src/components/nav-bar.tsx` (see auth stack file for templates)
 - EXCEPTION: wire conditional components into `src/app/layout.tsx` (Step 5c). When `stack.auth` is present, import and render NavBar. When `stack.analytics` is present, create `src/components/RetainTracker.tsx` (from framework stack file template) and import it. Layout.tsx was created in Phase A — this modification adds imports after all components exist.
 - Every API route: zod input validation, proper HTTP status codes, rate limiting on auth/payment routes
+- **State-transition guard on mutation routes**: for any mutation on an entity whose table has a `status` column (or equivalent state field), include a 409 precondition check that rejects transitions when `current_status !== expected_pre_state`. Apply after zod validation and before the mutation. The expected pre-state derives from the behavior's `given` clause in experiment.yaml. See `.claude/procedures/wire.md` Step 5 "State-transition guard" for the canonical pattern. Omitting this guard ships silent data-corruption paths (fix #1062).
 - If a file you need to create already exists: stop and report the conflict. Do not overwrite.
 - Database: RLS policies on all tables, never trust the client
 - Webhook handlers: resolve all TODO comments (especially payment status updates)
@@ -44,18 +45,40 @@ Read `.claude/procedures/wire.md` for full step-by-step instructions. Execute St
 - If a stack file template is missing or ambiguous: stop and report. Do not invent API route patterns or database schemas.
 - If scaffold outputs you depend on are missing: report what's missing. Do not recreate packages, libs, or pages.
 
+## First Action (MANDATORY — before ANY other tool call)
+
+Your absolute first Bash command MUST initialize the trace stub:
+
+```bash
+python3 scripts/init-trace.py scaffold-wire
+```
+
+This registers your presence so the orchestrator can detect incomplete work.
+
 ## Trace Output
 
-After all wire tasks complete, write trace to `.runs/agent-traces/scaffold-wire.json`:
+After all wire tasks complete, update the started trace with final AOC v1 fields using the variable-indirection pattern:
 
 ```bash
 python3 -c "
-import json, datetime, os
-os.makedirs('.runs/agent-traces', exist_ok=True)
-trace = {'agent': 'scaffold-wire', 'status': 'complete', 'timestamp': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'), 'files_created': ['<list all files created or modified>']}
-json.dump(trace, open('.runs/agent-traces/scaffold-wire.json', 'w'))
+import json
+f='.runs/agent-traces/scaffold-wire.json'
+d=json.load(open(f))
+d.update({
+    'status': 'completed',
+    'verdict': 'pass',
+    'result': 'clean',
+    'provenance': 'self',
+    'partial': False,
+    'checks_performed': ['api_routes_written', 'schemas_applied', 'env_configured', 'tests_scaffolded', 'build_smoke'],
+    'no_fixes_claimed': True,
+    'files_created': ['<list all files created or modified>'],
+})
+json.dump(d, open(f, 'w'), indent=2)
 "
 ```
+
+Non-fixer role (scaffolding is authorship, not remediation): `no_fixes_claimed: True` is required. Do NOT populate `fixes[]`.
 
 ## Output Contract
 

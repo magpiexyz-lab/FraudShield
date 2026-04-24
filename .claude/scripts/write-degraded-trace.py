@@ -17,6 +17,7 @@ Usage:
         --checks-performed "<check1>,<check2>,..." \\
         [--verdict degraded] \\
         [--fixes-json '[{"file": "...", "type": "..."}]'] \\
+        [--extra-json '{"inconsistencies": [...], "findings": [...]}'] \\
         [--trace-filename <name>.json]
 
 Args:
@@ -28,6 +29,14 @@ Args:
     --fixes-json       Optional. JSON array of {file, ...} entries the agent
                        claims it actually applied. Enables diff-fix correlation
                        at validate-recovery.sh time.
+    --extra-json       Optional. JSON object of agent-specific structured fields
+                       to preserve alongside canonical trace fields (fix #1075).
+                       Existing canonical keys are NOT overwritten. Example for
+                       design-consistency-checker:
+                         --extra-json '{"inconsistencies": [{"id":"C4-1",...}]}'
+                       Downstream merges (state-3d-quality-fix.md, merge scripts)
+                       can now read these fields from degraded traces instead of
+                       silently dropping them.
     --trace-filename   Optional. Defaults to "<agent-name>.json". Use for
                        per-page traces: "design-critic-landing.json".
 
@@ -52,6 +61,8 @@ def main() -> int:
                         help="verdict string (default: degraded)")
     parser.add_argument("--fixes-json", default="",
                         help="JSON array of fix entries (optional)")
+    parser.add_argument("--extra-json", default="",
+                        help="JSON object of agent-specific structured fields to preserve (optional)")
     parser.add_argument("--trace-filename", default="",
                         help="override output filename")
     args = parser.parse_args()
@@ -110,6 +121,22 @@ def main() -> int:
                   file=sys.stderr)
             return 1
 
+    # Parse extra JSON (optional) — agent-specific structured fields like
+    # inconsistencies[], findings[]. Canonical trace keys take precedence; this
+    # merge only adds fields not already present. Fix #1075.
+    extra = {}
+    if args.extra_json:
+        try:
+            extra = json.loads(args.extra_json)
+            if not isinstance(extra, dict):
+                print("ERROR: write-degraded-trace.py — --extra-json must be a JSON object",
+                      file=sys.stderr)
+                return 1
+        except json.JSONDecodeError as exc:
+            print(f"ERROR: write-degraded-trace.py — --extra-json invalid: {exc}",
+                  file=sys.stderr)
+            return 1
+
     checks = [c.strip() for c in args.checks_performed.split(",") if c.strip()]
     if not checks:
         print("ERROR: write-degraded-trace.py — --checks-performed must list at least one check",
@@ -134,6 +161,11 @@ def main() -> int:
         "spawn_sha": spawn_sha,
         "spawn_index": spawn_index,
     }
+
+    # Merge extra structured fields, preserving canonical keys. Fix #1075.
+    for k, v in extra.items():
+        if k not in trace:
+            trace[k] = v
 
     os.makedirs(".runs/agent-traces", exist_ok=True)
     filename = args.trace_filename or f"{args.agent}.json"

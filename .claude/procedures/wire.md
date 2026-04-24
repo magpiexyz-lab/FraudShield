@@ -22,6 +22,28 @@ If the archetype is `cli`: skip this step entirely — CLIs have no API routes o
 - For the webhook handler's `// TODO: Update user's payment status in database` comment: resolve it using the database schema you planned in Phase 1. If no payments/subscriptions table was planned, add one to the migration in Step 6 and return here to wire the webhook update after the table exists.
 - Every API route: validate input with zod, return proper HTTP status codes. If `stack.database` is present, use the server-side database client for data access.
 - For routes with dynamic segments (e.g., `[id]`), validate path params with zod before use: `const { id } = z.object({ id: z.uuid() }).parse(await params)`. Return 400 for invalid params. This prevents malformed path values from reaching database queries.
+- **State-transition guard (mutation routes on state-machine entities):** for any mutation route whose target table has a `status` column (or equivalent state field) whose values form a DAG of allowed transitions — e.g., `draft → submitted → awaiting_review → approved|rejected` — the route MUST fetch the current state and return 409 with a generic error if `current_status !== expected_pre_state`. Apply the guard *after* zod validation and *before* the mutation. The expected pre-state derives from the behavior's `given` clause in experiment.yaml (e.g., `given: record is in draft` → `expected_pre_state: 'draft'`). Canonical pattern:
+
+    ```typescript
+    const { data: entity } = await supabase
+      .from("<table>")
+      .select("id, status")  // include status column in SELECT
+      .eq("id", id)
+      .single();
+
+    if (!entity) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+
+    if (entity.status !== "<expected-pre-state>") {
+      return NextResponse.json(
+        { error: "Invalid state transition" },
+        { status: 409 }
+      );
+    }
+    ```
+
+    Omitting this guard lets clients trigger forbidden transitions (re-submit a submitted record, approve a draft, reject an approved record) that the behavior's test contract explicitly blocks — these silently return 500 or 200 in dev, surface only under adversarial tests (see #1062). When `stack.database: supabase`, the database stack file documents the SELECT-includes-status default for mutation routes.
 - Export Zod request schemas from route files with `export const` using the naming convention `<verb><Resource>Schema` (e.g., `export const createInvoiceSchema = z.object({...})`). For response shapes, export a plain TypeScript type or interface (e.g., `export type CreateInvoiceResponse = { id: string; sendLink: string }`). Request schemas need Zod (they validate untrusted input). Response types are plain TS (server-authored, not validated). These exports enable Step 6 to collect API contract types into `types.ts`.
 - Follow the hosting stack file for rate limiting guidance in auth and payment API route handlers. Mention any limitations in the PR body so the user knows to address them before production
 
