@@ -16,10 +16,11 @@ Every trace is an **authenticated assertion** about what one spawned agent did.
 Three orthogonal axes:
 
 1. **Identity** — which run this trace belongs to (`run_id`, `skill`).
-2. **Provenance** — who wrote this trace (`provenance`: self / self-degraded / recovery / lead-merge). Each value has enforceable write-path preconditions — see §Provenance below.
-3. **Verdict** — what outcome is claimed (`verdict`). Independent of provenance. When `provenance != self`, the verdict is validated by independent evidence (`recovery_validated`) before downstream gates accept it.
+2. **Provenance** — who wrote this trace. AOC v1.1 enum: self / self-degraded / recovery / lead-merge / lead-on-behalf / lead-synthesized / lead-fix. Each value has enforceable write-path preconditions — see §Provenance below.
+3. **Verdict** — what outcome is claimed (`verdict`). Independent of provenance. When `provenance != self`, the verdict is validated by independent evidence (`recovery_validated`) for recovery / self-degraded / lead-on-behalf, or by attestation fields (coverage_provider / lead_attestation) for lead-synthesized / lead-fix, before downstream gates accept it.
 
-This triangulation is the coherent fix for issues #941, #958, #960, #963.
+This triangulation is the coherent fix for issues #941, #958, #960, #963 and
+the v1.1 extension for #1067 / #1064 / #1055 / #1056.
 
 ## Initialization
 
@@ -54,7 +55,7 @@ mkdir -p .runs/agent-traces && echo '{"agent":"<agent-name>","timestamp":"'$(dat
 | `status` | `"started"` \| `"completed"` \| `"abandoned"` | `"started"` at init; `"completed"` after normal or self-degraded completion; `"abandoned"` for recovery traces |
 | `verdict` | string | Core protocol vocabulary (lowercase): `pass` / `fail` / `blocked` / `unresolved`. Required when `status != "started"`. Governed by AOC v1 AVS v1. Gate predicates key on this field only. |
 | `result` | string \| null | AOC v1 qualifier: `clean` / `fixed` / `partial` / `degraded` / `skipped` / `none` / `count_summary` / `null`. Required when `agent ∈ verdict_agents` and `status == "completed"`. Preserves pass-clean vs pass-after-fixes distinction. See per-agent `allowed_results` in `agent-registry.json.verdict_agents_schema`. |
-| `provenance` | `"self"` \| `"self-degraded"` \| `"recovery"` \| `"lead-merge"` | Who wrote this trace. See §Provenance below. Omitted at `init-trace.py`; required at completion |
+| `provenance` | `"self"` \| `"self-degraded"` \| `"recovery"` \| `"lead-merge"` \| `"lead-on-behalf"` \| `"lead-synthesized"` \| `"lead-fix"` | Who wrote this trace. See §Provenance below. Omitted at `init-trace.py`; required at completion |
 | `partial` | boolean | `true` when the trace reflects less than the agent's full declared work; MUST be `true` when `provenance != "self"` |
 | `checks_performed` | string[] | List of check/step identifiers actually completed |
 | `run_id` | string | Run ID from the active context (resolved via `resolve_active_identity`); empty string if unavailable |
@@ -68,11 +69,14 @@ mkdir -p .runs/agent-traces && echo '{"agent":"<agent-name>","timestamp":"'$(dat
 | `no_fixes_claimed` | boolean | Findings-only agents with no `fixes` | `true` declares the agent deliberately made no changes. Accepted only when agent is listed in `agent-registry.json.non_fixer_agents` |
 | `contributing_spawn_indexes` | integer[] | `provenance == "lead-merge"` | List of `spawn_index` values from `agent-spawn-log.jsonl` this aggregate composes. Count must equal spawn-log entries for this base agent in current run_id |
 | `spawn_sha` | string | Written by `write-recovery-trace.sh` / `write-degraded-trace.py` | SHA captured at spawn time (from spawn-log entry); used by `validate-recovery.sh` for diff-fix correlation |
-| `recovery_validated` | boolean | Written by `validate-recovery.sh` | `true` iff build + e2e + diff evidence confirms the verdict. Required `true` for `provenance ∈ {self-degraded, recovery}` to pass `verify-report-gate.sh` |
+| `recovery_validated` | boolean | Written by `validate-recovery.sh` | `true` iff build + e2e + diff evidence confirms the verdict. Required `true` for `provenance ∈ {self-degraded, recovery, lead-on-behalf}` to pass `verify-report-gate.sh` |
 | `recovery` | boolean | Legacy mirror | `true` when `provenance == "recovery"`; maintained only for read-side backward compat |
 | `recovery_reason` | string | Written by `write-recovery-trace.sh` | Copy of the `--reason` argument that was passed to the recovery script |
+| `source` *(v1.1)* | string | `provenance == "lead-on-behalf"` | Lead's attestation of where the transcribed content came from. Canonical values: `"agent-returned-text"`, `"agent-tool-output"`. Free-form strings are accepted; the spawn-log entry for the agent is the upstream truth proof |
+| `coverage_provider` *(v1.1)* | string | `provenance == "lead-synthesized"` | Path or identifier of the artifact that satisfies coverage for this agent (e.g., `"tests/flows.test.ts"` when a shared test file substitutes for per-module implementer spawning) |
+| `lead_attestation` *(v1.1)* | boolean | `provenance == "lead-fix"` | Always `true`. Marker that the lead orchestrator personally authored this trace's fix entries. Pattern-classifier routes lead-fix entries to its "Lead-authored fix" branch |
 
-## Provenance — The Four Write Paths
+## Provenance — The Seven Write Paths (AOC v1.1)
 
 | Provenance | Who writes | When | Preconditions enforced by |
 |-----------|-----------|------|---------------------------|
@@ -80,11 +84,16 @@ mkdir -p .runs/agent-traces && echo '{"agent":"<agent-name>","timestamp":"'$(dat
 | `self-degraded` | The agent itself, on detected partial | Agent self-detected degradation. AOC v1 formalizes **two sub-cases**: (a) **execution degradation** — original recovery semantics (image-limit, screenshot crash, turn-budget, tool unavailable); (b) **input degradation** — subject-under-review is degraded (fixture short-circuit, DEMO_MODE dynamic-route 404, stale fixture — introduced by #1042 via Session C). Both call `scripts/write-degraded-trace.py` | Same as `self` + `status == "completed"` + `partial == true` + `degraded_reason != null` (enforced by artifact-integrity-gate) + `recovery_validated == true` for downstream `validated_fallback` acceptance |
 | `recovery` | Orchestrator via `scripts/write-recovery-trace.sh` | Agent crashed so hard it could not self-report | (a) spawn-log entry from `skill-agent-gate` exists for this agent in current run_id; (b) target trace absent or stub (`status:"started"` no `verdict`); (c) `--reason` mandatory; (d) agent NOT in `recovery_forbidden` list (enforced by the script) |
 | `lead-merge` | Orchestrator, composing from sibling traces | Aggregate from per-item parallel fan-out (e.g., design-critic.json merged from design-critic-landing.json / design-critic-pricing.json), or implementer worktree trace | `contributing_spawn_indexes.length == count(spawn-log entries for base in run_id)` (enforced by state-completion-gate `lead-merge` exemption) |
+| `lead-on-behalf` *(v1.1)* | Orchestrator via `scripts/write-agent-trace.sh --provenance lead-on-behalf` | Agent succeeded and returned a full payload, but its own trace write was blocked by a hook (e.g., #1064 Defect 1) or its tool budget was exhausted before it could write. Lead transcribed the agent's reported result. | (a) spawn-log entry exists for the agent in current run_id (universal provenance check); (b) `partial == true`; (c) `source != null` (lead's attestation of where content came from); (d) `recovery_validated == true` for downstream `validated_fallback` acceptance |
+| `lead-synthesized` *(v1.1)* | Orchestrator via `scripts/write-agent-trace.sh --provenance lead-synthesized` | Agent was never spawned because another mechanism guarantees coverage (e.g., a shared test file). Lead writes a consistency marker so downstream presence checks succeed. | (a) `partial == true`; (b) `coverage_provider != null` (artifact path proving coverage); (c) trace **must not** declare `fixes[]` (use `lead-on-behalf` or `lead-fix` for those); (d) downstream gates use the `pass_lead_synthesized` predicate which checks `coverage_provider` presence |
+| `lead-fix` *(v1.1)* | Orchestrator via `scripts/write-fix-ledger.py --lead-fix` (per-fix ledger entries) or `scripts/write-agent-trace.sh --provenance lead-fix` (trace marker) | Lead applied a fix in-flight during a verify or epilogue stage without spawning a subagent (e.g., a quick Edit during STATE 5). | (a) `lead_attestation == true`; (b) `partial == true`; (c) trace's `fixes[]` entries each have non-empty `file/symptom/fix` (granularity gate); (d) downstream gates use the `pass_lead_fix` predicate (no recovery_validated required — lead has direct knowledge) |
 
 Callers MUST NOT invent new provenance values. Adding a new value requires
 updating `artifact-integrity-gate.sh` per-provenance validation, the
-`hard_gates` rules in `agent-registry.json`, and the universal provenance
-check in `state-completion-gate.sh`.
+predicate set in `lib-verdict.sh` (with sibling acceptance in `aggregate_ok`),
+the `hard_gates` rules in `agent-registry.json`, and the universal provenance
+check in `state-completion-gate.sh`. See `agent-output-contract.md`
+"Versioning rules" for the synchronized-update protocol (S0-style).
 
 ### Extension Fields (agent-specific, optional)
 

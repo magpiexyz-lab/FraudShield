@@ -123,21 +123,27 @@ elif is_agent_trace:
         elif not isinstance(d["checks_performed"], list):
             errors.append("agent trace checks_performed must be an array")
         elif len(d["checks_performed"]) == 0:
-            # Allow empty for recovery / self-degraded / lead-merge traces
+            # Allow empty checks_performed when the trace represents a marker
+            # rather than direct agent execution. lead-on-behalf is excluded
+            # because the lead transcribed the agents reported checks.
             prov = d.get("provenance")
-            if not d.get("recovery") and prov not in ("recovery", "self-degraded", "lead-merge"):
-                errors.append("agent trace checks_performed is empty (set recovery: true or use provenance: self-degraded/recovery if exhausted)")
+            empty_ok = ("recovery", "self-degraded", "lead-merge", "lead-synthesized", "lead-fix")
+            if not d.get("recovery") and prov not in empty_ok:
+                errors.append("agent trace checks_performed is empty (set recovery: true or use provenance: self-degraded/recovery/lead-synthesized/lead-fix if exhausted)")
 
         # run_id: warn but do not block (backward compat)
         if "run_id" not in d or not d.get("run_id"):
             sys.stderr.write("WARNING: agent trace has empty run_id — trace freshness cannot be verified\n")
 
-        # --- Per-provenance schema validation (v2: agent-trace lifecycle contract) ---
+        # --- Per-provenance schema validation (AOC v1.1: agent-trace lifecycle contract) ---
         # Legacy traces (no provenance field) are accepted here and will be
         # migrated later by scripts/migrate-legacy-traces.py.
         prov = d.get("provenance")
         if prov is not None:
-            valid_prov = {"self", "self-degraded", "recovery", "lead-merge"}
+            valid_prov = {
+                "self", "self-degraded", "recovery", "lead-merge",
+                "lead-on-behalf", "lead-synthesized", "lead-fix",
+            }
             if prov not in valid_prov:
                 errors.append(f"provenance must be one of {sorted(valid_prov)}; got {prov!r}")
             else:
@@ -159,6 +165,23 @@ elif is_agent_trace:
                         errors.append("provenance=lead-merge requires contributing_spawn_indexes (non-empty integer array)")
                     elif not all(isinstance(i, int) for i in csi):
                         errors.append("contributing_spawn_indexes must be integers")
+                # AOC v1.1 lead-* provenance fields
+                # lead-on-behalf: agent succeeded, lead transcribed; need source attestation
+                if prov == "lead-on-behalf":
+                    if not d.get("source"):
+                        errors.append("provenance=lead-on-behalf requires source (canonical values: agent-returned-text, agent-tool-output)")
+                # lead-synthesized: agent never spawned, lead writes consistency marker
+                if prov == "lead-synthesized":
+                    if not d.get("coverage_provider"):
+                        errors.append("provenance=lead-synthesized requires coverage_provider (artifact path or identifier proving coverage)")
+                    # Synthesized markers should not claim per-fix changes
+                    fixes = d.get("fixes")
+                    if isinstance(fixes, list) and len(fixes) > 0:
+                        errors.append("provenance=lead-synthesized must not claim fixes — use lead-fix or lead-on-behalf instead")
+                # lead-fix: lead self-applied fix in-flight
+                if prov == "lead-fix":
+                    if d.get("lead_attestation") is not True:
+                        errors.append("provenance=lead-fix requires lead_attestation:true")
                 # self traces should not claim partial
                 if prov == "self" and d.get("partial") is True:
                     errors.append("provenance=self with partial:true is contradictory — use provenance=self-degraded instead")

@@ -63,6 +63,19 @@
         "consumers": { "type": "array", "items": { "type": "string" } },
         "description": { "type": "string" }
       }
+    },
+    "rule_frontmatter_artifact_consistency": {
+      "description": "AOC v1.1 R4 (declared in PR1, implemented in PR5): a verify-report.md frontmatter schema declares fields and their cross-artifact joins; the writer must emit every declared field, and every consumer must reference only declared field names. Catches the producer-vs-consumer drift class for frontmatter (analogous to R3 for ledger). Implemented by check_frontmatter_artifact_consistency in verify-linter.sh.",
+      "required": ["id", "type", "schema_path", "writer", "consumers"],
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "const": "frontmatter_artifact_consistency" },
+        "severity": { "$ref": "#/definitions/severity" },
+        "schema_path": { "type": "string", "description": "Path to the canonical frontmatter schema (e.g., .claude/patterns/verify-report-frontmatter.json) that declares fields, types, and source artifacts." },
+        "writer": { "type": "string", "description": "Path to the state file that emits the frontmatter (e.g., .claude/skills/verify/state-7a-write-report.md)." },
+        "consumers": { "type": "array", "items": { "type": "string" }, "description": "Files that read frontmatter fields; the rule checks only declared field names appear in each consumer." },
+        "description": { "type": "string" }
+      }
     }
   },
   "type": "object",
@@ -77,7 +90,8 @@
           { "$ref": "#/definitions/rule_artifact_lifecycle" },
           { "$ref": "#/definitions/rule_verdict_vocab_consistency" },
           { "$ref": "#/definitions/rule_ledger_ownership" },
-          { "$ref": "#/definitions/rule_consumer_coverage" }
+          { "$ref": "#/definitions/rule_consumer_coverage" },
+          { "$ref": "#/definitions/rule_frontmatter_artifact_consistency" }
         ]
       }
     }

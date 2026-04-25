@@ -257,16 +257,22 @@ for tf in sorted(glob.glob(os.path.join(traces_dir, '*.json'))):
     # Aggregates have no direct spawn-log entry. Their validity comes from the
     # sibling spawns, not their own.
     #
-    # Invariant (new): if provenance is declared, it MUST be "lead-merge" for
-    # this exemption. If contributing_spawn_indexes is declared, its count must
+    # Invariant (AOC v1.1): if provenance is declared, it MUST be one of
+    # {lead-merge, lead-on-behalf} for this exemption. lead-merge is the
+    # canonical aggregate composer; lead-on-behalf permits the case where
+    # the lead transcribed an agent's reported aggregate result because the
+    # agent's own write was blocked. Other lead-* values (lead-synthesized,
+    # lead-fix) at the aggregate filename are inconsistent with the per-page
+    # sibling pattern and are rejected.
+    # If contributing_spawn_indexes is declared, its count must
     # equal the number of skill-agent-gate entries for this base in the
     # current run_id (prevents forged aggregates claiming non-existent spawns).
     # Legacy aggregates missing provenance/contributing_spawn_indexes are
     # accepted for backward compatibility until migration runs.
     if bn == base and glob.glob(os.path.join(traces_dir, base + '-*.json')):
         prov = td.get('provenance')
-        if prov and prov != 'lead-merge':
-            errors.append(f'{bn}: aggregate trace has provenance={prov}, expected lead-merge')
+        if prov and prov not in ('lead-merge', 'lead-on-behalf'):
+            errors.append(f'{bn}: aggregate trace has provenance={prov}, expected lead-merge or lead-on-behalf')
             continue
         csi = td.get('contributing_spawn_indexes')
         if isinstance(csi, list):

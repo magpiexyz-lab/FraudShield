@@ -9,6 +9,14 @@
 #   - .claude/scripts/validate-recovery.sh     (stamps recovery_validated only)
 #   - .claude/scripts/migrate-legacy-traces.py (one-shot legacy migration)
 #   - .claude/scripts/merge-design-critic-traces.py  (verify state-3b lead-merge)
+#   - .claude/scripts/write-agent-trace.sh   (AOC v1.1 centralized writer for
+#                                             self / self-degraded / lead-on-behalf /
+#                                             lead-synthesized; replaces the
+#                                             chain-blocked echo>file pattern
+#                                             from #1064 D1)
+#   - .claude/scripts/augment-trace.py       (AOC v1.1 narrow descriptive-field
+#                                             augmenter; whitelisted fields only,
+#                                             requires spawn-log match)
 #
 # This is the runtime half of the R2 C7 fix (static test_forgery_surface.py
 # handles CI). Together they ensure no new script silently becomes an
@@ -110,13 +118,37 @@ if echo "$COMMAND" | grep -qE "$ALLOWED_REGEX_MERGE_DESIGN_CRITIC"; then
   exit 0
 fi
 
+# AOC v1.1: centralized agent-trace writer. Required to include --json
+# (the trace payload). Provenance, source, coverage_provider preconditions
+# are enforced inside the script.
+ALLOWED_REGEX_WRITE_AGENT_TRACE='(^|[[:space:]]|&&|;|\|)[[:space:]]*bash[[:space:]]+[./]*\.?claude/scripts/write-agent-trace\.sh[[:space:]]'
+if echo "$COMMAND" | grep -qE "$ALLOWED_REGEX_WRITE_AGENT_TRACE"; then
+  if echo "$COMMAND" | grep -qE 'write-agent-trace\.sh[^&|;]*--json'; then
+    exit 0
+  else
+    deny "Agent trace write guard: write-agent-trace.sh invocation lacks --json '<...>' (required AOC v1.1)."
+  fi
+fi
+
+# AOC v1.1: descriptive-field augmenter. Required to include
+# --augment-spawn-index (forces spawn-log match). Field allowlist is
+# enforced inside the script.
+ALLOWED_REGEX_AUGMENT_TRACE='(^|[[:space:]]|&&|;|\|)[[:space:]]*python3?[[:space:]]+[./]*\.?claude/scripts/augment-trace\.py'
+if echo "$COMMAND" | grep -qE "$ALLOWED_REGEX_AUGMENT_TRACE"; then
+  if echo "$COMMAND" | grep -qE 'augment-trace\.py[^&|;]*--augment-spawn-index'; then
+    exit 0
+  else
+    deny "Agent trace write guard: augment-trace.py invocation lacks --augment-spawn-index <N> (required for spawn-log validation)."
+  fi
+fi
+
 # ── Final catch-all: any direct write operator targeting agent-traces ──
 # Use the fd-redirect-stripped NORM so `cmd 2>&1 > agent-traces/foo.json` still
 # denies correctly (on the real `>` that writes the file) but
 # `ls agent-traces/ 2>&1` is not falsely flagged.
 
 if echo "$NORM" | grep -qE '(>|>>|[[:space:]]tee[[:space:]]|[[:space:]]cp[[:space:]]|[[:space:]]mv[[:space:]]).*agent-traces/[^[:space:]]+\.json'; then
-  deny "Agent trace write guard: .runs/agent-traces/*.json writes must go through init-trace.py / write-recovery-trace.sh / write-degraded-trace.py. Direct shell writes are blocked."
+  deny "Agent trace write guard: .runs/agent-traces/*.json writes must go through init-trace.py / write-recovery-trace.sh / write-degraded-trace.py / write-agent-trace.sh / augment-trace.py. Direct shell writes are blocked."
 fi
 
 exit 0

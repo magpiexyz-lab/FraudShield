@@ -343,6 +343,79 @@ class TestValidateRecovery(unittest.TestCase):
         self.assertEqual(proc.returncode, 2)
         self.assertIn("trace not found", proc.stderr)
 
+    # ---- AOC v1.1: lead-on-behalf goes through the validation chain ----
+
+    def test_lead_on_behalf_validates_with_tracked_fix(self):
+        """lead-on-behalf is a validate-eligible provenance (AOC v1.1).
+        Same diff-fix correlation rules as recovery / self-degraded apply.
+        """
+        self._write_build(0)
+        self._write_e2e(True)
+        self._modify_tracked_file("src/app/landing/page.tsx", "// fix")
+        self._write_trace("ux-journeyer", {
+            "agent": "ux-journeyer",
+            "provenance": "lead-on-behalf",
+            "partial": True,
+            "source": "agent-returned-text",
+            "verdict": "pass",
+            "fixes": [{"file": "src/app/landing/page.tsx",
+                       "symptom": "missing alt", "fix": "added"}],
+            "spawn_sha": self.spawn_sha,
+            "recovery_validated": False,
+        })
+        proc = self._run("ux-journeyer")
+        self.assertEqual(proc.returncode, 0,
+                         f"lead-on-behalf with tracked fix should validate: {proc.stderr}")
+        # recovery_validated stamped true
+        d = json.loads((self.traces / "ux-journeyer.json").read_text())
+        self.assertTrue(d.get("recovery_validated"))
+
+    def test_lead_on_behalf_blocked_when_fix_not_in_diff(self):
+        self._write_build(0)
+        self._write_e2e(True)
+        # No file actually modified — the fixes[] file should NOT appear in diff
+        self._write_trace("ux-journeyer", {
+            "agent": "ux-journeyer",
+            "provenance": "lead-on-behalf",
+            "partial": True,
+            "source": "agent-returned-text",
+            "verdict": "pass",
+            "fixes": [{"file": "src/forged.ts", "symptom": "x", "fix": "y"}],
+            "spawn_sha": self.spawn_sha,
+            "recovery_validated": False,
+        })
+        proc = self._run("ux-journeyer")
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("not present in diff", proc.stderr)
+
+    def test_lead_synthesized_skipped_by_validate(self):
+        """lead-synthesized has its own attestation path (coverage_provider);
+        validate-recovery.sh skips it just like provenance=self."""
+        self._write_trace("observer", {
+            "agent": "observer",
+            "provenance": "lead-synthesized",
+            "partial": True,
+            "coverage_provider": "tests/flows.test.ts",
+            "no_fixes_claimed": True,
+            "verdict": "pass",
+        })
+        proc = self._run("observer")
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn("SKIP", proc.stderr)
+
+    def test_lead_fix_skipped_by_validate(self):
+        """lead-fix has its own attestation (lead_attestation:true); skipped here."""
+        self._write_trace("observer", {
+            "agent": "observer",
+            "provenance": "lead-fix",
+            "partial": True,
+            "lead_attestation": True,
+            "verdict": "pass",
+        })
+        proc = self._run("observer")
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn("SKIP", proc.stderr)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

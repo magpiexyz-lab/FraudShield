@@ -56,8 +56,14 @@ except Exception as exc:
     sys.exit(2)
 
 provenance = trace.get('provenance')
-if provenance not in ('recovery', 'self-degraded'):
-    sys.stderr.write(f'SKIP: trace provenance={provenance!r} — only recovery/self-degraded need validation\n')
+# AOC v1.1: lead-on-behalf goes through validation too. The agent reported
+# success but the lead transcribed its output; downstream gates require
+# independent evidence (build + e2e + diff-fix correlation) to stamp
+# recovery_validated:true. lead-synthesized and lead-fix have their own
+# attestation paths (coverage_provider / lead_attestation) and don't go
+# through this evidence loop.
+if provenance not in ('recovery', 'self-degraded', 'lead-on-behalf'):
+    sys.stderr.write(f'SKIP: trace provenance={provenance!r} — only recovery/self-degraded/lead-on-behalf need validation\n')
     sys.exit(0)
 
 errors = []

@@ -1,10 +1,12 @@
-# Agent Output Contract v1 (AOC v1)
+# Agent Output Contract v1.1 (AOC v1.1)
 
 > **Canonical source of truth for agent-trace verdict vocabulary and fix-ledger
 > semantics across the 17 `verdict_agents`.** Closes #1044 (verdict-vocab
-> mismatch) and #1048 (fix-log count drift). This file is the single dependency
-> point for downstream cross-group work (e.g., #1042 design-critic degraded
-> fixtures via Session C orchestration).
+> mismatch) and #1048 (fix-log count drift). v1.1 closes #1067 (lead-* provenance
+> gaps), #1064 (centralized writer + lead-fix path + post-completion recovery),
+> #1055 (resolve-reviewer first-class), and #1056 (frontmatter coherence). This
+> file is the single dependency point for downstream cross-group work
+> (e.g., #1042 design-critic degraded fixtures via Session C orchestration).
 
 ## Why this contract exists
 
@@ -114,19 +116,38 @@ definition file, and the predicate vocabulary in `lib-verdict.sh`.
 
 ### Provenance enum (canonical)
 
-AOC v1 formally defines the `provenance` enum covering two kinds of
-degradation. This is the contract surface consumed by Session C for #1042.
+AOC v1.1 formally defines the `provenance` enum covering seven write paths
+across four real-world authorship modes. This is the contract surface
+consumed by Session C for #1042 and by the cross-skill recovery / lead-fix
+flows added in v1.1.
 
-| Value | Semantic |
-|-------|----------|
-| `self` | Agent completed normally; it is the author of its own trace. |
-| `self-degraded` | Agent completed, but **either** (a) execution was degraded (recovery-scenario semantics — image-limit, screenshot crash, turn-budget, tool unavailable) **or** (b) the subject-under-review was degraded (fixture short-circuit, DEMO_MODE dynamic-route 404, stale fixture — Session C / #1042 semantics). Both require `degraded_reason: <string>` and `recovery_validated: true`. |
-| `recovery` | Agent crashed so hard it could not self-report; orchestrator wrote the trace via `write-recovery-trace.sh` with mandatory `--reason`. |
-| `lead-merge` | Orchestrator composed this aggregate from sibling traces (e.g., `design-critic.json` merged from per-page `design-critic-<page>.json`). |
+| Value | Authorship | Semantic |
+|-------|-----------|----------|
+| `self` | Agent | Agent completed normally; it is the author of its own trace. |
+| `self-degraded` | Agent | Agent completed, but **either** (a) execution was degraded (recovery-scenario semantics — image-limit, screenshot crash, turn-budget, tool unavailable) **or** (b) the subject-under-review was degraded (fixture short-circuit, DEMO_MODE dynamic-route 404, stale fixture — Session C / #1042 semantics). Both require `degraded_reason: <string>` and `recovery_validated: true`. |
+| `recovery` | Lead | Agent crashed so hard it could not self-report; orchestrator wrote the trace via `write-recovery-trace.sh` with mandatory `--reason`. |
+| `lead-merge` | Lead | Orchestrator composed this aggregate from sibling traces (e.g., `design-critic.json` merged from per-page `design-critic-<page>.json`). |
+| `lead-on-behalf` *(v1.1)* | Lead | Agent succeeded and returned a full payload, but the agent's own trace write was blocked (hook deny, tool-budget exhaustion). Lead transcribed the agent's reported result. Requires `source: <attestation>` (e.g., `"agent-returned-text"`, `"agent-tool-output"`) plus `partial: true` and `recovery_validated: true` for downstream confidence. |
+| `lead-synthesized` *(v1.1)* | Lead | Agent was never spawned (covered by another mechanism — e.g., a shared test file that satisfies coverage). Lead writes a consistency marker so downstream presence checks succeed. Requires `coverage_provider: <artifact-path>` plus `partial: true`; **must not** claim per-fix changes. |
+| `lead-fix` *(v1.1)* | Lead | Lead applied a fix in-flight during a verify stage without spawning a subagent. Requires `lead_attestation: true` plus `partial: true`. Routed to `pattern-classifier`'s "Lead-authored fix" branch (see `.claude/agents/pattern-classifier.md`). |
 
 **`degraded_reason` is the canonical field name** for the specific cause,
 used by both self-degraded sub-cases. Session C's original `fallback_reason`
 draft is aligned to this name.
+
+#### Authorship vs. confidence
+
+The four real-world authorship modes have distinct downstream confidence:
+
+| Mode | Lead's knowledge of content | Provenance value | Predicate path |
+|---|---|---|---|
+| Agent crashed, no output | Pure reconstruction from side-effects | `recovery` | `validated_fallback` (requires recovery_validated) |
+| Agent succeeded, returned data, write blocked | Transcription of agent's payload | `lead-on-behalf` | `validated_fallback` (requires recovery_validated) |
+| Agent never spawned, coverage guaranteed elsewhere | Lead synthesized as marker | `lead-synthesized` | `pass_lead_synthesized` (requires coverage_provider) |
+| Lead applied fix during verify | Direct knowledge | `lead-fix` | `pass_lead_fix` (requires lead_attestation) |
+
+The predicates are defined in `.claude/hooks/lib-verdict.sh` and gated per-agent
+via `agent-registry.json.hard_gates[].allow_predicates`.
 
 ### FLS v1 — Fix Ledger Schema
 
@@ -140,16 +161,18 @@ agent trace `fixes[]` arrays; not authored by agents directly.
 
 | Field | Type | Required | Description |
 |-------|------|:-:|---|
-| `fix_id` | string | ✓ | `<source_trace_basename>:<fix_array_index>` — stable identity |
-| `agent` | string | ✓ | Source agent (matches `source_trace` basename) |
-| `source_trace` | string | ✓ | Path to agent trace (e.g., `.runs/agent-traces/security-fixer.json`) |
+| `fix_id` | string | ✓ | `<source_trace_basename>:<fix_array_index>` for agent fixes; `lead-<skill>:<run_id>:<counter>` for lead-fix entries (v1.1) — stable identity |
+| `agent` | string | ✓ | Source agent (matches `source_trace` basename); for lead-fix, this is `lead-<skill>` |
+| `source_trace` | string | ✓ | Path to agent trace (e.g., `.runs/agent-traces/security-fixer.json`); for lead-fix, this is the literal string `"lead"` |
 | `run_id` | string | ✓ | Run ID from source trace (or falls back to caller-supplied `--run-id`) |
-| `file` | string | ✓ | Repo-relative path of the fixed file |
+| `file` | string | ✓ | Repo-relative path of the fixed file (must be non-empty; granularity gate v1.1 rejects null/empty) |
 | `symptom` | string | ✓ | Short description of what was wrong |
 | `fix` | string | ✓ | Short description of the change applied |
 | `timestamp` | string | ✓ | ISO 8601 UTC (from source trace timestamp) |
-| `batch_id` | string | ✓ | Groups fixes the agent committed in the same trace write session; equal to `source_trace` basename |
-| `batch_size` | int | ✓ | Count of fixes in the same trace at consolidation time |
+| `batch_id` | string | ✓ | Groups fixes the agent committed in the same trace write session; equal to `source_trace` basename for agent fixes; per-invocation timestamp for lead-fix |
+| `batch_size` | int | ✓ | Count of fixes in the same trace at consolidation time; `1` for lead-fix invocations |
+| `provenance` *(v1.1)* | string | ✓ | `agent` (default — fix attributed to its source agent) \| `lead` (for lead-fix entries) \| `lead-on-behalf` (agent reported, lead transcribed). Distinguishes authorship at the row level for Q-score weighting and observation candidacy. |
+| `severity` *(v1.1)* | string | optional | `fix` (default) \| `warn`. Used by STATE 5 e2e-config WARN migration (see PR5/S8). |
 
 - **Authoritative count** = `wc -l .runs/fix-ledger.jsonl`.
 - **Deterministic ordering** when rendered: by `(batch_id, fix_index)`.
@@ -244,8 +267,23 @@ The `verify-linter.sh` dispatcher extends the existing
   `agent-registry.json._schema_version_notes`; update the Invariants table
   above; ensure predicates or `additional_block_conditions` cover the new
   value.
+- **Adding a new `provenance` value** *(v1.1 policy)*: minor bump
+  (additive). Requires synchronized updates to (a) `valid_prov` set in
+  `artifact-integrity-gate.sh`; (b) any new `pass_lead_*`-style predicate
+  in `lib-verdict.sh` plus inclusion in `aggregate_ok` sibling acceptance;
+  (c) `validate-recovery.sh` if the new value goes through evidence
+  validation; (d) consumer hard_gates in `agent-registry.json` that should
+  accept it; (e) new predicate registered in
+  `agent-registry._hard_gates_predicate_docs`. Pattern: ship S0-style
+  consumer sync atomically with the vocabulary doc change.
+- **Adding a new `provenance` field** to `fix-ledger.jsonl`: minor bump
+  (additive). Update `write-fix-ledger.py` to emit; update consumers in
+  the Consumer contract table to read; ensure default value preserves
+  pre-v1.1 reader compatibility.
 - **Changing `verdict` enum** (core four values): requires a major bump and
   a new contract file (`agent-output-contract-v2.md`). Do not mutate v1.
+- **Changing the meaning of an existing `provenance` value**: requires a
+  major bump (different downstream confidence semantics). Do not mutate.
 - **Deprecating an agent**: remove from `verdict_agents_schema`; keep
   `LEGACY_VERDICT_MAP` entry for at least one release to migrate in-flight
   traces.

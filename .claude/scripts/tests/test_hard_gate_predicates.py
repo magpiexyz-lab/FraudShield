@@ -296,6 +296,103 @@ fi
         out, _ = self._invoke("nonexistent-agent", "hard_gate_failure: false\n")
         self.assertNotIn("ERR:", out)
 
+    # ---- AOC v1.1: validated_fallback extended to lead-on-behalf ----
+
+    def test_lead_on_behalf_validated_allows_via_validated_fallback(self):
+        # design-critic's allow_predicates list includes validated_fallback,
+        # which AOC v1.1 extended to accept lead-on-behalf with recovery_validated:true.
+        # No new predicate registration on hard_gates required.
+        self._write_trace("design-critic", {
+            "agent": "design-critic",
+            "verdict": "pass",
+            "provenance": "lead-on-behalf",
+            "partial": True,
+            "source": "agent-returned-text",
+            "recovery_validated": True,
+            "checks_performed": ["layer1", "layer2"],
+        })
+        out, _ = self._invoke("design-critic", "hard_gate_failure: false\n")
+        self.assertNotIn("ERR:", out, f"lead-on-behalf+validated should allow, got {out}")
+
+    def test_lead_on_behalf_not_validated_blocks(self):
+        self._write_trace("design-critic", {
+            "agent": "design-critic",
+            "verdict": "pass",
+            "provenance": "lead-on-behalf",
+            "partial": True,
+            "source": "agent-returned-text",
+            "recovery_validated": False,
+            "checks_performed": ["layer1"],
+        })
+        out, _ = self._invoke("design-critic", "hard_gate_failure: false\n")
+        self.assertIn("ERR:", out, "lead-on-behalf without recovery_validated must block")
+
+    # ---- AOC v1.1: aggregate_ok accepts new lead-* siblings ----
+
+    def test_lead_merge_with_lead_on_behalf_sibling_validated(self):
+        # Aggregate composed from one self-passed and one lead-on-behalf sibling
+        self._write_trace("design-critic", {
+            "agent": "design-critic",
+            "verdict": "pass",
+            "provenance": "lead-merge",
+            "partial": True,
+            "contributing_spawn_indexes": [1, 2],
+            "checks_performed": ["merge"],
+        })
+        self._write_trace("design-critic-landing", {
+            "agent": "design-critic",
+            "verdict": "pass",
+            "provenance": "self",
+            "partial": False,
+            "checks_performed": ["x"],
+        })
+        # Sibling: lead-on-behalf transcribed (e.g., agent's write blocked)
+        self._write_trace("design-critic-pricing", {
+            "agent": "design-critic",
+            "verdict": "pass",
+            "provenance": "lead-on-behalf",
+            "partial": True,
+            "source": "agent-returned-text",
+            "recovery_validated": True,
+            "checks_performed": ["x"],
+        })
+        out, _ = self._invoke("design-critic", "hard_gate_failure: false\n")
+        self.assertNotIn(
+            "ERR:", out,
+            f"aggregate_ok should accept lead-on-behalf sibling with recovery_validated, got {out}",
+        )
+
+    def test_lead_merge_with_lead_on_behalf_sibling_unvalidated_blocks(self):
+        self._write_trace("design-critic", {
+            "agent": "design-critic",
+            "verdict": "pass",
+            "provenance": "lead-merge",
+            "partial": True,
+            "contributing_spawn_indexes": [1, 2],
+            "checks_performed": ["merge"],
+        })
+        self._write_trace("design-critic-landing", {
+            "agent": "design-critic",
+            "verdict": "pass",
+            "provenance": "self",
+            "partial": False,
+            "checks_performed": ["x"],
+        })
+        self._write_trace("design-critic-pricing", {
+            "agent": "design-critic",
+            "verdict": "pass",
+            "provenance": "lead-on-behalf",
+            "partial": True,
+            "source": "agent-returned-text",
+            "recovery_validated": False,  # NOT validated
+            "checks_performed": ["x"],
+        })
+        out, _ = self._invoke("design-critic", "hard_gate_failure: false\n")
+        self.assertIn(
+            "ERR:", out,
+            "aggregate_ok must block when lead-on-behalf sibling is not recovery_validated",
+        )
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

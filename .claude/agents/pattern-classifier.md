@@ -59,6 +59,20 @@ For each fix-log entry, apply the **Decision Tree** in order:
 ### Decision Tree
 
 ```
+Q0 (AOC v1.1 — Lead-authored fix branch):
+   "Does the ledger row have provenance == 'lead'?"
+
+  YES → Lead-authored fix → SKIP with reason "lead-authored — routed to /observe".
+        Lead-fix entries reflect in-flight orchestrator corrections during a
+        verify or epilogue stage. They are evidence of TEMPLATE friction
+        (the agent-spawn loop didn't naturally cover this), not stack-level
+        gotchas. Observer evaluates these via the 3-condition test on the
+        symptom/fix pair when /observe runs at the epilogue. Do NOT save to
+        stack files (would polish friction into pattern noise) and do NOT
+        save to project memory (it's not project-specific).
+
+  NO (or provenance == 'agent' / 'lead-on-behalf' / absent) → continue → Q1
+
 Q1: "Would another developer, using this exact template with a
      DIFFERENT experiment.yaml, hit this same error on a fresh machine?"
 
@@ -125,13 +139,14 @@ type: project
 **How to apply:** <when this matters in future changes>
 ```
 
-**3. Skip** — one-time errors unlikely to recur.
+**3. Skip** — one-time errors unlikely to recur, OR lead-authored fixes (Q0).
 
 Indicators:
 - Missing comma, wrong variable name, copy-paste error
 - Import typo (wrong path, wrong export name) with no pattern
 - Build error from stale cache or incomplete file save
 - One-time migration step that won't repeat
+- **AOC v1.1 lead-authored fix** (`provenance == 'lead'`): the lead orchestrator applied this fix in-flight; route to observer for template-friction analysis instead of pattern-saving (see Q0)
 
 Do NOT skip an entry just because it seems simple. A "simple" missing import that occurs because a stack file's code template is wrong is universal, not a typo.
 

@@ -222,6 +222,124 @@ class TestTraceSchema(unittest.TestCase):
             "run_id": "verify-2026-04-21T00:00:00Z",
         })
 
+    # --- AOC v1.1 Provenance: lead-on-behalf ---
+
+    def test_lead_on_behalf_requires_source(self):
+        self._assert_blocks(
+            {
+                "agent": "design-critic",
+                "timestamp": "2026-04-21T00:00:00Z",
+                "verdict": "pass",
+                "provenance": "lead-on-behalf",
+                "partial": True,
+                "checks_performed": ["layer1"],
+                "run_id": "verify-2026-04-21T00:00:00Z",
+            },
+            "lead-on-behalf requires source",
+        )
+
+    def test_lead_on_behalf_requires_partial_true(self):
+        self._assert_blocks(
+            {
+                "agent": "design-critic",
+                "timestamp": "2026-04-21T00:00:00Z",
+                "verdict": "pass",
+                "provenance": "lead-on-behalf",
+                "partial": False,
+                "checks_performed": ["layer1"],
+                "source": "agent-returned-text",
+                "run_id": "verify-2026-04-21T00:00:00Z",
+            },
+            "requires partial:true",
+        )
+
+    def test_lead_on_behalf_valid(self):
+        self._assert_passes({
+            "agent": "design-critic",
+            "timestamp": "2026-04-21T00:00:00Z",
+            "verdict": "pass",
+            "provenance": "lead-on-behalf",
+            "partial": True,
+            "checks_performed": ["layer1", "layer2"],
+            "source": "agent-returned-text",
+            "recovery_validated": False,
+            "run_id": "verify-2026-04-21T00:00:00Z",
+        })
+
+    # --- AOC v1.1 Provenance: lead-synthesized ---
+
+    def test_lead_synthesized_requires_coverage_provider(self):
+        self._assert_blocks(
+            {
+                "agent": "design-critic",
+                "timestamp": "2026-04-21T00:00:00Z",
+                "verdict": "pass",
+                "provenance": "lead-synthesized",
+                "partial": True,
+                "checks_performed": [],
+                "no_fixes_claimed": True,
+                "run_id": "verify-2026-04-21T00:00:00Z",
+            },
+            "lead-synthesized requires coverage_provider",
+        )
+
+    def test_lead_synthesized_rejects_fixes(self):
+        self._assert_blocks(
+            {
+                "agent": "design-critic",
+                "timestamp": "2026-04-21T00:00:00Z",
+                "verdict": "pass",
+                "provenance": "lead-synthesized",
+                "partial": True,
+                "checks_performed": [],
+                "coverage_provider": "tests/flows.test.ts",
+                "fixes": [{"file": "x.ts", "symptom": "y", "fix": "z"}],
+                "run_id": "verify-2026-04-21T00:00:00Z",
+            },
+            "must not claim fixes",
+        )
+
+    def test_lead_synthesized_valid_empty_marker(self):
+        self._assert_passes({
+            "agent": "design-critic",
+            "timestamp": "2026-04-21T00:00:00Z",
+            "verdict": "pass",
+            "provenance": "lead-synthesized",
+            "partial": True,
+            "checks_performed": [],
+            "coverage_provider": "tests/flows.test.ts",
+            "no_fixes_claimed": True,
+            "run_id": "verify-2026-04-21T00:00:00Z",
+        })
+
+    # --- AOC v1.1 Provenance: lead-fix ---
+
+    def test_lead_fix_requires_lead_attestation(self):
+        self._assert_blocks(
+            {
+                "agent": "design-critic",
+                "timestamp": "2026-04-21T00:00:00Z",
+                "verdict": "pass",
+                "provenance": "lead-fix",
+                "partial": True,
+                "checks_performed": [],
+                "run_id": "verify-2026-04-21T00:00:00Z",
+            },
+            "lead-fix requires lead_attestation:true",
+        )
+
+    def test_lead_fix_valid(self):
+        self._assert_passes({
+            "agent": "design-critic",
+            "timestamp": "2026-04-21T00:00:00Z",
+            "verdict": "pass",
+            "provenance": "lead-fix",
+            "partial": True,
+            "checks_performed": [],
+            "lead_attestation": True,
+            "run_id": "verify-2026-04-21T00:00:00Z",
+        })
+
     # --- Unknown provenance ---
 
     def test_invalid_provenance_blocks(self):
@@ -235,6 +353,26 @@ class TestTraceSchema(unittest.TestCase):
             },
             "provenance must be one of",
         )
+
+    def test_provenance_error_message_lists_v11_values(self):
+        """The error message must enumerate all 7 AOC v1.1 provenance values."""
+        rc, err, _ = run_gate(
+            {
+                "agent": "design-critic",
+                "timestamp": "2026-04-21T00:00:00Z",
+                "verdict": "pass",
+                "provenance": "bogus",
+                "checks_performed": ["x"],
+            },
+            self._trace_path("design-critic"),
+        )
+        self.assertNotEqual(rc, 0)
+        for value in (
+            "self", "self-degraded", "recovery", "lead-merge",
+            "lead-on-behalf", "lead-synthesized", "lead-fix",
+        ):
+            self.assertIn(repr(value), err,
+                          f"v1.1 provenance value {value!r} missing from error message: {err}")
 
 
 def main():

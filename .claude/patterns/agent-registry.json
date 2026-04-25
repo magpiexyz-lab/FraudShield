@@ -1,7 +1,7 @@
 {
   "_description": "Canonical agent metadata — hooks read from here instead of hardcoding names",
-  "_schema_version": 3,
-  "_schema_version_notes": "v3 (AOC v1): adds verdict_agents_schema declaring per-agent allowed_verdicts/allowed_results/required_structured_fields. hard_gates add pass_clean/pass_after_fixes predicates alongside v2 predicates. See .claude/patterns/agent-output-contract.md. v2: adds non_fixer_agents, recovery_forbidden, lead_merge_aggregate_agents; hard_gates use structured predicates. See .claude/patterns/agent-trace-protocol.md.",
+  "_schema_version": 4,
+  "_schema_version_notes": "v4 (AOC v1.1): extends provenance enum to 7 values (lead-on-behalf, lead-synthesized, lead-fix); adds pass_lead_on_behalf / pass_lead_fix / pass_lead_synthesized predicates; validated_fallback now accepts lead-on-behalf with recovery_validated:true; aggregate_ok sibling acceptance includes new predicates. See agent-output-contract.md \"Versioning rules\" for the synchronized-update protocol. v3 (AOC v1): adds verdict_agents_schema declaring per-agent allowed_verdicts/allowed_results/required_structured_fields. hard_gates add pass_clean/pass_after_fixes predicates alongside v2 predicates. v2: adds non_fixer_agents, recovery_forbidden, lead_merge_aggregate_agents; hard_gates use structured predicates. See .claude/patterns/agent-trace-protocol.md.",
   "verdict_agents": [
     "observer", "spec-reviewer", "design-critic", "design-consistency-checker",
     "ux-journeyer", "security-fixer", "quality-fixer", "security-attacker", "security-defender",
@@ -197,9 +197,12 @@
     "pass_after_fixes": "AOC v1: verdict == pass AND result in {fixed, partial} AND provenance == self AND unresolved_critical == 0. Agent found issues and resolved all non-critical; criticals are zero.",
     "pass_self_pass_or_fail": "verdict in {pass,fail} AND provenance == self. For agents where a recorded fail is acceptable as long as it was self-reported.",
     "pass_self_strict": "verdict == pass AND provenance == self. For agents where anything but a clean self-reported pass requires investigation.",
-    "validated_fallback": "provenance in {recovery, self-degraded} AND recovery_validated == true. Acceptable replacement for pass_self_* when evidence confirms the verdict. AOC v1: also accepts #1042 fixture short-circuit self-degraded traces (degraded_reason='demo-mode-fixture-short-circuit').",
-    "aggregate_ok": "provenance == lead-merge AND contributing_spawn_indexes present AND each contributing sibling trace satisfies either pass_self_* or validated_fallback.",
-    "legacy_pass_no_recovery": "verdict == pass AND recovery != true. Backward-compat predicate for traces missing provenance (pre-migration). Drops after legacy migration completes."
+    "validated_fallback": "AOC v1.1: provenance in {recovery, self-degraded, lead-on-behalf} AND recovery_validated == true. Acceptable replacement for pass_self_* when independent evidence confirms the verdict. AOC v1: accepts #1042 fixture short-circuit self-degraded traces. AOC v1.1: lead-on-behalf permits the case where the agent succeeded but its trace write was blocked and the lead transcribed; same evidence discipline (build + e2e + diff-fix) applies.",
+    "aggregate_ok": "provenance == lead-merge AND contributing_spawn_indexes present AND each contributing sibling trace satisfies any pass-class predicate (pass_clean, pass_after_fixes, pass_self_pass_or_fail, validated_fallback, legacy_pass_no_recovery, or AOC v1.1 lead-* predicates). AOC v1.1 extension: per-page sibling that was lead-on-behalf-transcribed is acceptable.",
+    "legacy_pass_no_recovery": "verdict == pass AND recovery != true. Backward-compat predicate for traces missing provenance (pre-migration). Drops after legacy migration completes.",
+    "pass_lead_on_behalf": "AOC v1.1: verdict == pass AND provenance == lead-on-behalf AND recovery_validated == true. Distinct opt-in for agents whose hard_gate explicitly accepts lead-transcribed traces beyond what validated_fallback covers; usually unnecessary because validated_fallback already accepts lead-on-behalf.",
+    "pass_lead_fix": "AOC v1.1: verdict == pass AND provenance == lead-fix AND lead_attestation == true. Lead applied an in-flight fix without spawning a subagent; lead has direct knowledge so no recovery_validated required. Used by virtual lead-<skill> agents when registered in hard_gates.",
+    "pass_lead_synthesized": "AOC v1.1: verdict == pass AND provenance == lead-synthesized AND coverage_provider != null. Agent was never spawned; lead wrote a consistency marker pointing to the artifact that satisfies coverage. Used by virtual lead-<skill> agents when registered in hard_gates."
   },
   "hard_gates": [
     {

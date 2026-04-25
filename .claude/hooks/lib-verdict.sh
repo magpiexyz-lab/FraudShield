@@ -315,7 +315,11 @@ def pass_self_strict(t):
     return t.get('verdict') == 'pass' and t.get('provenance') == 'self'
 
 def validated_fallback(t):
-    return (t.get('provenance') in ('recovery', 'self-degraded')
+    # AOC v1.1: lead-on-behalf added — agent succeeded but write was blocked,
+    # lead transcribed the agent's reported result. Subject to the same
+    # recovery_validated discipline as recovery / self-degraded so downstream
+    # gates require independent evidence (build + e2e + diff-fix correlation).
+    return (t.get('provenance') in ('recovery', 'self-degraded', 'lead-on-behalf')
             and t.get('recovery_validated') is True)
 
 def legacy_pass_no_recovery(t):
@@ -324,13 +328,46 @@ def legacy_pass_no_recovery(t):
         return False
     return t.get('verdict') == 'pass' and not t.get('recovery')
 
+# --- AOC v1.1 lead-* predicates ---
+
+def pass_lead_on_behalf(t):
+    # Agent succeeded; lead transcribed because the agent's own trace write
+    # was blocked or it ran out of tool budget. Spawn-log entry must exist
+    # (enforced by state-completion-gate's universal provenance check) — that
+    # check is upstream of these predicates, so we trust spawn-log presence
+    # here. Source attestation already enforced by artifact-integrity-gate.
+    # recovery_validated is required for downstream confidence (the gate
+    # operator earns the "agent succeeded" trust by independent evidence).
+    return (t.get('verdict') == 'pass'
+            and t.get('provenance') == 'lead-on-behalf'
+            and t.get('recovery_validated') is True)
+
+def pass_lead_fix(t):
+    # Lead applied an in-flight fix during a verify stage. lead_attestation:true
+    # is the marker (enforced by artifact-integrity-gate). Lead has direct
+    # knowledge — confidence ~1.0, no recovery_validated required.
+    return (t.get('verdict') == 'pass'
+            and t.get('provenance') == 'lead-fix'
+            and t.get('lead_attestation') is True)
+
+def pass_lead_synthesized(t):
+    # Agent was never spawned (covered by another mechanism). Lead writes a
+    # consistency marker. coverage_provider must name the artifact (enforced
+    # by artifact-integrity-gate). no_fixes_claimed:true is the typical case.
+    return (t.get('verdict') == 'pass'
+            and t.get('provenance') == 'lead-synthesized'
+            and bool(t.get('coverage_provider')))
+
 def aggregate_ok(t, agent):
     if t.get('provenance') != 'lead-merge':
         return False
     csi = t.get('contributing_spawn_indexes')
     if not isinstance(csi, list) or len(csi) == 0:
         return False
-    # Each contributing sibling trace must satisfy pass_self_* or validated_fallback
+    # Each contributing sibling trace must satisfy a pass-class predicate.
+    # AOC v1.1: lead-* predicates are accepted as siblings (e.g., one
+    # design-critic page completed normally, another was lead-on-behalf
+    # transcribed because the agent's write was blocked).
     import glob
     sibs = glob.glob(os.path.join(traces_dir, agent + '-*.json'))
     if not sibs:
@@ -342,7 +379,16 @@ def aggregate_ok(t, agent):
         except Exception:
             ok = False
             break
-        if not (pass_clean(sib) or pass_after_fixes(sib) or pass_self_pass_or_fail(sib) or validated_fallback(sib) or legacy_pass_no_recovery(sib)):
+        if not (
+            pass_clean(sib)
+            or pass_after_fixes(sib)
+            or pass_self_pass_or_fail(sib)
+            or validated_fallback(sib)
+            or legacy_pass_no_recovery(sib)
+            or pass_lead_on_behalf(sib)
+            or pass_lead_fix(sib)
+            or pass_lead_synthesized(sib)
+        ):
             ok = False
             break
     return ok
@@ -355,6 +401,9 @@ predicate_fns = {
     'validated_fallback': lambda t: validated_fallback(t),
     'legacy_pass_no_recovery': lambda t: legacy_pass_no_recovery(t),
     'aggregate_ok': lambda t: aggregate_ok(t, agent),
+    'pass_lead_on_behalf': lambda t: pass_lead_on_behalf(t),
+    'pass_lead_fix': lambda t: pass_lead_fix(t),
+    'pass_lead_synthesized': lambda t: pass_lead_synthesized(t),
 }
 
 allow_predicates = gate.get('allow_predicates', [])

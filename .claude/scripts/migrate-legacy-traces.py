@@ -44,6 +44,14 @@ Provenance backfill (v2 contract, still applied):
   - `no_fixes_claimed` missing → True when fixes array empty or absent
   - `recovery_validated` missing → False (validate-recovery.sh can stamp later)
 
+AOC v1.1 lead-* provenance values (lead-on-behalf, lead-synthesized,
+lead-fix) are NOT backfilled here. Legacy traces predate AOC v1.1 and
+cannot have these values. New traces emit them via dedicated writers
+(write-agent-trace.sh for lead-on-behalf/lead-synthesized;
+write-fix-ledger.py --lead-fix for lead-fix). PR4 (resolve-reviewer
+first-class) extends LEGACY_VERDICT_MAP to handle the alias-stub case
+specifically.
+
 Usage:
     python3 .claude/scripts/migrate-legacy-traces.py [--dry-run]
 """
