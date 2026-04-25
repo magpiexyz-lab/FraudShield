@@ -23,6 +23,8 @@ SUITES=(
   ".claude/scripts/tests/test_aoc_coherence_rules.py"
   ".claude/scripts/tests/test_write_agent_trace.py"
   ".claude/scripts/tests/test_augment_trace.py"
+  ".claude/scripts/tests/test_lead_fix_path.py"
+  ".claude/scripts/tests/test_recovery_run_id_override.py"
 )
 
 FAIL=0

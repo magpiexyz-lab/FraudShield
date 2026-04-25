@@ -6,6 +6,8 @@
 # evidence; recovery reuses it — issue #963 fix removes the forgery surface).
 #
 # Usage: bash .claude/scripts/write-recovery-trace.sh <agent-name> --reason "<specific cause>"
+#        bash .claude/scripts/write-recovery-trace.sh <agent-name> --reason "..." \
+#             --run-id <RUN_ID>     # AOC v1.1 (PR3): cross-skill / post-completion recovery
 #
 # Preconditions (ALL enforced):
 #   1. --reason "<text>" is mandatory
@@ -13,14 +15,28 @@
 #      (TYPE C-1: high-risk fixer agents (security-fixer, quality-fixer)
 #      cannot be recovered externally; they must self-degrade instead)
 #   3. A spawn-log entry from skill-agent-gate exists for <agent> in the
-#      current active run_id (proves Agent tool was really invoked — LLM
+#      target run_id (proves Agent tool was really invoked — LLM
 #      cannot forge this via Bash because skill-agent-gate is a hook)
 #   4. Target trace file is absent OR a stub ({status:"started"} no verdict) —
 #      refuses to overwrite a potentially legitimate completed trace
+#
+# AOC v1.1 (#1064 D3): When --run-id <ID> is provided, the script:
+#   * Skips resolve_active_identity (allows recovery when source skill is
+#     completed, or from a different active skill via /observe etc.)
+#   * Validates the supplied ID exists in some .runs/*-context.json.run_id
+#   * Validates spawn-log entry for <agent> + supplied ID
+#   * Clause (d'): the supplied ID's context.skill MUST differ from the
+#     currently-active skill (if any). Blocks same-skill forgery while
+#     permitting cross-skill recovery (e.g., /observe recovering a
+#     completed /resolve agent's stub).
+#   * Double-empty case: when both supplied-context.skill AND active.skill
+#     are empty, FAIL-CLOSED (refuses recovery — this is a data-health
+#     scenario, not a normal recovery path).
 set -euo pipefail
 
 AGENT=""
 REASON=""
+OVERRIDE_RUN_ID=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -32,8 +48,16 @@ while [[ $# -gt 0 ]]; do
       REASON="${1#--reason=}"
       shift
       ;;
+    --run-id)
+      OVERRIDE_RUN_ID="${2:-}"
+      shift 2
+      ;;
+    --run-id=*)
+      OVERRIDE_RUN_ID="${1#--run-id=}"
+      shift
+      ;;
     --help|-h)
-      echo "Usage: $0 <agent-name> --reason \"<specific cause>\""
+      echo "Usage: $0 <agent-name> --reason \"<specific cause>\" [--run-id <RUN_ID>]"
       exit 0
       ;;
     -*)
@@ -70,18 +94,79 @@ TRACES_DIR="$PROJECT_DIR/.runs/agent-traces"
 REGISTRY="$PROJECT_DIR/.claude/patterns/agent-registry.json"
 TARGET_TRACE="$TRACES_DIR/$AGENT.json"
 
-# Resolve active identity (single source of truth for run_id)
+# Resolve active identity (single source of truth for run_id when no override)
 # shellcheck source=../hooks/lib.sh
 source "$PROJECT_DIR/.claude/hooks/lib.sh"
 ACTIVE_IDENTITY="$(resolve_active_identity)"
-if [[ -z "$ACTIVE_IDENTITY" ]]; then
-  echo "ERROR: write-recovery-trace.sh — no active skill context on current branch; cannot resolve run_id" >&2
-  exit 1
+ACTIVE_SKILL=""
+ACTIVE_RUN_ID=""
+if [[ -n "$ACTIVE_IDENTITY" ]]; then
+  IFS=$'\t' read -r ACTIVE_SKILL ACTIVE_RUN_ID _ _ <<< "$ACTIVE_IDENTITY"
 fi
-IFS=$'\t' read -r ACTIVE_SKILL ACTIVE_RUN_ID _ _ <<< "$ACTIVE_IDENTITY"
-if [[ -z "$ACTIVE_RUN_ID" ]]; then
-  echo "ERROR: write-recovery-trace.sh — active context has empty run_id" >&2
-  exit 1
+
+# AOC v1.1 (#1064 D3) cross-skill / post-completion recovery.
+# When --run-id is supplied, validate it and use it as the target run_id.
+# When --run-id is NOT supplied, require an active context (preserves
+# pre-v1.1 in-skill recovery semantics — HC11 active-run protection).
+TARGET_RUN_ID=""
+TARGET_SKILL=""
+if [[ -n "$OVERRIDE_RUN_ID" ]]; then
+  # Validate the supplied --run-id appears in some context.run_id field
+  # (proves the run actually existed at some point — defends against
+  # arbitrary-ID forgery, per #963 security intent).
+  TARGET_SKILL=$(OVERRIDE_RUN_ID_ENV="$OVERRIDE_RUN_ID" PROJECT_DIR_ENV="$PROJECT_DIR" python3 -c "
+import json, glob, os, sys
+target = os.environ['OVERRIDE_RUN_ID_ENV']
+proj = os.environ['PROJECT_DIR_ENV']
+matched_skill = None
+for f in glob.glob(os.path.join(proj, '.runs', '*-context.json')):
+    if os.path.basename(f) == 'epilogue-context.json':
+        continue
+    try:
+        d = json.load(open(f))
+    except:
+        continue
+    if d.get('run_id') == target:
+        matched_skill = d.get('skill', '') or ''
+        break
+if matched_skill is None:
+    sys.stderr.write('NO_MATCH\n')
+    sys.exit(1)
+print(matched_skill)
+" 2>/dev/null) || {
+    echo "ERROR: write-recovery-trace.sh — --run-id $OVERRIDE_RUN_ID not found in any .runs/*-context.json" >&2
+    echo "       Refusing to recover an unknown run (forgery defense, per #963)." >&2
+    exit 1
+  }
+  # Clause (d'): the target run's skill MUST differ from currently-active
+  # skill (when an active skill exists). Same-skill recovery is forgery
+  # surface (the active skill should self-handle its own crashes via the
+  # default no-override path).
+  # Double-empty case: both target.skill and active.skill empty → fail-closed.
+  if [[ -z "$TARGET_SKILL" && -z "$ACTIVE_SKILL" ]]; then
+    echo "ERROR: write-recovery-trace.sh — --run-id $OVERRIDE_RUN_ID context has empty skill AND no active skill on branch (double-empty case)." >&2
+    echo "       Fail-closed: refuses recovery in this configuration. If the legacy context is genuinely orphaned, repair it directly rather than via --run-id." >&2
+    exit 1
+  fi
+  if [[ -n "$ACTIVE_SKILL" && "$TARGET_SKILL" == "$ACTIVE_SKILL" ]]; then
+    echo "ERROR: write-recovery-trace.sh — --run-id $OVERRIDE_RUN_ID belongs to the currently-active skill ($ACTIVE_SKILL)." >&2
+    echo "       Same-skill recovery is forbidden via --run-id (use the no-override path instead)." >&2
+    exit 1
+  fi
+  TARGET_RUN_ID="$OVERRIDE_RUN_ID"
+else
+  # Default: require active identity (HC11 — preserves pre-v1.1 contract).
+  if [[ -z "$ACTIVE_IDENTITY" ]]; then
+    echo "ERROR: write-recovery-trace.sh — no active skill context on current branch; cannot resolve run_id" >&2
+    echo "       For cross-skill or post-completion recovery, supply --run-id <RUN_ID>." >&2
+    exit 1
+  fi
+  if [[ -z "$ACTIVE_RUN_ID" ]]; then
+    echo "ERROR: write-recovery-trace.sh — active context has empty run_id" >&2
+    exit 1
+  fi
+  TARGET_RUN_ID="$ACTIVE_RUN_ID"
+  TARGET_SKILL="$ACTIVE_SKILL"
 fi
 
 # Precondition 2: agent must not be in recovery_forbidden
@@ -100,8 +185,8 @@ if [[ "$FORBIDDEN" == "yes" ]]; then
   exit 1
 fi
 
-# Precondition 3: spawn-log entry from skill-agent-gate exists for this agent + run_id
-SPAWN_INFO=$(AGENT_ENV="$AGENT" RUN_ID_ENV="$ACTIVE_RUN_ID" SPAWN_LOG_ENV="$SPAWN_LOG" python3 -c "
+# Precondition 3: spawn-log entry from skill-agent-gate exists for this agent + target run_id
+SPAWN_INFO=$(AGENT_ENV="$AGENT" RUN_ID_ENV="$TARGET_RUN_ID" SPAWN_LOG_ENV="$SPAWN_LOG" python3 -c "
 import json, os
 agent = os.environ['AGENT_ENV']
 run_id = os.environ['RUN_ID_ENV']
@@ -125,7 +210,7 @@ else:
     print(json.dumps({'spawn_index': found.get('spawn_index'), 'head_sha': found.get('head_sha', '')}))
 " 2>/dev/null || echo "")
 if [[ -z "$SPAWN_INFO" ]]; then
-  echo "ERROR: write-recovery-trace.sh — no skill-agent-gate spawn-log entry for '$AGENT' in run_id=$ACTIVE_RUN_ID" >&2
+  echo "ERROR: write-recovery-trace.sh — no skill-agent-gate spawn-log entry for '$AGENT' in run_id=$TARGET_RUN_ID" >&2
   echo "       Recovery requires the Agent tool to have actually been invoked." >&2
   exit 1
 fi
@@ -159,8 +244,8 @@ TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 SPAWN_INDEX=$(echo "$SPAWN_INFO" | python3 -c "import json,sys; print(json.load(sys.stdin).get('spawn_index', ''))")
 HEAD_SHA=$(echo "$SPAWN_INFO" | python3 -c "import json,sys; print(json.load(sys.stdin).get('head_sha', ''))")
 
-AGENT_ENV="$AGENT" TS_ENV="$TS" REASON_ENV="$REASON" RUN_ID_ENV="$ACTIVE_RUN_ID" \
-SKILL_ENV="$ACTIVE_SKILL" SPAWN_SHA_ENV="$HEAD_SHA" SPAWN_IDX_ENV="$SPAWN_INDEX" \
+AGENT_ENV="$AGENT" TS_ENV="$TS" REASON_ENV="$REASON" RUN_ID_ENV="$TARGET_RUN_ID" \
+SKILL_ENV="$TARGET_SKILL" SPAWN_SHA_ENV="$HEAD_SHA" SPAWN_IDX_ENV="$SPAWN_INDEX" \
 TARGET_ENV="$TARGET_TRACE" python3 - << 'PYEOF'
 import json, os
 trace = {

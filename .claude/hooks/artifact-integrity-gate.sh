@@ -186,6 +186,26 @@ elif is_agent_trace:
                 if prov == "self" and d.get("partial") is True:
                     errors.append("provenance=self with partial:true is contradictory — use provenance=self-degraded instead")
 
+        # AOC v1.1 (PR3) granularity gate: every fixes[] entry that is a dict
+        # MUST have a non-empty file (or path) field. Defends against the
+        # #1048 class of summary entries (e.g., {"symptom":"fixed N issues"}
+        # with no file). Mirrors write-fix-ledger.py granularity gate at the
+        # trace-write layer (defense in depth — earlier rejection).
+        # Loose shape: fixes can be dicts or strings; only dicts are checked.
+        # Synthesized markers (provenance=lead-synthesized) are already
+        # rejected from claiming fixes above; this guard catches everyone else.
+        fixes_for_gate = d.get("fixes")
+        if isinstance(fixes_for_gate, list):
+            for i, fx in enumerate(fixes_for_gate):
+                if not isinstance(fx, dict):
+                    continue
+                file_val = fx.get("file") or fx.get("path")
+                if not file_val:
+                    errors.append(
+                        f"fixes[{i}] missing required file (AOC v1.1 granularity gate; "
+                        "summary entries without a specific file are not accepted in trace writes)"
+                    )
+
     else:
         # Unknown agent type — validate minimal fields only
         if "agent" not in d or not isinstance(d.get("agent"), str):

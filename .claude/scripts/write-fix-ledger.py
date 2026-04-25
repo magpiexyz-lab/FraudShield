@@ -4,31 +4,55 @@
 AOC v1 FLS v1 consolidator. One authoritative per-fix ledger replaces the
 prose-count drift between .runs/fix-log.md and agent trace fixes[].
 
+AOC v1.1 (PR3) extends the script with a `--lead-fix` mode that writes a
+single ledger row for an in-flight orchestrator fix. This closes #1064 D2
+(no sanctioned lead-orchestrator fix-entry path) and #1067 Case C
+(lead-fix has no per-row provenance).
+
 Contract:
   - One JSON object per line.
   - Fields per AOC v1 FLS v1: fix_id, agent, source_trace, run_id, file,
     symptom, fix, timestamp, batch_id, batch_size.
-  - fix_id = <source_trace_basename>:<fix_array_index> (stable identity).
-  - batch_id = source_trace_basename (groups fixes committed in the same
-    trace write session).
-  - batch_size = len(trace.fixes) at consolidation time.
+  - AOC v1.1: per-row `provenance` field (agent | lead | lead-on-behalf)
+    and optional `severity` (fix | warn).
+  - fix_id = <source_trace_basename>:<fix_array_index> for agent fixes.
+    fix_id = lead-<skill>:<run_id>:<monotonic-counter> for --lead-fix.
+  - batch_id = source_trace_basename for agent fixes; per-invocation
+    timestamp for --lead-fix (each invocation is its own batch).
+  - batch_size = len(trace.fixes) for agent fixes; 1 for --lead-fix.
   - Atomic write: tempfile + os.rename (POSIX-atomic).
-  - Idempotent: existing fix_ids are skipped.
+  - Idempotent: existing fix_ids are skipped (consolidate mode);
+    --lead-fix uses a monotonic counter persisted in
+    .runs/<skill>-context.json.lead_fix_counter so repeat invocations
+    each get a fresh fix_id.
 
-Invocation: run unconditionally at every state-completion-gate advance;
-idempotency makes repeat runs cheap.
+Granularity gate (AOC v1.1):
+  - Reject rows with empty/null `file` (defends against #1048-class
+    summary entries like "fixed N issues").
+  - Reject --lead-fix rows whose `symptom` matches a summary pattern
+    (^(fixed|all|N) ).
+
+Invocation:
+  Consolidate (default): run unconditionally at every state-completion-gate
+  advance; idempotency makes repeat runs cheap.
+  Lead-fix: invoke once per in-flight orchestrator correction.
 
 Usage:
     python3 .claude/scripts/write-fix-ledger.py [--run-id <id>]
     python3 .claude/scripts/write-fix-ledger.py --dry-run
+    python3 .claude/scripts/write-fix-ledger.py --lead-fix \\
+        --skill <skill> \\
+        --fix-json '{"file":"...","symptom":"...","fix":"..."}' \\
+        [--severity warn]
 
 Exit 0 if ledger successfully written or up-to-date; exit non-zero on
-fatal error (e.g., write failure).
+fatal error (e.g., write failure, granularity gate violation).
 """
 import argparse
 import glob
 import json
 import os
+import re
 import sys
 import tempfile
 from datetime import datetime, timezone
@@ -37,6 +61,20 @@ from datetime import datetime, timezone
 LEDGER_PATH = ".runs/fix-ledger.jsonl"
 TRACES_DIR = ".runs/agent-traces"
 AGENT_REGISTRY = ".claude/patterns/agent-registry.json"
+
+# AOC v1.1 granularity gate: reject summary-pattern symptoms (#1048 class).
+# Matches "fixed 19 issues", "all critical resolved", "N tests passed", etc.
+SUMMARY_SYMPTOM_PATTERNS = [
+    re.compile(r"^\s*fixed\s+\d+\b", re.IGNORECASE),
+    re.compile(r"^\s*all\s+\w+\s+(fixed|resolved|done|pass)", re.IGNORECASE),
+    re.compile(r"^\s*\d+\s+(issues?|fixes|tests|warnings|fails?)\b", re.IGNORECASE),
+]
+
+
+def _is_summary_symptom(symptom):
+    if not isinstance(symptom, str):
+        return False
+    return any(p.search(symptom) for p in SUMMARY_SYMPTOM_PATTERNS)
 
 
 def _load_lead_merge_aggregate_agents():
@@ -103,6 +141,18 @@ def _should_skip_as_submerged(trace_path, aggregate_agents, all_paths):
     return False
 
 
+def _row_provenance_from_trace(trace):
+    """AOC v1.1: derive per-row provenance from the trace's provenance field.
+    Mapping: trace `self`/`self-degraded`/`recovery`/`lead-merge` → row `agent`
+    (the fix is attributed to the source agent). Trace `lead-on-behalf` → row
+    `lead-on-behalf` (lead transcribed but agent did the work). lead-fix
+    rows are written via --lead-fix mode, not consolidate mode."""
+    trace_prov = trace.get("provenance")
+    if trace_prov == "lead-on-behalf":
+        return "lead-on-behalf"
+    return "agent"
+
+
 def collect_rows(existing_ids, caller_run_id):
     """Walk trace directory, extract fixes[] from each trace, yield FLS v1
     records for fix_ids not yet in the ledger.
@@ -110,10 +160,15 @@ def collect_rows(existing_ids, caller_run_id):
     Dedup: skip sub-traces of lead_merge_aggregate_agents when the aggregate
     trace is present. Prevents double-counting per-page fixes that are
     concatenated into the merged aggregate's fixes[] array.
+
+    Granularity gate (AOC v1.1): reject rows where `file` is null/empty.
+    Drops legacy summary entries like {"fixes": [{"symptom": "fixed N issues"}]}
+    that #1048 documented as the root cause of fix-count drift.
     """
     aggregate_agents = _load_lead_merge_aggregate_agents()
     all_paths = set(glob.glob(os.path.join(TRACES_DIR, "*.json")))
     new_rows = []
+    skipped_no_file = 0
     for trace_path in sorted(all_paths):
         if _should_skip_as_submerged(trace_path, aggregate_agents, all_paths):
             continue
@@ -130,6 +185,7 @@ def collect_rows(existing_ids, caller_run_id):
         ts = trace.get("timestamp") or datetime.now(timezone.utc).strftime(
             "%Y-%m-%dT%H:%M:%SZ"
         )
+        row_provenance = _row_provenance_from_trace(trace)
         batch_size = len(fixes)
         for idx, fix in enumerate(fixes):
             fix_id = f"{basename}:{idx}"
@@ -146,6 +202,15 @@ def collect_rows(existing_ids, caller_run_id):
                 fix_val = fix.get("fix") or fix.get("action") or fix.get("change")
             elif isinstance(fix, str):
                 fix_val = fix
+            # AOC v1.1 granularity gate: drop fixes without a file. Logs to
+            # stderr for diagnosis; the trace itself is preserved for audit.
+            if not file_val:
+                skipped_no_file += 1
+                sys.stderr.write(
+                    f"write-fix-ledger: skipping {fix_id} from {basename} "
+                    f"(no file field — granularity gate AOC v1.1)\n"
+                )
+                continue
             new_rows.append({
                 "fix_id": fix_id,
                 "agent": agent,
@@ -157,7 +222,13 @@ def collect_rows(existing_ids, caller_run_id):
                 "timestamp": ts,
                 "batch_id": basename,
                 "batch_size": batch_size,
+                "provenance": row_provenance,
             })
+    if skipped_no_file:
+        sys.stderr.write(
+            f"write-fix-ledger: granularity gate dropped {skipped_no_file} fix(es) "
+            "without a file field. See agent-output-contract.md FLS v1.\n"
+        )
     return new_rows
 
 
@@ -181,6 +252,116 @@ def atomic_write(rows, path=LEDGER_PATH):
         raise
 
 
+def _bump_lead_fix_counter(skill):
+    """AOC v1.1: monotonic counter for lead-fix rows, persisted in the
+    skill's context.json. Returns the new counter value (post-increment).
+    Falls back to a timestamp-based unique value if context.json is missing
+    or unwritable, so concurrent invocations still get distinct fix_ids.
+    """
+    ctx_path = f".runs/{skill}-context.json"
+    if not os.path.isfile(ctx_path):
+        # Fallback: timestamp-microsecond suffix avoids collisions even
+        # without persistent state. Returns a string.
+        return f"ts{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%f')}"
+    try:
+        with open(ctx_path) as f:
+            ctx = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return f"ts{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%f')}"
+    counter = ctx.get("lead_fix_counter")
+    if not isinstance(counter, int):
+        counter = 0
+    counter += 1
+    ctx["lead_fix_counter"] = counter
+    # Atomic write of context.json (mirrors lifecycle-finalize.sh pattern)
+    fd, tmp = tempfile.mkstemp(prefix=".ctx-", dir=os.path.dirname(ctx_path) or ".")
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(ctx, f, indent=2)
+        os.rename(tmp, ctx_path)
+    except Exception:
+        if os.path.isfile(tmp):
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+        # Don't fail the whole invocation just because counter persistence
+        # broke — fall back to timestamp suffix.
+        return f"ts{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%f')}"
+    return counter
+
+
+def _resolve_run_id_for_skill(skill):
+    """Look up run_id from .runs/<skill>-context.json. Empty string if missing."""
+    ctx_path = f".runs/{skill}-context.json"
+    if not os.path.isfile(ctx_path):
+        return ""
+    try:
+        with open(ctx_path) as f:
+            return json.load(f).get("run_id", "") or ""
+    except (OSError, json.JSONDecodeError):
+        return ""
+
+
+def _validate_lead_fix(fix, severity):
+    """AOC v1.1 granularity gate for --lead-fix.
+    Returns (file, symptom, fix_text) or raises ValueError on rejection."""
+    if not isinstance(fix, dict):
+        raise ValueError("--fix-json must decode to a JSON object")
+    file_val = fix.get("file") or fix.get("path")
+    symptom_val = fix.get("symptom") or fix.get("desc") or fix.get("description")
+    fix_val = fix.get("fix") or fix.get("action") or fix.get("change")
+    # Granularity gate: reject all-empty rows and summary-pattern symptoms.
+    if not file_val:
+        raise ValueError(
+            "granularity gate: --lead-fix requires a non-empty `file` "
+            "(AOC v1.1 — defends against #1048 summary entries)"
+        )
+    if severity != "warn" and _is_summary_symptom(symptom_val):
+        raise ValueError(
+            f"granularity gate: --lead-fix symptom {symptom_val!r} matches a "
+            "summary pattern (e.g., 'fixed N issues'). Provide one row per "
+            "specific fix, or pass --severity warn for batch warnings."
+        )
+    return file_val, symptom_val, fix_val
+
+
+def write_lead_fix_row(skill, fix_dict, severity, ledger_path=LEDGER_PATH):
+    """AOC v1.1 lead-fix path. Append one row to fix-ledger.jsonl with
+    provenance:"lead", agent:"lead-<skill>", source_trace:"lead", and a
+    monotonic fix_id. Returns the new row dict."""
+    file_val, symptom_val, fix_val = _validate_lead_fix(fix_dict, severity)
+    run_id = _resolve_run_id_for_skill(skill)
+    counter = _bump_lead_fix_counter(skill)
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    fix_id = f"lead-{skill}:{run_id or 'no-run'}:{counter}"
+    row = {
+        "fix_id": fix_id,
+        "agent": f"lead-{skill}",
+        "source_trace": "lead",
+        "run_id": run_id,
+        "file": file_val,
+        "symptom": symptom_val,
+        "fix": fix_val,
+        "timestamp": ts,
+        "batch_id": ts,        # per-invocation timestamp (each call is its own batch)
+        "batch_size": 1,
+        "provenance": "lead",
+    }
+    if severity == "warn":
+        row["severity"] = "warn"
+    # Append-only: load existing, add row, atomic-rewrite.
+    existing = load_existing_ledger(ledger_path)
+    existing_ids = {r.get("fix_id") for r in existing if isinstance(r, dict)}
+    if fix_id in existing_ids:
+        sys.stderr.write(
+            f"write-fix-ledger: lead-fix row {fix_id} already in ledger (skipping)\n"
+        )
+        return row
+    atomic_write(existing + [row], ledger_path)
+    return row
+
+
 def main():
     ap = argparse.ArgumentParser(
         description="Consolidate agent trace fixes[] into fix-ledger.jsonl"
@@ -189,8 +370,48 @@ def main():
                     help="Fallback run_id when source trace lacks one")
     ap.add_argument("--dry-run", action="store_true",
                     help="Show counts without writing")
+    # AOC v1.1 lead-fix mode (#1064 D2 / #1067 Case C)
+    ap.add_argument("--lead-fix", action="store_true",
+                    help="Write a single lead-orchestrator fix row (AOC v1.1). "
+                         "Required: --skill, --fix-json. Optional: --severity warn.")
+    ap.add_argument("--skill", default=None,
+                    help="Active skill name for --lead-fix (e.g., verify, change). "
+                         "Used to resolve run_id from .runs/<skill>-context.json and "
+                         "to attribute the row as agent='lead-<skill>'.")
+    ap.add_argument("--fix-json", default=None,
+                    help="JSON object for --lead-fix: {\"file\":\"...\","
+                         "\"symptom\":\"...\",\"fix\":\"...\"}. file is required "
+                         "(granularity gate).")
+    ap.add_argument("--severity", choices=("fix", "warn"), default="fix",
+                    help="--lead-fix only: 'fix' (default) or 'warn' (e.g., for "
+                         "STATE 5 e2e-config WARN migration).")
     args = ap.parse_args()
 
+    # ---- AOC v1.1 lead-fix mode ----
+    if args.lead_fix:
+        if not args.skill:
+            sys.stderr.write("ERROR: --lead-fix requires --skill <skill>\n")
+            return 2
+        if not args.fix_json:
+            sys.stderr.write("ERROR: --lead-fix requires --fix-json '<...>'\n")
+            return 2
+        try:
+            fix_dict = json.loads(args.fix_json)
+        except json.JSONDecodeError as exc:
+            sys.stderr.write(f"ERROR: --fix-json invalid JSON: {exc}\n")
+            return 2
+        try:
+            row = write_lead_fix_row(args.skill, fix_dict, args.severity)
+        except ValueError as exc:
+            sys.stderr.write(f"ERROR: {exc}\n")
+            return 2
+        print(
+            f"write-fix-ledger: lead-fix wrote {row['fix_id']} "
+            f"(agent={row['agent']}, file={row['file']}, severity={row.get('severity', 'fix')})"
+        )
+        return 0
+
+    # ---- Default consolidate mode ----
     if not os.path.isdir(TRACES_DIR):
         # Nothing to consolidate — create empty ledger for presence checks.
         if not args.dry_run:
