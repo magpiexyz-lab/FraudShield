@@ -205,6 +205,33 @@ class TestReviewState4Verify(unittest.TestCase):
         """VERIFY must fail if review-complete.json doesn't exist."""
         self.assertNotEqual(run_verify("review", "4", self.tmpdir), 0)
 
+    def test_malformed_artifact_missing_fields_fails(self):
+        """VERIFY must fail if final_errors / baseline_errors fields are absent.
+
+        Regression guard: previous VERIFY used d.get('final_errors',0) which
+        defaulted missing fields to 0, producing 0 <= 0 = True (false pass).
+        """
+        path = os.path.join(self.tmpdir, ".runs", "review-complete.json")
+        with open(path, "w") as f:
+            json.dump({"branch": "x"}, f)
+        self.assertNotEqual(run_verify("review", "4", self.tmpdir), 0)
+
+    def test_malformed_artifact_string_types_fails(self):
+        """VERIFY must fail if final_errors / baseline_errors are strings.
+
+        Regression guard: Python compares strings lexicographically, so
+        '10' <= '5' is True — a 5-error regression would slip through if
+        the upstream writer accidentally serialised numerics as strings.
+        """
+        path = os.path.join(self.tmpdir, ".runs", "review-complete.json")
+        with open(path, "w") as f:
+            json.dump({
+                "branch": "test",
+                "baseline_errors": "5",
+                "final_errors": "10",
+            }, f)
+        self.assertNotEqual(run_verify("review", "4", self.tmpdir), 0)
+
 
 class TestReviewState3Verify(unittest.TestCase):
     """STATE 3 VERIFY: only checks scripts/check-inventory.md exists and non-empty.

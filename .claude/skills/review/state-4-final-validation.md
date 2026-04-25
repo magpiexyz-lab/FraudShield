@@ -31,7 +31,7 @@
 
 **VERIFY:**
 ```bash
-test -f .runs/review-complete.json && python3 -c "import json; d=json.load(open('.runs/review-complete.json')); assert d.get('final_errors',0) <= d.get('baseline_errors',0), 'final_errors %d > baseline_errors %d (no regression allowed)' % (d.get('final_errors',0), d.get('baseline_errors',0))"
+test -f .runs/review-complete.json && python3 -c "import json; d=json.load(open('.runs/review-complete.json')); assert 'final_errors' in d and 'baseline_errors' in d, 'required fields missing'; assert isinstance(d['final_errors'], int) and isinstance(d['baseline_errors'], int), 'final_errors/baseline_errors must be int'; assert d['final_errors'] <= d['baseline_errors'], 'final_errors %d > baseline_errors %d (no regression allowed)' % (d['final_errors'], d['baseline_errors'])"
 ```
 
 > **VERIFY rationale:** ACTIONS allow `final_errors <= baseline_errors` (some
