@@ -127,6 +127,25 @@
       "description": "AOC v1 R3: every fix-count consumer must reference fix-ledger.jsonl as canonical source (closes #1048). Consumers that regex fix-log.md without also referencing the ledger are flagged as stale."
     },
     {
+      "id": "aoc-frontmatter-artifact-consistency",
+      "type": "frontmatter_artifact_consistency",
+      "severity": "block",
+      "schema_path": ".claude/patterns/verify-report-frontmatter.json",
+      "writer": ".claude/skills/verify/state-7a-write-report.md",
+      "consumers": [
+        ".claude/scripts/write-q-score.py",
+        ".claude/scripts/check-cross-artifact-consistency.py",
+        ".claude/scripts/lifecycle-finalize.sh",
+        ".claude/scripts/check-observation-artifacts.sh",
+        ".claude/scripts/validate-recovery.sh",
+        ".claude/hooks/verify-pr-gate.sh",
+        ".claude/patterns/state-registry.json",
+        ".claude/patterns/q-score.md",
+        ".claude/patterns/observation-phase.md"
+      ],
+      "description": "AOC v1.1 R4 (closes #1056): the verify-report.md frontmatter schema declares 13 fields. The writer (state-7a-write-report.md) must emit every declared field, and every consumer must reference only declared field names. Catches the producer-vs-consumer drift class for frontmatter — analogous to R3 for ledger. Also detects stale consumer field-name typos via edit-distance heuristic (e.g., build_attempt vs build_attempts, fix_log_count vs fix_log_entries)."
+    },
+    {
       "id": "internal-href-validity",
       "type": "internal_href_validity",
       "severity": "warn",

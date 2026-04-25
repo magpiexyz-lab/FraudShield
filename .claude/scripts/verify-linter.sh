@@ -63,6 +63,7 @@ STRICT_AOC_TYPES = {
     "verdict_vocab_consistency",
     "ledger_ownership",
     "consumer_coverage",
+    "frontmatter_artifact_consistency",
 }
 REPO_ROOT = os.environ.get("VL_REPO_ROOT", os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
@@ -1189,6 +1190,176 @@ def check_consumer_coverage(rule):
     return findings
 
 
+def check_frontmatter_artifact_consistency(rule):
+    """AOC v1.1 R4 (closes #1056): a verify-report.md frontmatter schema declares
+    fields and consumers; the writer at schema_path.writer must emit every
+    declared field, and every consumer must reference only declared field names
+    (not stale or invented field names).
+
+    Rule shape (template-coherence-rules.json):
+      {
+        "type": "frontmatter_artifact_consistency",
+        "schema_path": ".claude/patterns/verify-report-frontmatter.json",
+        "writer": ".claude/skills/verify/state-7a-write-report.md",
+        "consumers": [...]
+      }
+
+    Findings emitted:
+      - writer file does not contain a declared field
+      - consumer references a field-like token that is NOT in the declared set
+        (token = "<field>:" used as YAML/regex match; defends against stale
+        names like build_attempt or fix_log_count drifting from canonical).
+    """
+    findings = []
+    schema_path = rule.get("schema_path", "")
+    writer_path = rule.get("writer", "")
+    consumers = rule.get("consumers", [])
+
+    if not schema_path or not writer_path:
+        findings.append(_emit_finding(rule,
+            "rule missing required schema_path or writer fields"))
+        return findings
+
+    schema_full = os.path.join(REPO_ROOT, schema_path)
+    if not os.path.isfile(schema_full):
+        findings.append(_emit_finding(rule,
+            f"schema file not found: {schema_path}"))
+        return findings
+    try:
+        schema = json.load(open(schema_full))
+    except (OSError, json.JSONDecodeError) as e:
+        findings.append(_emit_finding(rule,
+            f"cannot parse schema {schema_path}: {e}"))
+        return findings
+
+    declared_fields = set(schema.get("fields", {}).keys())
+    if not declared_fields:
+        findings.append(_emit_finding(rule,
+            f"schema {schema_path} declares no fields"))
+        return findings
+
+    # Resolve writer fields override from schema (the schema can name a writer
+    # different from the rule, but if both are set they must agree).
+    schema_writer = schema.get("writer", writer_path)
+    if writer_path and schema_writer and writer_path != schema_writer:
+        findings.append(_emit_finding(rule,
+            f"writer mismatch: rule={writer_path!r} but schema={schema_writer!r}"))
+
+    # Check writer emits every declared field
+    writer_full = os.path.join(REPO_ROOT, writer_path)
+    if not os.path.isfile(writer_full):
+        findings.append(_emit_finding(rule,
+            f"writer file not found: {writer_path}"))
+    else:
+        try:
+            writer_content = open(writer_full).read()
+        except OSError as e:
+            findings.append(_emit_finding(rule,
+                f"cannot read writer {writer_path}: {e}"))
+            writer_content = ""
+        for field_name in sorted(declared_fields):
+            # Match either YAML key form (`field_name:`) or quoted JSON key
+            # form (`"field_name":`) — state-7a uses both.
+            yaml_form = field_name + ":"
+            if yaml_form not in writer_content:
+                findings.append(_emit_finding(rule,
+                    f"writer {writer_path} does not emit declared field {field_name!r}"))
+
+    # Check every consumer references ONLY declared fields. We look for any
+    # token of the form `<word>:` that lives inside a context where the word
+    # is plausibly a frontmatter field reference (preceded by `report.`,
+    # `frontmatter.`, `verify-report`, or single-quoted as a key like
+    # `'<word>'` near an open()-style read). Conservative: only flag tokens
+    # that match \b(<words-with-frontmatter-shape>):\b and are referenced in
+    # the consumer text.
+    #
+    # To avoid false positives from arbitrary `key: value` YAML in the
+    # consumer's own files, we specifically look for the field names known to
+    # appear in verify-report.md frontmatter (the declared set is finite and
+    # small) and verify each consumer references at least one of them. If a
+    # consumer uses a field-shaped name that resembles one of ours but is
+    # NOT in the set, that's the stale-consumer signal we emit.
+    declared_lc = {f.lower() for f in declared_fields}
+    # Only multi-word snake_case names participate in stale-name detection.
+    # This filters out single words like "score", "value", "type" that often
+    # appear as YAML keys in unrelated content (e.g., q-score.md prose).
+    # Multi-word frontmatter fields (build_attempts, hard_gate_failure, etc.)
+    # are the primary drift surface — typos like build_attempt vs build_attempts
+    # or fix_log_count vs fix_log_entries are exactly what this check catches.
+    declared_multiword = {f.lower() for f in declared_fields if "_" in f}
+    # Heuristic stale-name detection: scan for "<word_with_underscore>:" tokens
+    # in consumer files that are similar to (Levenshtein <=2) but not equal to a
+    # declared multi-word name. Single-word fields are checked only via the
+    # writer-side "must emit declared field" check.
+    import re as _re
+    word_colon_re = _re.compile(r'\b([a-z][a-z0-9]*_[a-z0-9][a-z0-9_]*)\s*:')
+
+    for consumer in consumers:
+        cpath = os.path.join(REPO_ROOT, consumer)
+        if not os.path.isfile(cpath):
+            findings.append(_emit_finding(rule,
+                f"consumer file not found: {consumer}"))
+            continue
+        try:
+            content = open(cpath).read()
+        except OSError as e:
+            findings.append(_emit_finding(rule,
+                f"cannot read consumer {consumer}: {e}"))
+            continue
+        # Confirm at least one declared field is referenced — otherwise the
+        # consumer isn't really consuming this frontmatter (perhaps a stale
+        # entry in the rule's consumers list).
+        any_declared = any(f in content for f in declared_fields)
+        if not any_declared:
+            findings.append(_emit_finding(rule,
+                f"consumer {consumer} does not reference any declared frontmatter field "
+                f"(check the consumers list for staleness)"))
+            continue
+        # Stale-name detection: find multi-word snake_case tokens in consumer
+        # files that aren't declared but resemble a declared multi-word field.
+        # Compare by edit distance — anything 1-2 edits away from a multi-word
+        # declared name is suspicious (likely typo or stale rename).
+        seen_unknown = set()
+        for m in word_colon_re.finditer(content):
+            token = m.group(1).lower()
+            if token in declared_lc:
+                continue
+            # Only compare against multi-word declared fields (single-word
+            # comparisons produce too many false positives for prose content).
+            for declared in declared_multiword:
+                if abs(len(token) - len(declared)) > 2:
+                    continue
+                if token[:3] == declared[:3] and (
+                    _edit_distance_le(token, declared, 2)
+                ):
+                    if token in seen_unknown:
+                        break
+                    seen_unknown.add(token)
+                    findings.append(_emit_finding(rule,
+                        f"consumer {consumer} references {token!r} which is not in "
+                        f"declared frontmatter fields (closest: {declared!r}; check for "
+                        "typos / stale field names)"))
+                    break
+
+    return findings
+
+
+def _edit_distance_le(a, b, max_dist):
+    """Return True if Levenshtein(a, b) <= max_dist. Cheap iterative DP."""
+    if abs(len(a) - len(b)) > max_dist:
+        return False
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        curr = [i] + [0] * len(b)
+        for j, cb in enumerate(b, 1):
+            cost = 0 if ca == cb else 1
+            curr[j] = min(curr[j-1] + 1, prev[j] + 1, prev[j-1] + cost)
+        prev = curr
+        if min(prev) > max_dist:
+            return False
+    return prev[-1] <= max_dist
+
+
 def check_internal_href_validity(rule):
     """#1069 cross-agent fixture contract: walk scaffold-emitted files for
     href="/<route>/<slug-or-id>" patterns; for each route matching a configured
@@ -1271,6 +1442,8 @@ if os.path.isfile(RULES_PATH):
                 cross_file.extend(check_ledger_ownership(rule))
             elif rtype == "consumer_coverage":
                 cross_file.extend(check_consumer_coverage(rule))
+            elif rtype == "frontmatter_artifact_consistency":
+                cross_file.extend(check_frontmatter_artifact_consistency(rule))
             elif rtype == "internal_href_validity":
                 cross_file.extend(check_internal_href_validity(rule))
             else:

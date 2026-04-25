@@ -26,6 +26,7 @@ SUITES=(
   ".claude/scripts/tests/test_lead_fix_path.py"
   ".claude/scripts/tests/test_recovery_run_id_override.py"
   ".claude/scripts/tests/test_resolve_reviewer.py"
+  ".claude/scripts/tests/test_frontmatter_coherence.py"
 )
 
 FAIL=0

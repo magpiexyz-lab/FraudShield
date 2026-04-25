@@ -34,13 +34,18 @@
   3. If config error (output contains `Cannot find module`, `config`, `Error`, or runner-specific errors like `browserType`/`chromium` for playwright):
      - These are infrastructure issues, not test failures.
      - Fix the config error (e.g., install missing browser for playwright, fix config path).
-     - Append fix to `.runs/fix-log.md`: `Fix (e2e-config): <file> — <description>`
+     - Record the fix via the AOC v1.1 lead-fix path:
+       ```bash
+       python3 .claude/scripts/write-fix-ledger.py --lead-fix --skill verify \
+         --fix-json '{"file":"<config-file>","symptom":"e2e-config error: <reason>","fix":"<what changed>"}'
+       ```
      - Re-run list command (max 2 config-fix attempts total).
   4. If test file error (syntax errors in test files, missing imports in tests): proceed to Phase B — these count against the test budget.
-  5. If config errors persist after 2 attempts, write `.runs/e2e-result.json` and log the failure:
+  5. If config errors persist after 2 attempts, write `.runs/e2e-result.json` and record a WARN-severity ledger entry:
      ```bash
      echo '{"passed":false,"attempts":0,"config_error":true,"reason":"test config broken after 2 fix attempts"}' > .runs/e2e-result.json
-     echo 'WARN (e2e-config): Test infrastructure broken after 2 fix attempts — tests were NOT executed. This will be flagged in the verify report.' >> .runs/fix-log.md
+     python3 .claude/scripts/write-fix-ledger.py --lead-fix --skill verify --severity warn \
+       --fix-json '{"file":"<config-file>","symptom":"e2e infrastructure broken after 2 fix attempts","fix":"flagged in verify report; tests NOT executed"}'
      ```
      **Important:** STATE 7 (WRITE_REPORT) must check for `config_error` in `e2e-result.json` and set `hard_gate_failure: true` when present — a passing report with untested code violates Rule 5 (Deploy-Ready).
      Skip to STATE 7a.
@@ -50,7 +55,11 @@
   For each failed attempt:
   1. Read test output, identify failures
   2. Fix issues (test code or app code)
-  3. Append each fix to `.runs/fix-log.md`: `Fix (e2e): <file> — <description>`
+  3. Record each fix via the AOC v1.1 lead-fix path:
+     ```bash
+     python3 .claude/scripts/write-fix-ledger.py --lead-fix --skill verify \
+       --fix-json '{"file":"<file>","symptom":"e2e test failure: <reason>","fix":"<what changed>"}'
+     ```
   4. Re-run tests using the run command determined above
 
   After tests pass (or 3-attempt budget exhausted), write `.runs/e2e-result.json`:
@@ -66,7 +75,12 @@
 
   1. Run: `npx vitest run`
   2. If vitest passes: update `.runs/e2e-result.json` to include `"spec_passed": true`
-  3. If vitest fails: apply the same 3-attempt fix budget as Phase B (independent budget). After each fix, append to `.runs/fix-log.md`: `Fix (spec): <file> — <description>`. Update `.runs/e2e-result.json` to include `"spec_passed": <true|false>, "spec_attempts": <N>`
+  3. If vitest fails: apply the same 3-attempt fix budget as Phase B (independent budget). After each fix, record via the AOC v1.1 lead-fix path:
+     ```bash
+     python3 .claude/scripts/write-fix-ledger.py --lead-fix --skill verify \
+       --fix-json '{"file":"<file>","symptom":"spec test failure: <reason>","fix":"<what changed>"}'
+     ```
+     Update `.runs/e2e-result.json` to include `"spec_passed": <true|false>, "spec_attempts": <N>`.
   4. If no `vitest.config.ts` exists, skip Phase C (vitest was not co-installed)
 
 **POSTCONDITIONS:** `e2e-result.json` exists.
