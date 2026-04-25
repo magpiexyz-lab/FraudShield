@@ -1,13 +1,14 @@
 {
   "_description": "Canonical agent metadata — hooks read from here instead of hardcoding names",
-  "_schema_version": 4,
-  "_schema_version_notes": "v4 (AOC v1.1): extends provenance enum to 7 values (lead-on-behalf, lead-synthesized, lead-fix); adds pass_lead_on_behalf / pass_lead_fix / pass_lead_synthesized predicates; validated_fallback now accepts lead-on-behalf with recovery_validated:true; aggregate_ok sibling acceptance includes new predicates. See agent-output-contract.md \"Versioning rules\" for the synchronized-update protocol. v3 (AOC v1): adds verdict_agents_schema declaring per-agent allowed_verdicts/allowed_results/required_structured_fields. hard_gates add pass_clean/pass_after_fixes predicates alongside v2 predicates. v2: adds non_fixer_agents, recovery_forbidden, lead_merge_aggregate_agents; hard_gates use structured predicates. See .claude/patterns/agent-trace-protocol.md.",
+  "_schema_version": 5,
+  "_schema_version_notes": "v5 (AOC v1.1 PR4): adds resolve-reviewer as a first-class verdict_agent (closes #1055 alias drift). v4 (AOC v1.1): extends provenance enum to 7 values (lead-on-behalf, lead-synthesized, lead-fix); adds pass_lead_on_behalf / pass_lead_fix / pass_lead_synthesized predicates; validated_fallback now accepts lead-on-behalf with recovery_validated:true; aggregate_ok sibling acceptance includes new predicates. See agent-output-contract.md \"Versioning rules\" for the synchronized-update protocol. v3 (AOC v1): adds verdict_agents_schema declaring per-agent allowed_verdicts/allowed_results/required_structured_fields. hard_gates add pass_clean/pass_after_fixes predicates alongside v2 predicates. v2: adds non_fixer_agents, recovery_forbidden, lead_merge_aggregate_agents; hard_gates use structured predicates. See .claude/patterns/agent-trace-protocol.md.",
   "verdict_agents": [
     "observer", "spec-reviewer", "design-critic", "design-consistency-checker",
     "ux-journeyer", "security-fixer", "quality-fixer", "security-attacker", "security-defender",
     "behavior-verifier", "performance-reporter", "accessibility-scanner",
     "build-info-collector", "pattern-classifier",
-    "resolve-challenger", "review-challenger", "solve-critic"
+    "resolve-challenger", "review-challenger", "solve-critic",
+    "resolve-reviewer"
   ],
   "_verdict_agents_schema_docs": "AOC v1 per-agent vocabulary. Each entry declares the allowed verdict values (AVS v1 core: pass/fail/blocked/unresolved) and allowed result qualifiers (clean/fixed/partial/degraded/skipped/none/count_summary/null). count_summary agents MUST emit required_structured_fields; gates key on those fields via additional_block_conditions in hard_gates[]. R1 coherence rule enforces that lib-verdict.sh predicates and agent .md files stay consistent with this table.",
   "verdict_agents_schema": {
@@ -87,6 +88,11 @@
       "allowed_verdicts": ["pass"],
       "allowed_results": ["count_summary"],
       "required_structured_fields": ["type_a_count", "type_b_count", "type_c_count"]
+    },
+    "resolve-reviewer": {
+      "allowed_verdicts": ["pass"],
+      "allowed_results": ["count_summary"],
+      "required_structured_fields": ["confirmed_count", "disputed_count"]
     }
   },
   "non_fixer_agents": [
@@ -95,6 +101,7 @@
     "design-critic", "design-consistency-checker",
     "ux-journeyer", "security-defender", "security-attacker",
     "solve-critic", "resolve-challenger", "review-challenger",
+    "resolve-reviewer",
     "build-info-collector", "pattern-classifier",
     "scaffold-externals"
   ],
@@ -259,6 +266,11 @@
         }
       ],
       "_note": "quality-fixer is in recovery_forbidden — see security-fixer note."
+    },
+    {
+      "agent": "resolve-reviewer",
+      "allow_predicates": ["pass_clean", "pass_self_pass_or_fail", "validated_fallback", "legacy_pass_no_recovery"],
+      "_note": "AOC v1.1 PR4 (closes #1055): resolve-reviewer is read-mostly (no fixes), so allow_predicates excludes pass_after_fixes (no fix application) and aggregate_ok (single-trace, no per-issue siblings). Sibling of resolve-challenger but with implementation-review vectors (completeness/correctness/consistency)."
     }
   ],
   "_legacy_hard_gates_v1": [

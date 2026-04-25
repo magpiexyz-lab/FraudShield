@@ -6,6 +6,8 @@ agents:
     after: ["5"]
   solve-critic:
     after: ["5"]
+  resolve-reviewer:
+    after: ["8"]
 observation:
   gate: commit-pr-gate
   artifacts: [observe-result.json]

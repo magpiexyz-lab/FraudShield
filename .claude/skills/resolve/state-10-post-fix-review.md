@@ -35,24 +35,32 @@ Build a per-issue summary for the reviewer prompt:
 
 ### Step 2 — Spawn review agent
 
-Spawn the `resolve-reviewer` Named agent (`subagent_type: resolve-challenger`).
+Spawn the `resolve-reviewer` Named agent (`subagent_type: resolve-reviewer`).
 
-Pass **implementation review mode** in the agent prompt — this is the same agent used in
-STATE 5d, but with different input (code diffs instead of design plans) and different
-review vectors:
+This is a first-class agent with implementation-review vectors. The agent is registered
+in `.claude/skills/resolve/skill.yaml` `agents:` block and in
+`agent-registry.json` (verdict_agents, verdict_agents_schema, non_fixer_agents,
+hard_gates with `allow_predicates: [pass_clean, pass_self_pass_or_fail,
+validated_fallback, legacy_pass_no_recovery]`).
 
-Include in the prompt:
+Prior to AOC v1.1 PR4 (closes #1055), this state used an alias pattern: spawned via
+`subagent_type: resolve-challenger` with a `init-trace.py resolve-reviewer` filename
+override. That alias drifted with `skill-agent-gate.sh` (spawn-log recorded
+`resolve-challenger`, trace written as `resolve-reviewer.json`) and `agent-trace-write-guard.sh`
+refused completion writes — leaving the trace as a stub. The first-class promotion
+eliminates that drift entirely.
+
+Include in the agent prompt:
 - The full `git diff main...HEAD` output
 - The per-issue summary from Step 1
 - Explicit instruction: "You are reviewing IMPLEMENTATION correctness, not design correctness.
   The design was already approved in STATE 5d. Your job is to verify the code changes
   faithfully and completely implement the approved design."
-- **Trace filename override**: "Use `resolve-reviewer` as the agent name (not `resolve-challenger`).
-  Your FIRST Bash command must be: `python3 scripts/init-trace.py resolve-reviewer --context .runs/resolve-context.json`.
-  Write the final trace to `.runs/agent-traces/resolve-reviewer.json`."
-  This prevents overwriting the STATE 5d adversarial challenge trace at `resolve-challenger.json`.
+- The resolve-reviewer agent's procedure file at `.claude/agents/resolve-reviewer.md`
+  contains the canonical First Action and trace-write template.
 
-**Three review vectors** (pass these as the agent's challenge protocol):
+**Three review vectors** (defined in the agent definition; pass them as part of the prompt
+context):
 
 1. **Completeness**: Does the diff fully address the root cause? Are there files in the
    blast radius that should have been modified but weren't? Is the fix applied to all
@@ -66,20 +74,26 @@ Include in the prompt:
    (modulo file-specific differences)? Are there inconsistencies between how different
    issues' fixes interact?
 
-The agent writes its trace to `.runs/agent-traces/resolve-reviewer.json` using the
-standard resolve-challenger trace format:
+The agent writes its trace to `.runs/agent-traces/resolve-reviewer.json` via the AOC v1.1
+centralized writer. Trace shape:
+
 ```json
 {
     "agent": "resolve-reviewer",
     "timestamp": "<ISO 8601>",
-    "verdict": "<summary>",
+    "verdict": "pass",
+    "result": "count_summary",
     "checks_performed": ["completeness", "correctness", "consistency"],
+    "confirmed_count": <N>,
+    "disputed_count": <M>,
     "verdicts": [
         {
             "issue": "<N>",
             "label": "<sound|needs-revision|challenged>",
+            "vector": "<completeness|correctness|consistency>",
             "gap": "<description of gap found, or empty>",
-            "evidence": "<file:line or diff excerpt>"
+            "evidence": "<file:line or diff excerpt>",
+            "revision": "<specific change or null>"
         }
     ],
     "run_id": "<from resolve-context.json>"
@@ -157,7 +171,7 @@ Wait for user approval before proceeding.
 <!-- VERIFY=registry: resolve-review.json artifact validation -->
 **VERIFY:**
 ```bash
-python3 -c "import json; d=json.load(open('.runs/resolve-review.json')); assert d.get('reviewed_count',0)>0, 'reviewed_count missing'; assert d.get('challenged_count',0)==0, 'unresolved challenged items'"
+python3 -c "import json,os; d=json.load(open('.runs/resolve-review.json')); assert d.get('reviewed_count',0)>0, 'reviewed_count missing'; assert d.get('challenged_count',0)==0, 'unresolved challenged items'; trace_path='.runs/agent-traces/resolve-reviewer.json'; assert os.path.exists(trace_path), 'resolve-reviewer trace missing (PR4 — closes #1055 alias drift)'; t=json.load(open(trace_path)); assert t.get('status') != 'started' and 'verdict' in t, 'resolve-reviewer trace is a stub (no verdict) — alias drift may have re-emerged'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
