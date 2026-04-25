@@ -229,6 +229,78 @@ fi
         out, _ = self._invoke("design-critic", "hard_gate_failure: false\n")
         self.assertIn("ERR:", out)
 
+    def test_lead_merge_allows_when_siblings_self_degraded_validated(self):
+        """#1042 Session C happy path: aggregate with one self+pass sibling
+        and one self-degraded+recovery_validated sibling (DEMO_MODE fixture
+        short-circuit) passes aggregate_ok. No lead override required."""
+        self._write_trace("design-critic", {
+            "agent": "design-critic",
+            "verdict": "unresolved",
+            "provenance": "lead-merge",
+            "partial": True,
+            "contributing_spawn_indexes": [0, 1],
+            "checks_performed": ["merge"],
+        })
+        self._write_trace("design-critic-landing", {
+            "agent": "design-critic",
+            "verdict": "pass",
+            "provenance": "self",
+            "partial": False,
+            "checks_performed": ["layer1_functional"],
+        })
+        self._write_trace("design-critic-quote-detail", {
+            "agent": "design-critic",
+            "verdict": "unresolved",
+            "provenance": "self-degraded",
+            "partial": True,
+            "degraded_reason": "demo-mode-fixture-short-circuit",
+            "recovery_validated": True,
+            "no_fixes_claimed": True,
+            "review_method": "source-only",
+            "source_review_verdict": "pass",
+            "checks_performed": ["source-review-structural"],
+        })
+        out, _ = self._invoke("design-critic", "hard_gate_failure: false\n")
+        self.assertNotIn(
+            "ERR:", out,
+            f"aggregate_ok should accept self+pass + self-degraded+validated siblings, got: {out}",
+        )
+
+    def test_lead_merge_blocks_when_degraded_sibling_unvalidated(self):
+        """#1042 negative: same happy-path topology but recovery_validated=false
+        on the self-degraded sibling — aggregate_ok must block."""
+        self._write_trace("design-critic", {
+            "agent": "design-critic",
+            "verdict": "unresolved",
+            "provenance": "lead-merge",
+            "partial": True,
+            "contributing_spawn_indexes": [0, 1],
+            "checks_performed": ["merge"],
+        })
+        self._write_trace("design-critic-landing", {
+            "agent": "design-critic",
+            "verdict": "pass",
+            "provenance": "self",
+            "partial": False,
+            "checks_performed": ["layer1_functional"],
+        })
+        self._write_trace("design-critic-quote-detail", {
+            "agent": "design-critic",
+            "verdict": "unresolved",
+            "provenance": "self-degraded",
+            "partial": True,
+            "degraded_reason": "demo-mode-fixture-short-circuit",
+            "recovery_validated": False,   # Stage-1c never ran or failed
+            "no_fixes_claimed": True,
+            "review_method": "source-only",
+            "checks_performed": ["source-review-structural"],
+        })
+        out, _ = self._invoke("design-critic", "hard_gate_failure: false\n")
+        self.assertIn(
+            "ERR:", out,
+            f"aggregate_ok must block when self-degraded sibling is unvalidated, got: {out}",
+        )
+
     # ---- legacy_pass_no_recovery ----
 
     def test_legacy_pass_no_recovery_allows_unmigrated(self):

@@ -23,6 +23,17 @@ Caller passes an options object to the inline detection script:
   the loud upstream middleware/env bug surfaces exactly once per run.
   When `auth_requirement="anonymous"` the diagnostic is suppressed regardless
   of `is_first_page` (anonymous journeys have no auth bypass to fail).
+- `route_pattern` (optional, default `= requested_route`): literal route
+  template from `.runs/design-page-set.json` (e.g. `"/quote/[id]"`). Callers
+  pass this separately from `requested_route` when they concretize dynamic
+  segments with synthetic IDs (nil UUID etc.) before navigation. Required
+  for the DEMO_MODE fixture short-circuit branch in Section 3 — a 404 on a
+  concrete URL must trace back to a bracket-containing pattern to qualify.
+- `demo_mode` (optional, default `false`): boolean indicating DEMO_MODE is
+  active (agent runs against `DEMO_MODE=true` dev server). Required `true`
+  for the DEMO_MODE fixture short-circuit branch; detected from
+  `process.env.DEMO_MODE === "true"` at the caller level so the detection
+  remains pure.
 - `expected_destination` (optional, default `= requested_route`): pathname the
   URL-mismatch gate compares against after settle. Per-page reviewers leave this
   unset (detection collapses to current semantics). Per-step reviewers pass
@@ -54,6 +65,12 @@ context through Step 4's screenshot loop and closes it at the end of Step
 Returned as a JS object. The caller merges it into the agent's trace.
 
 - `review_method`: `"rendered-authed" | "rendered-demo" | "source-only" | "unknown" | "prereq-unmet"`
+  - Session C / #1042: when the classifier lands in `"source-only"` because
+    of a DEMO_MODE fixture short-circuit on a dynamic route (HTTP 404 +
+    DEMO_MODE on + route_pattern has `[segment]`), it stamps
+    `fallback_reason="demo-mode-fixture-short-circuit"`. Downstream
+    design-critic emits a self-degraded trace (see `.claude/agents/design-critic.md`
+    "Rendered-Review Contract"); no new review_method enum value is added.
   - `"prereq-unmet"` is emitted **only** when `auth_requirement="required"` and
     the storageState precondition fails. It is a first-class skip verdict —
     callers must map it to their own skip-semantics (e.g., behavior-verifier
@@ -66,7 +83,15 @@ Returned as a JS object. The caller merges it into the agent's trace.
   - `auth_source`: `"storageState" | "demo-mode" | null`
   - `fallback_reason`: string | null (e.g. `"redirected-to-auth-route"`,
     `"demo-mode-bypass-failed"`, `"storageState-load-failed"`, `"auth.json-no-cookies"`,
-    `"auth.json-absent"` (only in `auth_requirement="required"` branch))
+    `"auth.json-absent"` (only in `auth_requirement="required"` branch),
+    `"demo-mode-fixture-short-circuit"` (Session C #1042: HTTP 404 on a
+    dynamic-segment route with DEMO_MODE on — see Section 3 DEMO_MODE branch))
+  - `final_status`: integer | null — HTTP status code of the initial
+    `page.goto()` response. Populated when the navigation completes; `null`
+    when `navError` fires or `prereq-unmet` short-circuits before goto.
+  - `route_pattern`: string | null — echo of the caller-supplied
+    `route_pattern` (literal `"/quote/[id]"` form). Present on every
+    classification for downstream auditing; `null` if caller omitted.
   - `content_density`: number | null (observational only; NOT gated in this change)
   - `expected_destination`: string | null — echo of the caller-supplied
     `expected_destination`. `null` when the caller relied on the default
@@ -161,8 +186,13 @@ may fire after networkidle settles. Wait 500 ms extra before reading the URL:
 ```javascript
 const page = await context.newPage();
 let navError = null;
+let finalStatus = null;  // HTTP status from initial goto response (#1042)
 try {
-  await page.goto(base_url + requested_route, { waitUntil: "networkidle", timeout: 15000 });
+  const response = await page.goto(
+    base_url + requested_route,
+    { waitUntil: "networkidle", timeout: 15000 },
+  );
+  finalStatus = response ? response.status() : null;
   await page.waitForTimeout(500);
 } catch (err) {
   navError = err.message;
@@ -187,6 +217,11 @@ const AUTH_PATHS = new Set(["/login", "/signup", "/auth/callback", "/auth/reset-
 
 const expected_destination = opts.expected_destination || null;
 const expectedPath = expected_destination || requested_route;
+const route_pattern = opts.route_pattern || requested_route;
+const demo_mode = opts.demo_mode === true;
+// Dynamic segment detection — any [bracket] substring in the route pattern
+// qualifies. Covers /[id], /[slug], /[...catchall], /[[...optional]].
+const hasDynamicSegment = /\[[^\]]+\]/.test(route_pattern);
 
 let reviewMethod;
 let finalUrl = null;
@@ -195,6 +230,20 @@ let finalPath = null;
 if (navError) {
   reviewMethod = "unknown";
   fallbackReason = `navigation-failed:${navError}`;
+} else if (finalStatus === 404 && demo_mode && hasDynamicSegment) {
+  // Session C / #1042: DEMO_MODE fixture short-circuit.
+  // Next.js notFound() preserves the URL but returns a 404 response, so the
+  // URL-mismatch gate below would misclassify this as `rendered-*`. We
+  // catch it here: any 404 on a dynamic-segment route under DEMO_MODE is
+  // deterministically attributable to the Supabase stub returning null
+  // from .single() for the synthetic fixture ID (see
+  // .claude/scripts/lib/derive_pages.py synthetic-ID table). A 404 on a
+  // STATIC route stays a genuine bug and falls through to the
+  // URL-mismatch branch.
+  reviewMethod = "source-only";
+  fallbackReason = "demo-mode-fixture-short-circuit";
+  finalUrl = page.url();
+  try { finalPath = new URL(finalUrl).pathname; } catch { finalPath = null; }
 } else {
   finalUrl = page.url();
   try { finalPath = new URL(finalUrl).pathname; } catch { finalPath = null; }
@@ -266,17 +315,21 @@ return {
     fallback_reason: fallbackReason,
     content_density: contentDensity,
     expected_destination,  // echo of opts.expected_destination, null when caller defaulted
+    final_status: finalStatus,  // HTTP status from initial goto (#1042)
+    route_pattern: opts.route_pattern || null,  // echo of literal route (#1042)
   },
   context,  // caller reuses this context for screenshot / axe scan
   page,
 };
 ```
 
-**Backward-compat invariant**: when the caller passes no `expected_destination`
-and no `auth_requirement` (both default), this return object must be
-byte-identical to the pre-change pattern **except** for the additional
-`expected_destination: null` field in `review_evidence`. No existing caller
-code that reads `review_method` / `review_evidence.*` breaks.
+**Backward-compat invariant**: when the caller passes no `expected_destination`,
+no `auth_requirement`, no `route_pattern`, and no `demo_mode` (all default),
+this return object is **field-compatible** with the pre-change pattern. The
+added `final_status` + `route_pattern` fields default to `null` when the
+caller omits them, and all existing callers that read `review_method` /
+`review_evidence.{requested_route,final_url,auth_source,fallback_reason,content_density,expected_destination}`
+continue to work unchanged.
 
 ## Section 6 — Callable units
 
@@ -339,6 +392,8 @@ async function renderReviewDetect(opts) {
         fallback_reason: fallbackReason,
         content_density: null,
         expected_destination: opts.expected_destination || null,
+        final_status: null,
+        route_pattern: opts.route_pattern || null,
       },
       context,
       page: null,

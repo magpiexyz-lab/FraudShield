@@ -104,4 +104,4 @@ python3 -c "import json,os; ctx=json.load(open('.runs/verify-context.json')); sc
 bash .claude/scripts/advance-state.sh verify 2
 ```
 
-**NEXT:** Read [state-3a-design-agents.md](state-3a-design-agents.md) to continue.
+**NEXT:** Read [state-2a-page-image-map.md](state-2a-page-image-map.md) to continue.

@@ -4,6 +4,42 @@
 
 **ACTIONS:**
 
+#### Stage 1c: Pre-merge validate-recovery for self-degraded traces (#1042)
+
+For every per-page design-critic trace with `provenance="self-degraded"`
+(typically DEMO_MODE fixture short-circuits written via
+`write-degraded-trace.py` — see `.claude/agents/design-critic.md` Verdict
+gate Sub-branch S1), stamp `recovery_validated=true` BEFORE the Stage-2
+merge. Without this stamp, the aggregate trace cannot satisfy the
+`aggregate_ok` hard-gate predicate (sibling check requires
+`validated_fallback`, which keys on `provenance ∈ {recovery, self-degraded}
+AND recovery_validated==true`).
+
+```bash
+for trace in .runs/agent-traces/design-critic-*.json; do
+  [[ "$trace" == *"-shared.json" ]] && continue
+  [[ "$trace" == *"/design-critic.json" ]] && continue
+  prov=$(python3 -c "import json,sys; print(json.load(open('$trace')).get('provenance',''))" 2>/dev/null || echo "")
+  if [[ "$prov" == "self-degraded" ]]; then
+    base=$(basename "$trace" .json)
+    bash .claude/scripts/validate-recovery.sh "$base" || {
+      echo "BLOCK: validate-recovery failed for $trace" >&2
+      exit 1
+    }
+  fi
+done
+```
+
+Idempotency: `validate-recovery.sh` is re-entrant — when
+`recovery_validated` is already `true`, it re-writes the same value with
+no side effects beyond a single JSON file touch. Safe to re-run on
+retries.
+
+**Prerequisite check:** this block depends on `.runs/build-result.json`
+having `exit_code=0` (state-1). If the build failed,
+`validate-recovery.sh` returns non-zero and the Stage-1c loop aborts —
+which is correct (you cannot clear `aggregate_ok` on a broken build).
+
 #### Stage 2: Consistency check + merge
 
 ##### Step A: Lead merges per-page traces
@@ -88,7 +124,17 @@ Sources: `lead-spec-reviewer`, `lead-a11y`, `lead-behavior-verifier`, `lead-perf
 
 **VERIFY:**
 ```bash
-python3 -c "import json,os,glob; ctx=json.load(open('.runs/verify-context.json')); needs_dc=ctx.get('scope') in ('full','visual') and ctx.get('archetype')=='web-app'; assert not needs_dc or os.path.exists('.runs/agent-traces/design-critic.json'), 'design-critic.json missing (scope=%s, archetype=%s)' % (ctx.get('scope'),ctx.get('archetype')); assert not needs_dc or os.path.exists('.runs/agent-traces/design-consistency-checker.json'), 'design-consistency-checker.json missing'; assert json.load(open('.runs/build-result.json'))['exit_code']==0; has_candidates=os.path.exists('.runs/image-candidates.json'); dc_traces=glob.glob('.runs/agent-traces/design-critic-*.json') if needs_dc and has_candidates else []; root_checked=any('candidates_tried' in json.load(open(t)) for t in dc_traces) if dc_traces else True; assert root_checked, 'image-candidates.json exists but no design-critic trace contains candidates_tried — Step 5.5 may have been skipped'"
+python3 -c "import json,os,glob; ctx=json.load(open('.runs/verify-context.json')); needs_dc=ctx.get('scope') in ('full','visual') and ctx.get('archetype')=='web-app'; assert not needs_dc or os.path.exists('.runs/agent-traces/design-critic.json'), 'design-critic.json missing (scope=%s, archetype=%s)' % (ctx.get('scope'),ctx.get('archetype')); assert not needs_dc or os.path.exists('.runs/agent-traces/design-consistency-checker.json'), 'design-consistency-checker.json missing'; assert json.load(open('.runs/build-result.json'))['exit_code']==0; assert (not needs_dc) or os.path.exists('.runs/design-page-set.json'), 'design-page-set.json missing (state-2a must run before state-3b)'; assert (not needs_dc) or os.path.exists('.runs/page-image-map.json'), 'page-image-map.json missing (state-2a must run before state-3b)'; ps=json.load(open('.runs/design-page-set.json')) if os.path.exists('.runs/design-page-set.json') else {'pages':[], 'not_applicable': not needs_dc}; pim=json.load(open('.runs/page-image-map.json')).get('pages',{}) if os.path.exists('.runs/page-image-map.json') else {}; has_candidates=os.path.exists('.runs/image-candidates.json'); landing_trace='.runs/agent-traces/design-critic-landing.json'; landing_d=json.load(open(landing_trace)) if os.path.exists(landing_trace) else None; assert (not needs_dc) or (not has_candidates) or (landing_d is None) or ('candidates_tried' in landing_d) or (landing_d.get('candidates_skipped_evidence',{}).get('reason')=='empty-boundary-fast-path'), 'landing critic trace missing candidates_tried despite image-candidates.json existing — Step 5.5 may have been skipped (use candidates_skipped_evidence.reason=empty-boundary-fast-path for fast-path skip per #1061)'; missing_iifl=[]
+for p in (ps.get('pages') or []):
+    name=p.get('name') if isinstance(p, dict) else None
+    if not name: continue
+    tp='.runs/agent-traces/design-critic-'+name+'.json'
+    if not os.path.exists(tp): continue
+    if pim.get(name,{}).get('has_images') and 'image_issues_for_landing' not in json.load(open(tp)):
+        missing_iifl.append(name)
+assert not missing_iifl, 'image-rendering pages missing image_issues_for_landing field (state-3a prompt + state-2a classifier drift): ' + str(missing_iifl)
+unstamped=[t for t in glob.glob('.runs/agent-traces/design-critic-*.json') if json.load(open(t)).get('provenance')=='self-degraded' and not json.load(open(t)).get('recovery_validated')]
+assert not unstamped, 'self-degraded design-critic traces missing recovery_validated stamp (Stage-1c validate-recovery skipped?): ' + str(unstamped)"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

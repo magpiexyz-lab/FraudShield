@@ -39,6 +39,17 @@ Args:
                        silently dropping them.
     --trace-filename   Optional. Defaults to "<agent-name>.json". Use for
                        per-page traces: "design-critic-landing.json".
+    --extra-json       Optional. JSON object merged into the written trace
+                       BEFORE the atomic write. Allows agents to attach
+                       domain-specific evidence (review_method, review_evidence,
+                       source_review_verdict, image_issues_for_landing, etc.)
+                       without re-opening the trace file (which would be
+                       blocked by agent-trace-write-guard.sh). Protected
+                       fields — agent, timestamp, status, verdict, provenance,
+                       partial, checks_performed, degraded_reason, run_id,
+                       skill, spawn_sha, spawn_index, fixes, no_fixes_claimed,
+                       recovery_validated, recovery — are NOT overridable;
+                       an attempt to override emits a WARN and drops the key.
 
 Writes: .runs/agent-traces/<trace-filename>
 Schema: per agent-trace-protocol.md with provenance=self-degraded, partial=true.
@@ -65,6 +76,9 @@ def main() -> int:
                         help="JSON object of agent-specific structured fields to preserve (optional)")
     parser.add_argument("--trace-filename", default="",
                         help="override output filename")
+    parser.add_argument("--extra-json", default="",
+                        help="JSON object merged into the written trace; "
+                             "protected fields cannot be overridden")
     args = parser.parse_args()
 
     # Resolve active identity via the shell helper (single source of truth).

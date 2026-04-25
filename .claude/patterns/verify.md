@@ -50,6 +50,7 @@ Read each STATE's file **only when transitioning to that state**. Do NOT read ah
 | 0 | READ_CONTEXT | [state-0-read-context.md](verify/state-0-read-context.md) |
 | 1 | BUILD_LINT_LOOP | [state-1-build-lint-loop.md](verify/state-1-build-lint-loop.md) |
 | 2 | PHASE1_PARALLEL | [state-2-phase1-parallel.md](verify/state-2-phase1-parallel.md) |
+| 2a | PAGE_IMAGE_MAP | [state-2a-page-image-map.md](verify/state-2a-page-image-map.md) |
 | 3a | DESIGN_AGENTS | [state-3a-design-agents.md](verify/state-3a-design-agents.md) |
 | 3b | QUALITY_GATE | [state-3b-quality-gate.md](verify/state-3b-quality-gate.md) |
 | 3c | UX_MERGE | [state-3c-ux-merge.md](verify/state-3c-ux-merge.md) |

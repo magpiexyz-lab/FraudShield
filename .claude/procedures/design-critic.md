@@ -24,6 +24,17 @@ Poll the base URL (either provided or `http://localhost:3099`) until it responds
 
 ### 3.5. Classify Review Method (per page, before screenshot)
 
+> **Skip path (#1061 — empty-boundary fast-path):** When the state-3a spawn
+> prompt directs you to execute the **empty-boundary fast path** (FILE_BOUNDARY
+> empty AND no CLAIMED_SHARED block AND no library/component imports from
+> the PR boundary), DO NOT run this Step 3.5 — there is no render to classify
+> and no review work to perform on this page. Instead, directly write the
+> fast-path trace via `write-degraded-trace.py` per the state-3a spawn-prompt
+> "Empty-boundary fast path" bullet, then move to the next page (or return
+> if this was your only page). The trace will carry
+> `review_method="boundary-skip"`, `provenance="self-degraded"`,
+> `degraded_reason="empty-boundary-fast-path"`, `verdict="pass"`.
+
 For each route, before screenshotting, run the detection procedure in
 `.claude/patterns/render-review-detection.md`. The pattern loads the optional
 Playwright storageState (if `e2e/.auth.json` is a valid Supabase session),
@@ -31,7 +42,14 @@ navigates to the route with a post-networkidle 500 ms settle wait, classifies
 the render, and returns `{review_method, review_evidence, context, page}`.
 
 Inputs to pass:
-- `requested_route`: the route you were told to review
+- `requested_route`: the route you were told to review (pre-concretized
+  `test_url` from `.runs/design-page-set.json` when the page has dynamic
+  segments — see state-2a)
+- `route_pattern`: the literal route template from `.runs/design-page-set.json`
+  (e.g. `"/quote/[id]"`). Required for the DEMO_MODE fixture short-circuit
+  branch (#1042).
+- `demo_mode`: `true` when the dev server is running under `DEMO_MODE=true`.
+  Required `true` for the DEMO_MODE fixture short-circuit branch.
 - `base_url`: the provided `base_url` or `http://localhost:3099`
 - `is_first_page`: `true` only for the first auth-gated route in your list
   (so `demo-mode-bypass-failed` fires exactly once when the upstream bug is
@@ -43,13 +61,35 @@ Merge the returned `{review_method, review_evidence}` into this page's
 **Branch on the classification:**
 
 - If `review_method ∈ {"source-only", "unknown"}`:
-  - Still take the desktop + mobile screenshots for evidence (Step 4 viewport
-    loop using the `page` returned by the pattern), so the trace has a visual
-    record of what was actually rendered.
-  - Skip Layer 1 / Layer 2 / Layer 3 reviews entirely for this page — the
-    target source was never rendered, any "fix" would be blind.
-  - Set `verdict = "unresolved"` and `caveat = review_evidence.fallback_reason`
-    in the trace. Do NOT apply fixes. Move to the next page.
+  - **Sub-branch S1 — DEMO_MODE fixture short-circuit (#1042).**
+    When `review_evidence.fallback_reason == "demo-mode-fixture-short-circuit"`
+    (HTTP 404 + DEMO_MODE + dynamic-segment route — e.g. `/quote/[id]`,
+    `/project/[id]`):
+    - Do NOT screenshot — the page didn't render.
+    - Perform a source-only structural review via Read: the page's .tsx
+      source plus one-level imports into `src/components/**` / `src/lib/**`.
+      Score on structural criteria only (layout, typography hierarchy,
+      color-system usage, Tailwind theme tokens, responsive-grid patterns,
+      accessibility markup).
+    - Capture `source_review_verdict ∈ {"pass","fixed"}` and
+      `source_review_score: int` as nested evidence fields.
+    - Write the trace via the self-degraded helper (see
+      `.claude/agents/design-critic.md` §Verdict-gate Sub-branch S1 for
+      the exact invocation). DO NOT open the trace file directly —
+      `agent-trace-write-guard.sh` will block. The helper populates
+      `provenance="self-degraded"`, `partial=true`, `verdict="unresolved"`,
+      `result=null`, `degraded_reason="demo-mode-fixture-short-circuit"`.
+      State-3b Stage-1c will stamp `recovery_validated=true` pre-merge.
+    - Move to the next page.
+  - **Sub-branch S2 — all other source-only / unknown cases** (auth
+    redirect, `demo-mode-bypass-failed`, nav failure):
+    - Still take the desktop + mobile screenshots for evidence (Step 4
+      viewport loop using the `page` returned by the pattern), so the
+      trace has a visual record of what was actually rendered.
+    - Skip Layer 1 / Layer 2 / Layer 3 reviews entirely for this page —
+      the target source was never rendered, any "fix" would be blind.
+    - Set `verdict = "unresolved"` and `caveat = review_evidence.fallback_reason`
+      in the trace. Do NOT apply fixes. Move to the next page.
 
 - If `review_method ∈ {"rendered-authed", "rendered-demo"}`:
   - Continue to Step 4 with the `context` and `page` from the pattern — do

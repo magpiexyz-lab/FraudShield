@@ -27,6 +27,10 @@ SUITES=(
   ".claude/scripts/tests/test_recovery_run_id_override.py"
   ".claude/scripts/tests/test_resolve_reviewer.py"
   ".claude/scripts/tests/test_frontmatter_coherence.py"
+  ".claude/scripts/tests/test_derive_page_images.py"
+  ".claude/scripts/tests/test_render_review_demo_404.py"
+  ".claude/scripts/tests/test_merge_provenance_branch.py"
+  ".claude/scripts/tests/test_state_registry_7b.py"
 )
 
 FAIL=0

@@ -1,0 +1,127 @@
+# STATE 2a: PAGE_IMAGE_MAP
+
+**PRECONDITIONS:** STATE 2 complete (Phase 1 parallel agents). Context
+`archetype` and `scope` known.
+
+**ACTIONS:**
+
+Produce two operational artifacts that state-3a Stage-1 consumes to spawn
+per-page design-critic agents with the right per-page metadata. This state
+is the canonical source of truth for (a) the design-critic page set and
+(b) per-page static image-render classification (#1042).
+
+1. **Skip gate** — run only when the design-critic will be spawned:
+   - `archetype == "web-app"` AND `scope ∈ {"full", "visual"}`.
+   - Otherwise, write empty `not_applicable:true` artifacts for downstream
+     idempotency and advance the state.
+
+2. **Write `.runs/design-page-set.json`** — canonical page list for Stage-1
+   spawns. Each entry carries:
+   - `name` — page slug (matches trace filename `design-critic-<name>.json`)
+   - `route_pattern` — literal route from filesystem (e.g., `/quote/[id]`)
+   - `test_url` — concrete URL safe for `page.goto()` (dynamic segments
+     substituted with synthetic IDs: `[id]`→nil UUID, `[slug]`→`demo-fixture-slug`, etc.)
+   - `source_files` — enumerated `.tsx`/`.jsx` files under the page folder
+   - `dynamic_segments` — list of captured segment names (empty for static routes)
+
+   Excludes `landing` (state-3b treats it separately — dedicated candidate
+   ownership).
+
+3. **Write `.runs/page-image-map.json`** — static image-render classifier
+   output. Two-layer analysis:
+   - **Layer 1** grep each source file for `<Image`, `next/image`,
+     `<img`, `public/images/`, `empty-state`.
+   - **Layer 2** follow one-level imports resolving to `src/components/**`
+     or `src/lib/**`; grep the imported file for the same patterns.
+
+   Landing is force-classified `has_images=true, detected_via="landing-hardcoded"`
+   (owns global slots: hero/features/logo/og-photo/empty-state).
+
+4. **Python helper** — both artifacts come from
+   `.claude/scripts/lib/derive_pages.py`:
+
+   ```bash
+   python3 - <<'PYEOF'
+   import datetime, json, os, sys
+   # Resolve repo root via CLAUDE_PROJECT_DIR (authoritative under hooks)
+   # with a getcwd() fallback for direct invocation.
+   PROJECT_DIR = os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
+   sys.path.insert(0, os.path.join(PROJECT_DIR, ".claude", "scripts"))
+   os.chdir(PROJECT_DIR)
+   import yaml
+   from lib.derive_pages import (
+       derive_page_images,
+       derive_page_set_for_design_critic,
+   )
+   ctx = json.load(open(".runs/verify-context.json"))
+   needs_dc = (
+       ctx.get("archetype") == "web-app"
+       and ctx.get("scope") in ("full", "visual")
+   )
+   now = datetime.datetime.now(datetime.timezone.utc).strftime(
+       "%Y-%m-%dT%H:%M:%SZ"
+   )
+   if not needs_dc:
+       json.dump(
+           {"generated_at": now, "not_applicable": True, "pages": []},
+           open(".runs/design-page-set.json", "w"), indent=2,
+       )
+       json.dump(
+           {
+               "generated_at": now,
+               "source_page_set": ".runs/design-page-set.json",
+               "not_applicable": True,
+               "pages": {},
+           },
+           open(".runs/page-image-map.json", "w"), indent=2,
+       )
+       print("design-page-set.json + page-image-map.json: not_applicable")
+       sys.exit(0)
+   exp = yaml.safe_load(open("experiment/experiment.yaml"))
+   pages = derive_page_set_for_design_critic(exp, ".")
+   image_map = derive_page_images(pages, ".", include_landing=True)
+   with open(".runs/design-page-set.json", "w") as f:
+       json.dump(
+           {"generated_at": now, "pages": pages}, f, indent=2
+       )
+   with open(".runs/page-image-map.json", "w") as f:
+       json.dump(
+           {
+               "generated_at": now,
+               "source_page_set": ".runs/design-page-set.json",
+               "pages": image_map,
+           },
+           f,
+           indent=2,
+       )
+   n_images = sum(1 for v in image_map.values() if v["has_images"])
+   print(
+       f"design-page-set.json: {len(pages)} pages (landing separate); "
+       f"page-image-map.json: {n_images}/{len(image_map)} classified has_images=true"
+   )
+   PYEOF
+   ```
+
+5. **Downstream contract**: state-3a Stage-1 MUST read
+   `design-page-set.json` for the spawn list (no filesystem re-scan) and
+   MUST pass each page's `has_images` into its spawn prompt so the agent
+   knows whether `image_issues_for_landing` emission is mandatory.
+
+**POSTCONDITIONS:**
+
+- `.runs/design-page-set.json` exists with valid schema (`generated_at`,
+  `pages` array or `not_applicable:true`).
+- `.runs/page-image-map.json` exists with valid schema (`generated_at`,
+  `source_page_set`, `pages` map or `not_applicable:true`).
+
+**VERIFY:**
+```bash
+python3 -c "import json; ps=json.load(open('.runs/design-page-set.json')); pim=json.load(open('.runs/page-image-map.json')); assert 'pages' in ps and 'pages' in pim, 'design-page-set.json / page-image-map.json malformed'; assert ps.get('not_applicable') or isinstance(ps['pages'], list), 'pages field must be a list'; assert pim.get('not_applicable') or pim.get('source_page_set')=='.runs/design-page-set.json', 'page-image-map.json missing source_page_set linkage'"
+```
+
+**STATE TRACKING:** After postconditions pass, mark this state complete:
+```bash
+bash .claude/scripts/advance-state.sh verify 2a
+```
+
+**NEXT:** Read [state-3a-design-agents.md](state-3a-design-agents.md) to continue.

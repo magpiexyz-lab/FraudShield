@@ -106,12 +106,25 @@ def classify_py(
     expected_destination: str | None = None,
     nav_error: str | None = None,
     fallback_reason_in: str | None = None,
+    final_status: int | None = None,
+    route_pattern: str | None = None,
+    demo_mode: bool = False,
 ):
     """Mirror Section 3 classification. Returns (review_method, review_evidence)
     matching the JS return shape.
+
+    #1042 adds three optional inputs:
+      - final_status: HTTP status from initial goto response (int | None)
+      - route_pattern: literal route template (e.g. "/quote/[id]")
+      - demo_mode: whether DEMO_MODE=true is active
+    When all three DEMO_MODE-short-circuit conditions hold (status==404,
+    demo_mode, route_pattern has [segment]) and no nav_error, the classifier
+    returns source-only with fallback_reason="demo-mode-fixture-short-circuit".
     """
+    import re as _re
     expected_path = expected_destination or requested_route
     fallback_reason = fallback_reason_in
+    pattern_for_audit = route_pattern
 
     if nav_error:
         return (
@@ -123,6 +136,31 @@ def classify_py(
                 "fallback_reason": f"navigation-failed:{nav_error}",
                 "content_density": None,
                 "expected_destination": expected_destination,
+                "final_status": final_status,
+                "route_pattern": pattern_for_audit,
+            },
+        )
+
+    # #1042 DEMO_MODE fixture short-circuit branch — fires before URL-mismatch
+    has_dynamic_segment = bool(
+        route_pattern and _re.search(r"\[[^\]]+\]", route_pattern)
+    )
+    if final_status == 404 and demo_mode and has_dynamic_segment:
+        try:
+            final_path = urlparse(final_url).path if final_url else None
+        except Exception:
+            final_path = None
+        return (
+            "source-only",
+            {
+                "requested_route": requested_route,
+                "final_url": final_url,
+                "auth_source": auth_source,
+                "fallback_reason": "demo-mode-fixture-short-circuit",
+                "content_density": None,
+                "expected_destination": expected_destination,
+                "final_status": final_status,
+                "route_pattern": pattern_for_audit,
             },
         )
 
@@ -154,6 +192,8 @@ def classify_py(
             "fallback_reason": fallback_reason,
             "content_density": None,
             "expected_destination": expected_destination,
+            "final_status": final_status,
+            "route_pattern": pattern_for_audit,
         },
     )
 

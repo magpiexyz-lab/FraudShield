@@ -1,6 +1,6 @@
 # STATE 3a: DESIGN_AGENTS
 
-**PRECONDITIONS:** All Phase 1 traces exist (hook-enforced by `skill-agent-gate.sh`).
+**PRECONDITIONS:** All Phase 1 traces exist (hook-enforced by `skill-agent-gate.sh`) AND state-2a artifacts exist when this is a web-app + full/visual scope run (`.runs/design-page-set.json` and `.runs/page-image-map.json`). The Stage-1 spawn list and per-page `has_images` classifications come from those files — Stage-1 does NOT re-scan the filesystem.
 
 **ACTIONS:**
 
@@ -55,19 +55,24 @@ full visual review instead of fast-pathing with an empty boundary.
 
 #### Stage 1: Per-page review (parallel)
 
-Discover **all** pages — not just golden_path pages:
+**Page set is canonical in `.runs/design-page-set.json`** (produced by
+state-2a). Do NOT re-scan the filesystem here; any discrepancy between
+state-2a's scan and a re-scan at Stage-1 would silently drift the per-page
+VERIFY in state-3b. Read the file and iterate its `pages` array.
 
-1. Scan the filesystem for all page files:
-   ```bash
-   find src/app -name 'page.tsx' -o -name 'page.jsx' -o -name 'page.ts' -o -name 'page.js' 2>/dev/null | grep -v '/api/' | sort
-   ```
-2. Read `golden_path` pages from experiment.yaml for route metadata.
-3. Merge: for each discovered page file, derive the route from its path (e.g., `src/app/settings/page.tsx` → `/settings`). Golden_path entries provide the canonical page name; filesystem-only pages use the directory name as the page name.
-4. Deduplicate by route. The final list is the **union** of golden_path pages and filesystem pages.
+```bash
+python3 -c "import json; print(json.dumps(json.load(open('.runs/design-page-set.json')).get('pages',[]), indent=2))"
+```
+
+Also read `.runs/page-image-map.json` to look up each page's `has_images`
+classification (from state-2a's two-layer static classifier) — this flag
+must be forwarded into the per-page spawn prompt so agents know whether
+`image_issues_for_landing` emission is mandatory (#1042).
 
 Spawn **one design-critic agent per page**, ALL as parallel foreground Agent calls in a **SINGLE message**. Each agent prompt includes:
-- Page name and route: "Review SINGLE page: `<page_name>` at route `<route>`."
+- Page name and route: "Review SINGLE page: `<page_name>` at route `<route_pattern>` (concrete test URL: `<test_url>`)." Pass BOTH `route_pattern` (literal `/quote/[id]` form) AND `test_url` (concretized with synthetic IDs from state-2a) — the agent forwards both into `render-review-detection.md` so the DEMO_MODE fixture short-circuit branch can fire.
 - `base_url`: `http://localhost:3000` (from [Dev Server Preamble](../verify.md#dev-server-preamble-if-archetype-is-web-app))
+- `demo_mode`: `"true"` — the preamble runs the dev server under `DEMO_MODE=true` (required by the #1042 DEMO_MODE fixture short-circuit branch in render-review-detection.md).
 - `run_id`: from verify-context.json
 - Per-page file boundary with structured marker. Compute `PR_file_boundary ∩ src/app/<page>/**` — shared paths (`src/components/**`, `src/lib/**`) are explicitly EXCLUDED from per-page agents. Pass ONLY page-local files. Include in the prompt as a machine-parseable block:
   ```
@@ -92,16 +97,67 @@ Spawn **one design-critic agent per page**, ALL as parallel foreground Agent cal
   > Unclaimed shared paths will BLOCK the agent spawn.
   > Pages without claims in `design-claims.json` do NOT receive this marker block.
 - Context digest summary
-- Image candidates sidecar path: For the **landing page** critic, include: "Image candidates sidecar: `.runs/image-candidates.json` — you have full read-write access for candidate evaluation in Step 5.5." For **all other pages**, include: "Image candidates sidecar: `.runs/image-candidates.json` (READ-ONLY context). Do NOT modify or act on candidates. Record image issues in your trace under `image_issues_for_landing`."
+- Image candidates sidecar path + image-inspection contract (#1042):
+  - For the **landing page** critic, include: "Image candidates sidecar:
+    `.runs/image-candidates.json` — you have full read-write access for
+    candidate evaluation in Step 5.5. Emit `candidates_tried` in your trace."
+  - For **non-landing pages** with `page_image_map[<page>].has_images==true`,
+    include: "Image candidates sidecar: `.runs/image-candidates.json`
+    (READ-ONLY context). This page renders images (`has_images=true` per
+    state-2a classifier; evidence: `<detected_via>`). You MUST inspect
+    the rendered image(s) in your screenshot and emit
+    `image_issues_for_landing` in your trace — a JSON array of
+    `{slot, issue}` entries; use `[]` if no issues found. The KEY must
+    be present even when the array is empty; its absence will block the
+    state-3b VERIFY."
+  - For **non-landing pages** with `has_images=false`, include: "Image
+    candidates sidecar: `.runs/image-candidates.json` (READ-ONLY context).
+    This page does not render images (`has_images=false` per state-2a).
+    `image_issues_for_landing` is optional — omit if you observe nothing
+    image-related."
 - Instruction to write trace as `design-critic-<page_name>.json`
-- **Empty-boundary fast path**: If ALL files between `FILE_BOUNDARY_START` and `FILE_BOUNDARY_END`
+- **Empty-boundary fast path** (#1061): If ALL files between `FILE_BOUNDARY_START` and `FILE_BOUNDARY_END`
   are empty (no page-local files in PR) **AND no `CLAIMED_SHARED_START`/`CLAIMED_SHARED_END` block
   is present**, execute a **fast-path review**: check whether any modified library files (`src/lib/**`)
   or shared components (`src/components/**`) from the full PR boundary are imported by this page.
-  If no imports found, output `{"verdict":"pass","fast_path":true,"pages_reviewed":1,"min_score":10,
+  If no imports found, **SKIP procedures/design-critic.md Step 3.5** (do NOT call
+  render-review-detection — there is no render to classify; the agent has no work for this page
+  in this PR). Then return the fast-path JSON
+  `{"verdict":"pass","fast_path":true,"pages_reviewed":1,"min_score":10,
   "checks_performed":["import-chain-check"],"fixes_applied":0,"sections_below_8":0,
-  "unresolved_sections":0}`. If imports found, fall back to standard screenshot + 8-criteria review
-  for this page only.
+  "unresolved_sections":0}` AND write the trace via the self-degraded helper:
+  ```bash
+  python3 .claude/scripts/write-degraded-trace.py design-critic \
+    --reason "empty-boundary-fast-path" \
+    --verdict pass \
+    --checks-performed "import-chain-check" \
+    --trace-filename design-critic-<page>.json \
+    --extra-json '{"review_method":"boundary-skip",
+                   "review_evidence":{"requested_route":"<route>","final_url":null,
+                                      "auth_source":null,
+                                      "fallback_reason":"empty-boundary-fast-path",
+                                      "content_density":null},
+                   "page":"<page>","fast_path":true,"min_score":10,"min_score_all":10,
+                   "pages_reviewed":1,"sections_below_8":0,"fixes_applied":0,
+                   "unresolved_sections":0,"image_issues_for_landing":[],
+                   "candidates_skipped_evidence":{"reason":"empty-boundary-fast-path"}}'
+  ```
+  The helper writes `provenance="self-degraded"`, `partial=true`, `degraded_reason="empty-boundary-fast-path"`,
+  and `no_fixes_claimed=true` (since `fixes:[]`). State-3b Stage-1c will run
+  `validate-recovery.sh` on this trace to stamp `recovery_validated=true` BEFORE the merge —
+  satisfying the `validated_fallback` predicate so `aggregate_ok` accepts this sibling
+  without manual lead override.
+  > **`review_method="boundary-skip"` semantics:** state-3a-synthetic value, emitted **only**
+  > by this fast-path branch. NOT produced by `render-review-detection.md` Section 3
+  > (which only outputs `rendered-authed | rendered-demo | source-only | unknown | prereq-unmet`).
+  > Distinguishes "no work for this page in PR" from "couldn't render, blind." The merge
+  > script's tight gate (`merge-design-critic-traces.py` L121-138) excludes `boundary-skip`
+  > from the source-only/unknown unresolved-forcing rule. POLICY drift test
+  > (`test_review_verdict_gate_policy_drift.py`) is unaffected — `boundary-skip` does NOT
+  > appear in `render-review-detection.md`.
+  >
+  > If imports found, run procedures/design-critic.md Step 3.5 normally and fall back to
+  > standard screenshot + 8-criteria review for this page only.
   > **Thin-wrapper override:** If a `CLAIMED_SHARED` block IS present, do NOT fast-path even
   > if FILE_BOUNDARY is empty. The claimed shared files constitute the agent's review and edit
   > scope. Perform full screenshot + 8-criteria review, treating CLAIMED_SHARED files as in-scope

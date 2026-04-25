@@ -167,15 +167,87 @@ in Step 3.5 of `.claude/procedures/design-critic.md` — before screenshotting.
 
 ### Required trace extension fields
 
-- `review_method`: `"rendered-authed" | "rendered-demo" | "source-only" | "unknown"`
+- `review_method`: `"rendered-authed" | "rendered-demo" | "source-only" | "unknown" | "boundary-skip"`
 - `review_evidence`: `{requested_route, final_url, auth_source, fallback_reason, content_density}`
+
+> **`boundary-skip` is a state-3a-synthetic value (#1061).** It is NOT produced by
+> `render-review-detection.md` Section 3 — that primitive only outputs
+> `rendered-authed | rendered-demo | source-only | unknown | prereq-unmet`.
+> `boundary-skip` is emitted exclusively by the state-3a empty-boundary fast-path
+> branch (see `.claude/skills/verify/state-3a-design-agents.md` "Empty-boundary
+> fast path"), with `review_evidence.fallback_reason="empty-boundary-fast-path"`,
+> `provenance="self-degraded"`, `degraded_reason="empty-boundary-fast-path"`,
+> and `verdict="pass"`. The trace is written via `write-degraded-trace.py` (a
+> sanctioned writer in `agent-trace-write-guard.sh`'s allowlist). The merge
+> script's tight gate (`merge-design-critic-traces.py` L121-138) excludes
+> `boundary-skip` from the source-only/unknown unresolved-forcing rule —
+> `(boundary-skip, pass)` is preserved as-is. The POLICY drift test
+> (`test_review_verdict_gate_policy_drift.py`) is unaffected because it parses
+> only `render-review-detection.md` Section 3's enum, where `boundary-skip`
+> deliberately does NOT appear. Stage-1c (`state-3b-quality-gate.md` L7-31)
+> stamps `recovery_validated=true` so the trace satisfies the
+> `validated_fallback` predicate; `aggregate_ok` accepts it without manual
+> override.
 
 ### Verdict gate (tight)
 
-- If `review_method ∈ {"source-only", "unknown"}`: `verdict` MUST be `"unresolved"`, AND
-  the trace MUST include a `caveat` field set to `review_evidence.fallback_reason`.
-  Do NOT apply any fixes on such pages — the target source was never rendered,
-  so a "fix" would be blind.
+- If `review_method ∈ {"source-only", "unknown"}`, select one of two sub-branches:
+
+  **Sub-branch S1 — DEMO_MODE fixture short-circuit (#1042).**
+  When `review_evidence.fallback_reason == "demo-mode-fixture-short-circuit"`
+  (set by `render-review-detection.md` when the initial `page.goto()`
+  returns HTTP 404 AND DEMO_MODE is active AND the route pattern contains
+  a dynamic segment like `/quote/[id]`):
+  1. Perform a **source-only structural review** — use Read on the page's
+     `.tsx`/`.jsx` source plus one-level imports resolving to
+     `src/components/**` / `src/lib/**`. Score on what a static reviewer
+     can see: layout presence, typography hierarchy, color-system usage,
+     Tailwind theme tokens, responsive-grid patterns, accessibility markup.
+     Do NOT attempt visual fixes — no screenshots exist.
+  2. Record `source_review_verdict ∈ {"pass", "fixed"}` and
+     `source_review_score: int` as nested evidence fields (NOT top-level
+     verdict). "pass" means the static review found no structural issues.
+  3. Invoke the shared self-degraded helper:
+     ```bash
+     python3 .claude/scripts/write-degraded-trace.py design-critic \
+       --reason "demo-mode-fixture-short-circuit" \
+       --verdict unresolved \
+       --checks-performed "source-review-structural" \
+       --trace-filename design-critic-<page>.json \
+       --extra-json '{"review_method":"source-only",
+                      "review_evidence": {...},
+                      "page":"<page>",
+                      "source_review_verdict":"<pass|fixed>",
+                      "source_review_score":<N>,
+                      "image_issues_for_landing": []}'
+     ```
+     The helper writes the atomic trace with `provenance="self-degraded"`,
+     `partial=true`, `degraded_reason="demo-mode-fixture-short-circuit"`,
+     `verdict="unresolved"`, `result=null` (AOC v1 (unresolved, null)
+     invariant). State-3b Stage-1c runs `validate-recovery.sh` against
+     the trace to stamp `recovery_validated=true` BEFORE the merge, so
+     the aggregate `aggregate_ok` predicate can accept this sibling
+     via `validated_fallback` without a manual lead override.
+     Do NOT open `design-critic-<page>.json` yourself —
+     `agent-trace-write-guard.sh` will block.
+
+  **Sub-branch S2 — all other source-only / unknown cases** (auth
+  redirect, `demo-mode-bypass-failed`, unknown nav failure, etc.):
+  Emit `verdict="unresolved"`, `result=null`, `provenance="self"`, and
+  include a `caveat` field set to `review_evidence.fallback_reason`.
+  Do NOT apply fixes. Trace written via normal completion path; the
+  merge script's self-heal preserves this outcome.
+
+- If `review_method == "boundary-skip"` (#1061 — state-3a-synthetic): the
+  empty-boundary fast-path emitted this. The trace was written by
+  `write-degraded-trace.py --reason "empty-boundary-fast-path" --verdict pass`
+  with `provenance="self-degraded"`, `partial=true`, `verdict="pass"`,
+  `result=null`, `degraded_reason="empty-boundary-fast-path"`. No further
+  verdict mapping applies — Layer 1 / 2 / 3 logic does NOT run because no
+  render occurred. The merge script's tight gate accepts `(boundary-skip, pass)`
+  as-is. State-3b Stage-1c stamps `recovery_validated=true` pre-merge so the
+  trace passes the `validated_fallback` predicate.
+
 - If `review_method ∈ {"rendered-authed", "rendered-demo"}`: the standard
   Layer 1 / 2 / 3 logic is authoritative for the verdict — no override.
 - `content_density` is observational in this change; NOT gated.
@@ -256,12 +328,14 @@ Replace placeholders with actual values:
 - `<IE>`: number of images evaluated (0 if no images exist). Record image evaluation results even when no fixes are needed. If `image-manifest.json` does not exist or contains no images, set to 0.
 - `<IS>`: JSON array of `{"file":"<filename>","scores":{"subject":<N>,"style":<N>,"color":<N>,"composition":<N>,"polish":<N>},"verdict":"pass|fixed"}` for each image evaluated (use `[]` if none)
 - `<IF>`: number of images fixed (regenerated or replaced) (0 if none)
-- `candidates_tried`: number of pre-generated candidates tried from sidecar (0 if sidecar absent or no candidates tried)
+- `candidates_tried`: number of pre-generated candidates tried from sidecar. Landing critic ONLY — required (non-null int) whenever `.runs/image-candidates.json` exists. Non-landing critics: omit entirely (they have read-only access to the sidecar and do not run Step 5.5).
 - `new_candidates_generated`: number of new candidates generated with page-context-informed prompts (0 if none)
-- `image_issues_for_landing`: JSON array of `{"slot":"<image-slot>","issue":"<description>"}` — for non-landing critics only, records image issues to be addressed by the landing-page critic (use `[]` if landing-page critic or no issues)
+- `image_issues_for_landing`: JSON array of `{"slot":"<image-slot>","issue":"<description>"}`. **REQUIRED on non-landing critics when `.runs/page-image-map.json` classifies this page with `has_images=true`** (the state-2a static classifier; the spawn prompt communicates this flag). Value may be `[]` when no issues found — the key must still be present so state-3b VERIFY can distinguish "inspected and clean" from "silently skipped". Optional when `has_images=false`. Omit on the landing critic (landing owns candidate selection; it uses `candidates_tried` + image fixes directly).
 - `review_method`: one of `"rendered-authed"` / `"rendered-demo"` / `"source-only"` / `"unknown"` (from render-review-detection)
-- `review_evidence`: object with `requested_route`, `final_url`, `auth_source`, `fallback_reason`, `content_density` — see `.claude/patterns/render-review-detection.md`
+- `review_evidence`: object with `requested_route`, `final_url`, `auth_source`, `fallback_reason`, `content_density`, `final_status`, `route_pattern` — see `.claude/patterns/render-review-detection.md`
 - `caveat`: string — included ONLY when `review_method` is `"source-only"` or `"unknown"`; value is the `fallback_reason` from `review_evidence`. Omit the key entirely otherwise.
+- `source_review_verdict` (nested evidence for #1042 Sub-branch S1): `"pass"` or `"fixed"` — outcome of the source-only structural review performed on DEMO_MODE fixture short-circuit. Present only when `degraded_reason == "demo-mode-fixture-short-circuit"`.
+- `source_review_score` (nested evidence for #1042 Sub-branch S1): integer 1-10. Present only with `source_review_verdict`.
 
 
 ## Self-Degradation Handler
