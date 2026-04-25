@@ -77,6 +77,7 @@ distinguish "collected N files" from "no fixes" at the core-verdict level —
 the `files_collected` extension field carries the count.)
 
 ```bash
-RUN_ID=$(python3 -c "import json;print(json.load(open('.runs/verify-context.json')).get('run_id',''))" 2>/dev/null || echo "")
-mkdir -p .runs/agent-traces && echo '{"agent":"build-info-collector","timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","verdict":"pass","result":"clean","provenance":"self","checks_performed":["diff_collected","summaries_written","template_files_listed"],"files_collected":<N>,"run_id":"'"$RUN_ID"'"}' > .runs/agent-traces/build-info-collector.json
+bash .claude/scripts/write-agent-trace.sh build-info-collector --json '{"verdict":"pass","result":"clean","checks_performed":["diff_collected","summaries_written","template_files_listed"],"files_collected":<N>}'
 ```
+
+The centralized writer (AOC v1.1) stamps `agent`, `timestamp`, `provenance:"self"`, `run_id`, `skill`, `spawn_sha`, and `spawn_index` from active identity + spawn-log.

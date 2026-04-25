@@ -195,9 +195,10 @@ After completing all work, write a trace file per AOC v1
 AVS v1: `result="count_summary"` always; `verdict="pass"` iff `warnings_count==0`, else `verdict="fail"`.
 
 ```bash
-RUN_ID=$(python3 -c "import json;print(json.load(open('.runs/verify-context.json')).get('run_id',''))" 2>/dev/null || echo "")
-mkdir -p .runs/agent-traces && echo '{"agent":"performance-reporter","timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","verdict":"<pass|fail>","result":"count_summary","provenance":"self","checks_performed":["P1_build","P2_routes","P3_large_pages","P4_deps","P5_lighthouse","P6_api"],"metrics_checked":<N>,"warnings_count":<W>,"run_id":"'"$RUN_ID"'"}' > .runs/agent-traces/performance-reporter.json
+bash .claude/scripts/write-agent-trace.sh performance-reporter --json '{"verdict":"<pass|fail>","result":"count_summary","checks_performed":["P1_build","P2_routes","P3_large_pages","P4_deps","P5_lighthouse","P6_api"],"metrics_checked":<N>,"warnings_count":<W>}'
 ```
+
+The centralized writer (AOC v1.1) stamps `agent`, `timestamp`, `provenance:"self"`, `run_id`, `skill`, `spawn_sha`, and `spawn_index` from active identity + spawn-log.
 
 - `verdict`: `"pass"` if `warnings_count==0`, `"fail"` otherwise (lowercase).
 - `result`: always `"count_summary"`.

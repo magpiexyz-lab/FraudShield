@@ -138,21 +138,11 @@ Clicks-to-value: N (target: ≤ 3)
 After completing all work, write a trace file:
 
 ```bash
-python3 << 'TRACE_EOF'
-import json, os
-from datetime import datetime, timezone
-run_id = ""
-try:
-    with open(".runs/verify-context.json") as f:
-        run_id = json.load(f).get("run_id", "")
-except: pass
-os.makedirs(".runs/agent-traces", exist_ok=True)
+python3 - <<'PYEOF'
+import json, subprocess
 trace = {
-    "agent": "ux-journeyer",
-    "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     "verdict": "<verdict>",           # AOC v1 AVS v1: "pass" | "fail" | "blocked" (lowercase)
     "result": "<result>",              # AOC v1: "clean" | "fixed" | "partial" | "none"
-    "provenance": "self",
     "checks_performed": ["golden_path_trace", "flow_issues", "clicks_to_value"],
     "journeys_tested": <N>,
     "clicks_to_value": <C>,
@@ -161,7 +151,6 @@ trace = {
     "coverage_pct": <P>,
     "fixes_applied": <F>,
     "unresolved_dead_ends": <UDE>,
-    "run_id": run_id,
     "per_step_reviews": [
         # One entry per golden_path step. Required when scope is full or visual.
         # See render-review-detection.md Section 6.3 (classifyCurrentPage) for
@@ -190,15 +179,20 @@ trace = {
     "fixes": [
         # One entry per fix applied. Example:
         # {"file": "src/app/landing/page.tsx", "symptom": "dead-end navigation", "fix": "added back button"}
-    ]
+    ],
 }
 # Drop caveat when null (keeps traces clean for non-blocked verdicts)
 if trace["caveat"] is None:
     trace.pop("caveat")
-with open(".runs/agent-traces/ux-journeyer.json", "w") as f:
-    json.dump(trace, f, indent=2)
-TRACE_EOF
+subprocess.run(
+    ["bash", ".claude/scripts/write-agent-trace.sh", "ux-journeyer",
+     "--json", json.dumps(trace)],
+    check=True,
+)
+PYEOF
 ```
+
+The centralized writer (AOC v1.1) stamps `agent`, `timestamp`, `provenance:"self"`, `run_id`, `skill`, `spawn_sha`, and `spawn_index` from active identity + spawn-log.
 
 Replace placeholders with actual values:
 - `<verdict>`: final verdict — `"all pass"`, `"all fixed"`, `"partial"`, or `"blocked"`

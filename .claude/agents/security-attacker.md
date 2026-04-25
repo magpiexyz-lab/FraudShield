@@ -109,10 +109,34 @@ After completing all work, write a trace file per AOC v1
 
 AVS v1: `result="count_summary"` always; `verdict="pass"` iff `findings_count==0`, else `verdict="fail"`.
 
+Compose the trace dict in Python (cleaner for the `findings[]` array of structured objects), then route the actual write through the AOC v1.1 centralized writer:
+
 ```bash
-RUN_ID=$(python3 -c "import json;print(json.load(open('.runs/verify-context.json')).get('run_id',''))" 2>/dev/null || echo "")
-mkdir -p .runs/agent-traces && echo '{"agent":"security-attacker","timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","verdict":"<pass|fail>","result":"count_summary","provenance":"self","checks_performed":["A1_validation_bypass","A2_access_control","A3_injection","A4_info_leakage","A5_auth_weakness"],"findings_count":<N>,"findings":[<array of {"category":"A<N>","file":"<path>","severity":"<Critical|High|Medium>","desc":"<description>","exploit":"<PoC summary>"} for each finding>],"run_id":"'"$RUN_ID"'"}' > .runs/agent-traces/security-attacker.json
+python3 - <<'PYEOF'
+import json, subprocess
+trace = {
+    "verdict": "<pass|fail>",  # pass iff findings_count == 0
+    "result": "count_summary",
+    "checks_performed": [
+        "A1_validation_bypass", "A2_access_control",
+        "A3_injection", "A4_info_leakage", "A5_auth_weakness",
+    ],
+    "findings_count": <N>,
+    "findings": [
+        # One entry per finding:
+        # {"category":"A<N>", "file":"<path>", "severity":"<Critical|High|Medium>",
+        #  "desc":"<description>", "exploit":"<PoC summary>"}
+    ],
+}
+subprocess.run(
+    ["bash", ".claude/scripts/write-agent-trace.sh", "security-attacker",
+     "--json", json.dumps(trace)],
+    check=True,
+)
+PYEOF
 ```
+
+The centralized writer stamps `agent`, `timestamp`, `provenance:"self"`, `run_id`, `skill`, `spawn_sha`, and `spawn_index` from active identity + spawn-log.
 
 - `verdict`: `"pass"` if `findings_count==0`, `"fail"` otherwise (lowercase).
 - `result`: always `"count_summary"`.

@@ -95,30 +95,33 @@ AOC v1 (`agent-registry.json.verdict_agents_schema.solve-critic`):
 required structured fields `type_a_count`, `type_b_count`, `type_c_count`.
 
 ```bash
-CONTEXT_FILE="<from your spawn prompt>"
-RUN_ID=$(python3 -c "import json;print(json.load(open('$CONTEXT_FILE')).get('run_id',''))" 2>/dev/null || echo "")
-mkdir -p .runs/agent-traces && python3 -c "
-import json, datetime
+python3 - <<'PYEOF'
+import json, subprocess
+# `problem_type` comes from your spawn prompt (e.g., "defect" or "feature").
+# Set it accordingly before composing the trace.
+problem_type = "<defect or feature>"
 trace = {
-    'agent': 'solve-critic',
-    'timestamp': datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
-    'verdict': 'pass',
-    'result': 'count_summary',
-    'provenance': 'self',
-    'checks_performed': ['type_a_analysis', 'type_b_analysis', 'type_c_analysis']
-        + (['prevention_root_cause', 'prevention_recurrence', 'prevention_scope'] if problem_type == 'defect' else []),
-    'round': <1 or 2>,
-    'type_a_count': <N>,
-    'type_b_count': <N>,
-    'type_c_count': <N>,
-    'concerns': [
-        {'type': '<A|B|C>', 'description': '<text>', 'evidence': '<text>', 'fix': '<text or null>'}
+    "verdict": "pass",
+    "result": "count_summary",
+    "checks_performed": ["type_a_analysis", "type_b_analysis", "type_c_analysis"]
+        + (["prevention_root_cause", "prevention_recurrence", "prevention_scope"] if problem_type == "defect" else []),
+    "round": <1 or 2>,
+    "type_a_count": <N>,
+    "type_b_count": <N>,
+    "type_c_count": <N>,
+    "concerns": [
+        {"type": "<A|B|C>", "description": "<text>", "evidence": "<text>", "fix": "<text or null>"}
     ],
-    'run_id': '$RUN_ID'
 }
-json.dump(trace, open('.runs/agent-traces/solve-critic.json', 'w'), indent=2)
-"
+subprocess.run(
+    ["bash", ".claude/scripts/write-agent-trace.sh", "solve-critic",
+     "--json", json.dumps(trace)],
+    check=True,
+)
+PYEOF
 ```
+
+The centralized writer (AOC v1.1) stamps `agent`, `timestamp`, `provenance:"self"`, `run_id`, `skill`, `spawn_sha`, and `spawn_index` from active identity + spawn-log. The `run_id` is resolved from the active context (the calling skill — `/solve`, `/resolve`, or `/change`); no manual `$CONTEXT_FILE` extraction is needed.
 
 Replace `<VERDICT>` with a summary like `"3 TYPE A, 1 TYPE B, 0 TYPE C"`.
 Replace `<1 or 2>` with the current round number.

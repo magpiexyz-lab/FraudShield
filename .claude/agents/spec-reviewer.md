@@ -168,6 +168,7 @@ AVS v1 mapping (per `agent-registry.json.verdict_agents_schema.spec-reviewer`):
 Write `verdict` lowercase. Legacy uppercase values are migrated automatically.
 
 ```bash
-RUN_ID=$(python3 -c "import json;print(json.load(open('.runs/verify-context.json')).get('run_id',''))" 2>/dev/null || echo "")
-mkdir -p .runs/agent-traces && echo '{"agent":"spec-reviewer","timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","verdict":"<pass|fail>","result":"<clean|partial>","provenance":"self","checks_performed":["S1_features","S2_pages","S3_analytics","S4_golden_path","S5_system","S6_plan","S7_tdd","S8_process"],"run_id":"'"$RUN_ID"'"}' > .runs/agent-traces/spec-reviewer.json
+bash .claude/scripts/write-agent-trace.sh spec-reviewer --json '{"verdict":"<pass|fail>","result":"<clean|partial>","checks_performed":["S1_features","S2_pages","S3_analytics","S4_golden_path","S5_system","S6_plan","S7_tdd","S8_process"]}'
 ```
+
+The centralized writer (AOC v1.1) stamps `agent`, `timestamp`, `provenance:"self"`, `run_id`, `skill`, `spawn_sha`, and `spawn_index` from active identity + spawn-log.

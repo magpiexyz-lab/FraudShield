@@ -191,21 +191,11 @@ silently accepting source-only reviews across every page.
 After completing all work, write a trace file:
 
 ```bash
-python3 << 'TRACE_EOF'
-import json, os
-from datetime import datetime, timezone
-run_id = ""
-try:
-    with open(".runs/verify-context.json") as f:
-        run_id = json.load(f).get("run_id", "")
-except: pass
-os.makedirs(".runs/agent-traces", exist_ok=True)
+python3 - <<'PYEOF'
+import json, subprocess
 trace = {
-    "agent": "design-critic",
-    "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     "verdict": "<verdict>",       # AOC v1 AVS v1: "pass" | "fail" | "unresolved" (lowercase)
     "result": "<result>",          # AOC v1: "clean" | "fixed" | "partial" | null (null for unresolved)
-    "provenance": "self",          # self | self-degraded (see #1042 fixture short-circuit) | lead-merge
     "checks_performed": ["layer1_functional", "layer2_taste", "layer3_antipattern", "visual_regression"],
     "pages_reviewed": 1,
     "min_score": <S>,
@@ -219,7 +209,6 @@ trace = {
     "image_scores": <IS>,
     "image_fixes": <IF>,
     "page": "<page_name>",
-    "run_id": run_id,
     "review_method": "<review_method>",       # rendered-authed | rendered-demo | source-only | unknown — see Rendered-Review Contract
     "review_evidence": {                       # see .claude/patterns/render-review-detection.md
         "requested_route": "<route>",
@@ -232,12 +221,18 @@ trace = {
     "fixes": [
         # One entry per fix applied. Example:
         # {"file": "src/app/landing/page.tsx", "symptom": "low contrast ratio", "fix": "changed bg-gray-100 to bg-slate-900"}
-    ]
+    ],
 }
-with open(".runs/agent-traces/design-critic-<page_name>.json", "w") as f:
-    json.dump(trace, f, indent=2)
-TRACE_EOF
+subprocess.run(
+    ["bash", ".claude/scripts/write-agent-trace.sh", "design-critic",
+     "--json", json.dumps(trace),
+     "--trace-filename", "design-critic-<page_name>.json"],
+    check=True,
+)
+PYEOF
 ```
+
+The centralized writer (AOC v1.1) stamps `agent`, `timestamp`, `provenance:"self"`, `run_id`, `skill`, `spawn_sha`, and `spawn_index` from active identity + spawn-log. For `self-degraded` outcomes (e.g., #1042 fixture short-circuit), use `write-degraded-trace.py` instead so `degraded_reason` and `recovery_validated` flow correctly. For the `lead-merge` aggregate (composed by `merge-design-critic-traces.py` at verify state-3b), the merge script itself authors the aggregate.
 
 Replace placeholders with actual values:
 - `<verdict>` + `<result>` per AOC v1 AVS v1 (see `agent-registry.json.verdict_agents_schema.design-critic`):

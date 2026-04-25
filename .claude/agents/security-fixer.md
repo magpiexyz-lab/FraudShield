@@ -134,34 +134,28 @@ The `/api/` skip in middleware is intentional, not a vulnerability — it is def
 After completing all work, write a trace file:
 
 ```bash
-python3 << 'TRACE_EOF'
-import json, os
-from datetime import datetime, timezone
-run_id = ""
-try:
-    with open(".runs/verify-context.json") as f:
-        run_id = json.load(f).get("run_id", "")
-except: pass
-os.makedirs(".runs/agent-traces", exist_ok=True)
+python3 - <<'PYEOF'
+import json, subprocess
 trace = {
-    "agent": "security-fixer",
-    "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     "verdict": "<verdict>",         # AOC v1 AVS v1: "pass" | "fail" (lowercase)
     "result": "<result>",            # AOC v1: "clean" | "fixed" | "partial" | "none"
-    "provenance": "self",
     "checks_performed": ["fix_code", "rebuild", "recheck", "collect_changes", "generate_tables"],
     "issues_fixed": <N>,
     "unresolved_critical": <UC>,
-    "run_id": run_id,
     "fixes": [
         # One entry per fix applied. Example:
         # {"file": "src/app/api/auth/route.ts", "symptom": "missing rate limiting", "fix": "added rate limiter middleware"}
-    ]
+    ],
 }
-with open(".runs/agent-traces/security-fixer.json", "w") as f:
-    json.dump(trace, f, indent=2)
-TRACE_EOF
+subprocess.run(
+    ["bash", ".claude/scripts/write-agent-trace.sh", "security-fixer",
+     "--json", json.dumps(trace)],
+    check=True,
+)
+PYEOF
 ```
+
+The centralized writer (AOC v1.1) stamps `agent`, `timestamp`, `provenance:"self"`, `run_id`, `skill`, `spawn_sha`, and `spawn_index` from active identity + spawn-log.
 
 Replace placeholders with actual values (AOC v1 AVS v1, per
 `agent-registry.json.verdict_agents_schema.security-fixer`):

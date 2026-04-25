@@ -253,29 +253,18 @@ After completing all work, write a trace file. Use the Python heredoc
 form so `per_behavior_reviews` and other complex fields stay readable:
 
 ```bash
-python3 << 'TRACE_EOF'
-import json, os
-from datetime import datetime, timezone
-run_id = ""
-try:
-    with open(".runs/verify-context.json") as f:
-        run_id = json.load(f).get("run_id", "")
-except: pass
-os.makedirs(".runs/agent-traces", exist_ok=True)
+python3 - <<'PYEOF'
+import json, subprocess
 trace = {
-    "agent": "behavior-verifier",
-    "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     "verdict": "<verdict>",   # AOC v1 AVS v1: "pass" | "fail" (lowercase; legacy DEGRADED→pass+degraded, SKIPPED→pass+skipped)
     "result": "<result>",      # AOC v1: "clean" | "degraded" | "skipped" | "partial"
-    "provenance": "self",      # or "self-degraded" when result=="degraded" AND recovery_validated=true (per AOC v1)
     "checks_performed": ["state_model", "happy_path", "error_path", "system_smoke", "state_continuity"],
     "tests_run": <N>,
     "tests_passed": <M>,
-    "run_id": run_id,
     "per_behavior_reviews": [
         # One entry per behavior with an entry_route. Required when web-app
         # archetype is in scope. Skipped behaviors still get an entry with
-        # verdict="SKIPPED" so the gate can verify the policy mapping.
+        # verdict="skipped" so the gate can verify the policy mapping.
         # Example:
         # {
         #   "behavior_id": "b1",
@@ -304,10 +293,20 @@ trace = {
 }
 if trace["unmatched_given_phrase"] is None:
     trace.pop("unmatched_given_phrase")
-with open(".runs/agent-traces/behavior-verifier.json", "w") as f:
-    json.dump(trace, f, indent=2)
-TRACE_EOF
+# AOC v1.1: when result == "degraded", invoke write-degraded-trace.py instead
+# of write-agent-trace.sh (the script only accepts self / self-degraded /
+# lead-on-behalf / lead-synthesized; self-degraded requires --reason).
+provenance = "self-degraded" if trace.get("result") == "degraded" else "self"
+subprocess.run(
+    ["bash", ".claude/scripts/write-agent-trace.sh", "behavior-verifier",
+     "--json", json.dumps(trace),
+     "--provenance", provenance],
+    check=True,
+)
+PYEOF
 ```
+
+The centralized writer stamps `agent`, `timestamp`, `run_id`, `skill`, `spawn_sha`, and `spawn_index` from active identity + spawn-log. For `self-degraded` outcomes, also include `degraded_reason` and `partial:true` in the trace dict — or use `write-degraded-trace.py` directly.
 
 Replace placeholders with actual values:
 - `<verdict>`: overall verdict — `"PASS"`, `"FAIL"`, `"DEGRADED"`, or `"SKIPPED"`

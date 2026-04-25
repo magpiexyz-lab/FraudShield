@@ -102,21 +102,11 @@ get `"redirected-to-auth-route"` instead.
 After completing all work, write a trace file:
 
 ```bash
-python3 << 'TRACE_EOF'
-import json, os
-from datetime import datetime, timezone
-run_id = ""
-try:
-    with open(".runs/verify-context.json") as f:
-        run_id = json.load(f).get("run_id", "")
-except: pass
-os.makedirs(".runs/agent-traces", exist_ok=True)
+python3 - <<'PYEOF'
+import json, subprocess
 trace = {
-    "agent": "accessibility-scanner",
-    "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     "verdict": "<verdict>",     # AOC v1 AVS v1: "pass" iff violations_count==0 else "fail" (lowercase)
     "result": "count_summary",   # AOC v1: always count_summary (violations_count is the gated field)
-    "provenance": "self",
     "checks_performed": ["axe_scan", "tab_order"],
     "pages_scanned": <N>,
     "violations_count": <VC>,
@@ -133,12 +123,16 @@ trace = {
         #                      "fallback_reason": null,
         #                      "content_density": 312}}
     ],
-    "run_id": run_id
 }
-with open(".runs/agent-traces/accessibility-scanner.json", "w") as f:
-    json.dump(trace, f, indent=2)
-TRACE_EOF
+subprocess.run(
+    ["bash", ".claude/scripts/write-agent-trace.sh", "accessibility-scanner",
+     "--json", json.dumps(trace)],
+    check=True,
+)
+PYEOF
 ```
+
+The centralized writer (AOC v1.1) stamps `agent`, `timestamp`, `provenance:"self"`, `run_id`, `skill`, `spawn_sha`, and `spawn_index` from active identity + spawn-log.
 
 Replace placeholders with actual values:
 - `<verdict>`: `"pass"` if no issues, or `"N issues"` with the count

@@ -83,26 +83,27 @@ plus required structured fields `confirmed_count` (sum of `label=="confirmed"`)
 and `disputed_count` (sum of `label in {"disputed","needs-evidence"}`).
 
 ```bash
-RUN_ID=$(python3 -c "import json;print(json.load(open('.runs/review-context.json')).get('run_id',''))" 2>/dev/null || echo "")
-mkdir -p .runs/agent-traces && python3 -c "
-import json, datetime
+python3 - <<'PYEOF'
+import json, subprocess
 trace = {
-    'agent': 'review-challenger',
-    'timestamp': datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
-    'verdict': 'pass',
-    'result': 'count_summary',
-    'provenance': 'self',
-    'checks_performed': ['cross_file', 'edge_case', 'user_journey'],
-    'confirmed_count': <N>,
-    'disputed_count': <M>,
-    'verdicts': [
-        {'finding': '<title>', 'label': '<confirmed|disputed|needs-evidence>', 'counterexample': '<text>', 'evidence': '<text>'}
+    "verdict": "pass",
+    "result": "count_summary",
+    "checks_performed": ["cross_file", "edge_case", "user_journey"],
+    "confirmed_count": <N>,
+    "disputed_count": <M>,
+    "verdicts": [
+        {"finding": "<title>", "label": "<confirmed|disputed|needs-evidence>", "counterexample": "<text>", "evidence": "<text>"}
     ],
-    'run_id': '$RUN_ID'
 }
-json.dump(trace, open('.runs/agent-traces/review-challenger.json', 'w'), indent=2)
-"
+subprocess.run(
+    ["bash", ".claude/scripts/write-agent-trace.sh", "review-challenger",
+     "--json", json.dumps(trace)],
+    check=True,
+)
+PYEOF
 ```
+
+The centralized writer (AOC v1.1) stamps `agent`, `timestamp`, `provenance:"self"`, `run_id`, `skill`, `spawn_sha`, and `spawn_index` from active identity + spawn-log.
 
 - `confirmed_count`: number of findings labeled `"confirmed"`.
 - `disputed_count`: number of findings labeled `"disputed"` or `"needs-evidence"`.

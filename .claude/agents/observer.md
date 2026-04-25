@@ -134,6 +134,7 @@ AVS v1 mapping (per `agent-registry.json.verdict_agents_schema.observer`):
 | `"prerequisite-unavailable"` | `"blocked"` | `"none"` |
 
 ```bash
-RUN_ID=$(python3 -c "import json;print(json.load(open('.runs/verify-context.json')).get('run_id',''))" 2>/dev/null || echo "")
-mkdir -p .runs/agent-traces && echo '{"agent":"observer","timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","verdict":"<pass|blocked>","result":"<clean|none>","provenance":"self","checks_performed":["prerequisites","fix_evaluation","redaction","dedup","issue_filing"],"fixes_evaluated":<N>,"run_id":"'"$RUN_ID"'"}' > .runs/agent-traces/observer.json
+bash .claude/scripts/write-agent-trace.sh observer --json '{"verdict":"<pass|blocked>","result":"<clean|none>","checks_performed":["prerequisites","fix_evaluation","redaction","dedup","issue_filing"],"fixes_evaluated":<N>}'
 ```
+
+The centralized writer (AOC v1.1) stamps `agent`, `timestamp`, `provenance:"self"`, `run_id`, `skill`, `spawn_sha`, and `spawn_index` from active identity + spawn-log. Replace `<pass|blocked>`, `<clean|none>`, and `<N>` with actual values before invoking.

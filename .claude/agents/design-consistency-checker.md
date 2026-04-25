@@ -78,21 +78,11 @@ Inconsistencies: N (M minor, K major)
 After completing all work, write the final trace:
 
 ```bash
-python3 << 'TRACE_EOF'
-import json, os
-from datetime import datetime, timezone
-run_id = ""
-try:
-    with open(".runs/verify-context.json") as f:
-        run_id = json.load(f).get("run_id", "")
-except: pass
-os.makedirs(".runs/agent-traces", exist_ok=True)
+python3 - <<'PYEOF'
+import json, subprocess
 trace = {
-    "agent": "design-consistency-checker",
-    "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     "verdict": "<verdict>",          # AOC v1 AVS v1: "pass" (inconsistent_count==0) | "fail" (inconsistent_count>0), lowercase
     "result": "count_summary",        # AOC v1: always count_summary for this scanner
-    "provenance": "self",
     "checks_performed": ["C1_color", "C2_typography", "C3_spacing", "C4_component", "C5_layout"],
     "pages_reviewed": <N>,
     "passed_count": <P>,
@@ -104,12 +94,16 @@ trace = {
         # One entry per inconsistency found. Example:
         # {"check": "C1", "severity": "minor", "pages": ["pricing", "settings"], "detail": "pricing uses bg-gray-50, all others use bg-slate-50"}
     ],
-    "run_id": run_id
 }
-with open(".runs/agent-traces/design-consistency-checker.json", "w") as f:
-    json.dump(trace, f, indent=2)
-TRACE_EOF
+subprocess.run(
+    ["bash", ".claude/scripts/write-agent-trace.sh", "design-consistency-checker",
+     "--json", json.dumps(trace)],
+    check=True,
+)
+PYEOF
 ```
+
+The centralized writer (AOC v1.1) stamps `agent`, `timestamp`, `provenance:"self"`, `run_id`, `skill`, `spawn_sha`, and `spawn_index` from active identity + spawn-log.
 
 Replace placeholders with actual values:
 - `<verdict>`: `"pass"` if 0 inconsistencies, `"inconsistent"` if any found

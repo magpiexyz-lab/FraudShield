@@ -108,10 +108,34 @@ After completing all work, write a trace file per AOC v1
 
 AVS v1: `result="count_summary"` always; `verdict="pass"` iff `fails_count==0`, else `verdict="fail"` (lowercase).
 
+Compose the trace dict in Python, route the actual write through the AOC v1.1 centralized writer:
+
 ```bash
-RUN_ID=$(python3 -c "import json;print(json.load(open('.runs/verify-context.json')).get('run_id',''))" 2>/dev/null || echo "")
-mkdir -p .runs/agent-traces && echo '{"agent":"security-defender","timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","verdict":"<pass|fail>","result":"count_summary","provenance":"self","checks_performed":["D1_secrets","D2_validation","D3_rls","D4_client_server","D5_rate_limit","D6_deps"],"fails_count":<N>,"findings_count":<N>,"fails":[<array of {"check":"D<N>","file":"<path>","desc":"<description>"} for each FAIL>],"run_id":"'"$RUN_ID"'"}' > .runs/agent-traces/security-defender.json
+python3 - <<'PYEOF'
+import json, subprocess
+trace = {
+    "verdict": "<pass|fail>",  # pass iff fails_count == 0
+    "result": "count_summary",
+    "checks_performed": [
+        "D1_secrets", "D2_validation", "D3_rls",
+        "D4_client_server", "D5_rate_limit", "D6_deps",
+    ],
+    "fails_count": <N>,
+    "findings_count": <N>,
+    "fails": [
+        # One entry per FAIL:
+        # {"check":"D<N>", "file":"<path>", "desc":"<description>"}
+    ],
+}
+subprocess.run(
+    ["bash", ".claude/scripts/write-agent-trace.sh", "security-defender",
+     "--json", json.dumps(trace)],
+    check=True,
+)
+PYEOF
 ```
+
+The centralized writer stamps `agent`, `timestamp`, `provenance:"self"`, `run_id`, `skill`, `spawn_sha`, and `spawn_index` from active identity + spawn-log.
 
 - `verdict`: `"pass"` if `fails_count==0`, `"fail"` otherwise (lowercase).
 - `result`: always `"count_summary"`.
