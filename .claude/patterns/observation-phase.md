@@ -195,7 +195,8 @@ print(f'Collected diffs for {len(diffs)} files -> .runs/observer-diffs.txt')
 2. Report the observer's result.
 
 3. Verify `.runs/agent-traces/observer.json` exists; if agent returned output
-   but trace is missing, write a recovery trace with `"recovery":true`.
+   but trace is missing, write a recovery trace with `"recovery":true` via
+   `bash .claude/scripts/write-recovery-trace.sh observer --reason "<cause>"`.
 
 If observer spawning fails, retry once with reduced scope (pass only fix-log
 summaries, omit full diffs). If it still fails, the lead agent must perform
@@ -203,6 +204,44 @@ inline evaluation of fix-log entries using the 3-condition test (Step 6) —
 do NOT skip to writing a clean verdict. Write `observe-result.json` with
 `"verdict": "error"` and `"error_reason": "<failure description>"` only if
 inline evaluation also fails.
+
+### Cross-skill / post-completion recovery (AOC v1.1)
+
+When `/observe` runs as a standalone skill (not embedded in `/verify`) and
+discovers a stub trace from a *preceding* skill's completed run, the default
+recovery path is blocked because `resolve_active_identity` returns the
+current `/observe` context, not the source skill's run_id.
+
+AOC v1.1 (PR3) adds `--run-id <ID>` to `write-recovery-trace.sh` for exactly
+this case:
+
+```bash
+# Identify the source run from the spawn-log
+SOURCE_RUN_ID=$(python3 -c "
+import json
+for line in open('.runs/agent-spawn-log.jsonl'):
+    e = json.loads(line)
+    if e.get('agent') == '<agent>' and e.get('hook') == 'skill-agent-gate':
+        print(e['run_id'])
+        break
+")
+
+# Recover the stub from a different skill's run
+bash .claude/scripts/write-recovery-trace.sh <agent> \
+  --run-id "$SOURCE_RUN_ID" \
+  --reason "post-completion epilogue audit"
+```
+
+Preconditions enforced (defense-in-depth):
+1. `--reason` mandatory (existing #963 forgery defense)
+2. Supplied `<RUN_ID>` must appear in some `.runs/*-context.json.run_id`
+3. Spawn-log must have an entry for `<agent>` + `<RUN_ID>`
+4. The supplied context's `skill` MUST differ from the currently-active
+   skill — same-skill recovery via `--run-id` is forbidden (use the
+   no-override path instead). Double-empty (both skills empty) fails closed.
+
+Same-skill recovery during an active run continues to use the no-override
+path, which `resolve_active_identity` resolves correctly.
 
 ## Step 5: Process Observation
 
