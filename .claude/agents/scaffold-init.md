@@ -52,30 +52,27 @@ This registers your presence so the orchestrator can detect incomplete work.
 
 ## Trace Output
 
-After all init tasks complete, update the started trace with final AOC v1 fields.
-
-Use the variable-indirection pattern (matches `design-critic.md` / `observer.md`):
+After all init tasks complete, write the final AOC v1.1 completion trace via the centralized writer (overwrites the `init-trace.py` stub atomically):
 
 ```bash
-python3 -c "
-import json
-f='.runs/agent-traces/scaffold-init.json'
-d=json.load(open(f))
-d.update({
-    'status': 'completed',
-    'verdict': 'pass',
-    'result': 'clean',
-    'provenance': 'self',
-    'partial': False,
-    'checks_performed': ['visual_brief_authored', 'global_styles_applied', 'design_tokens_seeded'],
-    'no_fixes_claimed': True,
-    'files_created': ['<list all files created or modified>'],
-})
-json.dump(d, open(f, 'w'), indent=2)
-"
+python3 - <<'PYEOF'
+import json, subprocess
+trace = {
+    "verdict": "pass",
+    "result": "clean",
+    "checks_performed": ["visual_brief_authored", "global_styles_applied", "design_tokens_seeded"],
+    "no_fixes_claimed": True,
+    "files_created": ["<list all files created or modified>"],
+}
+subprocess.run(
+    ["bash", ".claude/scripts/write-agent-trace.sh", "scaffold-init",
+     "--json", json.dumps(trace)],
+    check=True,
+)
+PYEOF
 ```
 
-Non-fixer role: `no_fixes_claimed: True` is required. Do NOT populate `fixes[]`.
+Non-fixer role: `no_fixes_claimed: True` is required. Do NOT populate `fixes[]`. The centralized writer (AOC v1.1) stamps `agent`, `timestamp`, `status:"completed"`, `provenance:"self"`, `partial:false`, `run_id`, `skill`, `spawn_sha`, and `spawn_index` from active identity + spawn-log.
 
 ## Output Contract
 

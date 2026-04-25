@@ -179,9 +179,15 @@ def main() -> int:
     parser.add_argument("--agent", required=True, help="agent base name")
     parser.add_argument(
         "--augment-spawn-index",
-        required=True,
         type=int,
-        help="spawn_index from agent-spawn-log.jsonl that this augmentation belongs to",
+        default=None,
+        help="optional: spawn_index from agent-spawn-log.jsonl. When provided, the script "
+             "verifies an entry with this exact spawn_index exists for the agent+run_id. "
+             "When omitted, accepts ANY spawn-log entry matching agent+run_id — used when "
+             "the agent does not know its specific spawn_index (e.g., per-page parallel "
+             "spawns of the same agent in design-critic). Forgery defense: skill-agent-gate "
+             "is the only writer of agent-spawn-log.jsonl, so requiring at least one matching "
+             "entry proves the Agent tool was actually invoked for this agent in this run.",
     )
     parser.add_argument(
         "--field",
@@ -271,15 +277,22 @@ def main() -> int:
                 e.get("agent") == args.agent
                 and e.get("run_id") == active_run_id
                 and e.get("hook") == "skill-agent-gate"
-                and e.get("spawn_index") == args.augment_spawn_index
             ):
-                matched = True
-                break
+                # When --augment-spawn-index is supplied, require exact match.
+                # When omitted, any entry matching agent+run_id satisfies the
+                # forgery check (the agent really was spawned in this run).
+                if args.augment_spawn_index is None or e.get("spawn_index") == args.augment_spawn_index:
+                    matched = True
+                    break
 
     if not matched:
+        idx_clause = (
+            f" spawn_index={args.augment_spawn_index}"
+            if args.augment_spawn_index is not None else ""
+        )
         sys.stderr.write(
             f"ERROR: augment-trace.py — no spawn-log entry for agent={args.agent!r} "
-            f"run_id={active_run_id!r} spawn_index={args.augment_spawn_index}; "
+            f"run_id={active_run_id!r}{idx_clause}; "
             "augmentation refused (the agent was never spawned in this run)\n"
         )
         return 1
@@ -319,8 +332,9 @@ def main() -> int:
     audit_entry = {
         "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "fields": sorted(fields.keys()),
-        "spawn_index": args.augment_spawn_index,
     }
+    if args.augment_spawn_index is not None:
+        audit_entry["spawn_index"] = args.augment_spawn_index
     existing_audit = trace.get("augmented_at")
     if isinstance(existing_audit, list):
         existing_audit.append(audit_entry)

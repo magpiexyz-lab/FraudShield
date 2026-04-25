@@ -8,7 +8,9 @@
 #   - .claude/scripts/write-degraded-trace.py  (agent self-degradation path)
 #   - .claude/scripts/validate-recovery.sh     (stamps recovery_validated only)
 #   - .claude/scripts/migrate-legacy-traces.py (one-shot legacy migration)
-#   - .claude/scripts/merge-design-critic-traces.py  (verify state-3b lead-merge)
+#   - .claude/scripts/merge-design-critic-traces.py   (verify state-3b lead-merge)
+#   - .claude/scripts/merge-scaffold-pages-traces.py  (bootstrap state-11b lead-merge,
+#                                                     extracted from inline json.dump in PR2b)
 #   - .claude/scripts/write-agent-trace.sh   (AOC v1.1 centralized writer for
 #                                             self / self-degraded / lead-on-behalf /
 #                                             lead-synthesized; replaces the
@@ -118,6 +120,15 @@ if echo "$COMMAND" | grep -qE "$ALLOWED_REGEX_MERGE_DESIGN_CRITIC"; then
   exit 0
 fi
 
+# Allow the official scaffold-pages merge script (lead-merge aggregation at
+# bootstrap state-11b — PR2b extracted this from an inline python3 -c block
+# that wrote .runs/agent-traces/scaffold-pages.json directly, mirroring the
+# #1045 resolution for design-critic).
+ALLOWED_REGEX_MERGE_SCAFFOLD_PAGES='(^|[[:space:]]|&&|;|\|)[[:space:]]*python3?[[:space:]]+[./]*\.?claude/scripts/merge-scaffold-pages-traces\.py'
+if echo "$COMMAND" | grep -qE "$ALLOWED_REGEX_MERGE_SCAFFOLD_PAGES"; then
+  exit 0
+fi
+
 # AOC v1.1: centralized agent-trace writer. Required to include --json
 # (the trace payload). Provenance, source, coverage_provider preconditions
 # are enforced inside the script.
@@ -130,15 +141,18 @@ if echo "$COMMAND" | grep -qE "$ALLOWED_REGEX_WRITE_AGENT_TRACE"; then
   fi
 fi
 
-# AOC v1.1: descriptive-field augmenter. Required to include
-# --augment-spawn-index (forces spawn-log match). Field allowlist is
-# enforced inside the script.
+# AOC v1.1: descriptive-field augmenter. Must include --field (defends against
+# accidental no-op invocations). The script itself enforces field allowlist
+# and spawn-log validation. --augment-spawn-index is optional from PR2b
+# onward — when omitted, the script accepts ANY spawn-log entry matching
+# agent + run_id, which is required for per-page parallel spawns where the
+# agent does not know its specific spawn_index.
 ALLOWED_REGEX_AUGMENT_TRACE='(^|[[:space:]]|&&|;|\|)[[:space:]]*python3?[[:space:]]+[./]*\.?claude/scripts/augment-trace\.py'
 if echo "$COMMAND" | grep -qE "$ALLOWED_REGEX_AUGMENT_TRACE"; then
-  if echo "$COMMAND" | grep -qE 'augment-trace\.py[^&|;]*--augment-spawn-index'; then
+  if echo "$COMMAND" | grep -qE 'augment-trace\.py[^&|;]*--field'; then
     exit 0
   else
-    deny "Agent trace write guard: augment-trace.py invocation lacks --augment-spawn-index <N> (required for spawn-log validation)."
+    deny "Agent trace write guard: augment-trace.py invocation lacks --field <key>=<value> (required: at least one whitelisted descriptive field to augment)."
   fi
 fi
 

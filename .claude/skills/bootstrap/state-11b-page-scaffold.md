@@ -70,24 +70,13 @@ The output is the canonical SET of pages that must exist on disk: the union of `
 
 Wait for all B2 subagents to return.
 
-After all return, merge per-page traces into `scaffold-pages.json`:
+After all return, merge per-page traces into `scaffold-pages.json` via the dedicated merge script (extracted from this state's prior inline `json.dump`, mirroring the #1045 resolution for design-critic):
 
 ```bash
-python3 -c "
-import json, glob
-batches = sorted(glob.glob('.runs/agent-traces/scaffold-pages-*.json'))
-if not batches:
-    exit(1)
-merged = {'agent': 'scaffold-pages', 'pages_created': 0, 'files_created': [], 'issues': []}
-for b in batches:
-    d = json.load(open(b))
-    merged['pages_created'] += 1
-    merged['files_created'].extend(d.get('files_created', []))
-    merged['issues'].extend(d.get('issues', []))
-json.dump(merged, open('.runs/agent-traces/scaffold-pages.json', 'w'))
-print(f'Merged {len(batches)} per-page traces into scaffold-pages.json')
-"
+python3 .claude/scripts/merge-scaffold-pages-traces.py
 ```
+
+The script (`.claude/scripts/merge-scaffold-pages-traces.py`) is allowlisted in `agent-trace-write-guard.sh` (see `ALLOWED_REGEX_MERGE_SCAFFOLD_PAGES`). It composes the aggregate from `.runs/agent-traces/scaffold-pages-*.json` with `pages_created`, `files_created[]`, `issues[]`, and `run_id` from `.runs/bootstrap-context.json`. Exits non-zero if no per-page traces exist.
 
 **Post-fan-out trace verification** (before proceeding):
 Verify each subagent produced its expected output:

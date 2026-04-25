@@ -63,25 +63,24 @@ This registers your presence so the orchestrator can detect incomplete work.
 
 ## Trace Output
 
-After analysis completes, update the started trace with final AOC v1 fields using the variable-indirection pattern:
+After analysis completes, write the final AOC v1.1 completion trace via the centralized writer (overwrites the `init-trace.py` stub atomically):
 
 ```bash
-python3 -c "
-import json
-f='.runs/agent-traces/scaffold-externals.json'
-d=json.load(open(f))
-d.update({
-    'status': 'completed',
-    'verdict': 'pass',
-    'result': 'clean',
-    'provenance': 'self',
-    'partial': False,
-    'checks_performed': ['external_deps_scanned', 'services_classified'],
-    'no_fixes_claimed': True,
-    'classifications': [{'service': '<name>', 'classification': '<core/non-core>'}],
-})
-json.dump(d, open(f, 'w'), indent=2)
-"
+python3 - <<'PYEOF'
+import json, subprocess
+trace = {
+    "verdict": "pass",
+    "result": "clean",
+    "checks_performed": ["external_deps_scanned", "services_classified"],
+    "no_fixes_claimed": True,
+    "classifications": [{"service": "<name>", "classification": "<core/non-core>"}],
+}
+subprocess.run(
+    ["bash", ".claude/scripts/write-agent-trace.sh", "scaffold-externals",
+     "--json", json.dumps(trace)],
+    check=True,
+)
+PYEOF
 ```
 
-Non-fixer role (read-only by construction — `disallowedTools` includes `Edit`, `Write`, `NotebookEdit`): `no_fixes_claimed: True` is always required. This agent scans and classifies, never fixes. See also fix #1071/def2 — this agent is also whitelisted in `.claude/patterns/agent-registry.json` `non_fixer_agents`.
+Non-fixer role (read-only by construction — `disallowedTools` includes `Edit`, `Write`, `NotebookEdit`): `no_fixes_claimed: True` is always required. This agent scans and classifies, never fixes. See also fix #1071/def2 — this agent is also whitelisted in `.claude/patterns/agent-registry.json` `non_fixer_agents`. The centralized writer (AOC v1.1) stamps `agent`, `timestamp`, `status:"completed"`, `provenance:"self"`, `partial:false`, `run_id`, `skill`, `spawn_sha`, and `spawn_index` from active identity + spawn-log.

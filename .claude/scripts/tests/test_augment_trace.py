@@ -199,6 +199,49 @@ class TestAugmentTrace(unittest.TestCase):
         d = json.loads((self.repo / ".runs/agent-traces/design-critic-landing.json").read_text())
         self.assertEqual(d["pages_reviewed"], ["landing", "pricing"])
 
+    # ---- PR2b: --augment-spawn-index optional (per-page parallel spawn case) ----
+
+    def test_omitted_spawn_index_accepts_any_matching_entry(self):
+        """When spawn_index is omitted, any spawn-log entry for agent+run_id satisfies."""
+        rc, _, err = _run(
+            self.repo,
+            "--agent", "design-critic",
+            "--field", "page=landing",
+            "--trace-filename", "design-critic-landing.json",
+        )
+        self.assertEqual(rc, 0, f"stderr={err}")
+        d = json.loads((self.repo / ".runs/agent-traces/design-critic-landing.json").read_text())
+        self.assertEqual(d["page"], "landing")
+        # Audit entry should NOT include spawn_index when not supplied
+        self.assertEqual(len(d["augmented_at"]), 1)
+        self.assertNotIn("spawn_index", d["augmented_at"][0])
+
+    def test_omitted_spawn_index_still_requires_some_entry(self):
+        """When spawn_index is omitted, but no spawn-log entry exists for agent+run_id,
+        augmentation is still refused (forgery defense unchanged)."""
+        rc, _, err = _run(
+            self.repo,
+            "--agent", "observer",  # NOT in spawn-log
+            "--field", "fixes_evaluated=5",
+            "--trace-filename", "design-critic-landing.json",
+        )
+        self.assertNotEqual(rc, 0)
+        self.assertIn("no spawn-log entry", err)
+
+    def test_field_only_no_spawn_index_audit_entry_clean(self):
+        """Audit list must be a clean shape when spawn_index is omitted."""
+        _run(
+            self.repo,
+            "--agent", "design-critic",
+            "--field", "page=landing",
+            "--trace-filename", "design-critic-landing.json",
+        )
+        d = json.loads((self.repo / ".runs/agent-traces/design-critic-landing.json").read_text())
+        entry = d["augmented_at"][0]
+        self.assertIn("timestamp", entry)
+        self.assertIn("fields", entry)
+        self.assertEqual(entry["fields"], ["page"])
+
 
 def main():
     if not SCRIPT.is_file():

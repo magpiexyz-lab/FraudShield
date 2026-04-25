@@ -109,10 +109,12 @@ Your FIRST Bash command — before any other work — MUST be:
 
 ```bash
 python3 scripts/init-trace.py design-critic "design-critic-<page_name>.json"
-python3 -c "import json;f='.runs/agent-traces/design-critic-<page_name>.json';d=json.load(open(f));d['page']='<page_name>';json.dump(d,open(f,'w'),indent=2)"
+python3 .claude/scripts/augment-trace.py --agent design-critic --field page=<page_name> --trace-filename design-critic-<page_name>.json
 ```
 
-This registers your presence. If you exhaust turns before writing the final trace, the started-only trace signals incomplete work to the orchestrator.
+This registers your presence (the stub from `init-trace.py`) and stamps which page you are reviewing (via `augment-trace.py`). If you exhaust turns before writing the final trace, the started-only trace plus the `page` field signals incomplete work AND which page was in progress to the orchestrator.
+
+`augment-trace.py` is the AOC v1.1 narrow descriptive-field augmenter (sanctioned by `agent-trace-write-guard.sh`). Without `--augment-spawn-index`, it accepts any spawn-log entry for `agent=design-critic` in the current run — required because design-critic spawns in parallel across pages and individual instances do not know their own `spawn_index`.
 
 ## Output Contract
 
