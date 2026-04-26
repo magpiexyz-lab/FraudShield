@@ -1,6 +1,6 @@
 # STATE 3a: DESIGN_AGENTS
 
-**PRECONDITIONS:** All Phase 1 traces exist (hook-enforced by `skill-agent-gate.sh`) AND state-2a artifacts exist when this is a web-app + full/visual scope run (`.runs/design-page-set.json` and `.runs/page-image-map.json`). The Stage-1 spawn list and per-page `has_images` classifications come from those files — Stage-1 does NOT re-scan the filesystem.
+**PRECONDITIONS:** All Phase 1 traces exist (hook-enforced by `skill-agent-gate.sh`) AND state-2a artifacts exist when this is a web-app + full/visual scope run (`.runs/design-page-set.json` and `.runs/page-image-map.json`). The Stage-1 spawn list and per-page `has_images` classifications come from those files — Stage-1 does NOT re-scan the filesystem. State-2b drift detection has run (`.runs/drift-report.json` exists with `block_count==0` or `not_applicable=true`); a non-zero block_count would have prevented advancement past state-2b (Issue #1077, PR3).
 
 **ACTIONS:**
 

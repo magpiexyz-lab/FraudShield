@@ -34,47 +34,39 @@ You wire the backend: API routes with input validation, database schema with acc
 - Database: RLS policies on all tables, never trust the client
 - Webhook handlers: resolve all TODO comments (especially payment status updates)
 - Tests are created but NOT run during bootstrap
-- **Slot-intent consistency check (Issue #1077):** after writing auth code, write `.runs/auth-routing.json` recording the demo-mode user shape and gated routes. Then verify each `slot-intent.json` slot's `runtime_gate` declaration matches the actual auth code:
+- **Slot-intent consistency check (Issue #1077):** after writing auth code, write `.runs/auth-routing.json` populated from the auth stack frontmatter (`demo_mode` block) + a grep over emitted auth code for `app_metadata.role === '<role>'` checks. Then verify each `slot-intent.json` slot's `runtime_gate` declaration matches actual emitted role checks:
   ```bash
   python3 - <<'PYEOF'
-  import datetime, json, os
-  routing = {
-      "generated_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-      # demo_mode_role: copied from auth stack frontmatter (already declared)
-      # gated_routes: list of routes that require a non-public role
-      # For Phase 1 of slot-intent integration, scaffold-wire records what it
-      # observed/emitted; the consistency check is best-effort.
-      "demo_mode_role": None,  # populate from auth stack inspection if available
-      "gated_routes": [],
-      "unreachable_demo_routes": [],
-  }
+  import datetime, json, os, sys, yaml
+  sys.path.insert(0, ".claude/scripts")
+  from lib.auth_routing import build_auth_routing, consistency_warnings
+
+  exp = yaml.safe_load(open("experiment/experiment.yaml"))
+  auth_stack = (exp.get("stack") or {}).get("auth")
+
+  routing = build_auth_routing(auth_stack=auth_stack, src_root="src")
+  routing["generated_at"] = datetime.datetime.now(
+      datetime.timezone.utc
+  ).strftime("%Y-%m-%dT%H:%M:%SZ")
+
   os.makedirs(".runs", exist_ok=True)
   with open(".runs/auth-routing.json", "w") as f:
       json.dump(routing, f, indent=2)
 
-  # Best-effort consistency check: if slot-intent declares runtime_gate, the
-  # auth code must enforce that role somewhere. We do a light grep, not a
-  # full proof — if the check finds nothing, emit a WARN finding (not BLOCK).
+  slot_intent = None
   if os.path.exists(".runs/slot-intent.json"):
       slot_intent = json.load(open(".runs/slot-intent.json"))
-      if slot_intent.get("design_slots_enabled"):
-          for slot, entry in (slot_intent.get("slots") or {}).items():
-              gate = entry.get("runtime_gate")
-              if gate and gate.get("role"):
-                  role = gate["role"]
-                  # naive check: grep src/ for role literal
-                  import subprocess
-                  r = subprocess.run(
-                      ["grep", "-r", "--include=*.ts", "--include=*.tsx",
-                       f"role.*{role}", "src"],
-                      capture_output=True, text=True,
-                  )
-                  if not r.stdout.strip():
-                      print(f"WARN: slot-intent declares runtime_gate.role={role!r} for {slot} but no auth code references this role")
-  print("auth-routing.json written; slot-intent consistency check complete")
+  warnings = consistency_warnings(routing, slot_intent)
+  if warnings:
+      print("AUTH-ROUTING WARN:")
+      for w in warnings:
+          print(f"  - {w}")
+  print(f"auth-routing.json written: demo_mode_role={routing['demo_mode_role']!r}, "
+        f"role_checks_observed={len(routing['role_checks_observed'])}, "
+        f"unreachable_routes={len(routing['unreachable_demo_routes'])}")
   PYEOF
   ```
-  This step is best-effort. PR3's drift detector (`state-2b-drift-detection.md` in /verify) does the rigorous declared-vs-emitted check.
+  This populates `.runs/auth-routing.json` with real signals (auth stack `demo_mode_role`, observed role checks, unreachable routes) — replacing the PR2 placeholder None values. PR3's drift detector reads this artifact to validate declared `runtime_gate.role` against emitted auth code. The helper module `.claude/scripts/lib/auth_routing.py` is unit-tested.
 
 ## Instructions
 

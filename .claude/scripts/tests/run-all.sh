@@ -41,6 +41,11 @@ SUITES=(
   ".claude/scripts/tests/test_auth_stack_frontmatter_schema.py"
   ".claude/scripts/tests/test_migrate_slot_intent_suggestions.py"
   ".claude/scripts/tests/test_state_11a_dynamic_ic.py"
+  ".claude/scripts/tests/test_render_context.py"
+  ".claude/scripts/tests/test_drift_detection_asymmetric.py"
+  ".claude/scripts/tests/test_drift_boundary_skip.py"
+  ".claude/scripts/tests/test_drift_null_unresolved.py"
+  ".claude/scripts/tests/test_auth_routing.py"
 )
 
 FAIL=0
