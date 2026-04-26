@@ -28,7 +28,7 @@
       }
     },
     "rule_verdict_vocab_consistency": {
-      "description": "AOC v1 R1: per-agent verdict/result declarations must match registry.verdict_agents_schema; lib-verdict.sh predicates must reference only registry values.",
+      "description": "AOC v1 R1: per-agent verdict/result declarations must match registry.verdict_agents_schema; evaluate-hard-gate-predicates.py predicates must reference only registry values.",
       "required": ["id", "type", "registry_path", "agent_files_glob", "predicate_file"],
       "properties": {
         "id": { "type": "string" },
@@ -36,7 +36,7 @@
         "severity": { "$ref": "#/definitions/severity" },
         "registry_path": { "type": "string", "description": "Path to agent-registry.json." },
         "agent_files_glob": { "type": "string", "description": "Glob of agent definition files to scan for verdict emissions." },
-        "predicate_file": { "type": "string", "description": "Path to lib-verdict.sh (scan for predicate verdict literals)." },
+        "predicate_file": { "type": "string", "description": "Path to evaluate-hard-gate-predicates.py (scan for predicate verdict literals)." },
         "description": { "type": "string" }
       }
     },

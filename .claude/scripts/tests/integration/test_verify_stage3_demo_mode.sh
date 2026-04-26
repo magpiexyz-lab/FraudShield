@@ -268,7 +268,7 @@ TRACE_DIR_ENV="$TMPDIR/.runs/agent-traces" python3 - <<'PYEOF'
 import json, os, sys
 sys.path.insert(0, ".claude/scripts")
 traces_dir = os.environ["TRACE_DIR_ENV"]
-# Inline port of aggregate_ok logic (parity with lib-verdict.sh:327)
+# Inline port of aggregate_ok logic (parity with evaluate-hard-gate-predicates.py)
 def pass_self_pass_or_fail(t):
     return t.get('verdict') in ('pass', 'fail') and t.get('provenance') == 'self'
 def pass_clean(t):

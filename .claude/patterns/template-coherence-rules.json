@@ -86,8 +86,8 @@
       "severity": "block",
       "registry_path": ".claude/patterns/agent-registry.json",
       "agent_files_glob": ".claude/agents/*.md",
-      "predicate_file": ".claude/hooks/lib-verdict.sh",
-      "description": "AOC v1 R1: per-agent verdict declarations in .claude/agents/*.md must use only values from verdict_agents_schema.<agent>.allowed_verdicts (lowercase: pass/fail/blocked/unresolved). result qualifiers must come from allowed_results. lib-verdict.sh predicate functions must reference only verdict values declared in the registry. Catches drift like #1044 (agent emits 'all fixed' while gate keys on 'pass')."
+      "predicate_file": ".claude/scripts/evaluate-hard-gate-predicates.py",
+      "description": "AOC v1 R1: per-agent verdict declarations in .claude/agents/*.md must use only values from verdict_agents_schema.<agent>.allowed_verdicts (lowercase: pass/fail/blocked/unresolved). result qualifiers must come from allowed_results. evaluate-hard-gate-predicates.py functions must reference only verdict values declared in the registry. Catches drift like #1044 (agent emits 'all fixed' while gate keys on 'pass')."
     },
     {
       "id": "aoc-fix-ledger-ownership",
@@ -118,7 +118,7 @@
         ".claude/scripts/check-cross-artifact-consistency.py",
         ".claude/hooks/verify-report-gate.sh",
         ".claude/patterns/state-registry.json",
-        ".claude/hooks/lib-verdict.sh",
+        ".claude/hooks/lib-verdict-consistency.sh",
         ".claude/hooks/lib-artifacts.sh",
         ".claude/scripts/compliance-audit.py",
         ".claude/hooks/patterns-saved-gate.sh",

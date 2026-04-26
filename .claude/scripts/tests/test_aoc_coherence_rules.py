@@ -5,8 +5,9 @@ Validates that verify-linter.sh dispatches correctly to the three new rule
 types introduced by agent-output-contract.md:
 
 - R1 verdict_vocab_consistency — catches agent files that emit verdicts
-  outside the registry's allowed_verdicts for that agent, and lib-verdict.sh
-  predicates that reference non-registry verdict literals.
+  outside the registry's allowed_verdicts for that agent, and
+  evaluate-hard-gate-predicates.py predicates that reference non-registry
+  verdict literals.
 - R2 ledger_ownership — catches writes to gated paths (.runs/fix-ledger.jsonl,
   .runs/fix-log.md) from files outside the allowed_writers list.
 - R3 consumer_coverage — catches consumer files that do not reference the
@@ -74,7 +75,7 @@ MINIMAL_REGISTRY = {
 
 
 MINIMAL_PREDICATES = """\
-#!/usr/bin/env bash
+#!/usr/bin/env python3
 # Stub predicate file — refs only registry verdicts.
 # t.get('verdict') == 'pass'
 # t.get('verdict') in ('pass', 'fail')
@@ -99,7 +100,7 @@ class TestR1VerdictVocab(unittest.TestCase):
                 "severity": "block",
                 "registry_path": ".claude/patterns/agent-registry.json",
                 "agent_files_glob": ".claude/agents/*.md",
-                "predicate_file": ".claude/hooks/lib-verdict.sh",
+                "predicate_file": ".claude/scripts/evaluate-hard-gate-predicates.py",
             }]
         }
 
@@ -107,7 +108,7 @@ class TestR1VerdictVocab(unittest.TestCase):
         """Agent emitting registry-declared verdict has no findings."""
         files = {
             ".claude/patterns/agent-registry.json": json.dumps(MINIMAL_REGISTRY),
-            ".claude/hooks/lib-verdict.sh": MINIMAL_PREDICATES,
+            ".claude/scripts/evaluate-hard-gate-predicates.py": MINIMAL_PREDICATES,
             ".claude/agents/demo-agent.md": (
                 "# Demo Agent\n\n"
                 '`"verdict": "pass"` is valid.\n'
@@ -122,7 +123,7 @@ class TestR1VerdictVocab(unittest.TestCase):
         """Agent emitting pre-AOC legacy verdict (e.g. 'all fixed') triggers R1."""
         files = {
             ".claude/patterns/agent-registry.json": json.dumps(MINIMAL_REGISTRY),
-            ".claude/hooks/lib-verdict.sh": MINIMAL_PREDICATES,
+            ".claude/scripts/evaluate-hard-gate-predicates.py": MINIMAL_PREDICATES,
             ".claude/agents/demo-agent.md": (
                 "# Demo Agent\n\n"
                 '`"verdict": "all fixed"` is the legacy drift we want to catch.\n'
@@ -135,11 +136,11 @@ class TestR1VerdictVocab(unittest.TestCase):
         self.assertIn("all fixed", out)
 
     def test_predicate_references_non_registry_verdict_is_blocked(self):
-        """lib-verdict.sh referencing a verdict literal not in registry triggers R1."""
+        """evaluate-hard-gate-predicates.py referencing a verdict literal not in registry triggers R1."""
         files = {
             ".claude/patterns/agent-registry.json": json.dumps(MINIMAL_REGISTRY),
-            ".claude/hooks/lib-verdict.sh": (
-                '#!/usr/bin/env bash\n'
+            ".claude/scripts/evaluate-hard-gate-predicates.py": (
+                '#!/usr/bin/env python3\n'
                 "# Stub\n"
                 "# t.get('verdict') == 'weirdo'\n"
             ),

@@ -955,8 +955,8 @@ def _emit_finding(rule, message):
 
 def check_verdict_vocab_consistency(rule):
     """AOC v1 R1: agent definitions must emit only verdicts/results declared
-    in verdict_agents_schema, and lib-verdict.sh predicates must reference
-    only declared verdict values."""
+    in verdict_agents_schema, and evaluate-hard-gate-predicates.py predicates
+    must reference only declared verdict values."""
     findings = []
     rid = rule.get("id", "<unknown>")
 

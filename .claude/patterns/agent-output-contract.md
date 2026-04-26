@@ -55,7 +55,7 @@ and by guarding against future drift with blocking coherence rules.
 | `result` | `agent ∈ verdict_agents` and `status == "completed"` | `clean` \| `fixed` \| `partial` \| `degraded` \| `skipped` \| `none` \| `count_summary` \| `null` |
 
 - **`verdict`** is the core protocol vocabulary. Gate predicates in
-  `.claude/hooks/lib-verdict.sh` key on this field only. Gate semantics
+  `.claude/scripts/evaluate-hard-gate-predicates.py` key on this field only. Gate semantics
   never depend on the qualifier.
 - **`result`** is the qualifier that preserves information that `verdict`
   alone cannot carry. Observation-phase, q-score, and human readers key on
@@ -112,7 +112,7 @@ existing `additional_block_conditions` mechanism in
 The canonical per-agent table of `allowed_verdicts` and `allowed_results`
 lives in `.claude/patterns/agent-registry.json.verdict_agents_schema`. The
 R1 coherence rule enforces consistency between that registry, each agent
-definition file, and the predicate vocabulary in `lib-verdict.sh`.
+definition file, and the predicate vocabulary in `evaluate-hard-gate-predicates.py`.
 
 ### Provenance enum (canonical)
 
@@ -146,8 +146,9 @@ The four real-world authorship modes have distinct downstream confidence:
 | Agent never spawned, coverage guaranteed elsewhere | Lead synthesized as marker | `lead-synthesized` | `pass_lead_synthesized` (requires coverage_provider) |
 | Lead applied fix during verify | Direct knowledge | `lead-fix` | `pass_lead_fix` (requires lead_attestation) |
 
-The predicates are defined in `.claude/hooks/lib-verdict.sh` and gated per-agent
-via `agent-registry.json.hard_gates[].allow_predicates`.
+The predicates are defined in `.claude/scripts/evaluate-hard-gate-predicates.py`
+(invoked by `.claude/hooks/lib-hard-gate.sh`) and gated per-agent via
+`agent-registry.json.hard_gates[].allow_predicates`.
 
 ### FLS v1 — Fix Ledger Schema
 
@@ -206,7 +207,7 @@ but this fallback MUST be removed in the release after AOC v1 lands.
 | 4 | `.claude/scripts/check-cross-artifact-consistency.py` | Per-agent ledger row counts vs trace `fixes[]` |
 | 5 | `.claude/hooks/verify-report-gate.sh` | Hard gate + self-heal (refuses if `trace-migration-unresolved.json.unresolved_count > 0`) |
 | 6 | `.claude/patterns/state-registry.json` VERIFY (verify:3c, verify:3d) | Per-agent ledger counts with `run_id` filter; `make sync-verify` propagates to state-file prose |
-| 7 | `.claude/hooks/lib-verdict.sh` `check_fixlog_verdict_consistency` | Ledger count vs verdict (replaces fix-log regex count) |
+| 7 | `.claude/hooks/lib-verdict-consistency.sh` `check_fixlog_verdict_consistency` | Ledger count vs verdict (replaces fix-log regex count) |
 | 8 | `.claude/hooks/lib-artifacts.sh` | Asserts ledger presence alongside fix-log.md |
 | 9 | `.claude/scripts/compliance-audit.py` `check_fix_log_count` | `wc -l` ledger instead of fix-log regex |
 | 10 | `.claude/hooks/patterns-saved-gate.sh` Invariant 4 | `wc -l` ledger vs `total` field |
@@ -223,7 +224,7 @@ the `cross_file_contradiction` category with `severity: block`. When
 
 | Rule | Type | Enforces |
 |---|---|---|
-| **R1 `aoc-verdict-vocab-consistency`** | `verdict_vocab_consistency` | Agent definitions emit only values declared in `agent-registry.json.verdict_agents_schema`; `lib-verdict.sh` predicates reference only those values. |
+| **R1 `aoc-verdict-vocab-consistency`** | `verdict_vocab_consistency` | Agent definitions emit only values declared in `agent-registry.json.verdict_agents_schema`; `evaluate-hard-gate-predicates.py` predicates reference only those values. |
 | **R2 `aoc-fix-ledger-ownership`** | `ledger_ownership` | `.runs/fix-log.md` and `.runs/fix-ledger.jsonl` are written only by `write-fix-ledger.py` / `render-fix-log.py`. Complemented at runtime by `.claude/hooks/fix-ledger-write-guard.sh`. |
 | **R3 `aoc-consumer-coverage`** | `consumer_coverage` | Every file in the Consumer contract table above references `.runs/fix-ledger.jsonl` (regex on `fix-log.md` alone is a stale-consumer finding). |
 
@@ -270,7 +271,7 @@ The `verify-linter.sh` dispatcher extends the existing
 - **Adding a new `provenance` value** *(v1.1 policy)*: minor bump
   (additive). Requires synchronized updates to (a) `valid_prov` set in
   `artifact-integrity-gate.sh`; (b) any new `pass_lead_*`-style predicate
-  in `lib-verdict.sh` plus inclusion in `aggregate_ok` sibling acceptance;
+  in `evaluate-hard-gate-predicates.py` plus inclusion in `aggregate_ok` sibling acceptance;
   (c) `validate-recovery.sh` if the new value goes through evidence
   validation; (d) consumer hard_gates in `agent-registry.json` that should
   accept it; (e) new predicate registered in

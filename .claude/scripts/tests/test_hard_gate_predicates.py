@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
-"""test_hard_gate_predicates.py — exercise check_hard_gate_predicates in lib-verdict.sh.
+"""test_hard_gate_predicates.py — exercise check_hard_gate_predicates via the
+bash wrapper chain (lib.sh -> lib-verdict.sh shim -> lib-hard-gate.sh ->
+evaluate-hard-gate-predicates.py). This is the regression net for the
+bash-Python boundary; companion file test_evaluate_hard_gate_predicates.py
+unit-tests the Python evaluator directly.
 
 Each test constructs a trace + a synthetic verify-report.md CONTENT
-(simulating the Write payload) and invokes the function from lib-verdict.sh.
+(simulating the Write payload) and invokes the function from the bash wrapper.
 Validates the predicate semantics that ultimately decide whether
 verify-report-gate.sh allows `hard_gate_failure:false`.
 

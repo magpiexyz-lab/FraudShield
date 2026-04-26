@@ -494,9 +494,9 @@ Write `.runs/observe-result.json`:
 }
 ```
 
-**Strategy field mapping** (for lib-verdict.sh compatibility):
+**Strategy field mapping** (for lib-verdict-consistency.sh compatibility):
 - scope = `full` or `code` → do NOT set `"strategy"` field (observer should
-  have run; lib-verdict.sh treats absent strategy as code observation)
+  have run; lib-verdict-consistency.sh treats absent strategy as code observation)
 - scope = `process` or `audit-only` → set `"strategy": "execution-audit"`
 
 Verdict values:

@@ -90,7 +90,7 @@ mkdir -p .runs/agent-traces && echo '{"agent":"<agent-name>","timestamp":"'$(dat
 
 Callers MUST NOT invent new provenance values. Adding a new value requires
 updating `artifact-integrity-gate.sh` per-provenance validation, the
-predicate set in `lib-verdict.sh` (with sibling acceptance in `aggregate_ok`),
+predicate set in `evaluate-hard-gate-predicates.py` (with sibling acceptance in `aggregate_ok`),
 the `hard_gates` rules in `agent-registry.json`, and the universal provenance
 check in `state-completion-gate.sh`. See `agent-output-contract.md`
 "Versioning rules" for the synchronized-update protocol (S0-style).

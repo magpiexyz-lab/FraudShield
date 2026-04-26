@@ -10,7 +10,7 @@
     "resolve-challenger", "review-challenger", "solve-critic",
     "resolve-reviewer"
   ],
-  "_verdict_agents_schema_docs": "AOC v1 per-agent vocabulary. Each entry declares the allowed verdict values (AVS v1 core: pass/fail/blocked/unresolved) and allowed result qualifiers (clean/fixed/partial/degraded/skipped/none/count_summary/null). count_summary agents MUST emit required_structured_fields; gates key on those fields via additional_block_conditions in hard_gates[]. R1 coherence rule enforces that lib-verdict.sh predicates and agent .md files stay consistent with this table.",
+  "_verdict_agents_schema_docs": "AOC v1 per-agent vocabulary. Each entry declares the allowed verdict values (AVS v1 core: pass/fail/blocked/unresolved) and allowed result qualifiers (clean/fixed/partial/degraded/skipped/none/count_summary/null). count_summary agents MUST emit required_structured_fields; gates key on those fields via additional_block_conditions in hard_gates[]. R1 coherence rule enforces that evaluate-hard-gate-predicates.py predicates and agent .md files stay consistent with this table.",
   "verdict_agents_schema": {
     "observer": {
       "allowed_verdicts": ["pass", "blocked"],

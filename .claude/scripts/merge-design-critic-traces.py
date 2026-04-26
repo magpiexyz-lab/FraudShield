@@ -155,7 +155,7 @@ def main() -> int:
             merged["fixes"].extend(page_fixes)
 
         # Per-page provenance propagation for the aggregate_ok predicate
-        # (lib-verdict.sh). The predicate re-reads per-page trace files
+        # (evaluate-hard-gate-predicates.py). The predicate re-reads per-page trace files
         # directly so this aggregate view is informational, but it helps
         # downstream consumers (q-score, PR body) reason about which pages
         # landed in which bucket without re-globbing. (#1042)
