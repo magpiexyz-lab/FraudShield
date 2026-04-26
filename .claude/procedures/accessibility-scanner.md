@@ -32,6 +32,8 @@ DEMO_MODE=true NEXT_PUBLIC_DEMO_MODE=true npm run start -- -p 3096 &
 
 Poll `http://localhost:3096` until it responds (max 15 seconds, then abort).
 
+> REF: see `.claude/patterns/demo-server-startup.md`.
+
 ### R1. axe-core Violations
 
 Enumerate pages to scan via the canonical SET inventory (every surface a user can reach — not just the funnel):

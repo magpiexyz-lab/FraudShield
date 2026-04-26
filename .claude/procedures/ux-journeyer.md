@@ -42,6 +42,8 @@ DEMO_MODE=true NEXT_PUBLIC_DEMO_MODE=true npm run start -- -p 3098 &
 
 Poll `http://localhost:3098` until it responds (max 15 seconds, then abort).
 
+> REF: see `.claude/patterns/demo-server-startup.md`.
+
 ### 5. Navigate the Golden Path
 
 Write an inline Playwright script that:

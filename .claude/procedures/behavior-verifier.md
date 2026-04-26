@@ -48,6 +48,8 @@ DEMO_MODE=true NEXT_PUBLIC_DEMO_MODE=true npm run start -- -p 3097 &
 
 Poll `http://localhost:3097` until it responds (max 15 seconds, then abort).
 
+> REF: see `.claude/patterns/demo-server-startup.md`.
+
 ### 3. Walk Golden Path (State Machine)
 
 Write an inline Playwright script that walks each `golden_path` step **in a single browser context** — never create a fresh context between steps. The golden path is a connected journey; state must carry forward.

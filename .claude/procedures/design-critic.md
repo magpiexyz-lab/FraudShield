@@ -25,6 +25,8 @@ DEMO_MODE=true NEXT_PUBLIC_DEMO_MODE=true npm run start -- -p 3099 &
 
 Poll the base URL (either provided or `http://localhost:3099`) until it responds (max 15 seconds, then abort).
 
+> REF: see `.claude/patterns/demo-server-startup.md`.
+
 ### 3.5. Classify Review Method (per page, before screenshot)
 
 > **Skip path (#1061 — empty-boundary fast-path):** When the state-3a spawn
