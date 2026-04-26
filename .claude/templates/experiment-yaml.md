@@ -246,14 +246,14 @@ design:
   aesthetic_notes: string         # freeform creative direction, appended to visual brief
 
   # Issue #1077: feature flag for slot-intent contract consumers.
-  # When false (default), scaffold-images / scaffold-landing / scaffold-
-  # pages / design-critic / state-2b drift detector use legacy behavior;
-  # slot-intent.json is still WRITTEN by scaffold-init for forward-compat
-  # but has no behavioral effect. When true, downstream consumers read
-  # the contract and apply slot_role / production_method / intended_render
-  # routing. Soft-launch: keep false initially; flip after 2-3 internal
-  # bootstraps validate.
-  slots_enabled: false
+  # Default: true. When true, scaffold-images / scaffold-landing / scaffold-
+  # pages / design-critic / state-2b drift detector read slot-intent.json
+  # and route per-slot (skip dynamic_runtime og-photo, apply intended_render,
+  # text-fallback for conditional+runtime_gate, drift detection enforces
+  # declared-vs-emitted). Set to false ONLY to opt out for legacy
+  # compatibility (existing projects that haven't migrated their visual
+  # brief). New projects should leave this true.
+  slots_enabled: true
 
   # Issue #1077: per-slot intent contract (optional user override).
   # Declared by scaffold-init at state-10 from product context; user-supplied

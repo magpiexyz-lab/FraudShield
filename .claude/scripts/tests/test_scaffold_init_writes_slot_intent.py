@@ -93,7 +93,7 @@ def _build_doc(experiment: dict, auth_stack_demo_mode: dict | None = None,
         merged.pop("evidence", None)
         slots_out[slot] = merged
 
-    design_slots_enabled = bool(design.get("slots_enabled", False))
+    design_slots_enabled = bool(design.get("slots_enabled", True))
 
     return {
         "_schema_version": 1,
@@ -120,7 +120,7 @@ class TestBasicWebApp(unittest.TestCase):
         doc = _build_doc(exp)
         self.assertEqual(validate(doc), [])
         self.assertEqual(doc["archetype"], "web-app")
-        self.assertEqual(doc["design_slots_enabled"], False)
+        self.assertEqual(doc["design_slots_enabled"], True)
         # All 7 slots present
         self.assertEqual(set(doc["slots"].keys()), set(SLOTS))
         # Hero defaults to focal in absence of texture lineage / image keywords

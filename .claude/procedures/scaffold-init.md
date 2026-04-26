@@ -172,7 +172,7 @@ for slot in slot_names:
     merged.pop("evidence", None)
     slots_out[slot] = merged
 
-design_slots_enabled = bool(design.get("slots_enabled", False))
+design_slots_enabled = bool(design.get("slots_enabled", True))
 
 doc = {
     "_schema_version": 1,
@@ -197,7 +197,7 @@ print(f"slot-intent.json written: {len(slots_out)} slots, design_slots_enabled={
 PYEOF
 ```
 
-**Outcome:** `.runs/slot-intent.json` exists, schema-valid, with one entry per slot. `design_slots_enabled` defaults to `false` (PR2 will use this flag to gate downstream consumption). When `experiment.yaml.design.slots` provides overrides, they take precedence verbatim.
+**Outcome:** `.runs/slot-intent.json` exists, schema-valid, with one entry per slot. `design_slots_enabled` defaults to `true` — slot-intent contract is active for new bootstraps. To opt out (e.g., for legacy compatibility), set `experiment.yaml.design.slots_enabled: false`. When `experiment.yaml.design.slots` provides overrides, they take precedence verbatim.
 
 **Note:** PR1b only writes the file. PR2 wires scaffold-images / scaffold-landing / scaffold-pages / design-critic to read it. PR3 adds drift-detection enforcement.
 
