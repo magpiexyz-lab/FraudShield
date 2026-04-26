@@ -2,7 +2,28 @@
 # lib-merge.sh — Merge gate validation functions.
 # Sourced via lib.sh facade. Do NOT source directly.
 # Cross-module: uses parse_payload, read_payload_field, extract_write_content,
-#   handle_validation from lib-core.sh (loaded before this module by facade).
+#   handle_validation, read_agent_registry_field from lib-core.sh
+#   (loaded before this module by facade).
+
+# --- exec_merge_gate ---
+# Hook-level wrapper: reads checks JSON from agent-registry, guards empty,
+# dispatches to run_merge_gate. Caller is responsible for parse_payload
+# (so adversarial-merge-gate.sh can branch on file_path before calling this).
+# $1: agent-registry dotted field (e.g., "merge_gates.design_ux.checks")
+# $2: file_path substring to match (e.g., "design-ux-merge")
+# $3: human-readable gate name (e.g., "Design-UX merge gate")
+# Usage: exec_merge_gate "merge_gates.design_ux.checks" "design-ux-merge" "Design-UX merge gate"
+exec_merge_gate() {
+  local registry_field="$1"
+  local file_pattern="$2"
+  local gate_name="$3"
+
+  local checks
+  checks=$(read_agent_registry_field "$registry_field")
+  [[ -z "$checks" ]] && exit 0
+
+  run_merge_gate "$file_pattern" "$checks" "$gate_name"
+}
 
 # --- run_merge_gate ---
 # Parameterized merge gate executor. Encapsulates the full gate flow:

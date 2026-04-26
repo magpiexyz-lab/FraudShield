@@ -114,7 +114,7 @@ for f in .claude/commands/*.md .claude/agents/*.md .claude/procedures/*.md; do
 done
 
 # 14. Verify lib.sh function calls have space before arguments in hook scripts
-LIB_FUNCS="compute_missing_states|require_trace_verdict|check_trace_run_id|check_trace_verdict|check_postcondition_artifacts|check_tier1_retry_complete|check_efficiency_directives|check_build_result|check_file_boundary|check_verdict_gates|check_skill_completion|check_block_verdicts|check_verdict_consistency|check_verdict_error|check_fixlog_verdict_consistency|rerun_postconditions|require_trace_verdict|handle_validation|deny_errors"
+LIB_FUNCS="compute_missing_states|require_trace_verdict|check_trace_run_id|check_trace_verdict|check_postcondition_artifacts|check_tier1_retry_complete|check_efficiency_directives|check_build_result|check_file_boundary|check_verdict_gates|check_skill_completion|check_block_verdicts|check_verdict_consistency|check_verdict_error|check_fixlog_verdict_consistency|rerun_postconditions|require_trace_verdict|handle_validation|deny_errors|exec_merge_gate|run_merge_gate"
 for f in .claude/hooks/*.sh; do
   [ -f "$f" ] || continue
   [[ "$(basename "$f")" =~ ^lib(-[a-z]+)?\.sh$ ]] && continue

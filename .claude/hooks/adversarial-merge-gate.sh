@@ -124,13 +124,9 @@ except Exception:
     print('light')
 " 2>/dev/null || echo "light")
 
-    if [[ "$SOLVE_DEPTH" != "full" ]]; then
-      exit 0
-    fi
+    [[ "$SOLVE_DEPTH" != "full" ]] && exit 0
 
-    CHANGE_CHECKS=$(read_agent_registry_field "merge_gates.adversarial.change.checks")
-    [[ -z "$CHANGE_CHECKS" ]] && exit 0
-    run_merge_gate "change-challenge" "$CHANGE_CHECKS" "Adversarial merge gate (change)"
+    exec_merge_gate "merge_gates.adversarial.change.checks" "change-challenge" "Adversarial merge gate (change)"
     ;;
 
   *)
