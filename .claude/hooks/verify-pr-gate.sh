@@ -24,66 +24,94 @@ BRANCH=$(get_branch)
 
 # --- PR check functions ---
 # Each function maps to a pr_checks entry in skill.yaml observation config.
-# Functions use globals: REPORT, TRACES_DIR, ERRORS, PROJECT_DIR, BRANCH, SKILL.
-# FRONTMATTER is set by check_frontmatter and used by subsequent checks.
+# Inputs are passed as parameters; ERRORS is the only top-level state read or
+# written by check functions (it's the explicit aggregator drained by deny_errors
+# in lib-core.sh). Function ordering in the dispatch loop below is therefore
+# safe to change — no implicit data dependency between checks.
 
-FRONTMATTER=""
+# load_report_frontmatter <report>
+# Pure helper: prints the YAML frontmatter body (between leading and trailing
+# `---` markers) to stdout, or empty on missing file / missing leading marker.
+# Mirrors check_frontmatter's existing parse so values are byte-identical.
+load_report_frontmatter() {
+  local report="$1"
+  [[ ! -f "$report" ]] && return 0
+  head -1 "$report" | grep -q '^---$' || return 0
+  sed -n '2,/^---$/p' "$report" | sed '$d'
+}
 
+# check_frontmatter <report> <frontmatter> <project_dir>
+# Validates verify-report.md exists, has a YAML frontmatter block, and that
+# the frontmatter does not signal process_violation or hard_gate_failure
+# (the latter only blocks outside standalone mode).
 check_frontmatter() {
-  if [[ ! -f "$REPORT" ]]; then
+  local report="$1"
+  local frontmatter="$2"
+  local project_dir="$3"
+
+  if [[ ! -f "$report" ]]; then
     ERRORS+=("verify-report.md not found — run /verify first")
     return
-  elif ! head -1 "$REPORT" | grep -q '^---$'; then
+  elif ! head -1 "$report" | grep -q '^---$'; then
     ERRORS+=("verify-report.md missing YAML frontmatter")
     return
   fi
-  FRONTMATTER=$(sed -n '2,/^---$/p' "$REPORT" | sed '$d')
 
   local violation
-  violation=$(echo "$FRONTMATTER" | grep 'process_violation: *true' || true)
+  violation=$(echo "$frontmatter" | grep 'process_violation: *true' || true)
   if [[ -n "$violation" ]]; then
     ERRORS+=("process_violation is true in verify-report.md — verification agents were skipped")
   fi
 
   local hard_gate mode
-  hard_gate=$(echo "$FRONTMATTER" | grep 'hard_gate_failure: *true' || true)
-  mode=$(read_json_field "$PROJECT_DIR/.runs/verify-context.json" "mode")
+  hard_gate=$(echo "$frontmatter" | grep 'hard_gate_failure: *true' || true)
+  mode=$(read_json_field "$project_dir/.runs/verify-context.json" "mode")
   if [[ -n "$hard_gate" && "$mode" != "standalone" ]]; then
     ERRORS+=("hard_gate_failure is true — verification hard gate(s) failed; PR blocked in non-standalone mode")
   fi
 }
 
+# check_agent_match <report> <frontmatter>
+# Compares agents_expected against agents_completed (sorted) in the
+# pre-loaded frontmatter. Silently no-ops when the frontmatter is empty —
+# preserves prior behavior when the report is missing or unparseable.
 check_agent_match() {
-  [[ ! -f "$REPORT" || -z "$FRONTMATTER" ]] && return
+  local report="$1"
+  local frontmatter="$2"
+  [[ ! -f "$report" || -z "$frontmatter" ]] && return
   local expected completed
-  expected=$(echo "$FRONTMATTER" | grep 'agents_expected:' | sed 's/agents_expected: *//' | tr -d '[]' | tr ',' '\n' | sed 's/^ *//;/^$/d' | sort)
-  completed=$(echo "$FRONTMATTER" | grep 'agents_completed:' | sed 's/agents_completed: *//' | tr -d '[]' | tr ',' '\n' | sed 's/^ *//;/^$/d' | sort)
+  expected=$(echo "$frontmatter" | grep 'agents_expected:' | sed 's/agents_expected: *//' | tr -d '[]' | tr ',' '\n' | sed 's/^ *//;/^$/d' | sort)
+  completed=$(echo "$frontmatter" | grep 'agents_completed:' | sed 's/agents_completed: *//' | tr -d '[]' | tr ',' '\n' | sed 's/^ *//;/^$/d' | sort)
   if [[ "$expected" != "$completed" ]]; then
     ERRORS+=("agents_expected does not match agents_completed in verify-report.md")
   fi
 }
 
+# check_trace_completeness <report> <frontmatter> <traces_dir>
 # Manifest-based trace completeness: checks each agent in agents_completed
 # has a matching trace file. Exact match: {agent}.json. Per-page glob:
 # {agent}-*.json (e.g. design-critic-landing.json). Suffix-named independent
 # agents (e.g. design-critic-shared) must have their own agents_completed entry.
 check_trace_completeness() {
-  [[ ! -f "$REPORT" || -z "$FRONTMATTER" ]] && return
-  if [[ ! -d "$TRACES_DIR" ]]; then
-    ERRORS+=("Agent traces directory not found at $TRACES_DIR")
+  local report="$1"
+  local frontmatter="$2"
+  local traces_dir="$3"
+  [[ ! -f "$report" || -z "$frontmatter" ]] && return
+  if [[ ! -d "$traces_dir" ]]; then
+    ERRORS+=("Agent traces directory not found at $traces_dir")
     return
   fi
 
   local agents_str
-  agents_str=$(echo "$FRONTMATTER" | grep 'agents_completed:' | \
+  agents_str=$(echo "$frontmatter" | grep 'agents_completed:' | \
     sed 's/agents_completed: *//' | tr -d '[]' | tr ',' '\n' | \
     sed 's/^ *//;s/ *$//' | sed '/^$/d')
 
   while IFS= read -r agent; do
     [[ -z "$agent" ]] && continue
-    if [[ -f "$TRACES_DIR/${agent}.json" ]]; then
+    if [[ -f "$traces_dir/${agent}.json" ]]; then
       continue
-    elif ls "$TRACES_DIR/${agent}"-*.json &>/dev/null; then
+    elif ls "$traces_dir/${agent}"-*.json &>/dev/null; then
       continue
     else
       ERRORS+=("Missing trace for agent: $agent")
@@ -91,13 +119,22 @@ check_trace_completeness() {
   done <<< "$agents_str"
 }
 
+# check_gate_verdicts_pr <project_dir> <branch>
+# Thin wrapper over the lib check that verifies g4/g5/g6 gate verdicts are
+# present and PASS for the current branch.
 check_gate_verdicts_pr() {
-  local verdicts_dir="$PROJECT_DIR/.runs/gate-verdicts"
-  check_verdict_gates "g4 g5 g6" "$verdicts_dir" "$BRANCH"
+  local project_dir="$1"
+  local branch="$2"
+  check_verdict_gates "g4 g5 g6" "$project_dir/.runs/gate-verdicts" "$branch"
 }
 
+# check_acceptance_criteria <project_dir>
+# Parses acceptance_criteria from current-plan.md frontmatter and verifies each
+# AC has either its declared test_file present (unit-test method) or a
+# behavior-verifier trace recording the AC id (behavior-verifier method).
 check_acceptance_criteria() {
-  local plan="$PROJECT_DIR/.runs/current-plan.md"
+  local project_dir="$1"
+  local plan="$project_dir/.runs/current-plan.md"
   [[ ! -f "$plan" ]] && return
 
   local ac_result
@@ -135,14 +172,14 @@ acs = fm.get('acceptance_criteria', None)
 if not acs:
     print('SKIP'); sys.exit(0)
 
-traces_dir = os.path.join('$PROJECT_DIR', '.runs/agent-traces')
+traces_dir = os.path.join('$project_dir', '.runs/agent-traces')
 errors = []
 for ac in acs:
     ac_id = ac.get('id', '?')
     method = ac.get('verify_method', '')
     if method == 'unit-test':
         tf = ac.get('test_file', '')
-        if tf and not os.path.exists(os.path.join('$PROJECT_DIR', tf)):
+        if tf and not os.path.exists(os.path.join('$project_dir', tf)):
             errors.append(ac_id + ': test_file ' + tf + ' not found')
     elif method == 'behavior-verifier':
         found = False
@@ -167,8 +204,11 @@ else:
   fi
 }
 
+# check_review_metrics <project_dir>
+# Confirms review-complete.json (when present) records review_complete=true.
 check_review_metrics() {
-  local review_file="$PROJECT_DIR/.runs/review-complete.json"
+  local project_dir="$1"
+  local review_file="$project_dir/.runs/review-complete.json"
   [[ ! -f "$review_file" ]] && return
   local valid
   valid=$(python3 -c "
@@ -214,16 +254,22 @@ if [[ -z "$GATE_MECH" ]]; then
     ERRORS+=("observe-result.json not found — /$SKILL must complete observation before PR")
   fi
 else
+  # Pre-load frontmatter once so check_* functions are order-independent.
+  # All check functions take their inputs as parameters; FRONTMATTER must be
+  # threaded explicitly. To add a check: define `check_foo(<args>)`, add a
+  # case branch below, thread args from the top-level constants.
+  FRONTMATTER=$(load_report_frontmatter "$REPORT")
+
   # Dispatch pr_checks from registry
   for check in $PR_CHECKS; do
     case "$check" in
-      frontmatter-validation) check_frontmatter ;;
-      trace-completeness)     check_trace_completeness ;;
-      agent-match)            check_agent_match ;;
-      postcondition-rerun)    rerun_postconditions "$SKILL" ;;
-      gate-verdicts)          check_gate_verdicts_pr ;;
-      acceptance-criteria)    check_acceptance_criteria ;;
-      review-metrics)         check_review_metrics ;;
+      frontmatter-validation) check_frontmatter      "$REPORT" "$FRONTMATTER" "$PROJECT_DIR" ;;
+      trace-completeness)     check_trace_completeness "$REPORT" "$FRONTMATTER" "$TRACES_DIR" ;;
+      agent-match)            check_agent_match      "$REPORT" "$FRONTMATTER" ;;
+      postcondition-rerun)    rerun_postconditions   "$SKILL" ;;
+      gate-verdicts)          check_gate_verdicts_pr "$PROJECT_DIR" "$BRANCH" ;;
+      acceptance-criteria)    check_acceptance_criteria "$PROJECT_DIR" ;;
+      review-metrics)         check_review_metrics   "$PROJECT_DIR" ;;
     esac
   done
 fi
