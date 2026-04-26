@@ -31,6 +31,12 @@ SUITES=(
   ".claude/scripts/tests/test_render_review_demo_404.py"
   ".claude/scripts/tests/test_merge_provenance_branch.py"
   ".claude/scripts/tests/test_state_registry_7b.py"
+  ".claude/scripts/tests/test_slot_intent_schema.py"
+  ".claude/scripts/tests/test_derive_slot_intent_decision_table.py"
+  ".claude/scripts/tests/test_derive_og_photo_default.py"
+  ".claude/scripts/tests/test_derive_runtime_gate.py"
+  ".claude/scripts/tests/test_archetype_short_circuit.py"
+  ".claude/scripts/tests/test_design_slots_override.py"
 )
 
 FAIL=0
