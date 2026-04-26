@@ -11,7 +11,9 @@ propagated.
 > **Single source of truth.** The four procedures listed below MUST inline
 > a textually equivalent snippet — only the port number varies. Drift in
 > the env vars, timeout, or abort behavior should be reconciled here
-> first, then propagated.
+> first, then propagated. **Enforced by `scripts/consistency-check.sh`
+> Check 24** — fails CI on port drift, missing REF line, or any
+> unregistered procedure that inlines `DEMO_MODE=true ... npm run start`.
 
 ## Canonical Snippet
 

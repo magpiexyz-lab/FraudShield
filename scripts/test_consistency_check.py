@@ -333,3 +333,101 @@ class TestCheck22MergeCallerAllowlist:
         )
         result = run_consistency_check(tmp_path)
         assert "Check 22: gh pr merge callers restricted to allowlist... ok" in result.stdout
+
+
+_DEMO_REGISTRY = [
+    ("accessibility-scanner", 3096),
+    ("behavior-verifier", 3097),
+    ("ux-journeyer", 3098),
+    ("design-critic", 3099),
+]
+
+
+def _demo_procedure_body(port):
+    """Minimal valid procedure body containing the canonical command + REF."""
+    return (
+        "# Procedure\n\n"
+        "### Start Server\n\n"
+        "```bash\n"
+        f"DEMO_MODE=true NEXT_PUBLIC_DEMO_MODE=true npm run start -- -p {port} &\n"
+        "```\n\n"
+        f"Poll `http://localhost:{port}` until it responds (max 15 seconds, then abort).\n\n"
+        "> REF: see `.claude/patterns/demo-server-startup.md`.\n"
+    )
+
+
+def _demo_clean_layout(tmp_path):
+    """Set up pattern file + all 4 procedures with correct snippets and REFs."""
+    _minimal_clean_layout(tmp_path)
+    (tmp_path / ".claude" / "patterns").mkdir(parents=True, exist_ok=True)
+    (tmp_path / ".claude" / "procedures").mkdir(parents=True, exist_ok=True)
+    write_file(
+        str(tmp_path / ".claude" / "patterns" / "demo-server-startup.md"),
+        "# Demo-Mode Dev-Server Startup\nCanonical reference.\n",
+    )
+    for proc, port in _DEMO_REGISTRY:
+        write_file(
+            str(tmp_path / ".claude" / "procedures" / f"{proc}.md"),
+            _demo_procedure_body(port),
+        )
+
+
+class TestCheck24DemoServerStartupDrift:
+    """The 4 registered procedures must inline the canonical snippet with the
+    registered port AND carry a REF line. No unregistered procedure may inline
+    the snippet. Skip cleanly when the canonical pattern file is absent."""
+
+    def test_skips_when_no_pattern_file(self, tmp_path):
+        _minimal_clean_layout(tmp_path)
+        result = run_consistency_check(tmp_path)
+        assert (
+            "Check 24: demo-server-startup canonical snippet drift... skip (no canonical)"
+            in result.stdout
+        )
+
+    def test_passes_when_clean(self, tmp_path):
+        _demo_clean_layout(tmp_path)
+        result = run_consistency_check(tmp_path)
+        assert (
+            "Check 24: demo-server-startup canonical snippet drift... ok"
+            in result.stdout
+        ), result.stdout
+
+    def test_fails_when_port_drifts(self, tmp_path):
+        _demo_clean_layout(tmp_path)
+        # design-critic is registered at 3099; rewrite it to 4099.
+        write_file(
+            str(tmp_path / ".claude" / "procedures" / "design-critic.md"),
+            _demo_procedure_body(4099)
+            .replace("localhost:4099", "localhost:3099"),  # leave poll line alone — only the command port drifts
+        )
+        result = run_consistency_check(tmp_path)
+        assert result.returncode == 1
+        assert "demo-server-startup drift detected" in result.stdout
+        assert "design-critic.md" in result.stdout
+        assert "port drifted" in result.stdout
+
+    def test_fails_when_ref_line_missing(self, tmp_path):
+        _demo_clean_layout(tmp_path)
+        body_no_ref = _demo_procedure_body(3098).replace(
+            "> REF: see `.claude/patterns/demo-server-startup.md`.\n", ""
+        )
+        write_file(
+            str(tmp_path / ".claude" / "procedures" / "ux-journeyer.md"),
+            body_no_ref,
+        )
+        result = run_consistency_check(tmp_path)
+        assert result.returncode == 1
+        assert "missing REF line" in result.stdout
+        assert "ux-journeyer.md" in result.stdout
+
+    def test_fails_when_unregistered_procedure_inlines_snippet(self, tmp_path):
+        _demo_clean_layout(tmp_path)
+        write_file(
+            str(tmp_path / ".claude" / "procedures" / "rogue-procedure.md"),
+            _demo_procedure_body(3100),
+        )
+        result = run_consistency_check(tmp_path)
+        assert result.returncode == 1
+        assert "rogue-procedure.md" in result.stdout
+        assert "not in Check 24 registry" in result.stdout

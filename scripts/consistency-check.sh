@@ -591,6 +591,73 @@ fi
 
 fi  # end Check 23 canonical-source guard
 
+# Check 24: demo-server-startup canonical snippet drift.
+# Canonical: .claude/patterns/demo-server-startup.md
+# Four verification procedures inline an identical demo-mode dev-server start
+# command + 15s poll directive — only the port number varies. The pattern file
+# documents the canonical form; this check enforces that:
+#   24a. The pattern file exists.
+#   24b. Each registered procedure inlines the canonical command with the
+#        registered port AND carries a `> REF: see ...` line.
+#   24c. No unregistered procedure inlines the snippet (a fifth caller must
+#        register here, in the pattern file's port table, and add a REF).
+echo -n "Check 24: demo-server-startup canonical snippet drift... "
+DEMO_PATTERN_FILE=".claude/patterns/demo-server-startup.md"
+DEMO_REF_LINE='> REF: see `.claude/patterns/demo-server-startup.md`'
+DEMO_REGISTRY=(
+  "accessibility-scanner:3096"
+  "behavior-verifier:3097"
+  "ux-journeyer:3098"
+  "design-critic:3099"
+)
+DEMO_VIOLATIONS=""
+
+# Skip when the canonical pattern file is absent — fresh /bootstrap projects
+# may not yet have pulled in the pattern. Matches Check 23's "skip (no canonical)" idiom.
+if [ ! -f "$DEMO_PATTERN_FILE" ]; then
+  echo "skip (no canonical)"
+else
+
+for entry in "${DEMO_REGISTRY[@]}"; do
+  proc="${entry%%:*}"
+  port="${entry##*:}"
+  file=".claude/procedures/${proc}.md"
+  if [ ! -f "$file" ]; then
+    DEMO_VIOLATIONS+="missing registered procedure: $file"$'\n'
+    continue
+  fi
+  expected_cmd="DEMO_MODE=true NEXT_PUBLIC_DEMO_MODE=true npm run start -- -p ${port} &"
+  if ! grep -qF -- "$expected_cmd" "$file"; then
+    DEMO_VIOLATIONS+="${file}: canonical command absent or port drifted (expected '... -p ${port} &')"$'\n'
+  fi
+  if ! grep -qF -- "$DEMO_REF_LINE" "$file"; then
+    DEMO_VIOLATIONS+="${file}: missing REF line '${DEMO_REF_LINE}.'"$'\n'
+  fi
+done
+
+REGISTERED_BASENAMES=$(printf '%s\n' "${DEMO_REGISTRY[@]}" | cut -d: -f1)
+DEMO_INLINE_FILES=$(grep -lE 'DEMO_MODE=true.*npm run start' .claude/procedures/*.md 2>/dev/null || true)
+if [ -n "$DEMO_INLINE_FILES" ]; then
+  while IFS= read -r f; do
+    [ -z "$f" ] && continue
+    base="$(basename "$f" .md)"
+    if ! echo "$REGISTERED_BASENAMES" | grep -qx "$base"; then
+      DEMO_VIOLATIONS+="${f}: inlines DEMO_MODE startup but is not in Check 24 registry — add to registry + ${DEMO_PATTERN_FILE} port table + add REF line"$'\n'
+    fi
+  done <<< "$DEMO_INLINE_FILES"
+fi
+
+if [ -n "$DEMO_VIOLATIONS" ]; then
+  echo ""
+  echo "  FAIL: demo-server-startup drift detected:"
+  printf '%s' "$DEMO_VIOLATIONS" | sed 's/^/    /'
+  ERRORS=$((ERRORS + 1))
+else
+  echo "ok"
+fi
+
+fi  # end Check 24 canonical-pattern-present guard
+
 echo ""
 if [ "$WARNINGS" -gt 0 ]; then
   echo "WARNINGS: $WARNINGS weak postcondition(s) detected (non-blocking)."
