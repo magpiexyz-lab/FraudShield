@@ -5,7 +5,10 @@
 - Step 1 complete (theme tokens in `src/app/globals.css`, visual brief at `.runs/current-visual-brief.md`)
 - `.runs/current-plan.md` exists
 
+## Archetype Gate
+
 > REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+> web-app: full landing co-located | service: landing only if surface=co-located | cli: landing only if surface=detached
 >
 > State-specific logic below takes precedence.
 

@@ -64,6 +64,8 @@ This file is read by `/change` to provide context for the next iteration.
 
 Compute iterate analysis quality (see `.claude/patterns/skill-scoring.md`):
 
+## Archetype Gate
+
 > REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
 
 ```bash

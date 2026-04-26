@@ -5,6 +5,11 @@
 
 **ACTIONS:**
 
+## Archetype Gate
+
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+> web-app + service: curl /api/health | cli: curl canonical_url if surface present, else skip
+
 Execute the provider-specific rollback command from the hosting stack file.
 
 If the provider only supports dashboard-based rollback (no CLI command), instruct the user to perform the rollback manually and wait for confirmation.

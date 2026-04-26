@@ -5,6 +5,8 @@
 
 **ACTIONS:**
 
+## Archetype Gate
+
 > REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table + Compound Dimensions "Deploy gate".
 >
 > Deploy gate — web-app/co-located: full deploy | service/none: stop | cli/detached: surface-only | cli/none: stop

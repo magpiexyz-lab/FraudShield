@@ -10,6 +10,8 @@
 
 **ACTIONS:**
 
+## Archetype Gate
+
 > REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table, rows "Trace field", "Spec field", "Primary unit".
 >
 > Trace field — web-app: pages_wired + api_routes_wired | service: api_routes_wired | cli: commands_wired

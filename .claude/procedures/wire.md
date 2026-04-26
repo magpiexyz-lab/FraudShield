@@ -8,9 +8,14 @@
 - Scaffold subagent's completion report (external dep decisions) provided in your prompt
 - Read all context files listed in your task assignment before starting
 
-## Steps
+## Archetype Gate
 
 > REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+> web-app: API routes + auth + layout assembly + Playwright tests | service: API routes + auth, no layout | cli: skip API routes, vitest tests
+> Conditional points: line 17 (Step 5 cli skip), line 92 (Step 5c web-app layout), lines 132-136 (testing framework gate), lines 138 (web-app tests), 197 (service tests), 209 (cli tests), lines 260-262 (validation per archetype), lines 267-268 (surface gates)
+> Shape: interleaved-per-step
+
+## Steps
 
 ### Step 5: API routes
 

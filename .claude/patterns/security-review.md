@@ -30,9 +30,10 @@ checklist below.
 
 > Only used when the security-guidance skill is skipped.
 
-### Archetype Scope
+## Archetype Gate
 
 > REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+> web-app: D1–D5 + A1–A5 | service: D1, D2, D3, D5 + A1–A4 | cli: D1, D2 + A1, A4
 
 Read `experiment/experiment.yaml` to determine the archetype (`type` field, default: `web-app`).
 Scope applies to both Defender and Attacker agents below:

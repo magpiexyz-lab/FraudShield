@@ -1,5 +1,8 @@
 # STATE 7: SAVE_PLAN
 
+
+<!-- archetype-reference-only: REF .claude/patterns/archetype-behavior-check.md — Reads archetype from experiment.yaml; saves to plan frontmatter for resume continuity. -->
+
 **PRECONDITIONS:**
 - User approved the plan (STATE 6 POSTCONDITIONS met)
 

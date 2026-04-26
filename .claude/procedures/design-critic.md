@@ -1,5 +1,8 @@
 # Design Critic Procedure
 
+
+<!-- archetype-reference-only: REF .claude/patterns/archetype-behavior-check.md — 'professional services' is design-domain language, not archetype branching -->
+
 > Executed by the design-critic agent. See `.claude/agents/design-critic.md` for identity, review criteria, and output contract.
 
 ### 1. Prerequisite Check

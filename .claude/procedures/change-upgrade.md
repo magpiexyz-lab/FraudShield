@@ -1,5 +1,8 @@
 # /change: Upgrade Implementation
 
+
+<!-- archetype-reference-only: REF .claude/patterns/archetype-behavior-check.md — 'service' in 'external service' / 'service stack file' is generic, not archetype-conditional -->
+
 > Invoked by change.md Step 6 when type is Upgrade.
 > Read the full change skill at `.claude/commands/change.md` for lifecycle context.
 

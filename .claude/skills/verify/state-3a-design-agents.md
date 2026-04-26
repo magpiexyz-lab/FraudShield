@@ -17,6 +17,8 @@ After each edit-capable agent completes, read its completion report and append i
 
 ### design-critic (if scope is `full` or `visual`, AND archetype is `web-app`) — PARALLEL PER PAGE
 
+## Archetype Gate
+
 > REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table, row "Visual agents".
 >
 > web-app: design-critic (per-page parallel) | service: skip | cli: skip

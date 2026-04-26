@@ -10,6 +10,8 @@
 
 **ACTIONS:**
 
+## Archetype Gate
+
 > REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
 
 - Read `experiment/experiment.yaml` — understand the current scope, the canonical page set (computed by `derive_scope_pages()` over `golden_path` + `behaviors[*].pages` — see `.claude/templates/experiment-yaml.md`), existing behaviors, target user, thesis

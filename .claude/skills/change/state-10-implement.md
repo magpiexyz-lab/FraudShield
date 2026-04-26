@@ -6,6 +6,8 @@
 
 **ACTIONS:**
 
+## Archetype Gate
+
 > REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
 
 Follow archetype behavior check per `patterns/archetype-behavior-check.md`.

@@ -5,6 +5,11 @@
 
 **ACTIONS:**
 
+## Archetype Gate
+
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+> web-app: count page directories | service: count API routes | cli: count command modules; +surface pages if detached
+
 Verify `experiment/experiment.yaml` exists. If not, stop and tell the user: "No experiment found -- `experiment/experiment.yaml` is missing. Make sure you're in the right project directory."
 
 Verify `experiment/EVENTS.yaml` exists. If not, stop and tell the user: "experiment/EVENTS.yaml not found. This file defines all analytics events and is required. Restore it from your template repo or re-create it following the format in the experiment/EVENTS.yaml section of the template."

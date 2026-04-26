@@ -1,5 +1,8 @@
 # Google Ads Setup Guide
 
+
+<!-- archetype-reference-only: REF .claude/patterns/archetype-behavior-check.md — 'click' substring matches 'cli' regex; document is service/tool setup -->
+
 One-time setup for the team. After this, each team member gets a child account under the MCC, and all their MVPs share that account.
 
 ## Account Structure

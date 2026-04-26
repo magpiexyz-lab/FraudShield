@@ -6,6 +6,11 @@ If `.runs/fix-log.md` has only the header line and no entries, this state is a n
 
 **ACTIONS:**
 
+## Archetype Gate
+
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+> web-app + service surface: 'run /deploy' guidance | cli: 'run npm publish or GH Releases' guidance
+
 Read `.runs/fix-log.md` from disk. If it has only the header line and no entries, write
 `{"saved":0,"skipped":0,"total":0,"saved_to_files":[],"saved_to_memory":0}` to
 `.runs/patterns-saved.json` and skip to Done.

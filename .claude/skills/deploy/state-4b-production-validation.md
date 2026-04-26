@@ -5,6 +5,8 @@
 
 **ACTIONS:**
 
+## Archetype Gate
+
 > REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
 
 ### 5d.5: Provision scan (independent verification)

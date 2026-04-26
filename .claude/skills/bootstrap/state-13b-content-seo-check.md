@@ -5,6 +5,8 @@
 
 **ACTIONS:**
 
+## Archetype Gate
+
 > REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table, row "Content/SEO checks".
 >
 > web-app: content quality, CTA, hrefs, tokens, SEO baseline | service: skip | cli: skip

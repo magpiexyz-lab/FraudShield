@@ -1,5 +1,8 @@
 # STATE 5: MANIFEST_WRITE
 
+
+<!-- archetype-reference-only: REF .claude/patterns/archetype-behavior-check.md — Reads archetype from context; per-service health checks delegated to provision-scanner agent. -->
+
 **PRECONDITIONS:**
 - Health check and provision scan completed (STATE 4b POSTCONDITIONS met)
 

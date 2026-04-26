@@ -7,6 +7,11 @@
 
 **ACTIONS:**
 
+## Archetype Gate
+
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table, row "Phase A (core scaffold)".
+> web-app: run Phase B2 (pages + landing) | service: skip | cli: skip
+
 #### Phase B2 (pages + landing -- web-app only)
 
 Service and cli archetypes skip Phase B2 — proceed to STATE TRACKING to advance state immediately. (Per `patterns/archetype-behavior-check.md`)

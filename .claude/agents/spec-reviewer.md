@@ -15,7 +15,7 @@ disallowedTools:
 maxTurns: 500
 ---
 
-<!-- coherence-allow: raw-golden_path (sequence-step) scope=["## Archetype Scope", "## Checks"] — Archetype Scope references `S4 (golden_path reachability)` by name; Checks section contains S3c (golden_path event consistency) and S4 (golden_path reachability), both of which walk the funnel sequence in order (LIST semantics). SET-inventory existence (S2) already uses derive_scope_pages() per #1024. -->
+<!-- coherence-allow: raw-golden_path (sequence-step) scope=["## Archetype Gate", "## Checks"] — Archetype Gate references `S4 (golden_path reachability)` by name; Checks section contains S3c (golden_path event consistency) and S4 (golden_path reachability), both of which walk the funnel sequence in order (LIST semantics). SET-inventory existence (S2) already uses derive_scope_pages() per #1024. -->
 
 # Spec Reviewer
 
@@ -50,7 +50,7 @@ This registers your presence. If you exhaust turns before writing the final trac
 - `.runs/current-plan.md` — the current change plan (if exists)
 - Source code in `src/`
 
-## Archetype Scope
+## Archetype Gate
 
 > REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
 

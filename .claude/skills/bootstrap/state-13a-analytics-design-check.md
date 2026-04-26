@@ -5,6 +5,8 @@
 
 **ACTIONS:**
 
+## Archetype Gate
+
 > REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table, rows "Design tokens check", "Favicon + OG image check".
 >
 > Design tokens — web-app: verify --primary in globals.css | service: skip | cli: skip

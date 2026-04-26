@@ -114,3 +114,223 @@ This branching applies at four stages of every skill:
    command modules; CLI analytics requires consent guard
 4. **Verification** (verify states): scope visual agents to web-app only; skip
    design pipeline for service/cli
+
+## Canonical Contract Heading
+
+Every markdown file in `.claude/procedures/`, `.claude/agents/`,
+`.claude/skills/*/state-*.md`, or `.claude/patterns/` that **semantically
+branches on archetype** MUST include a canonical `## Archetype Gate` H2
+heading immediately above (or wrapping) the branching block.
+
+The heading is the **machine-checkable contract** that this file participates
+in archetype-aware execution. It is enforced by `scripts/consistency-check.sh`
+Check 23 (subcheck 23e).
+
+### Why H2 (not HTML comment, not H3)
+
+- **Versus H3**: H3 is for sub-section nesting; H2 establishes a top-level
+  contract section that linters can target with a single regex
+  (`^## Archetype Gate$`).
+- **Versus HTML comment**: H2 renders in documentation tools and is searchable
+  by humans reading source files; HTML comments are invisible in renders.
+- **Safe inside state files**: The verify-linter section parser
+  (`.claude/scripts/verify-linter.sh:122-159`) only treats `**UPPERCASE:**`
+  markers as section boundaries — H2 headings are inert. Existing state files
+  already use H2 sub-sections (e.g., `bootstrap/state-5-present-plan.md:2`,
+  `audit/state-1-parallel-analysis.md`), so this is not a precedent change.
+
+### Minimal contract
+
+```markdown
+## Archetype Gate
+
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+> web-app: <one-line summary> | service: <one-line summary> | cli: <one-line summary>
+
+[inline branching code follows here OR — for interleaved files — a list of
+file:line references to each conditional point]
+```
+
+## Canonical Branch Shapes
+
+These shapes are **informative, not enforced**. The contract enforces only the
+heading + REF presence (Linter Contract below). Shape choice is a documentation
+aid for authors and reviewers.
+
+### Shape 1: web-app-only
+
+Used when the procedure/agent only does meaningful work for `web-app`;
+service and cli skip entirely.
+
+```markdown
+## Archetype Gate
+
+> REF: Archetype branching — see `archetype-behavior-check.md`.
+> web-app: run | service: skip | cli: skip
+
+If archetype is **not** `web-app`, skip all checks and report `verdict: "skipped"`.
+```
+
+Examples: `procedures/accessibility-scanner.md`, `agents/performance-reporter.md`.
+
+### Shape 2: all-three
+
+Three distinct execution paths, one per archetype.
+
+```markdown
+## Archetype Gate
+
+> REF: Archetype branching — see `archetype-behavior-check.md`.
+> web-app: process pages | service: process endpoints | cli: process commands
+
+### web-app
+[steps for web-app]
+
+### service
+[steps for service]
+
+### cli
+[steps for cli]
+```
+
+Examples: `procedures/scaffold-pages.md`, `procedures/plan-validation.md`.
+
+### Shape 3: web-app + service
+
+cli skips, web-app and service have separate handling.
+
+```markdown
+## Archetype Gate
+
+> REF: Archetype branching — see `archetype-behavior-check.md`.
+> web-app: <handling> | service: <handling> | cli: skip
+```
+
+### Shape 4: subset-per-archetype
+
+Each archetype runs a different subset of named checks (not separate paths,
+but a filtered list).
+
+```markdown
+## Archetype Gate
+
+> REF: Archetype branching — see `archetype-behavior-check.md`.
+> web-app: D1–D6 | service: D1, D2, D3, D5 (skip D4) | cli: D1, D2 only
+```
+
+Examples: `agents/security-defender.md`, `agents/security-attacker.md`.
+
+### Shape 5: interleaved-per-step
+
+Conditional points scattered across multiple steps of a procedure. The
+`## Archetype Gate` heading sits at file top and **enumerates each conditional
+point** by `file:line` so reviewers can audit drift.
+
+```markdown
+## Archetype Gate
+
+> REF: Archetype branching — see `archetype-behavior-check.md`.
+> web-app: full pipeline | service: skip pages, run API tests | cli: skip pages, run command tests
+> Conditional points: [Step 5c (line N), Step 7 (line N), Step 8 (line N), ...]
+```
+
+Examples: `procedures/wire.md`, `procedures/scaffold-libs.md`.
+
+## Reference Mechanism
+
+The contract is **heading + REF colocated within the heading's section**:
+
+1. The `## Archetype Gate` heading must appear in the file
+2. A REF line referencing `archetype-behavior-check.md` must appear within
+   the heading's section (between the `## Archetype Gate` and the next H2)
+
+### Per file-type guidance
+
+**Procedures** — heading at top of the procedure body, just below the `# Title`:
+```markdown
+# Procedure: Wire
+
+## Archetype Gate
+> REF: ...
+
+## Step 1
+```
+
+**Agents** — heading near top, after the `## Instructions` section if present:
+```markdown
+# Agent
+
+## Instructions
+
+## Archetype Gate
+> REF: ...
+```
+
+**State files** — heading **inside** `**ACTIONS:**` section (between
+`**ACTIONS:**` and `**POSTCONDITIONS:**`), so the section parser still
+captures ACTIONS content correctly:
+```markdown
+**ACTIONS:**
+
+## Archetype Gate
+> REF: ...
+
+[ACTIONS steps follow]
+
+**POSTCONDITIONS:**
+```
+
+**Patterns** — heading inline with the document's existing H2 hierarchy.
+
+## Linter Contract
+
+Enforcement: `scripts/consistency-check.sh` Check 23 (CI-wired via
+`.github/workflows/ci.yml:141-147` and `Makefile:42`).
+
+### Subchecks
+
+- **23a** — This file (`archetype-behavior-check.md`) has a Quick-Reference Table section
+- **23b** — Quick-Reference Table has ≥14 data rows
+- **23c** — This file has a Compound Dimensions section
+- **23d** — `.claude/hooks/lib-state.sh` has `get_archetype` utility function
+- **23e** — Every file in `ARCHETYPE_BRANCHING_FILES` array contains `^## Archetype Gate$`
+- **23f** — Every file in `ARCHETYPE_BRANCHING_FILES` + `ARCHETYPE_REFERENCE_ONLY_FILES`
+  contains a reference to `archetype-behavior-check.md`
+- **23g** — WARN (non-blocking): word-boundary scan for files mentioning
+  `\b(web-app|cli)\b|archetype.*service|stack\.type` that are not in either
+  curated list (catches drift when new branching files are added without
+  being curated)
+
+### File classification
+
+`ARCHETYPE_BRANCHING_FILES` — files that semantically branch on archetype
+and require both the `## Archetype Gate` heading and the REF.
+
+`ARCHETYPE_REFERENCE_ONLY_FILES` — files that mention archetype strings but
+do not have semantic branching (e.g., shell scripts, generic stack files,
+overview patterns). They require the REF only — no heading.
+
+### Adding a new archetype-branching file
+
+When a new file (procedure / agent / state) is added that branches on
+archetype:
+
+1. Add `## Archetype Gate` heading + REF line per the **Reference Mechanism**
+   section above
+2. Append the file path to `ARCHETYPE_BRANCHING_FILES` in
+   `scripts/consistency-check.sh`
+3. Run `bash scripts/consistency-check.sh` to confirm Check 23 passes
+4. If `make lint-template` produces `DRIFT_DECLARED_VS_PROSE` because of a
+   `coherence-allow scope=[...]` pragma, update the pragma in the same commit
+
+### Adding a new archetype (e.g., `mobile`)
+
+When experiment.yaml grows a new archetype value:
+
+1. Add a new row to the Quick-Reference Table above
+2. Update the `## Archetype Mapping` sub-sections (`### web-app`, `### service`,
+   `### cli`, plus a new `### mobile`)
+3. Update Check 23g's word-boundary regex if `mobile` introduces new
+   identifying tokens beyond what existing patterns catch
+4. Audit each file in `ARCHETYPE_BRANCHING_FILES` and add `mobile` handling
+   (run the resulting linter to confirm)

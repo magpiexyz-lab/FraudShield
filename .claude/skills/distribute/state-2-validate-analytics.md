@@ -5,6 +5,11 @@
 
 **ACTIONS:**
 
+## Archetype Gate
+
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+> web-app: client + server analytics paths | service/cli: server analytics only (no client file)
+
 1. **project_name source match:**
    - Read `name` from experiment.yaml
    - Grep analytics files for `PROJECT_NAME` constant: always check `src/lib/analytics-server.ts`; check `src/lib/analytics.ts` only when it exists (web-app only — service/cli have no client analytics file)

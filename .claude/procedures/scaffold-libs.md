@@ -5,7 +5,12 @@
 - Stack files on disk for all categories in experiment.yaml `stack`
 - `.runs/current-plan.md` exists
 
+## Archetype Gate
+
 > REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+> web-app: client + server analytics, typed event wrappers | service: server analytics only | cli: server analytics + opt-in consent guard
+> Conditional points: Step 6 (analytics constant replacement, per-archetype path), Step 7 (CLI consent guard), Step 8 (typed wrappers — web-app + nextjs only)
+> Shape: interleaved-per-step
 >
 > State-specific logic below takes precedence.
 

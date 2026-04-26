@@ -38,6 +38,8 @@ Spawn the `behavior-verifier` agent (`subagent_type: behavior-verifier`). No add
 
 #### performance-reporter (if scope is `full` or `visual`, AND archetype is `web-app`)
 
+## Archetype Gate
+
 > REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table, row "Performance + a11y agents".
 >
 > web-app: spawn performance-reporter + accessibility-scanner | service: skip | cli: skip

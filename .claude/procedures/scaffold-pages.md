@@ -13,9 +13,10 @@ Pages import from `src/lib/events.ts` (created by scaffold-libs in Phase B1).
 scaffold-libs completes and writes its manifest before scaffold-pages launches in Phase B2.
 The `src/lib/events.ts` file exists when this agent runs — import typed wrappers directly.
 
-## Instructions by archetype
+## Archetype Gate
 
 > REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+> web-app: app shell + SEO + pages | service: API routes only | cli: command modules only
 
 ### web-app
 

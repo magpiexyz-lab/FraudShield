@@ -4,6 +4,11 @@
 
 **ACTIONS:**
 
+## Archetype Gate
+
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+> web-app: design-critic + design-consistency-checker traces required (when scope=full|visual) | service/cli: skip design traces
+
 #### Stage 1c: Pre-merge validate-recovery for self-degraded traces (#1042)
 
 For every per-page design-critic trace with `provenance="self-degraded"`

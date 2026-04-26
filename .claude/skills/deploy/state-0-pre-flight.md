@@ -6,6 +6,13 @@
 
 **ACTIONS:**
 
+## Archetype Gate
+
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Compound Dimensions "Surface type resolution" + "Deploy gate".
+> web-app: full deploy (host + database) | service: API health check or stop if surface=none | cli: surface-only deploy or stop
+> Conditional points: Step 5 (surface resolution + per-archetype routing), Step 5a.1 (surface-only path)
+> Shape: interleaved-per-step
+
 1. Verify `package.json` exists. If not, stop: "No app found. Run `/bootstrap` first."
 2. Verify on `main` branch with clean working tree (`git status --porcelain` is empty). If not, stop: "Switch to main with a clean working tree before deploying."
 3. Run `npm run build` to verify the app builds locally. If it fails, stop: "Fix build errors before deploying."

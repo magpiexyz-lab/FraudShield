@@ -98,9 +98,13 @@ You verify **behavioral correctness only**. Do NOT test or report on:
 
 If you notice something outside your scope during testing, ignore it. Stay in your lane.
 
-## Instructions
+## Archetype Gate
 
 > REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+> web-app: single browser context | service: single API session | cli: single CLI invocation sequence
+> Branching is inlined in the procedure file (`.claude/procedures/behavior-verifier.md`).
+
+## Instructions
 
 Read and follow `.claude/procedures/behavior-verifier.md` for the archetype-specific step-by-step procedure.
 

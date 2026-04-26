@@ -115,6 +115,8 @@ is exclusively for **semantic** equivalence — same intent, different text.
 
 **Primary scan targets:**
 
+## Archetype Gate
+
 > REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
 
 - Protocol descriptions (e.g., fix-log writing format described differently in 13 files)

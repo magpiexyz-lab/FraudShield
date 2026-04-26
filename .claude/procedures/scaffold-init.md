@@ -1,5 +1,10 @@
 # Scaffold: Visual Design Foundation
 
+## Archetype Gate
+
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+> web-app/service/cli: archetype-driven scaffold templates and defaults
+
 ## Prerequisites
 - Branch already created (by bootstrap Step 0)
 - Plan approved and saved to `.runs/current-plan.md`

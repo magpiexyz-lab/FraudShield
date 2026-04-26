@@ -5,6 +5,8 @@
 
 **ACTIONS:**
 
+## Archetype Gate
+
 > REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table, rows "Spec field", "Primary unit".
 >
 > Spec field — web-app: golden_path | service: endpoints | cli: commands

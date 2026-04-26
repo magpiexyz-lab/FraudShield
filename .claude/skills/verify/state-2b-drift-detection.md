@@ -9,6 +9,11 @@ soft-launch projects with the flag off).
 
 **ACTIONS:**
 
+## Archetype Gate
+
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+> web-app: drift detection runs | service/cli: short-circuit (no design drift surface)
+
 Run the slot-intent drift detector to compare declared `intended_render`
 (from `.runs/slot-intent.json`) against observed JSX in `src/` (Issue
 #1077, PR3). Asymmetric severity table:

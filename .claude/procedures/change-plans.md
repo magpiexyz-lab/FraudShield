@@ -5,6 +5,13 @@
 > "How" and "Approaches" sections use exploration results from plan-exploration.md.
 > After drafting, run plan-validation.md — flagged items appear in Questions prefixed with "[Validation]".
 
+## Archetype Gate
+
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+> web-app: pages + golden_path | service: endpoints | cli: commands
+> Conditional points: line 30 (Spec field row), line 32 (Golden Path impact), line 53 (Component Tree), line 58 (Data Flow), lines 127-129 (Upgrade How — per-archetype examples)
+> Shape: interleaved-per-step
+
 ## Feature Plan Template
 
 ```

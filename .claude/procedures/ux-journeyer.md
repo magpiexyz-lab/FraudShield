@@ -2,6 +2,9 @@
 
 # UX Journeyer Procedure
 
+
+<!-- archetype-reference-only: REF .claude/patterns/archetype-behavior-check.md — 'click-driven' substring matches 'cli' regex; UX testing patterns are archetype-agnostic -->
+
 > Executed by the ux-journeyer agent. See `.claude/agents/ux-journeyer.md` for identity and output contract.
 
 ### 1. Prerequisite Check

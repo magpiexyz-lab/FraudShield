@@ -5,6 +5,11 @@
 
 **ACTIONS:**
 
+## Archetype Gate
+
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+> web-app: scan src/app/ pages + components | service: scan src/app/api/ routes | cli: scan src/commands/
+
 Scan the bootstrapped codebase to classify modules for unit test generation.
 
 - Read `experiment/experiment.yaml` (behaviors, golden_path, stack, type)

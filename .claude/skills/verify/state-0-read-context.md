@@ -4,6 +4,11 @@
 
 **ACTIONS:**
 
+## Archetype Gate
+
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+> web-app/service/cli: read archetype + scope into context for downstream agent gating
+
 1. **Bootstrap check** (standalone mode only):
    If no `.runs/current-plan.md` exists (standalone `/verify`), check that the project is bootstrapped:
    ```bash

@@ -30,6 +30,12 @@ python3 scripts/init-trace.py accessibility-scanner
 
 This registers your presence. If you exhaust turns before writing the final trace, the started-only trace signals incomplete work to the orchestrator.
 
+## Archetype Gate
+
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+> web-app: scan all pages | service: skip | cli: skip
+> Branching is inlined in the procedure file (`.claude/procedures/accessibility-scanner.md`).
+
 ## Instructions
 
 Read and follow `.claude/procedures/accessibility-scanner.md` for the full step-by-step procedure (archetype gate, method selection, runtime vs static fallback).

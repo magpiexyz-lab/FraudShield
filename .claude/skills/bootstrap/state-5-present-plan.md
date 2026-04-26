@@ -5,6 +5,11 @@
 
 **ACTIONS:**
 
+## Archetype Gate
+
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+> web-app: present Pages plan | service: present Endpoints plan | cli: present Commands plan
+
 Present the plan in plain language the user can verify:
 
 ```

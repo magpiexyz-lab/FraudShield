@@ -1,5 +1,8 @@
 # Skill Framework v2 Architecture
 
+
+<!-- archetype-reference-only: REF .claude/patterns/archetype-behavior-check.md — Architecture overview; describes archetype as a concept (requires_archetype attribute, etc.). -->
+
 Reference document for the skill framework. All migration PRs read this file for context.
 
 ---

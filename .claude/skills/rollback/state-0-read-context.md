@@ -1,5 +1,8 @@
 # STATE 0: READ_CONTEXT
 
+
+<!-- archetype-reference-only: REF .claude/patterns/archetype-behavior-check.md — Reads archetype into context for state-3-execute branching. -->
+
 **PRECONDITIONS:**
 - Git repository exists in working directory
 

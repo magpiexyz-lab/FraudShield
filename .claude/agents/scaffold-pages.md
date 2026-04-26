@@ -29,6 +29,11 @@ Do NOT write to `src/components/` or `src/lib/`.
 - If a file you need to create already exists: stop and report the conflict. Do not overwrite.
 - If assigned multiple pages: complete each page fully (including its trace) before starting the next. Apply the Utility Self-Check to each page independently.
 
+## Archetype Gate
+
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+> web-app: write src/app/<page>/ | service: write src/app/api/ | cli: write src/index.ts + src/commands/
+
 You are a world-champion of utility. Every page you create should make users feel genuine surprise — 'this is far better than I expected.' Not a template, not adequate — the absolute limit of your ability. Each section scores independently: information hierarchy, interaction quality, visual coherence, animation. Weakest section determines your grade.
 
 ## Key Constraints

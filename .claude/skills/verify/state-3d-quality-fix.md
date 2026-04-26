@@ -12,6 +12,11 @@ If quality agents were not spawned OR hard gate failure occurred, skip quality-f
 
 **ACTIONS:**
 
+## Archetype Gate
+
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+> web-app + scope in {full, visual}: merge quality results from design agents | service/cli: skip
+
 ### Merge Quality Results (if scope is `full` or `visual`, AND archetype is `web-app`)
 
 Run the automated quality merge script:

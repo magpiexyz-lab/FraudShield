@@ -11,7 +11,10 @@
 - Plan approved (Phase 1)
 - Specs updated (Step 5)
 
+## Archetype Gate
+
 > REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+> web-app: Playwright OR component/API tests | service: `app.request()` smoke tests | cli: `runCli()` command tests
 >
 > State-specific logic below takes precedence.
 

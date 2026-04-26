@@ -5,6 +5,11 @@
 
 **ACTIONS:**
 
+## Archetype Gate
+
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+> web-app: behaviors require pages: [...] | service: endpoints: [...] | cli: commands: [...]
+
 ## Step 4: Derive Behaviors
 
 Convert each **pending** (experiment-type) hypothesis into testable behaviors using given/when/then format.

@@ -363,6 +363,218 @@ else
   echo "ok"
 fi
 
+# Check 23: archetype consistency (absorbs former scripts/check-archetype-consistency.sh)
+# Files that semantically branch on archetype must include `## Archetype Gate` H2 heading
+# AND a reference to .claude/patterns/archetype-behavior-check.md.
+# Canonical: .claude/patterns/archetype-behavior-check.md (Quick-Reference Table + Compound Dimensions)
+ARCHETYPE_BRANCHING_FILES=(
+  # Procedures
+  ".claude/procedures/accessibility-scanner.md"
+  ".claude/procedures/behavior-verifier.md"
+  ".claude/procedures/change-feature.md"
+  ".claude/procedures/change-plans.md"
+  ".claude/procedures/change-test.md"
+  ".claude/procedures/plan-exploration.md"
+  ".claude/procedures/plan-validation.md"
+  ".claude/procedures/scaffold-images.md"
+  ".claude/procedures/scaffold-init.md"
+  ".claude/procedures/scaffold-landing.md"
+  ".claude/procedures/scaffold-libs.md"
+  ".claude/procedures/scaffold-pages.md"
+  ".claude/procedures/wire.md"
+  # Agents
+  ".claude/agents/accessibility-scanner.md"
+  ".claude/agents/behavior-verifier.md"
+  ".claude/agents/performance-reporter.md"
+  ".claude/agents/scaffold-pages.md"
+  ".claude/agents/security-attacker.md"
+  ".claude/agents/security-defender.md"
+  ".claude/agents/spec-reviewer.md"
+  # Patterns (manual fallback — first-class branching)
+  ".claude/patterns/security-review.md"
+  # State files (Rule 13 JIT — H2 inside ACTIONS does not break verify-linter section parser)
+  ".claude/skills/audit/state-1-parallel-analysis.md"
+  ".claude/skills/bootstrap/state-2-resolve-archetype.md"
+  ".claude/skills/bootstrap/state-3-validate-experiment.md"
+  ".claude/skills/bootstrap/state-9-setup-phase.md"
+  ".claude/skills/bootstrap/state-11-core-scaffold.md"
+  ".claude/skills/bootstrap/state-11a-lib-scaffold.md"
+  ".claude/skills/bootstrap/state-11b-page-scaffold.md"
+  ".claude/skills/bootstrap/state-13-merged-validation.md"
+  ".claude/skills/bootstrap/state-13a-analytics-design-check.md"
+  ".claude/skills/bootstrap/state-13b-content-seo-check.md"
+  ".claude/skills/bootstrap/state-13c-bg2-gate.md"
+  ".claude/skills/bootstrap/state-14-wire-phase.md"
+  ".claude/skills/bootstrap/state-15-scan-and-classify.md"
+  ".claude/skills/bootstrap/state-18-commit-and-push.md"
+  ".claude/skills/change/state-2-read-context.md"
+  ".claude/skills/change/state-5-check-preconditions.md"
+  ".claude/skills/change/state-9-update-specs.md"
+  ".claude/skills/change/state-10-implement.md"
+  ".claude/skills/change/state-11a-verify-prep.md"
+  ".claude/skills/change/state-12-commit-and-pr.md"
+  ".claude/skills/deploy/state-0-pre-flight.md"
+  ".claude/skills/deploy/state-3c-deploy-services.md"
+  ".claude/skills/deploy/state-4a-health-fix.md"
+  ".claude/skills/deploy/state-4b-production-validation.md"
+  ".claude/skills/distribute/state-0-init.md"
+  ".claude/skills/iterate/state-0-read-context.md"
+  ".claude/skills/iterate/state-4-output.md"
+  ".claude/skills/retro/state-3-file-issue.md"
+  ".claude/skills/spec/state-4-golden-path.md"
+  ".claude/skills/spec/state-6-stack-funnel.md"
+  ".claude/skills/teardown/state-0-pre-flight.md"
+  ".claude/skills/teardown/state-2-destroy-resources.md"
+  ".claude/skills/verify/state-0-read-context.md"
+  ".claude/skills/verify/state-2-phase1-parallel.md"
+  ".claude/skills/verify/state-2a-page-image-map.md"
+  ".claude/skills/verify/state-2b-drift-detection.md"
+  ".claude/skills/verify/state-3a-design-agents.md"
+  ".claude/skills/verify/state-3b-quality-gate.md"
+  ".claude/skills/verify/state-3c-ux-merge.md"
+  ".claude/skills/verify/state-3d-quality-fix.md"
+  ".claude/skills/verify/state-8-save-patterns.md"
+  # Additional state files with semantic archetype branching (Phase 2.7 audit)
+  ".claude/skills/bootstrap/state-5-present-plan.md"
+  ".claude/skills/distribute/state-2-validate-analytics.md"
+  ".claude/skills/distribute/state-3-implement.md"
+  ".claude/skills/distribute/state-4-generate.md"
+  ".claude/skills/deploy/state-2-user-approval.md"
+  ".claude/skills/iterate/state-1-gather-data.md"
+  ".claude/skills/iterate/state-2-compute-verdicts.md"
+  ".claude/skills/retro/state-0-read-context.md"
+  ".claude/skills/review/state-2a-review-scan.md"
+  ".claude/skills/rollback/state-3-execute.md"
+  ".claude/skills/spec/state-3-behaviors.md"
+  ".claude/skills/upgrade/state-1-merge-validate.md"
+)
+
+# Files that mention archetype strings but do NOT branch — REF only, no heading required.
+# Includes: thin pass-through agents, non-markdown shell scripts, overview patterns,
+# context-readers that pass archetype downstream without branching.
+ARCHETYPE_REFERENCE_ONLY_FILES=(
+  ".claude/agents/gate-keeper.md"
+  ".claude/agents/provision-scanner.md"
+  ".claude/hooks/skill-agent-gate.sh"
+  ".claude/stacks/framework/nextjs.md"
+  ".claude/patterns/verify.md"
+  ".claude/patterns/analytics-verification.md"
+  ".claude/procedures/scaffold-externals.md"
+  ".claude/skills/ARCHITECTURE.md"
+  # Context-readers / passers (read archetype but delegate branching)
+  ".claude/skills/bootstrap/state-3a-bg1-gate.md"
+  ".claude/skills/bootstrap/state-7-save-plan.md"
+  ".claude/skills/change/state-7-user-approval.md"
+  ".claude/skills/deploy/state-5-manifest-write.md"
+  ".claude/skills/iterate/state-c0-read-ads-context.md"
+  ".claude/skills/resolve/state-6-branch-setup.md"
+  ".claude/skills/resolve/state-9a-graduate-external.md"
+  ".claude/skills/rollback/state-0-read-context.md"
+  # Substring false positives ('cli' in 'click', 'service' in 'service role', etc.).
+  # These mention archetype-related substrings but do not semantically branch.
+  # Listed explicitly so the user's naive grep verification can document them as exceptions.
+  ".claude/procedures/change-upgrade.md"
+  ".claude/procedures/design-critic.md"
+  ".claude/procedures/google-ads-setup.md"
+  ".claude/procedures/ux-journeyer.md"
+  ".claude/agents/pattern-classifier.md"
+  ".claude/agents/scaffold-externals.md"
+  ".claude/agents/scaffold-wire.md"
+  ".claude/agents/security-fixer.md"
+  ".claude/agents/ux-journeyer.md"
+)
+
+echo -n "Check 23: archetype consistency... "
+CHECK_23_FAILED=0
+
+# Skip Check 23 entirely when canonical source is absent (test fixtures, partial template
+# clones). Same pattern as Checks 1-22 which silently skip when their target file is absent.
+if [ ! -f .claude/patterns/archetype-behavior-check.md ]; then
+  echo "skip (no canonical)"
+else
+
+# 23a — Canonical source has Quick-Reference Table (absorbed from check-archetype-consistency.sh)
+if ! grep -qE 'Quick-Reference Table' .claude/patterns/archetype-behavior-check.md 2>/dev/null; then
+  [ "$CHECK_23_FAILED" -eq 0 ] && echo ""
+  echo "  FAIL: archetype-behavior-check.md — missing Quick-Reference Table section"
+  CHECK_23_FAILED=$((CHECK_23_FAILED + 1))
+fi
+
+# 23b — Quick-Reference Table has ≥14 data rows (absorbed)
+QRT_DATA_ROWS=$(sed -n '/^## Quick-Reference Table/,/^## [^Q]/p' \
+  .claude/patterns/archetype-behavior-check.md \
+  | grep -c '^| [A-Z]' 2>/dev/null || echo "0")
+if [ "$QRT_DATA_ROWS" -lt 14 ]; then
+  [ "$CHECK_23_FAILED" -eq 0 ] && echo ""
+  echo "  FAIL: archetype-behavior-check.md — Quick-Reference Table has $QRT_DATA_ROWS rows, expected >=14"
+  CHECK_23_FAILED=$((CHECK_23_FAILED + 1))
+fi
+
+# 23c — Compound Dimensions section exists (absorbed)
+if ! grep -qE 'Compound Dimensions' .claude/patterns/archetype-behavior-check.md 2>/dev/null; then
+  [ "$CHECK_23_FAILED" -eq 0 ] && echo ""
+  echo "  FAIL: archetype-behavior-check.md — missing Compound Dimensions section"
+  CHECK_23_FAILED=$((CHECK_23_FAILED + 1))
+fi
+
+# 23d — get_archetype utility function present (absorbed)
+if ! grep -qE 'get_archetype' .claude/hooks/lib-state.sh 2>/dev/null; then
+  [ "$CHECK_23_FAILED" -eq 0 ] && echo ""
+  echo "  FAIL: .claude/hooks/lib-state.sh — missing get_archetype utility"
+  CHECK_23_FAILED=$((CHECK_23_FAILED + 1))
+fi
+
+# 23e — All BRANCHING files have `## Archetype Gate` H2
+for f in "${ARCHETYPE_BRANCHING_FILES[@]}"; do
+  if [ ! -f "$f" ]; then
+    [ "$CHECK_23_FAILED" -eq 0 ] && echo ""
+    echo "  FAIL: $f — file not found (BRANCHING list out of date?)"
+    CHECK_23_FAILED=$((CHECK_23_FAILED + 1))
+    continue
+  fi
+  if ! grep -qE '^## Archetype Gate$' "$f" 2>/dev/null; then
+    [ "$CHECK_23_FAILED" -eq 0 ] && echo ""
+    echo "  FAIL: $f — missing canonical heading '## Archetype Gate'"
+    CHECK_23_FAILED=$((CHECK_23_FAILED + 1))
+  fi
+done
+
+# 23f — All BRANCHING + REFERENCE_ONLY files contain `archetype-behavior-check.md` REF
+for f in "${ARCHETYPE_BRANCHING_FILES[@]}" "${ARCHETYPE_REFERENCE_ONLY_FILES[@]}"; do
+  [ -f "$f" ] || continue
+  if ! grep -qE 'archetype-behavior-check\.md' "$f" 2>/dev/null; then
+    [ "$CHECK_23_FAILED" -eq 0 ] && echo ""
+    echo "  FAIL: $f — missing REF to archetype-behavior-check.md"
+    CHECK_23_FAILED=$((CHECK_23_FAILED + 1))
+  fi
+done
+
+# 23g — Cross-check WARN: word-boundary regex catches uncurated branching files.
+# Word boundaries avoid false positives on 'service' in 'API service' /
+# 'cli' substring in 'client'. Excludes worktrees and the canonical itself.
+WARN_FILES=$(grep -rlE '\b(web-app|cli)\b|\barchetype\b.*\bservice\b|stack\.type' \
+  --include='*.md' \
+  --exclude-dir=worktrees \
+  .claude/procedures .claude/agents .claude/skills 2>/dev/null \
+  | grep -vE 'archetype-behavior-check\.md' \
+  | sort -u)
+KNOWN=$(printf '%s\n' "${ARCHETYPE_BRANCHING_FILES[@]}" "${ARCHETYPE_REFERENCE_ONLY_FILES[@]}" | sort -u)
+UNCURATED=$(comm -23 <(echo "$WARN_FILES") <(echo "$KNOWN") 2>/dev/null)
+if [ -n "$UNCURATED" ]; then
+  [ "$CHECK_23_FAILED" -eq 0 ] && echo ""
+  echo "  WARN: uncurated archetype-mention files (add to BRANCHING or REFERENCE_ONLY in scripts/consistency-check.sh):"
+  echo "$UNCURATED" | sed 's/^/    /'
+  WARNINGS=$((WARNINGS + 1))
+fi
+
+if [ "$CHECK_23_FAILED" -eq 0 ]; then
+  echo "ok"
+else
+  ERRORS=$((ERRORS + CHECK_23_FAILED))
+fi
+
+fi  # end Check 23 canonical-source guard
+
 echo ""
 if [ "$WARNINGS" -gt 0 ]; then
   echo "WARNINGS: $WARNINGS weak postcondition(s) detected (non-blocking)."

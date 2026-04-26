@@ -1,5 +1,8 @@
 # STATE 9a: GRADUATE_EXTERNAL_STACK
 
+
+<!-- archetype-reference-only: REF .claude/patterns/archetype-behavior-check.md — Mentions 'external services' generically; no archetype-conditional logic. -->
+
 **PRECONDITIONS:**
 - Patterns saved (STATE 9 POSTCONDITIONS met)
 

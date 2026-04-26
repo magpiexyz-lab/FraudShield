@@ -1,5 +1,8 @@
 # STATE c0: READ_ADS_CONTEXT
 
+
+<!-- archetype-reference-only: REF .claude/patterns/archetype-behavior-check.md — Reads archetype as part of /iterate --cross context; downstream states branch on it. -->
+
 **PRECONDITIONS:**
 - Git repository exists in working directory
 

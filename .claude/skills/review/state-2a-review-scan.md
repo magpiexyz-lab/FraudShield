@@ -6,6 +6,11 @@
 
 **ACTIONS:**
 
+## Archetype Gate
+
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+> all archetypes: systematic archetype coverage check (every conditional must handle web-app, service, cli or document the exclusion)
+
 Launch 3 Explore subagents in parallel, one per dimension below. Construct each
 agent's prompt from:
 

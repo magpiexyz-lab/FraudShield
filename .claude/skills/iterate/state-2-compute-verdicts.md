@@ -5,6 +5,11 @@
 
 **ACTIONS:**
 
+## Archetype Gate
+
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+> web-app: visit/CTA/signup/payment/return funnel labels | service: API call/auth/first-call/paid/retention | cli: install/run/first-success/paid/retention
+
 ### Per-Hypothesis Verdicts (if spec-manifest.json exists)
 
 Read `.runs/spec-manifest.json`. If the file does not exist, skip this subsection entirely (backward compatible -- experiments created before /spec won't have it).

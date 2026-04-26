@@ -4,6 +4,8 @@
 
 **ACTIONS:**
 
+## Archetype Gate
+
 > REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table, row "Visual agents".
 >
 > web-app: spawn ux-journeyer, run Design-UX Merge | service: skip both | cli: skip both

@@ -5,6 +5,8 @@
 
 **ACTIONS:**
 
+## Archetype Gate
+
 > REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table, row "npm cleanup on teardown".
 >
 > web-app: skip | service: skip | cli: npm deprecate reminder

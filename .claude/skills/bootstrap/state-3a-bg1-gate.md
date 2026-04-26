@@ -1,5 +1,8 @@
 # STATE 3a: BG1_GATE
 
+
+<!-- archetype-reference-only: REF .claude/patterns/archetype-behavior-check.md — Passes archetype to gate-keeper agent for BG1 validation. -->
+
 **PRECONDITIONS:**
 - All validations pass (STATE 3 POSTCONDITIONS met)
 

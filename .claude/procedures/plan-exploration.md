@@ -26,6 +26,13 @@ Since change type is formally classified in Step 3 (after exploration), do a **p
 
 If Step 3 later overrides this classification, the exploration results remain valid (Feature depth ⊇ Fix depth ⊇ Minimal depth).
 
+## Archetype Gate
+
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+> web-app: scan src/app/ pages + src/components/ | service: scan src/app/api/ routes | cli: scan src/commands/
+> Conditional points: Step 1 (Affected Area Scan), Step 2 (Route/Command Conflict), Step 4 (Reusable Components)
+> Shape: interleaved-per-step
+
 ## Exploration Steps
 
 ### Step 0: Bug Triage (Fix type only)

@@ -1,5 +1,10 @@
 # Scaffold: AI Image Generation (Multi-Model)
 
+## Archetype Gate
+
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+> web-app: full image generation | service/cli: skip (production_method='none' for non-web-app slots)
+
 ## Prerequisites
 - Branch already created (by bootstrap Step 0)
 - Plan approved and saved to `.runs/current-plan.md`

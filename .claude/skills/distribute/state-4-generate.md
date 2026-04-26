@@ -5,6 +5,11 @@
 
 **ACTIONS:**
 
+## Archetype Gate
+
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+> web-app: read src/app/page.tsx for headlines | service: read root route handler | cli: read site/index.html
+
 ### 4a: Research targeting
 
 Read `experiment/experiment.yaml`: `description`, `target_user`, `name`, `behaviors`.

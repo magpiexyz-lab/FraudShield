@@ -6,6 +6,11 @@
 
 **ACTIONS:**
 
+## Archetype Gate
+
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+> web-app: full merge validation | service/cli: skip web-app-only validators (e.g., not-applicable on design checks)
+
 Read `.runs/upgrade-context.json` to get the `dry_run` flag and `sync_base`.
 
 ### Read template-owned paths

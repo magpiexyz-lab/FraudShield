@@ -5,13 +5,18 @@
 
 ## Prerequisites from change.md
 
-> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
-
 - experiment.yaml and experiment/EVENTS.yaml have been read (Step 2)
 - Change classified as Feature (Step 3)
 - Preconditions checked (Step 4)
 - Plan approved (Phase 1)
 - Specs updated (Step 5)
+
+## Archetype Gate
+
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+> web-app: pages, components, Fake Door, payment integration | service: API routes only, no Fake Door | cli: command modules, opt-in analytics
+>
+> State-specific logic below takes precedence.
 
 ## Implementation
 

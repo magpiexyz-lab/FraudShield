@@ -9,6 +9,8 @@
 
 #### Phase A (serial, before fan-out, web-app only)
 
+## Archetype Gate
+
 > REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table, row "Phase A (core scaffold)".
 >
 > web-app: run Phase A (layout, 404, error, favicon, OG, sitemap, robots, llms.txt) | service: skip | cli: skip

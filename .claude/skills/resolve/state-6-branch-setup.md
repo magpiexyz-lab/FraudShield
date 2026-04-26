@@ -1,5 +1,8 @@
 # STATE 6: BRANCH_SETUP
 
+
+<!-- archetype-reference-only: REF .claude/patterns/archetype-behavior-check.md — Branch naming may include 'cli' / 'service' as slug fragments (e.g., 'fix/resolve-42-missing-cli-check'). -->
+
 **PRECONDITIONS:**
 - User approved diagnosis (STATE 5d POSTCONDITIONS met)
 

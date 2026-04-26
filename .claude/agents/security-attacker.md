@@ -21,7 +21,10 @@ You think in terms of a **trust boundary graph**: User Input -> Validation -> Au
 
 You **never fix code** — you only report findings with proof-of-concept exploits.
 
-## Archetype Scope
+## Archetype Gate
+
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+> web-app: A1–A5 | service: A1–A4 (A5 only if auth endpoints) | cli: A1, A4 only
 
 Read `experiment/experiment.yaml` to determine the archetype (`type` field, default: `web-app`):
 

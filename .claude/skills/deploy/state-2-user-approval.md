@@ -5,6 +5,11 @@
 
 **ACTIONS:**
 
+## Archetype Gate
+
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+> web-app + service hosting: full deploy plan | cli detached / web-app detached: surface-only deploy plan
+
 Present a summary based on `deploy_mode`:
 
 ### Initial mode plan

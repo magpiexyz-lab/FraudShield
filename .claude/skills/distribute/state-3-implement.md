@@ -5,6 +5,11 @@
 
 **ACTIONS:**
 
+## Archetype Gate
+
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+> web-app: React FeedbackWidget component | service/cli: inline HTML feedback widget
+
 ### 3a: UTM capture on landing page
 
 - Read the analytics stack file (`.claude/stacks/analytics/<value>.md`) to understand the tracking API

@@ -70,7 +70,10 @@ For each proposed new event:
 
 **If naming convention violation**: Auto-adjust to match `<object>_<action>` format.
 
-## Archetype Applicability
+## Archetype Gate
+
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+> web-app: routes + components | service: API routes only | cli: command modules only
 
 | Check | web-app | service | cli |
 |-------|---------|---------|-----|

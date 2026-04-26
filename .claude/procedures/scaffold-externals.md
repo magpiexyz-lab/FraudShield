@@ -1,5 +1,8 @@
 # Scaffold: External Dependencies
 
+
+<!-- archetype-reference-only: REF .claude/patterns/archetype-behavior-check.md — Assesses external services generically; no archetype-conditional logic. -->
+
 ## Prerequisites
 - Packages installed (Step 1 finished)
 - Stack files and `.claude/stacks/TEMPLATE.md` on disk
