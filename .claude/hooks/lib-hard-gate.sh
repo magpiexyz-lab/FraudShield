@@ -28,6 +28,16 @@ check_hard_gate_predicates() {
   [[ ! -f "$reg" ]] && return 0
 
   local script="$project_dir/.claude/scripts/evaluate-hard-gate-predicates.py"
+  # Existence guard for the extracted evaluator (boundary check introduced when
+  # the Python was moved out of lib-verdict.sh's heredoc): a missing script
+  # means the repository is broken — never a normal run state. Without this
+  # guard, python3 errors to stderr and stdout is empty, causing the OK|""
+  # branch to silently pass every hard gate.
+  if [[ ! -f "$script" ]]; then
+    ERRORS+=("${agent} hard gate evaluator script missing: $script")
+    return 0
+  fi
+
   local eval_result
   eval_result=$(AGENT_ENV="$agent" \
                 TRACE_ENV="$trace_file" \

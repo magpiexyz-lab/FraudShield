@@ -469,6 +469,60 @@ fi
             "aggregate_ok must block when lead-on-behalf sibling is not recovery_validated",
         )
 
+    # ---- Boundary check: missing evaluator script must NOT silently pass ----
+
+    def test_missing_evaluator_script_loud_failure(self):
+        """If .claude/scripts/evaluate-hard-gate-predicates.py is absent, the
+        bash wrapper must append a loud error — never silently return OK.
+
+        Regression test for the bash-Python subprocess boundary introduced when
+        the Python evaluator was extracted from lib-verdict.sh's heredoc. Before
+        the existence guard, python3 reported the missing file to stderr while
+        stdout stayed empty, and the case "OK|\"\"" branch silently passed every
+        hard gate.
+
+        Setup detail: lib-core.sh:36 unconditionally overrides CLAUDE_PROJECT_DIR
+        to `git rev-parse --show-toplevel`, so we cd into self.tmp (already
+        `git init`'d in setUp) before sourcing lib.sh. That makes the function
+        resolve script path inside our isolated tmp tree, where the unlink takes
+        effect."""
+        # Sabotage the synthetic project: remove the evaluator script
+        script = self.tmp / ".claude/scripts/evaluate-hard-gate-predicates.py"
+        self.assertTrue(script.exists(), "fixture should have copied the script")
+        script.unlink()
+
+        # Trace would otherwise BLOCK (verdict=fail with allow=pass_self_strict
+        # in registry), so a silent pass here is provably wrong
+        self._write_trace("design-critic", {
+            "agent": "design-critic",
+            "verdict": "fail",
+            "provenance": "self",
+            "partial": False,
+            "checks_performed": ["x"],
+        })
+
+        # Manual invocation (cannot use _invoke because we need to cd into tmp
+        # BEFORE sourcing lib.sh so lib-core.sh's get_project_dir resolves to tmp)
+        bash_script = f"""
+cd '{self.tmp}'
+source '{LIB}'
+CONTENT={json.dumps('hard_gate_failure: false')}
+ERRORS=()
+check_hard_gate_predicates 'design-critic' '{self.traces}'
+if (( ${{#ERRORS[@]}} > 0 )); then
+  for e in "${{ERRORS[@]}}"; do printf 'ERR: %s\\n' "$e"; done
+fi
+"""
+        proc = subprocess.run(
+            ["bash", "-c", bash_script],
+            capture_output=True, text=True, timeout=15,
+        )
+        out = proc.stdout + proc.stderr
+        self.assertIn("ERR:", out,
+                      f"missing evaluator script must produce an error, not silent pass. Got: {out!r}")
+        self.assertIn("evaluator script missing", out,
+                      "error message should name the missing-script root cause")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
