@@ -296,10 +296,35 @@ Enforcement: `scripts/consistency-check.sh` Check 23 (CI-wired via
 - **23e** — Every file in `ARCHETYPE_BRANCHING_FILES` array contains `^## Archetype Gate$`
 - **23f** — Every file in `ARCHETYPE_BRANCHING_FILES` + `ARCHETYPE_REFERENCE_ONLY_FILES`
   contains a reference to `archetype-behavior-check.md`
-- **23g** — WARN (non-blocking): word-boundary scan for files mentioning
+- **23g** — BLOCKING: word-boundary scan for files mentioning
   `\b(web-app|cli)\b|archetype.*service|stack\.type` that are not in either
-  curated list (catches drift when new branching files are added without
-  being curated)
+  curated list. Each match must be classified into BRANCHING, REFERENCE_ONLY,
+  or carry an explicit `<!-- archetype-gate-exempt: <reason> -->` marker. This
+  is what makes the contract un-fatigueable: new files cannot accumulate WARNs
+  that go unread.
+
+### Exempt mechanism
+
+When a file matches the substring regex but is genuinely not archetype-related
+(e.g., uses 'cli' as a substring of 'click', uses 'service' inside 'service role'),
+and classifying it into BRANCHING/REFERENCE_ONLY would be misleading, add this
+HTML comment marker to the file body (typically near the H1 title):
+
+```html
+<!-- archetype-gate-exempt: <one-line reason> -->
+```
+
+The reason is human-readable and auditable. Example:
+```html
+<!-- archetype-gate-exempt: 'cli' substring matches 'click-driven', UX testing pattern -->
+```
+
+23g skips files carrying this marker. The marker is greppable so reviewers can
+audit every exemption in one pass: `grep -rn 'archetype-gate-exempt:' .claude/`.
+
+Use sparingly — prefer classifying into BRANCHING or REFERENCE_ONLY when the
+file actually maps to either category. Exempt is for genuine substring false
+positives only.
 
 ### File classification
 

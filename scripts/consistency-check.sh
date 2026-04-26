@@ -549,9 +549,12 @@ for f in "${ARCHETYPE_BRANCHING_FILES[@]}" "${ARCHETYPE_REFERENCE_ONLY_FILES[@]}
   fi
 done
 
-# 23g — Cross-check WARN: word-boundary regex catches uncurated branching files.
-# Word boundaries avoid false positives on 'service' in 'API service' /
-# 'cli' substring in 'client'. Excludes worktrees and the canonical itself.
+# 23g — BLOCKING: word-boundary regex catches uncurated archetype-branching files.
+# A file matching this regex must be in BRANCHING, REFERENCE_ONLY, OR carry an
+# explicit `<!-- archetype-gate-exempt: <reason> -->` marker. This converts what
+# would otherwise be a WARN-fatigued non-enforcement into a real contract: new
+# branching files cannot land without classification.
+# Word boundaries avoid 'service' in 'API service' / 'cli' substring in 'client'.
 WARN_FILES=$(grep -rlE '\b(web-app|cli)\b|\barchetype\b.*\bservice\b|stack\.type' \
   --include='*.md' \
   --exclude-dir=worktrees \
@@ -560,11 +563,24 @@ WARN_FILES=$(grep -rlE '\b(web-app|cli)\b|\barchetype\b.*\bservice\b|stack\.type
   | sort -u)
 KNOWN=$(printf '%s\n' "${ARCHETYPE_BRANCHING_FILES[@]}" "${ARCHETYPE_REFERENCE_ONLY_FILES[@]}" | sort -u)
 UNCURATED=$(comm -23 <(echo "$WARN_FILES") <(echo "$KNOWN") 2>/dev/null)
+# Filter out files carrying the explicit exempt marker
+UNCLASSIFIED=""
 if [ -n "$UNCURATED" ]; then
+  while IFS= read -r f; do
+    [ -z "$f" ] && continue
+    if ! grep -qE '<!-- archetype-gate-exempt:' "$f" 2>/dev/null; then
+      UNCLASSIFIED="${UNCLASSIFIED}${f}"$'\n'
+    fi
+  done <<< "$UNCURATED"
+fi
+if [ -n "$UNCLASSIFIED" ]; then
   [ "$CHECK_23_FAILED" -eq 0 ] && echo ""
-  echo "  WARN: uncurated archetype-mention files (add to BRANCHING or REFERENCE_ONLY in scripts/consistency-check.sh):"
-  echo "$UNCURATED" | sed 's/^/    /'
-  WARNINGS=$((WARNINGS + 1))
+  echo "  FAIL: uncurated archetype-mention files. Each must be:"
+  echo "    (a) in ARCHETYPE_BRANCHING_FILES with '## Archetype Gate' heading, OR"
+  echo "    (b) in ARCHETYPE_REFERENCE_ONLY_FILES with REF to archetype-behavior-check.md, OR"
+  echo "    (c) carry inline marker: <!-- archetype-gate-exempt: <reason> -->"
+  printf '%s' "$UNCLASSIFIED" | sed 's/^/    /'
+  CHECK_23_FAILED=$((CHECK_23_FAILED + 1))
 fi
 
 if [ "$CHECK_23_FAILED" -eq 0 ]; then
