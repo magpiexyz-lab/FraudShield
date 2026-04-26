@@ -39,6 +39,7 @@ SUITES=(
   ".claude/scripts/tests/test_design_slots_override.py"
   ".claude/scripts/tests/test_scaffold_init_writes_slot_intent.py"
   ".claude/scripts/tests/test_auth_stack_frontmatter_schema.py"
+  ".claude/scripts/tests/test_migrate_slot_intent_suggestions.py"
 )
 
 FAIL=0
