@@ -36,14 +36,32 @@ Focus: Find contradictions or inconsistencies **between** files that no regex or
 - A hook registers in settings.json but the .sh file doesn't exist (or vice versa)
 - A hook checks for an artifact name that differs from what the verify state file creates
 
-Files to read:
-- Glob `.claude/commands/*.md` — read each skill file
+Files to read (canonical template-source scope — see `.claude/template-owned-dirs.txt`):
+- Glob `.claude/commands/*.md` — read each skill dispatcher
+- Glob `.claude/skills/**/state-*.md` — read each state file (look for contradictions between a state's VERIFY and ACTIONS, between a state's CHECKPOINT and an upstream state's VERIFY, and between POSTCONDITIONS promises and ACTIONS write steps)
+- Glob `.claude/skills/**/skill.yaml` — orchestration declarations (states list, branch prefix, agents)
+- Glob `.claude/skills/**/orchestration.json` — orchestration descriptors
+- Glob `.claude/skills/**/gates/*.sh` — skill gate scripts
 - Glob `.claude/stacks/**/*.md` — read each stack file
-- Glob `.claude/patterns/**/*.md` — read each pattern file (including verify sub-states)
+- Glob `.claude/patterns/**/*.md` — read each pattern file
+- Glob `.claude/patterns/*.json` — declarative configs (state-registry.json, agent-registry.json, coherence rules, convergence config)
 - Glob `.claude/procedures/*.md` — read each procedure file
 - Glob `.claude/agents/*.md` — read each agent definition
+- Glob `.claude/archetypes/*.md` — archetype definitions
+- Glob `.claude/templates/*.md` — canonical schemas (e.g., experiment-yaml.md)
 - Glob `.claude/hooks/*.sh` — read each hook script
-- Glob `.claude/skills/**/state-*.md` — read each state file (look for contradictions between a state's VERIFY and ACTIONS, between a state's CHECKPOINT and an upstream state's VERIFY, and between POSTCONDITIONS promises and ACTIONS write steps)
+- Glob `.claude/scripts/*.sh` — internal lifecycle/utility scripts
+- Glob `.claude/scripts/*.py` — internal validator/helper scripts
+- Glob `.claude/scripts/lib/*.py` — shared internal libraries
+- Glob `.claude/agent-memory/**/*.md` — agent memory scaffolds
+- Read `.claude/agent-prompt-footer.md` — agent prompt footer
+- Read `.claude/settings.json` — hook registry
+- Glob `scripts/*.py` — top-level validators
+- Glob `scripts/*.sh` — top-level shell utilities
+- Glob `scripts/*.mjs` — top-level node utilities
+- Glob `scripts/lib/*.py` — top-level shared libraries
+- Glob `scripts/validators/*.py` — top-level validator helpers
+- Read `Makefile` — entrypoint targets
 
 After reading: for each potential finding, identify which archetype and stack
 configuration triggers the contradiction. Record the config alongside the finding.
@@ -60,13 +78,18 @@ Focus: Find configurations where skills or stack files would produce broken outp
 - A hook uses an undeclared bash variable or has a fail-open exit code on parse errors
 
 Files to read:
-- Glob `.claude/commands/*.md` — read each skill file
+- Glob `.claude/commands/*.md` — read each skill dispatcher
+- Glob `.claude/skills/**/state-*.md` — read every skill's state files (archetype branches and silent fallbacks live here, not in dispatchers)
+- Glob `.claude/skills/**/gates/*.sh` — skill gate scripts (silent-pass / fail-open risk)
 - Glob `.claude/stacks/**/*.md` — read each stack file
-- Glob `tests/fixtures/*.yaml` — read each test fixture
+- Glob `.claude/archetypes/*.md` — archetype definitions (gate the archetype-coverage check below)
+- Glob `tests/fixtures/*.yaml` — read each test fixture (note: this directory is currently absent on disk; fixture phantom is a separate template observation — leave reference unchanged here so it surfaces if/when fixtures land)
 - Glob `.claude/procedures/*.md` — read each procedure file
 - Glob `.claude/agents/*.md` — read each agent definition
-- Glob `.claude/skills/verify/*.md` — read verify sub-state files
 - Glob `.claude/hooks/*.sh` — read each hook script
+- Glob `.claude/scripts/*.sh` — internal lifecycle scripts (case statements, undeclared vars, fail-open exit codes)
+- Glob `.claude/scripts/*.py` — internal helper scripts
+- Glob `scripts/*.py` — top-level validators
 
 After reading: for each potential finding, identify the test fixture(s) whose
 `experiment.stack` configuration matches the edge case (e.g., a finding about missing
@@ -77,15 +100,20 @@ this itself may be a finding worth reporting.
 **Systematic archetype coverage check** (after heuristic scanning):
 
 1. List all archetypes from `.claude/archetypes/*.md`
-2. For each skill file that contains archetype-conditional language
+2. For each skill that contains archetype-conditional language
    (e.g., "If archetype is", "If the archetype is", "web-app", "service", "cli"):
-   a. Identify all archetype-specific branches in the skill
-   b. For each archetype, verify either: a dedicated branch exists, OR
+   a. Read the dispatcher at `.claude/commands/<skill>.md` AND every state
+      file at `.claude/skills/<skill>/state-*.md` — the conditional logic
+      lives in state files (the dispatcher is a thin router).
+   b. Identify all archetype-specific branches across the dispatcher and states
+   c. For each archetype, verify either: a dedicated branch exists, OR
       the default/fallback branch explicitly covers it
-   c. If an archetype has no branch and no explicit default coverage:
+   d. If an archetype has no branch and no explicit default coverage:
       report as a finding ("skill X has no handling for archetype Y")
 3. Focus on the 3 most heavily conditionalized skills first:
-   bootstrap.md, deploy.md, change.md
+   bootstrap, deploy, change — i.e.,
+   `.claude/commands/{bootstrap,deploy,change}.md` plus
+   `.claude/skills/{bootstrap,deploy,change}/state-*.md`.
 4. This check supplements (not replaces) the heuristic scan above.
    Heuristic findings about archetype gaps take priority if they overlap.
 
@@ -100,12 +128,16 @@ Focus: Find dead-end states where a user gets stuck with no clear next step. Exa
 - A hook blocks an operation but the error message doesn't tell the user what prerequisite is missing or how to fix it
 
 Files to read:
-- Glob `.claude/commands/*.md` — read each skill file
+- Glob `.claude/commands/*.md` — read each skill dispatcher
+- Glob `.claude/skills/**/state-*.md` — read each state file (most user-facing instructions and dead-end candidates live here)
 - Glob `.claude/stacks/**/*.md` — read each stack file
-- Glob `.claude/patterns/**/*.md` — read each pattern file (including verify sub-states)
+- Glob `.claude/patterns/**/*.md` — read each pattern file
 - Glob `.claude/procedures/*.md` — read each procedure file
 - Glob `.claude/agents/*.md` — read each agent definition
-- Glob `.claude/hooks/*.sh` — read each hook script
+- Glob `.claude/archetypes/*.md` — archetype definitions
+- Glob `.claude/hooks/*.sh` — read each hook script (block + helpful-error pairing)
+- Glob `.claude/scripts/*.sh` — internal lifecycle scripts (silent fail or unhelpful error)
+- Glob `.claude/scripts/*.py` — internal helper scripts
 - Read `Makefile`
 
 After reading: trace the user journey for each archetype:

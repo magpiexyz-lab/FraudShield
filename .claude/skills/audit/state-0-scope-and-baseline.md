@@ -11,12 +11,14 @@ Parse `$ARGUMENTS` for an optional focus scope:
 
 | Argument | Scope | Files scanned |
 |----------|-------|---------------|
-| (empty) | full | All .claude/ subdirectories |
+| (empty) | full | All template-source files (see canonical scope in State 1) |
 | `hooks` | hooks only | `.claude/hooks/*.sh` |
-| `commands` | skills only | `.claude/commands/*.md` |
-| `patterns` | patterns only | `.claude/patterns/**/*.md`, `.claude/procedures/*.md` |
-| `agents` | agents only | `.claude/agents/*.md` |
+| `commands` | commands only | `.claude/commands/*.md` |
+| `skills` | skills only | `.claude/skills/**/state-*.md`, `.claude/skills/**/skill.yaml`, `.claude/skills/**/orchestration.json`, `.claude/skills/**/gates/*.sh` |
+| `patterns` | patterns only | `.claude/patterns/**/*.md`, `.claude/patterns/*.json`, `.claude/procedures/*.md` |
+| `agents` | agents only | `.claude/agents/*.md`, `.claude/agents/*.json` |
 | `stacks` | stacks only | `.claude/stacks/**/*.md` |
+| `scripts` | scripts only | `.claude/scripts/**/*.{sh,py}`, `scripts/**/*.{py,sh,mjs}` |
 
 If `$ARGUMENTS` contains `--save`, set `save_manifest = true`.
 
@@ -25,17 +27,24 @@ If `$ARGUMENTS` contains `--save`, set `save_manifest = true`.
 Run these commands and hold the results in working memory:
 
 ```bash
+# Template-source file predicate (reused below). Includes every analysis-target
+# extension across .claude/ and top-level scripts/. Excludes only build cache
+# and machine-local artifacts.
+TPL_FIND_ARGS='( -name *.md -o -name *.sh -o -name *.py -o -name *.json -o -name *.yaml -o -name *.mjs )'
+TPL_PRUNE='-not -path *__pycache__* -not -path *worktrees* -not -path *node_modules* -not -name settings.local.json -not -name *.lock'
+
 # File inventory by type and total lines
 echo "=== File inventory ===" && \
-find .claude -name '*.md' -not -path '*plans*' | wc -l && \
-find .claude -name '*.sh' | wc -l && \
-find scripts -name '*.py' 2>/dev/null | wc -l && \
+find .claude scripts -type f -name '*.md' $TPL_PRUNE 2>/dev/null | wc -l && \
+find .claude scripts -type f -name '*.sh' $TPL_PRUNE 2>/dev/null | wc -l && \
+find .claude scripts -type f -name '*.py' $TPL_PRUNE 2>/dev/null | wc -l && \
+find .claude scripts -type f \( -name '*.json' -o -name '*.yaml' -o -name '*.mjs' \) $TPL_PRUNE 2>/dev/null | wc -l && \
 echo "=== Total lines ===" && \
-find .claude scripts -name '*.md' -o -name '*.sh' -o -name '*.py' 2>/dev/null | xargs wc -l | tail -1
+find .claude scripts Makefile -type f $TPL_FIND_ARGS $TPL_PRUNE 2>/dev/null | xargs wc -l | tail -1
 
 # Top 25 largest files (within selected scope, or all if full)
 echo "=== Largest files ===" && \
-find .claude scripts -name '*.md' -o -name '*.sh' -o -name '*.py' 2>/dev/null | \
+find .claude scripts Makefile -type f $TPL_FIND_ARGS $TPL_PRUNE 2>/dev/null | \
   xargs wc -l | sort -rn | head -25
 
 # Duplication signals: inline python3 one-liners in hooks (the #1 duplication source)
@@ -62,6 +71,10 @@ If scope is `full`, generate `.runs/audit-skill-manifest.json`:
 ```bash
 python3 -c "
 import json, glob, re, os
+try:
+    import yaml
+except ImportError:
+    yaml = None
 
 manifest = {}
 # 1. Read dispatch tables from command files
@@ -73,8 +86,44 @@ for cmd_file in sorted(glob.glob('.claude/commands/*.md')):
     refs = re.findall(r'state-(\S+?)\.md', content)
     dispatch_ids = sorted(set(refs))
 
+    # 1b. Read skill.yaml states list — the canonical orchestration source.
+    # commands/<skill>.md is a thin lifecycle dispatcher (runs
+    # lifecycle-next.sh) that no longer enumerates state IDs inline,
+    # so dispatch_ids extracted above is typically empty. The authoritative
+    # state list lives in skill.yaml as either a top-level `states: [...]`
+    # array or, for multi-mode skills (e.g., iterate with --check / --cross),
+    # under `modes.<mode>.states`. A state file is orphaned only if its
+    # ID is missing from the union of all modes' states.
+    yaml_states: list[str] = []
+    skill_yaml = f'.claude/skills/{skill}/skill.yaml'
+    if os.path.isfile(skill_yaml):
+        try:
+            with open(skill_yaml) as f:
+                yaml_text = f.read()
+            collected: list[str] = []
+            if yaml is not None:
+                data = yaml.safe_load(yaml_text) or {}
+                if isinstance(data, dict):
+                    top = data.get('states', []) or []
+                    if isinstance(top, list):
+                        collected.extend(str(s) for s in top)
+                    modes = data.get('modes', {}) or {}
+                    if isinstance(modes, dict):
+                        for mode_cfg in modes.values():
+                            if isinstance(mode_cfg, dict):
+                                mstates = mode_cfg.get('states', []) or []
+                                if isinstance(mstates, list):
+                                    collected.extend(str(s) for s in mstates)
+            else:
+                # Fallback parser: extract every states: [\"0\", \"1\", ...] occurrence
+                for m in re.finditer(r'states:\s*\[(.*?)\]', yaml_text, re.DOTALL):
+                    collected.extend(re.findall(r'\"([^\"]+)\"', m.group(1)))
+            yaml_states = sorted(set(collected))
+        except Exception:
+            pass
+
     # 2. Find actual state files on disk
-    pattern = f'.claude/patterns/{skill}/state-*.md'
+    pattern = f'.claude/skills/{skill}/state-*.md'
     disk_files = sorted(glob.glob(pattern))
 
     states = []
@@ -140,13 +189,17 @@ for cmd_file in sorted(glob.glob('.claude/commands/*.md')):
             'postcondition_items': postcond_items
         })
 
-    # 4. Cross-reference dispatch vs disk
+    # 4. Cross-reference disk vs dispatch table AND skill.yaml states list.
+    # Canonical state IDs = union of both authoritative sources. A state
+    # file is orphaned only if it's missing from the union.
     disk_ids = [re.search(r'state-(.+?)\.md', f).group(1) for f in disk_files if re.search(r'state-(.+?)\.md', f)]
-    orphan_files = [f for f, did in zip(disk_files, disk_ids) if did not in dispatch_ids]
+    canonical_ids = set(dispatch_ids) | set(yaml_states)
+    orphan_files = [f for f, did in zip(disk_files, disk_ids) if did not in canonical_ids]
 
     manifest[skill] = {
         'command_file': cmd_file,
         'dispatch_state_ids': dispatch_ids,
+        'skill_yaml_state_ids': yaml_states,
         'disk_state_count': len(disk_files),
         'orphan_state_files': orphan_files,
         'states': states

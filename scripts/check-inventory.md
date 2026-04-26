@@ -1,10 +1,10 @@
 # Check Inventory
 
 Scannable reference listing all automated checks by name, grouped by validator.
-85 active checks consolidated into 81 inventory rows.
+86 active checks consolidated into 82 inventory rows.
 Checks 3 and 7 are archetype-aware — they read `required_experiment_fields` and `excluded_stacks` from archetype frontmatter.
 
-Last updated: 2026-03-30
+Last updated: 2026-04-26
 
 ## Validation philosophy
 
@@ -92,6 +92,7 @@ better enforced by the scoped LLM review (`scripts/scoped-review-prompt.md`).
 | Verify agent-prompt-footer directive matches hook grep | Directive marker in `agent-prompt-footer.md` must appear as grep pattern in `skill-agent-gate.sh` |
 | Verify conditional packages not listed unconditionally in prose | Stack files with fallback sections that skip packages must not list those packages in an unconditional `npm install` in the `## Packages` section |
 | Verify playwright-archetype compatibility in bootstrap and change | Both bootstrap.md and change.md must validate that playwright testing is incompatible with service/cli archetypes |
+| Verify audit/review scope covers template-source directories | Every Glob/Read pattern in `.claude/skills/audit/state-1-parallel-analysis.md` and `.claude/skills/review/state-2a-review-scan.md` must (a) resolve to ≥1 file on disk, (b) cover every required template-source directory in BOTH skills, and (c) reference each canonical individual file (`agent-prompt-footer.md`, `settings.json`, `Makefile`) in at least one skill. Adding a new template-source directory therefore requires updating both skills' "Files to read" lists |
 
 ## consistency-check.sh
 

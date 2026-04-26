@@ -17,16 +17,41 @@ prompt from:
 > **Shared context instruction** — include verbatim in every subagent prompt:
 >
 > Before scanning, read these context files:
-> `CLAUDE.md`, `.claude/settings.json`, `scripts/check-inventory.md`.
+> `CLAUDE.md`, `.claude/settings.json`, `.claude/agent-prompt-footer.md`,
+> `.claude/template-owned-dirs.txt`, `scripts/check-inventory.md`.
 >
-> Then read ALL files in these directories (adjust to scope if not full):
-> - Glob `.claude/commands/*.md` — every skill file
-> - Glob `.claude/stacks/**/*.md` — every stack file
-> - Glob `.claude/patterns/**/*.md` — every pattern file (including verify sub-states)
+> Then read ALL files in these directories (adjust to scope if not full).
+> This is the canonical template-source scope — every directory under
+> `.claude/template-owned-dirs.txt` plus top-level `scripts/` and `Makefile`,
+> filtered to analysis-relevant extensions:
+> - Glob `.claude/commands/*.md` — every skill dispatcher
+> - Glob `.claude/skills/**/state-*.md` — every skill state file (the bulk of skill behavior)
+> - Glob `.claude/skills/**/skill.yaml` — every skill orchestration declaration
+> - Glob `.claude/skills/**/orchestration.json` — every orchestration descriptor
+> - Glob `.claude/skills/**/gates/*.sh` — every skill gate script
+> - Glob `.claude/patterns/**/*.md` — every pattern file
+> - Glob `.claude/patterns/*.json` — declarative configs (state-registry.json, agent-registry.json, coherence rules, convergence config)
 > - Glob `.claude/procedures/*.md` — every procedure file
 > - Glob `.claude/agents/*.md` — every agent definition
+> - Glob `.claude/archetypes/*.md` — every archetype definition
+> - Glob `.claude/templates/*.md` — canonical schemas (e.g., experiment-yaml.md)
+> - Glob `.claude/stacks/**/*.md` — every stack file
 > - Glob `.claude/hooks/*.sh` — every hook script
-> - Glob `scripts/*.py` — every validator script
+> - Glob `.claude/scripts/*.sh` — internal lifecycle/utility scripts
+> - Glob `.claude/scripts/*.py` — internal validator/helper scripts
+> - Glob `.claude/scripts/lib/*.py` — shared internal libraries
+> - Glob `.claude/agent-memory/**/*.md` — agent memory scaffolds
+> - Read `.claude/agent-prompt-footer.md` — agent prompt footer
+> - Read `.claude/settings.json` — hook registry
+> - Glob `scripts/*.py` — top-level validators
+> - Glob `scripts/*.sh` — top-level shell utilities (consistency-check.sh, etc.)
+> - Glob `scripts/*.mjs` — top-level node utilities (auto-migrate.mjs)
+> - Glob `scripts/lib/*.py` — top-level shared libraries
+> - Glob `scripts/validators/*.py` — top-level validator helpers
+> - Read `Makefile` — entrypoint targets
+>
+> Excludes: `.claude/settings.local.json`, `__pycache__/`, `worktrees/`,
+> `node_modules/`, `*.lock`, `*.pyc`.
 >
 > Do not report issues already covered by `scripts/check-inventory.md`
 > (including its Pending and Rejected sections).
@@ -191,9 +216,12 @@ the broader fix is higher impact.
 **Sub-dimension D3: Dead Paths**
 
 Flags:
-- **Orphan state files**: State files on disk (`.claude/patterns/<skill>/
-  state-*.md`) not referenced in the dispatch table (`.claude/commands/
-  <skill>.md`). Check the manifest `orphan_state_files` field.
+- **Orphan state files**: State files on disk (`.claude/skills/<skill>/
+  state-*.md`) whose ID is missing from the canonical orchestration
+  source — `skill.yaml` `states:` (or, for multi-mode skills,
+  `modes.<mode>.states`) — and from any inline dispatch in
+  `.claude/commands/<skill>.md`. Check the manifest `orphan_state_files`
+  field; cross-check `dispatch_state_ids` and `skill_yaml_state_ids`.
 - **Unreachable branches**: Conditional branches in state ACTIONS where
   the condition can never be true given the skill's preconditions or
   archetype constraints (e.g., `elif cli` in a skill that only handles

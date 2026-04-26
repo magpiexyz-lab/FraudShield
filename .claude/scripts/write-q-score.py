@@ -50,7 +50,7 @@ def _compact_entry(entry):
     # Per-state file hashes: only for states that ran
     h = {}
     for sid in sr_raw:
-        prefix = f'.claude/patterns/{skill}/state-{sid}-'
+        prefix = f'.claude/skills/{skill}/state-{sid}-'
         for path, blob_hash in tv.items():
             if path.startswith(prefix):
                 h[sid] = blob_hash[:7]

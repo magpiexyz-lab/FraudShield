@@ -22,6 +22,7 @@ __all__ = [
     "check_60_settings_hook_paths",
     "check_61_footer_directive_sync",
     "check_62_trace_framework_completeness",
+    "check_66_audit_review_scope_coverage",
 ]
 
 def check_41_distribution_docs_references() -> list[str]:
@@ -220,12 +221,15 @@ def check_62_trace_framework_completeness() -> list[str]:
     """Check 62: Every stateful skill has Q-score and epilogue categorization."""
     errors: list[str] = []
 
-    # Find all stateful skills (dirs with state-*.md files)
+    # Find all stateful skills (dirs with state-*.md files).
+    # Per-skill state files live at .claude/skills/<skill>/state-*.md;
+    # shared terminal states (e.g., state-99) live at .claude/patterns/state-*.md
+    # and are tracked separately by verify-linter.sh.
     stateful_skills: list[str] = []
-    patterns_dir = ".claude/patterns"
-    if os.path.isdir(patterns_dir):
-        for d in sorted(os.listdir(patterns_dir)):
-            skill_dir = os.path.join(patterns_dir, d)
+    skills_dir = ".claude/skills"
+    if os.path.isdir(skills_dir):
+        for d in sorted(os.listdir(skills_dir)):
+            skill_dir = os.path.join(skills_dir, d)
             if os.path.isdir(skill_dir) and glob.glob(os.path.join(skill_dir, "state-*.md")):
                 stateful_skills.append(d)
 
@@ -237,22 +241,28 @@ def check_62_trace_framework_completeness() -> list[str]:
     # - optimize-prompt: stateless (no state files, won't appear)
     excluded_epilogue = {"verify"}
 
-    # Check 1: Q-score presence
+    # Check 1: Q-score presence.
+    # Q-score is centrally wired via lifecycle-finalize.sh (Step 3) which
+    # invokes `.claude/scripts/write-q-score.py` whenever a skill leaves a
+    # `.runs/q-dimensions.json` artifact. So per-skill coverage requires
+    # that at least one of the skill's state files writes q-dimensions.json
+    # (or, for legacy paths, calls write-q-score directly).
+    qscore_pattern = re.compile(r"q-dimensions\.json|write-q-score|write_q_score")
     for skill in stateful_skills:
         if skill in excluded_qscore:
             continue
-        skill_dir = os.path.join(patterns_dir, skill)
+        skill_dir = os.path.join(skills_dir, skill)
         state_files = glob.glob(os.path.join(skill_dir, "state-*.md"))
         has_qscore = False
         for sf in state_files:
             with open(sf) as f:
-                if "write-q-score" in f.read():
+                if qscore_pattern.search(f.read()):
                     has_qscore = True
                     break
         if not has_qscore:
             errors.append(
-                f"[62] Skill '{skill}' has {len(state_files)} state files but no "
-                f"write-q-score call in any state"
+                f"[62] Skill '{skill}' has {len(state_files)} state files but "
+                f"no q-dimensions.json write or write-q-score call in any state"
             )
 
     # Check 2: Epilogue categorization
@@ -268,6 +278,137 @@ def check_62_trace_framework_completeness() -> list[str]:
                 errors.append(
                     f"[62] Skill '{skill}' not categorized in skill-epilogue.md"
                 )
+
+    return errors
+
+
+def check_66_audit_review_scope_coverage() -> list[str]:
+    """Check 66: audit + review skills jointly cover every template-source directory.
+
+    Three assertions:
+    1. Resolution — every Glob/Read pattern parsed from audit state-1 and
+       review state-2a resolves to ≥1 file on disk (catches phantom paths
+       added by accident).
+    2. Directory coverage — each template-source directory is referenced
+       by ≥1 Glob in BOTH skills (catches new template dirs added without
+       expanding either skill's scope).
+    3. File coverage — each template-source individual file is referenced
+       by ≥1 Glob/Read in either skill.
+
+    Adding a new template-source directory requires adding a Glob line to
+    both audit/state-1 AND review/state-2a, then adding it to
+    TEMPLATE_SCAN_DIRS below.
+    """
+    errors: list[str] = []
+
+    AUDIT_FILE = ".claude/skills/audit/state-1-parallel-analysis.md"
+    REVIEW_FILE = ".claude/skills/review/state-2a-review-scan.md"
+
+    # Phantom paths intentionally referenced; their underlying directory
+    # absence is tracked as a separate template observation. Skip resolution
+    # check for these.
+    PHANTOM_ALLOWLIST = {"tests/fixtures/*.yaml"}
+
+    # Template-source directories that BOTH audit + review must scan.
+    # Order does not matter. A directory listed here but absent on disk
+    # (e.g., a retired location) is silently skipped.
+    TEMPLATE_SCAN_DIRS = [
+        ".claude/commands",
+        ".claude/skills",
+        ".claude/patterns",
+        ".claude/procedures",
+        ".claude/agents",
+        ".claude/archetypes",
+        ".claude/templates",
+        ".claude/stacks",
+        ".claude/hooks",
+        ".claude/scripts",
+        ".claude/agent-memory",
+        "scripts",
+    ]
+
+    # Individual template-source files that must be referenced by Glob or
+    # Read in at least one of the two skills.
+    TEMPLATE_SCAN_FILES = [
+        ".claude/agent-prompt-footer.md",
+        ".claude/settings.json",
+        "Makefile",
+    ]
+
+    def extract_patterns(path: str) -> list[tuple[str, int]]:
+        if not os.path.isfile(path):
+            return []
+        with open(path) as f:
+            lines = f.readlines()
+        out: list[tuple[str, int]] = []
+        for i, line in enumerate(lines, start=1):
+            for m in re.finditer(r"\b(?:Glob|Read)\s+`([^`]+)`", line):
+                out.append((m.group(1), i))
+        return out
+
+    audit_patterns = extract_patterns(AUDIT_FILE)
+    review_patterns = extract_patterns(REVIEW_FILE)
+
+    if not audit_patterns:
+        errors.append(
+            f"[66] {AUDIT_FILE}: no Glob/Read patterns extracted "
+            f"(file structure may have changed)"
+        )
+    if not review_patterns:
+        errors.append(
+            f"[66] {REVIEW_FILE}: no Glob/Read patterns extracted "
+            f"(file structure may have changed)"
+        )
+
+    # Sub-check 1: every pattern resolves to ≥1 file on disk.
+    for label, path, patterns in (
+        ("audit", AUDIT_FILE, audit_patterns),
+        ("review", REVIEW_FILE, review_patterns),
+    ):
+        for pattern, lineno in patterns:
+            if pattern in PHANTOM_ALLOWLIST:
+                continue
+            if any(c in pattern for c in "*?["):
+                matches = glob.glob(pattern, recursive=True)
+            else:
+                matches = [pattern] if os.path.exists(pattern) else []
+            if not matches:
+                errors.append(
+                    f"[66] {path}:{lineno}: {label} pattern `{pattern}` "
+                    f"resolves to zero files on disk"
+                )
+
+    # Sub-check 2: each TEMPLATE_SCAN_DIR is covered by both skills.
+    def covers_dir(patterns: list[tuple[str, int]], directory: str) -> bool:
+        prefix = directory.rstrip("/") + "/"
+        return any(p.startswith(prefix) or p == directory for p, _ in patterns)
+
+    for directory in TEMPLATE_SCAN_DIRS:
+        if not os.path.isdir(directory):
+            continue
+        if not covers_dir(audit_patterns, directory):
+            errors.append(
+                f"[66] {AUDIT_FILE}: missing Glob for template-source "
+                f"directory '{directory}/' (every audit subagent needs "
+                f"this in its shared-context-instruction box)"
+            )
+        if not covers_dir(review_patterns, directory):
+            errors.append(
+                f"[66] {REVIEW_FILE}: missing Glob for template-source "
+                f"directory '{directory}/' (at least one Dimension's "
+                f"Files-to-read list needs this)"
+            )
+
+    # Sub-check 3: each TEMPLATE_SCAN_FILE is referenced by either skill.
+    union_patterns = {p for p, _ in audit_patterns} | {p for p, _ in review_patterns}
+    for f in TEMPLATE_SCAN_FILES:
+        if not os.path.exists(f):
+            continue
+        if f not in union_patterns:
+            errors.append(
+                f"[66] template-source file '{f}' is not referenced by "
+                f"any Glob/Read in audit/state-1 or review/state-2a"
+            )
 
     return errors
 

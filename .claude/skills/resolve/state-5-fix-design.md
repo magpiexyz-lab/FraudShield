@@ -24,7 +24,7 @@ Determine Ring level based on files the fix will modify:
 
 | Ring | Scope | solve_depth | Behavior |
 |------|-------|-------------|----------|
-| Ring 1 | Only `.claude/patterns/<skill>/state-*.md` | Keep existing logic (default light) | Normal fix flow |
+| Ring 1 | Only `.claude/skills/<skill>/state-*.md` | Keep existing logic (default light) | Normal fix flow |
 | Ring 2 | `.claude/hooks/`, `.claude/scripts/`, `.claude/stacks/` | Force `"full"` | Normal fix flow with full depth |
 | Ring 3 | `state-registry.json` structure or `CLAUDE.md` | N/A | Analysis-only — no fix designed |
 

@@ -108,7 +108,7 @@ def parse_comment(body):
         sr_raw = d.get('state_results', {})
         hashes = {}
         for sid in sr_raw:
-            prefix = f'.claude/patterns/{skill}/state-{sid}-'
+            prefix = f'.claude/skills/{skill}/state-{sid}-'
             for path, blob_hash in tv.items():
                 if path.startswith(prefix):
                     hashes[sid] = blob_hash[:7]
@@ -136,7 +136,7 @@ def filter_stale(entries):
         relevant_states = {}
         for sid, data in entry['state_results'].items():
             skill = entry['skill']
-            pattern = f'.claude/patterns/{skill}/state-{sid}-*.md'
+            pattern = f'.claude/skills/{skill}/state-{sid}-*.md'
             matches = glob.glob(pattern)
             if not matches:
                 stale_count += 1
