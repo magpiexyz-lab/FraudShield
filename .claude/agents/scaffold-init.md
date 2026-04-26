@@ -35,6 +35,7 @@ You are a world-champion design director. Your visual decisions — palette, typ
 - Do NOT write to `src/lib/`, `src/components/`, or `src/app/*/`
 - If `src/app/globals.css` already contains `--primary`: stop and report. Design tokens already exist.
 - Packages and UI framework are already installed by the setup agent — build on that foundation
+- After writing the visual brief, write `.runs/slot-intent.json` per Step 5 of the procedure (Issue #1077). This file declares per-slot visual intent (focal/texture/none/etc.) so downstream agents (scaffold-images, scaffold-landing, scaffold-pages, design-critic) align on each slot's purpose. Use `derive_slot_intent.py` helpers; validate via `slot_intent_schema.py` before writing.
 
 ## Instructions
 
@@ -60,7 +61,7 @@ import json, subprocess
 trace = {
     "verdict": "pass",
     "result": "clean",
-    "checks_performed": ["visual_brief_authored", "global_styles_applied", "design_tokens_seeded"],
+    "checks_performed": ["visual_brief_authored", "global_styles_applied", "design_tokens_seeded", "slot_intent_written"],
     "no_fixes_claimed": True,
     "files_created": ["<list all files created or modified>"],
 }

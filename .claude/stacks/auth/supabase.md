@@ -25,6 +25,18 @@ clean:
   files: []
   dirs: []
 gitignore: []
+demo_mode:
+  # Issue #1077: structured DEMO_MODE policy consumed by
+  # .claude/scripts/lib/derive_slot_intent.py:derive_runtime_gate().
+  # demo_mode_role: the role baked into the demo user (null = no role
+  # claim, e.g., empty app_metadata). When the demo user lacks a role
+  # required by a behavior (behaviors[].requires_role), that behavior's
+  # slot is unreachable in DEMO_MODE — slot-intent declares it conditional.
+  demo_mode_role: null
+  # demo_user_metadata: shape of demoUser.app_metadata in the demo client.
+  # Empty object means "no role claims" — admin-gated routes are unreachable.
+  # (Documented at .claude/stacks/auth/supabase.md demoUser block.)
+  demo_user_metadata: {}
 ---
 # Auth: Supabase Auth
 > Used when experiment.yaml has `stack.auth: supabase`

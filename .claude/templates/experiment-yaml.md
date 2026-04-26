@@ -67,12 +67,32 @@ Each behavior is a user-observable capability tied to a hypothesis. Schema:
   level: 1 | 2 | 3             # Required. Behavior level.
   actor: user | system | cron  # Optional. Default `user`.
   trigger: <string>            # Optional. Required when actor != user.
+  requires_role: <string>      # Optional. Authenticated role needed to execute.
+                               # Issue #1077: scaffold-init reads this to decide
+                               # which slots are runtime_gated (e.g., admin-only
+                               # empty-state unreachable in DEMO_MODE).
 
   # Archetype-conditional REQUIRED fields:
   pages: [<page>...]           # web-app + actor: user → REQUIRED, non-empty
   endpoints: [<endpoint>...]   # service → REQUIRED, non-empty
   commands: [<command>...]     # cli → REQUIRED, non-empty
 ```
+
+#### `behavior.requires_role` (optional, string) — Issue #1077
+
+Declares the authenticated role required to execute the behavior. Examples:
+`admin`, `operator`, `supervisor`. When the auth stack's `demo_mode_role`
+(declared in `.claude/stacks/auth/<value>.md` frontmatter) lacks this role,
+the behavior is unreachable in DEMO_MODE — `scaffold-init` declares
+runtime_gate on slots associated with the behavior's pages so:
+
+- `scaffold-images` skips generation for unreachable conditional slots
+- `scaffold-pages` renders text-only fallback (no `<Image>` import)
+- `design-critic` suppresses polish-floor escalation (won't regen)
+- `state-2b drift detection` short-circuits to INFO (no false BLOCK)
+
+When this field is absent, the behavior has no role gate and slots default to
+visible/focal. See `.claude/scripts/lib/derive_slot_intent.py:derive_runtime_gate`.
 
 #### `behavior.pages` (web-app + actor: user → REQUIRED)
 
@@ -224,13 +244,32 @@ design:
   theme: light | dark | auto      # default auto = scaffold-init decides
   design_lineage: [string]        # e.g., [Linear, Vercel, Rauno Freiberg]
   aesthetic_notes: string         # freeform creative direction, appended to visual brief
+
+  # Issue #1077: per-slot intent contract (optional user override).
+  # Declared by scaffold-init at state-10 from product context; user-supplied
+  # overrides take precedence verbatim. Read by scaffold-images / scaffold-
+  # landing / scaffold-pages / design-critic for budget + render decisions.
+  slots:
+    <slot-name>:                  # hero | feature-1 | feature-2 | feature-3 | logo | og-photo | empty-state | <custom>
+      slot_role: focal | texture | watermark | conditional | none
+      production_method: ai_generated | programmatic_css | svg_icon | dynamic_runtime | none
+      intended_render:
+        opacity: <0.0-1.0>
+        blend_mode: <CSS mix-blend-mode value>
+        filter: <CSS filter value>
+      candidate_budget: high | medium | low
+      runtime_gate:               # null OR object
+        role: <required role>
+        reason: <human description>
+        evidence: <citation>
 ```
 
 - `theme: dark` or `theme: light` overrides `globals.css` color tokens regardless of product domain reasoning.
 - `design_lineage` is a mandatory reference set for the visual brief (e.g., agent consults those brands' known aesthetics).
 - `aesthetic_notes` is a soft override to the agent's own aesthetic reasoning — e.g., "editorial with engineering precision, not minimalist".
+- `slots.<slot>.<key>` (Issue #1077): user override for a slot's declared intent. Each recognized key replaces the derived value verbatim; absent keys fall through to derivation. Use sparingly — defaults are tuned to the design lineage. Schema: see `.claude/scripts/lib/slot_intent_schema.py` (5 oneOf rejection rules R1-R5 caught at scaffold-init write time).
 
-All three fields are optional. When the block is entirely absent, no behavior change.
+All four fields are optional. When the block is entirely absent, no behavior change.
 
 ## Page Inventory Derivation
 

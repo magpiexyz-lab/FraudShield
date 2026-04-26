@@ -65,3 +65,139 @@
      - Playful brand: "Never use sharp corners — minimum border-radius 12px on all elements"
    - **Image source strategy**: photography (Unsplash) / illustration (AI-generated) / mixed — choose based on product domain using the Image Source Strategy table in design.md. When "photography": include specific Unsplash search terms per image type (e.g., hero: "modern dental office professional", features: "patient consultation"). When "mixed": specify which images use photography and which use illustration. When "illustration": follow existing fal.md model selection
 
+### Step 5: Write `.runs/slot-intent.json` (Issue #1077)
+
+**Purpose:** declare per-slot visual intent BEFORE scaffold-images / scaffold-landing / scaffold-pages run, so all four pipeline layers (generate, select, integrate, review) align on each slot's purpose. This prevents the four root-cause symptoms documented in #1077: hero opacity-0.055 invisible focal images, og-photo dead asset, feature grayscale silhouettes, empty-state DEMO-unreachable.
+
+**Read these inputs:**
+
+1. `experiment.yaml.type` (archetype: web-app | service | cli)
+2. `experiment.yaml.behaviors` (full list — needed for `requires_role` extraction)
+3. `experiment.yaml.design` block (theme, design_lineage, aesthetic_notes; AND optional `slots` user override)
+4. `experiment.yaml.optimization_target` if present (or derive from `target_user`)
+5. `experiment.yaml.description`
+6. `.claude/stacks/auth/<stack.auth>.md` YAML frontmatter `demo_mode` block (when `stack.auth` is set; field `demo_mode_role` may be null)
+7. `.runs/gate-verdicts/phase-a-sentinel.json` if it exists (it usually does NOT at state-10 time — sentinel is written by state-11 Phase A; the helper handles absence gracefully)
+
+**Compute:**
+
+```bash
+python3 - <<'PYEOF'
+import datetime, json, os, sys, yaml
+sys.path.insert(0, ".claude/scripts")
+from lib.derive_slot_intent import (
+    archetype_default,
+    derive_og_photo_default,
+    derive_runtime_gate,
+    derive_slot_role_from_lineage,
+    merge_user_overrides,
+)
+from lib.slot_intent_schema import validate
+
+exp = yaml.safe_load(open("experiment/experiment.yaml"))
+archetype = exp.get("type", "web-app")
+design = exp.get("design") or {}
+design_lineage = design.get("design_lineage")
+description = exp.get("description") or ""
+optimization_target = exp.get("optimization_target") or design.get("optimization_target")
+behaviors = exp.get("behaviors") or []
+user_overrides = (design.get("slots") or {})
+
+# Optional auth-stack frontmatter — extract demo_mode block.
+# Anchored on '---' as full-line delimiters; bare 'split("---", 2)' breaks
+# on '# --- foo ---' comment lines inside the file list.
+auth_stack_frontmatter = None
+auth_stack = (exp.get("stack") or {}).get("auth")
+if auth_stack and auth_stack != "none":
+    stack_path = f".claude/stacks/auth/{auth_stack}.md"
+    if os.path.exists(stack_path):
+        with open(stack_path) as f:
+            text = f.read()
+        if text.startswith("---\n"):
+            rest = text[4:]
+            end = rest.find("\n---\n")
+            if end < 0 and rest.endswith("\n---"):
+                end = len(rest) - 4
+            if end >= 0:
+                fm_text = rest[:end]
+                try:
+                    auth_stack_frontmatter = (yaml.safe_load(fm_text) or {}).get("demo_mode")
+                except yaml.YAMLError:
+                    auth_stack_frontmatter = None
+
+# Archetype short-circuit
+short = archetype_default(archetype)
+slot_names = ["hero", "feature-1", "feature-2", "feature-3", "logo", "og-photo", "empty-state"]
+slots_out = {}
+runtime_gate = derive_runtime_gate(behaviors, auth_stack_frontmatter)
+
+for slot in slot_names:
+    if short is not None:
+        derived = dict(short)
+        derived["evidence"] = short["evidence"]
+    elif slot == "og-photo":
+        og = derive_og_photo_default(".runs/gate-verdicts/phase-a-sentinel.json")
+        # og-photo derivation produces full slot descriptor; fill missing fields
+        derived = {
+            "slot_role": og["slot_role"],
+            "production_method": og["production_method"],
+            "candidate_budget": "low",
+            "intended_render": (
+                None if og["slot_role"] == "none"
+                else {"opacity": 1.0, "blend_mode": "normal", "filter": "none"}
+            ),
+            "evidence": og["evidence"],
+        }
+    else:
+        derived = derive_slot_role_from_lineage(
+            slot_name=slot,
+            design_lineage=design_lineage,
+            optimization_target=optimization_target,
+            description=description,
+        )
+    # Apply per-slot user override (experiment.yaml.design.slots[<slot>])
+    merged = merge_user_overrides(derived, user_overrides.get(slot))
+    # Attach runtime_gate for empty-state when role-gated behavior detected;
+    # if user override already supplied runtime_gate, do not override it.
+    if slot in {"empty-state", "empty_state", "emptystate"} and runtime_gate:
+        if "runtime_gate" not in merged or merged["runtime_gate"] is None:
+            merged["runtime_gate"] = runtime_gate
+            # When runtime_gate is set, slot_role becomes 'conditional' unless
+            # the user explicitly chose otherwise.
+            if merged["slot_role"] == "focal":
+                merged["slot_role"] = "conditional"
+    merged.setdefault("runtime_gate", None)
+    merged.setdefault("source", "derived")
+    # Drop the helper-only 'evidence' field; keep the rest.
+    merged.pop("evidence", None)
+    slots_out[slot] = merged
+
+design_slots_enabled = bool(design.get("slots_enabled", False))
+
+doc = {
+    "_schema_version": 1,
+    "_schema_version_notes": "v1 (2026-04-26, #1077): per-slot intent contract written by scaffold-init at state-10",
+    "generated_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    "archetype": archetype,
+    "design_slots_enabled": design_slots_enabled,
+    "slots": slots_out,
+}
+
+errors = validate(doc)
+if errors:
+    print("slot-intent.json validation failed:", file=sys.stderr)
+    for e in errors:
+        print("  -", e, file=sys.stderr)
+    sys.exit(1)
+
+os.makedirs(".runs", exist_ok=True)
+with open(".runs/slot-intent.json", "w") as f:
+    json.dump(doc, f, indent=2)
+print(f"slot-intent.json written: {len(slots_out)} slots, design_slots_enabled={design_slots_enabled}")
+PYEOF
+```
+
+**Outcome:** `.runs/slot-intent.json` exists, schema-valid, with one entry per slot. `design_slots_enabled` defaults to `false` (PR2 will use this flag to gate downstream consumption). When `experiment.yaml.design.slots` provides overrides, they take precedence verbatim.
+
+**Note:** PR1b only writes the file. PR2 wires scaffold-images / scaffold-landing / scaffold-pages / design-critic to read it. PR3 adds drift-detection enforcement.
+

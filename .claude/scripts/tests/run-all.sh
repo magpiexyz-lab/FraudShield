@@ -37,6 +37,8 @@ SUITES=(
   ".claude/scripts/tests/test_derive_runtime_gate.py"
   ".claude/scripts/tests/test_archetype_short_circuit.py"
   ".claude/scripts/tests/test_design_slots_override.py"
+  ".claude/scripts/tests/test_scaffold_init_writes_slot_intent.py"
+  ".claude/scripts/tests/test_auth_stack_frontmatter_schema.py"
 )
 
 FAIL=0
