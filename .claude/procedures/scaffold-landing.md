@@ -59,6 +59,20 @@ varies by archetype:
   `.webp` or `.svg` depending on whether AI generation ran). For `.webp` files
   use `next/image` `Image` component; for `.svg` files use `<img>` tags.
   These paths are guaranteed to exist from Phase B1.
+- **Slot-intent integration (Issue #1077):** also read `.runs/slot-intent.json` if it exists. When `design_slots_enabled == true`:
+  - For each slot in `slot-intent.slots`, apply the declared `intended_render` (opacity / blend_mode / filter) to the image element's className/style. Example for a `slot_role=texture` hero with `intended_render={opacity: 0.08, blend_mode: "luminosity", filter: "none"}`:
+    ```tsx
+    <Image
+      src="/images/hero.webp"
+      className="opacity-[0.08] mix-blend-luminosity"
+      // ...
+    />
+    ```
+  - For slots with `production_method == "programmatic_css"`, **do not import `<Image>`** for that slot. Emit a CSS gradient `<div>` or styled component instead (e.g., a `bg-gradient-to-br from-primary/20 to-accent/10` hero background).
+  - For slots with `production_method == "svg_icon"`, emit inline SVG instead of `<Image>`.
+  - For slots with `production_method == "dynamic_runtime"` (e.g., og-photo when `next/og` is the producer), do not reference the static asset.
+  - For slots with `slot_role == "none"`, do not render the slot at all.
+  - When slot-intent is absent or `design_slots_enabled` is false, fall through to manifest-only behavior (legacy).
 - If no `variants`: write `src/app/page.tsx` — a complete React landing
   page component. Must fire `visit_landing` on mount with experiment/EVENTS.yaml properties.
 - If `variants`: write `src/components/landing-content.tsx` — a shared

@@ -40,6 +40,7 @@ SUITES=(
   ".claude/scripts/tests/test_scaffold_init_writes_slot_intent.py"
   ".claude/scripts/tests/test_auth_stack_frontmatter_schema.py"
   ".claude/scripts/tests/test_migrate_slot_intent_suggestions.py"
+  ".claude/scripts/tests/test_state_11a_dynamic_ic.py"
 )
 
 FAIL=0

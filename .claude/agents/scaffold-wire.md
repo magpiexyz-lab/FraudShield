@@ -34,6 +34,47 @@ You wire the backend: API routes with input validation, database schema with acc
 - Database: RLS policies on all tables, never trust the client
 - Webhook handlers: resolve all TODO comments (especially payment status updates)
 - Tests are created but NOT run during bootstrap
+- **Slot-intent consistency check (Issue #1077):** after writing auth code, write `.runs/auth-routing.json` recording the demo-mode user shape and gated routes. Then verify each `slot-intent.json` slot's `runtime_gate` declaration matches the actual auth code:
+  ```bash
+  python3 - <<'PYEOF'
+  import datetime, json, os
+  routing = {
+      "generated_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+      # demo_mode_role: copied from auth stack frontmatter (already declared)
+      # gated_routes: list of routes that require a non-public role
+      # For Phase 1 of slot-intent integration, scaffold-wire records what it
+      # observed/emitted; the consistency check is best-effort.
+      "demo_mode_role": None,  # populate from auth stack inspection if available
+      "gated_routes": [],
+      "unreachable_demo_routes": [],
+  }
+  os.makedirs(".runs", exist_ok=True)
+  with open(".runs/auth-routing.json", "w") as f:
+      json.dump(routing, f, indent=2)
+
+  # Best-effort consistency check: if slot-intent declares runtime_gate, the
+  # auth code must enforce that role somewhere. We do a light grep, not a
+  # full proof — if the check finds nothing, emit a WARN finding (not BLOCK).
+  if os.path.exists(".runs/slot-intent.json"):
+      slot_intent = json.load(open(".runs/slot-intent.json"))
+      if slot_intent.get("design_slots_enabled"):
+          for slot, entry in (slot_intent.get("slots") or {}).items():
+              gate = entry.get("runtime_gate")
+              if gate and gate.get("role"):
+                  role = gate["role"]
+                  # naive check: grep src/ for role literal
+                  import subprocess
+                  r = subprocess.run(
+                      ["grep", "-r", "--include=*.ts", "--include=*.tsx",
+                       f"role.*{role}", "src"],
+                      capture_output=True, text=True,
+                  )
+                  if not r.stdout.strip():
+                      print(f"WARN: slot-intent declares runtime_gate.role={role!r} for {slot} but no auth code references this role")
+  print("auth-routing.json written; slot-intent consistency check complete")
+  PYEOF
+  ```
+  This step is best-effort. PR3's drift detector (`state-2b-drift-detection.md` in /verify) does the rigorous declared-vs-emitted check.
 
 ## Instructions
 

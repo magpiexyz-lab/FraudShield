@@ -21,6 +21,30 @@
    Premium but approachable.
    ```
 5. Extract RGB color values from the visual brief for Recraft models' `colors` API parameter
+6. **(Issue #1077) Read `.runs/slot-intent.json`** if it exists. When `design_slots_enabled == true`, this file controls per-slot generation routing:
+   - `production_method != "ai_generated"` (e.g., `dynamic_runtime` for og-photo when next/og emits opengraph-image.tsx; `none` for service/cli archetypes; `programmatic_css` / `svg_icon` for slots replaced by CSS) → **skip generation entirely** for that slot
+   - `candidate_budget` → maps to candidates_per_slot (high=existing budget, medium≈3 explore + 1 exploit, low=1 explore + 0 exploit)
+   - `slot_role` biases prompt construction: `texture` → minimal subject, abstract; `watermark` → vector-priority; `focal` → unchanged; `conditional` → defensive (still generate but design-critic will suppress regen via PR3 drift detector)
+
+   Defensive behavior: if slot-intent.json is absent OR `design_slots_enabled` is false, ignore slot-intent and use legacy candidate budget (Phase 1/2 tables below). This preserves backward-compat for projects bootstrapped before PR1b.
+
+   Quick check (run early):
+   ```bash
+   python3 - <<'PYEOF'
+   import json, os
+   slot_intent = None
+   if os.path.exists(".runs/slot-intent.json"):
+       d = json.load(open(".runs/slot-intent.json"))
+       if d.get("design_slots_enabled"):
+           slot_intent = d.get("slots", {})
+   if slot_intent:
+       skipped = [k for k, s in slot_intent.items()
+                  if s.get("production_method") != "ai_generated"]
+       print(f"slot-intent active; skipping non-AI slots: {skipped}")
+   else:
+       print("slot-intent inactive; using legacy budget")
+   PYEOF
+   ```
 
 ### Step 1b: Check image source strategy
 
@@ -85,6 +109,8 @@ Create `src/lib/image-gen.ts` following the multi-model code template in `.claud
 For each image slot, generate candidates in two phases: **explore** (maximize diversity to find the right direction) then **exploit** (refine the winning direction). Candidates are stored in `.runs/image-candidates/`; only the winner is copied to `public/images/`.
 
 **Phase 1 (EXPLORE) — maximize diversity, find the right direction:**
+
+> **Slot-intent override (Issue #1077)**: when slot-intent is active (Step 1 #6) and a slot's `production_method != "ai_generated"`, **skip that row entirely** (do not generate, do not write a manifest entry). When `candidate_budget=low`, use 1 explore (AI only, no Unsplash). When `candidate_budget=medium`, halve the explore count rounded up. When `candidate_budget=high` or slot-intent inactive, use the table below as-is.
 
 | # | Filename | Type | Model | Dimensions | Explore | Sources |
 |---|----------|------|-------|-----------|---------|---------|
@@ -232,14 +258,13 @@ For each image slot with exploit budget (all except empty-state):
 
 ### Step 4.3: Completeness Check
 
-Before writing the manifest, verify all images from the Phase 1 table exist on disk:
+Before writing the manifest, verify the **expected** images from the Phase 1 table exist on disk:
 
-1. Count image files in `public/images/` — must equal the row count from the Phase 1 table (7 images)
-2. For each row in the table, verify the expected filename exists in `public/images/`:
-   - `hero.webp`, `feature-1.webp`, `feature-2.webp`, `feature-3.webp`, `logo.svg`, `og-photo.png`, `empty-state.webp`
-3. If any image is missing, generate it now using the same explore-exploit cycle from Steps 4.1-4.2 before proceeding
+1. Count expected images. When slot-intent is active and `design_slots_enabled` is true, expected count = number of slots with `production_method == "ai_generated"`. When slot-intent is inactive, expected count = 7 (full Phase 1 table).
+2. For each row in the table whose slot is NOT skipped by slot-intent, verify the filename exists in `public/images/`. The full default list is: `hero.webp`, `feature-1.webp`, `feature-2.webp`, `feature-3.webp`, `logo.svg`, `og-photo.png`, `empty-state.webp`.
+3. If any expected image is missing, generate it now using the same explore-exploit cycle from Steps 4.1-4.2 before proceeding.
 
-Do NOT proceed to Step 5 until all images are present on disk.
+Do NOT proceed to Step 5 until all expected images are present on disk.
 
 ### Step 5: Write manifest
 Write `.runs/image-manifest.json`:

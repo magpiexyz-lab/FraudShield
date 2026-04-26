@@ -48,6 +48,30 @@ This yields `derive_scope_pages(experiment)` = union of `golden_path[*].page`,
   - If `stack.analytics` is present: import tracking functions per the analytics stack file conventions and fire the appropriate experiment/EVENTS.yaml event(s) on the correct trigger
   - Follow `.claude/patterns/design.md` quality invariants (form input sizing). Aim for a distinctive, polished look that matches the product domain.
   - For empty states (empty tables, lists, dashboards): read `.runs/image-manifest.json` and use the empty-state image at the `publicPath` listed there — do NOT hardcode the file extension (it may be `.svg` or `.webp` depending on whether AI image generation ran). Example: if manifest shows `"publicPath": "/images/empty-state.webp"`, use `<Image src="/images/empty-state.webp" alt="No items yet" width={400} height={400} />`.
+    
+    **Slot-intent fallback (Issue #1077):** when `.runs/slot-intent.json` exists AND `design_slots_enabled == true` AND `slots["empty-state"].slot_role == "conditional"` AND `runtime_gate != null`, the empty-state image was NOT generated (scaffold-images skipped the slot). Render a **text-only fallback** instead of `<Image>`:
+    ```tsx
+    {/* slot-intent: empty-state runtime_gated by role, image unreachable in DEMO_MODE */}
+    <div className="flex flex-col items-center justify-center py-12 text-center">
+      <p className="text-lg font-medium text-foreground">No items yet</p>
+      <p className="mt-2 text-sm text-muted-foreground">
+        {/* Customize per page context — message should reflect the runtime_gate.role and product domain */}
+        This view requires a different account role.
+      </p>
+    </div>
+    ```
+    Quick check before emitting empty-state imports:
+    ```bash
+    python3 -c "
+    import json, os
+    if os.path.exists('.runs/slot-intent.json'):
+        d = json.load(open('.runs/slot-intent.json'))
+        if d.get('design_slots_enabled'):
+            es = d.get('slots', {}).get('empty-state', {})
+            if es.get('slot_role') == 'conditional' and es.get('runtime_gate'):
+                print('USE_TEXT_FALLBACK=true')
+    "
+    ```
   - If an event from the experiment/EVENTS.yaml events map has no matching page in experiment.yaml (e.g., no signup page for signup_start/signup_complete), omit that event — do not create a page just to fire it
 - **Landing page**: Do NOT generate the landing page content here — it is
   created by the landing-page subagent (see `scaffold-landing.md`). If

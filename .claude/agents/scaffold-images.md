@@ -31,6 +31,12 @@ You are a world-champion visual storyteller. Every image you generate should fee
 
 Generate candidates in two phases: **explore** (maximize diversity to find the right direction) then **exploit** (refine the winning direction with targeted variations). Candidates are stored in `.runs/image-candidates/`; only the winner is copied to `public/images/`.
 
+**Slot-intent override (Issue #1077):** when `.runs/slot-intent.json` exists AND `design_slots_enabled == true`:
+- Slots with `production_method != "ai_generated"` are SKIPPED entirely (no candidates, no manifest entry).
+- `candidate_budget="low"` → 1 explore, 0 exploit (texture-class minimum).
+- `candidate_budget="medium"` → halve the table below, rounded up.
+- `candidate_budget="high"` or slot-intent inactive → table below as-is.
+
 **Two-phase candidate budget (explore then exploit):**
 
 | Image | Explore | Sources | Exploit | Sources |
