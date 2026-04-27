@@ -9,8 +9,8 @@
 
 > REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table, rows "Spec field", "Primary unit".
 >
-> Spec field — web-app: golden_path | service: endpoints | cli: commands
-> Primary unit — web-app: page | service: endpoint | cli: command
+> [spec-field] web-app: `golden_path` | service: `endpoints` | cli: `commands`
+> [primary-unit] web-app: page (`src/app/<page>/page.tsx`) | service: endpoint (`src/app/api/<ep>/route.ts`) | cli: command (`src/commands/<cmd>.ts`)
 >
 > State-specific logic below takes precedence.
 

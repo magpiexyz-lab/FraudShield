@@ -6,8 +6,8 @@
 
 ## Archetype Gate
 
-> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
-> web-app: design-critic + design-consistency-checker traces required (when scope=full|visual) | service/cli: skip design traces
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table, row "Visual agents".
+> [visual-agents] web-app: design-critic, ux-journeyer, consistency-checker | service: skip | cli: skip
 
 #### Stage 1c: Pre-merge validate-recovery for self-degraded traces (#1042)
 

@@ -9,7 +9,8 @@
 
 ## Archetype Gate
 
-> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table, row "Spec field".
+> [spec-field] web-app: `golden_path` | service: `endpoints` | cli: `commands`
 >
 > State-specific logic below takes precedence.
 

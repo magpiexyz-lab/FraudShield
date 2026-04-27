@@ -8,8 +8,8 @@
 
 ## Archetype Gate
 
-> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
-> web-app: golden_path with landing page required | service: endpoints required | cli: commands required
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table, row "Spec field".
+> [spec-field] web-app: `golden_path` | service: `endpoints` | cli: `commands`
 
 - Every one of these fields must be present and non-empty (strings must be non-blank, lists must have at least one item): `name`, `owner`, `type`, `description`, `thesis`, `target_user`, `distribution`, `behaviors`, `stack`, plus fields from the archetype's `required_experiment_fields` (e.g., `golden_path` for web-app, `endpoints` for service)
 - If ANY field still contains "TODO" or is missing: stop, list exactly which fields need to be filled in, and do nothing else

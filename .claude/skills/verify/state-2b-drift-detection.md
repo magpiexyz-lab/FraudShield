@@ -11,8 +11,8 @@ soft-launch projects with the flag off).
 
 ## Archetype Gate
 
-> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
-> web-app: drift detection runs | service/cli: short-circuit (no design drift surface)
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table, row "Visual agents".
+> [visual-agents] web-app: design-critic, ux-journeyer, consistency-checker | service: skip | cli: skip
 
 Run the slot-intent drift detector to compare declared `intended_render`
 (from `.runs/slot-intent.json`) against observed JSX in `src/` (Issue

@@ -9,7 +9,7 @@
 
 > REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table, row "Content/SEO checks".
 >
-> web-app: content quality, CTA, hrefs, tokens, SEO baseline | service: skip | cli: skip
+> [content-seo] web-app: content quality, CTA, hrefs, tokens, SEO baseline | service: skip | cli: skip
 >
 > State-specific logic below takes precedence.
 

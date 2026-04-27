@@ -7,8 +7,8 @@
 
 ## Archetype Gate
 
-> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
-> web-app + scope in {full, visual}: build page-image-map | service/cli: skip
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table, row "Visual agents".
+> [visual-agents] web-app: design-critic, ux-journeyer, consistency-checker | service: skip | cli: skip
 
 Produce two operational artifacts that state-3a Stage-1 consumes to spawn
 per-page design-critic agents with the right per-page metadata. This state

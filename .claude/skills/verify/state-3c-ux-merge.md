@@ -8,7 +8,7 @@
 
 > REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table, row "Visual agents".
 >
-> web-app: spawn ux-journeyer, run Design-UX Merge | service: skip both | cli: skip both
+> [visual-agents] web-app: design-critic, ux-journeyer, consistency-checker | service: skip | cli: skip
 
 ### ux-journeyer (if scope is `full` or `visual`, AND archetype is `web-app`) — SERIAL
 

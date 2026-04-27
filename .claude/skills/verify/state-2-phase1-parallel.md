@@ -42,7 +42,7 @@ Spawn the `behavior-verifier` agent (`subagent_type: behavior-verifier`). No add
 
 > REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table, row "Performance + a11y agents".
 >
-> web-app: spawn performance-reporter + accessibility-scanner | service: skip | cli: skip
+> [perf-a11y] web-app: performance-reporter, accessibility-scanner | service: skip | cli: skip
 
 Spawn the `performance-reporter` agent (`subagent_type: performance-reporter`). No additional context needed.
 

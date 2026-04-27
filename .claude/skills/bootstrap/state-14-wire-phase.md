@@ -14,7 +14,9 @@
 
 > REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table, rows "Trace field", "Spec field", "Primary unit".
 >
-> Trace field — web-app: pages_wired + api_routes_wired | service: api_routes_wired | cli: commands_wired
+> [trace-field] web-app: `pages_wired` + `api_routes_wired` | service: `api_routes_wired` | cli: `commands_wired`
+> [spec-field] web-app: `golden_path` | service: `endpoints` | cli: `commands`
+> [primary-unit] web-app: page (`src/app/<page>/page.tsx`) | service: endpoint (`src/app/api/<ep>/route.ts`) | cli: command (`src/commands/<cmd>.ts`)
 >
 > State-specific logic below takes precedence.
 

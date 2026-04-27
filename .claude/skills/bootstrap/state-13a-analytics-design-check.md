@@ -9,8 +9,8 @@
 
 > REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table, rows "Design tokens check", "Favicon + OG image check".
 >
-> Design tokens — web-app: verify --primary in globals.css | service: skip | cli: skip
-> Favicon + OG — web-app: verify icon.tsx + opengraph-image.tsx | service: skip | cli: skip
+> [design-tokens] web-app: verify `--primary` in globals.css | service: skip | cli: skip
+> [favicon-og] web-app: verify icon.tsx + opengraph-image.tsx | service: skip | cli: skip
 >
 > State-specific logic below takes precedence.
 

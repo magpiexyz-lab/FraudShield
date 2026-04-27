@@ -584,6 +584,20 @@ if [ -n "$UNCLASSIFIED" ]; then
   CHECK_23_FAILED=$((CHECK_23_FAILED + 1))
 fi
 
+# 23h — Row-citing REFs must embed verbatim canonical labeled lines.
+# Scope: BRANCHING + REFERENCE_ONLY files whose REF cites `row "X"` or
+# `rows "X", "Y"` syntax, EXCLUDING REFs containing `Compound Dimensions`.
+# Sub-rules: slug-existence, multi-row count, verbatim match, slug uniqueness.
+# Backed by .claude/scripts/lib/check-archetype-canonical.py — exits 0 if clean,
+# 1 with stderr enumeration of failing files on drift.
+CHECK_23H_OUT=$(python3 .claude/scripts/lib/check-archetype-canonical.py 2>&1)
+CHECK_23H_RC=$?
+if [ "$CHECK_23H_RC" -ne 0 ]; then
+  [ "$CHECK_23_FAILED" -eq 0 ] && echo ""
+  echo "$CHECK_23H_OUT" | sed 's/^/  /'
+  CHECK_23_FAILED=$((CHECK_23_FAILED + 1))
+fi
+
 if [ "$CHECK_23_FAILED" -eq 0 ]; then
   echo "ok"
 else

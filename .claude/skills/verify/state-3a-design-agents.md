@@ -21,7 +21,7 @@ After each edit-capable agent completes, read its completion report and append i
 
 > REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table, row "Visual agents".
 >
-> web-app: design-critic (per-page parallel) | service: skip | cli: skip
+> [visual-agents] web-app: design-critic, ux-journeyer, consistency-checker | service: skip | cli: skip
 
 #### Pre-flight: Thin-wrapper detection and claim assignment
 

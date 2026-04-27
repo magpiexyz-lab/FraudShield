@@ -236,6 +236,73 @@ point** by `file:line` so reviewers can audit drift.
 
 Examples: `procedures/wire.md`, `procedures/scaffold-libs.md`.
 
+## Canonical Summary Lines
+
+Verbatim labeled lines for files citing Quick-Reference Table rows via
+`row "<X>"` syntax. Each line below is canonical — embedding files MUST
+copy the exact text. Drift detection is enforced by Check 23h (see
+**Linter Contract** below). Run `make sync-archetype-summaries` to
+propagate canonical edits to embedding files.
+
+### Slug derivation (informative)
+
+Slugs in subsections below are explicit — do NOT derive at lint time.
+When adding a new row, derive the slug as: lowercase the row name,
+replace `[^a-z0-9]` with `-`, collapse `-` runs, trim leading/trailing
+`-`. List the derived slug verbatim in the new subsection so it cannot
+drift.
+
+### Rows
+
+11 of 14 Quick-Reference Table rows are listed below — every row currently
+cited by at least one BRANCHING / REFERENCE_ONLY file. Rows `Skip`,
+`Analytics`, `Browser tests` are intentionally omitted (no current
+citation). Add a subsection here when the first state file cites them.
+
+#### Primary unit
+slug: `primary-unit`
+> [primary-unit] web-app: page (`src/app/<page>/page.tsx`) | service: endpoint (`src/app/api/<ep>/route.ts`) | cli: command (`src/commands/<cmd>.ts`)
+
+#### Spec field
+slug: `spec-field`
+> [spec-field] web-app: `golden_path` | service: `endpoints` | cli: `commands`
+
+#### Visual agents
+slug: `visual-agents`
+> [visual-agents] web-app: design-critic, ux-journeyer, consistency-checker | service: skip | cli: skip
+
+#### Trace field
+slug: `trace-field`
+> [trace-field] web-app: `pages_wired` + `api_routes_wired` | service: `api_routes_wired` | cli: `commands_wired`
+
+#### Phase A (core scaffold)
+slug: `phase-a`
+> [phase-a] web-app: run (layout, 404, error, favicon, OG, sitemap, robots, llms.txt) | service: skip | cli: skip
+
+#### Design tokens check
+slug: `design-tokens`
+> [design-tokens] web-app: verify `--primary` in globals.css | service: skip | cli: skip
+
+#### Favicon + OG image check
+slug: `favicon-og`
+> [favicon-og] web-app: verify icon.tsx + opengraph-image.tsx | service: skip | cli: skip
+
+#### Content/SEO checks
+slug: `content-seo`
+> [content-seo] web-app: content quality, CTA, hrefs, tokens, SEO baseline | service: skip | cli: skip
+
+#### Performance + a11y agents
+slug: `perf-a11y`
+> [perf-a11y] web-app: performance-reporter, accessibility-scanner | service: skip | cli: skip
+
+#### Consent guard
+slug: `consent-guard`
+> [consent-guard] web-app: none | service: none | cli: opt-in consent on `trackServerEvent`
+
+#### npm cleanup on teardown
+slug: `npm-cleanup`
+> [npm-cleanup] web-app: skip | service: skip | cli: `npm deprecate` reminder
+
 ## Reference Mechanism
 
 The contract is **heading + REF colocated within the heading's section**:
@@ -302,6 +369,22 @@ Enforcement: `scripts/consistency-check.sh` Check 23 (CI-wired via
   or carry an explicit `<!-- archetype-gate-exempt: <reason> -->` marker. This
   is what makes the contract un-fatigueable: new files cannot accumulate WARNs
   that go unread.
+- **23h** — Row-citing REFs must embed verbatim canonical labeled lines.
+  Scope: BRANCHING + REFERENCE_ONLY files whose REF cites
+  `row "<X>"` or `rows "<X>", "<Y>"` syntax, EXCLUDING REFs containing
+  `Compound Dimensions` substring. Sub-rules:
+  - **Slug-existence**: every cited row name must have a `#### <Row>`
+    subsection in `## Canonical Summary Lines` (catches typos and renames)
+  - **Multi-row count**: in the contiguous blockquote group following REF,
+    one `> [<slug>] ...` line must exist per cited row (count match)
+  - **Verbatim match**: each cited row's `> [<slug>] ...` line must equal
+    the canonical line (whitespace-collapsed comparison)
+  - **Slug uniqueness**: the canonical Summary Lines section must not have
+    two `#### <Row>` subsections producing the same slug
+  Files with bare `Quick-Reference Table.` REFs (no row cited) and Compound
+  Dimensions REFs are out of 23h scope. To migrate a bare-REF file into
+  23h coverage: update its REF to `row "<X>"` syntax, then run
+  `make sync-archetype-summaries` to embed the canonical line.
 
 ### Exempt mechanism
 

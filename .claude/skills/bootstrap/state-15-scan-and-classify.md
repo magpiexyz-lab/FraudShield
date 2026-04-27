@@ -7,8 +7,8 @@
 
 ## Archetype Gate
 
-> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
-> web-app: scan src/app/ pages + components | service: scan src/app/api/ routes | cli: scan src/commands/
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table, row "Primary unit".
+> [primary-unit] web-app: page (`src/app/<page>/page.tsx`) | service: endpoint (`src/app/api/<ep>/route.ts`) | cli: command (`src/commands/<cmd>.ts`)
 
 Scan the bootstrapped codebase to classify modules for unit test generation.
 

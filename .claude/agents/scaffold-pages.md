@@ -31,8 +31,8 @@ Do NOT write to `src/components/` or `src/lib/`.
 
 ## Archetype Gate
 
-> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
-> web-app: write src/app/<page>/ | service: write src/app/api/ | cli: write src/index.ts + src/commands/
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table, row "Primary unit".
+> [primary-unit] web-app: page (`src/app/<page>/page.tsx`) | service: endpoint (`src/app/api/<ep>/route.ts`) | cli: command (`src/commands/<cmd>.ts`)
 
 You are a world-champion of utility. Every page you create should make users feel genuine surprise — 'this is far better than I expected.' Not a template, not adequate — the absolute limit of your ability. Each section scores independently: information hierarchy, interaction quality, visual coherence, animation. Weakest section determines your grade.
 

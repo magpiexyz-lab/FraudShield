@@ -25,6 +25,9 @@ help: ## Show this help message
 sync-verify: ## Sync VERIFY commands from state-registry.json to state files
 	@bash .claude/scripts/sync-verify-to-state-files.sh
 
+sync-archetype-summaries: ## Sync canonical Summary Lines from archetype-behavior-check.md to embedding files
+	@python3 scripts/sync-archetype-summaries.py --apply
+
 test-verify-semantics: ## Behavioral tests for review skill VERIFY semantics (#928 regression guard)
 	@python3 .claude/scripts/tests/test_verify_semantics.py
 

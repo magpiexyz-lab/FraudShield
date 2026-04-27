@@ -8,7 +8,7 @@
 
 > REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table, row "Spec field".
 >
-> web-app: golden_path | service: endpoints | cli: commands
+> [spec-field] web-app: `golden_path` | service: `endpoints` | cli: `commands`
 
 Read `experiment/experiment.yaml` to determine the archetype (`type` field, default: `web-app`). For web-app: also read `golden_path`. For service: read `endpoints` and optionally `golden_path` (if present). For cli: read `commands` and optionally `golden_path` (if present).
 

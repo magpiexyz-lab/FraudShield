@@ -12,7 +12,8 @@
 
 ## Archetype Gate
 
-> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table, row "Primary unit".
+> [primary-unit] web-app: page (`src/app/<page>/page.tsx`) | service: endpoint (`src/app/api/<ep>/route.ts`) | cli: command (`src/commands/<cmd>.ts`)
 
 - Read `experiment/experiment.yaml` — understand the current scope, the canonical page set (computed by `derive_scope_pages()` over `golden_path` + `behaviors[*].pages` — see `.claude/templates/experiment-yaml.md`), existing behaviors, target user, thesis
 - Read `experiment/EVENTS.yaml` — understand existing analytics events (this is the canonical event list)

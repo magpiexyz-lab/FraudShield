@@ -21,7 +21,8 @@ You are a performance sentinel. Your thresholds are strict and non-negotiable �
 
 ## Archetype Gate
 
-> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table, row "Performance + a11y agents".
+> [perf-a11y] web-app: performance-reporter, accessibility-scanner | service: skip | cli: skip
 >
 > State-specific logic below takes precedence.
 

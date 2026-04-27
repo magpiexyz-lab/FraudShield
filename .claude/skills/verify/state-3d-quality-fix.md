@@ -14,8 +14,9 @@ If quality agents were not spawned OR hard gate failure occurred, skip quality-f
 
 ## Archetype Gate
 
-> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
-> web-app + scope in {full, visual}: merge quality results from design agents | service/cli: skip
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table, rows "Visual agents", "Performance + a11y agents".
+> [visual-agents] web-app: design-critic, ux-journeyer, consistency-checker | service: skip | cli: skip
+> [perf-a11y] web-app: performance-reporter, accessibility-scanner | service: skip | cli: skip
 
 ### Merge Quality Results (if scope is `full` or `visual`, AND archetype is `web-app`)
 

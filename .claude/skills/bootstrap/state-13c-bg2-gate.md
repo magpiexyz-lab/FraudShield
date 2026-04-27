@@ -7,7 +7,9 @@
 
 ## Archetype Gate
 
-> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table, rows "Primary unit", "Favicon + OG image check".
+> [primary-unit] web-app: page (`src/app/<page>/page.tsx`) | service: endpoint (`src/app/api/<ep>/route.ts`) | cli: command (`src/commands/<cmd>.ts`)
+> [favicon-og] web-app: verify icon.tsx + opengraph-image.tsx | service: skip | cli: skip
 >
 > State-specific logic below takes precedence.
 
