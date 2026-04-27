@@ -22,11 +22,18 @@ if [[ -z "$SKILL" || -z "$STATE_ID" ]]; then
   exit 0
 fi
 
+# Format validation: SKILL and STATE_ID must be safe shell-injection-free identifiers.
+# Reject malformed input (e.g., chained advance-state calls smushed together) explicitly
+# rather than letting it interpolate into the python lookup below.
+if ! [[ "$SKILL" =~ ^[a-z][a-z0-9_-]*$ && "$STATE_ID" =~ ^[0-9]+[a-z]?$ ]]; then
+  deny "State completion gate: malformed args SKILL='$SKILL' STATE_ID='$STATE_ID'. Run advance-state.sh with one skill/state per Bash call (do not chain with &&)."
+fi
+
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-.}"
 REGISTRY="$PROJECT_DIR/.claude/patterns/state-registry.json"
 
 if [[ ! -f "$REGISTRY" ]]; then
-  exit 0  # Fail-open if registry missing
+  deny "State registry missing: $REGISTRY. Cannot verify postconditions for $SKILL STATE $STATE_ID. Restore from git (\`git checkout main -- .claude/patterns/state-registry.json\`) or run /upgrade to sync template."
 fi
 
 # --- BLOCK verdict check: deny state advancement if any gate has BLOCK on this branch ---
@@ -55,7 +62,9 @@ if isinstance(entry, dict):
     print(entry.get('verify', '') + '\t' + json.dumps(entry.get('calls', [])))
 else:
     print(str(entry) + '\t')
-" 2>/dev/null || echo "")
+" 2>&1) || {
+  deny "State registry parse error: cannot read $REGISTRY for $SKILL STATE $STATE_ID. Output: $ENTRY_DATA. Fix the JSON syntax or restore from git."
+}
 
 VERIFY_CMD=$(printf '%s' "$ENTRY_DATA" | cut -f1)
 CALLS_JSON=$(printf '%s' "$ENTRY_DATA" | cut -f2)

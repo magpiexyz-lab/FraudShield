@@ -1,3 +1,5 @@
+<!-- archetype-gate-exempt: presents archetype-agnostic verdict framework with reference-only mentions of service/cli archetypes; does not branch on archetype. -->
+
 # STATE 3: DECISION
 
 **PRECONDITIONS:**
@@ -28,7 +30,20 @@ Then apply the decision tree:
 
 | Condition | Verdict |
 |-----------|---------|
-| time_pct < 25% AND total visits < 30 | **TOO EARLY** -- not enough data for a verdict. Sub-cases: if not yet deployed, run `/deploy` first; if deployed but low traffic, focus on distribution channels (see experiment.yaml `distribution`); if recently deployed, allow more time. Check back in a few days. For pure API services or CLIs deployed outside `/deploy` (e.g., via `make deploy` or manual deployment): if `.runs/deploy-manifest.json` does not exist, see `/deploy` STATE 0 (service with `surface: none` stop message) for the manifest schema — create it manually to enable `/distribute` and `/teardown`. |
+| time_pct < 25% AND total visits < 30 | **TOO EARLY** -- not enough data for a verdict. Sub-cases: if not yet deployed, run `/deploy` first; if deployed but low traffic, focus on distribution channels (see experiment.yaml `distribution`); if recently deployed, allow more time. Check back in a few days. For pure API services or CLIs deployed outside `/deploy` (e.g., via `make deploy` or manual deployment): if `.runs/deploy-manifest.json` does not exist, create it manually using the schema below to enable `/distribute` and `/teardown`. |
+
+> **Manual `.runs/deploy-manifest.json` schema** (when deployment happened outside `/deploy`):
+> ```json
+> {
+>   "name": "<experiment.yaml name>",
+>   "archetype": "<service|cli>",
+>   "surface_type": "<none|detached|co-located>",
+>   "canonical_url": "<API base URL or distribution URL>",
+>   "deployed_at": "<ISO 8601 timestamp>",
+>   "stripe": {"webhook_endpoint_url": "<url>"}
+> }
+> ```
+> Include only the per-service keys that match your experiment.yaml `stack` so `/teardown` can clean each up. See `/deploy` STATE 0 (service with `surface: none` stop message) for the canonical example.
 | pace >= 0.7 | **SCALE** -- on track. Continue and optimize conversion at the biggest bottleneck. |
 | pace 0.4-0.7 AND time_pct < 60% | **REFINE** -- behind pace but recoverable. Focus on the biggest funnel bottleneck identified in STATE 2. |
 | pace 0.2-0.4 AND time_pct > 50% | **PIVOT** -- there's signal, but the angle is wrong. Change messaging or target user. |

@@ -34,9 +34,9 @@ Source: Analytics Query API (project_name = "<name>")
 
 ### 1b: Handle missing credentials or query failure
 
-If the analytics stack file has no "Auto Query" section, STOP: "Analytics stack file missing Auto Query section. Contact the template maintainer."
+If the analytics stack file has no "Auto Query" section, warn the user: "Your analytics provider's stack file is missing an `## Auto Query` section, so funnel data can't be fetched automatically. Falling back to manual input — please file a template observation so the maintainer can add Auto Query support." Then proceed to the manual-input path below (same fallback as a query failure).
 
-If credentials are missing (personal API key file not found), **STOP** — do not fall back to manual input:
+If credentials are missing (personal API key file not found), prefer auto-query. Show the credential setup steps and ask the user to create the key — but accept manual input as a fallback for users who cannot create one (read-only org policy, etc.):
 
 > PostHog personal API key not found at `~/.posthog/personal-api-key`.
 >
@@ -51,6 +51,10 @@ If credentials are missing (personal API key file not found), **STOP** — do no
 > mkdir -p ~/.posthog && echo 'phx_YOUR_KEY' > ~/.posthog/personal-api-key
 > ```
 > Then re-run `/iterate`.
+>
+> If you cannot create a personal API key (e.g., restricted org policy), reply **manual** to enter funnel numbers by hand instead.
+
+If the user replies "manual", fall through to the manual-input path below.
 
 If credentials exist but the query fails (network error, auth error, unexpected response), fall back to manual input.
 

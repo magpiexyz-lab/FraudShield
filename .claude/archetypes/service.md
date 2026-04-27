@@ -25,9 +25,11 @@ There are no page folders, no landing page, no UI components, and no
 `src/components/` directory. The `ui` stack category is excluded.
 
 Surface type is inferred by bootstrap when `stack.surface` is not set (evaluated in order — first match wins):
-1. If the experiment defines no `golden_path` **and** no behavior describes a user-facing HTML page (all behaviors are pure API with no user-facing surface): surface is `none`. This applies regardless of whether hosting is configured — a pure API service has no landing page.
-2. If the experiment has user-facing behaviors or golden_path: `stack.services[0].hosting` present → `co-located` (root URL serves a marketing page alongside API routes); hosting absent → `detached` (separate static marketing site).
+1. If the experiment defines no `golden_path` **and** no top-level `endpoints` entry serves HTML (all `endpoints` are pure API with no user-facing surface): surface is `none`. This applies regardless of whether hosting is configured — a pure API service has no landing page.
+2. If the experiment has a `golden_path` or any top-level `endpoints` entry that serves HTML: `stack.services[0].hosting` present → `co-located` (root URL serves a marketing page alongside API routes); hosting absent → `detached` (separate static marketing site).
 When in doubt, set `stack.surface` explicitly in experiment.yaml to override inference.
+
+> Both checks read the top-level `endpoints[]` list (the canonical inventory required by `required_experiment_fields`), not `behaviors[*].endpoints`. An endpoint "serves HTML" when its `purpose` describes rendering a page (e.g., "serve landing page", "render dashboard").
 
 When surface is `co-located` (the most common default), the root URL (`/`) serves
 an HTML marketing page — see `.claude/stacks/surface/co-located.md`. API endpoints

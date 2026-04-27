@@ -41,7 +41,7 @@
     "Critical npm vulnerabilities detected:
     <npm audit output>
     Reply **continue** to deploy anyway, or fix vulnerabilities first with `npm audit fix`."
-    Wait for user confirmation. If no critical vulnerabilities, proceed silently.
+    Wait for user confirmation. If `npm audit` reports no critical vulnerabilities, continue without further prompts.
 4. Read `experiment/experiment.yaml` — extract `name`, `type` (default `web-app`), `stack.database` (if present), optional `stack.payment`, and optional `deploy` section.
 5. Read the archetype file at `.claude/archetypes/<type>.md`. Resolve surface type per the archetype's capabilities (REF: `.claude/patterns/archetype-behavior-check.md` Compound Dimensions "Surface type resolution" + "Deploy gate"): if `stack.surface` is set in experiment.yaml, use it. Otherwise infer from archetype and stack configuration — `none` (pure API/CLI with no surface), `detached` (excluded hosting), or `co-located` (hosting present). For `co-located`/`detached` inference, verify `stack.services` is a non-empty list (if not, stop: "Missing `stack.services` in experiment.yaml. Run `/bootstrap` to set up your project.") then check `stack.services[0].hosting` — present -> `co-located`; absent -> `detached`. If the archetype's `excluded_stacks` includes `hosting`:
    - If surface is `detached`: this is a surface-only deployment — skip Steps 0.6–0.10 (no hosting/database infrastructure), Steps 1 and 3–4 (no infrastructure provisioning). Present a simplified plan in Step 2 (surface deployment only), then proceed directly to Step 5a.1.
