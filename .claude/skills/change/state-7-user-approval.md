@@ -18,7 +18,7 @@ Follow checkpoint-resumption protocol per `patterns/checkpoint-resumption.md`.
 > 4. Or tell me what to change
 
 DO NOT proceed to Phase 2 until the user explicitly replies with approval.
-If the user selects "skip": run `git checkout main && git branch -D <branch-name>`. If both commands succeed, tell the user "Change cancelled. Branch deleted. Run `/change` again when ready." If either command fails (e.g., uncommitted changes blocking checkout, or branch deletion refused), tell the user: "Could not clean up automatically. Run `git stash && git checkout main && git branch -D <branch-name>` manually, then run `/change` again." Stop in both cases.
+If the user selects "skip": switch to main and delete the feature branch by running `git checkout main`, then `git branch -D <branch-name>`. If both commands succeed, tell the user "Change cancelled. Branch deleted. Run `/change` again when ready." If either command fails (e.g., uncommitted changes blocking checkout, or branch deletion refused), report the manual-fallback message per `.claude/patterns/branch-cleanup-error-template.md` Variant C (substitute `<skill>` = `change`). Stop in both cases.
 If the user requests changes instead of approving, revise the plan to address their feedback and present it again. Repeat until approved.
 
 Save the approved plan to `.runs/current-plan.md` with YAML frontmatter:

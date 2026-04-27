@@ -27,7 +27,7 @@ if echo "$ARGUMENTS" | grep -qE '\-\-phase\s+2'; then PHASE=2; fi
 bash .claude/scripts/init-context.sh distribute "{\"phase\":$PHASE}"
 ```
 
-> **Branch cleanup on failure:** Any "stop" below leaves you on a feature branch. Include in the stop message: "To abort: `git checkout main && git branch -D chore/distribute`. To fix and retry: address the prerequisite, then re-run `/distribute`."
+> **Branch cleanup on failure:** Any "stop" below leaves you on a feature branch. Append cleanup boilerplate per `.claude/patterns/branch-cleanup-error-template.md` (Variant A, branch=`chore/distribute`, recovery: 'address the prerequisite, then re-run `/distribute`') to every stop message.
 
 1. Verify `experiment/experiment.yaml` exists and is complete. If not, stop: "No experiment found. Create `experiment/experiment.yaml` from the template first, then run `/bootstrap`."
 2. Verify `experiment/EVENTS.yaml` exists. If not, stop: "experiment/EVENTS.yaml not found. This file defines all analytics events and is required."

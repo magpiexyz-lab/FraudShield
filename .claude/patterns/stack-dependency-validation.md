@@ -35,7 +35,7 @@ the missing provider suggestion (e.g., `supabase`).
 | auth_providers | auth | "OAuth providers require an auth system. Add `auth: supabase` to your experiment.yaml `stack` section." |
 | testing: playwright | service/cli archetype | "Playwright requires a browser and is not compatible with the `<archetype>` archetype. Use `testing: vitest` instead." |
 
-For `/change` context, append branch cleanup instructions: "To abort: `git checkout main && git branch -D <branch-name>`. To fix and retry: make the required changes, then re-run `/change`."
+For `/change` context, append branch cleanup per `.claude/patterns/branch-cleanup-error-template.md` (Variant A, recovery: 'make the required changes, then re-run `/change`').
 
 ## Assumes-List Validation
 

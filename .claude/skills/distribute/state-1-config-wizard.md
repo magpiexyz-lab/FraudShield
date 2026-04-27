@@ -5,7 +5,7 @@
 
 **ACTIONS:**
 
-> **Branch cleanup on failure:** Any "stop" in this step leaves you on a feature branch (created in State 0). Include in the stop message: "To abort: `git checkout main && git branch -D chore/distribute`. To fix and retry: address the prerequisite, then re-run `/distribute`."
+> **Branch cleanup on failure:** Any "stop" in this step leaves you on a feature branch (created in State 0). Append cleanup boilerplate per `.claude/patterns/branch-cleanup-error-template.md` (Variant A, branch=`chore/distribute`, recovery: 'address the prerequisite, then re-run `/distribute`') to every stop message.
 
 1. If `experiment/ads.yaml` already exists, ask: "An ads config already exists. Generate a new version (v2)?"
 2. List available channels by scanning `.claude/stacks/distribution/*.md` (strip the `.md` extension to get channel names)
