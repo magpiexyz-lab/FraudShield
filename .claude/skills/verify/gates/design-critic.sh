@@ -16,15 +16,14 @@ check_postcondition_artifacts 0
 check_build_result
 
 # Per-page file boundary enforcement
+PROMPT=$(extract_prompt)
 IS_PER_PAGE=$(python3 -c "
-import json, sys, re
-d = json.loads(sys.stdin.read())
-prompt = d.get('tool_input',{}).get('prompt','')
-if re.search(r'design-critic-(?!shared)\w+\.json', prompt):
+import re, sys
+if re.search(r'design-critic-(?!shared)\w+\.json', sys.stdin.read()):
     print('yes')
 else:
     print('no')
-" <<< "$PAYLOAD" 2>/dev/null || echo "no")
+" <<< "$PROMPT" 2>/dev/null || echo "no")
 if [[ "$IS_PER_PAGE" == "yes" ]]; then
   check_file_boundary "design-critic (per-page)"
   check_claimed_shared "design-critic (per-page)"

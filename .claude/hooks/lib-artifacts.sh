@@ -82,11 +82,7 @@ else: print('OK')
 check_efficiency_directives() {
   if [ -f "$PROJECT_DIR/.runs/verify-context.json" ]; then
     local PROMPT
-    PROMPT=$(python3 -c "
-import json,sys
-d=json.loads(sys.stdin.read())
-print(d.get('tool_input',{}).get('prompt',''))
-" <<< "$PAYLOAD" 2>/dev/null || echo "")
+    PROMPT=$(extract_prompt)
     if ! echo "$PROMPT" | grep -q "DIRECTIVES:batch_search,pr_changed_first,context_digest,pre_existing"; then
       ERRORS+=("Agent prompt missing efficiency directives — append .claude/agent-prompt-footer.md content")
     fi
@@ -118,11 +114,7 @@ check_build_result() {
 check_file_boundary() {
   local AGENT_NAME="$1"
   local PROMPT
-  PROMPT=$(python3 -c "
-import json,sys
-d=json.loads(sys.stdin.read())
-print(d.get('tool_input',{}).get('prompt',''))
-" <<< "$PAYLOAD" 2>/dev/null || echo "")
+  PROMPT=$(extract_prompt)
 
   local BOUNDARY_RESULT
   BOUNDARY_RESULT=$(python3 -c "
@@ -156,11 +148,7 @@ else:
 check_claimed_shared() {
   local AGENT_NAME="$1"
   local PROMPT
-  PROMPT=$(python3 -c "
-import json,sys
-d=json.loads(sys.stdin.read())
-print(d.get('tool_input',{}).get('prompt',''))
-" <<< "$PAYLOAD" 2>/dev/null || echo "")
+  PROMPT=$(extract_prompt)
 
   local CLAIM_RESULT
   CLAIM_RESULT=$(python3 -c "

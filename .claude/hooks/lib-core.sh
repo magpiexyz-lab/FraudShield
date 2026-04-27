@@ -113,6 +113,14 @@ extract_write_content() {
   fi
 }
 
+# --- extract_prompt ---
+# Extracts tool_input.prompt from PAYLOAD. Returns "" if missing.
+# Must be called after parse_payload.
+# Usage: PROMPT=$(extract_prompt)
+extract_prompt() {
+  read_payload_field "tool_input.prompt"
+}
+
 # --- handle_validation ---
 # Processes VALIDATION result from python3 content checks.
 # OK → return, PARSE_ERROR → exit 0 (fail open), FAIL:... → deny with detail.
