@@ -76,6 +76,32 @@
         "consumers": { "type": "array", "items": { "type": "string" }, "description": "Files that read frontmatter fields; the rule checks only declared field names appear in each consumer." },
         "description": { "type": "string" }
       }
+    },
+    "rule_discover_consumers": {
+      "description": "Discovery-mode rule (warn-only): grep the codebase for files mentioning `field` and compare against the consumers[] list of `against_rule` (a separate field_role_map rule). Surfaces files that look like consumers but are missing from authoritative declarations, so reviewers can decide whether to add them or document an exemption.",
+      "required": ["id", "type", "field", "against_rule", "consumption_patterns"],
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "const": "discover_consumers" },
+        "severity": { "$ref": "#/definitions/severity" },
+        "field": { "type": "string", "description": "The field name to grep for (e.g., 'golden_path')." },
+        "against_rule": { "type": "string", "description": "The id of the field_role_map rule whose consumers[] list is the authoritative declaration." },
+        "consumption_patterns": { "type": "array", "items": { "type": "string" }, "description": "Regex fragments matched against grep hits to classify a file as a consumer." },
+        "path_excludes": { "type": "array", "items": { "type": "string" }, "description": "Path prefixes excluded from discovery (e.g., test fixtures)." },
+        "description": { "type": "string" }
+      }
+    },
+    "rule_internal_href_validity": {
+      "description": "Validate that markdown hrefs inside scaffold files match canonical fixture/route literals (#1069). Cross-references scaffold-named hrefs against route_owner_hints to detect 404-class drift between scaffold templates and the routes they point to.",
+      "required": ["id", "type"],
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "const": "internal_href_validity" },
+        "severity": { "$ref": "#/definitions/severity" },
+        "scaffold_glob": { "type": "string", "description": "Glob of scaffold files to scan for hrefs." },
+        "route_owner_hints": { "type": "array", "items": { "type": "string" }, "description": "Glob patterns whose existence indicates a valid route owner." },
+        "description": { "type": "string" }
+      }
     }
   },
   "type": "object",
@@ -91,7 +117,9 @@
           { "$ref": "#/definitions/rule_verdict_vocab_consistency" },
           { "$ref": "#/definitions/rule_ledger_ownership" },
           { "$ref": "#/definitions/rule_consumer_coverage" },
-          { "$ref": "#/definitions/rule_frontmatter_artifact_consistency" }
+          { "$ref": "#/definitions/rule_frontmatter_artifact_consistency" },
+          { "$ref": "#/definitions/rule_discover_consumers" },
+          { "$ref": "#/definitions/rule_internal_href_validity" }
         ]
       }
     }
