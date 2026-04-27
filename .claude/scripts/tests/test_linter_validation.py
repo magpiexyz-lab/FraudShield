@@ -131,5 +131,49 @@ class TestMetaKeysAccepted(unittest.TestCase):
         self.assertEqual(rc, 0)
 
 
+class TestStrictAOCDerivation(unittest.TestCase):
+    """STRICT_AOC_TYPES must be derived from HANDLERS, not hardcoded.
+
+    Plan PR3 mandated single source of truth. Pre-PR5 commit had both a
+    hardcoded set AND a derivation comprehension marked as the canonical
+    one — drift risk. PR5 removes the hardcoded set; this test prevents
+    re-introduction.
+    """
+
+    def test_strict_aoc_types_is_derived_not_hardcoded(self):
+        """Source must contain the derivation comprehension and exactly one assignment."""
+        runner_path = os.path.join(REAL_REPO, ".claude/scripts/lib/linter/runner.py")
+        with open(runner_path) as f:
+            src = f.read()
+        self.assertIn(
+            "STRICT_AOC_TYPES = {t for t,",
+            src,
+            "STRICT_AOC_TYPES must be derived from HANDLERS via comprehension.",
+        )
+        n_assignments = src.count("STRICT_AOC_TYPES = {")
+        self.assertEqual(
+            n_assignments, 1,
+            f"Expected exactly 1 assignment of STRICT_AOC_TYPES, found {n_assignments}.",
+        )
+
+    def test_strict_aoc_runtime_partitioning_works(self):
+        """Functional: --strict-aoc must override --warn-only for AOC handler types."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _setup_repo_with_rules(
+                tmpdir,
+                {"rules": [{
+                    "id": "cc-strict-test",
+                    "type": "consumer_coverage",  # is_strict_aoc=True in HANDLERS
+                    "canonical_source": ".runs/x.jsonl",
+                    "consumers": [".claude/agents/missing.md"],
+                }]},
+            )
+            rc_warn, _, _ = _run(tmpdir, "--warn-only")
+            self.assertEqual(rc_warn, 0, "--warn-only alone should suppress AOC finding")
+            rc_strict, stdout_strict, _ = _run(tmpdir, "--warn-only", "--strict-aoc")
+            self.assertEqual(rc_strict, 1, "--strict-aoc must override --warn-only for AOC")
+            self.assertIn("(consumer_coverage/", stdout_strict)
+
+
 if __name__ == "__main__":
     unittest.main()

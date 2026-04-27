@@ -180,6 +180,17 @@ class TestSyntheticFixtures(unittest.TestCase):
         self.assertIn("CROSS_FILE_CONTRADICTION", stdout)
         self.assertIn("fixture-cc-miss", stdout)
 
+    def test_discover_consumers_drift_emits_warn(self):
+        """File matching consumption_patterns but absent from authoritative consumers
+        list should produce a discover_consumers WARN finding (closes zero-coverage gap)."""
+        rc, stdout = self._run_fixture("discover_consumers_drift")
+        self.assertIn("CROSS_FILE_CONTRADICTION", stdout)
+        self.assertIn("fixture-dc-drift", stdout)
+        self.assertIn("undeclared-consumer.md", stdout)
+        # Declared consumer must NOT be flagged — it's already in the authoritative list.
+        flagged_lines = [l for l in stdout.splitlines() if "undeclared" not in l and ".md" in l]
+        self.assertNotIn("declared-consumer.md", "\n".join(flagged_lines))
+
     def test_clean_no_findings_emits_zero(self):
         """Empty rules list should leave cross_file empty."""
         rc, stdout = self._run_fixture("clean_no_findings", "--json")

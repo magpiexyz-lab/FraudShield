@@ -35,12 +35,10 @@ def main() -> int:
     WARN_ONLY = bool(os.environ.get("VL_WARN_ONLY"))
     STRICT_AOC = bool(os.environ.get("VL_STRICT_AOC"))
     RULES_PATH = os.environ.get("VL_RULES_PATH", "")
-    STRICT_AOC_TYPES = {
-        "verdict_vocab_consistency",
-        "ledger_ownership",
-        "consumer_coverage",
-        "frontmatter_artifact_consistency",
-    }
+    # STRICT_AOC_TYPES is derived from HANDLERS below (single source of truth);
+    # its forward reference works because _is_aoc_finding (the only consumer)
+    # is defined after HANDLERS, so the name is bound by the time the function
+    # is called.
     # REPO_ROOT already computed above (line ~24)
 
     registry = json.load(open(registry_path))
@@ -1435,6 +1433,13 @@ def main() -> int:
         "internal_href_validity":           (check_internal_href_validity,           set(),                                                    {"scaffold_glob", "route_owner_hints"},                       False),
     }
     META_KEYS = {"id", "type", "severity", "description", "_transitional_note", "_comment"}
+
+    # Derive STRICT_AOC_TYPES from HANDLERS — single source of truth.
+    # Replaces the hardcoded set previously at the top of main(). When a new
+    # handler with is_strict_aoc=True is registered, _is_aoc_finding (used for
+    # --strict-aoc exit-code partitioning) automatically picks it up; no
+    # second list to keep in sync.
+    STRICT_AOC_TYPES = {t for t, (_h, _r, _o, is_strict) in HANDLERS.items() if is_strict}
 
     # Load and run cross-file rules
     if os.path.isfile(RULES_PATH):
