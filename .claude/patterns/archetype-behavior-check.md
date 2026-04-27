@@ -427,18 +427,37 @@ archetype:
    section above
 2. Append the file path to `ARCHETYPE_BRANCHING_FILES` in
    `scripts/consistency-check.sh`
-3. Run `bash scripts/consistency-check.sh` to confirm Check 23 passes
-4. If `make lint-template` produces `DRIFT_DECLARED_VS_PROSE` because of a
+3. **If the new file's branching aligns with a Quick-Reference Table row**:
+   cite it via `row "<X>"` (or `rows "<X>", "<Y>"`) syntax in the REF, then
+   run `make sync-archetype-summaries` to embed the canonical labeled line.
+   23h enforces verbatim match thereafter.
+4. **If the branching is compound / Shape 4 / custom semantics**: keep the
+   REF bare (`Quick-Reference Table.` with no row name) — the file stays
+   outside 23h scope, with structural checks 23e/23f still gating it.
+5. Run `bash scripts/consistency-check.sh` to confirm Check 23 (all subchecks
+   23a-23h) passes
+6. If `make lint-template` produces `DRIFT_DECLARED_VS_PROSE` because of a
    `coherence-allow scope=[...]` pragma, update the pragma in the same commit
 
 ### Adding a new archetype (e.g., `mobile`)
 
 When experiment.yaml grows a new archetype value:
 
-1. Add a new row to the Quick-Reference Table above
+1. Add a new column to the Quick-Reference Table above (e.g., `| mobile |`
+   alongside `web-app | service | cli`)
 2. Update the `## Archetype Mapping` sub-sections (`### web-app`, `### service`,
    `### cli`, plus a new `### mobile`)
-3. Update Check 23g's word-boundary regex if `mobile` introduces new
+3. **For each row in `## Canonical Summary Lines` whose subsection exists**:
+   extend the canonical labeled line with the new archetype column (e.g.,
+   `> [phase-a] web-app: ... | service: skip | cli: skip | mobile: <text>`).
+   Do NOT change existing slugs; the slug is canonical and does not depend
+   on the archetype set.
+4. Run `make sync-archetype-summaries` to propagate the extended canonical
+   lines to all 30+ embedding files in 23h scope.
+5. Update Check 23g's word-boundary regex if `mobile` introduces new
    identifying tokens beyond what existing patterns catch
-4. Audit each file in `ARCHETYPE_BRANCHING_FILES` and add `mobile` handling
-   (run the resulting linter to confirm)
+6. Audit each file in `ARCHETYPE_BRANCHING_FILES` (including bare-REF files
+   outside 23h scope) and add `mobile` handling — for bare-REF files, the
+   handling is freely worded; for row-citing files, sync handles it
+7. Run `bash scripts/consistency-check.sh` to confirm all of Check 23
+   (especially 23h) still passes after the canonical extension
