@@ -421,6 +421,7 @@ ARCHETYPE_BRANCHING_FILES=(
   ".claude/skills/distribute/state-0-init.md"
   ".claude/skills/iterate/state-0-read-context.md"
   ".claude/skills/iterate/state-4-output.md"
+  ".claude/skills/iterate/state-x1a-validate-data-integrity.md"
   ".claude/skills/retro/state-3-file-issue.md"
   ".claude/skills/spec/state-4-golden-path.md"
   ".claude/skills/spec/state-6-stack-funnel.md"

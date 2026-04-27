@@ -36,6 +36,8 @@ If no `mcp__claude-in-chrome__*` tools are returned, STOP and show the setup gui
    - Status (Active / Paused / Ended)
    - Start date and end date (if available)
    - Total spend (if visible at this level)
+   - **Sub-account name** (e.g., "Lee MVP", "Lego's MVP Account") and **sub-account ID** (the 10-digit ocid)
+   - **Owner** — derive from the sub-account name. Convention: lowercase first word, strip "MVP"/"Account"/"'s" tokens. Examples: "Lee MVP" → `lee`; "Lego's MVP Account" → `lego`; "Radlin's MVP Account" → `radlin`; "Lew's MVP Account" → `lew`. If ambiguous, ask the Team Lead.
 3. Compile a full list of campaigns across all sub-accounts
 
 ### Filter eligible campaigns
@@ -60,9 +62,9 @@ For each eligible campaign:
 Present the discovered MVPs:
 > "Found **N** eligible MVPs from Google Ads MCC:
 >
-> | # | MVP | Domain | Campaign | Status | Days Running |
-> |---|-----|--------|----------|--------|-------------|
-> | 1 | {name} | {domain} | {campaign_name} | {status} | {days} |
+> | # | Owner | MVP | Domain | Campaign | Status | Days Running |
+> |---|-------|-----|--------|----------|--------|-------------|
+> | 1 | {owner} | {name} | {domain} | {campaign_name} | {status} | {days} |
 > | ... |
 >
 > Proceed with evaluation of all N MVPs?"
@@ -78,7 +80,7 @@ import json
 
 mvps = [
     # Populate from discovered data:
-    # {'name': 'pettracker', 'domain': 'pettracker.vercel.app', 'campaign_name': '...', 'campaign_id': '...', 'status': '...', 'days_running': 7, 'final_url': 'https://...'}
+    # {'name': 'pettracker', 'owner': 'lee', 'subaccount_name': 'Lee MVP', 'subaccount_id': '896-346-8125', 'domain': 'pettracker.vercel.app', 'campaign_name': '...', 'campaign_id': '...', 'status': '...', 'days_running': 7, 'final_url': 'https://...'}
 ]
 
 extra = {
@@ -100,16 +102,18 @@ Replace the `mvps` list with actual data collected from Chrome MCP. The base fie
 - MCC dashboard accessed, campaigns listed
 - Eligible MVPs filtered (Ended or >= 7 days)
 - Team Lead confirmed the MVP list
-- `.runs/iterate-cross-context.json` exists with MVP list
+- `.runs/iterate-cross-context.json` exists with MVP list — every MVP has `owner`, `subaccount_name`, `subaccount_id`
 
-**VERIFY:**
+**VERIFY:** see `state-registry.json` entry for `iterate-cross.x0`.
+
 ```bash
-test -f .runs/iterate-cross-context.json
+python3 -c "import json; d=json.load(open('.runs/iterate-cross-context.json')); ms=d.get('mvps',[]); assert isinstance(ms, list) and len(ms)>0, 'mvps empty'; bad=[m.get('name','?') for m in ms if not m.get('owner') or not m.get('subaccount_name')]; assert not bad, 'MVPs missing owner/subaccount_name: %s' % bad"
 ```
+<!-- VERIFY=true: real assertion lives in state-registry.json; this line is the per-Rule-13 placeholder -->
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
 ```bash
 bash .claude/scripts/advance-state.sh iterate-cross x0
 ```
 
-**NEXT:** Read [state-x1-gather-all-data.md](state-x1-gather-all-data.md) to continue.
+**NEXT:** Read [state-x1-gather-all-data.md](state-x1-gather-all-data.md) to continue. (After x1 gathers data, [state-x1a-validate-data-integrity.md](state-x1a-validate-data-integrity.md) validates it before x2.)

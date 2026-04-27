@@ -2,18 +2,23 @@
 
 **PRECONDITIONS:**
 - PostHog data gathered (STATE x1 POSTCONDITIONS met)
+- Data integrity flags computed (STATE x1a POSTCONDITIONS met)
 - `.runs/iterate-cross-data.json` exists with `has_funnel_stage` flag per MVP
+- `.runs/iterate-cross-data-issues.json` exists with `skip_migration` flag per MVP
 
 **ACTIONS:**
 
 ### Check if migration is needed
 
-Read `.runs/iterate-cross-data.json`. Check each MVP's `has_funnel_stage` field.
+Read `.runs/iterate-cross-data.json` and `.runs/iterate-cross-data-issues.json`. For each MVP, determine eligibility:
 
-- If **all** MVPs have `has_funnel_stage: true` → skip this state entirely. Write no new files, proceed directly to POSTCONDITIONS.
-- If **any** MVP has `has_funnel_stage: false` → proceed with migration for those MVPs only.
+- If MVP's `skip_migration: true` (set by x1a for `tracking_broken` or `not_deployed`) → mark `has_funnel_stage: true` and `data_source: "skipped_due_to_x1a_issue"`. Do not query PostHog (no events to migrate). Continue to next MVP.
+- Else if `has_funnel_stage: true` → already covered by primary query in x1, no migration needed.
+- Else (`has_funnel_stage: false` AND not skipped) → proceed with event-name migration below.
 
-### For each MVP without funnel_stage
+If **all** MVPs are now resolved (skipped or already-mapped), proceed directly to POSTCONDITIONS without querying PostHog.
+
+### For each MVP without funnel_stage (and not skipped)
 
 #### Step 1: Query distinct event names
 
@@ -92,18 +97,20 @@ Wait for confirmation. Adjust mapping if the Team Lead provides corrections.
 
 ### Update data file
 
-After migration, update `.runs/iterate-cross-data.json`:
-- Replace each migrated MVP's `posthog` field with the newly aggregated funnel stage counts
-- Set `has_funnel_stage: true` and `data_source: "inferred"` for migrated MVPs
+After processing, update `.runs/iterate-cross-data.json`:
+- For each migrated MVP: replace `posthog` field with newly aggregated funnel stage counts; set `has_funnel_stage: true` and `data_source: "inferred"`.
+- For each skipped MVP (tracking_broken / not_deployed): set `has_funnel_stage: true` and `data_source: "skipped_due_to_x1a_issue"`. Leave `posthog` zeros from x1 in place — they reflect the actual measurement.
 
 **POSTCONDITIONS:**
-- All MVPs in `.runs/iterate-cross-data.json` have funnel stage data (`reach`, `demand`, `activate`, `monetize`, `retain`)
+- Every MVP has `has_funnel_stage: true` either from x1 (primary query worked), x2 migration (legacy events mapped), or x1a skip (tracking_broken / not_deployed)
 - Migrated MVPs confirmed by Team Lead (if any)
 
-**VERIFY:**
+**VERIFY:** see `state-registry.json` entry for `iterate-cross.x2`.
+
 ```bash
-python3 -c "import json; d=json.load(open('.runs/iterate-cross-data.json')); ms=d.get('mvps',[]); assert isinstance(ms, list) and len(ms)>0, 'mvps empty'; bad=[m['name'] for m in ms if not m.get('has_funnel_stage')]; assert not bad, 'MVPs missing funnel_stage: %s' % bad"
+python3 -c "import json; d=json.load(open('.runs/iterate-cross-data.json')); ms=d.get('mvps',[]); assert isinstance(ms, list) and len(ms)>0, 'mvps empty'; bad=[m['name'] for m in ms if not m.get('has_funnel_stage') and m.get('data_source') != 'skipped_due_to_x1a_issue']; assert not bad, 'MVPs missing funnel_stage and not skipped: %s' % bad"
 ```
+<!-- VERIFY=true: real assertion lives in state-registry.json; this line is the per-Rule-13 placeholder -->
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
 ```bash

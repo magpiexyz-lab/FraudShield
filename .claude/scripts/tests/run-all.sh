@@ -46,6 +46,7 @@ SUITES=(
   ".claude/scripts/tests/test_drift_boundary_skip.py"
   ".claude/scripts/tests/test_drift_null_unresolved.py"
   ".claude/scripts/tests/test_auth_routing.py"
+  ".claude/scripts/tests/test_iterate_cross_verdicts.py"
 )
 
 FAIL=0

@@ -1,0 +1,52 @@
+# iterate-cross-config.yaml — Operator config for /iterate --cross
+#
+# Lives at the operator's MCC repository root (NOT in template).
+# Consumed by STATE x1 (signup query, sub-account conversion validation)
+# and STATE x1a (mapping confirmation persistence).
+#
+# Copy this file to `experiment/iterate-cross-config.yaml` and adjust as needed.
+# Missing files fall back to the inline defaults shown here.
+#
+# Schema is loose — unknown keys are ignored. Numeric thresholds may be tuned
+# per team but should be justified by first-principles statistics (see plan
+# /Users/.claude/plans/7-logical-tulip.md for the 3/50 rule derivation).
+
+# Events that count as "signup completion" for the GO verdict (signups >= 3).
+# Use distinct_id deduplication. Add new event names as MVPs evolve.
+signup_whitelist:
+  - signup_complete
+  - waitlist_signup
+  - waitlist_submit
+  - early_access_signup
+  - activate
+
+# Acceptable values for a sub-account's "Account default" conversion action.
+# /iterate --cross x1a flags any sub-account whose default action is NOT in
+# this list as `subaccount_conversion_misconfigured` (soft warn).
+# Match is case-insensitive substring match.
+conversion_action_whitelist:
+  - "Sign-up"
+  - "Sign-ups"
+  - "MVP Signup"
+  - "Submit lead form"
+  - "Account creation"
+  - "Lead form"
+
+# Operator-confirmed mapping from Google Ads campaign name → PostHog project_name.
+# Auto-populated by /iterate --cross x1a when the user confirms a low-confidence
+# fuzzy match. Once persisted here, future runs treat the mapping as confirmed.
+#
+# Example:
+#   autodropship-search-v1:
+#     posthog_project_name: dropship-ops
+#     deploy_domain: dropship-ops.example.com  # optional; for URL fallback queries
+mvp_mappings: {}
+
+# Phase 1 thresholds. The defaults reflect first-principles Bernoulli noise floor:
+#   - At p=5%, P(signups >= 3 | n=50) ≈ 73%, so 50 clicks comfortably distinguishes
+#     signal from noise when 3+ signups appear.
+#   - At p=5%, P(signups < 3 | n=50) ≈ 27%, so we tolerate ambiguity below the floor.
+thresholds:
+  signups_go: 3        # Headline GO when distinct gclid signups >= this
+  clicks_floor: 50     # Headline NO_GO if clicks >= this AND signups < signups_go
+  click_window_days: 7 # Time window for HogQL queries (relative to now)

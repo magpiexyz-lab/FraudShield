@@ -397,3 +397,64 @@ Key decisions:
   "columns": ["event", "unique_users"]
 }
 ```
+
+## Cross-MVP Health & Signup Queries (for /iterate --cross)
+
+Used by STATE x1 of `/iterate --cross` to detect tracking-broken MVPs and pre-compute signups for the 3/50 verdict rule.
+
+### Combined `gclid_visitor_count` + `total_events_count`
+
+One query per MVP. Returns total events for the deploy domain in the time window AND the subset that have a Google Ads gclid.
+
+```bash
+curl -s -X POST "$POSTHOG_API_HOST/api/projects/$POSTHOG_PROJECT_ID/query/" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $POSTHOG_API_KEY" \
+  -d '{
+    "query": {
+      "kind": "HogQLQuery",
+      "query": "SELECT count(*) AS total_events_count, countIf(properties.$session_entry_gclid IS NOT NULL AND properties.$session_entry_gclid != '\'''\'') AS gclid_visitor_count FROM events WHERE properties.$current_url LIKE {url_pattern} AND timestamp >= {start_date}",
+      "values": {
+        "url_pattern": "%pettracker.vercel.app%",
+        "start_date": "2026-04-20T00:00:00Z"
+      }
+    }
+  }'
+```
+
+**Interpretation by /iterate --cross:**
+
+| `clicks` (Google Ads) | `total_events_count` | `gclid_visitor_count` | Verdict |
+|---|---|---|---|
+| > 0 | == 0 | (any) | `not_deployed` (PostHog snippet absent or domain not deployed) |
+| > 0 | > 0 | == 0 | `tracking_broken` (frontend doesn't capture gclid) |
+| > 0 | > 0 | > 0 | healthy — proceed to signup count |
+
+### Signups (whitelist-based, gclid-filtered)
+
+Counts distinct users who fired any event in the operator's `signup_whitelist` AND have a session_entry_gclid (i.e., came from Google Ads). This is the input to the 3/50 rule (`signups >= 3` → GO).
+
+```bash
+curl -s -X POST "$POSTHOG_API_HOST/api/projects/$POSTHOG_PROJECT_ID/query/" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $POSTHOG_API_KEY" \
+  -d '{
+    "query": {
+      "kind": "HogQLQuery",
+      "query": "SELECT count(DISTINCT distinct_id) AS signups FROM events WHERE event IN {events} AND properties.$session_entry_gclid IS NOT NULL AND properties.$current_url LIKE {url_pattern} AND timestamp >= {start_date}",
+      "values": {
+        "events": ["signup_complete","waitlist_signup","waitlist_submit","early_access_signup","activate"],
+        "url_pattern": "%pettracker.vercel.app%",
+        "start_date": "2026-04-20T00:00:00Z"
+      }
+    }
+  }'
+```
+
+The `events` whitelist comes from `experiment/iterate-cross-config.yaml` (see `experiment/iterate-cross-config.example.yaml`). Default is shown above.
+
+### Notes
+
+- `$session_entry_gclid` is auto-populated by recent versions of `posthog-js` when session properties are enabled (default in `posthog-js@1.130.0+`). For older PostHog deployments lacking this property, fall back to `properties.gclid IS NOT NULL` filtered to the landing event only.
+- All queries use parameterized `values` — never concatenate user-supplied strings into the HogQL.
+- Time window matches the campaign's `--click_window_days` (default 7) ending at `now()`.
