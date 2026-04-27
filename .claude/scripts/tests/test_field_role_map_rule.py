@@ -28,6 +28,7 @@ import unittest
 
 REAL_REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 LINTER = os.path.join(REAL_REPO, ".claude", "scripts", "verify-linter.sh")
+LIB_DIR = os.path.join(REAL_REPO, ".claude", "scripts", "lib")
 
 
 def _setup_minimal_repo(tmpdir: str, rules: dict, consumers: dict[str, str]):
@@ -43,6 +44,15 @@ def _setup_minimal_repo(tmpdir: str, rules: dict, consumers: dict[str, str]):
 
     # Copy the real linter script (it computes REPO_ROOT from its own location)
     shutil.copy(LINTER, os.path.join(tmpdir, ".claude/scripts/verify-linter.sh"))
+    # Copy lib/ alongside the linter so the upcoming Python-package refactor
+    # (which puts business logic under .claude/scripts/lib/linter/) doesn't
+    # break this fixture. Idempotent today: linter is still self-contained.
+    if os.path.isdir(LIB_DIR):
+        shutil.copytree(
+            LIB_DIR,
+            os.path.join(tmpdir, ".claude/scripts/lib"),
+            dirs_exist_ok=True,
+        )
     # Empty registry (no skills) — lint won't find any state files; that's fine
     with open(os.path.join(tmpdir, ".claude/patterns/state-registry.json"), "w") as f:
         json.dump({}, f)
