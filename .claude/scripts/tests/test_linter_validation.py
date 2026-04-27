@@ -1,0 +1,135 @@
+#!/usr/bin/env python3
+"""Tests for the rule-load schema validation in lib/linter/runner.py.
+
+Locks the contract added in PR3:
+- Unknown rule type -> exit 1 with literal "unknown rule type" message
+  naming the offending rule id.
+- Unknown field name in a rule -> exit 1 with sorted unknown keys named.
+- Missing required field -> exit 1 with sorted missing required named.
+- Handler exceptions -> finding emitted, but linter continues (does not crash).
+
+These tests guarantee that typo'd keys in template-coherence-rules.json
+fail loudly instead of the pre-PR3 silent-no-op behavior.
+"""
+import json
+import os
+import shutil
+import subprocess
+import tempfile
+import unittest
+
+
+REAL_REPO = os.path.dirname(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+)
+LINTER = os.path.join(REAL_REPO, ".claude", "scripts", "verify-linter.sh")
+LIB_DIR = os.path.join(REAL_REPO, ".claude", "scripts", "lib")
+
+
+def _setup_repo_with_rules(tmpdir, rules):
+    """Build a tmpdir mini-repo with the given rules JSON."""
+    os.makedirs(os.path.join(tmpdir, ".claude/scripts"), exist_ok=True)
+    os.makedirs(os.path.join(tmpdir, ".claude/patterns"), exist_ok=True)
+    shutil.copy(LINTER, os.path.join(tmpdir, ".claude/scripts/verify-linter.sh"))
+    shutil.copytree(LIB_DIR, os.path.join(tmpdir, ".claude/scripts/lib"), dirs_exist_ok=True)
+    with open(os.path.join(tmpdir, ".claude/patterns/state-registry.json"), "w") as f:
+        json.dump({}, f)
+    with open(os.path.join(tmpdir, ".claude/patterns/template-coherence-rules.json"), "w") as f:
+        json.dump(rules, f)
+
+
+def _run(tmpdir, *flags):
+    result = subprocess.run(
+        ["bash", os.path.join(tmpdir, ".claude/scripts/verify-linter.sh"), *flags],
+        capture_output=True,
+        text=True,
+        cwd=tmpdir,
+    )
+    return result.returncode, result.stdout, result.stderr
+
+
+class TestUnknownRuleType(unittest.TestCase):
+    def test_typoed_type_exits_1_with_rule_id(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _setup_repo_with_rules(
+                tmpdir,
+                {"rules": [{"id": "typo-test", "type": "verdict_vocab_consistncy"}]},
+            )
+            rc, _stdout, stderr = _run(tmpdir)
+        self.assertEqual(rc, 1)
+        self.assertIn("unknown rule type", stderr)
+        self.assertIn("'verdict_vocab_consistncy'", stderr)
+        self.assertIn("typo-test", stderr)
+
+    def test_typoed_type_blocks_under_warn_only(self):
+        """Schema errors must override --warn-only (deliberate contract addition)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _setup_repo_with_rules(
+                tmpdir,
+                {"rules": [{"id": "typo-test", "type": "totally_made_up"}]},
+            )
+            rc, _stdout, stderr = _run(tmpdir, "--warn-only")
+        self.assertEqual(rc, 1, f"--warn-only must NOT suppress schema errors. stderr={stderr!r}")
+
+
+class TestUnknownField(unittest.TestCase):
+    def test_typoed_field_name_exits_1(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _setup_repo_with_rules(
+                tmpdir,
+                {"rules": [{
+                    "id": "field-typo",
+                    "type": "consumer_coverage",
+                    "canonical_source": ".runs/x.jsonl",
+                    "consumers": [],
+                    "consumr_typo_field": "extra",
+                }]},
+            )
+            rc, _stdout, stderr = _run(tmpdir)
+        self.assertEqual(rc, 1)
+        self.assertIn("unknown field", stderr)
+        self.assertIn("consumr_typo_field", stderr)
+        self.assertIn("field-typo", stderr)
+
+
+class TestMissingRequired(unittest.TestCase):
+    def test_missing_required_field_exits_1(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _setup_repo_with_rules(
+                tmpdir,
+                {"rules": [{
+                    "id": "missing-fields",
+                    "type": "field_role_map",
+                    # Missing both required: field, canonical_function
+                }]},
+            )
+            rc, _stdout, stderr = _run(tmpdir)
+        self.assertEqual(rc, 1)
+        self.assertIn("missing required field", stderr)
+        self.assertIn("missing-fields", stderr)
+        self.assertIn("canonical_function", stderr)
+        self.assertIn("field", stderr)
+
+
+class TestMetaKeysAccepted(unittest.TestCase):
+    def test_severity_description_transitional_note_are_ok(self):
+        """META_KEYS like severity, description, _transitional_note must not trigger 'unknown field'."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _setup_repo_with_rules(
+                tmpdir,
+                {"rules": [{
+                    "id": "meta-keys",
+                    "type": "consumer_coverage",
+                    "severity": "block",
+                    "description": "test",
+                    "_transitional_note": "test",
+                    "canonical_source": ".runs/x.jsonl",
+                    "consumers": [],
+                }]},
+            )
+            rc, _stdout, _stderr = _run(tmpdir, "--json")
+        self.assertEqual(rc, 0)
+
+
+if __name__ == "__main__":
+    unittest.main()

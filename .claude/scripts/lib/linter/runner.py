@@ -1405,32 +1405,79 @@ def main() -> int:
         return findings
 
 
+    # ---------------------------------------------------------------------------
+    # Cross-file rule dispatch — registry-driven with type + field validation.
+    #
+    # HANDLERS maps each rule type to:
+    #   (handler_fn, required_keys, optional_keys, is_strict_aoc)
+    #
+    # At rule-load time we validate:
+    #   1. type is in HANDLERS — typo'd type triggers SystemExit (return 1)
+    #   2. all required keys are present — missing required triggers SystemExit
+    #   3. no unknown keys (after subtracting META_KEYS) — typo'd field name
+    #      triggers SystemExit
+    #
+    # STRICT_AOC_TYPES is derived from is_strict_aoc=True entries (replaces the
+    # hardcoded set at the top of main).
+    #
+    # Schema errors are intentionally fatal even under --warn-only: a typo'd
+    # rule key is an infrastructure error, not a coherence violation, and must
+    # surface immediately. Documented in lib/linter/README.md (PR4).
+    # ---------------------------------------------------------------------------
+    HANDLERS = {
+        "field_role_map":                   (check_field_role_map,                   {"field", "canonical_function"},                          {"consumers"},                                                False),
+        "discover_consumers":               (check_discover_consumers,               {"field", "against_rule", "consumption_patterns"},        {"path_excludes"},                                            False),
+        "artifact_lifecycle":               (check_artifact_lifecycle,               {"skill"},                                                set(),                                                        False),
+        "verdict_vocab_consistency":        (check_verdict_vocab_consistency,        set(),                                                    {"registry_path", "agent_files_glob", "predicate_file"},      True),
+        "ledger_ownership":                 (check_ledger_ownership,                 {"allowed_writers", "gated_paths"},                       set(),                                                        True),
+        "consumer_coverage":                (check_consumer_coverage,                {"canonical_source", "consumers"},                        set(),                                                        True),
+        "frontmatter_artifact_consistency": (check_frontmatter_artifact_consistency, {"schema_path", "writer"},                                {"consumers"},                                                True),
+        "internal_href_validity":           (check_internal_href_validity,           set(),                                                    {"scaffold_glob", "route_owner_hints"},                       False),
+    }
+    META_KEYS = {"id", "type", "severity", "description", "_transitional_note", "_comment"}
+
     # Load and run cross-file rules
     if os.path.isfile(RULES_PATH):
         try:
             rules_data = json.load(open(RULES_PATH))
-            for rule in rules_data.get("rules", []):
-                rtype = rule.get("type")
-                if rtype == "field_role_map":
-                    cross_file.extend(check_field_role_map(rule))
-                elif rtype == "discover_consumers":
-                    cross_file.extend(check_discover_consumers(rule))
-                elif rtype == "artifact_lifecycle":
-                    cross_file.extend(check_artifact_lifecycle(rule))
-                elif rtype == "verdict_vocab_consistency":
-                    cross_file.extend(check_verdict_vocab_consistency(rule))
-                elif rtype == "ledger_ownership":
-                    cross_file.extend(check_ledger_ownership(rule))
-                elif rtype == "consumer_coverage":
-                    cross_file.extend(check_consumer_coverage(rule))
-                elif rtype == "frontmatter_artifact_consistency":
-                    cross_file.extend(check_frontmatter_artifact_consistency(rule))
-                elif rtype == "internal_href_validity":
-                    cross_file.extend(check_internal_href_validity(rule))
-                else:
-                    cross_file.append(f"  [{rule.get('id','<unknown>')}] unknown rule type: {rtype}")
+            rules_list = rules_data.get("rules", [])
         except (OSError, json.JSONDecodeError) as e:
             cross_file.append(f"  [framework] failed to load rules from {RULES_PATH}: {e}")
+            rules_list = []
+
+        for i, rule in enumerate(rules_list):
+            rid = rule.get("id", f"#{i}")
+            rtype = rule.get("type")
+            if rtype not in HANDLERS:
+                valid = ", ".join(sorted(HANDLERS))
+                print(
+                    f"verify-linter: unknown rule type {rtype!r} in rule id={rid}; valid: {valid}",
+                    file=sys.stderr,
+                )
+                return 1
+            handler, required, optional, _is_strict_aoc = HANDLERS[rtype]
+            keys = set(rule.keys()) - META_KEYS
+            unknown = keys - (required | optional)
+            if unknown:
+                print(
+                    f"verify-linter: unknown field(s) {sorted(unknown)} in rule id={rid} (type={rtype}); "
+                    f"valid: {sorted(required | optional)}",
+                    file=sys.stderr,
+                )
+                return 1
+            missing = required - keys
+            if missing:
+                print(
+                    f"verify-linter: missing required field(s) {sorted(missing)} in rule id={rid} (type={rtype})",
+                    file=sys.stderr,
+                )
+                return 1
+            try:
+                cross_file.extend(handler(rule))
+            except Exception as e:
+                cross_file.append(
+                    f"  [{rid}] handler crashed: {type(e).__name__}: {e}"
+                )
 
 
     # ---------------------------------------------------------------------------
