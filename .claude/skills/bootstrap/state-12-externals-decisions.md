@@ -1,7 +1,7 @@
 # STATE 12: EXTERNALS_DECISIONS
 
 **PRECONDITIONS:**
-- Scaffold done, all subagents returned (STATE 11b POSTCONDITIONS met)
+- Scaffold done, all subagents returned (STATE 11c POSTCONDITIONS met)
 - Externals classification table available from scaffold-externals
 - Optional: load Stack Knowledge hints (stable + canonical, non-graduated)
   into memory via `scripts/lib/stack_knowledge_parser.py::parse_stack_knowledge_file`

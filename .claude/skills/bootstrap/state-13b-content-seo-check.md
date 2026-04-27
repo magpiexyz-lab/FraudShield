@@ -32,7 +32,7 @@ Run content quality and SEO verification checks:
    **scaffold-wire-owned auth routes** — `/auth/callback` and `/auth/reset-password`
    are created by scaffold-wire in STATE 14 (AFTER this state runs), so the directories
    do not exist yet at audit time. The auth stack file owns them and their ownership
-   is documented in `.claude/skills/bootstrap/state-11b-page-scaffold.md`. Treat both
+   is documented in `.claude/skills/bootstrap/state-11c-page-scaffold.md`. Treat both
    as expected-missing.
    If broken links found (excluding those scaffold-wire exceptions): fix the href to
    point to the correct route. Budget: 1 fix attempt.

@@ -295,7 +295,7 @@ pages = (golden_path[*].page where present)
 
 Consumers that need this set MUST call `derive_scope_pages()` (not raw `golden_path`):
 
-- `.claude/skills/bootstrap/state-11b-page-scaffold.md` — spawn list
+- `.claude/skills/bootstrap/state-11c-page-scaffold.md` — spawn list
 - `.claude/agents/gate-keeper.md` BG2 check 3b — page count cap
 - `.claude/agents/gate-keeper.md` BG2 check 3c — behavior page existence
 - `.claude/procedures/scaffold-pages.md` — sitemap generation

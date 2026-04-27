@@ -1,7 +1,7 @@
-# STATE 11b: PAGE_SCAFFOLD
+# STATE 11c: PAGE_SCAFFOLD
 
 **PRECONDITIONS:**
-- Lib scaffold done (STATE 11a POSTCONDITIONS met)
+- Lib verify done (STATE 11b POSTCONDITIONS met — `.runs/b1-verify-result.json` exists with `type_check.passed=true`)
 - Type-check passes
 - `src/lib/` contains >=1 `.ts` file
 
@@ -85,7 +85,7 @@ The script (`.claude/scripts/merge-scaffold-pages-traces.py`) is allowlisted in 
 
 **Post-fan-out trace verification** (before proceeding):
 Verify each subagent produced its expected output:
-- `test -f .runs/agent-traces/scaffold-libs.json` (already verified in STATE 11a)
+- `test -f .runs/agent-traces/scaffold-libs.json` (already verified in STATE 11b)
 - `test -f .runs/agent-traces/scaffold-pages-<page>.json` for each page in `derive_scope_pages()`
 - Landing subagent reported completion: `test -f .runs/agent-traces/scaffold-landing.json && python3 -c "import json;d=json.load(open('.runs/agent-traces/scaffold-landing.json'));assert d.get('status')=='complete';print('scaffold-landing trace: OK')"`. If trace missing: log "WARN: scaffold-landing did not write trace -- continuing with file-based verification".
 
@@ -116,7 +116,7 @@ python3 -c "import json,os,glob; a=json.load(open('.runs/bootstrap-context.json'
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
 ```bash
-bash .claude/scripts/advance-state.sh bootstrap 11b
+bash .claude/scripts/advance-state.sh bootstrap 11c
 ```
 
 **NEXT:** Read [state-12-externals-decisions.md](state-12-externals-decisions.md) to continue.

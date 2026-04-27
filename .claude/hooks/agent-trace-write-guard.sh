@@ -9,7 +9,7 @@
 #   - .claude/scripts/validate-recovery.sh     (stamps recovery_validated only)
 #   - .claude/scripts/migrate-legacy-traces.py (one-shot legacy migration)
 #   - .claude/scripts/merge-design-critic-traces.py   (verify state-3b lead-merge)
-#   - .claude/scripts/merge-scaffold-pages-traces.py  (bootstrap state-11b lead-merge,
+#   - .claude/scripts/merge-scaffold-pages-traces.py  (bootstrap state-11c lead-merge,
 #                                                     extracted from inline json.dump in PR2b)
 #   - .claude/scripts/write-agent-trace.sh   (AOC v1.1 centralized writer for
 #                                             self / self-degraded / lead-on-behalf /
@@ -121,7 +121,7 @@ if echo "$COMMAND" | grep -qE "$ALLOWED_REGEX_MERGE_DESIGN_CRITIC"; then
 fi
 
 # Allow the official scaffold-pages merge script (lead-merge aggregation at
-# bootstrap state-11b — PR2b extracted this from an inline python3 -c block
+# bootstrap state-11c — PR2b extracted this from an inline python3 -c block
 # that wrote .runs/agent-traces/scaffold-pages.json directly, mirroring the
 # #1045 resolution for design-critic).
 ALLOWED_REGEX_MERGE_SCAFFOLD_PAGES='(^|[[:space:]]|&&|;|\|)[[:space:]]*python3?[[:space:]]+[./]*\.?claude/scripts/merge-scaffold-pages-traces\.py'

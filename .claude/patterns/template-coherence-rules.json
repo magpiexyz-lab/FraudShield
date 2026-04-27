@@ -9,7 +9,7 @@
       "canonical_function": "derive_scope_pages",
       "description": "SCOPE consumers (count-based / set-based access) must call derive_scope_pages() rather than reading golden_path directly. FUNNEL consumers (sequence/order-based access) declare a coherence-allow pragma. Count-based regex (len(golden_path), set(golden_path)) is forbidden unconditionally — pragma cannot whitelist these. See #1024.",
       "consumers": [
-        ".claude/skills/bootstrap/state-11b-page-scaffold.md",
+        ".claude/skills/bootstrap/state-11c-page-scaffold.md",
         ".claude/skills/change/state-11a-verify-prep.md",
         ".claude/agents/gate-keeper.md",
         ".claude/agents/spec-reviewer.md",

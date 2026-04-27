@@ -246,7 +246,7 @@ Get the canonical set via `python3 .claude/scripts/lib/derive_pages.py scope < e
 3c-2. **Set self-consistent.** For each `behavior.pages` element: assert it appears in `derive_scope_pages(experiment)`. (Trivially true given the function's definition; defense-in-depth catches schema corruption or `derive_pages.py` bugs.) BLOCK with diagnostic showing the missing element and `derive_scope_pages()` output.
 
 3c-3. **Page exists on disk.** For each page in `derive_scope_pages(experiment)` (excluding auth-derived `login`/`signup` which scaffold-pages handles via the auth stack template): assert `src/app/<page>/page.tsx` exists. BLOCK with message:
-> page `<name>` is declared in `derive_scope_pages()` but `src/app/<name>/page.tsx` is missing. Re-run scaffold-pages for this page (state-11b), or remove its declaration from `behavior.pages` / `golden_path`.
+> page `<name>` is declared in `derive_scope_pages()` but `src/app/<name>/page.tsx` is missing. Re-run scaffold-pages for this page (state-11c), or remove its declaration from `behavior.pages` / `golden_path`.
 
 3d. **Nav-bar inventory coverage** (web-app only) — verify NavBar links cover the canonical set:
 - `src/components/nav-bar.tsx` MUST contain the marker comment `{/* DERIVED-FROM: derive_scope_pages */}` (emitted by scaffold-wire Step 5b.3). BLOCK if absent: > `src/components/nav-bar.tsx` is missing the `{/* DERIVED-FROM: derive_scope_pages */}` marker. Re-run scaffold-wire; nav-bar must be generated from the canonical SET.

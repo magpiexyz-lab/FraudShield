@@ -8,10 +8,10 @@ files:
   - src/app/auth/callback/route.ts          # always; scaffold-wire
   - src/app/auth/reset-password/page.tsx     # always; scaffold-wire
   - src/components/nav-bar.tsx               # always; scaffold-wire
-  # --- scaffold-pages creates (user-facing pages, STATE 11b) ---
+  # --- scaffold-pages creates (user-facing pages, STATE 11c) ---
   - src/app/signup/page.tsx                  # auto-included in derive_scope_pages() when stack.auth is set; scaffold-pages
   - src/app/login/page.tsx                   # auto-included in derive_scope_pages() when stack.auth is set; scaffold-pages
-  # --- scaffold-libs creates (library + proxy, STATE 11a) ---
+  # --- scaffold-libs creates (library + proxy, STATE 11a — LIB_SPAWN) ---
   - src/proxy.ts                             # always; scaffold-libs (Next.js 16+ filename; legacy 15 uses src/middleware.ts)
   - src/lib/supabase-auth.ts                 # only when stack.database is NOT supabase; scaffold-libs
   - src/lib/supabase-auth-server.ts          # only when stack.database is NOT supabase; scaffold-libs

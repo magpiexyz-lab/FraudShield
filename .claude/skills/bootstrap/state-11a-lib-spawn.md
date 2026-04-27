@@ -1,4 +1,4 @@
-# STATE 11a: LIB_SCAFFOLD
+# STATE 11a: LIB_SPAWN
 
 **PRECONDITIONS:**
 - Core scaffold done (STATE 11 POSTCONDITIONS met)
@@ -63,55 +63,58 @@ SVG placeholders directly:
    ]}
    ```
 
-Wait for all B1 subagents to return (libs, externals, and images if spawned).
+Wait for all B1 subagents to return (libs, externals, and images if spawned). Sanity-check that each agent wrote its trace file:
+- `test -f .runs/agent-traces/scaffold-libs.json`
+- `test -f .runs/agent-traces/scaffold-externals.json`
+- `test -f .runs/agent-traces/scaffold-images.json` (only when `image_gen_status` was `"available"`)
 
-**B1 manifest verification + recovery protocol:**
-1. `test -f .runs/agent-traces/scaffold-libs.json` -- verify manifest exists
-2. Read manifest and check `"status": "complete"`
-3. `ls src/lib/*.ts` -- verify lib files were created
-4. If manifest is missing or status != complete:
-   - Re-spawn scaffold-libs ONE time with the same prompt
-   - Wait for completion and re-check manifest
-   - If retry also fails -> **STOP** and report to user: "scaffold-libs failed after retry. Cannot proceed to Phase B2."
+If any expected trace is missing, do NOT advance. Manifest content validation, scaffold-libs retry (1-budget), image SVG fallback, and the `tsc` type-check checkpoint (2-budget) all live in STATE 11b (`state-11b-lib-verify.md`) — keep those out of this state.
 
-**B1 image manifest verification** (non-blocking):
-1. `test -f .runs/image-manifest.json` -- verify manifest exists
-2. Read manifest: if `"status"` is `"complete"` or `"placeholders"`, continue
-3. If manifest is missing and `image_gen_status` is `"available"`:
-   - Log `WARN: image generation did not complete -- falling back to SVG placeholders`
-   - Generate SVG placeholders using the same logic as the `"skipped"` path above
-   - Write manifest with `"status": "placeholders", "fallback": true`
-4. Image generation failure NEVER blocks the pipeline
+**Write spawn-result artifact** (inline, idempotent):
 
-**B1 candidate sidecar verification** (non-blocking, informational only):
+```python
+import json, datetime, os
+ctx = json.load(open('.runs/bootstrap-context.json'))
+image_gen_config = ctx.get('image_gen_status', 'available')
+agents = {
+    'scaffold-libs':      {'spawned': True, 'spawn_count': 1, 'trace_path': '.runs/agent-traces/scaffold-libs.json'},
+    'scaffold-externals': {'spawned': True, 'spawn_count': 1, 'trace_path': '.runs/agent-traces/scaffold-externals.json'},
+    'scaffold-images':    {'spawned': image_gen_config == 'available', 'spawn_count': 1, 'image_gen_config': image_gen_config, 'trace_path': '.runs/agent-traces/scaffold-images.json'},
+}
+result = {
+    'schema_version': 1,
+    'run_id': ctx.get('run_id', ''),
+    'state': '11a',
+    'spawned_at': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+    'completed_at': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+    'agents': agents,
+}
+json.dump(result, open('.runs/b1-spawn-result.json', 'w'), indent=2)
+```
+
+**Field semantics:**
+- `spawn_count` is the INITIAL spawn count from this state (always 1). It is NEVER updated on retry. Cumulative count after retries lives in `b1-verify-result.json.libs.cumulative_spawn_count` (owned by STATE 11b).
+- `agents.scaffold-images.image_gen_config` is the INPUT flag from `bootstrap-context.json.image_gen_status`, NOT the output health. Output health (whether the manifest was actually written, whether SVG fallback was applied, image_count) lives only in `b1-verify-result.json.images`.
+
+**B1 candidate sidecar (non-blocking, informational):**
 1. `test -f .runs/image-candidates.json` — check if candidate sidecar exists
 2. If present: this is a bonus artifact. Pass it as context to design-critic agents alongside `image-manifest.json`. The design-critic can try pre-generated candidates before regenerating from scratch.
 3. If absent: design-critic operates with the current single-image flow (fully backwards compatible). No action needed.
 
-Check off in `.runs/current-plan.md`:
+Check off in `.runs/current-plan.md` (the plan template from `state-7-save-plan.md` uses "completed" — keep that wording for compatibility; here it means *agent dispatch completed*, not full validation; full B1 validation is STATE 11b):
 - `- [x] scaffold-libs completed`
 - `- [x] scaffold-externals completed`
 - `- [x] scaffold-images completed` (or mark N/A if `image_gen_status` was `"skipped"`)
 
-**B1 type-check checkpoint** (mandatory -- run regardless of `tsp_status`):
-Between B1 completion and B2 spawning, verify the lib files compile cleanly:
-1. Run `npx tsc --noEmit --project tsconfig.json`
-2. If type errors are found: fix them directly as the bootstrap lead (budget: 2 attempts).
-   After each fix, re-run `npx tsc --noEmit --project tsconfig.json` to verify.
-3. If errors persist after 2 fix attempts: **STOP**. Do not spawn B2 agents.
-   Report to user: "Type errors in scaffold-libs output. Cannot proceed to page scaffold
-   -- page agents would inherit broken types. Errors: [list errors]"
-   This prevents compounding type failures across the B2 fan-out.
-
 **POSTCONDITIONS:**
-- `src/lib/` contains >=1 `.ts` file
-- Externals classification available
-- Image manifest written (complete, placeholders, or skipped)
-- Type-check passes (`npx tsc --noEmit` exit 0)
+- `.runs/b1-spawn-result.json` exists with `schema_version=1`, `state="11a"`
+- `agents.scaffold-libs.spawned is True`
+- All spawned agent trace files exist on disk (presence only — STATE 11b reads `status` and decides retry/fallback/STOP)
+- (Manifest content validation, scaffold-libs retry, image SVG fallback, and `tsc` type-check checkpoint are STATE 11b's responsibility — not gated here. This intentional separation lets 11b retry `scaffold-libs` when its trace `status != complete`.)
 
 **VERIFY:**
 ```bash
-python3 -c "import json,glob; assert len(glob.glob('src/lib/*.ts'))>=1, 'no .ts in src/lib/'" && (test ! -f .runs/image-manifest.json || python3 .claude/scripts/verify-state-11a-image-count.py)
+test -f .runs/b1-spawn-result.json && python3 -c "import json,os; d=json.load(open('.runs/b1-spawn-result.json')); assert d.get('schema_version')==1 and d.get('state')=='11a'; ag=d.get('agents',{}); assert ag.get('scaffold-libs',{}).get('spawned') is True, 'scaffold-libs not spawned'; missing=[k for k,a in ag.items() if a.get('spawned') and not os.path.exists(a.get('trace_path',''))]; assert not missing, 'agent trace file missing on disk: '+str(missing)"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
@@ -119,4 +122,4 @@ python3 -c "import json,glob; assert len(glob.glob('src/lib/*.ts'))>=1, 'no .ts 
 bash .claude/scripts/advance-state.sh bootstrap 11a
 ```
 
-**NEXT:** Read [state-11b-page-scaffold.md](state-11b-page-scaffold.md) to continue.
+**NEXT:** Read [state-11b-lib-verify.md](state-11b-lib-verify.md) to continue.

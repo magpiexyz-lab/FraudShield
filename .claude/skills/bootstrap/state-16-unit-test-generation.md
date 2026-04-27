@@ -23,7 +23,7 @@ Generate unit tests for CRITICAL modules using implementer agents.
 - **Dependency ordering:** Respect module imports. If module A's tests import module B, B must be tested in an earlier spawn than A. Independent modules can be ordered arbitrarily.
 - **Batching:** A single implementer spawn MAY cover up to 5 CRITICAL modules when ALL of the following hold: (a) the batch is a dependency-connected subset — ordering across batches still respected; (b) modules share enough structural similarity that one TDD session can reason about all of them (e.g., "three spec-builder API routes with identical mocking scaffolding"); (c) no module in the batch is complex. Prefer one-per-module for webhook handlers, payment flows, and auth mutations.
 
-**Per-module trace contract** (non-negotiable — matches `state-11b-page-scaffold.md` precedent):
+**Per-module trace contract** (non-negotiable — matches `state-11c-page-scaffold.md` precedent):
 
 Even when batched, the implementer MUST write one trace file per module:
 `.runs/agent-traces/implementer-<module-name>.json`. The `modules_completed` array in

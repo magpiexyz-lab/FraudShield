@@ -388,7 +388,7 @@ Has branch → code-writing → verify(full) auto-appended → PR auto-created.
 ```yaml
 branch: "feat/bootstrap-{slug}"
 states: ["0","1","2","3","3a","3b","4","5","6","7","8","9",
-         "10","11","11a","11b","12","13","13a","13b","13c","14","15","16","17","18","19"]
+         "10","11","11a","11b","11c","12","13","13a","13b","13c","14","15","16","17","18","19"]
 agents:
   gate-keeper:
     after: ["0"]
@@ -405,10 +405,10 @@ agents:
   scaffold-images:
     after: ["11"]
   scaffold-pages:
-    after: ["11a"]
+    after: ["11b"]
     depends_on: [scaffold-libs]
   scaffold-landing:
-    after: ["11a"]
+    after: ["11b"]
     depends_on: [scaffold-libs]
   scaffold-wire:
     after: ["13c"]

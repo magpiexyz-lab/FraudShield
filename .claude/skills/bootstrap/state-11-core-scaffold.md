@@ -70,4 +70,4 @@ python3 -c "import json,os; a=json.load(open('.runs/bootstrap-context.json')).ge
 bash .claude/scripts/advance-state.sh bootstrap 11
 ```
 
-**NEXT:** Read [state-11a-lib-scaffold.md](state-11a-lib-scaffold.md) to continue.
+**NEXT:** Read [state-11a-lib-spawn.md](state-11a-lib-spawn.md) to continue.

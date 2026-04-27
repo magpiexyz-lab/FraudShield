@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""merge-scaffold-pages-traces.py — Official merge script for bootstrap STATE 11b.
+"""merge-scaffold-pages-traces.py — Official merge script for bootstrap STATE 11c.
 
 Merges per-page `.runs/agent-traces/scaffold-pages-*.json` traces into the
 aggregate `.runs/agent-traces/scaffold-pages.json`. Previously inlined in
-state-11b-page-scaffold.md but extracted to this dedicated script so the
+state-11c-page-scaffold.md but extracted to this dedicated script so the
 agent-trace-write-guard.sh allowlist can authorise exactly this write
 (mirrors the #1045 resolution for merge-design-critic-traces.py). The
 script's invocation pattern is tied to the guard's
