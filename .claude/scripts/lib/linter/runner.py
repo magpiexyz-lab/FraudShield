@@ -1,0 +1,1532 @@
+#!/usr/bin/env python3
+"""verify-linter runner — extracted from the verify-linter.sh heredoc.
+
+PR2 commit 1: lifts the 1500-line Python heredoc out of the bash wrapper so
+the linter logic is importable, testable, and refactorable. This commit is a
+verbatim translation: zero behavior change. Subsequent commits split the
+runner into context, utils, output, subsys A/B/C, and cross_file submodules.
+
+Entry point: main() — invoked by .claude/scripts/lib/linter/cli.py via the
+bootstrap shim that sets sys.path so this module can be imported.
+
+Reads VL_* environment variables exported by verify-linter.sh:
+  VL_JSON_OUT, VL_CACHE_FILE, VL_WARN_ONLY, VL_STRICT_AOC, VL_RULES_PATH,
+  VL_REPO_ROOT.
+"""
+
+
+def main() -> int:
+    import json, sys, os, glob, re
+
+    # Repo root + derived paths come from VL_REPO_ROOT (exported by the bash
+    # wrapper) or fall back to __file__-relative resolution. Same defaults the
+    # heredoc used to compute via sys.argv[1-3].
+    REPO_ROOT = os.environ.get(
+        "VL_REPO_ROOT",
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))),
+    )
+    registry_path = os.path.join(REPO_ROOT, ".claude", "patterns", "state-registry.json")
+    skills_dir = os.path.join(REPO_ROOT, ".claude", "skills")
+    patterns_dir = os.path.join(REPO_ROOT, ".claude", "patterns")
+
+    # CLI flags exported from the bash wrapper
+    JSON_OUT = bool(os.environ.get("VL_JSON_OUT"))
+    CACHE_FILE = os.environ.get("VL_CACHE_FILE", "")
+    WARN_ONLY = bool(os.environ.get("VL_WARN_ONLY"))
+    STRICT_AOC = bool(os.environ.get("VL_STRICT_AOC"))
+    RULES_PATH = os.environ.get("VL_RULES_PATH", "")
+    STRICT_AOC_TYPES = {
+        "verdict_vocab_consistency",
+        "ledger_ownership",
+        "consumer_coverage",
+        "frontmatter_artifact_consistency",
+    }
+    # REPO_ROOT already computed above (line ~24)
+
+    registry = json.load(open(registry_path))
+
+    # Keys that are not skills (no state files)
+    SKIP_KEYS = {"trace_schemas"}
+
+    uncovered = []
+    diverged = []
+    unjustified_true = []
+    drift_declared = []
+    cross_file = []
+
+    # Phrases that count as matching prose for a declared `allows_early_exit_when` value.
+    # The declared value itself (with _ replaced by space) is always matched; this dict
+    # augments with common synonyms for known values.
+    SYNONYMS = {
+        "no_fixes": ["no fixes succeeded", "0 fixes", "zero fixes", "no fixes applied"],
+        "zero_findings": ["0 remaining findings", "zero findings", "no findings"],
+        "baseline_unchanged": ["error count same or decreased", "final_errors <= baseline", "no regression"],
+        "all_fixes_rejected": ["all fixes were rejected", "no changes to commit", "no changes in git working tree"],
+    }
+
+    # Regex markers that must appear in a state's VERIFY for a declared `verify_semantics` value.
+    VERIFY_SEMANTIC_MARKERS = {
+        "strict_zero": [r"exit\s+0", r"&&\s*python3\s+scripts/validate", r"==\s*0"],
+        "no_regression_from_baseline": [r"baseline", r"<=\s*baseline", r"no regression", r"final_errors"],
+        "artifact_exists": [r"\btest -f\b", r"os\.path\.exists", r"os\.path\.isfile"],
+        "non_empty_diff": [r"git diff.*grep -q", r"diff.*--name-only"],
+    }
+
+    def extract_verify_cmd(value):
+        """Extract the VERIFY command string from a registry entry."""
+        if isinstance(value, str):
+            return value
+        if isinstance(value, dict) and "verify" in value:
+            return value["verify"]
+        return None
+
+    def find_state_file(skill, state_id):
+        """Glob for .claude/skills/<dir>/state-<id>-*.md; fall back to
+        .claude/patterns/ for shared terminal states (e.g. "99" → state-99-epilogue.md)."""
+        SKILL_DIR_MAP = {
+            "iterate-check": "iterate",
+            "iterate-cross": "iterate",
+        }
+        directory = SKILL_DIR_MAP.get(skill, skill)
+        pattern = os.path.join(skills_dir, directory, f"state-{state_id}-*.md")
+        matches = glob.glob(pattern)
+        if not matches:
+            patterns_pattern = os.path.join(patterns_dir, f"state-{state_id}-*.md")
+            matches = glob.glob(patterns_pattern)
+        return matches[0] if matches else None
+
+    def extract_section(text, header):
+        """Extract content between **HEADER:** and the next **...:** section header.
+        Skips matches inside code fences to avoid false positives."""
+        lines = text.split('\n')
+        in_fence = False
+        capturing = False
+        result = []
+        target = f'**{header}:**'
+        for line in lines:
+            stripped = line.strip()
+            # Track code fences
+            if stripped.startswith('```'):
+                in_fence = not in_fence
+                if capturing:
+                    result.append(line)
+                continue
+            if in_fence:
+                if capturing:
+                    result.append(line)
+                continue
+            # Outside code fences: look for section headers
+            if not capturing and stripped.startswith(target):
+                capturing = True
+                # Capture any text after the header on the same line
+                after = stripped[len(target):].strip()
+                if after:
+                    result.append(after)
+                continue
+            if capturing:
+                # Stop at the next STANDARD section header. Real section headers
+                # (ACTIONS, VERIFY, POSTCONDITIONS, PRECONDITIONS, STATE TRACKING,
+                # NEXT) always start at column 0 with **UPPERCASE. Indented or
+                # camelcase `**bold**` inline prose (e.g. `   **Present fix...**`)
+                # is bullet formatting inside the section, not a section header.
+                if line.startswith('**') and re.match(r'^\*\*[A-Z][A-Z_ ]*?:?\*\*', line):
+                    break
+                result.append(line)
+        return '\n'.join(result).strip()
+
+    def extract_verify_from_file(text):
+        """Extract VERIFY section content (both fenced and unfenced)."""
+        # Find the VERIFY section
+        verify_section = extract_section(text, "VERIFY")
+        if not verify_section:
+            return ""
+
+        # Extract bash code fence content if present
+        fence_match = re.search(r'```bash\s*\n(.*?)```', verify_section, re.DOTALL)
+        if fence_match:
+            return fence_match.group(1).strip()
+
+        # Return the full section text (includes HTML comments, plain text)
+        return verify_section
+
+    def extract_artifacts_from_postconditions(postcond_text):
+        """Extract artifact file references from POSTCONDITIONS that represent created/written artifacts.
+        Skips read-only references, deletion references, and conditional prior-run references."""
+        artifacts = set()
+        # Patterns that indicate the line is NOT about creating an artifact
+        skip_patterns = re.compile(
+            r'(?:read|understood|has been read|deleted|cleaned|rm -f|'
+            r'If .*exists from a prior run|available in.memory|in-memory|'
+            r'Context digest)',
+            re.IGNORECASE
+        )
+        for line in postcond_text.split('\n'):
+            stripped = line.strip()
+            if not stripped or skip_patterns.search(stripped):
+                continue
+            # .runs/something.json, .runs/something.md, .runs/something.jsonl, .runs/something.txt
+            for m in re.finditer(r'\.runs/[\w\-/]+\.(?:json|md|jsonl|txt)\b', stripped):
+                artifacts.add(m.group(0))
+            # experiment/*.yaml — only if the line suggests creation/modification
+            for m in re.finditer(r'experiment/[\w\-]+\.yaml', stripped):
+                artifacts.add(m.group(0))
+            # package.json — only if not read-only
+            if 'package.json' in stripped:
+                artifacts.add('package.json')
+        return artifacts
+
+    def has_skip_annotation(postcond_text):
+        """Check if postconditions have the skip annotation."""
+        return '<!-- enforced by agent behavior, not VERIFY gate -->' in postcond_text
+
+    def normalize_verify(cmd):
+        """Normalize a VERIFY command for comparison: strip echo, whitespace, comments."""
+        if not cmd:
+            return ""
+        lines = []
+        for line in cmd.split('\n'):
+            stripped = line.strip()
+            # Skip empty lines, echo-only lines, pure comments
+            if not stripped:
+                continue
+            if stripped.startswith('echo ') or stripped == 'echo':
+                continue
+            if stripped.startswith('#'):
+                continue
+            if stripped.startswith('<!--'):
+                continue
+            lines.append(stripped)
+        return '\n'.join(lines)
+
+    def commands_diverge(file_verify, registry_verify):
+        """Check if state file VERIFY and registry VERIFY have substantive differences."""
+        norm_file = normalize_verify(file_verify)
+        norm_reg = normalize_verify(registry_verify)
+
+        if not norm_file and not norm_reg:
+            return False
+
+        # Both empty after normalization = no divergence
+        if not norm_file or not norm_reg:
+            # One is empty, one isn't — could be intentional (file has comments only)
+            # Only flag if registry has real commands but file doesn't (or vice versa)
+            if norm_reg and not norm_file:
+                return True
+            return False
+
+        # Compare the substantive content
+        return norm_file != norm_reg
+
+    def check_declared_drift(skill, state_id, value, file_text):
+        """Detect drift between declarative fields in state-registry.json and state-file prose.
+
+        Declarations are ESCAPE HATCHES that tell cross-file consistency audits
+        (e.g. /review Dimension A) that a pattern is intentional. They must stay in
+        sync with state-file prose, or they become silent false-negatives.
+
+        Checked fields:
+          - allows_early_exit_when: must have matching phrase in ACTIONS
+          - verify_semantics: must have matching regex marker in VERIFY
+        """
+        out = []
+        if not isinstance(value, dict):
+            return out
+
+        actions_text = extract_section(file_text, "ACTIONS").lower()
+        verify_text = (extract_verify_from_file(file_text) + " " + extract_section(file_text, "VERIFY")).lower()
+
+        declared_exit = value.get("allows_early_exit_when")
+        if declared_exit:
+            phrases = [declared_exit.replace("_", " ")] + SYNONYMS.get(declared_exit, [])
+            if not any(p.lower() in actions_text for p in phrases):
+                out.append(
+                    f"  [{skill}:{state_id}] allows_early_exit_when='{declared_exit}' "
+                    f"but ACTIONS prose lacks matching phrase (tried: {phrases})"
+                )
+
+        declared_sem = value.get("verify_semantics")
+        if declared_sem:
+            pats = VERIFY_SEMANTIC_MARKERS.get(declared_sem, [])
+            if pats and not any(re.search(p, verify_text) for p in pats):
+                out.append(
+                    f"  [{skill}:{state_id}] verify_semantics='{declared_sem}' "
+                    f"but VERIFY lacks matching markers (expected one of: {pats})"
+                )
+        return out
+
+
+    # -- CHECK-X1: forward early-exit discovery (#928 + #1043 gap closure) --
+    # If ACTIONS prose describes an early-exit path with a TERMINAL verb, the
+    # registry entry MUST declare allows_early_exit_when=<condition> -- otherwise
+    # state-completion-gate.sh will block the legitimate branch (review.2e bug
+    # class; resolve.7 is the third instance found during /solve Phase 1 scan).
+    #
+    # Regex explicitly excludes forward motion ("proceed to STATE N"), mode
+    # branches ("use direct mode", "proceed silently"), and fallbacks.
+    EARLY_EXIT_TRIGGER = re.compile(
+        r'\bIf (?:ALL |no |zero |0 |none |the .*? is empty|there are no )'
+        r'.{0,300}?'
+        r'(?:exit loop|exit early|'
+        r'advance state.{0,100}?TERMINAL|skill ends|'
+        r'no PR created|terminate)\b',
+        re.IGNORECASE | re.DOTALL
+    )
+
+    # -- CHECK-X2: baseline/parity semantics discovery (#928 gap closure) --
+    # If the outer state VERIFY enforces a non-strict baseline/pre-fix comparison,
+    # registry MUST declare verify_semantics=<name> -- otherwise VERIFY will
+    # enforce strict zero instead of no-regression-from-baseline (review.4 bug
+    # class).
+    #
+    # Regex is deliberately tight: matches only *outcome* prose ("final_errors <=
+    # baseline", "no regression from baseline") that describes a state-level
+    # exit invariant. Does NOT match per-iteration keep/revert phrases like
+    # "if error count same or decreased -> keep the fix" which are internal
+    # operations of a loop state, not the state's VERIFY semantics.
+    BASELINE_PARITY_TRIGGER = re.compile(
+        r'\b(?:'
+        r'<=\s*(?:baseline|pre.?fix)'
+        r'|no regression\s+(?:from|vs|against)\s+baseline'
+        r'|final_errors\s*<=\s*baseline'
+        r'|error count does not exceed baseline'
+        r')',
+        re.IGNORECASE
+    )
+
+
+    def check_x1_forward_early_exit(skill, state_id, value, file_text):
+        """Flag state files whose ACTIONS contain early-exit TERMINAL prose but
+        whose registry entry lacks allows_early_exit_when declaration."""
+        out = []
+        actions_text = extract_section(file_text, "ACTIONS")
+        if not actions_text:
+            return out
+        declared = value.get("allows_early_exit_when") if isinstance(value, dict) else None
+        m = EARLY_EXIT_TRIGGER.search(actions_text)
+        if m and not declared:
+            snippet = m.group(0).replace('\n', ' ')[:70]
+            out.append(
+                f"  [{skill}:{state_id}] ACTIONS contain early-exit TERMINAL prose "
+                f"(matched: {snippet!r}) but registry lacks allows_early_exit_when"
+            )
+        return out
+
+
+    def check_x2_baseline_parity(skill, state_id, value, file_text):
+        """Flag state files whose ACTIONS describe a baseline/parity comparison
+        but whose registry entry lacks verify_semantics declaration."""
+        out = []
+        actions_text = extract_section(file_text, "ACTIONS")
+        if not actions_text:
+            return out
+        declared = value.get("verify_semantics") if isinstance(value, dict) else None
+        m = BASELINE_PARITY_TRIGGER.search(actions_text)
+        if m and not declared:
+            snippet = m.group(0).replace('\n', ' ')[:70]
+            out.append(
+                f"  [{skill}:{state_id}] ACTIONS contain baseline/parity comparison "
+                f"(matched: {snippet!r}) but registry lacks verify_semantics"
+            )
+        return out
+
+
+    for skill, states in registry.items():
+        if skill in SKIP_KEYS:
+            continue
+        if not isinstance(states, dict):
+            continue
+
+        for state_id, value in states.items():
+            # Skip metadata keys
+            if state_id.startswith('_'):
+                continue
+
+            verify_cmd = extract_verify_cmd(value)
+            if verify_cmd is None:
+                continue
+
+            state_file = find_state_file(skill, state_id)
+            if not state_file:
+                print(f"WARNING: No state file for [{skill}:{state_id}]", file=sys.stderr)
+                continue
+
+            file_text = open(state_file).read()
+
+            # --- Check 1: Artifact reference coverage ---
+            postcond_text = extract_section(file_text, "POSTCONDITIONS")
+            if postcond_text and not has_skip_annotation(postcond_text):
+                artifacts = extract_artifacts_from_postconditions(postcond_text)
+                for artifact in sorted(artifacts):
+                    basename = os.path.basename(artifact)
+                    # Check if artifact or its basename appears in registry VERIFY
+                    if basename not in verify_cmd and artifact not in verify_cmd:
+                        # Extract the postcondition line mentioning this artifact
+                        context_line = ""
+                        for line in postcond_text.split('\n'):
+                            if artifact in line or basename in line:
+                                context_line = line.strip().lstrip('- ')
+                                break
+                        uncovered.append(
+                            f"  [{skill}:{state_id}] {artifact} -- postcondition: \"{context_line[:80]}\""
+                        )
+
+            # --- Check 2: State file / registry divergence ---
+            # Skip divergence check for VERIFY=true entries (state files have prose justifications)
+            file_verify = extract_verify_from_file(file_text)
+            if verify_cmd.strip() != "true" and commands_diverge(file_verify, verify_cmd):
+                file_summary = normalize_verify(file_verify)[:60].replace('\n', ' | ')
+                reg_summary = normalize_verify(verify_cmd)[:60].replace('\n', ' | ')
+                diverged.append(
+                    f"  [{skill}:{state_id}] -- state file: {file_summary} | registry: {reg_summary}"
+                )
+
+            # --- Check 3: Unjustified true VERIFY ---
+            if verify_cmd.strip() == "true":
+                has_justification = (
+                    '<!-- VERIFY=true:' in file_text or
+                    '# VERIFY=true:' in file_text
+                )
+                if not has_justification:
+                    unjustified_true.append(
+                        f"  [{skill}:{state_id}] -- VERIFY is \"true\" but no justification comment found"
+                    )
+
+            # --- Check 4: Declared field / prose drift ---
+            drift_declared.extend(check_declared_drift(skill, state_id, value, file_text))
+
+            # --- Check 4b: Forward early-exit discovery (CHECK-X1) ---
+            drift_declared.extend(check_x1_forward_early_exit(skill, state_id, value, file_text))
+
+            # --- Check 4c: Baseline/parity semantics discovery (CHECK-X2) ---
+            drift_declared.extend(check_x2_baseline_parity(skill, state_id, value, file_text))
+
+
+    # ---------------------------------------------------------------------------
+    # Check 5: Cross-file contradictions (rule-driven)
+    # ---------------------------------------------------------------------------
+
+    # ---------------------------------------------------------------------------
+    # Helpers for per-section field_role_map check (#1024 follow-up)
+    # ---------------------------------------------------------------------------
+
+    _HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$", re.MULTILINE)
+    _PRAGMA_RE_TEMPLATE = (
+        r"<!--\s*coherence-allow:\s*raw-{field}"
+        r"(?:\s*\(([^)]*)\))?"
+        r"(?:\s*scope=(\[[^\]]*\]))?"
+        r"\s*(?:[—-]\s*(.*?))?\s*-->"
+    )
+
+
+    def _scan_headings(text):
+        """Return [(line_num, level, heading_text)] for all markdown headings."""
+        out = []
+        for m in _HEADING_RE.finditer(text):
+            line = text[: m.start()].count("\n") + 1
+            out.append((line, len(m.group(1)), m.group(2).strip()))
+        return out
+
+
+    def _enclosing_block(headings, occurrence_line):
+        """Return (containing, block_end_line_inclusive_or_None).
+
+        Considered scope: H2/H3 only. H1 is the file title — not a semantic
+        block boundary. H4+ is sub-content of the nearest H2/H3.
+
+        `containing` is None when the occurrence precedes any H2/H3 heading;
+        in that case the caller treats the extent as "preamble" (or whole
+        file when no H2/H3 exists at all).
+        """
+        scoped = [(ln, lvl, txt) for ln, lvl, txt in headings if lvl in (2, 3)]
+        containing = None
+        containing_idx = -1
+        for i, (ln, lvl, txt) in enumerate(scoped):
+            if ln > occurrence_line:
+                break
+            containing = (ln, lvl, txt)
+            containing_idx = i
+        if containing is None:
+            return None, None
+        _, containing_lvl, _ = containing
+        end = None
+        for ln, lvl, _ in scoped[containing_idx + 1:]:
+            if lvl <= containing_lvl:
+                end = ln - 1
+                break
+        return containing, end
+
+
+    def _parse_pragmas(text, field):
+        """Return list of {line, qualifier, scope, raw, end_line} for pragmas."""
+        out = []
+        pat = re.compile(
+            _PRAGMA_RE_TEMPLATE.format(field=re.escape(field)),
+            re.DOTALL,
+        )
+        for m in pat.finditer(text):
+            start_line = text[: m.start()].count("\n") + 1
+            end_line = text[: m.end()].count("\n") + 1
+            scope_raw = m.group(2)
+            scope = None
+            if scope_raw:
+                try:
+                    scope = json.loads(scope_raw)
+                    if not (isinstance(scope, list)
+                            and all(isinstance(x, str) for x in scope)):
+                        scope = "MALFORMED"
+                except Exception:
+                    scope = "MALFORMED"
+            out.append({
+                "line": start_line,
+                "end_line": end_line,
+                "qualifier": m.group(1),
+                "scope": scope,
+                "raw": m.group(0),
+            })
+        return out
+
+
+    def _normalize_heading(h):
+        """Strip leading `#`+space prefix so `"## Step 3"` and `"Step 3"` match."""
+        return re.sub(r"^#+\s+", "", h).strip()
+
+
+    def check_field_role_map(rule):
+        """Verify SET-semantic consumers of `field` either call the canonical
+        function or declare a heading-scoped pragma covering the section.
+
+        Rule shape:
+          {
+            "id": "<rule_id>",
+            "type": "field_role_map",
+            "field": "<field_name>",         # e.g. "golden_path"
+            "canonical_function": "<name>",  # e.g. "derive_scope_pages"
+            "consumers": ["<file>", ...]     # paths relative to repo root
+          }
+
+        Per-occurrence check (#1024 follow-up — catches mixed-semantic files):
+          For each raw `<field>` occurrence outside a pragma comment, the
+          enclosing ## / ### block must contain EITHER a
+          `<!-- coherence-allow: raw-<field> ... scope=["## Heading", ...] -->`
+          pragma whose scope list matches the block heading, OR a
+          `<canonical>(` call in the same block.
+
+          Legacy file-scope pragmas (no scope=[...]) still allow raw access
+          anywhere in the file but emit a DEPRECATION WARN so templates
+          can be migrated incrementally. Future versions will BLOCK.
+
+          Any `scope=[...]` entry that does not match a heading currently
+          present in the file is flagged immediately — catches renames.
+
+        Forbidden patterns (UNCONDITIONAL — pragma cannot whitelist these):
+          `len(... <field> ...)` and `set(... <field> ...)`
+          Count-based access defeats the centralization purpose.
+        """
+        out = []
+        canonical = rule.get("canonical_function", "")
+        field = rule.get("field", "")
+        rid = rule.get("id", "<unknown>")
+        if not canonical or not field:
+            out.append(
+                f"  [{rid}] rule definition incomplete "
+                f"(need canonical_function and field)"
+            )
+            return out
+
+        forbidden = [
+            re.compile(rf"\blen\s*\(\s*[^)]*\b{re.escape(field)}\b"),
+            re.compile(rf"\bset\s*\(\s*[^)]*\b{re.escape(field)}\b"),
+        ]
+        occ_re = re.compile(rf"\b{re.escape(field)}\b")
+
+        for consumer_path in rule.get("consumers", []):
+            full = os.path.join(REPO_ROOT, consumer_path)
+            if not os.path.isfile(full):
+                out.append(f"  [{rid}] consumer not found on disk: {consumer_path}")
+                continue
+            text = open(full).read()
+            lines = text.splitlines()
+
+            # 1. Unconditional forbidden patterns (pragma cannot whitelist)
+            for pat in forbidden:
+                for m in pat.finditer(text):
+                    line_num = text[: m.start()].count("\n") + 1
+                    out.append(
+                        f"  [{rid}] {consumer_path}:{line_num} forbidden "
+                        f"count-based access: {m.group(0)!r} "
+                        f"(pragma cannot whitelist this)"
+                    )
+
+            headings = _scan_headings(text)
+            heading_texts_norm = {_normalize_heading(t) for _, _, t in headings}
+            pragmas = _parse_pragmas(text, field)
+
+            # 2. Validate scope=[...] integrity — every listed heading must
+            # match a current heading (catches renames).
+            for p in pragmas:
+                if p["scope"] == "MALFORMED":
+                    out.append(
+                        f"  [{rid}] {consumer_path}:{p['line']} malformed "
+                        f"scope=[...] JSON in pragma"
+                    )
+                elif isinstance(p["scope"], list):
+                    for h in p["scope"]:
+                        if _normalize_heading(h) not in heading_texts_norm:
+                            out.append(
+                                f"  [{rid}] {consumer_path}:{p['line']} "
+                                f"pragma scope=[...] references heading "
+                                f"not found in file: {h!r} — rename or "
+                                f"remove. Current H2/H3 headings: "
+                                f"{sorted(_normalize_heading(t) for _, lvl, t in headings if lvl in (2,3))}"
+                            )
+
+            has_legacy_file_scope_pragma = any(
+                p["scope"] is None for p in pragmas
+            )
+            legacy_reported = False
+
+            # 3. For each raw occurrence, check the enclosing block
+            for m in occ_re.finditer(text):
+                ln = text[: m.start()].count("\n") + 1
+
+                # Skip occurrences inside pragma comments themselves
+                in_pragma = any(
+                    p["line"] <= ln <= p["end_line"] for p in pragmas
+                )
+                if in_pragma:
+                    continue
+
+                # Skip occurrences in markdown comments that are NOT pragmas
+                # (conservative: a `<!-- ... golden_path ... -->` block is prose
+                # about the field, not a consumption point).
+                # Find enclosing `<!--` / `-->` on the same "HTML comment".
+                # We scan backward from the occurrence to the nearest `<!--`
+                # and forward to `-->` and check if they bracket the match.
+                pre = text[: m.start()]
+                last_open = pre.rfind("<!--")
+                last_close_in_pre = pre.rfind("-->")
+                if last_open != -1 and last_open > last_close_in_pre:
+                    # We are inside an open HTML comment — check if it closes
+                    # after the occurrence
+                    rest = text[m.end():]
+                    next_close = rest.find("-->")
+                    if next_close != -1:
+                        # Occurrence is inside <!-- ... --> and NOT one of
+                        # our tracked pragmas — skip (prose, not consumption).
+                        continue
+
+                block, _ = _enclosing_block(headings, ln)
+                scoped_hs = [(h_ln, h_lvl) for h_ln, h_lvl, _ in headings if h_lvl in (2, 3)]
+                if block is None:
+                    # Preamble: from file start to the first H2/H3 (exclusive),
+                    # or whole file when no H2/H3 exists at all.
+                    block_head_norm = None
+                    block_head_display = "<preamble>"
+                    block_start = 1
+                    if scoped_hs:
+                        block_end = scoped_hs[0][0] - 1
+                    else:
+                        block_end = len(lines)
+                else:
+                    block_head_line, block_head_lvl, block_head_text = block
+                    block_head_norm = _normalize_heading(block_head_text)
+                    block_head_display = block_head_text
+                    block_start = block_head_line
+                    block_end = None
+                    for h_ln, h_lvl in scoped_hs:
+                        if h_ln > block_head_line and h_lvl <= block_head_lvl:
+                            block_end = h_ln - 1
+                            break
+                    if block_end is None:
+                        block_end = len(lines)
+                block_text = "\n".join(lines[block_start - 1:block_end])
+
+                # Ancestor heading chain: when inside an H3, also check the
+                # nearest ancestor H2. A pragma scoping ## Section X covers
+                # every ### nested under it.
+                ancestor_norms = set()
+                if block is not None:
+                    block_head_line, block_head_lvl, block_head_text = block
+                    ancestor_norms.add(_normalize_heading(block_head_text))
+                    if block_head_lvl == 3:
+                        for h_ln, h_lvl, h_txt in headings:
+                            if h_ln >= block_head_line:
+                                break
+                            if h_lvl == 2:
+                                ancestor_norms.add(_normalize_heading(h_txt))
+                            else:
+                                # Reset ancestor when another H2 opens above
+                                pass
+                        # Narrow to the most recent H2 ancestor above this H3
+                        latest_h2 = None
+                        for h_ln, h_lvl, h_txt in headings:
+                            if h_ln >= block_head_line:
+                                break
+                            if h_lvl == 2:
+                                latest_h2 = _normalize_heading(h_txt)
+                        # latest_h2 is already in ancestor_norms above; keep
+                        # just the chain (block + its H2 ancestor) for
+                        # deterministic matching.
+                        ancestor_norms = {_normalize_heading(block_head_text)}
+                        if latest_h2:
+                            ancestor_norms.add(latest_h2)
+
+                has_canonical_in_block = canonical in block_text
+
+                pragma_covers = False
+                for p in pragmas:
+                    if isinstance(p["scope"], list):
+                        normed = {_normalize_heading(h) for h in p["scope"]}
+                        if ancestor_norms & normed:
+                            pragma_covers = True
+                            break
+
+                if has_canonical_in_block or pragma_covers:
+                    continue
+
+                if has_legacy_file_scope_pragma:
+                    # Legacy file-scope pragma — WARN once per file, still ALLOW
+                    if not legacy_reported:
+                        out.append(
+                            f"  [{rid}] {consumer_path}:{ln} WARN: raw "
+                            f"{field} under block {block_head_display!r} "
+                            f"is currently allowed by a legacy file-scope "
+                            f"pragma (no scope=[...]). Migrate the pragma "
+                            f"to scope=[\"## Heading\", ...] syntax or "
+                            f"switch the block to {canonical}(). Future "
+                            f"versions will BLOCK."
+                        )
+                        legacy_reported = True
+                    continue
+
+                out.append(
+                    f"  [{rid}] {consumer_path}:{ln} raw {field} in block "
+                    f"{block_head_display!r} has neither {canonical}() "
+                    f"call nor a scope-covering pragma. Add "
+                    f"scope=[\"## {block_head_display}\"] to a pragma or "
+                    f"switch the block to {canonical}()."
+                )
+
+        return out
+
+
+    def check_discover_consumers(rule):
+        """Grep-discover files mentioning `field` in a consumption context;
+        report drift vs the authoritative consumers list in `against_rule`.
+
+        Rule shape:
+          {
+            "id": "<rule_id>",
+            "type": "discover_consumers",
+            "field": "<field_name>",
+            "against_rule": "<field_role_map rule id>",
+            "path_excludes": ["<prefix>", ...],
+            "consumption_patterns": ["<regex>", ...]
+          }
+
+        WARN-only: real violations are caught by the field_role_map rule.
+        This check is purely for maintaining the consumers list over time.
+        """
+        out = []
+        rid = rule.get("id", "<unknown>")
+        field = rule.get("field", "")
+        against = rule.get("against_rule")
+        excludes = rule.get("path_excludes", [])
+        patterns_raw = rule.get("consumption_patterns", [])
+        if not field or not against or not patterns_raw:
+            out.append(
+                f"  [{rid}] rule definition incomplete "
+                f"(need field, against_rule, consumption_patterns)"
+            )
+            return out
+        try:
+            patterns = [re.compile(p) for p in patterns_raw]
+        except re.error as exc:
+            out.append(f"  [{rid}] invalid consumption_patterns regex: {exc}")
+            return out
+
+        authoritative = set()
+        try:
+            with open(RULES_PATH) as f:
+                for r in json.load(f).get("rules", []):
+                    if r.get("id") == against:
+                        authoritative = set(r.get("consumers", []))
+                        break
+        except (OSError, json.JSONDecodeError) as exc:
+            out.append(
+                f"  [{rid}] failed to read authoritative list from "
+                f"{RULES_PATH}: {exc}"
+            )
+            return out
+
+        def _excluded(rel):
+            rel_posix = rel.replace(os.sep, "/")
+            for ex in excludes:
+                ex_posix = ex.replace(os.sep, "/").rstrip("/")
+                if rel_posix == ex_posix or rel_posix.startswith(ex_posix + "/"):
+                    return True
+            return False
+
+        search_root = os.path.join(REPO_ROOT, ".claude")
+        allowed_ext = (".md", ".py", ".sh", ".ts", ".tsx", ".json")
+        field_word_re = re.compile(rf"\b{re.escape(field)}\b")
+        found = set()
+        has_any_reference = set()
+        for root, dirs, files in os.walk(search_root):
+            # Prune excluded subtrees
+            pruned = []
+            for d in list(dirs):
+                rel_d = os.path.relpath(os.path.join(root, d), REPO_ROOT)
+                if _excluded(rel_d):
+                    pruned.append(d)
+            for d in pruned:
+                dirs.remove(d)
+            for fn in files:
+                if not fn.endswith(allowed_ext):
+                    continue
+                full = os.path.join(root, fn)
+                rel = os.path.relpath(full, REPO_ROOT)
+                if _excluded(rel):
+                    continue
+                try:
+                    with open(full, encoding="utf-8", errors="ignore") as f:
+                        text = f.read()
+                except OSError:
+                    continue
+                if field_word_re.search(text):
+                    has_any_reference.add(rel)
+                if any(p.search(text) for p in patterns):
+                    found.add(rel)
+
+        missing = found - authoritative
+        # Intentionally do NOT flag "stale" entries — a consumer that has
+        # been fully migrated to the canonical function may legitimately
+        # have zero bare-word references. Keeping it in the consumers
+        # list serves as regression vigilance: if a future author
+        # reintroduces raw access, the field_role_map rule fires. We
+        # surface drift only in one direction (grep-found files that are
+        # NOT listed) to avoid churning the consumers list on migration.
+        stale = set()
+        for m in sorted(missing):
+            out.append(
+                f"  [{rid}] WARN: {m} contains consumption-pattern for "
+                f"{field!r} but is not listed in {against!r} consumers. "
+                f"Either add it to the consumers list or audit whether "
+                f"the read is a drift violation."
+            )
+        for s in sorted(stale):
+            out.append(
+                f"  [{rid}] WARN: {s} is listed in {against!r} consumers "
+                f"but no longer matches consumption patterns for "
+                f"{field!r}. Remove from consumers list (stale entry)."
+            )
+        return out
+
+
+    # Patterns that indicate an artifact reference is NOT a real consumption
+    # (used to filter false positives in artifact_lifecycle check). Mirrors the
+    # existing `extract_artifacts_from_postconditions` skip_patterns precedent.
+    _ARTIFACT_SKIP_PATTERNS = re.compile(
+        r"(?:not\s+os\.path\.exists|"
+        r"not\s+os\.path\.isfile|"
+        r"deleted|cleaned|rm\s+-f|"
+        r"if\s+.*exists\s+from\s+a\s+prior\s+run)",
+        re.IGNORECASE,
+    )
+
+
+    def check_artifact_lifecycle(rule):
+        """Verify artifact producer/consumer ordering across states in a skill.
+
+        Rule shape:
+          {
+            "id": "<rule_id>",
+            "type": "artifact_lifecycle",
+            "skill": "<skill_name>"     # which skill's states to scan
+          }
+
+        For the named skill: each state can declare optional `produces: [...]`
+        and `do_not_modify: [...]` arrays in state-registry.json. The check:
+          (a) every artifact appearing in a state's VERIFY (regex-extracted)
+              MUST be in some upstream state's `produces` declaration, OR
+              NOT be `do_not_modify` flagged anywhere upstream
+          (b) `do_not_modify[X]` declared in state B + `produces[X]` declared
+              in any state after B = DO_NOT_MODIFY_VIOLATION
+
+        Conservative: only fires when both `produces` and `do_not_modify` are
+        explicitly declared. Pure prose (e.g. "do not write to X" in ACTIONS)
+        is intentionally NOT parsed — too brittle.
+        """
+        out = []
+        skill = rule.get("skill", "")
+        rid = rule.get("id", "<unknown>")
+        if not skill or skill not in registry or not isinstance(registry[skill], dict):
+            return out
+
+        states = registry[skill]
+        # Build state ordering from registry key order (insertion order is preserved
+        # in Python 3.7+ JSON load and reflects the canonical skill flow).
+        ordered_states = [s for s in states if not s.startswith("_") and isinstance(states[s], (dict, str))]
+        state_position = {s: i for i, s in enumerate(ordered_states)}
+
+        produces_at = {}     # artifact -> earliest state position that produces it
+        forbids_at = {}      # artifact -> earliest state position that forbids it
+
+        for sid in ordered_states:
+            val = states[sid]
+            if not isinstance(val, dict):
+                continue
+            for a in (val.get("produces") or []):
+                produces_at.setdefault(a, []).append(state_position[sid])
+            for a in (val.get("do_not_modify") or []):
+                forbids_at.setdefault(a, []).append(state_position[sid])
+
+        # Check (a): VERIFY-referenced artifacts must have a producer upstream
+        artifact_re = re.compile(r"\.runs/[a-z0-9-]+\.(?:json|md|jsonl|txt|flag)")
+        for sid in ordered_states:
+            val = states[sid]
+            verify_cmd = extract_verify_cmd(val)
+            if not verify_cmd or verify_cmd.strip() == "true":
+                continue
+            if _ARTIFACT_SKIP_PATTERNS.search(verify_cmd):
+                # Verify contains negated/skip patterns; conservative — skip
+                continue
+            for m in artifact_re.finditer(verify_cmd):
+                artifact = m.group(0)
+                sid_pos = state_position[sid]
+                producer_positions = produces_at.get(artifact, [])
+                if producer_positions and not any(p <= sid_pos for p in producer_positions):
+                    out.append(
+                        f"  [{rid}] {skill}:{sid} VERIFY references {artifact} "
+                        f"but no upstream state declares produces"
+                    )
+
+        # Check (b): do_not_modify[X] cannot precede produces[X]
+        for artifact, forbid_positions in forbids_at.items():
+            producer_positions = produces_at.get(artifact, [])
+            for fp in forbid_positions:
+                for pp in producer_positions:
+                    if fp < pp:
+                        forbid_state = ordered_states[fp]
+                        produce_state = ordered_states[pp]
+                        out.append(
+                            f"  [{rid}] {skill}:{forbid_state} do_not_modify includes {artifact} "
+                            f"but {skill}:{produce_state} (later) declares produces"
+                        )
+        return out
+
+
+    # ---------------------------------------------------------------------------
+    # AOC v1 rule dispatchers (R1/R2/R3)
+    # ---------------------------------------------------------------------------
+
+    def _emit_finding(rule, message):
+        """Emit a finding string tagged with rule id + type so downstream
+        exit-logic can partition by rule type for --strict-aoc."""
+        rid = rule.get("id", "<unknown>")
+        rtype = rule.get("type", "<unknown>")
+        sev = rule.get("severity", "block")
+        return f"  [{rid}] ({rtype}/{sev}) {message}"
+
+
+    def check_verdict_vocab_consistency(rule):
+        """AOC v1 R1: agent definitions must emit only verdicts/results declared
+        in verdict_agents_schema, and evaluate-hard-gate-predicates.py predicates
+        must reference only declared verdict values."""
+        findings = []
+        rid = rule.get("id", "<unknown>")
+
+        reg_path = os.path.join(REPO_ROOT, rule.get("registry_path", ""))
+        if not os.path.isfile(reg_path):
+            findings.append(_emit_finding(rule, f"registry file missing: {reg_path}"))
+            return findings
+        try:
+            reg = json.load(open(reg_path))
+        except (OSError, json.JSONDecodeError) as e:
+            findings.append(_emit_finding(rule, f"cannot read registry: {e}"))
+            return findings
+
+        schema = reg.get("verdict_agents_schema", {})
+        if not schema:
+            findings.append(_emit_finding(rule, "verdict_agents_schema missing from registry"))
+            return findings
+
+        # Build a union of all declared verdicts/results across agents.
+        all_verdicts = set()
+        all_results = set()
+        for agent_name, spec in schema.items():
+            for v in spec.get("allowed_verdicts", []):
+                if v is not None:
+                    all_verdicts.add(v)
+            for r in spec.get("allowed_results", []):
+                if r is not None:
+                    all_results.add(r)
+
+        # Core verdict vocabulary is fixed at 4 values per AOC v1.
+        AOC_CORE_VERDICTS = {"pass", "fail", "blocked", "unresolved"}
+        for v in all_verdicts:
+            if v not in AOC_CORE_VERDICTS:
+                findings.append(_emit_finding(
+                    rule,
+                    f"verdict_agents_schema contains non-AVS-v1 verdict: {v!r}. "
+                    f"Allowed core verdicts are {sorted(AOC_CORE_VERDICTS)}."
+                ))
+
+        # Scan predicate file for verdict literals and confirm they are in the
+        # core vocabulary (predicates should never reference legacy verdicts).
+        pred_path = os.path.join(REPO_ROOT, rule.get("predicate_file", ""))
+        if os.path.isfile(pred_path):
+            try:
+                pred_content = open(pred_path).read()
+            except OSError:
+                pred_content = ""
+            # Find all double-quoted or single-quoted strings compared to t.get('verdict')
+            # Heuristic: look for patterns like: t.get('verdict') == 'VALUE' or 'VALUE' in (...)
+            verdict_literal_re = re.compile(
+                r"t\.get\(['\"]verdict['\"]\)\s*==?\s*['\"]([a-zA-Z_\-]+)['\"]"
+            )
+            tuple_literal_re = re.compile(
+                r"t\.get\(['\"]verdict['\"]\)\s+in\s*\(([^)]*)\)"
+            )
+            for m in verdict_literal_re.finditer(pred_content):
+                lit = m.group(1)
+                if lit not in AOC_CORE_VERDICTS and lit not in all_verdicts:
+                    findings.append(_emit_finding(
+                        rule,
+                        f"{rule.get('predicate_file')} references non-registry verdict {lit!r}"
+                    ))
+            for m in tuple_literal_re.finditer(pred_content):
+                tuple_body = m.group(1)
+                for lit_m in re.finditer(r"['\"]([a-zA-Z_\-]+)['\"]", tuple_body):
+                    lit = lit_m.group(1)
+                    if lit not in AOC_CORE_VERDICTS and lit not in all_verdicts:
+                        findings.append(_emit_finding(
+                            rule,
+                            f"{rule.get('predicate_file')} references non-registry verdict {lit!r}"
+                        ))
+
+        # Scan agent files (under agent_files_glob) for verdict values emitted.
+        # We look for `"verdict":"<value>"` patterns; values like `<verdict>`
+        # or `<pass|fail>` are templates and excluded.
+        agent_glob = rule.get("agent_files_glob", "")
+        if agent_glob:
+            abs_glob = os.path.join(REPO_ROOT, agent_glob)
+            verdict_agents = set(schema.keys())
+            for agent_file in sorted(glob.glob(abs_glob)):
+                agent_base = os.path.basename(agent_file).replace(".md", "")
+                if agent_base not in verdict_agents:
+                    continue  # Only enforce the declared 17 verdict_agents.
+                try:
+                    content = open(agent_file).read()
+                except OSError:
+                    continue
+                spec = schema.get(agent_base, {})
+                allowed_v = set(spec.get("allowed_verdicts", []))
+                # Detect `"verdict":"<literal>"` (legacy uppercase, multi-word, or unknown-value emissions).
+                # Values starting with `<` are template placeholders (e.g. <pass|fail>, <verdict>) — skip.
+                # Values containing `|` alone are template alternation — skip.
+                for m in re.finditer(r'"verdict"\s*:\s*"([^"<>]+)"', content):
+                    lit = m.group(1).strip()
+                    if not lit:
+                        continue
+                    if "|" in lit:
+                        continue
+                    # Normalize casing
+                    lit_norm = lit.lower() if lit.lower() in {"pass", "fail", "blocked", "unresolved"} else lit
+                    if lit_norm not in allowed_v and lit not in allowed_v:
+                        findings.append(_emit_finding(
+                            rule,
+                            f"{os.path.relpath(agent_file, REPO_ROOT)}: emits verdict {lit!r} not in allowed_verdicts {sorted(allowed_v)}"
+                        ))
+
+        return findings
+
+
+    def check_ledger_ownership(rule):
+        """AOC v1 R2: gated_paths must be written only by allowed_writers.
+        Scans template directories (.claude/agents, .claude/hooks,
+        .claude/scripts, .claude/skills, .claude/patterns) for writes targeting
+        gated_paths and reports any outside the allowed_writers list."""
+        findings = []
+        allowed = set(rule.get("allowed_writers", []))
+        gated_paths = rule.get("gated_paths", [])
+        # Build per-path escaped regex segments (literal paths).
+        # Detect writes: patterns like "> .runs/fix-log.md", ">> .runs/fix-log.md",
+        # "open('.runs/fix-log.md'", "open(\".runs/fix-log.md\"", and "with open('.runs/fix-log.md', 'a')".
+        scan_roots = [
+            ".claude/agents",
+            ".claude/hooks",
+            ".claude/scripts",
+            ".claude/skills",
+            ".claude/patterns",
+        ]
+        # Test directories contain fixture strings that intentionally reference
+        # gated paths; do not scan them.
+        SKIP_PREFIXES = (
+            ".claude/scripts/tests/",
+            ".claude/scripts/lib/tests/",
+        )
+        for gated in gated_paths:
+            esc = re.escape(gated)
+            write_patterns = [
+                re.compile(r">{1,2}\s*" + esc),                             # shell redirect
+                re.compile(r"open\(\s*['\"]" + esc + r"['\"]\s*,\s*['\"][wa]\+?b?['\"]"),  # open(path, 'w'/'a')
+                re.compile(r"open\(\s*['\"]" + esc + r"['\"]\)[^)]*\.write\("),  # open(path).write( — rare
+            ]
+            for root in scan_roots:
+                root_abs = os.path.join(REPO_ROOT, root)
+                if not os.path.isdir(root_abs):
+                    continue
+                for dirpath, _dirs, files in os.walk(root_abs):
+                    for fn in files:
+                        if not (fn.endswith(".md") or fn.endswith(".sh")
+                                or fn.endswith(".py") or fn.endswith(".json")):
+                            continue
+                        fpath = os.path.join(dirpath, fn)
+                        relpath = os.path.relpath(fpath, REPO_ROOT)
+                        # Skip the coherence rules file itself (declares paths as strings)
+                        # and the contract docs.
+                        if relpath == "/".join([".claude/patterns",
+                                                "template-coherence-rules.json"]):
+                            continue
+                        if relpath == "/".join([".claude/patterns",
+                                                "agent-output-contract.md"]):
+                            continue
+                        # Skip the linter itself: its regex patterns literally
+                        # contain the gated paths for detection purposes.
+                        if relpath == "/".join([".claude/scripts",
+                                                "verify-linter.sh"]):
+                            continue
+                        # Skip the linter Python package — runner.py and its
+                        # split-out modules contain the gated paths in detector
+                        # regexes (this code itself is the detector).
+                        if relpath.startswith(".claude/scripts/lib/linter/"):
+                            continue
+                        # Skip the runtime write guard: it contains the gated
+                        # paths in its detection/deny regexes.
+                        if relpath == "/".join([".claude/hooks",
+                                                "fix-ledger-write-guard.sh"]):
+                            continue
+                        # Skip test fixtures.
+                        if any(relpath.startswith(p) for p in SKIP_PREFIXES):
+                            continue
+                        if relpath in allowed:
+                            continue  # Allowed writer; its writes are legitimate.
+                        try:
+                            content = open(fpath).read()
+                        except OSError:
+                            continue
+                        for pat in write_patterns:
+                            for m in pat.finditer(content):
+                                # Skip when the mention is inside a code comment
+                                # that references AOC v1 contract.
+                                line_start = content.rfind("\n", 0, m.start()) + 1
+                                line_end = content.find("\n", m.end())
+                                if line_end == -1:
+                                    line_end = len(content)
+                                line = content[line_start:line_end]
+                                low = line.lower()
+                                if "aoc v1" in low or "# documented pattern" in low:
+                                    continue
+                                findings.append(_emit_finding(
+                                    rule,
+                                    f"{relpath}: writes to gated path {gated} outside allowed writers"
+                                ))
+                                break  # one finding per file+path
+                            else:
+                                continue
+                            break
+        return findings
+
+
+    def check_consumer_coverage(rule):
+        """AOC v1 R3: every consumer must reference canonical_source (path string)."""
+        findings = []
+        canonical = rule.get("canonical_source", "")
+        consumers = rule.get("consumers", [])
+        canonical_basename = os.path.basename(canonical)
+        # The literal canonical path or its basename is sufficient evidence.
+        needles = [canonical, canonical_basename]
+        for consumer in consumers:
+            fpath = os.path.join(REPO_ROOT, consumer)
+            if not os.path.isfile(fpath):
+                findings.append(_emit_finding(
+                    rule,
+                    f"{consumer}: consumer file missing"
+                ))
+                continue
+            try:
+                content = open(fpath).read()
+            except OSError as e:
+                findings.append(_emit_finding(
+                    rule,
+                    f"{consumer}: cannot read ({e})"
+                ))
+                continue
+            if not any(n and n in content for n in needles):
+                findings.append(_emit_finding(
+                    rule,
+                    f"{consumer}: does not reference canonical source {canonical}"
+                ))
+        return findings
+
+
+    def check_frontmatter_artifact_consistency(rule):
+        """AOC v1.1 R4 (closes #1056): a verify-report.md frontmatter schema declares
+        fields and consumers; the writer at schema_path.writer must emit every
+        declared field, and every consumer must reference only declared field names
+        (not stale or invented field names).
+
+        Rule shape (template-coherence-rules.json):
+          {
+            "type": "frontmatter_artifact_consistency",
+            "schema_path": ".claude/patterns/verify-report-frontmatter.json",
+            "writer": ".claude/skills/verify/state-7a-write-report.md",
+            "consumers": [...]
+          }
+
+        Findings emitted:
+          - writer file does not contain a declared field
+          - consumer references a field-like token that is NOT in the declared set
+            (token = "<field>:" used as YAML/regex match; defends against stale
+            names like build_attempt or fix_log_count drifting from canonical).
+        """
+        findings = []
+        schema_path = rule.get("schema_path", "")
+        writer_path = rule.get("writer", "")
+        consumers = rule.get("consumers", [])
+
+        if not schema_path or not writer_path:
+            findings.append(_emit_finding(rule,
+                "rule missing required schema_path or writer fields"))
+            return findings
+
+        schema_full = os.path.join(REPO_ROOT, schema_path)
+        if not os.path.isfile(schema_full):
+            findings.append(_emit_finding(rule,
+                f"schema file not found: {schema_path}"))
+            return findings
+        try:
+            schema = json.load(open(schema_full))
+        except (OSError, json.JSONDecodeError) as e:
+            findings.append(_emit_finding(rule,
+                f"cannot parse schema {schema_path}: {e}"))
+            return findings
+
+        declared_fields = set(schema.get("fields", {}).keys())
+        if not declared_fields:
+            findings.append(_emit_finding(rule,
+                f"schema {schema_path} declares no fields"))
+            return findings
+
+        # Resolve writer fields override from schema (the schema can name a writer
+        # different from the rule, but if both are set they must agree).
+        schema_writer = schema.get("writer", writer_path)
+        if writer_path and schema_writer and writer_path != schema_writer:
+            findings.append(_emit_finding(rule,
+                f"writer mismatch: rule={writer_path!r} but schema={schema_writer!r}"))
+
+        # Check writer emits every declared field
+        writer_full = os.path.join(REPO_ROOT, writer_path)
+        if not os.path.isfile(writer_full):
+            findings.append(_emit_finding(rule,
+                f"writer file not found: {writer_path}"))
+        else:
+            try:
+                writer_content = open(writer_full).read()
+            except OSError as e:
+                findings.append(_emit_finding(rule,
+                    f"cannot read writer {writer_path}: {e}"))
+                writer_content = ""
+            for field_name in sorted(declared_fields):
+                # Match either YAML key form (`field_name:`) or quoted JSON key
+                # form (`"field_name":`) — state-7a uses both.
+                yaml_form = field_name + ":"
+                if yaml_form not in writer_content:
+                    findings.append(_emit_finding(rule,
+                        f"writer {writer_path} does not emit declared field {field_name!r}"))
+
+        # Check every consumer references ONLY declared fields. We look for any
+        # token of the form `<word>:` that lives inside a context where the word
+        # is plausibly a frontmatter field reference (preceded by `report.`,
+        # `frontmatter.`, `verify-report`, or single-quoted as a key like
+        # `'<word>'` near an open()-style read). Conservative: only flag tokens
+        # that match \b(<words-with-frontmatter-shape>):\b and are referenced in
+        # the consumer text.
+        #
+        # To avoid false positives from arbitrary `key: value` YAML in the
+        # consumer's own files, we specifically look for the field names known to
+        # appear in verify-report.md frontmatter (the declared set is finite and
+        # small) and verify each consumer references at least one of them. If a
+        # consumer uses a field-shaped name that resembles one of ours but is
+        # NOT in the set, that's the stale-consumer signal we emit.
+        declared_lc = {f.lower() for f in declared_fields}
+        # Only multi-word snake_case names participate in stale-name detection.
+        # This filters out single words like "score", "value", "type" that often
+        # appear as YAML keys in unrelated content (e.g., q-score.md prose).
+        # Multi-word frontmatter fields (build_attempts, hard_gate_failure, etc.)
+        # are the primary drift surface — typos like build_attempt vs build_attempts
+        # or fix_log_count vs fix_log_entries are exactly what this check catches.
+        declared_multiword = {f.lower() for f in declared_fields if "_" in f}
+        # Heuristic stale-name detection: scan for "<word_with_underscore>:" tokens
+        # in consumer files that are similar to (Levenshtein <=2) but not equal to a
+        # declared multi-word name. Single-word fields are checked only via the
+        # writer-side "must emit declared field" check.
+        import re as _re
+        word_colon_re = _re.compile(r'\b([a-z][a-z0-9]*_[a-z0-9][a-z0-9_]*)\s*:')
+
+        for consumer in consumers:
+            cpath = os.path.join(REPO_ROOT, consumer)
+            if not os.path.isfile(cpath):
+                findings.append(_emit_finding(rule,
+                    f"consumer file not found: {consumer}"))
+                continue
+            try:
+                content = open(cpath).read()
+            except OSError as e:
+                findings.append(_emit_finding(rule,
+                    f"cannot read consumer {consumer}: {e}"))
+                continue
+            # Confirm at least one declared field is referenced — otherwise the
+            # consumer isn't really consuming this frontmatter (perhaps a stale
+            # entry in the rule's consumers list).
+            any_declared = any(f in content for f in declared_fields)
+            if not any_declared:
+                findings.append(_emit_finding(rule,
+                    f"consumer {consumer} does not reference any declared frontmatter field "
+                    f"(check the consumers list for staleness)"))
+                continue
+            # Stale-name detection: find multi-word snake_case tokens in consumer
+            # files that aren't declared but resemble a declared multi-word field.
+            # Compare by edit distance — anything 1-2 edits away from a multi-word
+            # declared name is suspicious (likely typo or stale rename).
+            seen_unknown = set()
+            for m in word_colon_re.finditer(content):
+                token = m.group(1).lower()
+                if token in declared_lc:
+                    continue
+                # Only compare against multi-word declared fields (single-word
+                # comparisons produce too many false positives for prose content).
+                for declared in declared_multiword:
+                    if abs(len(token) - len(declared)) > 2:
+                        continue
+                    if token[:3] == declared[:3] and (
+                        _edit_distance_le(token, declared, 2)
+                    ):
+                        if token in seen_unknown:
+                            break
+                        seen_unknown.add(token)
+                        findings.append(_emit_finding(rule,
+                            f"consumer {consumer} references {token!r} which is not in "
+                            f"declared frontmatter fields (closest: {declared!r}; check for "
+                            "typos / stale field names)"))
+                        break
+
+        return findings
+
+
+    def _edit_distance_le(a, b, max_dist):
+        """Return True if Levenshtein(a, b) <= max_dist. Cheap iterative DP."""
+        if abs(len(a) - len(b)) > max_dist:
+            return False
+        prev = list(range(len(b) + 1))
+        for i, ca in enumerate(a, 1):
+            curr = [i] + [0] * len(b)
+            for j, cb in enumerate(b, 1):
+                cost = 0 if ca == cb else 1
+                curr[j] = min(curr[j-1] + 1, prev[j] + 1, prev[j-1] + cost)
+            prev = curr
+            if min(prev) > max_dist:
+                return False
+        return prev[-1] <= max_dist
+
+
+    def check_internal_href_validity(rule):
+        """#1069 cross-agent fixture contract: walk scaffold-emitted files for
+        href="/<route>/<slug-or-id>" patterns; for each route matching a configured
+        prefix, parse the canonical fixture file (if it exists) and verify every
+        referenced identifier appears as a literal string. Fabricated IDs emit a
+        cross_file_contradiction finding at WARN severity."""
+        findings = []
+        scaffold_glob = rule.get("scaffold_glob", "")
+        hints = rule.get("route_owner_hints", [])
+        if not scaffold_glob or not hints:
+            return findings
+
+        import glob as _glob
+        import re as _re
+        scaffold_files = []
+        for pattern in scaffold_glob.split(","):
+            pattern = pattern.strip()
+            if pattern:
+                scaffold_files.extend(_glob.glob(pattern, recursive=True))
+        if not scaffold_files:
+            return findings
+
+        # Pre-load canonical fixture contents (first matching candidate wins).
+        route_to_fixture = {}
+        for hint in hints:
+            prefix = hint.get("route_prefix", "")
+            if not prefix:
+                continue
+            for candidate in hint.get("fixture_candidates", []):
+                if os.path.isfile(candidate):
+                    try:
+                        with open(candidate) as f:
+                            route_to_fixture[prefix] = (candidate, f.read())
+                        break
+                    except OSError:
+                        continue
+
+        # Walk scaffold files for href patterns per configured prefix.
+        href_re = _re.compile(r'href\s*=\s*[{"`]\s*[`"]?(/[a-zA-Z0-9_-]+/[a-zA-Z0-9_-]+)[`"]?')
+        template_re = _re.compile(r'href\s*=\s*\{\s*`(/[a-zA-Z0-9_-]+/)\$\{([^}]+)\}`\s*\}')
+        for sf in scaffold_files:
+            try:
+                with open(sf) as f:
+                    content = f.read()
+            except OSError:
+                continue
+            for m in href_re.finditer(content):
+                route = m.group(1)
+                for prefix, (fixture_path, fixture_content) in route_to_fixture.items():
+                    if not route.startswith(prefix):
+                        continue
+                    slug = route[len(prefix):]
+                    # Skip template-literal-looking values ($, {, }).
+                    if any(ch in slug for ch in "${}`"):
+                        continue
+                    if slug and slug not in fixture_content:
+                        findings.append(_emit_finding(
+                            rule,
+                            f"{sf}: href {route!r} references {slug!r} which does not appear in canonical fixture {fixture_path}"
+                        ))
+                    break
+        return findings
+
+
+    # Load and run cross-file rules
+    if os.path.isfile(RULES_PATH):
+        try:
+            rules_data = json.load(open(RULES_PATH))
+            for rule in rules_data.get("rules", []):
+                rtype = rule.get("type")
+                if rtype == "field_role_map":
+                    cross_file.extend(check_field_role_map(rule))
+                elif rtype == "discover_consumers":
+                    cross_file.extend(check_discover_consumers(rule))
+                elif rtype == "artifact_lifecycle":
+                    cross_file.extend(check_artifact_lifecycle(rule))
+                elif rtype == "verdict_vocab_consistency":
+                    cross_file.extend(check_verdict_vocab_consistency(rule))
+                elif rtype == "ledger_ownership":
+                    cross_file.extend(check_ledger_ownership(rule))
+                elif rtype == "consumer_coverage":
+                    cross_file.extend(check_consumer_coverage(rule))
+                elif rtype == "frontmatter_artifact_consistency":
+                    cross_file.extend(check_frontmatter_artifact_consistency(rule))
+                elif rtype == "internal_href_validity":
+                    cross_file.extend(check_internal_href_validity(rule))
+                else:
+                    cross_file.append(f"  [{rule.get('id','<unknown>')}] unknown rule type: {rtype}")
+        except (OSError, json.JSONDecodeError) as e:
+            cross_file.append(f"  [framework] failed to load rules from {RULES_PATH}: {e}")
+
+
+    # ---------------------------------------------------------------------------
+    # Output: JSON or human-readable report
+    # ---------------------------------------------------------------------------
+
+    if JSON_OUT or CACHE_FILE:
+        payload = {
+            "uncovered": uncovered,
+            "diverged": diverged,
+            "unjustified_true": unjustified_true,
+            "drift_declared": drift_declared,
+            "cross_file_contradiction": cross_file,
+            "summary": {
+                "uncovered": len(uncovered),
+                "diverged": len(diverged),
+                "unjustified_true": len(unjustified_true),
+                "drift_declared": len(drift_declared),
+                "cross_file_contradiction": len(cross_file),
+            },
+        }
+        if CACHE_FILE:
+            os.makedirs(os.path.dirname(CACHE_FILE) or ".", exist_ok=True)
+            with open(CACHE_FILE, "w") as f:
+                json.dump(payload, f, indent=2)
+        if JSON_OUT:
+            print(json.dumps(payload, indent=2))
+
+    # Human report (suppressed when JSON_OUT is set)
+    if not JSON_OUT:
+        print("VERIFY Linter Report")
+        print("====================")
+        print()
+
+        if uncovered:
+            print("UNCOVERED (artifact in postcondition but not in VERIFY):")
+            for line in uncovered:
+                print(line)
+            print()
+
+        if diverged:
+            print("DIVERGED (state file VERIFY != registry VERIFY):")
+            for line in diverged:
+                print(line)
+            print()
+
+        if unjustified_true:
+            print("UNJUSTIFIED_TRUE:")
+            for line in unjustified_true:
+                print(line)
+            print()
+
+        if drift_declared:
+            print("DRIFT_DECLARED_VS_PROSE (registry declaration disagrees with state-file prose):")
+            for line in drift_declared:
+                print(line)
+            print()
+
+        if cross_file:
+            print("CROSS_FILE_CONTRADICTION (template-coherence-rules.json violations):")
+            for line in cross_file:
+                print(line)
+            print()
+
+        print(
+            f"Summary: {len(uncovered)} uncovered, {len(diverged)} diverged, "
+            f"{len(unjustified_true)} unjustified_true, {len(drift_declared)} drift_declared, "
+            f"{len(cross_file)} cross_file_contradiction"
+        )
+
+    # Exit code — layered semantics:
+    #   default (no flags): any finding blocks (exit 1).
+    #   --warn-only: downgrades ALL findings to warnings (exit 0).
+    #   --strict-aoc: forces AOC findings (R1/R2/R3) to block regardless of
+    #                 --warn-only; other findings still honor --warn-only.
+    #
+    # AOC findings are tagged in their message string by _emit_finding with
+    # "(<rule_type>/<severity>)". Partition cross_file by presence of STRICT_AOC_TYPES.
+
+    def _is_aoc_finding(msg):
+        return any(f"({t}/" in msg for t in STRICT_AOC_TYPES)
+
+
+    aoc_findings = [m for m in cross_file if _is_aoc_finding(m)]
+    non_aoc_findings = (
+        uncovered + unjustified_true + diverged + drift_declared +
+        [m for m in cross_file if not _is_aoc_finding(m)]
+    )
+
+    should_block = False
+    # AOC findings: block when not warn-only OR when strict-aoc is set.
+    if aoc_findings and (not WARN_ONLY or STRICT_AOC):
+        should_block = True
+    # Non-AOC findings: block only when not warn-only (strict-aoc does not apply).
+    if non_aoc_findings and not WARN_ONLY:
+        should_block = True
+    if should_block:
+        return 1
+    return 0
