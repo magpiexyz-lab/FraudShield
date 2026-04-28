@@ -36,25 +36,62 @@ get_project_dir() {
 CLAUDE_PROJECT_DIR="$(get_project_dir)"
 export CLAUDE_PROJECT_DIR
 
+# --- _write_hook_friction ---
+# Appends one row to .runs/hook-friction.jsonl (#1128 Layer 2).
+# Subshell-isolated and fail-open: any error inside is swallowed so the
+# caller's deny() / deny_errors() contract (stderr + exit 2) is unchanged.
+# Uses env vars (not heredoc args) to avoid shell-quoting issues.
+# Usage: _write_hook_friction "deny message"
+_write_hook_friction() {
+  ( # subshell isolates errexit and any side-effect failures
+    set +e
+    local msg="$1"
+    local hook_basename
+    # `$0` is the hook script path Claude Code spawned (e.g.,
+    # /.../.claude/hooks/fix-ledger-write-guard.sh). It is set at process
+    # start and stable regardless of how lib-core.sh is sourced — far more
+    # reliable than BASH_SOURCE[N] which depends on the source chain.
+    hook_basename=$(basename "${0:-unknown}" 2>/dev/null || echo "unknown")
+    local tool_name=""
+    local blocked_cmd=""
+    if [[ -n "${PAYLOAD:-}" ]]; then
+      tool_name=$(read_payload_field "tool_name" 2>/dev/null || echo "")
+      blocked_cmd=$(read_payload_field "tool_input.command" 2>/dev/null || echo "")
+      if [[ -z "$blocked_cmd" ]]; then
+        blocked_cmd=$(read_payload_field "tool_input.file_path" 2>/dev/null || echo "")
+      fi
+    fi
+    HOOK_FRICTION_HOOK="$hook_basename" \
+    HOOK_FRICTION_REASON="$msg" \
+    HOOK_FRICTION_TOOL_NAME="$tool_name" \
+    HOOK_FRICTION_BLOCKED_CMD="$blocked_cmd" \
+    python3 "${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/append-hook-friction.py" 2>/dev/null
+  ) 2>/dev/null || true
+}
+
 # --- deny ---
 # Outputs reason to stderr and exits 2 to block the tool call.
 # Claude Code hook protocol: exit 0 = allow, exit non-zero = block.
 # Never call deny() inside a subshell like $(deny "msg").
+# Tees a row to .runs/hook-friction.jsonl before exiting (#1128 Layer 2).
 # Usage: deny "Your message here"
 deny() {
   local msg="$1"
+  _write_hook_friction "$msg"
   echo "$msg" >&2
   exit 2
 }
 
 # --- deny_errors ---
 # Joins global ERRORS array with "; ", outputs reason to stderr, exits 2.
+# Tees a row to .runs/hook-friction.jsonl before exiting (#1128 Layer 2).
 # Usage: deny_errors "Prefix: " "Suffix."
 deny_errors() {
   local prefix="$1"
   local suffix="$2"
   local joined
   joined=$(printf '%s; ' "${ERRORS[@]}")
+  _write_hook_friction "${prefix}${joined}${suffix}"
   echo "${prefix}${joined}${suffix}" >&2
   exit 2
 }

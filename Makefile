@@ -61,6 +61,8 @@ lint-template: ## Fast: run validators against .claude/ content (~1-3s; no valid
 	else \
 	  echo "  no drift, no cross-file contradictions"; \
 	fi
+	@echo "-- test-template-coherence (#1128 evidence-channel regression guard) --"
+	@bash scripts/test-template-coherence.sh
 	@echo ""
 	@echo "== All CI-bound template validators passed. Safe to push .claude/ edits. =="
 

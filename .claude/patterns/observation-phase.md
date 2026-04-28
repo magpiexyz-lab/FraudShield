@@ -74,6 +74,13 @@ fi
 
 # c. Generate template file list
 cat .claude/template-owned-dirs.txt | grep -v '^#' | grep -v '^$' | xargs -I{} find {} -type f 2>/dev/null | sort
+
+# d. Aggregate hook-friction.jsonl (per-hook block counts + sample reasons) — #1128 L6.
+# Writes .runs/hook-friction-summary.json filtered to the current run_id.
+# Step 5a Q2 reads the summary as the 4th evidence channel.
+if [[ -s .runs/hook-friction.jsonl ]]; then
+  python3 .claude/scripts/aggregate-hook-friction.py 2>/dev/null || true
+fi
 ```
 
 ### Fallback: consolidate agent traces → ledger → fix-log (AOC v1 FLS v1)
@@ -164,20 +171,29 @@ If scope is `process` or `audit-only`, also add `"strategy": "execution-audit"`.
 ```bash
 python3 -c "
 import re, subprocess, os
-fixes = open('.runs/fix-log.md').read()
-files = sorted(set(re.findall(r'\x60([^\x60]+\.(?:ts|tsx|js|jsx|json|css))\x60', fixes)))
-diffs = []
-for f in files:
-    r = subprocess.run(['git', 'diff', 'HEAD', '--', f], capture_output=True, text=True)
-    if r.stdout.strip():
-        diffs.append(f'=== {f} ===\n{r.stdout}')
-    elif os.path.exists(f):
-        r2 = subprocess.run(['git', 'diff', '--no-index', '/dev/null', f], capture_output=True, text=True)
-        if r2.stdout.strip():
-            diffs.append(f'=== {f} (new file) ===\n{r2.stdout}')
-with open('.runs/observer-diffs.txt', 'w') as out:
-    out.write('\n'.join(diffs) if diffs else '(no diffs captured)')
-print(f'Collected diffs for {len(diffs)} files -> .runs/observer-diffs.txt')
+# Skip targeted-diff regex when comprehensive diff already populated by
+# lifecycle-finalize.sh:218 — overwriting it would strip .py/.sh files (#1128 L1).
+if os.path.isfile('.runs/observer-diffs.txt') and os.path.getsize('.runs/observer-diffs.txt') > 0:
+    print('observer-diffs.txt already populated; skipping targeted regex collection')
+else:
+    fixes = open('.runs/fix-log.md').read() if os.path.exists('.runs/fix-log.md') else ''
+    # Widened extension allowlist (#1128 L1) — previous filter stripped .py and .sh.
+    files = sorted(set(re.findall(
+        r'\x60([^\x60]+\.(?:ts|tsx|js|jsx|json|css|py|sh|md|yaml|yml|toml))\x60',
+        fixes,
+    )))
+    diffs = []
+    for f in files:
+        r = subprocess.run(['git', 'diff', 'HEAD', '--', f], capture_output=True, text=True)
+        if r.stdout.strip():
+            diffs.append(f'=== {f} ===\n{r.stdout}')
+        elif os.path.exists(f):
+            r2 = subprocess.run(['git', 'diff', '--no-index', '/dev/null', f], capture_output=True, text=True)
+            if r2.stdout.strip():
+                diffs.append(f'=== {f} (new file) ===\n{r2.stdout}')
+    with open('.runs/observer-diffs.txt', 'w') as out:
+        out.write('\n'.join(diffs) if diffs else '(no diffs captured)')
+    print(f'Collected diffs for {len(diffs)} files -> .runs/observer-diffs.txt')
 "
 ```
 
@@ -259,21 +275,30 @@ The lead agent answers 3 structured questions using its full execution context
 
 **Question 1: Flow Compliance**
 
-> "Did execution strictly follow the state machine defined in skill files?
-> Were any states skipped, reordered, or handled incorrectly?"
+> "Did execution strictly follow the state machine flow defined in skill files?
+> State ordering, gate triggers, transitions — were any states skipped, reordered,
+> or handled incorrectly?"
 
 Review:
 - `completed_states` in `*-context.json` vs expected states in state-registry.json
 - Whether any hard gate was triggered and handled correctly
 
-**Question 2: Agent Instruction Compliance**
+*(Q1 covers the macro flow only. Per-step executor correctness is Q2.)*
 
-> "Did each spawned agent execute its defined procedure correctly?
-> If an agent produced incorrect output or required rework — was the template
-> instruction wrong/incomplete/ambiguous, or did the agent simply not follow it?"
+**Question 2: Per-step Executor Compliance**
+
+> "For each step within the state machine, did each executor (spawned agent
+> OR lead acting on the state machine) execute its defined procedure correctly?
+> If a lead action was blocked or rerouted by a hook (per
+> `.runs/hook-friction-summary.json`), or the lead/agent patched a template file
+> (per `.runs/fix-ledger.jsonl` rows where `entry_type == \"template-edit\"`)
+> — was the template instruction wrong/incomplete/ambiguous, or did the
+> executor simply not follow it?"
 
 Review:
 - Each agent trace in `.runs/agent-traces/*.json` — verdict, checks_performed, fixes
+- Lead actions: hook-friction summary (per-hook count + sample reasons) and
+  template-edit ledger rows (which template files the lead patched and why)
 - Whether agent outputs were usable by downstream consumers
 - Whether any agent exhausted turns or produced recovery traces
 
@@ -339,7 +364,7 @@ Write `.runs/retrospective-result.json`:
 {
   "process_compliance": "<summary or 'clean'>",
   "agent_instruction_compliance": [
-    {"agent": "<name>", "compliant": true, "finding": null, "root_cause": "n-a"}
+    {"agent": "<name>", "executor": "agent", "compliant": true, "finding": null, "root_cause": "n-a"}
   ],
   "trace_fidelity": "<summary or 'clean'>",
   "observations_filed": 0,

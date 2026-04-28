@@ -216,6 +216,14 @@ if [[ -n "$HAS_BRANCH" ]]; then
     EPILOGUE_STRATEGY="A"
     # Collect evidence: diffs for observer
     git diff "$MERGE_BASE"...HEAD > "$PROJECT_DIR/.runs/observer-diffs.txt" 2>/dev/null || true
+    # Scan template-owned paths for lead-applied edits not already in the
+    # ledger (#1128 Layer 5). Gated on EPILOGUE_STRATEGY="A" — only runs when
+    # there is a real branch with real commit-diff. On main or with no diff,
+    # the scanner's HEAD~1...HEAD fallback would mis-attribute prior commits
+    # (e.g., merged PRs) to the current skill. Idempotent + fail-open.
+    if [[ -x "$PROJECT_DIR/.claude/scripts/scan-template-edits.sh" ]]; then
+      bash "$PROJECT_DIR/.claude/scripts/scan-template-edits.sh" "$SKILL" 2>/dev/null || true
+    fi
   fi
 fi
 

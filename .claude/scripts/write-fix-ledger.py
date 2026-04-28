@@ -362,6 +362,48 @@ def write_lead_fix_row(skill, fix_dict, severity, ledger_path=LEDGER_PATH):
     return row
 
 
+def write_template_edit_row(skill, file_val, before_hash, after_hash,
+                            agent="lead-template-edit",
+                            ledger_path=LEDGER_PATH):
+    """Append a template-edit row to fix-ledger.jsonl (#1128 Layer 3).
+
+    Bypasses summary-pattern check (template-edits have no symptom narrative).
+    Uses provenance:'lead' since Phase 1 only fires for lead-attributed edits
+    (covered-by-agent-trace cases skip ledger write at scanner level)."""
+    if not file_val:
+        raise ValueError("--template-edit requires --file <path>")
+    run_id = _resolve_run_id_for_skill(skill)
+    counter = _bump_lead_fix_counter(skill)
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    fix_id = f"lead-{skill}:{run_id or 'no-run'}:{counter}"
+    row = {
+        "fix_id": fix_id,
+        "agent": agent,
+        "source_trace": "lead-template-edit",
+        "run_id": run_id,
+        "file": file_val,
+        "symptom": None,
+        "fix": None,
+        "timestamp": ts,
+        "batch_id": ts,
+        "batch_size": 1,
+        "provenance": "lead",
+        "entry_type": "template-edit",
+        "before_hash": before_hash,
+        "after_hash": after_hash,
+        "severity": "warn",
+    }
+    existing = load_existing_ledger(ledger_path)
+    existing_ids = {r.get("fix_id") for r in existing if isinstance(r, dict)}
+    if fix_id in existing_ids:
+        sys.stderr.write(
+            f"write-fix-ledger: template-edit row {fix_id} already in ledger (skipping)\n"
+        )
+        return row
+    atomic_write(existing + [row], ledger_path)
+    return row
+
+
 def main():
     ap = argparse.ArgumentParser(
         description="Consolidate agent trace fixes[] into fix-ledger.jsonl"
@@ -385,6 +427,23 @@ def main():
     ap.add_argument("--severity", choices=("fix", "warn"), default="fix",
                     help="--lead-fix only: 'fix' (default) or 'warn' (e.g., for "
                          "STATE 5 e2e-config WARN migration).")
+    # AOC v1.1 template-edit mode (#1128 Layer 3)
+    ap.add_argument("--template-edit", action="store_true",
+                    help="Write a single template-edit row (#1128). Required: "
+                         "--skill, --file. Optional: --before-hash, --after-hash, "
+                         "--agent (default: lead-template-edit). Bypasses the "
+                         "summary-pattern check (template-edits have no symptom).")
+    ap.add_argument("--file", default=None,
+                    help="Template file path for --template-edit "
+                         "(e.g., .claude/scripts/foo.py).")
+    ap.add_argument("--before-hash", default=None,
+                    help="--template-edit only: pre-edit content hash "
+                         "(8-char prefix preferred).")
+    ap.add_argument("--after-hash", default=None,
+                    help="--template-edit only: post-edit content hash.")
+    ap.add_argument("--agent", default="lead-template-edit",
+                    help="--template-edit only: attribution string "
+                         "(default: lead-template-edit).")
     args = ap.parse_args()
 
     # ---- AOC v1.1 lead-fix mode ----
@@ -408,6 +467,28 @@ def main():
         print(
             f"write-fix-ledger: lead-fix wrote {row['fix_id']} "
             f"(agent={row['agent']}, file={row['file']}, severity={row.get('severity', 'fix')})"
+        )
+        return 0
+
+    # ---- AOC v1.1 template-edit mode (#1128) ----
+    if args.template_edit:
+        if not args.skill:
+            sys.stderr.write("ERROR: --template-edit requires --skill <skill>\n")
+            return 2
+        if not args.file:
+            sys.stderr.write("ERROR: --template-edit requires --file <path>\n")
+            return 2
+        try:
+            row = write_template_edit_row(
+                args.skill, args.file, args.before_hash, args.after_hash,
+                agent=args.agent,
+            )
+        except ValueError as exc:
+            sys.stderr.write(f"ERROR: {exc}\n")
+            return 2
+        print(
+            f"write-fix-ledger: template-edit wrote {row['fix_id']} "
+            f"(agent={row['agent']}, file={row['file']})"
         )
         return 0
 

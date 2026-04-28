@@ -53,6 +53,10 @@ def fix_index_from_id(fix_id):
 def render_row(row):
     agent = row.get("agent", "<unknown-agent>")
     file_ = row.get("file") or "<unknown-file>"
+    if row.get("entry_type") == "template-edit":
+        before = (row.get("before_hash") or "?")[:8]
+        after = (row.get("after_hash") or "?")[:8]
+        return f"⚠️ Template patch ({agent}): `{file_}` ({before} → {after})"
     symptom = row.get("symptom") or "<no symptom>"
     fix = row.get("fix") or "<no fix>"
     return f"Fix ({agent}): `{file_}` — Symptom: {symptom} — Fix: {fix}"
