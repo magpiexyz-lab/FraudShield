@@ -56,11 +56,28 @@ NORM=$(printf '%s' "$COMMAND" | sed -E 's/[0-9]*>+&[0-9]+//g')
 
 # ── Pre-allow checks (MUST run before allow-writer short-circuit) ──
 
-# Reject chained writes even when one side is a legitimate writer.
-# Split on &&/;/| and deny if any segment contains both agent-traces/ and
-# a write operator (>, >>, tee, cp, mv).
-if echo "$NORM" | awk 'BEGIN{RS="[&|;]"} /agent-traces\// && /(>|>>|tee|cp|mv)/ {found=1} END{exit !found}'; then
-  deny "Agent trace write guard: agent-traces/*.json cannot be written from a chained command segment (raw write operator detected alongside agent-traces path)."
+# Reject chained writes whose redirect target is an agent-traces path.
+# Split on &&/;/| and deny only when a write operator is BOUND to an
+# agent-traces target (operator followed by a token containing agent-traces/).
+# Issue #1123: the previous co-occurrence regex (`/agent-traces\// && /(>|>>|tee|cp|mv)/`)
+# false-positived on chained commands that READ from agent-traces and WROTE to
+# unrelated paths (e.g., `python -c '...read agent-traces...' > /tmp/foo` or
+# `ls .runs/agent-traces && bash advance-state.sh`).
+# The bound regex matches: optional file descriptor, redirect operator, optional
+# whitespace/quote, anything-but-chain-delimiters, then `agent-traces/`. Or:
+# tee/cp/mv as words followed (eventually on the same segment) by an
+# agent-traces target. The Python open-for-write regex below handles the
+# scripted write path separately.
+if echo "$NORM" | awk '
+    BEGIN{RS="[&|;]"}
+    {
+      # Bound write operator -> agent-traces target (>file, >>file, &>file)
+      if (match($0, /([0-9]*&?>+|[0-9]*>>?)[[:space:]]*["'\'']?[^|;&"'\'']*agent-traces\//)) found=1
+      # tee / cp / mv with an agent-traces target later on the same segment
+      else if (match($0, /(^|[[:space:]])(tee|cp|mv)[[:space:]][^|;&]*agent-traces\//)) found=1
+    }
+    END{exit !found}'; then
+  deny "Agent trace write guard: agent-traces/*.json write target detected on a chained command segment (write operator bound to agent-traces path)."
 fi
 
 # Block Python open(...) for write/append on agent-traces

@@ -71,6 +71,16 @@ Each behavior is a user-observable capability tied to a hypothesis. Schema:
                                # Issue #1077: scaffold-init reads this to decide
                                # which slots are runtime_gated (e.g., admin-only
                                # empty-state unreachable in DEMO_MODE).
+  anonymous_allowed: <bool>    # Optional, default false. When true, pages owned
+                               # by this behavior are added to the auth proxy's
+                               # publicPaths array (#1126). Mutually exclusive
+                               # with requires_role -- a behavior cannot be
+                               # both anonymous-allowed and role-gated.
+                               # Multi-behavior pages: a page is public iff
+                               # EVERY contributing behavior marks it
+                               # anonymous_allowed=true (fail-secure
+                               # intersection). Default false enforces
+                               # default-deny: absence keeps a page auth-gated.
 
   # Archetype-conditional REQUIRED fields:
   pages: [<page>...]           # web-app + actor: user → REQUIRED, non-empty
@@ -93,6 +103,45 @@ runtime_gate on slots associated with the behavior's pages so:
 
 When this field is absent, the behavior has no role gate and slots default to
 visible/focal. See `.claude/scripts/lib/derive_slot_intent.py:derive_runtime_gate`.
+
+#### `behavior.anonymous_allowed` (optional, bool, default false) — Issue #1126
+
+Marks pages owned by this behavior as public (no authentication required) in
+the auth proxy / middleware route-protection file. When `true`, the pages are
+added to the proxy's `publicPaths` array via `derive_public_paths()` at
+scaffold-libs time.
+
+**Default false** (default-deny): absence keeps pages auth-gated. This protects
+against the failure mode in #1126 where a hardcoded `publicPaths` list in the
+auth template drifts from `behaviors[*]` semantics. To opt a page into public
+access, the behavior must declare `anonymous_allowed: true` explicitly.
+
+**Mutually exclusive with `requires_role`**: a behavior that requires an
+authenticated role cannot also be anonymous-allowed. `validate-experiment.py`
+rejects experiments where both fields are present on the same behavior.
+
+**Multi-behavior pages**: when two or more behaviors share a page, the page is
+public iff EVERY owning behavior has `anonymous_allowed: true` (fail-secure
+intersection at `derive_public_paths()`). One auth-required behavior anywhere
+on the page keeps the entire page auth-gated.
+
+Examples:
+```yaml
+- id: b-01
+  given: "An anonymous visitor is on /spec"
+  pages: [spec]
+  anonymous_allowed: true   # /spec added to publicPaths
+
+- id: b-02
+  given: "An authenticated user is on /dashboard"
+  pages: [dashboard]
+  # anonymous_allowed defaults to false -- /dashboard stays auth-gated
+```
+
+Consumers:
+- `.claude/scripts/lib/derive_pages.py::derive_public_paths` (canonical reader)
+- `.claude/procedures/scaffold-libs.md` Step 3 (substitutes derived array into the proxy template)
+- `scripts/validate-experiment.py` (enforces mutual exclusivity with `requires_role`)
 
 #### `behavior.pages` (web-app + actor: user → REQUIRED)
 
@@ -160,15 +209,38 @@ CLI archetype only. Each command:
 - id: <string>           # h-01, h-02, ...
   category: demand | activate | monetize | retain | reach
   statement: <falsifiable claim>
-  metric:
+  metric:                # required when status != 'resolved' (see below)
     formula: <events / events>
     threshold: <number>
     operator: gte | lte | eq
+  evidence:              # required when status == 'resolved' (Issue #1117)
+    source: <string>     # e.g., "TAM analysis Q1 2026", "competitor landscape scan"
+    verdict: <string>    # one-line conclusion from desk research
+    citation: <string>   # link, doc reference, or data source identifier
   priority_score: 0..100
   experiment_level: 1 | 2 | 3
   depends_on: [<hypothesis_id>...]
-  status: pending | testing | confirmed | rejected
+  status: pending | resolved
 ```
+
+**`metric` vs `evidence` (Issue #1117):** Hypotheses validated by desk
+research (market sizing, competitor scans, ICP interviews) carry
+`status: resolved` and have no analytics-event formula. Forcing them to
+declare a `metric.formula` produces invented placeholder events
+(`research_market_exists / one`) that never fire and mislead grep-based
+consumers. The schema accepts EITHER `metric` (for testable hypotheses
+that fire events) OR `evidence` (for desk-resolved hypotheses):
+
+| status | required field | optional field |
+|--------|----------------|----------------|
+| pending | `metric` | `evidence` |
+| resolved | `evidence` | `metric` (legacy) |
+
+`validate-experiment.py` enforces this XOR at validation time.
+
+**Status `resolved`:** Use for research dimensions validated before product
+build (market, problem, competition, ICP). /spec state-2 emits these with
+status: resolved by default.
 
 ### `variants` (required, list)
 
@@ -183,7 +255,19 @@ A/B messaging variants. Each:
   proof: <string>
   urgency: <string>
   pain_points: [<string>...]
+
+  # Pricing fields — REQUIRED when level == 3 AND a monetize hypothesis exists
+  # (Issue #1117). Optional otherwise. /spec emits these per
+  # state-5-variants.md instructions when both conditions hold.
+  pricing_amount: <number>      # Numeric price in the project's primary currency
+  pricing_model: <string>       # subscription | one-time | usage-based | freemium
 ```
+
+**`pricing_amount` / `pricing_model` (conditional, Issue #1117):** When the
+experiment is Level 3 AND `hypotheses[*].category` includes `monetize`, every
+variant MUST carry both pricing fields. /spec state-5-variants emits them; the
+canonical schema acknowledges them so they don't land as orphan fields.
+`validate-experiment.py` enforces presence under these conditions.
 
 ### `stack` (required, dict)
 

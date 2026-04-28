@@ -53,7 +53,7 @@ If no fixes qualify -> return `"No template observations"` and stop.
 
 ### 1. Prerequisites
 
-1. Set the template repo: `TEMPLATE_REPO="magpiexyz-lab/mvp-template"`. Auto-add remote if missing: `if ! git remote get-url template &>/dev/null; then git remote add template https://github.com/magpiexyz-lab/mvp-template.git; fi`.
+1. Set the template repo: `TEMPLATE_REPO="magpiexyz-lab/mvp-template"`. Check the `template` remote: `git remote get-url template &>/dev/null`. If absent, do NOT silently `git remote add` — that mutates the user's git config without consent (Issue #1125). Instead, log to stderr and return "No template observations -- template remote not configured": `echo "WARN: template remote not configured -- observations will not be filed. To enable, run: git remote add template https://github.com/magpiexyz-lab/mvp-template.git" >&2`. User-invoked skills (`/resolve`, `/observe`, `/upgrade`) configure the remote explicitly in their state-0 setup; this background agent degrades gracefully when called from epilogues.
 2. `gh auth status` — if fails -> return "No template observations".
 3. `gh repo view $TEMPLATE_REPO --json name` — if fails -> return "No template observations".
 

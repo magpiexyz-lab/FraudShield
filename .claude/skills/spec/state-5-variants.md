@@ -28,7 +28,7 @@ Generate 3-5 offer variants. Each variant is a different messaging angle for the
 - Headlines must have >30% word difference between any two variants (no minor rewording)
 - Each variant targets a different emotional angle (e.g., time-saving vs cost-saving vs status)
 - `pain_points` must be specific to the target user, not generic
-- If Level 3 AND monetize hypotheses exist: add `pricing_amount` and `pricing_model` fields to each variant
+- If Level 3 AND monetize hypotheses exist: add `pricing_amount` (number) and `pricing_model` (subscription | one-time | usage-based | freemium) fields to each variant. These are documented in the canonical variant schema at `.claude/templates/experiment-yaml.md` `variants` section (#1117 reconciled the divergence — they are no longer orphan fields). `validate-experiment.py` enforces presence under these conditions.
 
 ### STOP 3: Variant Distinctiveness Review
 

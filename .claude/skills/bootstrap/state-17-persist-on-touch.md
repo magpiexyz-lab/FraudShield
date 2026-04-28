@@ -31,6 +31,8 @@ Each entry includes `source: bootstrap` to distinguish from future on-touch entr
   "
   ```
 
+Check off in `.runs/current-plan.md`: `- [x] ON-TOUCH persisted (state 17)` (#1118)
+
 **POSTCONDITIONS:**
 - `experiment/on-touch.yaml` exists with ON-TOUCH module list
 - `.runs/bootstrap-on-touch-trace.json` exists

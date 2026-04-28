@@ -166,7 +166,7 @@ Do NOT skip an entry just because it seems simple. A "simple" missing import tha
 Process entries in fix-log order:
 
 1. **For each universal pattern:**
-   a. Determine the template repo: `TEMPLATE_REPO="magpiexyz-lab/mvp-template"`. Auto-add remote if missing: `if ! git remote get-url template &>/dev/null; then git remote add template https://github.com/magpiexyz-lab/mvp-template.git; fi`. If `gh auth status` fails, fall back to local stack file (step 1f-local).
+   a. Determine the template repo: `TEMPLATE_REPO="magpiexyz-lab/mvp-template"`. Check whether the `template` git remote is configured: `git remote get-url template &>/dev/null`. If absent, do NOT silently `git remote add` — that mutates the user's git config without consent (Issue #1125). Instead, log a warning to stderr and fall back to step 1f-local (write to local stack file): `echo "WARN: template remote not configured -- pattern saved locally only. To enable filing to the template repo, run: git remote add template https://github.com/magpiexyz-lab/mvp-template.git" >&2`. The user-invoked skill flows that need the remote (`/resolve`, `/observe`, `/upgrade`) configure it explicitly in their state-0 setup; background agents (this one) must degrade gracefully. If `gh auth status` fails, also fall back to step 1f-local.
    b. Read the target stack file
    c. Search for existing "Known Issues" section (or "## Patterns" or similar)
    d. Search within that section for duplicate content (same root cause already described)

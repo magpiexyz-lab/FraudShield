@@ -44,6 +44,8 @@ Scan the bootstrapped codebase to classify modules for unit test generation.
   "
   ```
 
+Check off in `.runs/current-plan.md`: `- [x] Scan & classify (state 15)` (#1118)
+
 **POSTCONDITIONS:**
 - All modules scanned and classified
 - `.runs/bootstrap-scan.json` exists

@@ -129,6 +129,42 @@ if variants is not None:
                     print(f"Error: variants[{i}].{enrich_field} must be a non-empty string (or remove it)")
                     sys.exit(1)
 
+    # Issue #1117: pricing_amount/pricing_model are required when level==3 AND
+    # a monetize hypothesis exists. Otherwise optional. Documented in
+    # .claude/templates/experiment-yaml.md `variants` section.
+    level_value = data.get("level")
+    has_monetize_hypothesis = False
+    if isinstance(data.get("hypotheses"), list):
+        has_monetize_hypothesis = any(
+            isinstance(h, dict) and h.get("category") == "monetize"
+            for h in data["hypotheses"]
+        )
+    pricing_required = level_value == 3 and has_monetize_hypothesis
+    VALID_PRICING_MODELS = {"subscription", "one-time", "usage-based", "freemium"}
+    for i, v in enumerate(variants):
+        if not isinstance(v, dict):
+            continue
+        amt = v.get("pricing_amount")
+        mdl = v.get("pricing_model")
+        if pricing_required:
+            if amt is None or mdl is None:
+                print(
+                    f"Error: variants[{i}] must have pricing_amount and pricing_model "
+                    f"when level==3 AND a monetize hypothesis exists (#1117)."
+                )
+                sys.exit(1)
+        if amt is not None:
+            if not isinstance(amt, (int, float)) or isinstance(amt, bool) or amt < 0:
+                print(f"Error: variants[{i}].pricing_amount must be a non-negative number")
+                sys.exit(1)
+        if mdl is not None:
+            if mdl not in VALID_PRICING_MODELS:
+                print(
+                    f'Error: variants[{i}].pricing_model "{mdl}" must be one of: '
+                    f'{", ".join(sorted(VALID_PRICING_MODELS))}'
+                )
+                sys.exit(1)
+
 # --- Golden path validation (required field) ---
 golden_path = data.get("golden_path")
 if golden_path is not None:
@@ -190,20 +226,40 @@ if hypotheses is not None:
             if not h.get(field) or not isinstance(h.get(field), str):
                 print(f"Error: hypotheses[{i}].{field} is missing or empty"); sys.exit(1)
 
-        # Required metric object
+        # Issue #1117: hypotheses validated by desk research carry
+        # status: resolved and use `evidence:{source,verdict,citation}` instead
+        # of `metric:{formula,threshold,operator}`. Either shape is acceptable;
+        # at least one must be present. Forcing metric on resolved hypotheses
+        # produces invented placeholder formulas that never fire.
+        h_status = h.get("status")
         metric = h.get("metric")
-        if not isinstance(metric, dict):
-            print(f"Error: hypotheses[{i}].metric must be a mapping with formula, threshold, operator"); sys.exit(1)
-        metric_formula = metric.get("formula")
-        if not metric_formula or not isinstance(metric_formula, str):
-            print(f"Error: hypotheses[{i}].metric.formula must be a non-empty string"); sys.exit(1)
-        metric_threshold = metric.get("threshold")
-        if not isinstance(metric_threshold, (int, float)) or isinstance(metric_threshold, bool):
-            print(f"Error: hypotheses[{i}].metric.threshold must be a number"); sys.exit(1)
-        metric_operator = metric.get("operator")
-        VALID_OPERATORS = {"gt", "gte", "lt", "lte"}
-        if metric_operator not in VALID_OPERATORS:
-            print(f'Error: hypotheses[{i}].metric.operator must be one of: {", ".join(sorted(VALID_OPERATORS))}'); sys.exit(1)
+        evidence = h.get("evidence")
+        if h_status == "resolved":
+            # Resolved: prefer evidence; allow metric only if evidence absent (legacy).
+            if evidence is None and metric is None:
+                print(f"Error: hypotheses[{i}] (status=resolved) must have either evidence:{{source,verdict,citation}} or legacy metric:{{...}}"); sys.exit(1)
+            if evidence is not None:
+                if not isinstance(evidence, dict):
+                    print(f"Error: hypotheses[{i}].evidence must be a mapping with source, verdict, citation"); sys.exit(1)
+                for k in ("source", "verdict", "citation"):
+                    if not evidence.get(k) or not isinstance(evidence.get(k), str):
+                        print(f"Error: hypotheses[{i}].evidence.{k} must be a non-empty string"); sys.exit(1)
+            # If only metric is present (legacy resolved entry), validate it below.
+        if h_status != "resolved" or (metric is not None and evidence is None):
+            # Required metric object for non-resolved hypotheses, or a
+            # resolved-legacy entry that only has metric.
+            if not isinstance(metric, dict):
+                print(f"Error: hypotheses[{i}].metric must be a mapping with formula, threshold, operator"); sys.exit(1)
+            metric_formula = metric.get("formula")
+            if not metric_formula or not isinstance(metric_formula, str):
+                print(f"Error: hypotheses[{i}].metric.formula must be a non-empty string"); sys.exit(1)
+            metric_threshold = metric.get("threshold")
+            if not isinstance(metric_threshold, (int, float)) or isinstance(metric_threshold, bool):
+                print(f"Error: hypotheses[{i}].metric.threshold must be a number"); sys.exit(1)
+            metric_operator = metric.get("operator")
+            VALID_OPERATORS = {"gt", "gte", "lt", "lte"}
+            if metric_operator not in VALID_OPERATORS:
+                print(f'Error: hypotheses[{i}].metric.operator must be one of: {", ".join(sorted(VALID_OPERATORS))}'); sys.exit(1)
 
         h_id = h["id"]
         if not re.fullmatch(r"h-\d{2,}", h_id):
@@ -300,6 +356,21 @@ if behaviors is not None:
             for j, t in enumerate(b_tests):
                 if not isinstance(t, str) or not t.strip():
                     print(f"Error: behaviors[{i}].tests[{j}] must be a non-empty string"); sys.exit(1)
+
+        # Issue #1126: anonymous_allowed and requires_role are mutually exclusive.
+        # A behavior cannot be both anonymous (no auth required) and role-gated
+        # (auth required + specific role). Default-deny: anonymous_allowed defaults
+        # to false. When true, derive_public_paths() adds the behavior's pages
+        # to the auth proxy's publicPaths array.
+        b_anon = b.get("anonymous_allowed")
+        b_role = b.get("requires_role")
+        if b_anon is not None and not isinstance(b_anon, bool):
+            print(f"Error: behaviors[{i}].anonymous_allowed must be a boolean"); sys.exit(1)
+        if b_anon is True and b_role:
+            print(
+                f"Error: behaviors[{i}] sets both anonymous_allowed=true and requires_role={b_role!r} -- "
+                f"these are mutually exclusive (a behavior is either anonymous or role-gated, not both). See #1126."
+            ); sys.exit(1)
 
         # Cross-ref: hypothesis_id must exist if hypotheses section present
         h_id_ref = b["hypothesis_id"]

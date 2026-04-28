@@ -83,10 +83,16 @@ diffs_exist = os.path.getsize('.runs/observer-diffs.txt') > 0 if os.path.exists(
 # Critic/challenger agents that trigger process observation
 CRITIC_AGENTS = {'solve-critic', 'resolve-challenger', 'review-challenger'}
 
-# Check for embed:verify
+# Check for embed:verify — accept both dict-shape (legacy) and
+# list-of-dicts shape (current). Issue #1127.
 has_embed_verify = False
-embed = skill_yaml.get('embed', {})
-if isinstance(embed, dict) and embed.get('skill') == 'verify':
+embed = skill_yaml.get('embed')
+embed_entries = []
+if isinstance(embed, dict):
+    embed_entries = [embed]
+elif isinstance(embed, list):
+    embed_entries = [e for e in embed if isinstance(e, dict)]
+if any(e.get('skill') == 'verify' for e in embed_entries):
     has_embed_verify = True
 
 # Check for critic/challenger agents

@@ -86,19 +86,33 @@ has_critic = False
 try:
     import yaml
     data = yaml.safe_load(open(skill_yaml_path))
-    embed = data.get('embed', {})
-    if isinstance(embed, dict) and embed.get('skill') == 'verify':
+    # Accept both dict-shape (legacy) and list-of-dicts shape (current) for
+    # embed. Issue #1127: list-of-dicts was introduced to allow multiple embed
+    # points; the scope detector silently fell through to scope=code on every
+    # bootstrap/change/distribute/resolve/review run since.
+    embed = data.get('embed')
+    embed_entries = []
+    if isinstance(embed, dict):
+        embed_entries = [embed]
+    elif isinstance(embed, list):
+        embed_entries = [e for e in embed if isinstance(e, dict)]
+    if any(e.get('skill') == 'verify' for e in embed_entries):
         has_embed_verify = True
     agents = data.get('agents', {})
     CRITIC_AGENTS = {'solve-critic', 'resolve-challenger', 'review-challenger'}
     if isinstance(agents, dict):
         has_critic = bool(CRITIC_AGENTS & set(agents.keys()))
 except ImportError:
-    # Fallback: regex-based parsing
+    # Fallback: regex-based parsing. Must accept both shapes -- see #1127.
+    # Pattern matches ^embed:, then optional list-of-dicts intermediate keys,
+    # then an indented skill verify line (with or without leading dash).
     import re
     try:
         content = open(skill_yaml_path).read()
-        if re.search(r'embed:.*\n\s+skill:\s*verify', content):
+        if re.search(
+            r'(?ms)^embed:\s*\n(?:\s*-?\s*[a-z_]+:.*\n)*?\s*-?\s*skill:\s*verify',
+            content,
+        ):
             has_embed_verify = True
         for agent in ['solve-critic', 'resolve-challenger', 'review-challenger']:
             if agent in content:

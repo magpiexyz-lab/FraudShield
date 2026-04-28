@@ -50,7 +50,11 @@ Then append the plan body. The frontmatter enables resume-after-clear without re
 - [ ] Merged checkpoint validation passed
 - [ ] BG2 Orchestration Gate passed
 - [ ] scaffold-wire completed
+- [ ] Scan & classify (state 15)
+- [ ] Unit test generation (state 16)
+- [ ] ON-TOUCH persisted (state 17)
 - [ ] BG4 PR Gate passed
+- [ ] Verify embed completed (state 19b — scope: full)
 ```
 
 Check off items already completed at this point:
@@ -66,7 +70,7 @@ If the user replied **"approve and clear"** or **"2"**:
 **POSTCONDITIONS:**
 - `.runs/current-plan.md` exists with YAML frontmatter
 - Plan body is appended
-- `## Process Checklist` section present with all 16 checklist items
+- `## Process Checklist` section present with all 20 checklist items (state 15/16/17/19b coverage added per #1118)
 - Items completed so far are checked off
 
 **VERIFY:**

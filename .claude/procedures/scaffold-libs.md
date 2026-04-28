@@ -16,14 +16,20 @@
 
 ## Instructions
 
-Create ONLY the `src/lib/` files (and `src/proxy.ts` when `stack.auth` is present; on legacy Next.js 15 projects the file is `src/middleware.ts`) from each stack file's "Files to Create" section. Skip files outside these paths — pages are owned by scaffold-pages, infrastructure routes and components by scaffold-wire.
+Create ONLY the `src/lib/` files (and the route-protection file when `stack.auth` is present — `src/middleware.ts` on Next.js 16.x, `src/proxy.ts` on Next.js 17+; see Step 3 below) from each stack file's "Files to Create" section. Skip files outside these paths — pages are owned by scaffold-pages, infrastructure routes and components by scaffold-wire.
 
 1. **Analytics library** (if `stack.analytics` is present): create from the analytics stack file.
 
 2. **Database clients** (if `stack.database` is present): create from the database stack file.
 
 3. **Auth files** (if `stack.auth` is present): create from the auth stack file using the correct conditional path:
-   - The route-protection filename is `src/proxy.ts` on Next.js 16+ (template default) or `src/middleware.ts` on legacy Next.js 15 projects — the exported function and `config` are identical regardless of filename. Detect the installed Next.js major version from `package.json` (e.g. `node -p "require('./package.json').dependencies.next"` → parse); write `src/proxy.ts` when major >= 16, else `src/middleware.ts`. See `.claude/stacks/framework/nextjs.md` Stack Knowledge entry "Next.js 16+: scaffold src/proxy.ts (default)".
+   - The route-protection filename is `src/middleware.ts` on Next.js 16.x (today's template default after `npm install next`) or `src/proxy.ts` on Next.js 17+. Detect the installed Next.js major version from `node_modules/next/package.json` (e.g. `node -p "require('./node_modules/next/package.json').version"` → parse); write `src/middleware.ts` + `export async function middleware(...)` when major < 17, else write `src/proxy.ts` + `export async function proxy(...)`. The `config` export is identical regardless of filename. **Why the version threshold flipped from 16 to 17**: Next.js 16.x deprecated the middleware.ts filename in favour of proxy.ts but the proxy.ts registration is incomplete — auth-gated routes silently bypass redirect, a security regression (#1120). Stay on middleware.ts until Next.js 17 ships and proxy.ts registration is wired through. See `.claude/stacks/framework/nextjs.md` Stack Knowledge entry "Next.js 16.x: scaffold src/middleware.ts".
+   - **publicPaths derivation (Issue #1126)**: After writing the route-protection file from the auth stack template, replace the hardcoded `publicPaths` array literal with the canonical set computed from experiment.yaml:
+     ```bash
+     PUBLIC_PATHS=$(python3 .claude/scripts/lib/derive_pages.py public_paths < experiment/experiment.yaml)
+     # Substitute the placeholder array on the publicPaths const line with PUBLIC_PATHS
+     ```
+     The derive helper returns a JSON array of paths (e.g., `["/", "/login", "/signup", "/auth/callback", "/auth/reset-password", "/api/health", "/spec"]`) — a union of auth landing pages, `/api/health`, and behavior pages where every owning behavior has `anonymous_allowed: true` (fail-secure intersection). The static `publicPaths` array in the auth stack template is a placeholder; the substitution makes it canonical.
    - If `stack.database` matches the auth provider (e.g., both `supabase`): auth shares the database client files — create only the route-protection file (from the auth stack file's "Proxy" section)
    - If `stack.database` is absent or a different provider: create standalone auth library files from the "Standalone Client" section (e.g., `supabase-auth.ts`, `supabase-auth-server.ts`) AND the route-protection file
    - Do NOT create auth pages (signup, login), auth infrastructure (auth/callback, auth/reset-password), or components (nav-bar) — those are created by scaffold-pages and scaffold-wire respectively

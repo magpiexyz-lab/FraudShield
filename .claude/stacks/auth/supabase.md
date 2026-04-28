@@ -12,7 +12,7 @@ files:
   - src/app/signup/page.tsx                  # auto-included in derive_scope_pages() when stack.auth is set; scaffold-pages
   - src/app/login/page.tsx                   # auto-included in derive_scope_pages() when stack.auth is set; scaffold-pages
   # --- scaffold-libs creates (library + proxy, STATE 11a — LIB_SPAWN) ---
-  - src/proxy.ts                             # always; scaffold-libs (Next.js 16+ filename; legacy 15 uses src/middleware.ts)
+  - src/middleware.ts                        # always; scaffold-libs (Next.js 16.x working default — proxy.ts registration is incomplete on 16, see #1120). Next.js 17+ projects scaffold src/proxy.ts instead.
   - src/lib/supabase-auth.ts                 # only when stack.database is NOT supabase; scaffold-libs
   - src/lib/supabase-auth-server.ts          # only when stack.database is NOT supabase; scaffold-libs
 env:
@@ -604,9 +604,9 @@ if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
 Protect authenticated pages at the routing level so unauthenticated users are redirected before the page renders. Bootstrap creates this file when `stack.auth: supabase` is present.
 
-On Next.js 16+ (the template default), this file is `src/proxy.ts` and the exported function must be named `proxy` (function name must match filename on Next.js 16+ — see `.claude/stacks/framework/nextjs.md` Stack Knowledge entry "Next.js 16+: scaffold src/proxy.ts (default)"). On legacy projects pinned to Next.js 15 or earlier, the filename is `src/middleware.ts` and the exported function is named `middleware`. The `config` export is unchanged regardless of filename.
+On Next.js 16.x (today's template default), this file is `src/middleware.ts` and the exported function is `middleware` — see `.claude/stacks/framework/nextjs.md` Stack Knowledge entry "Next.js 16.x: scaffold src/middleware.ts" for the rationale (proxy.ts registration is incomplete on 16.x, #1120). On Next.js 17+, the filename becomes `src/proxy.ts` and the function is renamed `proxy`. The `config` export is unchanged regardless of filename. Function name must match filename on Next.js 17+.
 
-### `src/proxy.ts` — Route protection (always created; named `src/middleware.ts` on legacy Next.js 15 projects)
+### `src/middleware.ts` — Route protection (Next.js 16.x default; renamed `src/proxy.ts` on Next.js 17+)
 
 #### When `stack.database` is also `supabase` (shared client):
 ```ts
@@ -615,7 +615,7 @@ import { createServerClient } from "@supabase/ssr";
 
 const publicPaths = ["/", "/login", "/signup", "/auth/callback", "/auth/reset-password", "/api/health"];
 
-export async function proxy(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Skip public paths, static files, API routes, analytics proxy, and variant routes
@@ -670,7 +670,7 @@ export const config = {
 ```
 
 Notes:
-- `publicPaths` should be updated by bootstrap to include all non-authenticated pages from `derive_scope_pages(experiment)` (call `python3 .claude/scripts/lib/derive_pages.py scope < experiment/experiment.yaml`) — typically landing page variants, marketing pages, and any `behavior.pages` entry that is reachable without auth (e.g., a public invoice-pay page)
+- `publicPaths` MUST be replaced by `scaffold-libs` Step 3 with the canonical set returned by `derive_public_paths(experiment)` — call `python3 .claude/scripts/lib/derive_pages.py public_paths < experiment/experiment.yaml`. The static array shown above is a placeholder used only when experiment.yaml is unavailable. The canonical set covers: marketing landing (`/`), auth landing (`/login`, `/signup`, `/auth/callback`, `/auth/reset-password`), `/api/health`, plus any `behavior.pages` whose owning behavior(s) declare `anonymous_allowed: true` (fail-secure intersection: a page shared by two behaviors is public iff BOTH mark anonymous_allowed). See `.claude/templates/experiment-yaml.md` for the `behavior.anonymous_allowed` schema field (Issue #1126).
 - `/v/` variant routes are excluded via `pathname.startsWith("/v/")` — these are A/B test landing pages that must be publicly accessible
 - `/ingest/` is excluded via `pathname.startsWith("/ingest/")` — this is the client-side analytics reverse-proxy prefix defined by the analytics stack file's `next.config.ts` rewrite (see `.claude/stacks/analytics/posthog.md` Reverse Proxy Setup). Without this skip, unauthenticated PostHog event POSTs from landing/demo/signup pages would 307-redirect to `/login?next=/ingest/...` and return 405, silently breaking top-of-funnel analytics in production (was issue #983). Any auth stack file authoring its own middleware template must replicate this skip-list entry when `stack.analytics` uses a client-side reverse proxy.
 - API routes are excluded — they use server-side auth checks in route handlers instead. **Do not add middleware auth for `/api/` routes.** Middleware and API route handlers create separate Supabase clients from the same request cookies. Supabase refresh tokens are single-use: if the access token expires, middleware consumes the refresh token, and the API route handler's subsequent refresh attempt fails silently (returns 401). API routes must handle auth independently via `createServerSupabaseClient()` + `getUser()`.

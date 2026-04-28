@@ -65,7 +65,18 @@ def main() -> int:
         "files_created": [],
         "issues": [],
         "run_id": run_id,
+        # AOC v1 contract: aggregate trace MUST carry checks_performed and
+        # verdict so verify-report-gate.sh schema validation passes (#1122).
+        "checks_performed": [
+            "page_authored",
+            "events_wired",
+            "build_smoke",
+            "self_check_scored",
+        ],
+        "verdict": "pass",
     }
+    # Verdict rank for worst-of-batch aggregation. Higher rank wins.
+    verdict_rank = {"pass": 1, "fixed": 2, "partial": 3, "unresolved": 4, "fail": 5}
 
     for b in batches:
         try:
@@ -79,6 +90,13 @@ def main() -> int:
         merged["pages_created"] += 1
         merged["files_created"].extend(d.get("files_created", []))
         merged["issues"].extend(d.get("issues", []))
+        # Worst-of-batch verdict — aggregate must reflect failures
+        # (a hardcoded "pass" lies to pattern-classifier and Q-score).
+        per_page_verdict = d.get("verdict", "pass")
+        if verdict_rank.get(per_page_verdict, 0) > verdict_rank.get(
+            merged["verdict"], 0
+        ):
+            merged["verdict"] = per_page_verdict
 
     merged["timestamp"] = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
 

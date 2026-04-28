@@ -62,6 +62,59 @@ def derive_scope_pages(experiment: dict[str, Any]) -> list[str]:
     return sorted(p for p in pages if p not in _EXCLUDED_FROM_SCOPE)
 
 
+def derive_public_paths(experiment: dict[str, Any]) -> list[str]:
+    """Return the sorted set of route paths that the auth proxy/middleware
+    treats as public (no auth required).
+
+    Issue #1126: the auth template's hardcoded `publicPaths` array drifts from
+    `behaviors[*]` semantics whenever an experiment declares anonymous-allowed
+    pages outside the static defaults (e.g., a public `/spec` builder, public
+    quote-view pages). Bootstrap MUST substitute the derived array into the
+    proxy/middleware template at scaffold-libs time.
+
+    The public set is the union of:
+      1. Marketing landing route ("/") -- always public
+      2. Auth landing pages ("/login", "/signup") -- always public
+      3. Auth callback routes ("/auth/callback", "/auth/reset-password") -- always public
+      4. Health endpoint ("/api/health") -- always public
+      5. Behaviors[*].pages where every owning behavior has `anonymous_allowed: true`
+         (intersection / fail-secure: a page shared between two behaviors is
+         public only if BOTH behaviors mark it anonymous_allowed)
+
+    `behavior.anonymous_allowed: bool (default false)` is the explicit
+    schema marker. Absence means "auth required" (default-deny). This is
+    distinct from `requires_role`, which gates AUTHENTICATED users by role.
+    The two are mutually exclusive (validate-experiment.py enforces).
+
+    Variant routes "/v/*" and the analytics ingest prefix "/ingest/" are
+    handled separately by the proxy template (path-prefix match), not
+    enumerated here.
+    """
+    auth_landing = {"/", "/login", "/signup", "/auth/callback", "/auth/reset-password"}
+    api_public = {"/api/health"}
+
+    # Map page -> list of behaviors that own it (for intersection check).
+    page_owners: dict[str, list[dict]] = {}
+    for behavior in (experiment.get("behaviors") or []):
+        if not isinstance(behavior, dict):
+            continue
+        for page in (behavior.get("pages") or []):
+            if not page:
+                continue
+            page_owners.setdefault(page, []).append(behavior)
+
+    # Page is public iff EVERY owning behavior marks it anonymous_allowed=true
+    # (fail-secure intersection). One auth-required behavior anywhere on the
+    # page keeps it auth-gated.
+    behavior_public: set[str] = set()
+    for page, owners in page_owners.items():
+        if owners and all(b.get("anonymous_allowed") is True for b in owners):
+            # Convert page slug to route ("/<page>")
+            behavior_public.add(f"/{page}")
+
+    return sorted(auth_landing | api_public | behavior_public)
+
+
 def derive_funnel_steps(experiment: dict[str, Any]) -> list[dict]:
     """Return the ordered list of golden_path steps for sequence-based consumers.
 
@@ -445,13 +498,17 @@ def _load_experiment() -> dict:
 
 
 def main() -> None:
-    if len(sys.argv) < 2 or sys.argv[1] not in ("scope", "funnel"):
-        sys.stderr.write("usage: derive_pages.py {scope|funnel} [< experiment.yaml]\n")
+    if len(sys.argv) < 2 or sys.argv[1] not in ("scope", "funnel", "public_paths"):
+        sys.stderr.write(
+            "usage: derive_pages.py {scope|funnel|public_paths} [< experiment.yaml]\n"
+        )
         sys.exit(2)
 
     experiment = _load_experiment()
     if sys.argv[1] == "scope":
         result = derive_scope_pages(experiment)
+    elif sys.argv[1] == "public_paths":
+        result = derive_public_paths(experiment)
     else:
         result = derive_funnel_steps(experiment)
 

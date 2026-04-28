@@ -37,7 +37,13 @@ Generate 5-10 hypotheses spanning these categories:
 | `retain` | Will people come back? | "N% of users return within 7 days" |
 
 ### Hypothesis fields
-Each hypothesis must have:
+
+Two shapes — testable hypotheses (status: pending) carry `metric:`,
+desk-resolved research hypotheses (status: resolved) carry `evidence:`
+instead. See `.claude/templates/experiment-yaml.md` `hypotheses` section
+for the canonical schema (Issue #1117).
+
+**Testable hypothesis (status: pending):**
 ```yaml
 - id: h-01                       # Sequential zero-padded: h-01, h-02, ...
   category: demand               # demand | reach | activate | monetize | retain
@@ -52,9 +58,32 @@ Each hypothesis must have:
   status: pending                # pending | resolved
 ```
 
+**Desk-resolved hypothesis (status: resolved, Issue #1117):**
+Research-type hypotheses validated by desk research (market sizing,
+competitor scans, ICP interviews) have no analytics-event formula because
+they were validated before any product was built. Use `evidence:` instead
+of `metric:` — `validate-experiment.py` accepts either shape, depending
+on `status`. Forcing a placeholder `metric.formula` like
+`research_market_exists / one` produces orphan event references that
+mislead downstream consumers.
+
+```yaml
+- id: h-07
+  category: demand               # market/problem -> demand; competition/ICP -> reach
+  statement: "TAM exceeds $50M based on Q1 2026 market analysis"
+  evidence:
+    source: "TAM analysis Q1 2026"
+    verdict: "TAM = $73M (target $50M+) — pass"
+    citation: "internal/research/tam-q1-2026.md"
+  priority_score: 60
+  experiment_level: 1
+  depends_on: []
+  status: resolved
+```
+
 ### Rules
 - Research-type hypotheses from Step 2 are included with `status: resolved` and their verdicts. They must use `h-NN` IDs continuing the sequence after pending hypotheses (e.g., if pending hypotheses are h-01 through h-06, research hypotheses start at h-07). Assign the closest valid funnel category: market/problem research → `demand`, competition/ICP research → `reach`. The `research_<dimension>` IDs from STATE 1 are for the research artifact only — they are renumbered when added to the hypotheses list.
-- Every hypothesis MUST have a `metric:` object with numeric `threshold`, `formula` using `<object>_<action>` snake_case event names (these become EVENTS.yaml entries in STATE 6), and an `operator` — no vague language
+- Every **testable** hypothesis (status: pending) MUST have a `metric:` object with numeric `threshold`, `formula` using `<object>_<action>` snake_case event names (these become EVENTS.yaml entries in STATE 6), and an `operator` — no vague language. **Resolved** hypotheses (status: resolved, validated by desk research) carry `evidence:{source,verdict,citation}` instead — no formula needed because no event ever fires for them. See the canonical schema at `.claude/templates/experiment-yaml.md` `hypotheses` section (#1117).
 - Filter: only include hypotheses where `experiment_level <= selected level`
 - Counts below are for **pending** hypotheses only (require building product + real user data). The 4 resolved research hypotheses from Step 2 are separate and don't count toward these minimums.
 - At least one hypothesis per required category:

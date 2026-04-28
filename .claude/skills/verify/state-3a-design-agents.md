@@ -252,7 +252,19 @@ reported shared issues are for claimed components, Stage 1c has no work — skip
 
 **VERIFY:**
 ```bash
-python3 -c "import json,glob,os; ctx=json.load(open('.runs/verify-context.json')); needs_dc=ctx.get('scope') in ('full','visual') and ctx.get('archetype')=='web-app'; assert not needs_dc or os.path.exists('.runs/design-claims.json'), 'design-claims.json missing (pre-flight must run before agent spawns)'; fs=glob.glob('.runs/agent-traces/design-critic-*.json') if needs_dc else []; assert not needs_dc or len(fs)>=1, 'no design-critic traces (scope=%s, archetype=%s)' % (ctx.get('scope'),ctx.get('archetype')); d=json.load(open(fs[0])) if fs else {}; assert not fs or ('exit_code' in d or 'verdict' in d), 'design-critic trace missing exit_code or verdict'; assert not fs or (isinstance(d.get('checks_performed'),list) and len(d.get('checks_performed',[]))>=3), 'checks_performed too shallow (%d) — suspected fabrication' % len(d.get('checks_performed',[])); assert not fs or d.get('pages_reviewed',0)>=1, 'pages_reviewed missing or zero'"
+python3 -c "import json,glob,os; ctx=json.load(open('.runs/verify-context.json')); needs_dc=ctx.get('scope') in ('full','visual') and ctx.get('archetype')=='web-app'; assert not needs_dc or os.path.exists('.runs/design-claims.json'), 'design-claims.json missing (pre-flight must run before agent spawns)'; fs=sorted(glob.glob('.runs/agent-traces/design-critic-*.json')) if needs_dc else []; per_page=[f for f in fs if os.path.basename(f) not in ('design-critic.json','design-critic-shared.json')]; assert not needs_dc or len(per_page)>=1, 'no per-page design-critic traces (scope=%s, archetype=%s)' % (ctx.get('scope'),ctx.get('archetype')); shallow=[]
+for f in per_page:
+    d=json.load(open(f))
+    if d.get('partial') is True: continue
+    if d.get('fast_path') is True: continue
+    if d.get('provenance') in ('self-degraded','recovery'): continue
+    if d.get('verdict') in ('unresolved','fail'): continue
+    if not ('exit_code' in d or 'verdict' in d): shallow.append(f+' (no exit_code/verdict)'); continue
+    if not isinstance(d.get('checks_performed'),list) or len(d.get('checks_performed',[]))<3:
+        shallow.append(f+' (checks_performed shallow: '+str(len(d.get('checks_performed',[])))+')')
+    elif d.get('pages_reviewed',0)<1:
+        shallow.append(f+' (pages_reviewed=0)')
+assert not shallow, 'non-degraded design-critic traces below depth threshold (issue #1124 over-block fix iterates all): '+str(shallow)"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

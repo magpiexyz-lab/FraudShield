@@ -70,6 +70,8 @@ For each CRITICAL module (or batch) **in dependency order, never in parallel**:
   "
   ```
 
+Check off in `.runs/current-plan.md`: `- [x] Unit test generation (state 16)` (#1118)
+
 **POSTCONDITIONS:**
 - All CRITICAL modules have unit tests
 - All tests pass
