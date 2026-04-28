@@ -260,6 +260,30 @@ final pathname is an auth route (`/login`, `/signup`, `/auth/callback`,
 This surfaces upstream middleware / env-propagation bugs loudly instead of
 silently accepting source-only reviews across every page.
 
+## Pre-Trace Self-Check (MANDATORY for landing critic)
+
+Before writing your trace, when `.runs/image-candidates.json` exists, run this
+self-check tied to the trace-write moment (fix #1129 — state-3b VERIFY enforced):
+
+- [ ] Did I read `.runs/image-candidates.json`?
+- [ ] For every landing-owned slot (everything except `empty-state`) where
+      `len(candidates) > 1`, did I score every unused candidate IN PAGE
+      CONTEXT (Candidate Image Swap Protocol — copy → start production
+      server → screenshot → score → kill server) — not from disk inspection?
+- [ ] Does my trace's `candidates_tried` reflect the count of unused
+      candidates I scored? `candidates_tried > 0` is required when the
+      sidecar has unused landing-owned candidates.
+- [ ] If a candidate could not be scored (file unreadable, dimension limit,
+      production server error), did I emit `unresolved_images: [{slot,
+      reason, best_score}]` for that slot? (this is the sanctioned escape
+      hatch when `candidates_tried` cannot reach the unused-candidate count).
+
+If ANY check is "no", return to `procedures/design-critic.md` Step 5.5 and
+complete the confirmation pass before writing the trace. The state-3b VERIFY
+will reject `candidates_tried==0` when the sidecar has unused landing-owned
+candidates AND `unresolved_images` is empty AND the trace is not self-degraded
+with `recovery_validated=True`.
+
 ## Trace Output
 
 After completing all work, write a trace file:
@@ -328,8 +352,8 @@ Replace placeholders with actual values:
 - `<IE>`: number of images evaluated (0 if no images exist). Record image evaluation results even when no fixes are needed. If `image-manifest.json` does not exist or contains no images, set to 0.
 - `<IS>`: JSON array of `{"file":"<filename>","scores":{"subject":<N>,"style":<N>,"color":<N>,"composition":<N>,"polish":<N>},"verdict":"pass|fixed"}` for each image evaluated (use `[]` if none)
 - `<IF>`: number of images fixed (regenerated or replaced) (0 if none)
-- `candidates_tried`: number of pre-generated candidates tried from sidecar. Landing critic ONLY — required (non-null int) whenever `.runs/image-candidates.json` exists. Non-landing critics: omit entirely (they have read-only access to the sidecar and do not run Step 5.5).
-- `new_candidates_generated`: number of new candidates generated with page-context-informed prompts (0 if none)
+- `candidates_tried`: number of pre-generated candidates tried from sidecar. Landing critic ONLY — required (non-null int) whenever `.runs/image-candidates.json` exists. State-3b VERIFY (fix #1129) hard-blocks `candidates_tried==0` when the sidecar has unused candidates in landing-owned slots (everything except `empty-state`) AND `unresolved_images` is empty AND the trace is not self-degraded with `recovery_validated=True`. Non-landing critics: omit entirely (they have read-only access to the sidecar and do not run Step 5.5).
+- `new_candidates_generated`: number of new candidates generated with page-context-informed prompts (0 if none). Together with `candidates_tried`, both being `0` across all agents is the documented signal that Step 5.5 did not run (procedures/design-critic.md Step 5.5 step 4, fix #1076 regression vector — line numbers drift, step numbers don't).
 - `image_issues_for_landing`: JSON array of `{"slot":"<image-slot>","issue":"<description>"}`. **REQUIRED on non-landing critics when `.runs/page-image-map.json` classifies this page with `has_images=true`** (the state-2a static classifier; the spawn prompt communicates this flag). Value may be `[]` when no issues found — the key must still be present so state-3b VERIFY can distinguish "inspected and clean" from "silently skipped". Optional when `has_images=false`. Omit on the landing critic (landing owns candidate selection; it uses `candidates_tried` + image fixes directly).
 - `review_method`: one of `"rendered-authed"` / `"rendered-demo"` / `"source-only"` / `"unknown"` (from render-review-detection)
 - `review_evidence`: object with `requested_route`, `final_url`, `auth_source`, `fallback_reason`, `content_density`, `final_status`, `route_pattern` — see `.claude/patterns/render-review-detection.md`

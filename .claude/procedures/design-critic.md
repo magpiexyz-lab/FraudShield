@@ -223,6 +223,23 @@ so no `npm run build` is needed between candidate swaps — only a server restar
 
 #### Landing-page critic — full candidate evaluation (CONFIRMATION flow)
 
+> **MANDATORY trace-write contract (fix #1129 — state-3b VERIFY enforced).**
+> If `.runs/image-candidates.json` exists AND any landing-owned slot (everything
+> except `empty-state`) has `len(candidates) > 1`, you MUST score every unused
+> candidate in page context AND emit `candidates_tried > 0` in your trace
+> (and populate `new_candidates_generated` with any Step 5.5 polish-floor
+> escalation regenerations — both fields being `0` is the procedure-line-244
+> regression signal).
+> The state-3b VERIFY at `state-registry.json` rejects the trace when the
+> sidecar has unused landing-owned candidates AND `candidates_tried==0` AND
+> `unresolved_images` is empty. Skipping this confirmation pass is a procedural
+> violation that will block the verify run. The only sanctioned ways to ship
+> `candidates_tried==0` with unused candidates present are:
+> (a) emit `unresolved_images: [{slot, reason, best_score}]` describing why
+> a candidate could not be scored (e.g., file unreadable, dimension limit), or
+> (b) self-degrade with `provenance="self-degraded"` AND a sanctioned reason
+> (see Self-Degradation Handler in `.claude/agents/design-critic.md`).
+
 If you are reviewing the **landing page** AND `.runs/image-candidates.json` exists, this step runs as a **confirmation** pass, not remediation (fix #1076). Always compare the currently selected candidate against every unused candidate for that slot using Pareto dominance — do NOT wait for the selected candidate to score below a threshold before trying alternates.
 
 **Polish-scoring rule (fix #1076 Fix B — masking-as-polish prohibition):**
@@ -241,7 +258,7 @@ If you are reviewing the **landing page** AND `.runs/image-candidates.json` exis
 
    **Slot-intent escalation skip (Issue #1077, PR3 — read-only addition):** before triggering regeneration, read `.runs/slot-intent.json`. When `design_slots_enabled == true`, for the current slot, if `slot_role != "focal"` OR `runtime_gate != null`, **skip polish-floor escalation entirely** and record `polish_floor_skipped_low_priority: true` in the slot's `image_scores` trace entry. Rationale: regenerating a slot declared `texture` / `watermark` / `conditional` to chase polish=10 wastes the regeneration budget — the user-visible contribution is already low (texture/watermark) or unreachable in DEMO_MODE (conditional + runtime_gate). polish < 9 is acceptable for non-focal slots. design-critic does NOT mutate slot-intent.json (read-only). When slot-intent is absent or flag is false, fall through to legacy escalation.
 
-4. Populate `candidates_tried` and `new_candidates_generated` in the trace with actual counts — these being `0` across all agents is the signal that Step 5.5 did not run (the #1076 regression vector).
+4. Populate `candidates_tried` and `new_candidates_generated` in the trace with actual counts — these being `0` across all agents is the signal that Step 5.5 did not run (the #1076 regression vector). The state-3b VERIFY (fix #1129) hard-blocks `candidates_tried==0` when the sidecar has unused candidates in landing-owned slots AND `unresolved_images` is empty AND the trace is not self-degraded with `recovery_validated`.
 
 #### og-photo — metadata-based evaluation (landing-page critic only)
 

@@ -495,3 +495,48 @@ When a bakeoff subdirectory is scaffolded under `scripts/bakeoff/` (has its own 
 This is fal-stack-local guidance — the root `tsconfig.json` in `nextjs.md` stays unconditional. Apply this exclude extension at the same time the bakeoff subdir + its `package.json` are scaffolded (see `.claude/procedures/scaffold-images.md`). Alternative: scaffold a scoped `tsconfig.json` inside `scripts/bakeoff/` — either approach resolves the build failure, but the root `exclude` is smaller-diff and matches the existing single-tsconfig convention.
   - Images are generated at bootstrap time and committed as static assets
   - The deployed app does NOT need `FAL_KEY` at runtime
+
+## Stack Knowledge
+
+```yaml
+id: fal-sidecar-consumer-verify-semantic-value
+maturity: raw
+anti_pattern: false
+composite_identity:
+  root_cause_class: agent procedure prose unenforced — VERIFY checks key existence not semantic value
+  divergence_pattern: validator-gap-semantic-value
+  stack_scope: images/fal
+composite_identity_hash: 091e1955a241
+symptom_keywords: [candidates_tried, sidecar, design-critic, step-5.5, verify-gate]
+fix_template: |
+  When a state VERIFY enforces an agent contract on a sidecar-consuming agent
+  (e.g., design-critic vs .runs/image-candidates.json), the assertion MUST
+  validate the field's SEMANTIC VALUE against the sidecar's data, not just
+  the field's PRESENCE. Pattern:
+    1. Read sidecar with try/except (corrupt sidecar must not crash the gate)
+    2. Compute expected_work from sidecar (e.g., unused candidate count for owned slots)
+    3. Skip enforcement when trace is self-degraded with recovery_validated=True
+    4. Assert agent emitted (work-done > 0) OR (escape-hatch field populated)
+    5. On failure, name the original issue + regression lineage in the message
+  Edit registry-owned VERIFY blocks at .claude/patterns/state-registry.json then run
+  `make sync-verify` to propagate to .claude/skills/<skill>/state-N-*.md.
+prevention_mechanism: validator
+confidence_score: 0.7
+occurrence_count: 1
+linked_issues: [1129]
+first_seen: 2026-04-28
+last_seen: 2026-04-28
+graduated_to: null
+```
+
+When a state VERIFY enforces an agent contract whose work depends on data in a
+sidecar file (e.g., design-critic Step 5.5 confirmation pass against
+`.runs/image-candidates.json`), check the field's semantic value, not just its
+presence. The presence check is satisfied by an agent that emits the field
+with a default value (e.g., `candidates_tried: 0`) without doing the work; the
+semantic check ties the field to evidence in the sidecar. Always include an
+escape hatch (`unresolved_images` or equivalent) for legitimate "could not do
+the work" cases, plus a self-degraded fallback (`provenance="self-degraded"
+AND recovery_validated=True`) for sanctioned recovery paths. See #1129
+(regression of #1076) for the canonical case study: prose-only fix to the
+procedure file regressed within days because no machine gate enforced it.
