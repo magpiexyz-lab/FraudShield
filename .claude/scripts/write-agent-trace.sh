@@ -45,6 +45,7 @@ Usage: write-agent-trace.sh <agent> --json '<trace-json>'
        [--source <attestation>]
        [--coverage-provider <artifact-path>]
        [--trace-filename <name>.json]
+       [--spawn-index <N>]
 EOF
 }
 
@@ -61,6 +62,7 @@ JSON_PAYLOAD=""
 SOURCE=""
 COVERAGE_PROVIDER=""
 TRACE_FILENAME=""
+SPAWN_INDEX_OVERRIDE=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -69,6 +71,7 @@ while [[ $# -gt 0 ]]; do
     --source)             SOURCE="${2:-}"; shift 2 ;;
     --coverage-provider)  COVERAGE_PROVIDER="${2:-}"; shift 2 ;;
     --trace-filename)     TRACE_FILENAME="${2:-}"; shift 2 ;;
+    --spawn-index)        SPAWN_INDEX_OVERRIDE="${2:-}"; shift 2 ;;
     -h|--help)            usage; exit 0 ;;
     *)
       echo "ERROR: write-agent-trace.sh — unknown argument: $1" >&2
@@ -77,6 +80,11 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+if [[ -n "$SPAWN_INDEX_OVERRIDE" && ! "$SPAWN_INDEX_OVERRIDE" =~ ^[0-9]+$ ]]; then
+  echo "ERROR: write-agent-trace.sh — --spawn-index must be a non-negative integer (got: $SPAWN_INDEX_OVERRIDE)" >&2
+  exit 1
+fi
 
 if [[ -z "$AGENT" ]]; then
   echo "ERROR: write-agent-trace.sh — agent name is required" >&2
@@ -130,6 +138,7 @@ PROVENANCE_ENV="$PROVENANCE" \
 SOURCE_ENV="$SOURCE" \
 COVERAGE_PROVIDER_ENV="$COVERAGE_PROVIDER" \
 TRACE_FILENAME_ENV="$TRACE_FILENAME" \
+SPAWN_INDEX_OVERRIDE_ENV="$SPAWN_INDEX_OVERRIDE" \
 JSON_PAYLOAD_ENV="$JSON_PAYLOAD" \
 ACTIVE_SKILL_ENV="$ACTIVE_SKILL" \
 ACTIVE_RUN_ID_ENV="$ACTIVE_RUN_ID" \
@@ -145,6 +154,8 @@ provenance = os.environ["PROVENANCE_ENV"]
 source = os.environ.get("SOURCE_ENV", "")
 coverage_provider = os.environ.get("COVERAGE_PROVIDER_ENV", "")
 trace_filename = os.environ.get("TRACE_FILENAME_ENV", "")
+spawn_index_override_str = os.environ.get("SPAWN_INDEX_OVERRIDE_ENV", "")
+spawn_index_override = int(spawn_index_override_str) if spawn_index_override_str else None
 payload_raw = os.environ["JSON_PAYLOAD_ENV"]
 active_skill = os.environ.get("ACTIVE_SKILL_ENV", "")
 active_run_id = os.environ.get("ACTIVE_RUN_ID_ENV", "")
@@ -182,6 +193,12 @@ if "agent" in payload and payload["agent"] != agent:
 
 # Spawn-log lookup for spawn_sha / spawn_index inheritance (matches
 # write-degraded-trace.py behavior).
+#
+# When --spawn-index <N> is supplied: require an exact match on (agent, run_id,
+# hook, spawn_index). This disambiguates parallel spawns of the same agent type
+# (e.g., scaffold-pages-home / scaffold-pages-pricing). Without the override the
+# loop falls back to first-match semantics — preserves single-spawn agents and
+# does not change existing migrated callers.
 spawn_log_path = ".runs/agent-spawn-log.jsonl"
 spawn_sha = ""
 spawn_index = None
@@ -192,14 +209,31 @@ if os.path.isfile(spawn_log_path):
                 e = json.loads(line)
             except Exception:
                 continue
-            if (
+            if not (
                 e.get("agent") == agent
                 and e.get("run_id") == active_run_id
                 and e.get("hook") == "skill-agent-gate"
             ):
-                spawn_sha = e.get("head_sha", "")
-                spawn_index = e.get("spawn_index")
-                break
+                continue
+            if spawn_index_override is not None:
+                if e.get("spawn_index") != spawn_index_override:
+                    continue
+            spawn_sha = e.get("head_sha", "")
+            spawn_index = e.get("spawn_index")
+            break
+
+# When the caller supplied --spawn-index but no spawn-log row matched, fail
+# closed instead of silently writing with spawn_index=None. The override exists
+# precisely to disambiguate parallel spawns; a miss means the caller asserted
+# something the spawn-log can't corroborate.
+if spawn_index_override is not None and spawn_index is None:
+    sys.stderr.write(
+        f"ERROR: write-agent-trace.sh — --spawn-index {spawn_index_override} "
+        f"requested but no spawn-log row matches "
+        f"(agent={agent!r}, run_id={active_run_id!r}, hook=skill-agent-gate, "
+        f"spawn_index={spawn_index_override}).\n"
+    )
+    sys.exit(2)
 
 # For lead-on-behalf: spawn-log entry MUST exist (the agent really was spawned;
 # the lead is transcribing its returned output). Otherwise fail-closed: an

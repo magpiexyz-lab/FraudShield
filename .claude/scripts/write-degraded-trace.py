@@ -77,7 +77,17 @@ def main() -> int:
                              "protected fields cannot be overridden")
     parser.add_argument("--trace-filename", default="",
                         help="override output filename")
+    parser.add_argument("--spawn-index", type=int, default=None,
+                        help="override spawn-log lookup spawn_index for parallel spawns "
+                             "of the same agent type (e.g., scaffold-pages-home / "
+                             "scaffold-pages-pricing). When omitted, first-match semantics "
+                             "are preserved (single-spawn agents).")
     args = parser.parse_args()
+
+    if args.spawn_index is not None and args.spawn_index < 0:
+        print("ERROR: write-degraded-trace.py — --spawn-index must be a non-negative integer",
+              file=sys.stderr)
+        return 1
 
     # Resolve active identity via the shell helper (single source of truth).
     # We shell out because the helper is in bash.
@@ -101,7 +111,11 @@ def main() -> int:
               file=sys.stderr)
         return 1
 
-    # Look up spawn-log entry for this agent in current run_id to inherit spawn_sha
+    # Look up spawn-log entry for this agent in current run_id to inherit spawn_sha.
+    # When --spawn-index <N> is supplied: require an exact match on spawn_index too.
+    # This disambiguates parallel spawns of the same agent type. Without the override
+    # the loop falls back to first-match semantics — preserves single-spawn agents
+    # and existing migrated callers.
     spawn_log = ".runs/agent-spawn-log.jsonl"
     spawn_sha = ""
     spawn_index = None
@@ -112,12 +126,26 @@ def main() -> int:
                     e = json.loads(line)
                 except Exception:
                     continue
-                if (e.get("agent") == args.agent
+                if not (e.get("agent") == args.agent
                         and e.get("run_id") == active_run_id
                         and e.get("hook") == "skill-agent-gate"):
-                    spawn_sha = e.get("head_sha", "")
-                    spawn_index = e.get("spawn_index")
-                    break
+                    continue
+                if args.spawn_index is not None and e.get("spawn_index") != args.spawn_index:
+                    continue
+                spawn_sha = e.get("head_sha", "")
+                spawn_index = e.get("spawn_index")
+                break
+
+    # Fail-closed when --spawn-index was supplied but no row matched.
+    if args.spawn_index is not None and spawn_index is None:
+        print(
+            f"ERROR: write-degraded-trace.py — --spawn-index {args.spawn_index} "
+            f"requested but no spawn-log row matches "
+            f"(agent={args.agent!r}, run_id={active_run_id!r}, hook=skill-agent-gate, "
+            f"spawn_index={args.spawn_index}).",
+            file=sys.stderr,
+        )
+        return 1
 
     # Parse fixes JSON (optional)
     fixes = []

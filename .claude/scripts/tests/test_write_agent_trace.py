@@ -248,6 +248,87 @@ class TestWriteAgentTrace(unittest.TestCase):
         self.assertNotEqual(rc, 0)
         self.assertIn("must be a JSON object", err)
 
+    def test_spawn_index_override_disambiguates_parallel_spawns(self):
+        """Two spawn-log rows for scaffold-pages with different spawn_index;
+        --spawn-index 2 must select the second row, not first-match the first."""
+        spawn_log = self.repo / ".runs/agent-spawn-log.jsonl"
+        existing = spawn_log.read_text()
+        # Add two rows for the same agent to simulate parallel spawn
+        spawn_log.write_text(existing + "".join([
+            json.dumps({
+                "agent": "scaffold-pages", "run_id": self.run_id,
+                "skill": "test", "spawn_index": 1, "head_sha": "sha-page-1",
+                "hook": "skill-agent-gate", "timestamp": "2026-01-01T00:00:00Z",
+            }) + "\n",
+            json.dumps({
+                "agent": "scaffold-pages", "run_id": self.run_id,
+                "skill": "test", "spawn_index": 2, "head_sha": "sha-page-2",
+                "hook": "skill-agent-gate", "timestamp": "2026-01-01T00:00:01Z",
+            }) + "\n",
+        ]))
+        payload = json.dumps({"verdict": "pass", "result": "clean", "checks_performed": ["c"]})
+        rc, _, err = _run(
+            self.repo, "scaffold-pages",
+            "--json", payload,
+            "--spawn-index", "2",
+            "--trace-filename", "scaffold-pages-pricing.json",
+        )
+        self.assertEqual(rc, 0, f"stderr={err}")
+        target = self.repo / ".runs/agent-traces/scaffold-pages-pricing.json"
+        d = json.loads(target.read_text())
+        self.assertEqual(d["spawn_index"], 2)
+        self.assertEqual(d["spawn_sha"], "sha-page-2")
+
+    def test_spawn_index_override_no_match_fails(self):
+        """--spawn-index N with no matching spawn-log row must error out."""
+        payload = json.dumps({"verdict": "pass", "result": "clean", "checks_performed": ["c"]})
+        rc, _, err = _run(
+            self.repo, "build-info-collector",
+            "--json", payload,
+            "--spawn-index", "99",
+        )
+        self.assertNotEqual(rc, 0)
+        self.assertIn("no spawn-log row matches", err)
+        self.assertIn("spawn_index=99", err)
+
+    def test_spawn_index_override_must_be_integer(self):
+        rc, _, err = _run(
+            self.repo, "build-info-collector",
+            "--json", "{}",
+            "--spawn-index", "abc",
+        )
+        self.assertNotEqual(rc, 0)
+        self.assertIn("non-negative integer", err)
+
+    def test_spawn_index_default_first_match_preserved(self):
+        """Without --spawn-index, the loop falls back to first-match behavior
+        (single-spawn agents and existing migrated callers stay unaffected)."""
+        spawn_log = self.repo / ".runs/agent-spawn-log.jsonl"
+        existing = spawn_log.read_text()
+        spawn_log.write_text(existing + "".join([
+            json.dumps({
+                "agent": "scaffold-pages", "run_id": self.run_id,
+                "skill": "test", "spawn_index": 1, "head_sha": "sha-page-1",
+                "hook": "skill-agent-gate", "timestamp": "2026-01-01T00:00:00Z",
+            }) + "\n",
+            json.dumps({
+                "agent": "scaffold-pages", "run_id": self.run_id,
+                "skill": "test", "spawn_index": 2, "head_sha": "sha-page-2",
+                "hook": "skill-agent-gate", "timestamp": "2026-01-01T00:00:01Z",
+            }) + "\n",
+        ]))
+        payload = json.dumps({"verdict": "pass", "result": "clean", "checks_performed": ["c"]})
+        rc, _, err = _run(
+            self.repo, "scaffold-pages",
+            "--json", payload,
+        )
+        self.assertEqual(rc, 0, f"stderr={err}")
+        target = self.repo / ".runs/agent-traces/scaffold-pages.json"
+        d = json.loads(target.read_text())
+        # First-match: spawn_index 1 wins
+        self.assertEqual(d["spawn_index"], 1)
+        self.assertEqual(d["spawn_sha"], "sha-page-1")
+
 
 def main():
     if not SCRIPT.is_file():

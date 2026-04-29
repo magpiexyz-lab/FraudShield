@@ -25,7 +25,11 @@
            fm[k.strip()] = v.strip()
 
    scope = ctx.get('scope', 'full')
-   skill = ctx.get('skill', 'verify')
+   # Q-score attribution: read attributed_to (set by lifecycle-init.sh --embed and
+   # by state-0 extra_json) so embedded verify runs (bootstrap-verify, change-verify)
+   # record the parent skill in verify-history.jsonl. Falls back to physical skill
+   # for legacy contexts pre-#941. Aligns reader with init-context.sh:73 design intent.
+   skill = ctx.get('attributed_to') or ctx.get('skill', 'verify')
    dims = {}
 
    # Q_build (deterministic — from build attempts)
@@ -116,12 +120,16 @@
 
 9. **Q-score observation trigger** (low-Q auto-observe):
 
-   If `q_skill < 0.5` and `skill` is not `"verify"` (standalone verify has no skill attribution for template issues):
+   The `skill` variable above resolves to `attributed_to` first (parent skill for embedded runs) and falls back to physical `skill` for standalone runs. This means:
+   - Standalone `/verify`: `skill == "verify"` → trigger does NOT fire (verify itself has no parent to attribute issues to).
+   - Embedded `bootstrap-verify` / `change-verify`: `skill == "bootstrap"` / `"change"` (the parent) → trigger CAN fire.
+
+   If `q_skill < 0.5` and `skill != "verify"` (i.e., this is an embedded run with low quality):
 
    File an observation to the template repo using `.claude/patterns/observe.md` **Path 3** (direct Q-score evaluation):
-   - Title: `[observe] Low Q-score: <skill> Q=<q_skill>`
-   - Body: skill name, Q-score breakdown (Gate, R_system, R_human, dimension_scores), timestamp
-   - Follow observe.md's Redaction, Dedup, and Issue Creation procedures
+   - Title: `[observe] Low Q-score: <skill> Q=<q_skill>` (uses attributed parent skill for issue title)
+   - Body: parent skill, Q-score breakdown (Gate, R_system, R_human, dimension_scores), timestamp, and the run's physical context (`physical_skill: "verify"`, `attributed_to: "<parent>"`) for cross-reference
+   - Follow observe.md's Redaction, Dedup, and Issue Creation procedures (dedup keys on symptom + skill, so attribution-based labeling preserves pattern detection)
 
    This is a direct evaluation (like Path 2), not a callback to the observation epilogue. Do NOT spawn the observer agent.
 

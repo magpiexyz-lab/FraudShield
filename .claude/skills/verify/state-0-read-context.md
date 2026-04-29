@@ -49,9 +49,9 @@
    fi
    ```
 
-6. Merge verify-specific fields into context via shared init script. Extra fields override base: `skill` attributes Q-scores to the calling skill, `scope`/`archetype`/`quality` drive agent gating, `mode` controls PR gate behavior, `baseline_available` enables delta reporting. Base fields (`branch`, `timestamp`, `run_id`, `completed_states`) are already set by lifecycle-init.sh:
+6. Merge verify-specific fields into context via shared init script. Extra fields override base: `attributed_to` attributes Q-scores to the calling skill (per #941 design — `skill` is the immutable physical running skill, always `"verify"` here, see `init-context.sh:73`), `scope`/`archetype`/`quality` drive agent gating, `mode` controls PR gate behavior, `baseline_available` enables delta reporting. Base fields (`branch`, `timestamp`, `run_id`, `skill`, `completed_states`) are already set by lifecycle-init.sh and are immutable here:
    ```bash
-   bash .claude/scripts/init-context.sh verify "{\"skill\":\"<skill from step 4>\",\"scope\":\"<scope>\",\"archetype\":\"<type>\",\"quality\":\"production\",\"mode\":\"<standalone if skill is verify, otherwise the skill name + -verify e.g. bootstrap-verify, change-verify>\",\"baseline_available\":$BASELINE_AVAILABLE}"
+   bash .claude/scripts/init-context.sh verify "{\"attributed_to\":\"<skill from step 4>\",\"scope\":\"<scope>\",\"archetype\":\"<type>\",\"quality\":\"production\",\"mode\":\"<standalone if skill is verify, otherwise the skill name + -verify e.g. bootstrap-verify, change-verify>\",\"baseline_available\":$BASELINE_AVAILABLE}"
    ```
 
 7. Create `.runs/fix-log.md` on disk:
@@ -67,11 +67,11 @@
    - PR changed files: `git diff --name-only $(git merge-base HEAD main)...HEAD`
    - Golden path steps: ordered list of funnel steps via `python3 .claude/scripts/lib/derive_pages.py funnel < experiment/experiment.yaml` (used for LIST-semantic consumers like funnel tests and step-by-step assertions).
 
-**POSTCONDITIONS:** All 4 artifacts exist on disk (agent-traces dir, verify-context.json with `skill` field, fix-log.md). Context digest is available in-memory. If `verify-history.jsonl` has a previous entry matching the current skill, baseline data is available for STATE 7 delta reporting.
+**POSTCONDITIONS:** All 4 artifacts exist on disk (agent-traces dir, verify-context.json with `attributed_to` field, fix-log.md). Context digest is available in-memory. If `verify-history.jsonl` has a previous entry matching the current skill, baseline data is available for STATE 7 delta reporting.
 
 **VERIFY:**
 ```bash
-test -f .runs/verify-context.json && test -f .runs/fix-log.md && test -d .runs/agent-traces && python3 -c "import json; assert json.load(open('.runs/verify-context.json')).get('skill'), 'skill field empty in verify-context.json'"
+test -f .runs/verify-context.json && test -f .runs/fix-log.md && test -d .runs/agent-traces && python3 -c "import json; assert json.load(open('.runs/verify-context.json')).get('attributed_to'), 'attributed_to field empty in verify-context.json'"
 ```
 
 > **Hook-enforced:** `skill-agent-gate.sh` validates these postconditions before allowing the next state's agents to spawn.
