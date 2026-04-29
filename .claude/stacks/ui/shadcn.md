@@ -516,6 +516,45 @@ On dark-theme projects (`--background` near slate-950, warm-obsidian, or any cus
 
 The minimum valid step is enforced by Tailwind's default opacity scale (see `Opacity modifier values` above — `/60` is in the scale; `/55` is NOT and would be silently dropped). The exact minimum ratio depends on the specific background color — run an axe-core scan (accessibility-scanner agent) after any opacity change on dark backgrounds to verify the actual ratio. Heuristic /60 is safe for most dark themes; lighter tokens may tolerate /50.
 
+### When custom oklch CSS tokens for secondary or annotation text fail WCAG 1.4.3
+Custom theme tokens defined in `globals.css` using `oklch()` can fall below the WCAG 1.4.3 Minimum Contrast ratio of 4.5:1 against the project's background even when the lightness value looks adequate on paper. axe-core measures the actual rendered hex equivalent against the rule, and oklch lightness does NOT map linearly to perceived contrast — a token at `oklch(0.42)` that reads as "mid-lightness" can render around 3.95:1 against a parchment-tone background and fail AA. Tokens commonly affected: `--annotation`, `--chart-2`, `--color-5`, and any custom token used for secondary, marginal, or chart-label text.
+
+```css
+/* WRONG — looks mid-lightness but renders 3.95:1 against a parchment background */
+:root {
+  --annotation: oklch(0.42 0.03 80);
+}
+
+/* CORRECT — darken until axe-core reports ≥ 4.5:1 (project-specific; verify) */
+:root {
+  --annotation: oklch(0.36 0.03 80);
+}
+```
+
+After defining or editing any custom oklch token used for text, run the accessibility-scanner agent (or `axe-core` directly) to measure the actual contrast ratio against the project background. Darken the token in 0.04–0.06 lightness steps until the ratio clears 4.5:1. **Combining opacity modifiers** (e.g., `text-[var(--annotation)]/60`) on already-borderline tokens compounds the failure — the entry above on `text-foreground` opacity is the same defect mechanism applied to a custom token. Verify post-change.
+
+### When using shadcn CardTitle on a page where the surrounding hierarchy is not h2-deep
+shadcn `CardTitle` (in `src/components/ui/card.tsx`) renders a fixed heading element regardless of page heading context — recent versions render as `<div>`, earlier versions as `<h3>`. This is hard-coded in the scaffolded file, not configurable via an `as` prop or render prop. On a page with a single `<h1>` and a row of cards, the rank jumps from 1 → 3 (skipping `<h2>`) and axe-core fires `heading-order` (see the paired entry in `.claude/stacks/framework/nextjs.md` → `When card or list-item titles skip a heading level`).
+
+Because `src/components/ui/card.tsx` is scaffolded into the project tree (not imported from a package), the right fix is to **edit the scaffolded file directly** to render the rank that matches the surrounding hierarchy on the pages that use it. Per-project, not per-component-instance.
+
+```tsx
+// src/components/ui/card.tsx — pick ONE rank per project that matches the dominant card-page hierarchy.
+// On pages with a single <h1> and top-level cards, h2 is correct. On pages with <h2> sections containing
+// sub-cards, h3 is correct. If the project mixes both, hoist a rank prop OR maintain two card components.
+function CardTitle({ className, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
+  return (
+    <h2  /* was <div> or <h3>; choose the rank that matches the surrounding hierarchy */
+      data-slot="card-title"
+      className={cn("font-semibold", className)}
+      {...props}
+    />
+  );
+}
+```
+
+Verify at every usage site that the rank chosen produces a contiguous outline (`<h1>` → `<h2>` → `<h3>` → `<h4>`, no gaps). Re-run axe-core after the edit.
+
 ### When a `<Tabs>` component renders more tabs than fit on a mobile viewport
 shadcn `<TabsList>` natural width expands with each trigger; on mobile viewports (iPhone 12-class ≈375px) a 3-tab list with moderate label lengths easily exceeds the viewport. When the parent container has `overflow-x-hidden` (a common horizontal-overflow prevention pattern), the rightmost tab(s) clip off-screen and become unreachable — users cannot scroll horizontally to access them.
 

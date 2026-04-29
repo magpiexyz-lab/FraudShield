@@ -42,13 +42,20 @@ Present the plan in plain language the user can verify:
 - [table name] — stores [what]
 - ...
 
-**External Dependencies (decided in STATE 12):**
-- [service] — [credentials needed] — **core** — must integrate (credentials at bootstrap or /deploy)
-- [service] — [credentials needed] — **non-core** — Fake Door (default) / Skip / Full Integration
-- ...
-- (Or: "None — all features use stack-managed services")
+**Non-Stack External Dependencies (decided in STATE 12):**
 
-Core = removing it prevents users from validating the thesis.
+Stack-managed services (anything declared under experiment.yaml `stack` and resolved to a `.claude/stacks/<category>/<value>.md` file — e.g., `stack.payment: stripe`, `stack.analytics: posthog`, `stack.database: supabase`) do NOT appear in this section. They are integrated unconditionally by `scaffold-libs` from the corresponding stack template; their credentials and integration mode are not user decisions at STATE 5. List ONLY services discovered by `scaffold-externals` (STATE 12) that have no stack file.
+
+If every external integration is stack-managed (the common case), write:
+
+> **None — all features use stack-managed services.**
+
+Otherwise, list each non-stack external using these examples as the shape:
+
+- Twilio (SMS) — `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` — **core** — must integrate (credentials at bootstrap or /deploy)
+- OpenAI (when not in `stack`, e.g., a one-off summarization endpoint) — `OPENAI_API_KEY` — **non-core** — Fake Door (default) / Skip / Full Integration
+
+Core = removing it prevents users from validating the thesis. Decisions are finalized in STATE 12 (`scaffold-externals` produces `.runs/externals-decisions.json`); STATE 5 is a forward-looking summary, not the decision point.
 
 **Analytics Events:**
 - [For each event in experiment/EVENTS.yaml events map (filtered by requires/archetypes), show: event_name on Page Name]

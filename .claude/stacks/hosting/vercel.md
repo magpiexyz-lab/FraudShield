@@ -202,6 +202,47 @@ if (!success) {
 
 > **Caveat:** In-memory state does not persist across serverless invocations, so this provides burst protection (limiting rapid requests to a single instance) rather than true distributed rate limiting. Add `// TODO: Upgrade to Upstash Redis for cross-instance rate limiting` after the rate limit check. If experiment.yaml `stack` includes a rate-limiting service (e.g., Upstash), use that instead of the in-memory limiter.
 
+### When upgrading the in-memory rateLimit to Upstash Redis (the documented TODO)
+
+Replacing the in-memory `Map` in `src/lib/rate-limit.ts` with an Upstash Redis sliding-window converts `rateLimit()` from a synchronous function to an async one. **Every call site must be updated** to use `await rateLimit(...)` — leaving any call site synchronous produces a Promise truthy-coerce that always passes the `success` check, silently disabling rate limiting on that route.
+
+The call-site count scales with the number of API routes (auth, payment, AI/LLM routes — see paired entries below). Enumerate sites first:
+
+```bash
+grep -rn 'rateLimit(' src/app/api src/lib | grep -v 'rate-limit.ts'
+```
+
+Update each site to `await` the call, and propagate `async` up to the route handler signature where it isn't already async.
+
+```ts
+// BEFORE (synchronous — works against in-memory Map)
+export async function POST(request: Request) {
+  const ip = request.headers.get("x-forwarded-for") ?? "unknown";
+  const { success } = rateLimit(ip, { limit: 10, windowMs: 60_000 });
+  if (!success) return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+  // ...
+}
+
+// AFTER (async — required against Upstash Redis sliding-window)
+export async function POST(request: Request) {
+  const ip = request.headers.get("x-forwarded-for") ?? "unknown";
+  const { success } = await rateLimit(ip, { limit: 10, windowMs: 60_000 });
+  if (!success) return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+  // ...
+}
+```
+
+Add the Upstash credentials to `.env.example` so deployments and local dev can resolve them:
+
+```
+UPSTASH_REDIS_REST_URL=https://...upstash.io
+UPSTASH_REDIS_REST_TOKEN=...
+```
+
+For local development without Upstash credentials configured, an in-memory fallback inside `src/lib/rate-limit.ts` is acceptable so `npm run dev` still works — gate it on `process.env.UPSTASH_REDIS_REST_URL` presence and emit a `console.warn("Upstash credentials missing — using in-memory rate limiter (single-instance only)")` once at module load. The fallback must remain the same `await`-friendly async shape so call sites stay correct under both code paths.
+
+After the upgrade, remove the `// TODO: Upgrade to Upstash Redis for cross-instance rate limiting` comments from every call site (they live next to each `rateLimit(...)` call per the caveat above).
+
 ### AI/LLM API endpoints
 
 When experiment.yaml behaviors involve an AI/LLM provider (e.g., `external/anthropic`, `external/openai`), apply rate limiting to all API routes that call the provider — not just auth and payment routes. Use a lower limit than standard routes (suggested default: 5 req/min/IP) since each request can generate significant inference costs. Adjust the limit based on the specific integration's cost profile and expected usage patterns.

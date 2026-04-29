@@ -501,6 +501,70 @@ When `src/app/layout.tsx` already wraps `{children}` in a `<main>` element (see 
 
 This pairs with the missing-`<main>` entry to form the full rule: **exactly one `<main>` per rendered page, owned by `layout.tsx`, never duplicated by a page component.**
 
+### When two `<section>` elements share the same `aria-labelledby` value (landmark-unique)
+A `<section>` element only registers as a landmark when it carries `aria-label` or `aria-labelledby`. When two labelled sections compute to the same accessible name (e.g., a hero section and a final-CTA section both pointing `aria-labelledby` at the variant headline element), axe-core fires `landmark-unique` because screen-reader users navigating by landmark cannot distinguish them — both announce as "region: <variant headline>".
+
+Triage rule before applying a fix: **Would a screen-reader user navigating by landmark want to jump directly to this section?** If the section provides distinct content navigable as a landmark (e.g., a hero introducing the page vs. a final CTA closing it), give each a purpose-naming `aria-label` (`aria-label="Hero"`, `aria-label="Final call to action"`) — do not share the headline label between them. If the section is incidental — semantic `<section>` used purely for visual grouping with no landmark value beyond the surrounding `<main>` and `<h1>` — demote it to `<div>`.
+
+```tsx
+// WRONG — two sections share the headline label, both announce as the same region
+<section aria-labelledby="variant-headline">…</section>
+<section aria-labelledby="variant-headline">…</section>
+
+// CORRECT (path A) — each section gets a unique purpose-naming label
+<section aria-label="Hero">…</section>
+<section aria-label="Final call to action">…</section>
+
+// CORRECT (path B) — the second block was incidental; demote to <div>
+<section aria-labelledby="variant-headline">…</section>
+<div>…</div>
+```
+
+### When using `<aside>` as a visual layout column inside `<main>` (landmark-complementary-is-top-level)
+`<aside>` is reserved for content that is genuinely complementary to but separable from the main flow — related-links panels, pull-quote blocks, glossary side-panels. Using `<aside>` as a visual layout column (a sidebar rendered via CSS grid/flex, a marginalia column for `RitualStep`-style annotations) trips axe-core `landmark-complementary-is-top-level`.
+
+Rule semantics: axe-core fires this rule when an `<aside>` is **nested** inside another landmark (e.g., inside `<main>` or another `<section>`). `aria-label` does NOT suppress the rule — only top-level placement (sibling of `<main>`, not child) or demotion to `<div>` resolves it. For layout columns inside `<main>`, demotion is the correct fix.
+
+```tsx
+// WRONG — <aside> nested inside <main> for layout purposes; axe fires regardless of aria-label
+<main>
+  <aside aria-label="Marginalia">{annotations}</aside>
+  <div>{primaryContent}</div>
+</main>
+
+// CORRECT — <div> for layout columns; <aside> reserved for genuinely complementary content
+<main>
+  <div className="marginalia">{annotations}</div>
+  <div>{primaryContent}</div>
+</main>
+```
+
+### When card or list-item titles skip a heading level (heading-order)
+axe-core `heading-order` fires when an outline rank jumps by more than 1 (e.g., `<h1>` followed by `<h3>` with no `<h2>` between, or `<h2>` followed by `<h4>`). A common trigger: card / list-item title components default to `<h3>` regardless of page heading context, so a page with a single `<h1>` and a row of cards renders `<h1>` → `<h3>` (skipping `<h2>`).
+
+Rule of thumb: use the minimum heading rank that maintains an unbroken hierarchy. **`<h2>`** for top-level cards on a page with a single `<h1>`. **`<h3>`** for sub-items inside an `<h2>` section. Verify the rendered rank at the usage site — card and list-item title components do not adapt to context automatically. When the title component does not let you choose the rank at the call site (e.g., shadcn `CardTitle` renders a fixed element from the scaffolded `src/components/ui/card.tsx`), see the paired entry in your UI stack file (`.claude/stacks/ui/<value>.md`) for editing the scaffolded component.
+
+```tsx
+import { Card, CardTitle } from "@/components/ui/card";
+
+// WRONG — card titles render <h3> on a page with single <h1>; rank jumps 1→3
+<h1>Portfolio</h1>
+{items.map(item => (
+  <Card key={item.id}>
+    <CardTitle>{item.name}</CardTitle>  {/* renders <h3> */}
+  </Card>
+))}
+
+// CORRECT — promote card titles to <h2> to maintain h1→h2 hierarchy
+<h1>Portfolio</h1>
+{items.map(item => (
+  <article key={item.id}>
+    <h2>{item.name}</h2>
+    {item.body}
+  </article>
+))}
+```
+
 ### When openGraph metadata is missing images array, og:image is absent
 When the `openGraph` config object in `layout.tsx` is written without an `images` property, the `og:image` meta tag is entirely absent from the rendered HTML. Social sharing previews and link unfurls show no image. Always include the `images` array in the openGraph config:
 
