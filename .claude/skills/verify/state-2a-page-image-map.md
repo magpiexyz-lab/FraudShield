@@ -29,8 +29,12 @@ is the canonical source of truth for (a) the design-critic page set and
    - `source_files` — enumerated `.tsx`/`.jsx` files under the page folder
    - `dynamic_segments` — list of captured segment names (empty for static routes)
 
-   Excludes `landing` (state-3b treats it separately — dedicated candidate
-   ownership).
+   Excludes `landing` from the `pages` array; landing is exposed via the
+   sibling `landing` field (writable by state-2a, consumed by state-3a Stage 1
+   for landing-critic spawn). Landing has full read-write access to
+   `.runs/image-candidates.json` per design-critic.md, while non-landing
+   critics get read-only context — this is why landing must NOT be a peer in
+   `pages` (different sidecar semantics + different trace schema). See #1143.
 
 3. **Write `.runs/page-image-map.json`** — static image-render classifier
    output. Two-layer analysis:
@@ -55,6 +59,7 @@ is the canonical source of truth for (a) the design-critic page set and
    os.chdir(PROJECT_DIR)
    import yaml
    from lib.derive_pages import (
+       derive_landing_for_design_critic,
        derive_page_images,
        derive_page_set_for_design_critic,
    )
@@ -68,7 +73,12 @@ is the canonical source of truth for (a) the design-critic page set and
    )
    if not needs_dc:
        json.dump(
-           {"generated_at": now, "not_applicable": True, "pages": []},
+           {
+               "generated_at": now,
+               "not_applicable": True,
+               "pages": [],
+               "landing": None,
+           },
            open(".runs/design-page-set.json", "w"), indent=2,
        )
        json.dump(
@@ -84,10 +94,12 @@ is the canonical source of truth for (a) the design-critic page set and
        sys.exit(0)
    exp = yaml.safe_load(open("experiment/experiment.yaml"))
    pages = derive_page_set_for_design_critic(exp, ".")
+   landing = derive_landing_for_design_critic(".")
    image_map = derive_page_images(pages, ".", include_landing=True)
    with open(".runs/design-page-set.json", "w") as f:
        json.dump(
-           {"generated_at": now, "pages": pages}, f, indent=2
+           {"generated_at": now, "pages": pages, "landing": landing},
+           f, indent=2,
        )
    with open(".runs/page-image-map.json", "w") as f:
        json.dump(
@@ -101,7 +113,8 @@ is the canonical source of truth for (a) the design-critic page set and
        )
    n_images = sum(1 for v in image_map.values() if v["has_images"])
    print(
-       f"design-page-set.json: {len(pages)} pages (landing separate); "
+       f"design-page-set.json: {len(pages)} pages "
+       f"(landing={'yes' if landing else 'no'}); "
        f"page-image-map.json: {n_images}/{len(image_map)} classified has_images=true"
    )
    PYEOF
@@ -115,13 +128,13 @@ is the canonical source of truth for (a) the design-critic page set and
 **POSTCONDITIONS:**
 
 - `.runs/design-page-set.json` exists with valid schema (`generated_at`,
-  `pages` array or `not_applicable:true`).
+  `pages` array, `landing` dict-or-null, or `not_applicable:true`).
 - `.runs/page-image-map.json` exists with valid schema (`generated_at`,
   `source_page_set`, `pages` map or `not_applicable:true`).
 
 **VERIFY:**
 ```bash
-python3 -c "import json; ps=json.load(open('.runs/design-page-set.json')); pim=json.load(open('.runs/page-image-map.json')); assert 'pages' in ps and 'pages' in pim, 'design-page-set.json / page-image-map.json malformed'; assert ps.get('not_applicable') or isinstance(ps['pages'], list), 'pages field must be a list'; assert pim.get('not_applicable') or pim.get('source_page_set')=='.runs/design-page-set.json', 'page-image-map.json missing source_page_set linkage'"
+python3 -c "import json; ps=json.load(open('.runs/design-page-set.json')); pim=json.load(open('.runs/page-image-map.json')); assert 'pages' in ps and 'pages' in pim, 'design-page-set.json / page-image-map.json malformed'; assert ps.get('not_applicable') or isinstance(ps['pages'], list), 'pages field must be a list'; assert ps.get('not_applicable') or 'landing' in ps, 'landing field missing in design-page-set.json (state-2a #1143)'; assert ps.get('not_applicable') or ps.get('landing') is None or isinstance(ps.get('landing'), dict), 'landing field must be null or dict (state-2a #1143)'; assert pim.get('not_applicable') or pim.get('source_page_set')=='.runs/design-page-set.json', 'page-image-map.json missing source_page_set linkage'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

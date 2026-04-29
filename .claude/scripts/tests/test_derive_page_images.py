@@ -285,6 +285,18 @@ class TestDerivePageImages(unittest.TestCase):
             self.assertTrue(im["landing"]["has_images"])
             self.assertEqual(im["landing"]["detected_via"], "landing-hardcoded")
 
+    def test_landing_not_injected_when_source_absent(self):
+        """When src/app/page.* does not exist, derive_page_images should NOT
+        inject a phantom landing entry. Pre-#1143 behaviour hardcoded
+        ["src/app/page.tsx"] regardless of disk state; post-#1143 the helper
+        returns None and no landing key appears in the result.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            os.makedirs(os.path.join(tmp, "src/app"))
+            # Deliberately do NOT create src/app/page.*
+            im = derive_page_images([], tmp, include_landing=True)
+            self.assertNotIn("landing", im)
+
     def test_dynamic_route_child_with_image(self):
         with tempfile.TemporaryDirectory() as tmp:
             self._make(

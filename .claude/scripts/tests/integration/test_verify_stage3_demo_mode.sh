@@ -83,15 +83,17 @@ import datetime, json, os, sys
 sys.path.insert(0, os.path.join(os.getcwd(), ".claude/scripts"))
 import yaml
 from lib.derive_pages import (
+    derive_landing_for_design_critic,
     derive_page_images,
     derive_page_set_for_design_critic,
 )
 now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 exp = yaml.safe_load(open("experiment/experiment.yaml"))
 pages = derive_page_set_for_design_critic(exp, ".")
+landing = derive_landing_for_design_critic(".")
 image_map = derive_page_images(pages, ".", include_landing=True)
 with open(".runs/design-page-set.json", "w") as f:
-    json.dump({"generated_at": now, "pages": pages}, f, indent=2)
+    json.dump({"generated_at": now, "pages": pages, "landing": landing}, f, indent=2)
 with open(".runs/page-image-map.json", "w") as f:
     json.dump(
         {
@@ -111,11 +113,20 @@ d = json.load(open('.runs/design-page-set.json'))
 names = [p['name'] for p in d['pages']]
 print('pages:', names)
 assert 'landing' not in names, 'landing must be excluded from operational list'
-quote = next(p for p in d['pages'] if p['name'] == 'quote')
+# Post-#1144 the dynamic route /quote/[id] is discovered as page name 'quote-id'
+quote = next(p for p in d['pages'] if p['name'] == 'quote-id')
 assert quote['route_pattern'] == '/quote/[id]', f'bad route_pattern: {quote[\"route_pattern\"]}'
 assert '[id]' not in quote['test_url'], f'dynamic segment not concretized: {quote[\"test_url\"]}'
 assert quote['dynamic_segments'] == ['id']
 print('✓ design-page-set.json shape OK')
+# #1143: landing sibling must be present (dict, since this fixture has src/app/page.tsx)
+assert 'landing' in d, 'landing field missing in design-page-set.json'
+assert isinstance(d['landing'], dict), f'landing must be dict, got {type(d[\"landing\"])}'
+assert d['landing']['name'] == 'landing'
+assert d['landing']['route_pattern'] == '/'
+assert d['landing']['test_url'] == '/'
+assert 'src/app/page.tsx' in d['landing']['source_files']
+print('✓ landing sibling field present')
 "
 
 echo "--- page-image-map.json ---"
@@ -125,7 +136,7 @@ m = json.load(open('.runs/page-image-map.json'))['pages']
 assert m['landing']['has_images'] is True and m['landing']['detected_via'] == 'landing-hardcoded'
 assert m['dashboard']['has_images'] is True and m['dashboard']['detected_via'] == 'imported-component'
 assert m['login']['has_images'] is False
-assert m['quote']['has_images'] is False
+assert m['quote-id']['has_images'] is False
 print('✓ page-image-map.json classification OK')
 "
 

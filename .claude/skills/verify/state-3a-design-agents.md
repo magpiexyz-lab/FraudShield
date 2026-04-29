@@ -43,6 +43,21 @@ full visual review instead of fast-pathing with an empty boundary.
    - Resolve `@/` alias to `src/` to get full paths
    - Intersect imported shared paths with `PR_file_boundary`
    - If intersection is non-empty: this page is a **thin wrapper with claimable dependencies**
+2a. **Landing pre-flight (issue #1143):** read `.runs/design-page-set.json["landing"]`.
+   If null, skip this sub-step (no landing source on disk — non-web-app, or
+   pre-scaffold-pages). Otherwise, treat landing as an additional thin-wrapper
+   candidate using the same rules as step 2:
+   - For each entry in `landing.source_files` (typically just `src/app/page.tsx`):
+     compute `PR_file_boundary ∩ {entry}`. If any landing source file is in PR
+     boundary, landing is NOT a thin wrapper for this PR (page-local changes
+     present); skip claim assignment for landing and proceed to Stage 1.
+   - Otherwise (landing source files all outside PR boundary): read each
+     `landing.source_files` file. Extract imports per the same regex/filter
+     rules as step 2 (drop shadcn primitives, resolve `@/` alias).
+     Intersect imported shared paths with `PR_file_boundary`.
+     If intersection is non-empty: landing is a **thin wrapper with claimable
+     dependencies** — feed it into step 3 (claim assignment) alongside
+     non-landing candidates.
 3. **Assign claims (first-claimer-wins):** Sort candidate pages: root `/` (landing) first,
    then alphabetical by route. For each page, for each claimable shared dependency:
    - If not yet claimed by another page → assign to this page
@@ -75,6 +90,27 @@ Also read `.runs/page-image-map.json` to look up each page's `has_images`
 classification (from state-2a's two-layer static classifier) — this flag
 must be forwarded into the per-page spawn prompt so agents know whether
 `image_issues_for_landing` emission is mandatory (#1042).
+
+**Landing entry (issue #1143):** read `.runs/design-page-set.json["landing"]`.
+
+```bash
+python3 -c "import json; ps=json.load(open('.runs/design-page-set.json')); landing=ps.get('landing'); print(json.dumps(landing) if isinstance(landing, dict) else 'NULL')"
+```
+
+If non-null, **append** the landing entry to the parallel spawn list — landing
+is spawned alongside non-landing per-page agents in the SAME single-message
+Agent batch (not serially, not in a separate stage). Landing's prompt fields
+match the non-landing template with these specifics:
+- `name: "landing"`, `route_pattern: "/"`, `test_url: "/"`
+- `FILE_BOUNDARY` = `landing.source_files ∩ PR_file_boundary` (often empty for
+  landing-only-via-shared-component PRs)
+- `CLAIMED_SHARED` = files claimed for landing in `.runs/design-claims.json`
+  (typically `src/components/landing-content.tsx` when present in PR)
+- `has_images: true` (from `page-image-map.json["pages"]["landing"]` —
+  always `landing-hardcoded` for landing)
+- Image-sidecar contract (special branch in the bullet list below): full
+  read-write access — emit `candidates_tried` in trace
+- Trace filename: `design-critic-landing.json`
 
 Spawn **one design-critic agent per page**, ALL as parallel foreground Agent calls in a **SINGLE message**. Each agent prompt includes:
 - Page name and route: "Review SINGLE page: `<page_name>` at route `<route_pattern>` (concrete test URL: `<test_url>`)." Pass BOTH `route_pattern` (literal `/quote/[id]` form) AND `test_url` (concretized with synthetic IDs from state-2a) — the agent forwards both into `render-review-detection.md` so the DEMO_MODE fixture short-circuit branch can fire.
@@ -252,12 +288,13 @@ reported shared issues are for claimed components, Stage 1c has no work — skip
 **POSTCONDITIONS:**
 - `.runs/design-claims.json` exists (may have empty `claims` if no thin wrappers detected)
 - Per-page `design-critic-<page>.json` traces exist for all discovered pages (when scope is `full` or `visual` AND archetype is `web-app`)
+- `design-critic-landing.json` trace exists when scope is `full` or `visual` AND archetype is `web-app` AND `.runs/design-page-set.json["landing"]` is a non-null dict (#1143)
 - `design-critic-shared.json` exists if any per-page trace reported `unresolved_shared > 0` for unclaimed shared components
 - Build passes after all Stage 1/1b/1c fixes
 
 **VERIFY:**
 ```bash
-python3 -c "import json,glob,os; ctx=json.load(open('.runs/verify-context.json')); needs_dc=ctx.get('scope') in ('full','visual') and ctx.get('archetype')=='web-app'; assert not needs_dc or os.path.exists('.runs/design-claims.json'), 'design-claims.json missing (pre-flight must run before agent spawns)'; fs=sorted(glob.glob('.runs/agent-traces/design-critic-*.json')) if needs_dc else []; per_page=[f for f in fs if os.path.basename(f) not in ('design-critic.json','design-critic-shared.json')]; assert not needs_dc or len(per_page)>=1, 'no per-page design-critic traces (scope=%s, archetype=%s)' % (ctx.get('scope'),ctx.get('archetype')); shallow=[]
+python3 -c "import json,glob,os; ctx=json.load(open('.runs/verify-context.json')); needs_dc=ctx.get('scope') in ('full','visual') and ctx.get('archetype')=='web-app'; assert not needs_dc or os.path.exists('.runs/design-claims.json'), 'design-claims.json missing (pre-flight must run before agent spawns)'; ps=json.load(open('.runs/design-page-set.json')) if os.path.exists('.runs/design-page-set.json') else {'landing': None, 'not_applicable': True}; expects_landing=needs_dc and isinstance(ps.get('landing'), dict); assert (not expects_landing) or os.path.exists('.runs/agent-traces/design-critic-landing.json'), 'design-critic-landing.json missing — Stage 1 must spawn landing critic when design-page-set.json has a landing entry (#1143)'; fs=sorted(glob.glob('.runs/agent-traces/design-critic-*.json')) if needs_dc else []; per_page=[f for f in fs if os.path.basename(f) not in ('design-critic.json','design-critic-shared.json')]; assert not needs_dc or len(per_page)>=1, 'no per-page design-critic traces (scope=%s, archetype=%s)' % (ctx.get('scope'),ctx.get('archetype')); shallow=[]
 for f in per_page:
     d=json.load(open(f))
     if d.get('partial') is True: continue

@@ -23,7 +23,11 @@ import unittest
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 sys.path.insert(0, os.path.join(REPO_ROOT, ".claude", "scripts"))
 
-from lib.derive_pages import derive_scope_pages, derive_funnel_steps  # noqa: E402
+from lib.derive_pages import (  # noqa: E402
+    derive_funnel_steps,
+    derive_landing_for_design_critic,
+    derive_scope_pages,
+)
 
 
 class TestDeriveScopePages(unittest.TestCase):
@@ -175,6 +179,81 @@ class TestDeriveFunnelSteps(unittest.TestCase):
         result = derive_funnel_steps(exp)
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]["extra_field"], "preserved")
+
+
+class TestDeriveLandingForDesignCritic(unittest.TestCase):
+    """Tests for derive_landing_for_design_critic helper (#1143).
+
+    Helper produces the operational landing entry consumed by state-2a's
+    `design-page-set.json["landing"]` sibling field, which state-3a Stage 1
+    reads to spawn a landing-specific design-critic agent.
+    """
+
+    def test_landing_tsx_present(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            os.makedirs(os.path.join(tmp, "src/app"))
+            with open(os.path.join(tmp, "src/app/page.tsx"), "w") as f:
+                f.write("// landing")
+            result = derive_landing_for_design_critic(tmp)
+            self.assertIsNotNone(result)
+            self.assertEqual(result["name"], "landing")
+            self.assertEqual(result["route_pattern"], "/")
+            self.assertEqual(result["test_url"], "/")
+            self.assertEqual(result["source_files"], ["src/app/page.tsx"])
+            self.assertEqual(result["dynamic_segments"], [])
+
+    def test_landing_jsx_present(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            os.makedirs(os.path.join(tmp, "src/app"))
+            with open(os.path.join(tmp, "src/app/page.jsx"), "w") as f:
+                f.write("// landing")
+            result = derive_landing_for_design_critic(tmp)
+            self.assertEqual(result["source_files"], ["src/app/page.jsx"])
+
+    def test_landing_ts_present(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            os.makedirs(os.path.join(tmp, "src/app"))
+            with open(os.path.join(tmp, "src/app/page.ts"), "w") as f:
+                f.write("// landing")
+            result = derive_landing_for_design_critic(tmp)
+            self.assertEqual(result["source_files"], ["src/app/page.ts"])
+
+    def test_landing_absent_returns_none(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            os.makedirs(os.path.join(tmp, "src/app"))
+            # No src/app/page.* file
+            result = derive_landing_for_design_critic(tmp)
+            self.assertIsNone(result)
+
+    def test_landing_unknown_extension_ignored(self):
+        """Defensive: src/app/page.md or page.css must NOT match (only
+        `tsx`/`jsx`/`ts`/`js` are page sources)."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            os.makedirs(os.path.join(tmp, "src/app"))
+            with open(os.path.join(tmp, "src/app/page.md"), "w") as f:
+                f.write("# not a page")
+            result = derive_landing_for_design_critic(tmp)
+            self.assertIsNone(result)
+
+    def test_landing_multiple_extensions_sorted(self):
+        """Defensive: if both .tsx and .ts exist (project misconfiguration),
+        return both sorted deterministically."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            os.makedirs(os.path.join(tmp, "src/app"))
+            for ext in ("tsx", "ts"):
+                with open(os.path.join(tmp, f"src/app/page.{ext}"), "w") as f:
+                    f.write("// x")
+            result = derive_landing_for_design_critic(tmp)
+            self.assertEqual(
+                result["source_files"],
+                ["src/app/page.ts", "src/app/page.tsx"],
+            )
 
 
 if __name__ == "__main__":

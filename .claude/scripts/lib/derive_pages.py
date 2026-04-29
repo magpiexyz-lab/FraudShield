@@ -321,7 +321,16 @@ def derive_page_set_for_design_critic(
             f"(scaffold-pages drift; see #1144)\n"
         )
 
-    # 3. Exclude landing from the operational list
+    # 3. Exclude landing from the operational list — it is exposed via the
+    #    sibling `landing` field in design-page-set.json (state-2a writes both).
+    #    state-3a Stage 1 spawns landing-critic separately because:
+    #      a. Landing has full read-write access to .runs/image-candidates.json
+    #         (per design-critic.md: "Landing-page critic owns ALL image
+    #         decisions"). Non-landing critics get read-only context.
+    #      b. Landing's trace must NOT emit `image_issues_for_landing` (it owns
+    #         image decisions). Including landing in `pages` would corrupt
+    #         state-3b VERIFY's per-page iteration that requires that field.
+    #    See #1143.
     discovered.pop("landing", None)
 
     # 4. Build final entries with concretized test_urls, sorted by name
@@ -333,6 +342,38 @@ def derive_page_set_for_design_critic(
         entry["source_files"] = sorted(entry["source_files"])
         out.append(entry)
     return out
+
+
+def derive_landing_for_design_critic(
+    repo_root: str = ".",
+) -> dict[str, Any] | None:
+    """Return the operational landing entry for state-3a Stage 1 spawn (#1143).
+
+    Returns None when ``src/app/page.{tsx,jsx,ts,js}`` does not exist (e.g.,
+    archetype != web-app, or web-app project pre-scaffold-pages).
+
+    Schema mirrors :func:`derive_page_set_for_design_critic` per-page entries
+    so state-3a Stage 1 can plug landing into the same parallel spawn batch
+    using the existing prompt template.
+
+    Source files are discovered by globbing ``src/app/page.*`` (extensions in
+    ``{tsx,jsx,ts,js}`` per ``_PAGE_FILE_GLOBS``) — robust across file
+    extensions, unlike the prior hardcoded ``["src/app/page.tsx"]``.
+    """
+    candidates = sorted(
+        os.path.relpath(p, repo_root).replace(os.sep, "/")
+        for p in glob.glob(os.path.join(repo_root, "src/app/page.*"))
+        if p.endswith((".tsx", ".jsx", ".ts", ".js"))
+    )
+    if not candidates:
+        return None
+    return {
+        "name": "landing",
+        "route_pattern": "/",
+        "test_url": "/",
+        "source_files": candidates,
+        "dynamic_segments": [],
+    }
 
 
 def _grep_image_patterns(file_path: str) -> list[str]:
@@ -430,19 +471,15 @@ def derive_page_images(
     result: dict[str, dict[str, Any]] = {}
 
     # Ensure landing is classified when caller asks (pre-state-3a workflow).
-    # Landing's source_files default to src/app/page.tsx if not already present
-    # in the input list.
+    # Discover landing's source via derive_landing_for_design_critic so the
+    # entry survives non-.tsx file extensions (#1143). When src/app/page.* is
+    # absent (e.g., service archetype called include_landing=True by mistake),
+    # do not inject a phantom landing entry — caller will see no `landing` key
+    # in the result, which is the correct signal.
     if include_landing and not any(p.get("name") == "landing" for p in page_set):
-        page_set = [
-            {
-                "name": "landing",
-                "route_pattern": "/",
-                "test_url": "/",
-                "source_files": ["src/app/page.tsx"],
-                "dynamic_segments": [],
-            },
-            *page_set,
-        ]
+        landing_entry = derive_landing_for_design_critic(repo_root)
+        if landing_entry is not None:
+            page_set = [landing_entry, *page_set]
 
     for entry in page_set:
         name = entry.get("name", "")
