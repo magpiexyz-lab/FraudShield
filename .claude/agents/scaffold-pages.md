@@ -113,26 +113,29 @@ This registers your presence so the orchestrator can detect incomplete work. Use
 
 ## Trace Output
 
-After the page is scaffolded, update the started trace with final AOC v1 fields using the variable-indirection pattern:
+After the page is scaffolded, write the final AOC v1.1 completion trace via the centralized writer (overwrites the `init-trace.py` stub atomically). Parallel scaffold-pages spawns require **both** `--trace-filename '<agent>-<slug>.json'` (matches the stub above) **and** `--spawn-index <N>` (your own spawn_index from your spawn metadata) — the writer otherwise first-matches the spawn-log and would mis-attribute `spawn_sha` across parallel siblings:
 
 ```bash
-python3 -c "
-import json
-f='.runs/agent-traces/scaffold-pages-<page-slug>.json'
-d=json.load(open(f))
-d.update({
-    'status': 'completed',
-    'verdict': 'pass',
-    'result': 'clean',
-    'provenance': 'self',
-    'partial': False,
-    'checks_performed': ['page_authored', 'events_wired', 'build_smoke', 'self_check_scored'],
-    'no_fixes_claimed': True,
-    'files_created': ['<list all files created or modified>'],
-    'page': '<page-slug>',
-})
-json.dump(d, open(f, 'w'), indent=2)
-"
+python3 - <<'PYEOF'
+import json, subprocess
+PAGE_SLUG = "<page-slug>"
+SPAWN_INDEX = "<your spawn_index from spawn metadata>"
+trace = {
+    "verdict": "pass",
+    "result": "clean",
+    "checks_performed": ["page_authored", "events_wired", "build_smoke", "self_check_scored"],
+    "no_fixes_claimed": True,
+    "files_created": ["<list all files created or modified>"],
+    "page": PAGE_SLUG,
+}
+subprocess.run(
+    ["bash", ".claude/scripts/write-agent-trace.sh", "scaffold-pages",
+     "--json", json.dumps(trace),
+     "--trace-filename", f"scaffold-pages-{PAGE_SLUG}.json",
+     "--spawn-index", str(SPAWN_INDEX)],
+    check=True,
+)
+PYEOF
 ```
 
-Non-fixer role: `no_fixes_claimed: True` is required. Do NOT populate `fixes[]`.
+Non-fixer role: `no_fixes_claimed: True` is required. Do NOT populate `fixes[]`. The centralized writer (AOC v1.1) stamps `agent`, `timestamp`, `status:"completed"`, `provenance:"self"`, `partial:false`, `run_id`, `skill`, `spawn_sha`, and `spawn_index` from active identity + spawn-log.

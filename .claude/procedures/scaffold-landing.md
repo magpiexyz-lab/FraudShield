@@ -117,14 +117,5 @@ If `stack.analytics` is present and not already included:
 
 ## Trace Output
 
-After all landing page tasks complete, write trace to `.runs/agent-traces/scaffold-landing.json`:
-
-```bash
-python3 -c "
-import json, datetime, os
-os.makedirs('.runs/agent-traces', exist_ok=True)
-trace = {'agent': 'scaffold-landing', 'status': 'complete', 'timestamp': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'), 'files_created': ['<list all files created or modified>']}
-json.dump(trace, open('.runs/agent-traces/scaffold-landing.json', 'w'))
-"
-```
+Trace authoring follows the canonical pattern in `.claude/agents/scaffold-landing.md` § Trace Output (AOC v1.1 centralized writer).
 

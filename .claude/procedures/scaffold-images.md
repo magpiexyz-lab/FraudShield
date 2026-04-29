@@ -370,25 +370,37 @@ Write `.runs/image-candidates.json` with metadata for ALL candidates generated (
 
 The sidecar is consumed by the design-critic agent during `/verify`. If the design-critic finds the winner unsuitable in page context, it can try alternate candidates from this pool before regenerating from scratch.
 
-### Step 6: Write trace
-Write `.runs/agent-traces/scaffold-images.json`:
-```json
-{
-  "agent": "scaffold-images",
-  "status": "complete",
-  "files_created": ["public/images/hero.webp", "..."],
-  "issues": [],
-  "image_count": 7,
-  "fallback_count": 0,
-  "total_candidates": <total across all slots>,
-  "candidates_per_slot": { "hero": 6, "feature-1": 3, "feature-2": 3, "feature-3": 3, "logo": 5, "og-photo": 3, "empty-state": 2 },
-  "phases_executed": ["explore", "exploit"],
-  "explore_candidates_count": 16,
-  "exploit_candidates_count": 9,
-  "direction_signals": { "hero": "<signal>", "feature-1": "<signal>", "feature-2": "<signal>", "feature-3": "<signal>", "logo": "<signal>", "og-photo": "<signal>", "empty-state": null },
-  "weakest_image": "<filename>",
-  "weakest_score": <min score across all dimensions and images>,
-  "total_retries": <sum of retries across all images>,
-  "models_used": ["fal-ai/flux-2-pro", "fal-ai/recraft/v4/pro/text-to-image", "..."]
+### Step 6: Write trace via the canonical AOC v1.1 writer
+
+The writer stamps `agent`, `timestamp`, `status:"completed"`, `provenance:"self"`, `partial:false`, `run_id`, `skill`, `spawn_sha`, and `spawn_index` from active identity + spawn-log. Domain-specific fields below merge through the writer's payload-passthrough.
+
+```bash
+python3 - <<'PYEOF'
+import json, subprocess
+trace = {
+    "verdict": "pass",
+    "result": "clean",
+    "checks_performed": ["candidates_generated", "self_scored", "winners_copied", "sidecar_written"],
+    "no_fixes_claimed": True,
+    "files_created": ["public/images/hero.webp", "..."],
+    "issues": [],
+    "image_count": 7,
+    "fallback_count": 0,
+    "total_candidates": "<total across all slots>",
+    "candidates_per_slot": {"hero": 6, "feature-1": 3, "feature-2": 3, "feature-3": 3, "logo": 5, "og-photo": 3, "empty-state": 2},
+    "phases_executed": ["explore", "exploit"],
+    "explore_candidates_count": 16,
+    "exploit_candidates_count": 9,
+    "direction_signals": {"hero": "<signal>", "feature-1": "<signal>", "feature-2": "<signal>", "feature-3": "<signal>", "logo": "<signal>", "og-photo": "<signal>", "empty-state": None},
+    "weakest_image": "<filename>",
+    "weakest_score": "<min score across all dimensions and images>",
+    "total_retries": "<sum of retries across all images>",
+    "models_used": ["fal-ai/flux-2-pro", "fal-ai/recraft/v4/pro/text-to-image", "..."],
 }
+subprocess.run(
+    ["bash", ".claude/scripts/write-agent-trace.sh", "scaffold-images",
+     "--json", json.dumps(trace)],
+    check=True,
+)
+PYEOF
 ```

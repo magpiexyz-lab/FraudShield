@@ -44,13 +44,23 @@ Create ONLY the `src/lib/` files (and the route-protection file when `stack.auth
 
 8. **Typed event wrappers** (if `stack.analytics` is present AND framework is `nextjs` AND archetype is `web-app`): generate `src/lib/events.ts` from experiment/EVENTS.yaml following the analytics stack file's generation rules. For each event in the EVENTS.yaml `events` map (filtered by `requires` matching experiment stack and `archetypes` matching experiment type): (a) generate a typed wrapper function named `track` + PascalCase(event_name) with props typed from the event's `properties` map, (b) the wrapper body calls `track(event_name, { ...props, funnel_stage: "<funnel_stage>" })` to auto-inject the event's funnel_stage. Also generate an `EVENT_FUNNEL_MAP` constant (`Record<string, string>`) mapping each event name to its funnel_stage. Pages should import from `events.ts` instead of calling `track()` directly with string event names. For non-Next.js frameworks (Hono, Commander) or non-web-app archetypes (service, cli), skip this step — only server-side analytics apply (see analytics stack file).
 
-9. **Write completion manifest**
+9. **Write completion manifest** via the canonical AOC v1.1 writer (the writer creates `.runs/agent-traces/` and stamps `agent`, `timestamp`, `status:"completed"`, `provenance:"self"`, `partial:false`, `run_id`, `skill`, `spawn_sha`, and `spawn_index` from active identity + spawn-log):
    ```bash
-   mkdir -p .runs/agent-traces
-   ```
-   Write `.runs/agent-traces/scaffold-libs.json`:
-   ```json
-   {"agent": "scaffold-libs", "files_created": ["<list all files created>"], "status": "complete", "timestamp": "<ISO 8601>"}
+   python3 - <<'PYEOF'
+   import json, subprocess
+   trace = {
+       "verdict": "pass",
+       "result": "clean",
+       "checks_performed": ["libs_created", "exports_defined", "build_smoke"],
+       "no_fixes_claimed": True,
+       "files_created": ["<list all files created>"],
+   }
+   subprocess.run(
+       ["bash", ".claude/scripts/write-agent-trace.sh", "scaffold-libs",
+        "--json", json.dumps(trace)],
+       check=True,
+   )
+   PYEOF
    ```
    This manifest gates Phase B2 agents via the skill-agent-gate hook.
 

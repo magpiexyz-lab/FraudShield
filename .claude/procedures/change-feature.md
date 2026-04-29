@@ -43,21 +43,38 @@
        a. If the block is a fixable environment issue (missing package, missing env var): fix on the current branch, then re-spawn the agent with the same task. Budget: 1 retry.
        b. If the block is a scope or spec issue (ambiguous task, conflicting requirements): revise the task description to clarify, then re-spawn. Budget: 1 retry.
        c. If still blocked after retry: skip the task, log it in the PR body under "Blocked tasks," and continue with remaining tasks. Do not attempt dependent tasks whose prerequisites were blocked.
-  6. **Write implementer trace.** After each agent returns (before merge), write a trace based on the Output Contract. Use the agent type that was spawned (`implementer` or `visual-implementer`) for both the trace `agent` field and filename:
+  6. **Merge worktree changes with verification** — follow `procedures/worktree-merge-verification.md` for each completed implementer worktree. Skip this step for blocked tasks (no worktree to merge).
+  7. **Write implementer trace (post-merge or post-block).** Write the trace via the canonical writer with `--provenance lead-on-behalf` (the agent ran in a worktree and the lead transcribes its output). The agent name must be the bare subagent_type (`implementer` or `visual-implementer`) — matches the spawn-log key. Use `--trace-filename` for the per-task file and `--spawn-index <N>` to disambiguate parallel spawns:
      ```bash
-     python3 -c "
-     import json, datetime, os
-     os.makedirs('.runs/agent-traces', exist_ok=True)
-     agent_type = '<implementer|visual-implementer>'  # match the agent that was spawned
-     trace = {'agent': f'{agent_type}-<task-slug>', 'status': '<complete|blocked>', 'timestamp': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'), 'task': '<task description from Output Contract>', 'files_changed': [<Files Changed list from Output Contract>], 'tdd_cycle': '<red-green-refactor|skipped from Output Contract>', 'worktree_merged': False}
-     if agent_type == 'visual-implementer':
-         trace['design'] = '<DESIGN field from visual-implementer Output Contract>'
-     json.dump(trace, open(f'.runs/agent-traces/{agent_type}-<task-slug>.json', 'w'))
-     "
+     python3 - <<'PYEOF'
+     import json, subprocess
+     AGENT_TYPE = "<implementer|visual-implementer>"   # match the agent that was spawned
+     TASK_SLUG = "<task-slug>"
+     SPAWN_INDEX = "<spawn_index from skill-agent-gate spawn-log entry for this iteration>"
+     trace = {
+         "verdict": "pass",  # set "fail" if agent returned blocked
+         "result": "fixed",  # or "partial" if blocked
+         "checks_performed": ["<from Output Contract>"],
+         "task": "<task description from Output Contract>",
+         "files_changed": ["<Files Changed list from Output Contract>"],
+         "tdd_cycle": "<red-green-refactor|skipped from Output Contract>",
+         "worktree_merged": True,  # writing post-merge — set immediately
+     }
+     if AGENT_TYPE == "visual-implementer":
+         trace["design"] = "<DESIGN field from visual-implementer Output Contract>"
+     subprocess.run(
+         ["bash", ".claude/scripts/write-agent-trace.sh", AGENT_TYPE,
+          "--json", json.dumps(trace),
+          "--provenance", "lead-on-behalf",
+          "--source", "agent-returned-text",
+          "--trace-filename", f"{AGENT_TYPE}-{TASK_SLUG}.json",
+          "--spawn-index", str(SPAWN_INDEX)],
+         check=True,
+     )
+     PYEOF
      ```
-     After merge, update the trace: set `worktree_merged: true`.
-  7. **Merge worktree changes with verification** -- follow `procedures/worktree-merge-verification.md` for each completed implementer worktree.
-  8. Continue to Step 7
+     If the agent reported `Status: blocked`, write the trace with `verdict: "fail"`, `result: "partial"`, and `worktree_merged: False` (the corresponding worktree was not merged). Recovery happens at Step 5 above; this trace captures the blocked outcome for observability and Q-score attribution.
+  8. Continue to Step 7 of the parent skill flow.
 
 - If adding `payment` to experiment.yaml `stack`: validate per `patterns/stack-dependency-validation.md` Dependency Matrix. Use the canonical error messages from that file's Error Message Templates section. Key checks: payment requires auth+database; email requires auth+database; auth_providers requires auth; playwright incompatible with service/cli.
 - If the change requires a stack category whose library files don't exist yet (e.g., `payment: stripe` was just added to experiment.yaml but `src/lib/stripe.ts` is missing): install the packages listed in the stack file's "Packages" section, create the library files from its "Files to Create" section, and add its environment variables to `.env.example` — before proceeding to routes and pages. If any install command fails, stop and show the error — the user must fix the environment issue, then retry the failed install command on this branch (do NOT re-run `/change`).

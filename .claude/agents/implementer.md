@@ -75,30 +75,35 @@ Initialize the trace stub before any other tool call:
 python3 scripts/init-trace.py implementer "implementer-<task-slug>.json"
 ```
 
-After the TDD cycle completes, update the started trace with final AOC v1 fields using the variable-indirection pattern:
+After the TDD cycle completes, write the final AOC v1.1 completion trace via the centralized writer (overwrites the `init-trace.py` stub atomically). Direct-mode implementer is parallel-spawn (one per task), so pass **both** `--trace-filename "implementer-<task-slug>.json"` (matches the stub above) **and** `--spawn-index <N>` (your own spawn_index from your spawn metadata) — the writer otherwise first-matches the spawn-log and would mis-attribute `spawn_sha` across parallel siblings:
 
 ```bash
-python3 -c "
-import json
-f='.runs/agent-traces/implementer-<task-slug>.json'
-d=json.load(open(f))
-d.update({
-    'status': 'completed',
-    'verdict': 'pass',
-    'result': 'fixed' if bugs_fixed_count > 0 else 'clean',
-    'provenance': 'self',
-    'partial': False,
-    'checks_performed': ['red_phase', 'green_phase', 'refactor', 'build'],
-    'fixes': [
+python3 - <<'PYEOF'
+import json, subprocess
+TASK_SLUG = "<task-slug>"
+SPAWN_INDEX = "<your spawn_index from spawn metadata>"
+BUGS_FIXED_COUNT = <M>  # set from the TDD cycle outcome
+TESTS_ADDED = <N>
+trace = {
+    "verdict": "pass",
+    "result": "fixed" if BUGS_FIXED_COUNT > 0 else "clean",
+    "checks_performed": ["red_phase", "green_phase", "refactor", "build"],
+    "fixes": [
         # One entry per file changed / test added / bug fixed. Concrete shape:
-        # {'file': '<repo-relative-path>', 'type': 'unit-test-added' | 'bugfix' | 'refactor', 'module': '<task-slug>', 'tests_added': <N>}
+        # {"file": "<repo-relative-path>", "type": "unit-test-added" | "bugfix" | "refactor", "module": TASK_SLUG, "tests_added": <N>}
     ],
-    'module': '<task-slug>',
-    'tests_added': <N>,
-    'bugs_fixed': <M>,
-})
-json.dump(d, open(f, 'w'), indent=2)
-"
+    "module": TASK_SLUG,
+    "tests_added": TESTS_ADDED,
+    "bugs_fixed": BUGS_FIXED_COUNT,
+}
+subprocess.run(
+    ["bash", ".claude/scripts/write-agent-trace.sh", "implementer",
+     "--json", json.dumps(trace),
+     "--trace-filename", f"implementer-{TASK_SLUG}.json",
+     "--spawn-index", str(SPAWN_INDEX)],
+    check=True,
+)
+PYEOF
 ```
 
-**Fixer role (REQUIRED):** the implementer MUST push a concrete entry into `fixes[]` for every file changed, test added, or bug fixed. Do NOT leave `fixes[]` empty when real fixes were applied — the AOC v1 FLS v1 consolidator reads `trace.fixes[]` and produces 0 rows whenever it is empty, starving pattern-classifier + q-score + observer (fix #1065). If no fixes were applied (pure clean green-on-first-try), set `no_fixes_claimed: True` and leave `fixes: []`.
+**Fixer role (REQUIRED):** the implementer MUST push a concrete entry into `fixes[]` for every file changed, test added, or bug fixed. Do NOT leave `fixes[]` empty when real fixes were applied — the AOC v1 FLS v1 consolidator reads `trace.fixes[]` and produces 0 rows whenever it is empty, starving pattern-classifier + q-score + observer (fix #1065). If no fixes were applied (pure clean green-on-first-try), add `"no_fixes_claimed": True` to the trace dict and leave `fixes: []`. The centralized writer (AOC v1.1) stamps `agent`, `timestamp`, `status:"completed"`, `provenance:"self"`, `partial:false`, `run_id`, `skill`, `spawn_sha`, and `spawn_index` from active identity + spawn-log.

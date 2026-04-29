@@ -83,28 +83,27 @@ This registers your presence so the orchestrator can detect incomplete work.
 
 ## Trace Output
 
-After all image generation completes, update the started trace with final AOC v1 fields using the variable-indirection pattern:
+After all image generation completes, write the final AOC v1.1 completion trace via the centralized writer (overwrites the `init-trace.py` stub atomically):
 
 ```bash
-python3 -c "
-import json
-f='.runs/agent-traces/scaffold-images.json'
-d=json.load(open(f))
-d.update({
-    'status': 'completed',
-    'verdict': 'pass',
-    'result': 'clean',
-    'provenance': 'self',
-    'partial': False,
-    'checks_performed': ['candidates_generated', 'self_scored', 'winners_copied', 'sidecar_written'],
-    'no_fixes_claimed': True,
-    'files_created': ['<list all images + public/images + .runs/image-candidates.json>'],
-})
-json.dump(d, open(f, 'w'), indent=2)
-"
+python3 - <<'PYEOF'
+import json, subprocess
+trace = {
+    "verdict": "pass",
+    "result": "clean",
+    "checks_performed": ["candidates_generated", "self_scored", "winners_copied", "sidecar_written"],
+    "no_fixes_claimed": True,
+    "files_created": ["<list all images + public/images + .runs/image-candidates.json>"],
+}
+subprocess.run(
+    ["bash", ".claude/scripts/write-agent-trace.sh", "scaffold-images",
+     "--json", json.dumps(trace)],
+    check=True,
+)
+PYEOF
 ```
 
-Non-fixer role (image generation is authorship, not remediation): `no_fixes_claimed: True` is required. If this agent is respawned from design-critic Step 5.5 Priority 2 to regenerate a specific slot, the resulting change IS a fix — in that case set `no_fixes_claimed: False` and populate `fixes: [{file: 'public/images/<slot>.webp', type: 'image-regen', module: '<slot>', reason: '<visual-defect>'}]`.
+Non-fixer role (image generation is authorship, not remediation): `no_fixes_claimed: True` is required. If this agent is respawned from design-critic Step 5.5 Priority 2 to regenerate a specific slot, the resulting change IS a fix — in that case set `no_fixes_claimed` to `False` and add `fixes: [{file: 'public/images/<slot>.webp', type: 'image-regen', module: '<slot>', reason: '<visual-defect>'}]` to the `trace` dict before passing to the writer. The centralized writer (AOC v1.1) stamps `agent`, `timestamp`, `status:"completed"`, `provenance:"self"`, `partial:false`, `run_id`, `skill`, `spawn_sha`, and `spawn_index` from active identity + spawn-log.
 
 ## Output Contract
 
