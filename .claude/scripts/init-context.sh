@@ -83,7 +83,7 @@ for k, v in extra.items():
         continue
     ctx[k] = v
 if dropped:
-    sys.stderr.write('INFO: init-context.sh — ignored protected fields from extra: ' + ','.join(dropped) + '\n')
+    sys.stderr.write('WARN: init-context.sh — ignored protected fields from extra: ' + ','.join(dropped) + ' (skill/branch/timestamp/run_id are immutable per #941; use attributed_to for Q-score attribution)\n')
 json.dump(ctx, open('$CTX', 'w'))
 "
       exit 0
@@ -141,7 +141,7 @@ for k, v in extra.items():
         continue
     base[k] = v
 if dropped:
-    sys.stderr.write('INFO: init-context.sh — ignored protected fields from extra: ' + ','.join(dropped) + '\n')
+    sys.stderr.write('WARN: init-context.sh — ignored protected fields from extra: ' + ','.join(dropped) + ' (skill/branch/timestamp/run_id are immutable per #941; use attributed_to for Q-score attribution)\n')
 json.dump(base, open('$CTX', 'w'))
 "
 fi

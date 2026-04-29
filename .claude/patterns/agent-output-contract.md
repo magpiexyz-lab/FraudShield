@@ -192,6 +192,50 @@ with the transitional dual-check period:
 Fix (<agent>): `<file>` — Symptom: <symptom> — Fix: <fix>
 ```
 
+## Canonical Writer Policy
+
+Writes to canonical artifacts in `.runs/` MUST go through dedicated writer scripts so AOC v1.1 metadata is stamped consistently. Direct shell redirects, Python `open(..., 'w')`, and `Write`/`Edit` tool calls targeting these paths are blocked at the hook layer.
+
+### Artifact → canonical writer mapping
+
+| Artifact path | Canonical writer(s) | Hook enforcement |
+|---|---|---|
+| `.runs/<skill>-context.json` | `.claude/scripts/init-context.sh <skill> [extra_json]` | Bash: protected-fields drop with `WARN` log (PR3 E1). Static lint: `.claude/scripts/check-init-context-callers.sh` (PR3 E2) flags any caller passing `{branch, timestamp, run_id, skill}` in extra_json. |
+| `.runs/agent-traces/*.json` | `.claude/scripts/write-agent-trace.sh` (AOC v1.1 self / self-degraded / lead-on-behalf / lead-synthesized); `write-recovery-trace.sh` (orchestrator recovery); `write-degraded-trace.py` (agent self-degradation); `validate-recovery.sh` (stamps `recovery_validated:true` only); `migrate-legacy-traces.py` (one-shot); `merge-design-critic-traces.py` / `merge-scaffold-pages-traces.py` (lead-merge aggregates); `augment-trace.py` (descriptive-field augmenter); `scripts/init-trace.py` (start-of-run stub) | Bash: `.claude/hooks/agent-trace-write-guard.sh` (chain-bound write target detection + Python `open()` literal + variable-indirection helper). Write/Edit: `.claude/hooks/agent-trace-write-gate.sh` (path-match denies; PR3 ships in WARN-mode, PR4 flips to deny after soak). |
+| `.runs/fix-ledger.jsonl` / `.runs/fix-log.md` | `.claude/scripts/write-fix-ledger.py` (consolidator + `--lead-fix`); `.claude/scripts/render-fix-log.py` (renderer) | Bash: `.claude/hooks/fix-ledger-write-guard.sh` (bound-write check + Python `open()` literal). |
+| `.runs/agent-spawn-log.jsonl` | `.claude/hooks/skill-agent-gate.sh` (the hook itself appends rows; no other writer is sanctioned). | Bash: `trace-write-guard.sh`. Write/Edit: `artifact-integrity-gate.sh:14-17`. |
+
+### Protected fields rule (init-context.sh)
+
+`init-context.sh` treats `{branch, timestamp, run_id, skill}` as protected — callers cannot override them via extra_json (issue #941 fix; `skill` is the immutable physical running skill, `attributed_to` is the Q-score attribution field). When a caller does pass a protected field, the script drops it and emits a `WARN:` log line (PR3 E1, was `INFO:` pre-PR3). The static linter `check-init-context-callers.sh` (PR3 E2) scans `.claude/{skills,procedures,agents}/**/*.md` for any `init-context.sh` invocation passing protected fields and reports findings during `lifecycle-finalize.sh` Step 4.5.
+
+### Worked example: parallel scaffold-pages
+
+```bash
+python3 - <<'PYEOF'
+import json, subprocess
+PAGE_SLUG = "pricing"
+SPAWN_INDEX = 2     # from this agent's spawn metadata
+trace = {
+    "verdict": "pass",
+    "result": "clean",
+    "checks_performed": ["page_authored", "events_wired", "build_smoke"],
+    "no_fixes_claimed": True,
+    "files_created": ["src/app/pricing/page.tsx"],
+    "page": PAGE_SLUG,
+}
+subprocess.run(
+    ["bash", ".claude/scripts/write-agent-trace.sh", "scaffold-pages",
+     "--json", json.dumps(trace),
+     "--trace-filename", f"scaffold-pages-{PAGE_SLUG}.json",
+     "--spawn-index", str(SPAWN_INDEX)],
+    check=True,
+)
+PYEOF
+```
+
+The `--trace-filename` and `--spawn-index` flags together disambiguate sibling spawn-log rows so each parallel scaffold-pages instance gets its own `spawn_sha` correctly attributed.
+
 ## Consumer contract
 
 AOC v1 has **eleven authoritative consumers**. Every consumer reads

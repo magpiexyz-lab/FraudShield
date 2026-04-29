@@ -277,6 +277,12 @@ json.dump(d, open('$COHERENCE_CACHE', 'w'), indent=2)
       exit 1
     fi
   fi
+
+  # Sibling lint (warn-only): scan init-context.sh callers for protected-field
+  # drops (the dead-code symptom that produced #1160). Findings written to
+  # .runs/init-context-caller-findings.jsonl; never blocks. Phase E2 of
+  # canonical-writer-policy work.
+  bash "$PROJECT_DIR/.claude/scripts/check-init-context-callers.sh" 2>/dev/null || true
 fi
 
 # --- Step 5: Delivery (code-writing skills only) ---

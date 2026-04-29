@@ -85,6 +85,43 @@ if echo "$COMMAND" | grep -qE "open\([^)]*agent-traces/[^)]*,[[:space:]]*['\"][w
   deny "Agent trace write guard: python open-for-write on agent-traces/ is blocked. Use write-recovery-trace.sh or write-degraded-trace.py."
 fi
 
+# Block Python variable-indirection writes to agent-traces.
+#
+# Pattern: `f="...agent-traces/..."; ... open(f, "w")` — the literal path is
+# bound to a variable, and the open() call uses the variable rather than the
+# literal. The regex above only catches literal `open(...agent-traces/...)`,
+# so this Python helper closes the gap.
+#
+# Implementation: scan the COMMAND string as a single unit (NOT split on `;` —
+# the existing chain-record awk uses `RS="[&|;]"` which would tear Python
+# `import json; ...` source across awk records, breaking variable correlation
+# by construction). The helper:
+#   1. Find every `<varname> = "..agent-traces/..."` (or `'..agent-traces/..'`)
+#      assignment in the command string.
+#   2. For each such variable, check if `open(<varname>, ...)` appears later
+#      with mode 'w' or 'a'.
+#   3. If any pair matches, print DENY.
+INDIRECT_CHECK=$(echo "$COMMAND" | python3 -c '
+import re, sys
+cmd = sys.stdin.read()
+# Capture all <var> = "...agent-traces/..." assignments.
+assignments = set()
+for m in re.finditer(
+    r"([A-Za-z_][A-Za-z0-9_]*)\s*=\s*[\x27\x22][^\x27\x22]*agent-traces/[^\x27\x22]*[\x27\x22]",
+    cmd,
+):
+    assignments.add(m.group(1))
+for var in assignments:
+    # open(<var>, ..., "w") or "a" or with positional mode arg
+    pat = r"open\(\s*" + re.escape(var) + r"\s*,[^)]*[\x27\x22][wa][\x27\x22\+b]*"
+    if re.search(pat, cmd):
+        print("DENY")
+        sys.exit(0)
+' 2>/dev/null || true)
+if [[ "$INDIRECT_CHECK" == "DENY" ]]; then
+  deny "Agent trace write guard: variable-indirection write to agent-traces/ blocked (variable bound to agent-traces path is later passed to open() with write mode). Use write-agent-trace.sh / write-recovery-trace.sh / write-degraded-trace.py."
+fi
+
 # ── Allow-list short-circuit ──
 
 # Leading-anchor regex: each sanctioned writer must appear at a command
