@@ -51,7 +51,9 @@ while IFS= read -r match; do
   # Pattern: \"<protected>\":  (escape-quoted JSON key inside bash string)
   if echo "$content" | grep -qE "\\\\\"($PROTECTED)\\\\\":"; then
     # Extract which protected fields were found (deduped).
-    fields_found=$(echo "$content" | grep -oE "\\\\\"($PROTECTED)\\\\\":" | sed -E 's|\\"||g; s|":||g' | sort -u | tr '\n' ',' | sed 's/,$//')
+    # Pattern \"<field>\": → strip leading/trailing escape-quotes and trailing colon,
+    # keeping just the bare field name.
+    fields_found=$(echo "$content" | grep -oE "\\\\\"($PROTECTED)\\\\\":" | sed -E 's|^\\"||; s|\\":$||' | sort -u | tr '\n' ',' | sed 's/,$//')
     FOUND_COUNT=$((FOUND_COUNT + 1))
     # JSONL row.
     python3 -c "

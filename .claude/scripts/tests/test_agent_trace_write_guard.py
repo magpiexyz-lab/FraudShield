@@ -229,6 +229,78 @@ class TestAgentTraceWriteGuard(unittest.TestCase):
             "echo x | tee .runs/agent-traces/fake.json",
         )
 
+    # ---- Variable-indirection (PR3 C1: Python helper) ----
+    # Closes the gap from /solve round-2 critic: the literal-path regex matches
+    # `open('.runs/agent-traces/foo.json', 'w')` but misses
+    # `f="...path..."; open(f, 'w')` because the var name `f` does not contain
+    # `agent-traces`. The Python helper scans for `<var> = "...agent-traces/..."`
+    # assignments and flags any later `open(<var>, "w")`/`open(<var>, "a")`.
+
+    def test_variable_indirection_double_quoted_denied(self):
+        self._assert_denied(
+            "python3 -c \"f='.runs/agent-traces/forge.json'; open(f, 'w').write('{}')\"",
+            "variable-indirection",
+        )
+
+    def test_variable_indirection_double_quoted_python_denied(self):
+        # Bash single-quoted command with Python double-quoted strings.
+        # Realistic alternative encoding — must also trigger the helper.
+        self._assert_denied(
+            'python3 -c \'f=".runs/agent-traces/forge.json"; open(f, "w").write("{}")\'',
+            "variable-indirection",
+        )
+
+    def test_variable_indirection_append_mode_denied(self):
+        self._assert_denied(
+            "python3 -c \"path='.runs/agent-traces/forge.json'; open(path, 'a').write('x')\"",
+            "variable-indirection",
+        )
+
+    def test_variable_indirection_with_json_dump_denied(self):
+        # Mirrors the pre-PR2 pattern in scaffold-libs/scaffold-pages agents
+        # that bypassed via json.dump(d, open(f, 'w')).
+        self._assert_denied(
+            "python3 -c \"import json; f='.runs/agent-traces/scaffold-libs.json'; d={}; json.dump(d, open(f, 'w'))\"",
+            "variable-indirection",
+        )
+
+    def test_variable_indirection_with_modeb_suffix_denied(self):
+        # Defense-in-depth: 'wb' / 'wb+' / 'a+' modes still write.
+        self._assert_denied(
+            "python3 -c \"f='.runs/agent-traces/forge.json'; open(f, 'wb').write(b'{}')\"",
+            "variable-indirection",
+        )
+
+    def test_variable_indirection_unrelated_var_allowed(self):
+        # Variable bound to a non-agent-traces path must not trigger.
+        self._assert_allowed(
+            "python3 -c \"f='/tmp/foo.json'; open(f, 'w').write('{}')\"",
+            "variable bound to unrelated path",
+        )
+
+    def test_variable_indirection_var_used_for_read_only_allowed(self):
+        # Variable bound to agent-traces but only used for read must not trigger.
+        self._assert_allowed(
+            "python3 -c \"import json; f='.runs/agent-traces/foo.json'; d=json.load(open(f))\"",
+            "variable used only for read",
+        )
+
+    def test_variable_indirection_open_in_read_mode_allowed(self):
+        # open(<var>, 'r') is a read, not a write — must not trigger.
+        self._assert_allowed(
+            "python3 -c \"f='.runs/agent-traces/foo.json'; data=open(f, 'r').read()\"",
+            "open with explicit read mode",
+        )
+
+    def test_variable_indirection_python_semicolon_separator(self):
+        # Critical: Python source with `;` separator within a single -c argument.
+        # The existing chain awk uses RS="[&|;]" which would split this into
+        # multiple records; the helper MUST scan COMMAND as a single string.
+        self._assert_denied(
+            "python3 -c \"import json; f='.runs/agent-traces/forge.json'; json.dump({}, open(f, 'w'))\"",
+            "variable-indirection",
+        )
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
