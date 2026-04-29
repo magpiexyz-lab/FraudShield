@@ -158,6 +158,29 @@
         {"route_prefix": "/quotes/", "fixture_candidates": ["src/app/quotes/quotes.ts"]}
       ],
       "description": "#1069 cross-agent fixture contract: walks scaffold-emitted files for href=\"/<route>/<slug-or-id>\" patterns; for each route matching a configured prefix, parses the canonical fixture file and verifies every referenced identifier appears as a literal string. Emits cross_file_contradiction findings for fabricated IDs that do not match the owning agent's canonical fixture. WARN severity — primary fix is the Key Constraints in scaffold-landing.md + scaffold-pages.md; this rule is defense-in-depth. Route-owner hints are a canonical but non-exhaustive mapping; projects with novel list-type pages extend this list or rely on the agent-level contract alone."
+    },
+    {
+      "id": "pages-no-payload-type-exports",
+      "type": "pages_no_payload_type_exports",
+      "severity": "warn",
+      "_transitional_note": "Severity is intentionally `warn` for the introduction phase (see #1161 fix PR). Existing bootstrapped projects may have pre-existing payload-shape type declarations in pages; ship as warn to surface findings without blocking /change for projects mid-flight. Tighten to `block` in a follow-up PR after a quiet period when grep across known projects shows zero pre-existing violations.",
+      "scope_glob": "src/app/**/*.tsx",
+      "path_excludes": [
+        "src/app/api/**",
+        "**/__tests__/**"
+      ],
+      "filename_excludes": [
+        "layout.tsx",
+        "loading.tsx",
+        "error.tsx",
+        "not-found.tsx",
+        "default.tsx",
+        "template.tsx",
+        "*.test.tsx",
+        "*.stories.tsx"
+      ],
+      "types_source_path": "src/lib/types.ts",
+      "description": "#1161 (b) defense-in-depth: pages must not declare payload-shape types (suffix Payload/Response/Request/Schema, exported or local) or types whose names collide with src/lib/types.ts exports. Pages must import from @/lib/types (canonical project-types file produced by scaffold-libs initial via supabase stack files: list and augmented by scaffold-wire per wire.md Step 6). The rule fires at bootstrap finalize and /change PR coherence pass. Currently `warn` severity for safe rollout — tighten to `block` once existing-project migration is complete."
     }
   ]
 }

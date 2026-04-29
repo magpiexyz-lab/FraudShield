@@ -116,4 +116,4 @@ python3 -c "import json,os,re; d=json.load(open('.runs/bootstrap-wire-trace.json
 bash .claude/scripts/advance-state.sh bootstrap 14
 ```
 
-**NEXT:** Read [state-15-scan-and-classify.md](state-15-scan-and-classify.md) to continue.
+**NEXT:** Read [state-14a-bg2-wire-gate.md](state-14a-bg2-wire-gate.md) to continue.

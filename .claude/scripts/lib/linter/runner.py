@@ -1403,6 +1403,119 @@ def main() -> int:
         return findings
 
 
+    def check_pages_no_payload_type_exports(rule):
+        """#1161 (b): block payload-shape type declarations in page files.
+
+        Pattern A (suffix): `(export )?(type|interface) X<suffix>` where suffix
+        is in {Payload, Response, Request, Schema}. Catches both exported and
+        local declarations (round-2 Concern 3 fix).
+
+        Pattern B (collision): name matches an exported type from
+        types_source_path (default src/lib/types.ts).
+
+        Both patterns scope to scope_glob minus path_excludes (fnmatch on full
+        path) and filename_excludes (fnmatch on basename).
+        """
+        import fnmatch as _fnmatch
+        import glob as _glob
+        import re as _re
+
+        findings = []
+        scope_glob = rule.get("scope_glob", "")
+        path_excludes = rule.get("path_excludes", [])
+        filename_excludes = rule.get("filename_excludes", [])
+        suffix_pat = rule.get(
+            "suffix_pattern",
+            r"^(export\s+)?(type|interface)\s+[A-Z][a-zA-Z0-9]*(Payload|Response|Request|Schema)\s*[<{=]",
+        )
+        types_source = rule.get("types_source_path", "src/lib/types.ts")
+
+        if not scope_glob:
+            return findings
+
+        candidate_files = []
+        for pat in scope_glob.split(","):
+            pat = pat.strip()
+            if pat:
+                candidate_files.extend(_glob.glob(pat, recursive=True))
+
+        def is_excluded(path):
+            for ex in path_excludes:
+                if _fnmatch.fnmatch(path, ex):
+                    return True
+            base = os.path.basename(path)
+            for fx in filename_excludes:
+                if _fnmatch.fnmatch(base, fx):
+                    return True
+            return False
+
+        scope_files = sorted(set(f for f in candidate_files if not is_excluded(f)))
+
+        suffix_re = _re.compile(suffix_pat, _re.MULTILINE)
+
+        types_names = set()
+        if os.path.isfile(types_source):
+            try:
+                with open(types_source) as f:
+                    content = f.read()
+                for m in _re.finditer(
+                    r"^export\s+(type|interface)\s+([A-Z][a-zA-Z0-9]*)",
+                    content,
+                    _re.MULTILINE,
+                ):
+                    types_names.add(m.group(2))
+                for m in _re.finditer(
+                    r"^export\s+(type|interface)?\s*\{\s*([^}]+)\s*\}",
+                    content,
+                    _re.MULTILINE,
+                ):
+                    for raw in m.group(2).split(","):
+                        n = raw.strip().split(" as ")[0].strip()
+                        if _re.match(r"^[A-Z][a-zA-Z0-9]*$", n):
+                            types_names.add(n)
+            except OSError:
+                pass
+
+        collision_res = {
+            name: _re.compile(
+                rf"^(export\s+)?(type|interface)\s+{_re.escape(name)}\s*[<{{=]",
+                _re.MULTILINE,
+            )
+            for name in types_names
+        }
+
+        for sf in scope_files:
+            try:
+                with open(sf) as f:
+                    content = f.read()
+            except OSError:
+                continue
+
+            for m in suffix_re.finditer(content):
+                line_no = content[: m.start()].count("\n") + 1
+                snippet = m.group(0).strip()
+                findings.append(
+                    _emit_finding(
+                        rule,
+                        f"{sf}:{line_no}: payload-shape type declaration `{snippet}` — "
+                        f"move to {types_source} (owned by scaffold-wire) or use TypeScript inference",
+                    )
+                )
+
+            for name, collision_re in collision_res.items():
+                for m in collision_re.finditer(content):
+                    line_no = content[: m.start()].count("\n") + 1
+                    findings.append(
+                        _emit_finding(
+                            rule,
+                            f"{sf}:{line_no}: type name `{name}` collides with {types_source} export — "
+                            f"import from @/lib/types instead of redefining",
+                        )
+                    )
+
+        return findings
+
+
     # ---------------------------------------------------------------------------
     # Cross-file rule dispatch — registry-driven with type + field validation.
     #
@@ -1431,6 +1544,7 @@ def main() -> int:
         "consumer_coverage":                (check_consumer_coverage,                {"canonical_source", "consumers"},                        set(),                                                        True),
         "frontmatter_artifact_consistency": (check_frontmatter_artifact_consistency, {"schema_path", "writer"},                                {"consumers"},                                                True),
         "internal_href_validity":           (check_internal_href_validity,           set(),                                                    {"scaffold_glob", "route_owner_hints"},                       False),
+        "pages_no_payload_type_exports":    (check_pages_no_payload_type_exports,    {"scope_glob"},                                           {"path_excludes", "filename_excludes", "suffix_pattern", "types_source_path"}, True),
     }
     META_KEYS = {"id", "type", "severity", "description", "_transitional_note", "_comment"}
 

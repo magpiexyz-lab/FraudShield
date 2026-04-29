@@ -30,7 +30,7 @@ fi
 if [[ -f "$PLAN" ]]; then
   # Primary: verdict files
   VERDICTS_DIR="$PROJECT_DIR/.runs/gate-verdicts"
-  check_verdict_gates "bg1 bg2 bg2.5 bg4" "$VERDICTS_DIR"
+  check_verdict_gates "bg1 bg2 bg2.5 bg2-wire bg4" "$VERDICTS_DIR"
 
   # Freshness: BG1 timestamp > branch creation
   BRANCH_CREATED=$(git log --format=%aI "$(git merge-base main HEAD)" -1 2>/dev/null || echo "")
@@ -51,6 +51,9 @@ if [[ -f "$PLAN" ]]; then
   fi
   if ! grep -q '\- \[x\].*BG2\.5' "$PLAN"; then
     ERRORS+=("BG2.5 Externals Gate not checked off in Process Checklist")
+  fi
+  if ! grep -q '\- \[x\].*BG2-WIRE' "$PLAN"; then
+    ERRORS+=("BG2-WIRE Post-Wire Gate not checked off in Process Checklist")
   fi
 fi
 

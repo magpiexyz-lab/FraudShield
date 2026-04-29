@@ -113,11 +113,11 @@ VEOF
 ```
 
 Rules:
-- `<gate-id>` is the gate identifier in lowercase: `bg1`, `bg2`, `bg2.5`, `bg4`, `g1`, etc.
+- `<gate-id>` is the gate identifier in lowercase: `bg1`, `bg2`, `bg2.5`, `bg2-wire`, `bg4`, `g1`, etc.
 - The `branch` field records the branch at verdict time — hooks use this for freshness validation.
 - This write is mandatory for every gate invocation. If the Bash write fails, report BLOCK.
 - `severity` defaults to `"critical"` for BLOCK verdicts. Set to `"warning"` only for informational checks that don't affect process compliance. Hooks treat both as blocking (non-overridable).
-- `quality_checks` records the results of quality dimension checks (checks 5+ in G1, 8+ in G2, 5+ in G3, 9+ in BG1, 19 in BG2). This field is additive — hooks only read `verdict` and `branch`, so `quality_checks` does not affect gate pass/fail decisions in hooks. It provides observability into artifact quality for Q-score computation and debugging.
+- `quality_checks` records the results of quality dimension checks (checks 5+ in G1, 8+ in G2, 5+ in G3, 9+ in BG1, 6 in BG2-WIRE). This field is additive — hooks only read `verdict` and `branch`, so `quality_checks` does not affect gate pass/fail decisions in hooks. It provides observability into artifact quality for Q-score computation and debugging.
 
 ---
 
@@ -226,7 +226,7 @@ Verify scaffold subagents produced expected outputs. File checks first, build la
 
 1. `src/lib/` contains ≥1 `.ts` file (scaffold-libs ran)
 2. `.runs/current-visual-brief.md` exists (scaffold-init ran)
-3. Archetype-specific: web-app → `src/app/layout.tsx` + each golden_path page; service → `src/app/api/` with route files; cli → `src/index.ts` + `src/commands/`
+3. Archetype-specific (web-app only): `src/app/layout.tsx` exists + each golden_path page has `src/app/<page>/page.tsx`. Service `src/app/api/` and cli `src/index.ts` + `src/commands/` are scaffold-wire artifacts — moved to BG2-WIRE Post-Wire Gate (state-14a).
 3b. Page count scope guard (web-app only): count directories matching `src/app/*/page.tsx` — run `find src/app -mindepth 2 -name page.tsx | wc -l`. Compute expected as the size of the canonical page set (`derive_scope_pages()` already accounts for `golden_path[*].page`, `behaviors[*].pages`, and auth-derived login/signup) plus scaffolding exceptions owned by other agents:
 
 ```
@@ -248,32 +248,61 @@ Get the canonical set via `python3 .claude/scripts/lib/derive_pages.py scope < e
 3c-3. **Page exists on disk.** For each page in `derive_scope_pages(experiment)` (excluding auth-derived `login`/`signup` which scaffold-pages handles via the auth stack template): assert `src/app/<page>/page.tsx` exists. BLOCK with message:
 > page `<name>` is declared in `derive_scope_pages()` but `src/app/<name>/page.tsx` is missing. Re-run scaffold-pages for this page (state-11c), or remove its declaration from `behavior.pages` / `golden_path`.
 
-3d. **Nav-bar inventory coverage** (web-app only) — verify NavBar links cover the canonical set:
-- `src/components/nav-bar.tsx` MUST contain the marker comment `{/* DERIVED-FROM: derive_scope_pages */}` (emitted by scaffold-wire Step 5b.3). BLOCK if absent: > `src/components/nav-bar.tsx` is missing the `{/* DERIVED-FROM: derive_scope_pages */}` marker. Re-run scaffold-wire; nav-bar must be generated from the canonical SET.
-- For each `<page>` in `derive_scope_pages(experiment)` excluding `landing`, `login`, `signup`, `auth/callback`, `auth/reset-password`: assert the page slug appears as a whole path segment in an `href` in `src/components/nav-bar.tsx` — run `grep -E 'href=(\"/(<page>)(/|\"|\\?)|\\{[^}]*\"/?<page>[\"/]?[^}]*\\})' src/components/nav-bar.tsx`. BLOCK with list of missing pages.
-- Skip for service/cli archetypes.
+3d. **Nav-bar inventory coverage** — moved to BG2-WIRE Post-Wire Gate (state-14a). `src/components/nav-bar.tsx` is owned by scaffold-wire and not yet present at state-13c.
 
 3e. **Sitemap inventory coverage** (web-app only) — verify sitemap derives from canonical:
 - `src/app/sitemap.ts` MUST reference the canonical derivation (either the `derive_scope_pages` function symbol or a `derive_pages.py` invocation). BLOCK if absent: > `src/app/sitemap.ts` does not reference `derive_scope_pages` — sitemap must be generated from the canonical SET (see `.claude/procedures/scaffold-pages.md` Step 3b).
 - For each `<page>` in `derive_scope_pages(experiment)` excluding `landing`, `login`, `signup`, `auth/callback`, `auth/reset-password`: assert the page slug appears in `src/app/sitemap.ts`. BLOCK with list of missing pages.
 - Skip for service/cli archetypes.
-4. If `stack.analytics`: (a) grep `src/lib/analytics` for `PROJECT_NAME` and `PROJECT_OWNER` — neither must equal `"TODO"`; (b) read `experiment/EVENTS.yaml`, for each event filtered by `requires` (match stack) and `archetypes` (match type), grep event name in `src/` — BLOCK if any missing; (c) grep `src/app/*/page.tsx` for raw `track(` calls not from typed wrappers — BLOCK if found (pages must use typed wrappers from `@/lib/events`, not raw `track()`)
+4. If `stack.analytics`: (a) grep `src/lib/analytics` for `PROJECT_NAME` and `PROJECT_OWNER` — neither must equal `"TODO"`; (b) read `experiment/EVENTS.yaml`, for each event filtered by `requires` (match stack) and `archetypes` (match type), grep event name in `src/` — BLOCK if any missing; (c) walk the full page tree (page.tsx + colocated `*.tsx` excluding `*.test.*`, `*.stories.*`, `__tests__/`) for raw `track(` calls not from typed wrappers — for each `<page>` from `derive_scope_pages()`, run `test -f src/app/<page>/page.tsx && find src/app/<page> -name '*.tsx' ! -name '*.test.*' ! -name '*.stories.*' ! -path '*/__tests__/*' -exec grep -l 'track(' {} + | xargs -I{} grep -L "from '@/lib/events'" {} 2>/dev/null | grep -q .` — BLOCK if found (pages and colocated subcomponents must use typed wrappers from `@/lib/events`, not raw `track()`)
 5. If surface ≠ `none`: landing page file exists
 6. `.runs/current-plan.md` frontmatter `checkpoint` is `phase2-scaffold` or later
 7. scaffold-setup contract: `package.json` has `dependencies` key, `node_modules/` non-empty — run `test -d node_modules && ls node_modules | head -1`
 8. scaffold-landing contract: if `variants` in experiment.yaml, landing file contains at least one variant slug (grep for slug); otherwise landing file > 20 lines (`wc -l`). Skip if surface = `none`.
-9. scaffold-wire contract: if mutation behaviors exist in experiment.yaml (behaviors with `actor: user` that imply writes), `src/app/api/` has route files — run `ls src/app/api/`
+9. scaffold-wire contract — moved to BG2-WIRE Post-Wire Gate (state-14a). `src/app/api/` route files are scaffold-wire artifacts and not yet present at state-13c.
 10. Process Checklist: `.runs/current-plan.md` contains `## Process Checklist` with ≥ 10 checklist items — run `grep -c '^\- \[' .runs/current-plan.md`
 11. `npm run build` passes
-12. (web-app only) Component usage: each page in `derive_scope_pages(experiment)` has at least one import from `@/components/ui/` — for each `<page>` returned by `python3 .claude/scripts/lib/derive_pages.py scope`, run `grep -l '@/components/ui/' src/app/<page>/page.tsx`. BLOCK if any page has zero shadcn/ui component imports.
-13. (web-app only) Theme token usage: each page in `derive_scope_pages(experiment)` contains at least one Tailwind theme class (`primary`, `secondary`, `background`, `foreground`, `muted`, `accent`, `destructive`, `card`, `border`) in className — for each `<page>` from `derive_scope_pages()`, run `grep -lE '(primary|secondary|background|foreground|muted|accent|destructive|card|border)' src/app/<page>/page.tsx`. BLOCK if any page has zero theme token references.
-14. (web-app only) Internal href validity: grep all page files for `href="/` patterns — run `grep -roh 'href="/[^"]*"' src/app/*/page.tsx | sort -u`. For each extracted path, verify a corresponding directory exists under `src/app/`. Exclude `href="http`, `href="mailto:`, and **scaffold-wire-owned routes that state-13b cannot see yet**: `/auth/callback` and `/auth/reset-password` (created in STATE 14, after state-13b runs and after BG2 runs if BG2 fires before STATE 14). These routes are part of the documented auth/supabase stack file contract — treat them as expected-missing. BLOCK if any OTHER internal link targets a non-existent route.
+12. (web-app only) Component usage: each page in `derive_scope_pages(experiment)` has at least one import from `@/components/ui/` ANYWHERE IN ITS PAGE TREE (page.tsx and any colocated `*.tsx` files in `src/app/<page>/`, excluding `*.test.*`, `*.stories.*`, `__tests__/`) — for each `<page>` returned by `python3 .claude/scripts/lib/derive_pages.py scope`, run `test -f src/app/<page>/page.tsx && find src/app/<page> -name '*.tsx' ! -name '*.test.*' ! -name '*.stories.*' ! -path '*/__tests__/*' -exec grep -l '@/components/ui/' {} + | grep -q .`. BLOCK if any page tree has zero shadcn/ui component imports. Recursive walk handles canonical Next.js server→client component delegation (#1147).
+13. (web-app only) Theme token usage: each page in `derive_scope_pages(experiment)` contains at least one Tailwind theme class (`primary`, `secondary`, `background`, `foreground`, `muted`, `accent`, `destructive`, `card`, `border`) in className ANYWHERE IN ITS PAGE TREE — for each `<page>` from `derive_scope_pages()`, run `test -f src/app/<page>/page.tsx && find src/app/<page> -name '*.tsx' ! -name '*.test.*' ! -name '*.stories.*' ! -path '*/__tests__/*' -exec grep -lE '(primary|secondary|background|foreground|muted|accent|destructive|card|border)' {} + | grep -q .`. BLOCK if any page tree has zero theme token references.
+14. Internal href validity — moved to BG2-WIRE Post-Wire Gate (state-14a) where `/auth/callback` and `/auth/reset-password` exist (no exclusions needed) and full coverage is verifiable.
 15. (web-app only, if variants defined) Variant integration: if experiment.yaml defines `variants`, grep landing page source for at least one variant slug — run `grep -l '<slug>' src/app/page.tsx src/components/landing-content.tsx 2>/dev/null`. BLOCK if no variant slug found. Skip if no variants defined or surface = `none`.
-16. (web-app only) **Content quality floor** — for each page in `derive_scope_pages(experiment)` (excluding `auth/*` routes, `login`, `signup`), `src/app/<page>/page.tsx` has ≥15 lines (`wc -l`) and does not contain `TODO`, `PLACEHOLDER`, or `FIXME` as whole-word UPPERCASE-only tokens. Run `grep -E '\b(TODO|PLACEHOLDER|FIXME)\b'` (case-sensitive). Do NOT use `grep -i` — case-insensitive matching false-positives on the HTML `placeholder="..."` attribute which is a legitimate form-UX element. BLOCK if violated, listing the offending pages.
+16. (web-app only) **Content quality floor** — for each page in `derive_scope_pages(experiment)` (excluding `auth/*` routes, `login`, `signup`), `src/app/<page>/page.tsx` has ≥15 lines (`wc -l`); AND no file in the page tree (page.tsx + colocated `*.tsx` excluding `*.test.*`, `*.stories.*`, `__tests__/`) contains `TODO`, `PLACEHOLDER`, or `FIXME` as whole-word UPPERCASE-only tokens. Run `test -f src/app/<page>/page.tsx && find src/app/<page> -name '*.tsx' ! -name '*.test.*' ! -name '*.stories.*' ! -path '*/__tests__/*' -exec grep -lE '\b(TODO|PLACEHOLDER|FIXME)\b' {} + | grep -q .` — BLOCK if any file matches. Do NOT use `grep -i` — case-insensitive matching false-positives on the HTML `placeholder="..."` attribute which is a legitimate form-UX element. List offending pages.
 17. (web-app only) **CTA presence** — `src/app/page.tsx` OR `src/components/landing-content.tsx` contains at least one `<Button` or `<Link` component (`grep`). BLOCK if neither file contains a CTA.
-18. (web-app only) **Restricted asChild** — use multi-line ripgrep (`rg -U --multiline`) to find `asChild` occurrences in user-authored files (exclude `src/components/ui/` and `src/components/magicui/`). For each match, inspect the IMMEDIATE child element: ALLOW when the child is `<Link` (from `next/link`) or a bare `<a ` anchor — this is the sanctioned shadcn Button+Link / Trigger+Link composition. BLOCK when the child is any other element (e.g., `<Button asChild><div>` — which is the anti-pattern the check is trying to catch). List `file:line` for each blocking match. The multi-line flag is required because prettier frequently formats the pattern across multiple lines (`<Button asChild>\n  <Link href="/go">...`).
+18. (web-app only) **Restricted asChild** — use multi-line ripgrep (`rg -U --multiline`) to find `asChild` occurrences across the entire user-authored page tree (page.tsx + colocated `*.tsx` excluding `*.test.*`, `*.stories.*`, `__tests__/`) and `src/components/` excluding `src/components/ui/` and `src/components/magicui/`. Pipe via `find ... -print0 | xargs -0 rg -U --multiline 'asChild' --no-messages`. For each match, inspect the IMMEDIATE child element: ALLOW when the child is `<Link` (from `next/link`) or a bare `<a ` anchor — this is the sanctioned shadcn Button+Link / Trigger+Link composition. BLOCK when the child is any other element (e.g., `<Button asChild><div>` — which is the anti-pattern the check is trying to catch). List `file:line` for each blocking match. The multi-line flag is required because prettier frequently formats the pattern across multiple lines (`<Button asChild>\n  <Link href="/go">...`).
 
-19. **Quality: wire trace present** — if `.runs/bootstrap-wire-trace.json` exists: `pages_wired` or `api_routes_wired` is non-empty — run `python3 -c "import json; d=json.load(open('.runs/bootstrap-wire-trace.json')); print('PASS: %d pages, %d routes' % (len(d.get('pages_wired',[])),len(d.get('api_routes_wired',[]))) if d.get('pages_wired') or d.get('api_routes_wired') else 'BLOCK: wire trace has no wired components')"` (skip if bootstrap-wire-trace.json does not exist)
+19. **Quality: wire trace present** — moved to BG2-WIRE Post-Wire Gate (state-14a). The wire trace artifact `.runs/bootstrap-wire-trace.json` is written by scaffold-wire at state-14, after BG2 runs.
+
+### BG2-WIRE Post-Wire Gate
+
+Verify scaffold-wire output AFTER scaffold-wire completes (state-14). This gate runs at state-14a, complementing BG2 (state-13c) which validates pre-wire scaffolds. The split closes #1142 — BG2 cannot assert artifacts whose producer (scaffold-wire) has not yet run. File checks first, build last:
+
+> REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table, rows "Primary unit".
+> [primary-unit] web-app: page (`src/app/<page>/page.tsx`) | service: endpoint (`src/app/api/<ep>/route.ts`) | cli: command (`src/commands/<cmd>.ts`)
+
+1. **Wire artifact: nav-bar inventory coverage** (web-app + stack.auth only) — verify NavBar links cover the canonical set:
+- `src/components/nav-bar.tsx` exists and contains the marker comment `{/* DERIVED-FROM: derive_scope_pages */}` (emitted by scaffold-wire Step 5b.3). BLOCK if absent.
+- For each `<page>` in `derive_scope_pages(experiment)` excluding `landing`, `login`, `signup`, `auth/callback`, `auth/reset-password`: assert the page slug appears as a whole path segment in an `href` in `src/components/nav-bar.tsx` — run `grep -E 'href=(\"/(<page>)(/|\"|\\?)|\\{[^}]*\"/?<page>[\"/]?[^}]*\\})' src/components/nav-bar.tsx`. BLOCK with list of missing pages.
+- Skip for service/cli archetypes or when `stack.auth` is absent.
+
+2. **Wire artifact: api routes for mutation behaviors** (web-app + service): if mutation behaviors exist in experiment.yaml (behaviors with `actor: user` that imply writes), `src/app/api/` contains route files — run `ls src/app/api/`. BLOCK if missing. Skip for cli.
+
+3. **Wire artifact: cli entrypoint + commands** (cli only): `src/index.ts` exists and `src/commands/` contains ≥1 `.ts` file — run `test -f src/index.ts && ls src/commands/*.ts | head -1`. BLOCK if missing.
+
+4. **Internal href validity, FULL coverage** (web-app only) — walk page tree for `href="/...` patterns. Walk all `*.tsx` under `src/app/` excluding `*.test.*`, `*.stories.*`, `__tests__/`, and `src/app/api/`. Normalize dynamic segments (e.g., `/dashboard/[id]` → `/dashboard/`). For each normalized path, verify a corresponding directory exists under `src/app/`. Exclude `href="http`, `href="mailto:`. **`/auth/callback` and `/auth/reset-password` are NOT excluded** — wire has run, they must exist. Run:
+```
+python3 -c "import re,glob,os,sys; pages=glob.glob('src/app/**/*.tsx',recursive=True); pages=[p for p in pages if not any(x in p for x in ['/__tests__/','.test.','.stories.','/api/'])]; hrefs=set(); [[hrefs.add(re.sub(r'/\[[^\]]+\]','/',m)) for m in re.findall(r'href=\"(/[^\"\\s]+)',open(p).read())] for p in pages]; missing=[h for h in hrefs if not h.startswith(('http','mailto:')) and not os.path.isdir('src/app'+h.rstrip('/').rstrip('/?'))]; print('PASS') if not missing else (print('BLOCK: missing routes: '+','.join(missing)),sys.exit(1))"
+```
+BLOCK if any internal link targets a non-existent route.
+
+5. **Post-wire build passes** — `npm run build` (defense-in-depth re-run after wire modifies layout.tsx and creates routes; catches integration errors that pre-wire build cannot detect).
+
+6. **Quality: wire trace fully populated** — `.runs/bootstrap-wire-trace.json` exists and the archetype-specific wired list is non-empty:
+```
+python3 -c "import json; d=json.load(open('.runs/bootstrap-wire-trace.json')); a=json.load(open('.runs/bootstrap-context.json')).get('archetype','web-app'); k={'web-app':'pages_wired','service':'api_routes_wired','cli':'commands_wired'}[a]; print('PASS: %d %s' % (len(d.get(k,[])),k) if d.get(k) else 'BLOCK: wire trace has empty %s' % k)"
+```
+BLOCK if missing or empty.
+
+> Verdict file: `.runs/gate-verdicts/bg2-wire.json`. Lowercase identifier: `bg2-wire`.
 
 ### BG2.5 Externals Gate
 

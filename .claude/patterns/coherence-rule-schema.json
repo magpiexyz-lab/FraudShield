@@ -102,6 +102,21 @@
         "route_owner_hints": { "type": "array", "items": { "type": "string" }, "description": "Glob patterns whose existence indicates a valid route owner." },
         "description": { "type": "string" }
       }
+    },
+    "rule_pages_no_payload_type_exports": {
+      "description": "#1161 (b): block payload-shape type declarations in page files. Pages must import from src/lib/types.ts (canonical project-types file: scaffold-libs writes initial database row types when stack.database is present, scaffold-wire augments with API contract types per procedures/wire.md Step 6) or use TypeScript inference. Pattern A blocks Payload/Response/Request/Schema suffixes (both exported and local). Pattern B blocks redeclaration of names exported from types_source_path.",
+      "required": ["id", "type", "scope_glob"],
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "const": "pages_no_payload_type_exports" },
+        "severity": { "$ref": "#/definitions/severity" },
+        "scope_glob": { "type": "string", "description": "Comma-separated globs of files to scan (e.g., 'src/app/**/*.tsx')." },
+        "path_excludes": { "type": "array", "items": { "type": "string" }, "description": "fnmatch path patterns to exclude (e.g., 'src/app/api/**', '**/__tests__/**')." },
+        "filename_excludes": { "type": "array", "items": { "type": "string" }, "description": "fnmatch filename patterns to exclude (e.g., 'layout.tsx', 'loading.tsx', '*.test.tsx')." },
+        "suffix_pattern": { "type": "string", "description": "Override regex for Pattern A. Default catches Payload/Response/Request/Schema suffixes on both exported and local declarations." },
+        "types_source_path": { "type": "string", "description": "Path to canonical types file (default: src/lib/types.ts). Names exported here trigger Pattern B collision detection." },
+        "description": { "type": "string" }
+      }
     }
   },
   "type": "object",
@@ -119,7 +134,8 @@
           { "$ref": "#/definitions/rule_consumer_coverage" },
           { "$ref": "#/definitions/rule_frontmatter_artifact_consistency" },
           { "$ref": "#/definitions/rule_discover_consumers" },
-          { "$ref": "#/definitions/rule_internal_href_validity" }
+          { "$ref": "#/definitions/rule_internal_href_validity" },
+          { "$ref": "#/definitions/rule_pages_no_payload_type_exports" }
         ]
       }
     }

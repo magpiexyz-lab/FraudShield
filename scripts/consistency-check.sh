@@ -406,6 +406,7 @@ ARCHETYPE_BRANCHING_FILES=(
   ".claude/skills/bootstrap/state-13b-content-seo-check.md"
   ".claude/skills/bootstrap/state-13c-bg2-gate.md"
   ".claude/skills/bootstrap/state-14-wire-phase.md"
+  ".claude/skills/bootstrap/state-14a-bg2-wire-gate.md"
   ".claude/skills/bootstrap/state-15-scan-and-classify.md"
   ".claude/skills/bootstrap/state-18-commit-and-push.md"
   ".claude/skills/change/state-2-read-context.md"

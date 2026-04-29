@@ -50,6 +50,7 @@ Then append the plan body. The frontmatter enables resume-after-clear without re
 - [ ] Merged checkpoint validation passed
 - [ ] BG2 Orchestration Gate passed
 - [ ] scaffold-wire completed
+- [ ] BG2-WIRE Post-Wire Gate passed
 - [ ] Scan & classify (state 15)
 - [ ] Unit test generation (state 16)
 - [ ] ON-TOUCH persisted (state 17)

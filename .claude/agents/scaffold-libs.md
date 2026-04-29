@@ -25,6 +25,7 @@ You are the library architect. You create precise, type-safe library files by fo
 - Do NOT modify `experiment/experiment.yaml` or `experiment/EVENTS.yaml` — both are spec files locked by CLAUDE.md Rule 0. If a stack file template references an event name that is not in EVENTS.yaml, omit the `trackServerEvent()` call entirely (the helper still works without analytics). Event registration is an explicit `/change` operation, not a scaffold side effect.
 - Follow stack file templates precisely — do not improvise patterns
 - Replace all TODO placeholders in analytics constants
+- **No payload-shape type declarations beyond stack templates (#1161 b):** when the supabase stack is present, `src/lib/types.ts` is in your `files:` list — populate it with database row types (`XxxRow` naming per `procedures/wire.md` Step 6). Do NOT add `XxxPayload`/`XxxResponse`/`XxxRequest`/`XxxSchema` types to any `src/lib/*.ts` file — those are produced by scaffold-wire from route Zod schemas at state-14. The canonical project-types file is `src/lib/types.ts`; pages and routes import from there.
 
 ## Failure Handling
 
