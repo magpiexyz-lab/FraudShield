@@ -266,6 +266,9 @@ STALE_ARTIFACTS=(
   "$PROJECT_DIR/.runs/design-ux-merge.json"
   "$PROJECT_DIR/.runs/review-complete.json"
   "$PROJECT_DIR/.runs/review-loop-decision.json"
+  # #1152: prevent stale prior-run files from satisfying lead-only schema checks
+  "$PROJECT_DIR/.runs/retrospective-result.json"
+  "$PROJECT_DIR/.runs/observation-evidence.json"
 )
 for f in "${STALE_ARTIFACTS[@]}"; do
   rm -f "$f"

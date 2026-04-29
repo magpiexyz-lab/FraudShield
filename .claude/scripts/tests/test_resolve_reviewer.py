@@ -112,7 +112,11 @@ class TestResolveReviewerFirstClass(unittest.TestCase):
 
     def test_state_registry_verify_checks_trace_existence(self):
         sr = json.load((ROOT / ".claude/patterns/state-registry.json").open())
-        verify = sr["resolve"]["10"]
+        entry = sr["resolve"]["10"]
+        # Registry entries can be string (legacy) or dict (with `verify` key
+        # plus optional artifact/lifecycle/calls metadata). The verify command
+        # is the canonical content either way.
+        verify = entry if isinstance(entry, str) else entry.get("verify", "")
         # The post-PR4 VERIFY must check that the resolve-reviewer trace
         # exists and has a verdict (not a stub) — defends against alias-drift
         # regression.

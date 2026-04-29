@@ -270,6 +270,21 @@ Split into three sub-steps with scope-controlled activation.
 
 **Skip when:** scope is `code` or `audit-only`, OR no agent traces exist.
 
+> **NEVER delegate Step 5a to a spawned Agent.** This step requires the
+> lead's in-memory execution context (hook-friction events, deviation reasoning,
+> workarounds absorbed by changing approach) — context that does not exist in
+> any artifact and CANNOT be reconstructed from agent traces alone. Lead writes
+> `.runs/retrospective-result.json` directly via the Write tool. Observer
+> agents (or any other spawned subagent) must not be passed this artifact path
+> in their prompt. Enforced at three layers:
+>   1. `lead-deliverable-gate.sh` (PreToolUse Agent matcher) — denies any
+>      Agent invocation whose prompt mentions `retrospective-result.json`.
+>   2. `retrospective-content-gate.sh` (PreToolUse Write/Edit matcher) — requires
+>      `step_5a_executor: "lead"` to be present in the file content.
+>   3. `compliance-audit.py check_lead_deliverable_compliance` — post-write
+>      block on missing/wrong field, or missing `observation-evidence.json` sibling.
+> See `.claude/patterns/lead-only-artifacts.json` for the canonical manifest.
+
 The lead agent answers 3 structured questions using its full execution context
 (agent traces, fix-log, verify-context or skill-context, in-memory knowledge):
 
@@ -359,9 +374,14 @@ scope gate above (not overridden by hard_gate_failure).
 
 #### Write result
 
-Write `.runs/retrospective-result.json`:
+The lead writes `.runs/retrospective-result.json` DIRECTLY via the Write tool
+(NOT as a deliverable to a spawned Agent). The required top-level field
+`step_5a_executor` must be `"lead"` — enforced by `retrospective-content-gate.sh`
+and post-validated by `compliance-audit.py`.
+
 ```json
 {
+  "step_5a_executor": "lead",
   "process_compliance": "<summary or 'clean'>",
   "agent_instruction_compliance": [
     {"agent": "<name>", "executor": "agent", "compliant": true, "finding": null, "root_cause": "n-a"}
@@ -371,6 +391,12 @@ Write `.runs/retrospective-result.json`:
   "skipped": false
 }
 ```
+
+The per-agent `executor` field (inside `agent_instruction_compliance` list)
+records who executed each agent's procedure: `"agent"` for spawned agents,
+`"lead"` for procedures the lead executed inline. The top-level
+`step_5a_executor` records who answered Q1/Q2/Q3 — must be `"lead"` per the
+inclusion criterion in `lead-only-artifacts.json`.
 
 ### Step 5b-coherence: Cross-File Coherence Findings
 

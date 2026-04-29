@@ -52,7 +52,17 @@
     "agent_verdicts": {
       "type": "object",
       "required": true,
-      "description": "Map<agent, verdict> derived from .runs/agent-traces/*.json. check-cross-artifact-consistency.py cross-checks this map against actual trace verdicts."
+      "description": "Map<agent, verdict> derived from .runs/agent-traces/*.json — the RAW (pre-fix) verdict each Phase-1 agent emitted. check-cross-artifact-consistency.py cross-checks this map against actual trace verdicts. For post-fix state, consumers should read agent_verdicts_after_fixes."
+    },
+    "agent_verdicts_after_fixes": {
+      "type": "object",
+      "required": true,
+      "description": "Map<agent, verdict> reflecting POST-FIX state. Derived without re-running Phase-1 agents: for security-defender/security-attacker → security-fixer.json.unresolved_critical (gated on AOC v1.1 trace validity); for accessibility-scanner/design-consistency-checker → quality-fixer.json.unresolved_critical; for ux-journeyer → unresolved_dead_ends on its own trace; for design-critic and others → raw verdict unchanged. Closes #1151."
+    },
+    "agent_verdicts_after_fixes_source": {
+      "type": "object",
+      "required": true,
+      "description": "Map<agent, source-string> documenting where each after-fix verdict was derived from (e.g., 'security-fixer.json', 'self', 'self (fixer absent)'). Companion to agent_verdicts_after_fixes for auditability."
     },
     "hard_gate_failure": {
       "type": "boolean",
@@ -68,7 +78,7 @@
       "type": "string",
       "enum": ["pass", "fail"],
       "required": true,
-      "description": "Derived: 'pass' iff all agent_verdicts pass AND hard_gate_failure is false AND process_violation is false."
+      "description": "Derived from gates only: 'pass' iff hard_gate_failure is false AND process_violation is false. NOT derived from agent_verdicts (which are pre-fix raw values). For post-fix consistency, see the R4 sub-rule that BLOCKS when overall_verdict=pass with any hard_gate agent in agent_verdicts_after_fixes=fail (warns on count_summary agents)."
     }
   },
   "consumers": [

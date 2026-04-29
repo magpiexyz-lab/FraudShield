@@ -119,11 +119,25 @@ for state_id, raw in skill_states.items():
         continue
     if isinstance(raw, str):
         cmd = raw
+        lifecycle = 'durable'
     elif isinstance(raw, dict):
         cmd = raw.get('verify', '')
+        lifecycle = raw.get('lifecycle', 'durable')
     else:
         continue
     if not cmd or cmd.strip() == 'true':
+        continue
+    # Skip ONLY transient-intra-skill (closes #1162 part 1). At finalize-time
+    # of skill X:
+    #   - transient-intra-skill: deleter-state already ran → artifact missing →
+    #     skip (reporting WARN trains users to ignore real warnings).
+    #   - transient-cross-skill: deleter is lifecycle-init of NEXT skill →
+    #     artifact still exists during current finalize → DO NOT skip; rerun
+    #     VERIFY to catch real production failures.
+    #   - durable: must exist → rerun VERIFY (existing warn-only behavior).
+    if lifecycle == 'transient-intra-skill':
+        verify_results.append({'state': state_id, 'passed': True, 'error': None,
+                               'skipped': 'transient-intra-skill'})
         continue
     entry = {'state': state_id, 'passed': True, 'error': None}
     try:

@@ -117,6 +117,31 @@
         "types_source_path": { "type": "string", "description": "Path to canonical types file (default: src/lib/types.ts). Names exported here trigger Pattern B collision detection." },
         "description": { "type": "string" }
       }
+    },
+    "rule_artifact_transience": {
+      "description": "Provenance-schema rule: validate transient lifecycle declarations against actual deletion sources. For each state-registry entry with lifecycle != durable, the artifact path must match either lifecycle-init.sh STALE_ARTIFACTS/DELIVERY_ARTIFACTS (transient-cross-skill) OR a state-*.md `rm -f`/`Delete` action (transient-intra-skill). Orthogonal to rule_artifact_lifecycle (flow vs durability axes).",
+      "required": ["id", "type", "skill"],
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "const": "artifact_transience" },
+        "severity": { "$ref": "#/definitions/severity" },
+        "skill": { "type": "string", "description": "Which skill's states to scan. Repeat the rule per skill." },
+        "init_script": { "type": "string", "description": "Path to lifecycle-init.sh (default .claude/scripts/lifecycle-init.sh)." },
+        "description": { "type": "string" }
+      }
+    },
+    "rule_executor_enforcement": {
+      "description": "Provenance-schema rule: three-way mapping check for lead-only artifacts. For each artifact in lead-only-artifacts.json: (a) the manifest must be referenced by at least one PreToolUse hook, (b) the artifact's schema_source must declare its executor_field, (c) no .claude/agents/*.md may list the artifact as a deliverable. Closes #1152 recurrence-prevention surface.",
+      "required": ["id", "type", "manifest_path"],
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "const": "executor_enforcement" },
+        "severity": { "$ref": "#/definitions/severity" },
+        "manifest_path": { "type": "string", "description": "Path to lead-only-artifacts.json." },
+        "hooks_dir": { "type": "string", "description": "Directory of PreToolUse hooks (default .claude/hooks)." },
+        "agents_glob": { "type": "string", "description": "Glob of agent .md files (default .claude/agents/*.md)." },
+        "description": { "type": "string" }
+      }
     }
   },
   "type": "object",
@@ -135,7 +160,9 @@
           { "$ref": "#/definitions/rule_frontmatter_artifact_consistency" },
           { "$ref": "#/definitions/rule_discover_consumers" },
           { "$ref": "#/definitions/rule_internal_href_validity" },
-          { "$ref": "#/definitions/rule_pages_no_payload_type_exports" }
+          { "$ref": "#/definitions/rule_pages_no_payload_type_exports" },
+          { "$ref": "#/definitions/rule_artifact_transience" },
+          { "$ref": "#/definitions/rule_executor_enforcement" }
         ]
       }
     }

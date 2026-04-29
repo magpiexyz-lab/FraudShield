@@ -914,6 +914,244 @@ def main() -> int:
         return out
 
 
+    def check_artifact_transience(rule):
+        """Validate `lifecycle: transient-*` declarations against actual deletion sources.
+
+        Rule shape:
+          {
+            "id": "<rule_id>",
+            "type": "artifact_transience",
+            "skill": "<skill_name>",
+            "init_script": "<optional path; default .claude/scripts/lifecycle-init.sh>"
+          }
+
+        For each entry under registry[skill] with `lifecycle != "durable"`:
+          (a) `artifact` field MUST be declared.
+          (b) `lifecycle == "transient-cross-skill"` MUST match a path in
+              lifecycle-init.sh STALE_ARTIFACTS / DELIVERY_ARTIFACTS (or
+              fall under a cleaned directory like .runs/agent-traces/).
+          (c) `lifecycle == "transient-intra-skill"` MUST match a state-*.md
+              file (in this same skill) whose ACTIONS contain a `rm -f`/`Delete`
+              for the path.
+
+        Coexists with check_artifact_lifecycle (orthogonal — flow vs durability axes).
+        Closes #1162 recurrence-prevention.
+        """
+        out = []
+        skill = rule.get("skill", "")
+        if not skill or skill not in registry:
+            return out
+        skill_states = registry[skill]
+        if not isinstance(skill_states, dict):
+            return out
+
+        init_script = rule.get("init_script", os.path.join(REPO_ROOT, ".claude/scripts/lifecycle-init.sh"))
+        try:
+            init_text = open(init_script).read()
+        except OSError:
+            return [_emit_finding(rule, f"cannot read {init_script}")]
+
+        # Cross-skill paths (file paths under STALE_ARTIFACTS / DELIVERY_ARTIFACTS)
+        cross_skill_paths = set()
+        for m in re.finditer(r'"\$PROJECT_DIR(/\.runs/[^"]+)"', init_text):
+            cross_skill_paths.add(m.group(1).lstrip("/"))
+        # Cleaned directories (paths ending in /)
+        cleaned_dirs = {p for p in cross_skill_paths if p.endswith("/")}
+
+        # Same-skill deletions: scan only state files of THIS skill plus shared patterns
+        intra_paths = set()
+        skill_state_files = sorted(glob.glob(os.path.join(skills_dir, skill, "state-*.md")))
+        pattern_files = [os.path.join(patterns_dir, "state-99-epilogue.md")]
+        for sf in skill_state_files + pattern_files:
+            if not os.path.isfile(sf):
+                continue
+            try:
+                text = open(sf).read()
+            except OSError:
+                continue
+            # bash code fences
+            for m in re.finditer(r"```bash\s*\n(.*?)```", text, re.DOTALL):
+                for m2 in re.finditer(
+                    r"(?:rm\s+-[rfRF]+\s+|os\.remove\(['\"]|os\.unlink\(['\"])"
+                    r"([^\s'\")]*\.runs/[A-Za-z0-9_./-]+)",
+                    m.group(1),
+                ):
+                    a = m2.group(1).rstrip("'\")").lstrip("'\"")
+                    if a.startswith("$PROJECT_DIR/"):
+                        a = a[len("$PROJECT_DIR/"):]
+                    if a.startswith(".runs/"):
+                        intra_paths.add(a)
+            # imperative prose
+            for m in re.finditer(r"(?m)^\s*[-*]\s+Delete\s+`(\.runs/[A-Za-z0-9_./-]+)`", text):
+                intra_paths.add(m.group(1))
+
+        # Pre-compute the set of paths each VERIFY command references — needed
+        # for both directions of the check.
+        artifact_re = re.compile(r"\.runs/[A-Za-z0-9_./-]+")
+
+        def is_known_transient(path):
+            """Return True iff path matches a known cross-skill OR intra-skill
+            deletion source. Used to detect mis-declared durable entries."""
+            if path in cross_skill_paths:
+                return True
+            if any(path.startswith(d) for d in cleaned_dirs):
+                return True
+            if path in intra_paths:
+                return True
+            return False
+
+        for sid, val in skill_states.items():
+            if sid.startswith("_"):
+                continue
+            # --- Forward check: declared transient must match a deletion source ---
+            if isinstance(val, dict):
+                lc = val.get("lifecycle", "durable")
+                artifact = val.get("artifact")
+                if lc != "durable":
+                    if not artifact:
+                        out.append(_emit_finding(rule, f"{skill}:{sid} declares lifecycle={lc} but no `artifact` declared"))
+                        continue
+                    if lc == "transient-cross-skill":
+                        if artifact not in cross_skill_paths and not any(artifact.startswith(d) for d in cleaned_dirs):
+                            out.append(_emit_finding(rule,
+                                f"{skill}:{sid} declares transient-cross-skill but {artifact} is not in "
+                                f"lifecycle-init.sh STALE_ARTIFACTS / DELIVERY_ARTIFACTS"))
+                    elif lc == "transient-intra-skill":
+                        if artifact not in intra_paths:
+                            out.append(_emit_finding(rule,
+                                f"{skill}:{sid} declares transient-intra-skill but no state-*.md "
+                                f"of skill={skill} deletes {artifact} (scanned bash code fences and "
+                                f"imperative `- Delete \\`{artifact}\\`` prose)"))
+                    else:
+                        out.append(_emit_finding(rule, f"{skill}:{sid} unknown lifecycle value '{lc}'"))
+                    continue  # transient entries: forward check only
+
+            # --- Inverse check: durable entry's VERIFY must NOT reference a known transient path ---
+            # Catches entries that LOOK transient (their VERIFY checks an
+            # init-cleaned or intra-skill-deleted path) but were declared
+            # durable. This is the most common authoring error: someone adds
+            # a new state without thinking about lifecycle.
+            verify_cmd = extract_verify_cmd(val)
+            if not verify_cmd or verify_cmd.strip() == "true":
+                continue
+            for m in artifact_re.finditer(verify_cmd):
+                referenced = m.group(0)
+                if is_known_transient(referenced):
+                    out.append(_emit_finding(rule,
+                        f"{skill}:{sid} is declared durable but its VERIFY references "
+                        f"{referenced} which is a known transient artifact "
+                        f"(in lifecycle-init STALE_ARTIFACTS/DELIVERY_ARTIFACTS or "
+                        f"deleted by a state-*.md of skill={skill}). Either declare "
+                        f"the entry as transient-cross-skill / transient-intra-skill, "
+                        f"or change the VERIFY command to not depend on the path."))
+                    break  # one finding per state is enough
+        return out
+
+
+    def check_executor_enforcement(rule):
+        """Three-way mapping check for lead-only artifacts.
+
+        Rule shape:
+          {
+            "id": "<rule_id>",
+            "type": "executor_enforcement",
+            "manifest_path": ".claude/patterns/lead-only-artifacts.json",
+            "hooks_dir": "<optional path; default .claude/hooks>",
+            "agents_glob": "<optional glob; default .claude/agents/*.md>"
+          }
+
+        For each artifact in lead-only-artifacts.json:
+          (a) Hook coverage: the manifest_path string OR the basename appears in
+              at least one PreToolUse hook script (lead-deliverable-gate.sh /
+              retrospective-content-gate.sh).
+          (b) Schema coverage: the artifact's `schema_source` file declares the
+              `executor_field` name (substring match).
+          (c) Negative-deliverable coverage: NO file in agents_glob lists the
+              artifact path as a deliverable. Exception: an agent .md may mention
+              the path if it ALSO contains the explicit phrase "Evidence collection
+              only" or "lead writes" (signaling it's documenting the lead-only
+              constraint, not delegating).
+
+        Closes #1152 recurrence-prevention.
+        """
+        out = []
+        manifest_path = rule.get("manifest_path", os.path.join(REPO_ROOT, ".claude/patterns/lead-only-artifacts.json"))
+        hooks_dir = rule.get("hooks_dir", os.path.join(REPO_ROOT, ".claude/hooks"))
+        agents_glob = rule.get("agents_glob", os.path.join(REPO_ROOT, ".claude/agents/*.md"))
+
+        try:
+            manifest = json.load(open(manifest_path))
+        except OSError as e:
+            return [_emit_finding(rule, f"cannot read manifest {manifest_path}: {e}")]
+        except json.JSONDecodeError as e:
+            return [_emit_finding(rule, f"manifest {manifest_path} is not valid JSON: {e}")]
+
+        # Read all hook contents (single read for efficiency)
+        hook_text = ""
+        if os.path.isdir(hooks_dir):
+            for h in sorted(os.listdir(hooks_dir)):
+                hp = os.path.join(hooks_dir, h)
+                if os.path.isfile(hp):
+                    try:
+                        hook_text += open(hp).read() + "\n"
+                    except OSError:
+                        continue
+
+        manifest_basename = os.path.basename(manifest_path)
+        # (a) hook coverage: manifest reference appears anywhere in hooks
+        if manifest_path not in hook_text and manifest_basename not in hook_text:
+            out.append(_emit_finding(rule,
+                f"no PreToolUse hook references the manifest "
+                f"({manifest_path}); lead-only enforcement is not wired"))
+
+        # Read all agent .md files once
+        agent_files = sorted(glob.glob(agents_glob))
+        agent_text_map = {}
+        for af in agent_files:
+            try:
+                agent_text_map[af] = open(af).read()
+            except OSError:
+                continue
+
+        for entry in manifest.get("artifacts", []):
+            path = entry.get("path", "")
+            executor_field = entry.get("executor_field", "")
+            schema_source = entry.get("schema_source", "")
+            if not path or not executor_field or not schema_source:
+                out.append(_emit_finding(rule,
+                    f"manifest entry incomplete: {entry} (need path, executor_field, schema_source)"))
+                continue
+
+            # (b) schema coverage
+            schema_abs = schema_source if os.path.isabs(schema_source) else os.path.join(REPO_ROOT, schema_source)
+            if os.path.isfile(schema_abs):
+                try:
+                    schema_text = open(schema_abs).read()
+                except OSError:
+                    schema_text = ""
+                if executor_field not in schema_text:
+                    out.append(_emit_finding(rule,
+                        f"{schema_source} does not declare executor_field "
+                        f"'{executor_field}' for artifact {path}"))
+            else:
+                out.append(_emit_finding(rule,
+                    f"schema_source {schema_source} does not exist for artifact {path}"))
+
+            # (c) negative-deliverable coverage
+            for af, txt in agent_text_map.items():
+                if path not in txt:
+                    continue
+                # Allow files that explicitly document the lead-only constraint
+                if "Evidence collection only" in txt or "lead writes" in txt or "lead must execute" in txt:
+                    continue
+                out.append(_emit_finding(rule,
+                    f"{os.path.relpath(af, REPO_ROOT)} mentions lead-only artifact "
+                    f"{path} (negative-deliverable violation; if this agent is meant to "
+                    f"READ the file from prior runs, add an explicit 'lead writes' or "
+                    f"'Evidence collection only' caveat to the agent prose)"))
+        return out
+
+
     # ---------------------------------------------------------------------------
     # AOC v1 rule dispatchers (R1/R2/R3)
     # ---------------------------------------------------------------------------
@@ -1545,6 +1783,8 @@ def main() -> int:
         "frontmatter_artifact_consistency": (check_frontmatter_artifact_consistency, {"schema_path", "writer"},                                {"consumers"},                                                True),
         "internal_href_validity":           (check_internal_href_validity,           set(),                                                    {"scaffold_glob", "route_owner_hints"},                       False),
         "pages_no_payload_type_exports":    (check_pages_no_payload_type_exports,    {"scope_glob"},                                           {"path_excludes", "filename_excludes", "suffix_pattern", "types_source_path"}, True),
+        "artifact_transience":              (check_artifact_transience,              {"skill"},                                                {"init_script"},                                              False),
+        "executor_enforcement":             (check_executor_enforcement,             set(),                                                    {"manifest_path", "hooks_dir", "agents_glob"},                False),
     }
     META_KEYS = {"id", "type", "severity", "description", "_transitional_note", "_comment"}
 

@@ -32,18 +32,86 @@ for tf in .runs/agent-traces/*.json; do
 done
 ```
 
-Before writing the report, extract agent verdicts from traces:
+Before writing the report, extract BOTH raw (pre-fix) and after-fix agent verdicts.
+
+The `agent_verdicts_after_fixes` derivation is the #1151 fix. After Phase-2 fixers run,
+Phase-1 agents are NOT re-spawned; instead, post-fix verdicts are derived from the FIXER
+traces' `unresolved_critical` (security/quality) or the agent's own `unresolved_dead_ends`
+(ux-journeyer). Recovery-stamped traces are gated on AOC v1.1 hard_gate predicates via
+the `is_trace_valid_pass` helper (mirrors `agent-registry.json:202-213`).
 
 ```bash
-AGENT_VERDICTS=$(python3 -c "
-import json, glob
+AGENT_VERDICTS_FULL=$(python3 -c "
+import json, glob, os
+
+FIXER_MAP = {
+    'security-defender': 'security-fixer',
+    'security-attacker': 'security-fixer',
+    'accessibility-scanner': 'quality-fixer',
+    'design-consistency-checker': 'quality-fixer',
+}
+
+def is_trace_valid_pass(trace):
+    # Mirror AOC v1.1 hard_gate predicates from agent-registry.json:202-213.
+    # A trace's 'pass' value is only safe to propagate when the trace itself
+    # is structurally valid per its provenance class.
+    prov = trace.get('provenance', 'self')
+    if prov == 'self':
+        return True
+    if prov in ('recovery', 'self-degraded', 'lead-on-behalf'):
+        return trace.get('recovery_validated') is True
+    if prov == 'lead-fix':
+        return trace.get('lead_attestation') is True
+    if prov == 'lead-synthesized':
+        return trace.get('coverage_provider') is not None
+    return False  # unknown provenance — conservative
+
 verdicts = {}
+after = {}
+source = {}
 for f in glob.glob('.runs/agent-traces/*.json'):
-    name = f.split('/')[-1].replace('.json','')
+    name = os.path.basename(f).replace('.json', '')
     d = json.load(open(f))
     verdicts[name] = d.get('verdict', 'missing')
-print(json.dumps(verdicts))
-" 2>/dev/null || echo "{}")
+
+    if name in FIXER_MAP:
+        # Post-fix verdict comes from the fixer's trace (not the Phase-1 trace)
+        fixer = FIXER_MAP[name]
+        fpath = '.runs/agent-traces/' + fixer + '.json'
+        if os.path.isfile(fpath):
+            ftrace = json.load(open(fpath))
+            unresolved = ftrace.get('unresolved_critical', -1)
+            valid = is_trace_valid_pass(ftrace)
+            after[name] = 'pass' if (unresolved == 0 and valid) else 'fail'
+            source[name] = fixer + '.json'
+        else:
+            # Fixer didn't run — verdict is unchanged from raw
+            after[name] = verdicts[name]
+            source[name] = 'self (fixer absent)'
+    elif name == 'ux-journeyer':
+        # ux-journeyer is its own source — check its OWN provenance + dead-ends
+        unresolved = d.get('unresolved_dead_ends', -1)
+        valid = is_trace_valid_pass(d)
+        after[name] = 'pass' if (unresolved == 0 and valid) else 'fail'
+        source[name] = 'self'
+    else:
+        # design-critic (own fixer), behavior-verifier, performance-reporter,
+        # spec-reviewer, build-info-collector, security-fixer itself,
+        # quality-fixer itself, observer, solve-critic, resolve-challenger, etc.
+        after[name] = verdicts[name]
+        source[name] = 'self'
+
+print(json.dumps({
+    'agent_verdicts': verdicts,
+    'agent_verdicts_after_fixes': after,
+    'agent_verdicts_after_fixes_source': source,
+}))
+" 2>/dev/null || echo '{}')
+
+# Pull each map for the report template
+AGENT_VERDICTS=$(echo "$AGENT_VERDICTS_FULL" | python3 -c "import json,sys; print(json.dumps(json.loads(sys.stdin.read() or '{}').get('agent_verdicts', {})))")
+AGENT_VERDICTS_AFTER_FIXES=$(echo "$AGENT_VERDICTS_FULL" | python3 -c "import json,sys; print(json.dumps(json.loads(sys.stdin.read() or '{}').get('agent_verdicts_after_fixes', {})))")
+AGENT_VERDICTS_AFTER_FIXES_SOURCE=$(echo "$AGENT_VERDICTS_FULL" | python3 -c "import json,sys; print(json.dumps(json.loads(sys.stdin.read() or '{}').get('agent_verdicts_after_fixes_source', {})))")
 ```
 
 Write `.runs/verify-report.md`:
@@ -60,6 +128,8 @@ consistency_scan: pass | skipped | N/A
 auto_observe: evaluated-in-epilogue
 lead_retrospective: evaluated-in-epilogue
 agent_verdicts: <AGENT_VERDICTS JSON>
+agent_verdicts_after_fixes: <AGENT_VERDICTS_AFTER_FIXES JSON>
+agent_verdicts_after_fixes_source: <AGENT_VERDICTS_AFTER_FIXES_SOURCE JSON>
 hard_gate_failure: false
 process_violation: false
 overall_verdict: pass | fail

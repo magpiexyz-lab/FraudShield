@@ -21,6 +21,7 @@ SUITES=(
   ".claude/scripts/tests/test_field_role_map_rule.py"
   ".claude/scripts/tests/test_validate_behavior_pages.py"
   ".claude/scripts/tests/test_aoc_coherence_rules.py"
+  ".claude/scripts/tests/test_provenance_rules.py"
   ".claude/scripts/tests/test_write_agent_trace.py"
   ".claude/scripts/tests/test_augment_trace.py"
   ".claude/scripts/tests/test_lead_fix_path.py"

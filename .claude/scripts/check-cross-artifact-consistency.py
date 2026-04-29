@@ -25,7 +25,9 @@ def main():
     # preserves anti-fraud intent (report cannot claim PASS when trace says
     # FAIL) while allowing human annotation. Strict equality forced humans
     # to strip context, losing information.
-    match = re.search(r'agent_verdicts:\s*(.+)', content)
+    # Anchored to start-of-line so the agent_verdicts_after_fixes line
+    # (matched by Check 12b below) does not also satisfy this regex.
+    match = re.search(r'(?m)^agent_verdicts:\s*(.+)', content)
     if match and os.path.isdir(traces_dir):
         try:
             report_verdicts = json.loads(match.group(1).strip())
@@ -40,6 +42,89 @@ def main():
                     except: pass
         except json.JSONDecodeError:
             pass
+
+    # --- Check 12b: agent_verdicts_after_fixes consistency with derivation source ---
+    # Closes #1151. Re-derive the after-fix verdict locally from the source
+    # named in agent_verdicts_after_fixes_source and compare against the
+    # value in agent_verdicts_after_fixes. Catches drift between the
+    # state-7a writer and the schema if they evolve out of sync.
+    # Source-of-truth for the algorithm: state-7a-write-report.md.
+    FIXER_MAP = {
+        'security-defender': 'security-fixer',
+        'security-attacker': 'security-fixer',
+        'accessibility-scanner': 'quality-fixer',
+        'design-consistency-checker': 'quality-fixer',
+    }
+    def _is_trace_valid_pass(trace):
+        prov = trace.get('provenance', 'self')
+        if prov == 'self':
+            return True
+        if prov in ('recovery', 'self-degraded', 'lead-on-behalf'):
+            return trace.get('recovery_validated') is True
+        if prov == 'lead-fix':
+            return trace.get('lead_attestation') is True
+        if prov == 'lead-synthesized':
+            return trace.get('coverage_provider') is not None
+        return False
+
+    after_match = re.search(r'(?m)^agent_verdicts_after_fixes:\s*(\{.*?\})\s*$', content)
+    if after_match and os.path.isdir(traces_dir):
+        try:
+            after_declared = json.loads(after_match.group(1).strip())
+            for name, declared in after_declared.items():
+                tp = os.path.join(traces_dir, name + '.json')
+                if not os.path.exists(tp):
+                    continue
+                try:
+                    d = json.load(open(tp))
+                except Exception:
+                    continue
+                # Compute expected after-fix verdict per the same algorithm
+                if name in FIXER_MAP:
+                    fixer = FIXER_MAP[name]
+                    fpath = os.path.join(traces_dir, fixer + '.json')
+                    if os.path.exists(fpath):
+                        try:
+                            ftrace = json.load(open(fpath))
+                            unresolved = ftrace.get('unresolved_critical', -1)
+                            valid = _is_trace_valid_pass(ftrace)
+                            expected = 'pass' if (unresolved == 0 and valid) else 'fail'
+                        except Exception:
+                            continue
+                    else:
+                        expected = d.get('verdict', 'missing')
+                elif name == 'ux-journeyer':
+                    unresolved = d.get('unresolved_dead_ends', -1)
+                    valid = _is_trace_valid_pass(d)
+                    expected = 'pass' if (unresolved == 0 and valid) else 'fail'
+                else:
+                    expected = d.get('verdict', 'missing')
+                if str(declared) != str(expected):
+                    errors.append('agent_verdicts_after_fixes mismatch: ' + name +
+                                  ': report=' + str(declared) + ', derived=' + str(expected))
+        except json.JSONDecodeError:
+            pass
+
+    # --- Check 12c: hard-gate post-fix consistency (closes #1151) ---
+    # When overall_verdict == pass, no hard_gate agent's after-fix verdict may be 'fail'.
+    # count_summary agents (security-defender, accessibility-scanner, etc.) may
+    # legitimately have after_fixes=fail with overall=pass when their findings
+    # are routed through fixers that resolved them; only the hard_gates list
+    # blocks. HARD_GATES sourced from agent-registry.json:214-275.
+    HARD_GATES = {'design-critic', 'ux-journeyer', 'security-fixer', 'quality-fixer', 'resolve-reviewer'}
+    overall_match = re.search(r'(?m)^overall_verdict:\s*(\S+)', content)
+    if overall_match and after_match:
+        if overall_match.group(1).strip() == 'pass':
+            try:
+                after_declared = json.loads(after_match.group(1).strip())
+                for name, verdict in after_declared.items():
+                    if str(verdict) == 'fail':
+                        if name in HARD_GATES:
+                            errors.append('hard_gate after_fixes=fail with overall_verdict=pass: ' + name)
+                        else:
+                            warnings.append('non-hard-gate after_fixes=fail with overall_verdict=pass (informational): ' + name)
+            except json.JSONDecodeError:
+                pass
 
     # --- Check 14: Fix count cross-reference (AOC v1 FLS v1 authoritative) ---
     # Authoritative source: .runs/fix-ledger.jsonl. Transitional dual-check

@@ -181,6 +181,74 @@
       ],
       "types_source_path": "src/lib/types.ts",
       "description": "#1161 (b) defense-in-depth: pages must not declare payload-shape types (suffix Payload/Response/Request/Schema, exported or local) or types whose names collide with src/lib/types.ts exports. Pages must import from @/lib/types (canonical project-types file produced by scaffold-libs initial via supabase stack files: list and augmented by scaffold-wire per wire.md Step 6). The rule fires at bootstrap finalize and /change PR coherence pass. Currently `warn` severity for safe rollout — tighten to `block` once existing-project migration is complete."
+    },
+    {
+      "id": "artifact-transience-bootstrap",
+      "type": "artifact_transience",
+      "severity": "block",
+      "skill": "bootstrap",
+      "description": "Validate transient lifecycle declarations in registry[bootstrap] entries against actual deletion sources. Closes #1162 recurrence."
+    },
+    {
+      "id": "artifact-transience-verify",
+      "type": "artifact_transience",
+      "severity": "block",
+      "skill": "verify"
+    },
+    {
+      "id": "artifact-transience-change",
+      "type": "artifact_transience",
+      "severity": "block",
+      "skill": "change"
+    },
+    {
+      "id": "artifact-transience-review",
+      "type": "artifact_transience",
+      "severity": "block",
+      "skill": "review"
+    },
+    {
+      "id": "artifact-transience-resolve",
+      "type": "artifact_transience",
+      "severity": "block",
+      "skill": "resolve"
+    },
+    {
+      "id": "artifact-transience-distribute",
+      "type": "artifact_transience",
+      "severity": "block",
+      "skill": "distribute"
+    },
+    {
+      "id": "artifact-transience-iterate-check",
+      "type": "artifact_transience",
+      "severity": "block",
+      "skill": "iterate-check"
+    },
+    {
+      "id": "artifact-transience-solve",
+      "type": "artifact_transience",
+      "severity": "block",
+      "skill": "solve"
+    },
+    {
+      "id": "artifact-transience-observe",
+      "type": "artifact_transience",
+      "severity": "block",
+      "skill": "observe"
+    },
+    {
+      "id": "artifact-transience-upgrade",
+      "type": "artifact_transience",
+      "severity": "block",
+      "skill": "upgrade"
+    },
+    {
+      "id": "executor-enforcement",
+      "type": "executor_enforcement",
+      "severity": "block",
+      "manifest_path": ".claude/patterns/lead-only-artifacts.json",
+      "description": "Three-way mapping check for lead-only artifacts (closes #1152): hook coverage + schema field declared + no agent .md lists artifact as deliverable."
     }
   ]
 }

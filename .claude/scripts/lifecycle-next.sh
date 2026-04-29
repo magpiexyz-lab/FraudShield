@@ -46,6 +46,55 @@ manifest = json.load(open(manifest_path))
 # completed_states as string set for consistent comparison
 completed = set(str(s) for s in ctx.get("completed_states", []))
 
+# --- Resume-integrity check (closes #1162 part 2) ---
+# When a state appears in completed_states, optionally check that any durable
+# artifact it declared is still present. Missing durable artifact → BLOCK with
+# diagnostic. Fresh bootstrap unaffected (completed == set()).
+# transient-cross-skill / transient-intra-skill are skipped (artifacts may
+# legitimately be missing per their declared lifecycle).
+if completed:
+    registry_path = os.path.join(project_dir, ".claude", "patterns", "state-registry.json")
+    try:
+        registry = json.load(open(registry_path))
+    except Exception:
+        registry = {}
+    resume_override = os.environ.get("RESUME_INTEGRITY_OVERRIDE", "0") == "1"
+    skill_states_reg = registry.get(skill, {})
+    integrity_failures = []
+    for sid in completed:
+        entry = skill_states_reg.get(sid)
+        if not isinstance(entry, dict):
+            continue
+        lifecycle = entry.get("lifecycle", "durable")
+        if lifecycle != "durable":
+            continue
+        artifact = entry.get("artifact")
+        if not artifact:
+            continue
+        # Resolve relative to project_dir
+        artifact_abs = artifact if os.path.isabs(artifact) else os.path.join(project_dir, artifact)
+        if not os.path.isfile(artifact_abs):
+            integrity_failures.append((sid, artifact))
+    if integrity_failures:
+        for sid, art in integrity_failures:
+            msg = (
+                "Resume integrity violation: skill=%s state=%s artifact=%s missing.\n"
+                "  This state is in completed_states but its declared durable artifact has been deleted.\n"
+                "  Possible causes: manual cleanup, IDE/trash collector, cross-machine resume after worktree deletion.\n"
+                "  To recover, choose one:\n"
+                "    (a) Restore the artifact from version control.\n"
+                "    (b) Reset the state and re-execute it:\n"
+                "          bash .claude/scripts/reset-state.sh %s %s\n"
+                "    (c) Override the check for this run (downgrades to WARN):\n"
+                "          RESUME_INTEGRITY_OVERRIDE=1 <next-command>" % (skill, sid, art, skill, sid)
+            )
+            if resume_override:
+                sys.stderr.write("WARN: " + msg + "\n")
+            else:
+                sys.stderr.write("ERROR: " + msg + "\n")
+        if not resume_override:
+            sys.exit(2)
+
 # Determine active states list
 if "active_mode" in manifest and "modes" in manifest:
     mode = manifest["active_mode"]

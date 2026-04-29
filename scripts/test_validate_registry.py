@@ -105,16 +105,66 @@ class TestStateEntryFormats:
 # Current registry baseline
 # ---------------------------------------------------------------------------
 
-# Object-format entries that have been intentionally upgraded
+# Object-format entries that have been intentionally upgraded.
+#
+# Two upgrade waves:
+#   Wave A (pre-#1162): {verify, calls} or {verify, allows_early_exit_when, ...}
+#     for richer per-state metadata (multi-call states, exit conditions).
+#   Wave B (#1162): {verify, artifact, lifecycle: durable | transient-cross-skill |
+#     transient-intra-skill} declaring artifact lifecycle so lifecycle-finalize.sh
+#     can skip transient-intra-skill VERIFY rerun and lifecycle-next.sh can block
+#     resume on missing-durable-artifact. Migration-driven (deterministic via
+#     migrate-state-registry-lifecycle.py).
 KNOWN_OBJECT_ENTRIES = {
+    # Wave A entries
     ("change", "2"),
     ("change", "3"),
     ("change", "6"),
     ("review", "2b"),
-    ("review", "2e"),  # #928 fix: allows_early_exit_when=no_fixes
-    ("review", "4"),   # #928 fix: verify_semantics=no_regression_from_baseline
     ("resolve", "7"),  # #1043 sibling fix: allows_early_exit_when=all_fixes_rejected
     ("verify", "7b"),
+    # Wave B entries (#1162) — the verify skill
+    ("verify", "0"),
+    ("verify", "2"),
+    ("verify", "3a"),
+    ("verify", "3b"),
+    ("verify", "3c"),
+    ("verify", "3d"),
+    ("verify", "4"),
+    ("verify", "7a"),
+    # Wave B entries — bootstrap
+    ("bootstrap", "3a"),
+    ("bootstrap", "10"),
+    ("bootstrap", "11"),
+    ("bootstrap", "12"),
+    ("bootstrap", "13c"),
+    ("bootstrap", "14a"),
+    ("bootstrap", "18"),
+    ("bootstrap", "19b"),
+    # Wave B entries — change
+    ("change", "7"),
+    ("change", "8"),
+    ("change", "9"),
+    ("change", "10"),
+    ("change", "11a"),
+    ("change", "11b"),
+    ("change", "12"),
+    # Wave B entries — review (2e/4 retroactively migrated; 2f/6 newly added)
+    ("review", "2e"),  # #928 fix: allows_early_exit_when=no_fixes
+    ("review", "2f"),
+    ("review", "4"),   # #928 fix: verify_semantics=no_regression_from_baseline
+    ("review", "6"),
+    # Wave B entries — resolve
+    ("resolve", "10"),
+    ("resolve", "11"),
+    # Wave B entries — distribute
+    ("distribute", "3a"),
+    ("distribute", "5"),
+    # Wave B entries — other skills
+    ("iterate-check", "c3"),
+    ("observe", "1"),
+    ("solve", "2"),
+    ("upgrade", "3"),
 }
 
 # State IDs that refer to shared state files in .claude/patterns/ rather than

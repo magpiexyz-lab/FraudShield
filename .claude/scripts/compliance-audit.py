@@ -672,6 +672,70 @@ def check_cross_artifact_counts(skill):
             "detail": f"cross-artifact counts consistent for {skill}"}
 
 
+# --- Check (j): Lead-deliverable compliance (closes #1152) ---
+def check_lead_deliverable_compliance(skill):
+    """For each artifact in lead-only-artifacts.json that exists at audit-time,
+    verify its declared executor field is set to 'lead'. For
+    retrospective-result.json specifically, also verify the observation-evidence
+    sibling exists (split-deliverable invariant).
+
+    Skips when no lead-only artifact is present (acceptable on the fast-path:
+    /solve and other process-scope skills may write neither file when execution
+    was friction-free).
+    """
+    name = "lead_deliverable_compliance"
+    manifest_path = os.path.join(REGISTRY_PATH.rsplit("/", 1)[0], "lead-only-artifacts.json")
+    if not os.path.isfile(manifest_path):
+        return {"name": name, "result": "skip",
+                "detail": "lead-only-artifacts.json not present"}
+    manifest = load_json(manifest_path)
+    if not manifest:
+        return {"name": name, "result": "skip",
+                "detail": "lead-only-artifacts.json unreadable"}
+
+    failures = []
+    checked = 0
+    for entry in manifest.get("artifacts", []):
+        path = entry.get("path", "")
+        executor_field = entry.get("executor_field", "")
+        if not path or not executor_field:
+            continue
+        # Resolve relative to project root (RUNS_DIR is .runs under project)
+        if path.startswith(".runs/"):
+            full = os.path.join(os.path.dirname(RUNS_DIR), path)
+        else:
+            full = path
+        if not os.path.isfile(full):
+            continue
+        checked += 1
+        try:
+            d = json.load(open(full))
+        except Exception as e:
+            failures.append(f"{path}: unreadable ({e})")
+            continue
+        v = d.get(executor_field)
+        if v != "lead":
+            failures.append(f"{path}: {executor_field}={v!r} (must be 'lead')")
+            continue
+        # Special-case: retrospective-result.json requires observation-evidence sibling
+        if path.endswith("retrospective-result.json"):
+            sibling = os.path.join(RUNS_DIR, "observation-evidence.json")
+            if not os.path.isfile(sibling):
+                failures.append(
+                    f"{path} present but observation-evidence.json missing "
+                    f"(split-deliverable invariant — observer collects evidence, "
+                    f"lead writes interpretation)")
+
+    if checked == 0:
+        return {"name": name, "result": "skip",
+                "detail": "no lead-only artifacts present at audit time"}
+    if failures:
+        return {"name": name, "result": "fail",
+                "detail": "; ".join(failures)}
+    return {"name": name, "result": "pass",
+            "detail": f"{checked} lead-only artifact(s) verified"}
+
+
 def main():
     parser = argparse.ArgumentParser(description="Layer 2: Cross-artifact semantic consistency")
     parser.add_argument("--skill", required=True, help="Skill name")
@@ -688,6 +752,7 @@ def main():
         check_trace_schema_conformance(args.skill),
         check_agent_trace_coverage(args.skill),
         check_cross_artifact_counts(args.skill),
+        check_lead_deliverable_compliance(args.skill),
     ]
 
     anomaly_count = sum(1 for c in checks if c["result"] == "fail")
