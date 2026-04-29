@@ -244,7 +244,14 @@ def derive_page_set_for_design_critic(
 
     Matches state-3a Stage-1 discovery semantics: filesystem scan UNION
     golden_path UNION auth-derived, EXCLUDING "landing" from the operational
-    list (state-3b treats landing separately).
+    list. Landing is exposed separately via :func:`derive_landing_for_design_critic`
+    and surfaces as the sibling ``landing`` field in
+    ``.runs/design-page-set.json`` (state-2a writes both). State-3a Stage 1
+    spawns the landing-critic alongside non-landing per-page critics in the
+    same parallel batch (#1143). Excluding landing from this list is required
+    because state-3b VERIFY iterates ``pages`` to assert each page emits
+    ``image_issues_for_landing``, a field the landing critic does NOT emit
+    (landing OWNS image decisions and emits ``candidates_tried`` instead).
 
     Each entry:
         {
