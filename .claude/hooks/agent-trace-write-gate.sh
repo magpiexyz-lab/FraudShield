@@ -31,9 +31,12 @@
 
 set -euo pipefail
 
-# WARN-mode rollout per plan §"PR Staging".
-# PR4 flips this to "deny" after 1-2 week soak.
-MODE="warn"
+# PR4: flipped to deny after pre-flight audit confirmed zero legitimate
+# Write/Edit callers for .runs/agent-traces/*.json (all references are reads:
+# json.load, test -f, glob.glob). 9 known direct-Write callers were migrated
+# in PR2 (#1173). To revert to WARN if an unexpected regression surfaces,
+# change this single line back to MODE="warn".
+MODE="deny"
 
 source "$(dirname "$0")/lib.sh"
 parse_payload
