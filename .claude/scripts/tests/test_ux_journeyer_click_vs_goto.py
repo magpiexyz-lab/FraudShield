@@ -74,8 +74,13 @@ class TestUxJourneyerClickContract(unittest.TestCase):
         or equivalent. Find Section 5 (Navigate the Golden Path) and
         check the per-step loop block.
         """
+        # Anchor heading to start-of-line (^) so the regex doesn't match
+        # the literal string "### 5. Navigate the Golden Path" embedded
+        # inside the file's top coherence-allow HTML comment scope list,
+        # which would otherwise capture the empty span from line 1 to
+        # line 10 (### 1. Prerequisite Check).
         m = re.search(
-            r"### 5\. Navigate the Golden Path(.*?)(?=^### |\Z)",
+            r"^### 5\. Navigate the Golden Path(.*?)(?=^### |\Z)",
             self.proc,
             re.DOTALL | re.MULTILINE,
         )
@@ -131,7 +136,7 @@ class TestUxJourneyerClickContract(unittest.TestCase):
         """The Render Review Policy Table section must enumerate every
         possible review_method value emitted by render-review-detection.md."""
         m = re.search(
-            r"## Render Review Policy Table(.*?)(?=^## |\Z)",
+            r"^## Render Review Policy Table(.*?)(?=^## |\Z)",
             self.agent,
             re.DOTALL | re.MULTILINE,
         )
@@ -146,7 +151,7 @@ class TestUxJourneyerClickContract(unittest.TestCase):
         + AUTH_PATHS-aware classification — same logic as
         review-verdict-gate.md POLICY)."""
         m = re.search(
-            r"## Render Review Policy Table(.*?)(?=^## |\Z)",
+            r"^## Render Review Policy Table(.*?)(?=^## |\Z)",
             self.agent,
             re.DOTALL | re.MULTILINE,
         )
