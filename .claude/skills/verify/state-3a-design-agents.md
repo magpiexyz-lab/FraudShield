@@ -35,6 +35,11 @@ full visual review instead of fast-pathing with an empty boundary.
    - Compute `PR_file_boundary ∩ src/app/<page>/**`. If non-empty, skip (page has page-local files in PR).
    - Read the page file. Extract all imports from `src/components/` or `src/lib/`
      using regex: `from ['"](@/components/|@/lib/|../components/|../lib/)(.*?)['"]`
+   - **Filter out shadcn primitives (#1154):** drop any import path starting with
+     `@/components/ui/` or `@/components/magicui/` (matches the eslint config
+     `ignores` list). These are auto-generated and not in design-review scope —
+     including them inflates `thin_wrappers` and arbitrarily binds shadcn
+     primitives to whichever page sorts first alphabetically.
    - Resolve `@/` alias to `src/` to get full paths
    - Intersect imported shared paths with `PR_file_boundary`
    - If intersection is non-empty: this page is a **thin wrapper with claimable dependencies**

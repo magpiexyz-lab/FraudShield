@@ -449,6 +449,7 @@ Notes:
 - **Analytics verification**: Funnel tests use `captureAnalytics` instead of `blockAnalytics` — this intercepts analytics payloads for verification while still blocking them from reaching the provider. The final test step asserts that all expected events from golden_path (entries with non-null `event`) were fired during the funnel journey.
 - **CTA Repeat strict mode**: Landing pages include the CTA at least twice (messaging.md Section B content inventory), so selectors targeting CTAs will match 2+ elements. For **form submit** actions (waitlist, signup), use `input.press("Enter")` instead of clicking the submit button — this binds to user intent and avoids ambiguous button selectors entirely. For **navigation CTAs** (links), use `.first()` on these selectors (e.g., `page.getByRole("link", { name: /cta/i }).first()`). This applies to landing page tests only — other pages have unique selectors.
 - **CTA selector role**: Landing page CTAs that navigate to another page use `<Link className={buttonVariants()}>`, which renders as `<a>` (role `"link"`). Use `getByRole("link")` for navigation CTAs. Use `getByRole("button")` only for CTAs that trigger actions (form submits, dialogs). Bootstrap determines the correct role by reading the actual page source.
+- **DEMO_MODE skip for auth-dependent steps (#1148)**: When generating funnel.spec.ts test bodies, bootstrap MUST wrap login-required golden_path steps (those that call `getTestCredentials()` / `login()` or navigate to auth-gated routes) in `test.skip(process.env.DEMO_MODE === "true", "DB-dependent — re-run after /deploy")`. The DEMO_MODE bootstrap-time test environment returns empty credentials and stub Supabase responses, so these steps would false-fail with no useful signal. Anonymous/landing-only golden_path steps remain unconditional. Apply the same skip pattern to the analytics-verification test if any of its expected events fire only after login.
 
 ## Behavior Verification Tests
 
@@ -491,6 +492,13 @@ test.describe("b-01: <when clause summary>", () => {
 // === Auth-gated behaviors (require logged-in user) ===
 
 test.describe("b-05: <when clause summary>", () => {
+  // Issue #1148: skip auth-gated tests in DEMO_MODE — global-setup returns empty
+  // credentials when Supabase is unavailable, so these tests false-fail with no
+  // useful signal. Re-runs on production happen via /deploy or with real Supabase.
+  test.skip(
+    process.env.DEMO_MODE === "true",
+    "DB-dependent — re-run after /deploy or with real Supabase"
+  );
   // storageState reuses auth from global-setup (local) or prod-auth.setup (production)
   test.use({ storageState: "e2e/.auth.json" });
 

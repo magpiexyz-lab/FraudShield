@@ -80,10 +80,39 @@ This yields `derive_scope_pages(experiment)` = union of `golden_path[*].page`,
   - `src/lib/variants.ts` — typed `VARIANTS` array (slug, headline,
     subheadline, cta, pain_points, isDefault) and `getVariant(slug)` helper
   - Root `src/app/page.tsx` — imports and renders `LandingContent` with the
-    default variant's props. Fires `visit_landing` with `variant` property.
-  - `src/app/v/[variant]/page.tsx` — dynamic route, imports `LandingContent`,
-    fires `visit_landing` with `variant` property. `generateStaticParams()`
-    for all variant routes. Returns `notFound()` for unknown slugs.
+    default variant's props, **wrapped in `<Suspense fallback={null}>`**. Fires
+    `visit_landing` with `variant` property.
+  - `src/app/v/[variant]/page.tsx` — dynamic route, imports `LandingContent`
+    **wrapped in `<Suspense fallback={null}>`**, fires `visit_landing` with
+    `variant` property. `generateStaticParams()` for all variant routes.
+    Returns `notFound()` for unknown slugs.
+
+  **Suspense requirement (#1150):** `LandingContent` calls `useSearchParams()`
+  to read `utm_source` for the `landing_viewed` event payload. Per
+  `.claude/stacks/framework/nextjs.md` § *Suspense Requirements*, every
+  Next.js 16 caller of `useSearchParams()` must be wrapped in a `<Suspense>`
+  boundary above the leaf — without it the build fails with
+  `useSearchParams() should be wrapped in a suspense boundary at page "/v/[variant]"`.
+  Both wrapper files import `Suspense` from `react`:
+
+  ```tsx
+  // src/app/page.tsx
+  import { Suspense } from "react";
+  import { LandingContent } from "@/components/landing-content";
+  import { getVariant } from "@/lib/variants";
+
+  export default function Home() {
+    const variant = getVariant();
+    return (
+      <Suspense fallback={null}>
+        <LandingContent {...variant} />
+      </Suspense>
+    );
+  }
+  ```
+
+  Mirror the same Suspense wrap inside `src/app/v/[variant]/page.tsx`.
+
   If no `variants`, skip entirely — the landing-page subagent creates `src/app/page.tsx`.
 - **Auth pages (if listed in golden_path)**: signup/login form pages using auth provider UI templates from the auth stack file. Create only the page files (`signup/page.tsx`, `login/page.tsx`) — auth infrastructure (callback, reset-password, nav-bar) is created by scaffold-wire.
   Fire the corresponding experiment/EVENTS.yaml events at their specified triggers.

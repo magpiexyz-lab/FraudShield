@@ -23,9 +23,16 @@
 #   - echo 'Fix (e2e-config)...' >> .runs/fix-log.md   (now: --lead-fix)
 #   - echo 'Fix (spec)...' >> .runs/fix-log.md          (now: --lead-fix)
 #
-# ORDER matters: chain-delimiter / raw-write checks run BEFORE the
-# allowed-writer short-circuit, so a sanctioned script chained with a forged
-# raw write cannot bypass detection.
+# ORDERING (issue #1156): the chain-write detector uses a BOUND regex
+# (operator → gated path) modeled after agent-trace-write-guard.sh. The bound
+# check MUST run BEFORE the allow-list short-circuit — otherwise a chain like
+# `python3 write-fix-ledger.py && echo forge > .runs/fix-log.md` fires the
+# allow-list on segment 1 and exits 0 before segment 2 is inspected. The
+# original co-occurrence check ran pre-allow specifically to catch this. The
+# bound form is per-segment; pre-allow ordering preserves chain-evasion
+# rejection while still allowing legitimate reads of the gated paths to fall
+# through to `exit 0` (the bound regex requires a `>` operator that is
+# absent from pure-read commands).
 
 set -euo pipefail
 
@@ -44,31 +51,56 @@ esac
 # agent-trace-write-guard.sh.
 NORM=$(printf '%s' "$COMMAND" | sed -E 's/[0-9]*>+&[0-9]+//g')
 
-# ── Pre-allow checks (MUST run before allow-writer short-circuit) ──
-
-# Reject chained writes even when one side is a legitimate writer.
-# Split on &&/;/| and deny if any segment contains both a gated path and
-# a write operator (>, >>, tee, cp, mv). The init-header and e2e-warn
-# patterns are explicitly re-allowed below.
-if echo "$NORM" | awk '
-    BEGIN{RS="[&|;]"}
-    /(fix-ledger\.jsonl|fix-log\.md)/ && /(>|>>|tee|cp|mv)/ {
-        # Allow STATE 0 init (echo header into fix-log.md via single >).
-        if ($0 ~ /echo[[:space:]]+['\''"]?# Error Fix Log/ && $0 ~ />[[:space:]]*\.runs\/fix-log\.md/) next
-        # Allow STATE 5 inline warn (echo WARN ... into fix-log.md via >>).
-        if ($0 ~ /echo[[:space:]]+['\''"]?WARN/ && $0 ~ />>[[:space:]]*\.runs\/fix-log\.md/) next
-        found=1
-    }
-    END{exit !found}'; then
-  deny "Fix-ledger write guard: .runs/fix-ledger.jsonl and .runs/fix-log.md may only be written by write-fix-ledger.py / render-fix-log.py (AOC v1 FLS v1). Direct shell writes are blocked; use the canonical writers."
-fi
-
-# Block Python open(...) for write/append on the gated paths.
+# Block Python open(...) for write/append on the gated paths (independent of
+# the bound chain check below — open(..., 'w') has no shell-redirect to bind).
 if echo "$COMMAND" | grep -qE "open\([^)]*\.runs/fix-ledger\.jsonl[^)]*,[[:space:]]*['\"][wa]"; then
   deny "Fix-ledger write guard: python open-for-write on .runs/fix-ledger.jsonl is blocked. Use write-fix-ledger.py (AOC v1 FLS v1)."
 fi
 if echo "$COMMAND" | grep -qE "open\([^)]*\.runs/fix-log\.md[^)]*,[[:space:]]*['\"][wa]"; then
   deny "Fix-ledger write guard: python open-for-write on .runs/fix-log.md is blocked. Use render-fix-log.py (AOC v1 FLS v1)."
+fi
+
+# Benign known-residual: allow STATE 0 header init
+# (matches `echo '# Error Fix Log' > .runs/fix-log.md`).
+# render-fix-log.py overwrites the file on every state advance, so the
+# transient header line never causes drift. This is the only echo>fix-log.md
+# pattern retained after AOC v1.1 PR5 migrated STATE 5 inline writes to the
+# --lead-fix path. Allowed BEFORE the bound check because the bound regex
+# would otherwise deny it (the `>` IS bound to the gated path here).
+if echo "$NORM" | grep -qE "echo[[:space:]]+['\"]?# Error Fix Log['\"]?[[:space:]]*>[[:space:]]*\.runs/fix-log\.md"; then
+  exit 0
+fi
+
+# ── Bound chain-write check (#1156) — runs BEFORE allow-list ──
+# Reject chained writes whose redirect target is a gated path. Split on &&/;/|
+# and deny only when a write operator is BOUND to the gated path (operator
+# followed, after optional whitespace/quote, by a non-delimiter token containing
+# the gated path). The exclusion class includes a literal newline so heredoc
+# bodies cannot bridge a `>` redirecting to /tmp into a `.runs/fix-log.md`
+# inside the heredoc body.
+#
+# Issue #1156: the previous co-occurrence regex
+# (`/(fix-log\.md|fix-ledger\.jsonl)/ && /(>|>>|tee|cp|mv)/`) false-positived on
+# heredocs that wrote to OTHER paths but mentioned the gated path inside their
+# body. The bound regex matches the actual write target, not co-occurrence.
+#
+# Order rationale: the bound check runs BEFORE the allow-list so a sanctioned
+# writer chained with a forge (`write-fix-ledger.py && echo forge > .runs/fix-log.md`)
+# is caught — the allow-list would otherwise short-circuit on segment 1 and
+# exit before segment 2 is inspected.
+if echo "$NORM" | awk '
+    BEGIN{RS="[&|;]"}
+    {
+      # Bound write operator -> gated path target (>file, >>file, &>file).
+      # The exclusion class blocks chain delimiters, quotes, and newlines so
+      # heredoc bodies cannot bridge from a > targeting one path to a gated
+      # path elsewhere in the body.
+      if (match($0, /([0-9]*&?>+|[0-9]*>>?)[[:space:]]*["'\'']?[^|;&"'\''\n]*\.runs\/(fix-ledger\.jsonl|fix-log\.md)/)) found=1
+      # tee / cp / mv with a gated path target later on the same segment
+      else if (match($0, /(^|[[:space:]])(tee|cp|mv)[[:space:]][^|;&\n]*\.runs\/(fix-ledger\.jsonl|fix-log\.md)/)) found=1
+    }
+    END{exit !found}'; then
+  deny "Fix-ledger write guard: writes to .runs/fix-ledger.jsonl / .runs/fix-log.md must go through write-fix-ledger.py / render-fix-log.py (AOC v1 FLS v1). Direct shell writes are blocked."
 fi
 
 # ── Allow-list short-circuit ──
@@ -83,31 +115,10 @@ if echo "$COMMAND" | grep -qE "$ALLOWED_REGEX_RENDERER"; then
   exit 0
 fi
 
-# Benign known-residual: allow STATE 0 header init
-# (matches `echo '# Error Fix Log' > .runs/fix-log.md`).
-# render-fix-log.py overwrites the file on every state advance, so the
-# transient header line never causes drift. This is the only echo>fix-log.md
-# pattern retained after AOC v1.1 PR5 migrated STATE 5 inline writes to the
-# --lead-fix path.
-if echo "$NORM" | grep -qE "echo[[:space:]]+['\"]?# Error Fix Log['\"]?[[:space:]]*>[[:space:]]*\.runs/fix-log\.md"; then
-  exit 0
-fi
-
 # AOC v1.1 PR5: STATE 5 inline writes (Fix(e2e), Fix(e2e-config), Fix(spec),
 # WARN(e2e-config)) are NO LONGER allowlisted. They migrated to
 # write-fix-ledger.py --lead-fix [--severity warn]. If you see this hook
 # blocking a STATE 5 echo, update the state file to use the lead-fix path
 # (state-5-e2e-tests.md was migrated in PR5).
-
-# Allow reads of the gated paths (cat/grep/wc/python3 -c reading, etc.).
-# If the command contains a gated path but no write operator, it's a read.
-if ! echo "$NORM" | grep -qE '(>|>>|[[:space:]]tee[[:space:]]|[[:space:]]cp[[:space:]]|[[:space:]]mv[[:space:]])[^<]*\.runs/(fix-ledger\.jsonl|fix-log\.md)'; then
-  exit 0
-fi
-
-# ── Final catch-all: any direct write operator targeting gated paths ──
-if echo "$NORM" | grep -qE '(>|>>|[[:space:]]tee[[:space:]]|[[:space:]]cp[[:space:]]|[[:space:]]mv[[:space:]]).*\.runs/(fix-ledger\.jsonl|fix-log\.md)'; then
-  deny "Fix-ledger write guard: writes to .runs/fix-ledger.jsonl / .runs/fix-log.md must go through write-fix-ledger.py / render-fix-log.py (AOC v1 FLS v1). Direct shell writes are blocked."
-fi
 
 exit 0

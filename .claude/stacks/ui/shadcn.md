@@ -124,14 +124,31 @@ Override CSS custom properties to match the product domain. There are no hardcod
 
 ## Composition Patterns
 
-**`asChild` for Button + Link / anchor (allowed)**: The Radix `asChild` composition pattern is the sanctioned way to render a Button as a navigation link — the Button's full render, refs, and styling composition pass through to the child element:
+> **Issue #1146:** Recent shadcn-init versions ship Base UI primitives (`@base-ui/react/button`) instead of Radix Slot-based primitives. Base UI Button does NOT accept an `asChild` prop, and Base UI's `render` prop REPLACES the default rendering rather than merging children. The patterns below are forward-compatible with both libraries.
+
+**`buttonVariants()` + bare `<Link>` (canonical, works on both Radix and Base UI)**: Style a raw `<Link>` with `buttonVariants()` directly. This is the recommended Button-as-link form because it does not depend on `asChild` support:
+
+```tsx
+import Link from "next/link";
+import { buttonVariants } from "@/components/ui/button";
+
+export function GoButton() {
+  return (
+    <Link href="/foo" className={buttonVariants({ variant: "outline" })}>
+      Go
+    </Link>
+  );
+}
+```
+
+**`<Button asChild>` for Button + Link (Radix-only fallback)**: When the shipped `src/components/ui/button.tsx` imports from `@radix-ui/react-slot` (Slot-based), `asChild` composition works — the Button's full render, refs, and styling composition pass through to the child element:
 
 ```tsx
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 
 export function GoButton() {
-  // CORRECT — <Button asChild> with a <Link> or <a> child is the standard shadcn pattern.
+  // Radix-only: requires asChild support on the shipped Button primitive.
   return (
     <Button asChild>
       <Link href="/foo">Go</Link>
@@ -140,22 +157,11 @@ export function GoButton() {
 }
 ```
 
-BG2 check 18 (`Restricted asChild` in gate-keeper.md) allows this form and blocks `asChild` when the child is any other element (e.g., `<Button asChild><div>`), which is the anti-pattern — `asChild` is not an escape hatch for missing variants, it is a composition helper for interactive-element-to-link handoff.
+This pattern compiles only when the shipped Button accepts an `asChild` prop. On Base UI-shipped projects (`@base-ui/react/button`) it produces a TypeScript error. Use `buttonVariants()` + bare `<Link>` instead for projects on Base UI.
 
-**`buttonVariants()` fallback (also allowed)**: If you do not need Button's full render behaviour, you can style a raw `<Link>` with `buttonVariants()` directly:
+BG2 check 18 (`Restricted asChild` in gate-keeper.md) allows the Button+Link form on Radix-shipped projects and blocks `asChild` when the child is any other element (e.g., `<Button asChild><div>`), which is the anti-pattern.
 
-```tsx
-import Link from "next/link";
-import { buttonVariants } from "@/components/ui/button";
-
-export function StyledLink() {
-  return <Link href="/foo" className={buttonVariants({ variant: "outline" })}>Go</Link>;
-}
-```
-
-Prefer `<Button asChild>` when the link needs Button behaviour (disabled state, refs, loading state); use `buttonVariants()` when you only need the visual styling.
-
-**Trigger + interactive element**: When a trigger component (`TooltipTrigger`, `DialogTrigger`, etc.) wraps an interactive element like `<Button>`, use the `render` prop to avoid nested `<button>` elements (HTML validity violation):
+**Trigger + interactive element (callback `render` form, works on both libraries)**: When a trigger component (`TooltipTrigger`, `DialogTrigger`, etc.) wraps an interactive element like `<Button>`, use the **callback form** of the `render` prop so children are merged into the rendered element. This works on both Radix (where `render` accepts a callback per the asChild contract) and Base UI (where the callback returns the merged element). The element-form `render={<Button .../>}` REPLACES the children on Base UI — labels get dropped silently.
 
 ```tsx
 import { Button } from "@/components/ui/button";
@@ -164,13 +170,36 @@ import { TooltipTrigger } from "@/components/ui/tooltip";
 // WRONG (nested <button> — invalid HTML):
 <TooltipTrigger><Button>Click</Button></TooltipTrigger>
 
-// CORRECT (render prop composes without nesting):
+// WRONG (Base UI: text children silently dropped — Trigger renders an empty button):
 <TooltipTrigger render={<Button variant="ghost" />}>
+  Click
+</TooltipTrigger>
+
+// CORRECT (callback form merges children with the rendered element on both libraries):
+<TooltipTrigger render={(props) => <Button variant="ghost" {...props}>Click</Button>}>
   Click
 </TooltipTrigger>
 ```
 
-The `render` prop replaces the trigger's default `<button>` wrapper with the provided element, passing through all trigger behavior (event handlers, aria attributes). Children of the trigger become children of the rendered element.
+For controlled dialogs that don't fit the callback form cleanly, drive the dialog with explicit state and a separate Button trigger:
+
+```tsx
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
+
+export function ControlledDialog() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <Button onClick={() => setOpen(true)}>Open dialog</Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        …
+      </Dialog>
+    </>
+  );
+}
+```
 
 **Opacity modifier values**: Tailwind v4 opacity modifiers (the `/N` suffix on color utilities) must use values defined in the default opacity scale: **5, 10, 15, 20, 25, 30, 40, 50, 60, 70, 75, 80, 90, 95**. Values outside this scale (e.g., `/8`, `/08`, `/12`) are silently dropped — the entire color declaration is removed with no error or warning, producing invisible borders, backgrounds, or text. This applies to all color utilities (`bg-*`, `text-*`, `border-*`, `ring-*`, `divide-*`, `outline-*`, `shadow-*`, etc.).
 
@@ -261,8 +290,11 @@ export function FakeDoorIntentModal({
     }
   }
 
-  // Rule 5: trigger wired via DialogTrigger `render` prop per shadcn § Trigger + interactive element.
-  // Radix handles focus return on Esc / overlay click / explicit close via the render-prop composition.
+  // Rule 5: trigger wired via DialogTrigger callback `render` form per shadcn §
+  // Trigger + interactive element. The callback merges {triggerLabel} into the rendered
+  // Button — the element form `render={<Button .../>}` would silently drop the label on
+  // Base UI primitives (#1146). Both Radix and Base UI accept the callback form.
+  // The primitive handles focus return on Esc / overlay click / explicit close.
   //
   // Reset semantics: status resets ONLY on explicit "Back to {pageName}" click.
   // Closing via Esc / overlay leaves status alone — reopening shows the success panel if previously
@@ -270,18 +302,20 @@ export function FakeDoorIntentModal({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger
-        render={
+        render={(props) => (
           <Button
             type="button"
+            {...props}
             className={cn(
               buttonVariants({ variant: variant === "primary" ? "default" : "ghost" }),
               variant === "ghost" && "border border-border/40"
             )}
-          />
-        }
-      >
-        {triggerLabel ?? `Enable ${feature}`}
-      </DialogTrigger>
+          >
+            {triggerLabel ?? `Enable ${feature}`}
+          </Button>
+        )}
+      />
+
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{feature} — coming soon</DialogTitle>

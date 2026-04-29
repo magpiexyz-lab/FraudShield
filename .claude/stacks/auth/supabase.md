@@ -812,10 +812,19 @@ function createDemoClient() {
 }
 
 export function createAuthClient() {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "true") return createDemoClient();
+  // Issue #1145: NEXT_PUBLIC_* env vars are inlined at build time by Next.js, so a
+  // build produced without NEXT_PUBLIC_DEMO_MODE=true compiles the demo branch to
+  // dead code. Detect a placeholder configuration at runtime — when the URL/key
+  // are missing or match the canonical placeholder default, fall back to the demo
+  // client instead of attempting placeholder.supabase.co DNS.
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+  const isDemoFlag = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
+  const isPlaceholder = !url || !anon || url === "https://placeholder.supabase.co";
+  if (isDemoFlag || isPlaceholder) return createDemoClient();
   return createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder.supabase.co",
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "placeholder-anon-key"
+    url || "https://placeholder.supabase.co",
+    anon || "placeholder-anon-key"
   );
 }
 ```
@@ -874,11 +883,17 @@ export async function createServerAuthClient() {
   if (process.env.DEMO_MODE === "true" && process.env.VERCEL === "1") {
     throw new Error("DEMO_MODE is not allowed in production");
   }
-  if (process.env.DEMO_MODE === "true") return createDemoClient();
+  // Issue #1145: also fall back to the demo client when env vars are missing or set
+  // to the canonical placeholder. Prevents server-side requests from hitting
+  // placeholder DNS in unconfigured deployments.
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+  const isPlaceholder = !url || !anon || url === "https://placeholder.supabase.co";
+  if (process.env.DEMO_MODE === "true" || isPlaceholder) return createDemoClient();
   const cookieStore = await cookies();
   return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder.supabase.co",
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "placeholder-anon-key",
+    url || "https://placeholder.supabase.co",
+    anon || "placeholder-anon-key",
     {
       cookies: {
         getAll() { return cookieStore.getAll(); },

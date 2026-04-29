@@ -15,16 +15,18 @@
 check_verdict_gates() {
   local gates_list="$1" verdicts_dir="$2" branch="${3:-}"
   for gate in $gates_list; do
+    local gate_upper
+    gate_upper=$(printf '%s' "$gate" | tr '[:lower:]' '[:upper:]')
     local gf="$verdicts_dir/$gate.json"
     if [[ ! -f "$gf" ]]; then
-      ERRORS+=("${gate^^} verdict missing")
+      ERRORS+=("${gate_upper} verdict missing")
       continue
     fi
     local v; v=$(read_json_field "$gf" "verdict")
-    [[ "$v" != "PASS" ]] && ERRORS+=("${gate^^} verdict is ${v:-?}, not PASS")
+    [[ "$v" != "PASS" ]] && ERRORS+=("${gate_upper} verdict is ${v:-?}, not PASS")
     if [[ -n "$branch" ]]; then
       local vb; vb=$(read_json_field "$gf" "branch")
-      [[ -n "$vb" && "$vb" != "$branch" ]] && ERRORS+=("${gate^^} verdict is for branch $vb, not $branch")
+      [[ -n "$vb" && "$vb" != "$branch" ]] && ERRORS+=("${gate_upper} verdict is for branch $vb, not $branch")
     fi
   done
 }
@@ -116,9 +118,10 @@ check_block_verdicts() {
     [[ "$v" != "BLOCK" ]] && continue
     local vb; vb=$(read_json_field "$gf" "branch")
     if [[ "$vb" == "$branch" ]]; then
-      local gate_id
+      local gate_id gate_id_upper
       gate_id=$(basename "$gf" .json)
-      ERRORS+=("Gate ${gate_id^^} has BLOCK verdict on branch $branch")
+      gate_id_upper=$(printf '%s' "$gate_id" | tr '[:lower:]' '[:upper:]')
+      ERRORS+=("Gate ${gate_id_upper} has BLOCK verdict on branch $branch")
     fi
   done
 }

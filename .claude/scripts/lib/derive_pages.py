@@ -184,6 +184,12 @@ def _path_to_page_info(page_file: str) -> tuple[str, str]:
 
     page_name is the folder slug (or "landing" if directly under src/app).
     route_pattern preserves [segment] literals for dynamic routes.
+
+    For dynamic routes, the page_name suffixes the bracket-segment names so
+    src/app/portfolio/page.tsx and src/app/portfolio/[slug]/page.tsx produce
+    DIFFERENT slugs (`portfolio` and `portfolio-slug`) — this prevents
+    discovery-dict collisions and downstream trace-filename collisions
+    (design-critic-<page_name>.json) when both routes coexist (#1144).
     """
     # Strip src/app/ prefix and /page.<ext> suffix
     rel = page_file
@@ -203,9 +209,30 @@ def _path_to_page_info(page_file: str) -> tuple[str, str]:
     # (e.g. src/app/[locale]/page.tsx), fall back to the raw folder name.
     non_bracket_parts = [p for p in folder_parts if "[" not in p]
     if non_bracket_parts:
-        name = non_bracket_parts[-1]
+        base = non_bracket_parts[-1]
     else:
-        name = folder_parts[-1].strip("[]")
+        base = folder_parts[-1].strip("[]")
+    # #1144: append bracket-segment names to disambiguate dynamic routes from
+    # their static parents. Each segment contributes its inner identifier
+    # (stripped of optional-catchall syntax: leading "[" + any number of dots,
+    # trailing "]", whitespace). When the leaf folder is itself the dynamic
+    # segment (no static parent — e.g., src/app/[locale]/page.tsx where
+    # base==folder_parts[-1]), keep the base alone to avoid `locale-locale`.
+    has_static_parent = bool(non_bracket_parts)
+    bracket_parts = []
+    for p in folder_parts:
+        m = _DYNAMIC_SEGMENT_RE.search(p)
+        if m:
+            # Strip in order: trailing `]` (defensive — regex usually consumed it),
+            # leading `[` (optional-catchall outer bracket already inside the captured
+            # group for [[...slug]]), then any number of leading dots (catchall `...`).
+            inner = m.group(1).rstrip("]").lstrip("[").lstrip(".")
+            if inner:
+                bracket_parts.append(inner)
+    if has_static_parent and bracket_parts:
+        name = "-".join([base, *bracket_parts])
+    else:
+        name = base
     return (name, route)
 
 
@@ -269,15 +296,30 @@ def derive_page_set_for_design_critic(
 
     # 2. Union with golden_path + behavior.pages + auth-derived via
     #    derive_scope_pages (already excludes "landing"). For entries not yet
-    #    discovered, insert a placeholder (source_files may be empty).
-    for name in derive_scope_pages(experiment):
-        if name not in discovered:
-            discovered[name] = {
-                "name": name,
-                "route_pattern": f"/{name}",
-                "source_files": [],
-                "dynamic_segments": [],
-            }
+    #    discovered, the slug references no file on disk — emit a stderr
+    #    warning and skip from the operational list (#1144). The warning
+    #    surfaces the underlying scaffold-pages drift (slug declared in
+    #    experiment.yaml but no matching page file) without polluting state-3a
+    #    with phantom URLs that 404 in design-critic.
+    scope_names = derive_scope_pages(experiment)
+    for name in scope_names:
+        if name in discovered:
+            continue
+        # The slug may correspond to a dynamic route whose discovered name has
+        # been suffixed (e.g., experiment.yaml says "portfolio-detail" and the
+        # file lives at src/app/portfolio/[slug]/page.tsx → discovered as
+        # "portfolio-slug"). Skip the warning when ANY discovered entry's
+        # static prefix matches the scope name.
+        prefix_match = any(
+            disc_name.split("-", 1)[0] == name for disc_name in discovered
+        )
+        if prefix_match:
+            continue
+        sys.stderr.write(
+            f"WARN: derive_pages — scope page '{name}' has no matching file under "
+            f"src/app/. Skipping from design-critic operational list. "
+            f"(scaffold-pages drift; see #1144)\n"
+        )
 
     # 3. Exclude landing from the operational list
     discovered.pop("landing", None)

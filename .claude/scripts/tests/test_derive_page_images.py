@@ -42,9 +42,11 @@ class TestPageSetDiscovery(unittest.TestCase):
             result = derive_page_set_for_design_critic({"type": "web-app"}, tmp)
             names = sorted(r["name"] for r in result)
             # landing excluded from operational list; fs-scan picks up
-            # dashboard + docs + quote
-            self.assertEqual(names, ["dashboard", "docs", "quote"])
-            quote = next(r for r in result if r["name"] == "quote")
+            # dashboard (static) + docs-slug (dynamic) + quote-id (dynamic).
+            # Issue #1144: dynamic routes suffix the bracket-segment name to the
+            # base slug so static + dynamic routes don't collide on dict key.
+            self.assertEqual(names, ["dashboard", "docs-slug", "quote-id"])
+            quote = next(r for r in result if r["name"] == "quote-id")
             self.assertEqual(quote["route_pattern"], "/quote/[id]")
             self.assertEqual(quote["dynamic_segments"], ["id"])
 
@@ -64,12 +66,14 @@ class TestPageSetDiscovery(unittest.TestCase):
             _touch(os.path.join(tmp, "src/app/team/[org]/member/[id]/page.tsx"), "")
             _touch(os.path.join(tmp, "src/app/post/[slug]/page.tsx"), "")
             result = {r["name"]: r for r in derive_page_set_for_design_critic({"type": "web-app"}, tmp)}
+            # Issue #1144: dynamic routes get bracket-segment-suffixed slugs
+            # to disambiguate from possible static parents.
             self.assertEqual(
-                result["quote"]["test_url"],
+                result["quote-id"]["test_url"],
                 "/quote/00000000-0000-0000-0000-000000000000",
             )
-            self.assertIn("00000000-0000-0000-0000-000000000000", result["member"]["test_url"])
-            self.assertEqual(result["post"]["test_url"], "/post/demo-fixture-slug")
+            self.assertIn("00000000-0000-0000-0000-000000000000", result["member-org-id"]["test_url"])
+            self.assertEqual(result["post-slug"]["test_url"], "/post/demo-fixture-slug")
 
     def test_union_with_golden_path_and_auth(self):
         exp = {
@@ -83,11 +87,37 @@ class TestPageSetDiscovery(unittest.TestCase):
         }
         with tempfile.TemporaryDirectory() as tmp:
             _touch(os.path.join(tmp, "src/app/page.tsx"), "")
+            _touch(os.path.join(tmp, "src/app/dashboard/page.tsx"), "")
+            _touch(os.path.join(tmp, "src/app/admin/page.tsx"), "")
+            _touch(os.path.join(tmp, "src/app/login/page.tsx"), "")
+            _touch(os.path.join(tmp, "src/app/signup/page.tsx"), "")
             result = derive_page_set_for_design_critic(exp, tmp)
             names = sorted(r["name"] for r in result)
-            # dashboard + admin from golden_path; login+signup from auth;
-            # landing excluded
+            # Issue #1144: scope-pages without a matching file on disk are
+            # SKIPPED from the operational design-critic list (with stderr
+            # warning) — phantom URLs would 404 in design-critic. This test
+            # creates files for each scope page so they all appear.
+            # landing excluded from operational list; dashboard + admin from
+            # golden_path; login + signup from auth-derived.
             self.assertEqual(names, ["admin", "dashboard", "login", "signup"])
+
+    def test_union_skips_scope_pages_without_files(self):
+        # Issue #1144: scope-pages without matching files on disk are SKIPPED
+        # from the design-critic operational list. The fix surfaces drift
+        # via stderr warning rather than emitting phantom URLs that would
+        # cause design-critic to screenshot 404s.
+        exp = {
+            "type": "web-app",
+            "golden_path": [{"page": "dashboard"}, {"page": "admin"}],
+            "stack": {"auth": "supabase"},
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            _touch(os.path.join(tmp, "src/app/page.tsx"), "")
+            # Only dashboard exists on disk; admin / login / signup do not.
+            _touch(os.path.join(tmp, "src/app/dashboard/page.tsx"), "")
+            result = derive_page_set_for_design_critic(exp, tmp)
+            names = sorted(r["name"] for r in result)
+            self.assertEqual(names, ["dashboard"])
 
     def test_source_files_enumerated(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -264,7 +294,8 @@ class TestDerivePageImages(unittest.TestCase):
             )
             page_set = derive_page_set_for_design_critic({"type": "web-app"}, tmp)
             im = derive_page_images(page_set, tmp, include_landing=False)
-            self.assertTrue(im["quote"]["has_images"])
+            # Issue #1144: dynamic-segment slug suffix produces "quote-id" not "quote".
+            self.assertTrue(im["quote-id"]["has_images"])
 
 
 if __name__ == "__main__":

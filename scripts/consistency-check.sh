@@ -674,6 +674,51 @@ fi
 
 fi  # end Check 24 canonical-pattern-present guard
 
+# Check 25: bash 4+ uppercase/lowercase parameter expansion in hook + script files
+# (recurrence guard for #1141 — macOS default bash 3.2 silently fails on ${var^^} / ${var,,})
+echo -n "Check 25: bash 4+ parameter expansion in shell files... "
+BASH4_FILES=$(grep -lE '\$\{[a-zA-Z_][a-zA-Z0-9_]*(\^\^?|,,?)\}' .claude/hooks/*.sh .claude/scripts/*.sh 2>/dev/null || true)
+if [ -n "$BASH4_FILES" ]; then
+  echo ""
+  echo "  FAIL: bash 4+ parameter expansion detected — fails silently on macOS default bash 3.2:"
+  while IFS= read -r f; do
+    [ -z "$f" ] && continue
+    grep -nE '\$\{[a-zA-Z_][a-zA-Z0-9_]*(\^\^?|,,?)\}' "$f" | sed "s|^|    $f:|"
+  done <<< "$BASH4_FILES"
+  echo "  Replace \${var^^} / \${var,,} with: var_upper=\$(printf '%s' \"\$var\" | tr '[:lower:]' '[:upper:]')"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "ok"
+fi
+
+# Check 26: thin-wrapper / claim-extraction antipattern without shadcn-primitive filter
+# (recurrence guard for #1154 — extracting @/components/* imports must filter ui/ + magicui/)
+echo -n "Check 26: shadcn-primitive filter on @/components/ extraction... "
+EXTRACTION_VIOLATIONS=""
+# Match `from [...]@/components/...` in either quote order (`['"]` or `["']`),
+# with or without a leading capture-group paren (`from ['"](@/components/...)`).
+# Both forms appear across skill / agent file regex strings.
+EXTRACTION_REGEX="from \\[[\"'][\"']\\]\\(?@/components/"
+while IFS= read -r f; do
+  [ -z "$f" ] && continue
+  # Files that grep / regex-extract @/components/ imports must reference @/components/ui/ or
+  # @/components/magicui/ as a filter within the same file. Otherwise the extraction bundles
+  # auto-generated shadcn primitives into claim candidates / wrapper detectors.
+  if grep -qE "$EXTRACTION_REGEX" "$f" 2>/dev/null; then
+    if ! grep -qE '@/components/(ui/|magicui/)' "$f" 2>/dev/null; then
+      EXTRACTION_VIOLATIONS+="${f}: regex extracts @/components/ imports without @/components/ui/ or @/components/magicui/ filter (#1154)"$'\n'
+    fi
+  fi
+done <<< "$(find .claude/skills .claude/agents -type f -name '*.md' 2>/dev/null)"
+if [ -n "$EXTRACTION_VIOLATIONS" ]; then
+  echo ""
+  echo "  FAIL: thin-wrapper-style extraction of @/components/ paths must exclude shadcn primitives:"
+  printf '%s' "$EXTRACTION_VIOLATIONS" | sed 's/^/    /'
+  ERRORS=$((ERRORS + 1))
+else
+  echo "ok"
+fi
+
 echo ""
 if [ "$WARNINGS" -gt 0 ]; then
   echo "WARNINGS: $WARNINGS weak postcondition(s) detected (non-blocking)."
