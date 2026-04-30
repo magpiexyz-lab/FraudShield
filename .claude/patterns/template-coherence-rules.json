@@ -264,7 +264,14 @@
       "type": "gate_artifact_identity",
       "severity": "warn",
       "manifest_path": ".claude/patterns/gate-readable-artifacts-canonical.json",
-      "enforced_artifacts": [".runs/observation-enforcement.json"],
+      "enforced_artifacts": [
+        ".runs/observation-enforcement.json",
+        ".runs/iterate-check-context.json",
+        ".runs/review-context.json",
+        ".runs/spec-context.json",
+        ".runs/upgrade-context.json",
+        ".runs/verify-lifecycle.json"
+      ],
       "description": "GRAIM v2 C1+C2 — warn when a VERIFY reading an enforced gate-readable artifact lacks identity assertion. enforced_artifacts grows in Slice 3."
     },
     {

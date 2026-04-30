@@ -567,6 +567,17 @@
       "rationale": "Read by VERIFY blocks in skills: bootstrap."
     },
     {
+      "path": ".runs/iterate-check-context.json",
+      "consumers": [
+        "state-registry:iterate-check.*"
+      ],
+      "writers": [
+        ".claude/scripts/init-context.sh"
+      ],
+      "scope": "transient-cross-skill",
+      "rationale": "Skill context written by init-context.sh; protected {skill, run_id} per AOC v1.1 protected-fields rule. Enrolled in GRAIM canonical manifest to dismiss discovery rule promotion candidacy."
+    },
+    {
       "path": ".runs/iterate-check-fixes.json",
       "consumers": [
         "state-registry:iterate-check.c2"
@@ -920,6 +931,17 @@
       "rationale": "Read by VERIFY blocks in skills: review."
     },
     {
+      "path": ".runs/review-context.json",
+      "consumers": [
+        "state-registry:review.*"
+      ],
+      "writers": [
+        ".claude/scripts/init-context.sh"
+      ],
+      "scope": "transient-cross-skill",
+      "rationale": "Skill context written by init-context.sh; protected {skill, run_id} per AOC v1.1 protected-fields rule. Enrolled in GRAIM canonical manifest to dismiss discovery rule promotion candidacy."
+    },
+    {
       "path": ".runs/review-findings.json",
       "consumers": [
         "state-registry:review.2a",
@@ -1005,6 +1027,17 @@
       "rationale": "Read by VERIFY blocks in skills: resolve, solve."
     },
     {
+      "path": ".runs/spec-context.json",
+      "consumers": [
+        "state-registry:spec.*"
+      ],
+      "writers": [
+        ".claude/scripts/init-context.sh"
+      ],
+      "scope": "transient-cross-skill",
+      "rationale": "Skill context written by init-context.sh; protected {skill, run_id} per AOC v1.1 protected-fields rule. Enrolled in GRAIM canonical manifest to dismiss discovery rule promotion candidacy."
+    },
+    {
       "path": ".runs/spec-manifest.json",
       "consumers": [
         "state-registry:spec.7"
@@ -1059,6 +1092,17 @@
       "rationale": "Read by VERIFY blocks in skills: teardown."
     },
     {
+      "path": ".runs/upgrade-context.json",
+      "consumers": [
+        "state-registry:upgrade.*"
+      ],
+      "writers": [
+        ".claude/scripts/init-context.sh"
+      ],
+      "scope": "transient-cross-skill",
+      "rationale": "Skill context written by init-context.sh; protected {skill, run_id} per AOC v1.1 protected-fields rule. Enrolled in GRAIM canonical manifest to dismiss discovery rule promotion candidacy."
+    },
+    {
       "path": ".runs/upgrade-diff-report.json",
       "consumers": [
         "state-registry:upgrade.1"
@@ -1109,6 +1153,17 @@
       ],
       "scope": "transient-cross-skill",
       "rationale": "Read by VERIFY blocks in skills: verify."
+    },
+    {
+      "path": ".runs/verify-lifecycle.json",
+      "consumers": [
+        "state-registry:verify.*"
+      ],
+      "writers": [
+        ".claude/scripts/lifecycle-init.sh"
+      ],
+      "scope": "transient-cross-skill",
+      "rationale": "Lifecycle artifact written by lifecycle-init.sh during MANIFEST emit; protected {skill, run_id} per AOC v1.1 protected-fields rule. Enrolled in GRAIM canonical manifest to dismiss discovery rule promotion candidacy."
     },
     {
       "path": ".runs/verify-recheck.json",
