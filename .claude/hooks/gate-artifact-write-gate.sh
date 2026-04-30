@@ -2,8 +2,7 @@
 # gate-artifact-write-gate.sh — PreToolUse hook for Write/Edit on gate-readable
 # .runs/*.json paths declared in .claude/patterns/gate-readable-artifacts-canonical.json.
 #
-# GRAIM v2 Slice 6 PR1 — MODE=warn initial; soak window before flipping to deny
-# (mirrors agent-trace-write-gate.sh #1174 → #1175 → #1176 cadence).
+# GRAIM v2 Slice 6 — MODE=deny (PR2 flip).
 #
 # Why a hook on Write/Edit specifically:
 #   The canonical writer .claude/scripts/lib/write-gate-artifact.sh uses
@@ -11,16 +10,25 @@
 #   ONLY fires on direct Write/Edit attempts that bypass the canonical writer
 #   — exactly the failure mode #1198 demonstrated for observation-enforcement.json.
 #
-# Mode flip schedule:
-#   PR1 (this PR): MODE=warn — log friction events, allow write
-#   PR2 (future): soak window review of hook-friction.jsonl
-#   PR3 (future): MODE=deny — block direct writes
+# Mode flip log:
+#   PR1 (#1215): MODE=warn — friction log only, write allowed
+#   PR2 (this PR): MODE=deny — block direct Write/Edit on canonical paths
 #
-# Override for tests: GATE_ARTIFACT_WRITE_GATE_MODE=deny
+#   Empirical justification for fast-track flip: 0 friction entries logged in
+#   .runs/hook-friction.jsonl from gate-artifact-write-gate during the entire
+#   soak window between PR1 merge and PR2 (multiple slice implementer subagents
+#   running real Write/Edit traffic). The canonical-paths whitelist is exact
+#   (112 string-equal entries, not glob), and all legitimate writers were
+#   audited in Slices 0/3/3.1/3.2 — the soak's "discover unknown legitimate
+#   writers" purpose was satisfied empirically without time accumulation.
+#
+# Escape hatch: any caller hitting a false positive can downgrade per-invocation
+# via env var GATE_ARTIFACT_WRITE_GATE_MODE=warn (preserved from PR1). File an
+# issue with the friction log entry so the writer can be migrated to canonical.
 
 set -euo pipefail
 
-MODE="${GATE_ARTIFACT_WRITE_GATE_MODE:-warn}"
+MODE="${GATE_ARTIFACT_WRITE_GATE_MODE:-deny}"
 
 # shellcheck source=/dev/null
 source "$(dirname "$0")/lib.sh"
