@@ -30,19 +30,36 @@ The lead (not a subagent) creates:
 
 Phase A runs AFTER scaffold-init completes (STATE 10) to ensure design tokens exist.
 
-After creating all Phase A files, write the Phase A sentinel. Include variant files in the list when `variants` is present in experiment.yaml:
+After creating all Phase A files, run the **build self-check** (EARC slice 2 / Half I, closes #1182 root cause): `npm run build` MUST exit 0 before sealing the Phase A sentinel. Invalid Phase A files (e.g., `next/font` config errors) thus cannot escape into the sealed window where downstream subagents can no longer fix them. If the build fails, the lead repairs the offending Phase A file in-place (no gate yet — sentinel hasn't been written) and re-runs the self-check.
+
 ```bash
 mkdir -p .runs/gate-verdicts
+
+# EARC Half I: build self-check before sealing Phase A.
+# Failure here means the lead must repair the file(s) in-place and re-run
+# state-11. The phase-a-sentinel does not get written, so the no-rewrite
+# window does not yet apply.
+if ! npm run build > /tmp/phase-a-build.log 2>&1; then
+  echo "ERROR: state-11 build self-check failed; Phase A cannot be sealed." >&2
+  echo "--- npm run build (tail) ---" >&2
+  tail -30 /tmp/phase-a-build.log >&2
+  exit 1
+fi
+echo "state-11 build self-check passed."
+
 bash .claude/scripts/archive-gate-verdict.sh phase-a-sentinel
 CORE_FILES='["src/app/layout.tsx","src/app/not-found.tsx","src/app/error.tsx","src/app/icon.tsx","src/app/opengraph-image.tsx","src/app/sitemap.ts","src/app/robots.ts","public/llms.txt"'
 if grep -q '^variants:' experiment/experiment.yaml 2>/dev/null; then
   CORE_FILES+=',"src/lib/variants.ts","src/app/page.tsx","src/app/v/[variant]/page.tsx"'
 fi
 CORE_FILES+=']'
+COMMIT_SHA=$(git rev-parse HEAD 2>/dev/null || echo "")
 cat > .runs/gate-verdicts/phase-a-sentinel.json << PAEOF
-{"phase_a_complete": true, "timestamp": "<ISO 8601>", "files": ${CORE_FILES}}
+{"phase_a_complete": true, "build_passing": true, "commit_sha": "${COMMIT_SHA}", "timestamp": "<ISO 8601>", "files": ${CORE_FILES}}
 PAEOF
 ```
+
+The sentinel's `build_passing: true` field is a usability attestation: it proves Phase A files compiled successfully at seal time. Slice 3's gate-side EARC reads this attestation when evaluating evidence-anchored repair requests for residual cases (post-seal regressions, runtime-only failures invisible to `npm run build`, upstream dependency drift).
 
 VERIFY Phase A before proceeding (**web-app only** — service and cli archetypes skip this entire block since they skip Phase A):
 - `test -f src/app/layout.tsx`
@@ -59,10 +76,11 @@ VERIFY Phase A before proceeding (**web-app only** — service and cli archetype
 **POSTCONDITIONS:**
 - Phase A sentinel written (web-app) or skipped (service/cli)
 - Core files created (web-app only)
+- `npm run build` passing at seal time (web-app only) — `phase-a-sentinel.json.build_passing == true`
 
 **VERIFY:**
 ```bash
-python3 -c "import json,os; a=json.load(open('.runs/bootstrap-context.json')).get('archetype','web-app'); assert a!='web-app' or os.path.isfile('.runs/gate-verdicts/phase-a-sentinel.json'), 'phase-a-sentinel missing'"
+python3 -c "import json,os; a=json.load(open('.runs/bootstrap-context.json')).get('archetype','web-app'); s='.runs/gate-verdicts/phase-a-sentinel.json'; assert a!='web-app' or (os.path.isfile(s) and json.load(open(s)).get('build_passing') is True), 'phase-a-sentinel missing or build_passing!=true (EARC slice 2 / closes #1182 root cause)'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

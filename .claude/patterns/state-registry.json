@@ -75,9 +75,15 @@
       "lifecycle": "transient-intra-skill"
     },
     "11": {
-      "verify": "python3 -c \"import json,os; a=json.load(open('.runs/bootstrap-context.json')).get('archetype','web-app'); assert a!='web-app' or os.path.isfile('.runs/gate-verdicts/phase-a-sentinel.json'), 'phase-a-sentinel missing'\"",
+      "verify": "python3 -c \"import json,os; a=json.load(open('.runs/bootstrap-context.json')).get('archetype','web-app'); s='.runs/gate-verdicts/phase-a-sentinel.json'; assert a!='web-app' or (os.path.isfile(s) and json.load(open(s)).get('build_passing') is True), 'phase-a-sentinel missing or build_passing!=true (EARC slice 2 / closes #1182 root cause)'\"",
       "artifact": ".runs/gate-verdicts/phase-a-sentinel.json",
-      "lifecycle": "transient-cross-skill"
+      "lifecycle": "transient-cross-skill",
+      "repair_evidence": {
+        "writer": ".claude/scripts/write-phase-a-repair.sh",
+        "evidence_sources": ["build-result.json"],
+        "provenance": "lead-fix",
+        "_comment": "EARC slice 3 will land write-phase-a-repair.sh; gate at .claude/skills/bootstrap/gates/write.sh ALSO-ALLOWs when an attestation matches. Half II of the EARC contract for #1182 — covers residual cases (post-seal regressions, runtime-only failures invisible to npm run build)."
+      }
     },
     "11a": "test -f .runs/b1-spawn-result.json && python3 -c \"import json,os; d=json.load(open('.runs/b1-spawn-result.json')); assert d.get('schema_version')==1 and d.get('state')=='11a'; ag=d.get('agents',{}); assert ag.get('scaffold-libs',{}).get('spawned') is True, 'scaffold-libs not spawned'; missing=[k for k,a in ag.items() if a.get('spawned') and not os.path.exists(a.get('trace_path',''))]; assert not missing, 'agent trace file missing on disk: '+str(missing)\"",
     "11b": "test -f .runs/b1-verify-result.json && python3 -c \"import json,glob; assert len(glob.glob('src/lib/*.ts'))>=1, 'no .ts in src/lib/'; d=json.load(open('.runs/b1-verify-result.json')); assert d.get('schema_version')==1 and d.get('state')=='11b'; assert d.get('libs',{}).get('manifest_status')=='complete', 'libs manifest not complete'; assert d.get('type_check',{}).get('passed') is True, 'type-check not passed'\" && (test ! -f .runs/image-manifest.json || python3 .claude/scripts/verify-state-11a-image-count.py)",
