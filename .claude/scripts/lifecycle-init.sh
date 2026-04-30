@@ -289,20 +289,32 @@ STALE_ARTIFACTS=(
 # `epilogue_artifacts` and `transient_artifacts` sections. Manual list above
 # remains as legacy backstop (Plan-agent Q1: 9 skills have zero lifecycle
 # declarations; replacing the manual list outright would lose their cleanups).
-REGISTRY_TRANSIENTS=$(python3 -c "
-import json, sys
+REGISTRY_TRANSIENTS=$(PROJECT_DIR_ENV="$PROJECT_DIR" python3 <<'PYEOF' 2>/dev/null || true
+import json, os, sys
 try:
-    r = json.load(open('$PROJECT_DIR/.claude/patterns/state-registry.json'))
+    r = json.load(open(os.environ['PROJECT_DIR_ENV'] + '/.claude/patterns/state-registry.json'))
 except Exception:
     sys.exit(0)
 paths = set()
 
-# Walk per-state lifecycle declarations
+# Walk per-state lifecycle declarations.
+# Canonical schema (per state-registry.json today): each state entry uses
+# the SINGULAR `artifact: <string>` field. The original Slice 5b walker read
+# `node.get('artifacts', [])` (plural list), which silently matched zero
+# entries — every per-state transient-cross-skill declaration was dropped.
+# Fixed: read singular `artifact` first; keep plural `artifacts` as a
+# forward-compat fallback for entries that may use the array form.
 def _walk(node):
     if isinstance(node, dict):
         if node.get('lifecycle') == 'transient-cross-skill':
-            for p in node.get('artifacts', []) or []:
-                paths.add(p)
+            single = node.get('artifact')
+            if isinstance(single, str) and single:
+                paths.add(single)
+            multi = node.get('artifacts')
+            if isinstance(multi, list):
+                for p in multi:
+                    if isinstance(p, str) and p:
+                        paths.add(p)
         for v in node.values():
             _walk(v)
     elif isinstance(node, list):
@@ -318,10 +330,29 @@ for path, meta in (r.get('epilogue_artifacts') or {}).items():
 
 for p in sorted(paths):
     print(p)
-" 2>/dev/null || true)
+PYEOF
+)
 
+# Some `artifact` values are PREFIXES (e.g. ".runs/agent-traces/" or
+# ".runs/agent-traces/design-critic-") rather than full filenames. The
+# directory wipes at lines 339-340 (`rm -rf .runs/agent-traces/` and
+# `.runs/gate-verdicts/`) already cover those. For full-filename entries,
+# `rm -f` handles them. For filename prefixes (e.g. "design-critic-"), use
+# glob expansion via `compgen -G` so we sweep matching files explicitly —
+# defensive against future schema where the directory wipe may be removed.
 while IFS= read -r p; do
-  [ -n "$p" ] && STALE_ARTIFACTS+=( "$PROJECT_DIR/$p" )
+  [ -z "$p" ] && continue
+  if [[ "$p" == */ ]]; then
+    # Directory prefix — covered by directory wipes below; rm -rf for safety.
+    rm -rf "$PROJECT_DIR/$p"
+  elif [[ "$p" == *- || "$p" == *_ ]]; then
+    # Filename prefix — glob-expand via compgen (no failure if nothing matches).
+    while IFS= read -r match; do
+      [ -n "$match" ] && rm -f "$match"
+    done < <(compgen -G "$PROJECT_DIR/${p}*" 2>/dev/null || true)
+  else
+    STALE_ARTIFACTS+=( "$PROJECT_DIR/$p" )
+  fi
 done <<< "$REGISTRY_TRANSIENTS"
 
 for f in "${STALE_ARTIFACTS[@]}"; do
