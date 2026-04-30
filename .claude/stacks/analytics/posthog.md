@@ -307,6 +307,62 @@ When creating a new analytics stack file, document the equivalent endpoint patte
 ### Never include PII in analytics event properties
 Do not send personally identifiable information (email, name, phone number, IP address) as event properties. PostHog stores event data indefinitely and may be subject to GDPR/CCPA data subject requests. Use non-PII identifiers instead: `utm_source`, `plan_type`, `user_role` (generic, not the user's name). For user identification, use `identify(userId)` with the opaque user ID — PostHog links events to users internally without exposing PII in the event stream.
 
+### Testing analytics events deterministically (Playwright)
+
+DO NOT assert on PostHog network requests in Playwright tests:
+
+```ts
+// FLAKY — race the test machine can lose
+await Promise.all([
+  page.waitForRequest(/posthog\.com\/e\//, { timeout: 5000 }),
+  page.click("text=Sign up"),
+]);
+```
+
+PostHog's JS client batches events, debounces via `_flushTimer`, falls back to `navigator.sendBeacon()` on page unload (uncatchable by Playwright after navigation), and skips network entirely under DNT / opt-out. The `disable_compression: true` + `request_batching: false` flags in `## Test Blocking` above mitigate batching but cannot eliminate the fundamental race between "the action that triggered the event" and "the network actually being made". CI machines under load lose the race.
+
+The assertion target should be "**the typed wrapper for `<event>` was called**" — a synchronous client-code observation that doesn't go through PostHog's network layer at all. Add a deterministic marker inside the typed event wrapper:
+
+```ts
+// src/lib/events.ts (typed wrapper layer)
+import { posthog } from "@/lib/analytics";
+
+export function trackWelcomeEmailSent(props: { variant: string }) {
+  // 1. Synchronous marker for deterministic test assertions — no network involved.
+  if (typeof window !== "undefined") {
+    try {
+      sessionStorage.setItem(
+        `analytics:welcome_email_sent`,
+        JSON.stringify({ timestamp: Date.now(), properties: props }),
+      );
+    } catch {
+      /* sessionStorage unavailable (e.g., private mode in some browsers) */
+    }
+  }
+  // 2. Real PostHog call — async, may flake, but tests don't observe it.
+  posthog.capture("welcome_email_sent", props);
+}
+```
+
+```ts
+// e2e/funnel.spec.ts — deterministic, no network race
+test("signup fires welcome_email_sent", async ({ page }) => {
+  await page.goto("/signup");
+  await page.fill("input[name=email]", "a@b.com");
+  await page.click("text=Sign up");
+  await page.waitForURL("/welcome");
+
+  const marker = await page.evaluate(() =>
+    sessionStorage.getItem("analytics:welcome_email_sent"),
+  );
+  expect(marker).not.toBeNull();
+  const parsed = JSON.parse(marker!);
+  expect(parsed.properties).toMatchObject({ variant: expect.any(String) });
+});
+```
+
+The marker is wrapper-level — a typed wrapper that fires the event MUST also write the marker. Bootstrap's `analytics-events.ts` template (when `stack.testing` is present) generates wrappers in this shape automatically; bare `posthog.capture()` calls don't get markers and therefore can't be tested this way.
+
 ## PR Instructions
 - No PostHog env vars needed — credentials are hardcoded in the analytics libraries
 - Verify events are flowing: open the app, perform an action, then check PostHog → Activity → Live Events

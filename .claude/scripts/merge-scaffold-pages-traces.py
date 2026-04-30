@@ -52,6 +52,41 @@ def main() -> int:
         )
         return 1
 
+    # Partition into real completions vs init-trace stubs (#1190). A stub is a
+    # trace where init-trace.py registered presence but the agent never wrote
+    # a verdict (status="started", no verdict field). Counting stubs as
+    # completions inflates pages_created and laundering them through the
+    # default-pass verdict aggregation hides rate-limited spawns. The
+    # stub_count + stub_files top-level fields preserve the
+    # attempted-but-incomplete signal so downstream consumers (BG2, Q-score)
+    # can detect partial-batch outcomes.
+    real_traces = []
+    stub_traces = []
+    for b in batches:
+        try:
+            with open(b) as f:
+                d = json.load(f)
+        except (OSError, json.JSONDecodeError) as exc:
+            sys.stderr.write(
+                f"merge-scaffold-pages-traces: cannot parse {b}: {exc}\n"
+            )
+            return 2
+        status = (d.get("status") or "").lower()
+        verdict_field = d.get("verdict")
+        if status == "started" and not verdict_field:
+            stub_traces.append((b, d))
+        else:
+            real_traces.append((b, d))
+
+    if stub_traces:
+        sys.stderr.write(
+            f"merge-scaffold-pages-traces: WARNING: {len(stub_traces)} stub "
+            f"trace(s) detected (init-trace registered, agent never wrote "
+            f"verdict — likely rate-limited or crashed mid-spawn):\n"
+        )
+        for b, _ in stub_traces:
+            sys.stderr.write(f"  - {b}\n")
+
     run_id = ""
     try:
         with open(".runs/bootstrap-context.json") as f:
@@ -74,19 +109,17 @@ def main() -> int:
             "self_check_scored",
         ],
         "verdict": "pass",
+        # #1190: preserve attempted-but-incomplete signal alongside the
+        # completion count. stub_count > 0 indicates the spawn batch had
+        # rate-limited or crashed agents; the lead should re-spawn for the
+        # listed pages or accept the partial batch with documented reason.
+        "stub_count": len(stub_traces),
+        "stub_files": [b for b, _ in stub_traces],
     }
     # Verdict rank for worst-of-batch aggregation. Higher rank wins.
     verdict_rank = {"pass": 1, "fixed": 2, "partial": 3, "unresolved": 4, "fail": 5}
 
-    for b in batches:
-        try:
-            with open(b) as f:
-                d = json.load(f)
-        except (OSError, json.JSONDecodeError) as exc:
-            sys.stderr.write(
-                f"merge-scaffold-pages-traces: cannot parse {b}: {exc}\n"
-            )
-            return 2
+    for _b, d in real_traces:
         merged["pages_created"] += 1
         merged["files_created"].extend(d.get("files_created", []))
         merged["issues"].extend(d.get("issues", []))

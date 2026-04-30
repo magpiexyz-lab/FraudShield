@@ -214,8 +214,29 @@ fi
 # Use the fd-redirect-stripped NORM so `cmd 2>&1 > agent-traces/foo.json` still
 # denies correctly (on the real `>` that writes the file) but
 # `ls agent-traces/ 2>&1` is not falsely flagged.
+#
+# #1185 fix: the previous regex `(>|>>|tee|cp|mv).*agent-traces/...json` used
+# unbounded `.*` and over-blocked any python -c whose source contains a
+# comparison `len(x) > 0` AND mentions an agent-traces glob — VERIFY blocks
+# in state files were forced to externalize to disk just to evade this regex.
+# The replacement below uses the same shell-segment-bound check as the
+# chained-redirect awk on line 71: split on &|;|, then within each segment
+# require a write operator IMMEDIATELY adjacent (modulo whitespace/quotes)
+# to an agent-traces/...json target. Read-only python -c expressions over
+# agent-traces no longer match because `>` from a python comparison is
+# separated from `agent-traces/` by other tokens (or by a `;` that triggers
+# segment split inside `python -c "import x,y,z; ..."`).
 
-if echo "$NORM" | grep -qE '(>|>>|[[:space:]]tee[[:space:]]|[[:space:]]cp[[:space:]]|[[:space:]]mv[[:space:]]).*agent-traces/[^[:space:]]+\.json'; then
+if echo "$NORM" | awk '
+    BEGIN{RS="[&|;]"}
+    {
+      # Bound write operator -> agent-traces target (>file, >>file, &>file)
+      # within the same un-split shell segment.
+      if (match($0, /([0-9]*&?>+|[0-9]*>>?)[[:space:]]*["'\'']?[^|;&"'\'']*agent-traces\/[^[:space:]"'\'']*\.json/)) found=1
+      # tee / cp / mv with an agent-traces target later on the same segment
+      else if (match($0, /(^|[[:space:]])(tee|cp|mv)[[:space:]][^|;&]*agent-traces\/[^[:space:]"'\'']*\.json/)) found=1
+    }
+    END{exit !found}'; then
   deny "Agent trace write guard: .runs/agent-traces/*.json writes must go through init-trace.py / write-recovery-trace.sh / write-degraded-trace.py / write-agent-trace.sh / augment-trace.py. Direct shell writes are blocked."
 fi
 

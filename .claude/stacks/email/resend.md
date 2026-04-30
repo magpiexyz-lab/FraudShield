@@ -6,10 +6,11 @@ packages:
 files:  # conditional: requires framework/nextjs, database/supabase, auth/supabase
   - src/lib/email.ts
   - src/app/api/email/welcome/route.ts
+  - src/app/api/email/welcome-webhook/route.ts
   - src/app/api/email/nudge/route.ts
   - vercel.json
 env:
-  server: [RESEND_API_KEY, CRON_SECRET, RESEND_FROM]
+  server: [RESEND_API_KEY, CRON_SECRET, RESEND_FROM, SUPABASE_WEBHOOK_SECRET, NEXT_PUBLIC_APP_ORIGIN]
   client: []
 ci_placeholders:
   RESEND_API_KEY: re_placeholder_key
@@ -116,27 +117,35 @@ export async function sendActivationNudge(to: string, name: string, activationAc
 }
 ```
 
-### `src/app/api/email/welcome/route.ts`
+### `src/app/api/email/welcome/route.ts` — Cookie-authed handler
 
-Called from the auth success callback after `signup_complete`. Sends a welcome email with the value prop and a CTA to complete the activation action. Bootstrap generates the route **without** `trackServerEvent()` — see "Analytics Integration" below for how to add telemetry via `/change` after bootstrap.
+Called from the auth success callback after `signup_complete` for client-driven flows where the user is logged-in (cookie session present). Sends a welcome email with the value prop and a CTA. Bootstrap generates the route **without** `trackServerEvent()` — see "Analytics Integration" below for how to add telemetry via `/change` after bootstrap.
+
+**Security contract:** the route MUST derive `to` from the authenticated session and construct `ctaUrl` server-side. NEVER accept `to` or `ctaUrl` from the request body — that turns the route into an open phishing relay (an attacker forges arbitrary recipients and embeds attacker-controlled URLs in emails sent from your verified Resend domain). See `## Caveats` below.
 
 ```ts
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { sendWelcomeEmail } from "@/lib/email";
+import { rateLimit } from "@/lib/rate-limit";
 
+// Body is intentionally narrow: name only. `to` comes from the session,
+// `ctaUrl` is constructed server-side from APP_ORIGIN.
 const welcomeSchema = z.object({
-  email: z.string().email().max(200),
   name: z.string().max(200),
-  ctaUrl: z.string().max(500).optional(),
 });
 
 export async function POST(req: NextRequest) {
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
+  if (!user?.email) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const limited = await rateLimit(`email:welcome:${user.id}`, { max: 3, windowSec: 86400 });
+  if (!limited.ok) {
+    return NextResponse.json({ error: "Too many welcome requests" }, { status: 429 });
   }
 
   const body = welcomeSchema.safeParse(await req.json());
@@ -144,11 +153,87 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
 
-  await sendWelcomeEmail(body.data.email, body.data.name, body.data.ctaUrl || "/");
+  // ctaUrl is constructed server-side — never accepted from the client body.
+  const origin = process.env.NEXT_PUBLIC_APP_ORIGIN!;
+  const ctaUrl = `${origin}/dashboard`;
+
+  await sendWelcomeEmail(user.email, body.data.name, ctaUrl);
 
   return NextResponse.json({ ok: true });
 }
 ```
+
+### `src/app/api/email/welcome-webhook/route.ts` — Webhook-triggered handler
+
+Called by Supabase `auth.user.created` webhook (or any signed server-event source like a Stripe `customer.created` or an admin-action queue). There is no cookie session, so the cookie-authed handler above does not apply. The route MUST verify the webhook signature and use the verified payload as the source of truth for `to`. Constants:
+
+| Concern | Cookie-authed | Webhook-triggered |
+|---|---|---|
+| Source of `to` | `supabase.auth.getUser().user.email` | verified webhook payload (`payload.record.email`) |
+| Source of `ctaUrl` | server-constructed from `NEXT_PUBLIC_APP_ORIGIN` | server-constructed from `NEXT_PUBLIC_APP_ORIGIN` |
+| Authentication | Supabase auth cookies | webhook signature (HMAC) |
+| Client used | `createServerSupabaseClient()` | `createServiceRoleClient()` (no cookie context) |
+
+```ts
+import { NextRequest, NextResponse } from "next/server";
+import { createHmac, timingSafeEqual } from "crypto";
+import { sendWelcomeEmail } from "@/lib/email";
+import { rateLimit } from "@/lib/rate-limit";
+
+export async function POST(req: NextRequest) {
+  // 1. Verify the webhook signature — HMAC over the raw request body.
+  const signature = req.headers.get("x-webhook-signature") ?? "";
+  const secret = process.env.SUPABASE_WEBHOOK_SECRET;
+  if (!secret) {
+    return NextResponse.json({ error: "webhook not configured" }, { status: 500 });
+  }
+  const raw = await req.text();
+  const expected = createHmac("sha256", secret).update(raw).digest("hex");
+  const a = Buffer.from(signature);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !timingSafeEqual(a, b)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // 2. Parse the now-verified payload. `to` comes from the verified body — NEVER trust unverified input.
+  const payload = JSON.parse(raw) as { type: string; record?: { email?: string; raw_user_meta_data?: { name?: string } } };
+  if (payload.type !== "INSERT" || !payload.record?.email) {
+    return NextResponse.json({ ok: true, skipped: true });
+  }
+
+  // 3. Per-recipient rate-limit (defense in depth — Supabase webhooks are authoritative but throttling at the relay protects against replay attacks).
+  const limited = await rateLimit(`email:welcome-webhook:${payload.record.email}`, { max: 3, windowSec: 86400 });
+  if (!limited.ok) {
+    return NextResponse.json({ error: "rate-limited" }, { status: 429 });
+  }
+
+  const origin = process.env.NEXT_PUBLIC_APP_ORIGIN!;
+  const ctaUrl = `${origin}/welcome`;
+  const name = payload.record.raw_user_meta_data?.name ?? "there";
+
+  await sendWelcomeEmail(payload.record.email, name, ctaUrl);
+  return NextResponse.json({ ok: true });
+}
+```
+
+Configure the webhook in the Supabase Dashboard: Database → Webhooks → New Hook → Source: `auth.users` → Method: POST → URL: `${APP_ORIGIN}/api/email/welcome-webhook` → HTTP Headers: `x-webhook-signature: ${HMAC_SHA256(payload, SUPABASE_WEBHOOK_SECRET)}`. Add `SUPABASE_WEBHOOK_SECRET` to Vercel env vars.
+
+## Caveats
+
+The library API (`sendWelcomeEmail({to, ctaUrl, ...})`) takes user-controllable parameters by design — that's its job at the SDK layer. The DANGER is at the route handler that wraps it: if the route accepts `to` or `ctaUrl` from the request body without authentication or allowlisting, the route becomes an open phishing relay:
+
+```bash
+curl -X POST https://<your-app>.vercel.app/api/email/welcome \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"victim@bank.com","ctaUrl":"https://attacker.com/steal","name":"You"}'
+```
+
+The email is sent FROM your verified Resend domain (legitimate SPF/DKIM/DMARC), to a victim of the attacker's choosing, embedding an attacker-controlled URL inside a "Welcome to <project>" template. Mass mail-out is throttled only by Resend's outbound rate limit. The brand of your project becomes a phishing primitive — and the abuse will be reported to Resend, who may suspend the entire domain.
+
+Required mitigations (BOTH route shapes above implement them):
+- Derive `to` from the verified caller (session OR webhook signature) — NEVER from request body.
+- Construct `ctaUrl` server-side from `NEXT_PUBLIC_APP_ORIGIN` + a static path; do NOT accept it from client input.
+- Apply per-recipient rate-limiting.
 
 ### `src/app/api/email/nudge/route.ts`
 

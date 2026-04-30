@@ -38,6 +38,20 @@ python3 .claude/scripts/lib/derive_pages.py scope < experiment/experiment.yaml
 
 The output is the canonical SET of pages that must exist on disk: the union of `golden_path[*].page`, `behaviors[*].pages`, and auth-derived pages (login/signup if stack.auth is set), with `landing` excluded (scaffold-landing owns it). Write the returned list as a numbered list below before spawning any agents. Spawn scaffold-pages agents for EXACTLY these pages -- no more, no fewer. Use the batching policy to determine agent grouping. BG2 check 3b will independently re-derive via the same function and BLOCK if actual count exceeds expected count; BG2 check 3c additionally enforces that every behavior.pages reference exists on disk.
 
+**Phase A ownership exception (#1187)**: pages whose `src/app/<page>/page.tsx` was authored by Phase A (state-11) are listed in `.runs/gate-verdicts/phase-a-sentinel.json`'s `files` array — most commonly `src/app/v/[slug]/page.tsx` for variant-bearing experiments. These pages are out of scope for scaffold-pages spawning because Phase A already wrote them; the trace owner is `phase-a-sentinel.json`, not a scaffold-pages-`<page>`.json. Before spawning, exclude any page whose `page.tsx` appears in the sentinel:
+
+```bash
+# Filter scaffold-pages spawn list against Phase A ownership.
+python3 -c "
+import json
+sentinel = json.load(open('.runs/gate-verdicts/phase-a-sentinel.json')) if __import__('os').path.exists('.runs/gate-verdicts/phase-a-sentinel.json') else {}
+phase_a_files = set(sentinel.get('files', []))
+# Page X is Phase-A-owned iff src/app/<X>/page.tsx is in sentinel.files
+"
+```
+
+The post-fan-out trace verification (below) accepts EITHER ownership form: a `scaffold-pages-<page>.json` trace OR an entry in `phase-a-sentinel.json.files` mapping to that page's `page.tsx`.
+
 > **Why this changed (#1024 fix):** Previously this state read `golden_path` directly and explicitly forbade the `pages:` field. That made any behavior referencing a page outside `golden_path` (e.g., admin, dashboard, portfolio, public invoice page) get backend + RLS + tests scaffolded by scaffold-wire but its frontend page silently blocked, causing 404 traps after deploy. The canonical derivation now reads `behaviors[*].pages` (REQUIRED for web-app + actor:user) so every user-referenced page gets scaffolded. See `.claude/templates/experiment-yaml.md` for schema.
 
 **Auth-derived page exception**: `derive_scope_pages()` already adds `login` and `signup` when `stack.auth` is set, so they appear in the canonical list automatically. Do NOT include scaffold-wire-owned routes (`auth/callback`, `auth/reset-password`) — those are created in STATE 14.
@@ -87,7 +101,24 @@ The script (`.claude/scripts/merge-scaffold-pages-traces.py`) is allowlisted in 
 **Post-fan-out trace verification** (before proceeding):
 Verify each subagent produced its expected output:
 - `test -f .runs/agent-traces/scaffold-libs.json` (already verified in STATE 11b)
-- `test -f .runs/agent-traces/scaffold-pages-<page>.json` for each page in `derive_scope_pages()`
+- For each page in `derive_scope_pages()`: ownership is satisfied by EITHER `test -f .runs/agent-traces/scaffold-pages-<page>.json` OR the page's `src/app/<page>/page.tsx` appearing in `.runs/gate-verdicts/phase-a-sentinel.json`'s `files` array (Phase A authorship — #1187). Run the dual check:
+  ```bash
+  python3 -c "
+  import json, os
+  sentinel = json.load(open('.runs/gate-verdicts/phase-a-sentinel.json')) if os.path.exists('.runs/gate-verdicts/phase-a-sentinel.json') else {}
+  phase_a_files = set(sentinel.get('files', []))
+  pages = open('/dev/stdin').read().split()  # pages from derive_scope_pages
+  missing = []
+  for p in pages:
+      trace_ok = os.path.exists(f'.runs/agent-traces/scaffold-pages-{p}.json')
+      phase_a_ok = f'src/app/{p}/page.tsx' in phase_a_files
+      if not (trace_ok or phase_a_ok):
+          missing.append(p)
+  if missing:
+      raise SystemExit('pages without ownership trace or Phase A authorship: ' + ','.join(missing))
+  print('post-fan-out ownership: OK')
+  " <<< \"$(python3 .claude/scripts/lib/derive_pages.py scope < experiment/experiment.yaml)\"
+  ```
 - Landing subagent reported completion: `test -f .runs/agent-traces/scaffold-landing.json && python3 -c "import json;d=json.load(open('.runs/agent-traces/scaffold-landing.json'));assert d.get('status')=='complete';print('scaffold-landing trace: OK')"`. If trace missing: log "WARN: scaffold-landing did not write trace -- continuing with file-based verification".
 
 If any trace is missing or output was truncated: note the gap for STATE 13 to address.

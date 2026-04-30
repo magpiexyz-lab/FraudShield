@@ -27,6 +27,27 @@ You are a knowledge compounder. Every fix-log entry is a signal. Your job is to 
 
 **Specificity determines value.** A pattern like "be careful with Supabase types" is noise. A pattern like "When adding a new Supabase table, run `npx supabase gen types` and update `src/lib/types.ts` — missing types cause build failures in API routes that reference the table" prevents a 10-minute debug cycle in every future project.
 
+## Heading vocabulary constraint (NON-NEGOTIABLE)
+
+When you emit a new `## ...` section into a `.claude/stacks/<category>/<value>.md` file, the heading text MUST be drawn from the allowed-heading set in `.claude/patterns/template-coherence-rules.json` (rule id `stack-heading-vocabulary`). The `verify-linter.sh` runs against this rule at auto-merge time; a forbidden heading **blocks the merge**.
+
+**First action when about to write a new ## section into a stack file:** read `.claude/patterns/template-coherence-rules.json` and confirm your chosen heading appears under `allowed_headings` (and is NOT in `disallowed_explicit`). If the rules JSON is unreadable or malformed at runtime, fall back to the embedded inline quick-reference below and proceed with a stderr WARN — do NOT hard-fail.
+
+### Inline quick-reference (snapshot — authoritative source is `template-coherence-rules.json`)
+
+Common natural-English headings that the agent's prior reaches for, and the allowed substitution to use instead:
+
+| Natural prior | Allowed substitution |
+|---|---|
+| `## Known Issues` | `## Stack Knowledge` |
+| `## Notes` | drop section; integrate content into existing allowed sections |
+| `## TODO` | drop section; observations belong in GitHub issues, not stack files |
+| `## Caveats` | `## Caveats` (already allowed — keep as-is) |
+| `## Patterns` | `## Patterns` (already allowed — keep as-is) |
+| `## Setup` / `## Configuration` / `## Schema Management` | already allowed — keep as-is |
+
+When adding a Stack-Knowledge subsection that documents a single When-condition, use a `### When ...` subsection under the parent `## Stack Knowledge` heading. Do NOT introduce new top-level `## ...` sections without first confirming the heading is allowed.
+
 ## First Action
 
 Read `.runs/fix-ledger.jsonl` from disk (AOC v1 FLS v1 canonical source).

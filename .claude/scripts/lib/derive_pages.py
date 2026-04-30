@@ -62,6 +62,44 @@ def derive_scope_pages(experiment: dict[str, Any]) -> list[str]:
     return sorted(p for p in pages if p not in _EXCLUDED_FROM_SCOPE)
 
 
+def derive_validation_pages(experiment: dict[str, Any]) -> list[str]:
+    """Return the page set for behavior.pages MEMBERSHIP validation.
+
+    Same union as `derive_scope_pages()` but does NOT exclude "landing".
+    Use this set when validating that every `behaviors[*].pages` element
+    references a real surface in the experiment — landing IS a real surface
+    (root `/`), even though it has no folder under `src/app/<page>/` (the
+    scaffold-landing agent owns it).
+
+    Inventory consumers (sitemap, nav-bar, page-existence audit, scaffold-pages
+    spawn list) MUST keep using `derive_scope_pages()` because they care about
+    disk presence. Only consumers performing membership validation against
+    `behaviors[*].pages` should use this helper — currently that is gate-keeper
+    BG2 check 3c-2 (`agents/gate-keeper.md`). See issue #1184.
+    """
+    pages: set[str] = set()
+
+    for step in (experiment.get("golden_path") or []):
+        if isinstance(step, dict):
+            page = step.get("page")
+            if page:
+                pages.add(page)
+
+    for behavior in (experiment.get("behaviors") or []):
+        if not isinstance(behavior, dict):
+            continue
+        for page in (behavior.get("pages") or []):
+            if page:
+                pages.add(page)
+
+    stack = experiment.get("stack") or {}
+    if stack.get("auth"):
+        pages.add("login")
+        pages.add("signup")
+
+    return sorted(p for p in pages if p not in {None, ""})
+
+
 def derive_public_paths(experiment: dict[str, Any]) -> list[str]:
     """Return the sorted set of route paths that the auth proxy/middleware
     treats as public (no auth required).
@@ -584,15 +622,22 @@ def _load_experiment() -> dict:
 
 
 def main() -> None:
-    if len(sys.argv) < 2 or sys.argv[1] not in ("scope", "funnel", "public_paths"):
+    if len(sys.argv) < 2 or sys.argv[1] not in (
+        "scope",
+        "validation",
+        "funnel",
+        "public_paths",
+    ):
         sys.stderr.write(
-            "usage: derive_pages.py {scope|funnel|public_paths} [< experiment.yaml]\n"
+            "usage: derive_pages.py {scope|validation|funnel|public_paths} [< experiment.yaml]\n"
         )
         sys.exit(2)
 
     experiment = _load_experiment()
     if sys.argv[1] == "scope":
         result = derive_scope_pages(experiment)
+    elif sys.argv[1] == "validation":
+        result = derive_validation_pages(experiment)
     elif sys.argv[1] == "public_paths":
         result = derive_public_paths(experiment)
     else:

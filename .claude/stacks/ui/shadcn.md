@@ -49,41 +49,35 @@ After running setup commands, verify:
 
 ## Effect Components (Magic UI)
 
-Magic UI components are shadcn-compatible — same CLI, same `src/components/ui/`
+Magic UI components are shadcn-compatible — same CLI, same `src/components/magicui/`
 directory, same import pattern. They bring `motion` (Framer Motion) as a peer
-dependency for scroll-triggered and physics-based animations. All 74 components
-are pre-installed during setup (~5 min additional install time).
+dependency for scroll-triggered and physics-based animations.
 
-### Installation
+### Installation — per-component, NEVER bulk
+
+DO NOT install the full MagicUI catalog (74 components). Bulk install ships ~6,000 LOC of unused TSX into `src/components/magicui/`, which:
+
+1. Causes AI agents (`design-critic`, `visual-implementer`) to draw uncritically from the resulting catalog — components like `<Marquee>`, `<Globe>`, `<NeonGradientCard>` get dropped into landings whose visual lineage is warm, restrained, photography-driven (an aesthetic mismatch the lead has to prune post-hoc).
+2. Slows `tsc` and `eslint` on every build (every file is parsed even when unused).
+3. Creates drift exposure when MagicUI publishes breaking changes in components the project doesn't even use.
+
+Install ONLY the components the design brief calls for:
+
 ```bash
-MAGICUI_COMPONENTS=(
-  magic-card warp-background line-shadow-text aurora-text morphing-text
-  scroll-progress lens pointer smooth-cursor progressive-blur
-  neon-gradient-card meteors grid-pattern striped-pattern
-  interactive-grid-pattern dot-pattern flickering-grid hero-video-dialog
-  code-comparison marquee globe shimmer-button
-  tweet-card client-tweet-card bento-grid particles number-ticker
-  ripple retro-grid animated-list animated-shiny-text animated-grid-pattern
-  border-beam animated-beam text-reveal hyper-text animated-gradient-text
-  orbiting-circles dock word-rotate avatar-circles typing-animation
-  sparkles-text spinning-text comic-text icon-cloud text-animate
-  scroll-based-velocity shiny-button
-  shine-border animated-circular-progress-bar confetti
-  cool-mode pulsating-button ripple-button
-  file-tree blur-fade safari rainbow-button
-  interactive-hover-button terminal video-text pixel-image highlighter
-  animated-theme-toggler android
-)
-for comp in "${MAGICUI_COMPONENTS[@]}"; do
-  npx shadcn@latest add -y "https://magicui.design/r/$comp" || true
-done
+# Examples — install only what the brief actually needs
+npx shadcn@latest add "https://magicui.design/r/marquee"
+npx shadcn@latest add "https://magicui.design/r/animated-shiny-text"
+npx shadcn@latest add "https://magicui.design/r/sparkles-text"
 ```
+
+Typical projects use **5-15** of the 74 available components. The brief / design tokens / visual lineage drives the choice — if the brief calls for "warm-cream parchment with restrained photography", `<NeonGradientCard>` is automatically off-lineage and should not be installed.
 
 ### Component Reference
 
 See `.claude/patterns/design.md` → CSS Technique Catalog → Magic UI Component
-Selection Guide for the categorized reference of all 74 components by purpose
+Selection Guide for the full categorized reference of MagicUI components by purpose
 (text effects, backgrounds, cards, buttons, layout, reveal, delight, mockups, etc.).
+Pick components that match the project's visual lineage; ignore the rest.
 
 ### Import Example
 ```tsx
@@ -418,6 +412,30 @@ export function WeeklyDigestPrompt() {
 
 ## Stack Knowledge
 
+### When using role=alert or aria-live for error/status announcements
+
+Always mount the live region UNCONDITIONALLY; toggle visibility via class swap, not via DOM insertion. Some screen readers miss announcements from regions inserted into the DOM after page load (WCAG 4.1.3 Status Messages).
+
+```tsx
+// WRONG — conditional mount; the live region is added to the DOM after the
+// error appears, and screen readers that snapshot the accessibility tree at
+// load time may miss the announcement:
+{error && <p role="alert" aria-live="assertive">{error}</p>}
+
+// CORRECT — unconditional mount; the live region exists from page load,
+// only its visibility flips. Empty text content keeps the region inert
+// (nothing announced) until an error is set.
+<p
+  role="alert"
+  aria-live="assertive"
+  className={error ? "text-destructive text-sm" : "sr-only"}
+>
+  {error ?? ""}
+</p>
+```
+
+The `sr-only` class keeps the region in the accessibility tree but visually hidden when empty. When an error is set, remove `sr-only` to make it visible. Empty text keeps the region inert without announcing anything. This applies to every form-level error region, every status announcer (saved / submitted / pending), and any toast container that renders into a fixed position. Bootstrap-emitted forms that ship the conditional-mount form will be flagged by `accessibility-scanner` against WCAG 4.1.3.
+
 ### When a shadcn component variant class string is used in multiple page callsites
 Export the class string from a shared constants file (e.g., `src/components/<feature>/variants.ts`) and import it in each callsite. Duplicating the class string inline causes callsites to drift independently — one callsite may use `border border-ink/30` while another uses `ring-1 ring-ink/30`, producing inconsistent rendering that only surfaces during a dedicated consistency audit.
 
@@ -493,15 +511,15 @@ import { Button } from "@/components/ui/button";
 
 This applies to any shadcn component (Button, Card, Input) that needs a branded custom color outside the `--primary` / `--secondary` theme tokens. If the custom color is reused in 2+ places, promote to a Tailwind `@theme` token in `globals.css` rather than a named class — see Theme Setup above.
 
-### MagicUI post-install fixes
-After installing MagicUI components via `npx shadcn@latest add`, some components require manual fixes:
+### MagicUI per-component post-install fixes
+After installing a MagicUI component via `npx shadcn@latest add`, some components require manual fixes (apply only to components you actually installed):
 
 - `client-tweet-card.tsx`: change import from `@/components/tweet-card` to `@/components/ui/tweet-card`
 - `globe.tsx`: add `// @ts-nocheck` at the top of the file (`COBEOptions` type incompatibility with the installed version)
-- Missing runtime dependencies: run `npm install @shikijs/transformers @radix-ui/react-accordion` (required by `code-comparison.tsx` and `file-tree.tsx` respectively)
-- Missing shadcn component: run `npx shadcn@latest add -y scroll-area` (required by `file-tree.tsx`)
+- Missing runtime dependencies: run `npm install @shikijs/transformers` (required by `code-comparison.tsx`) or `npm install @radix-ui/react-accordion` (required by `file-tree.tsx`) — only when the corresponding component was installed
+- Missing shadcn component: run `npx shadcn@latest add -y scroll-area` (only required when `file-tree.tsx` was installed)
 
-These fixes are needed because MagicUI CLI generates components with import paths and dependency assumptions that don't match the shadcn/ui project structure. The `|| true` in the bulk install script prevents installation failures from stopping the batch, but the generated files still need post-install corrections.
+These fixes are needed because MagicUI CLI generates components with import paths and dependency assumptions that don't match the shadcn/ui project structure. Apply per-component after install, not as a batch.
 
 ### When text-foreground opacity on dark backgrounds drops below /60, WCAG 1.4.3 contrast fails
 On dark-theme projects (`--background` near slate-950, warm-obsidian, or any custom dark token), `text-foreground/30`, `/40`, and `/50` utilities produce text that falls below the WCAG 1.4.3 Minimum Contrast ratio of 4.5:1. axe-core flags these as violations during accessibility-scanner runs. As a starting heuristic, keep `text-foreground` at **/60 or higher** for body and secondary text on dark backgrounds.

@@ -59,10 +59,18 @@ def main() -> int:
             expected_source = "slot-intent"
 
     if expected_source == "slot-intent":
-        # Strict equality when slot-intent is authoritative.
-        if ic != expected:
+        # Floor based on ai_generated slot count; manifest may legitimately
+        # contain extras (e.g., hand-authored SVG icons that scaffold-images
+        # produced alongside AI photos and chose to record in the manifest).
+        # Per scaffold-images.md L35, svg_icon slots are NOT serialized to
+        # the manifest by default — but real-world bootstrap-verify runs
+        # observed manifests that DID include them, and the strict equality
+        # check rejected legitimate output (#1186). Switch to >= so the
+        # verifier remains a floor (catches under-produced manifests) while
+        # tolerating legitimate extras.
+        if ic < expected:
             print(
-                f"expected exactly {expected} images per slot-intent "
+                f"expected >={expected} images per slot-intent "
                 f"(production_method=ai_generated count), got {ic}",
                 file=sys.stderr,
             )

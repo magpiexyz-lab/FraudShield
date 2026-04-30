@@ -339,6 +339,44 @@ import { NavBar } from "@/components/nav-bar";
 
 ## Stack Knowledge
 
+### When using a variable-axis next/font/google font (e.g., Fraunces with `axes: ["opsz"]`)
+
+DO NOT include an explicit `weight` array — `next/font` rejects the combination at build time with:
+
+> Module not found: Can't resolve 'next/font/google/target.css'
+> Axes can only be defined for variable fonts when the weight property is nonexistent or set to `variable`.
+
+The two configurations are mutually exclusive. Pick ONE form:
+
+```tsx
+// CORRECT — variable font, all weights available, axis-controlled
+const fontDisplay = Fraunces({
+  subsets: ["latin"],
+  variable: "--font-display",
+  axes: ["opsz"],
+  display: "swap",
+});
+
+// CORRECT — static font, narrow weight set, no axis
+const fontDisplay = Fraunces({
+  subsets: ["latin"],
+  variable: "--font-display",
+  weight: ["400", "500", "600"],
+  display: "swap",
+});
+
+// WRONG — combining axes with explicit weight array fails the build
+const fontDisplay = Fraunces({
+  subsets: ["latin"],
+  variable: "--font-display",
+  weight: ["400", "500", "600"],   // remove this line
+  axes: ["opsz"],                   // OR remove this line, but not both together
+  display: "swap",
+});
+```
+
+Applies to every `next/font/google` font that has variable axes (Fraunces opsz, Inter opsz, Recursive CASL/CRSV/MONO/slnt, Roboto Flex, etc.). When picking a variable font for a display role and you want every weight available, prefer the axis form (no `weight`). When you need a narrow weight set (smaller bundle) AND don't need axis control, use the weight form (no `axes`). Never combine them. Phase A `layout.tsx` is sealed against downstream edits — getting this wrong at scaffold-init time forces a shell-side bypass of the protection gate.
+
 ### When verifying shared secrets in API routes (cron triggers, webhooks)
 Use `crypto.timingSafeEqual` instead of `===` or `!==`. String equality is vulnerable to timing side-channels — an attacker can infer secret characters by measuring response-time differences.
 

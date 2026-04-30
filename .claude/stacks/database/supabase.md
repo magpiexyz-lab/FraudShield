@@ -241,6 +241,62 @@ export function createServiceRoleClient() {
 - `createServiceRoleClient()`: Use for admin API routes and webhook handlers that need to bypass RLS (e.g., updating payment status from Stripe webhook). Never use in client-side code or expose the key to the browser. Auto-injected by the Supabase Vercel Integration and /deploy provisioning — only set manually if using a non-Vercel hosting provider.
 - Import `cookies` from `next/headers` (server-only)
 
+### Two server-side modes: cookie-authed vs token-authed
+
+`createServerSupabaseClient()` reads auth from cookies. Use it ONLY when the calling page/route requires the user to be logged in (cookie session present).
+
+When a route is called from an anonymous flow that authorizes via a token in the URL or request body — e.g.:
+
+- `/quote/[token]` → POST `/api/checkout`
+- `/invite/[token]` → POST `/api/invite/accept`
+- `/share/[token]` → GET `/api/share/data`
+- `/reset/[token]` → POST `/api/auth/reset-confirm`
+
+…the cookie-auth client returns no rows even when the underlying row exists, because RLS evaluates `auth.uid()` as NULL.
+
+| Mode | Auth source | Client | RLS posture |
+|---|---|---|---|
+| Cookie-authed user | Supabase auth cookies | `createServerSupabaseClient()` | per-user RLS (`auth.uid()`) |
+| Token-authed flow | Token in URL/body | `createServiceRoleClient()` | RLS bypassed; **app code MUST validate the token** |
+
+DO NOT relax RLS to allow `anon SELECT` on token-authorized tables — that opens row enumeration / token-bypass attacks (an attacker can scan IDs without a valid token). Use the service-role client and validate the token in application code instead:
+
+```ts
+// src/app/api/checkout/route.ts — token-authed canonical pattern
+import { NextResponse } from "next/server";
+import { createServiceRoleClient } from "@/lib/supabase-server";
+
+export async function POST(req: Request) {
+  const { token } = await req.json();
+  if (typeof token !== "string" || token.length < 16) {
+    return NextResponse.json({ error: "invalid token" }, { status: 400 });
+  }
+
+  // Service-role client bypasses RLS; the token is the authorization.
+  const supabase = createServiceRoleClient();
+  const { data: quote, error } = await supabase
+    .from("quotes")
+    .select("id, amount_cents, status, token_expires_at")
+    .eq("token", token)
+    .single();
+
+  if (error || !quote) {
+    return NextResponse.json({ error: "not found" }, { status: 404 });
+  }
+  if (quote.token_expires_at && new Date(quote.token_expires_at) < new Date()) {
+    return NextResponse.json({ error: "token expired" }, { status: 410 });
+  }
+  if (quote.status !== "signed") {
+    return NextResponse.json({ error: "not payable" }, { status: 409 });
+  }
+
+  // … proceed with state-transition guards + payment-provider checkout creation.
+  return NextResponse.json({ ok: true, amount_cents: quote.amount_cents });
+}
+```
+
+When the token-authorized table holds state-machine financial state (status / amount columns), the table's write policies MUST also be service-role-only (see `### When a table holds state-machine financial state, write policies must be service-role-only` below). The two patterns are complementary: token-auth handles the read path; service-role-only writes block the client-side mutation path.
+
 ### `scripts/auto-migrate.mjs`
 
 Runs as the `prebuild` script before every `npm run build`. Applies SQL migrations from `supabase/migrations/` in order, tracking applied migrations in an `_auto_migrations` table.
@@ -309,11 +365,73 @@ SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 - User-owned tables must have:
   - `user_id uuid REFERENCES auth.users(id) NOT NULL`
 - `ALTER TABLE ... ENABLE ROW LEVEL SECURITY` on every table
-- RLS policies:
+- RLS policies (default `_own` pattern — appropriate for user-owned content like profiles, journals, notes):
   - SELECT: `USING (auth.uid() = user_id)`
   - INSERT: `WITH CHECK (auth.uid() = user_id)`
   - UPDATE: `USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id)` — the WITH CHECK clause prevents a user from changing `user_id` to another user's ID (privilege escalation via `UPDATE SET user_id = ...`)
   - DELETE: `USING (auth.uid() = user_id)`
+
+### When a table holds state-machine financial state, write policies must be service-role-only
+
+The default `_own` RLS pattern above is the WRONG default for tables whose status / amount / timestamp columns are mutated ONLY by server-side flows (admin signature route, payment-webhook handler, milestone-approve route with state-transition guards). The `_update_own` policy on these tables lets authenticated clients UPDATE every column of their own row directly via the Supabase JS client from the browser console, bypassing every server-side guard:
+
+```js
+// Concrete exploit (browser console after admin signs the $25,000 quote):
+await supabase.from('quotes').update({ amount_cents: 100 }).eq('id', '<their-quote-id>');
+// Then click "Pay 50% deposit" on /quote/[token]
+// /api/checkout reads the tampered row, creates a payment session for $0.50.
+```
+
+The studio is contractually committed to deliver $25k of work for 50 cents. Application-layer `.eq('user_id', user.id)` filters do NOT compensate — UPDATE policies on financial columns leak directly to PostgREST; the application code never sees the request.
+
+#### Decision tree: do my tables need service-role-only writes?
+
+Walk this top-down. STOP at the first YES — that table needs service-role-only writes.
+
+1. **Step 1 — lexical pre-filter (catches common cases).** Does this table have ANY column whose name matches one of:
+   - Money: `amount_cents`, `amount`, `balance`, `subtotal`, `total`, `price`, `fee`, `payout`, `refund`
+   - State machines: `status`, `state`, `lifecycle`, `phase`, `stage`, `step`
+   - Server-only timestamps: `paid_at`, `signed_at`, `approved_at`, `released_at`, `webhook_received_at`
+2. **Step 2 — invariant question (catches domain-specific names).** Does ANY column on this table get mutated by application logic that the user must NOT bypass — e.g., a state-transition guard, a webhook write, an admin signature, a Stripe sync?
+   - Examples that the lexical filter misses but this question catches: `escrow_balance`, `workflow_step`, `commitment_value`, `sla_window_close`.
+
+YES on either step → service-role-only writes. The lexical filter is a reading aid for common cases; the invariant question is the authoritative test.
+
+#### Service-role-only RLS template
+
+```sql
+ALTER TABLE quotes ENABLE ROW LEVEL SECURITY;
+
+-- Owners may read their own row (RLS still gates SELECT).
+DROP POLICY IF EXISTS "quotes_select_own" ON quotes;
+CREATE POLICY "quotes_select_own" ON quotes
+  FOR SELECT USING (auth.uid() = user_id);
+
+-- NO INSERT / UPDATE / DELETE policies for clients.
+-- The absence of these policies means PostgREST returns 401 / 403 on any
+-- client-issued INSERT / UPDATE / DELETE. Server-side flows use the
+-- service-role client which bypasses RLS entirely.
+```
+
+The route that performs the legitimate write uses `createServiceRoleClient()` and applies the state-transition guard in application code:
+
+```ts
+// src/app/api/quote/sign/route.ts — server-only mutation path
+const supabase = createServiceRoleClient();
+const { data: row } = await supabase
+  .from("quotes")
+  .select("id, status, amount_cents")
+  .eq("id", quoteId)
+  .single();
+if (row.status !== "draft") return NextResponse.json({ error: "not draftable" }, { status: 409 });
+await supabase
+  .from("quotes")
+  .update({ status: "signed", signed_at: new Date().toISOString() })
+  .eq("id", quoteId);
+```
+
+Existing user-owned tables (profiles, journals, notes) keep the default `_own` pattern above. Only state-machine financial tables get the service-role-only treatment.
+
 - Add SQL comments explaining each table's purpose
 - Migrations are applied automatically during Vercel builds via the `prebuild` script (when `POSTGRES_URL_NON_POOLING` is set by the Supabase Vercel Integration). They are also applied by CI on merge to `main` (via `supabase db push` if CI secrets are configured). For manual use: `make migrate`. Fallback: copy SQL into Supabase Dashboard → SQL Editor.
 
