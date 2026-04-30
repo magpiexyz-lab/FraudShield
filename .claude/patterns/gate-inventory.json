@@ -27,10 +27,12 @@
       "deny_class": "state-binary",
       "tool_surface": ["Edit", "Write"],
       "shell_bypass_possible": true,
-      "existing_escape": null,
+      "existing_escape": "ALSO-ALLOW on .runs/phase-a-repair-attestations/<file>.json with evidence_validated:true (slice 3)",
       "earc_subpattern": "gate-side",
       "covered_in_slice": 3,
-      "rationale": "Reported in #1182. Protected files: layout.tsx, not-found.tsx, error.tsx, globals.css. Phase B time-window deny with no repair channel; lead bypassed via python -c shell write."
+      "covered_in_pr": "#1205",
+      "bash_guard": ".claude/hooks/bootstrap-phase-a-write-guard.sh (WARN mode in slice 3; flips to deny in slice 4 after one-week soak)",
+      "rationale": "Reported in #1182. Protected files: layout.tsx, not-found.tsx, error.tsx, globals.css. Phase B time-window deny with no repair channel; lead bypassed via python -c shell write. Closed by EARC slice 3: write-phase-a-repair.sh validates evidence + stamps lead-fix; gate ALSO-ALLOWs on fresh attestation; bootstrap-phase-a-write-guard.sh closes the shell-bypass surface."
     },
     {
       "path": ".claude/scripts/write-recovery-trace.sh",
@@ -38,10 +40,11 @@
       "deny_class": "state-binary",
       "tool_surface": ["Bash"],
       "shell_bypass_possible": false,
-      "existing_escape": "non_fixer_agents allowlist for no_fixes_claimed:true",
+      "existing_escape": "--fixes-json + --evidence-source paired flags (slice 1); validate-recovery.sh stamps recovery_validated:true via validate_evidence library when lead_evidence_source validates",
       "earc_subpattern": "writer-side",
       "covered_in_slice": 1,
-      "rationale": "Reported in #1189. Lacks --fixes-json acceptance; fixer-class agents that crash mid-flight cannot record evidence-anchored fixes; lead misclassifies as self-degraded losing abandoned status fidelity."
+      "covered_in_pr": "#1203",
+      "rationale": "Reported in #1189. Lacks --fixes-json acceptance; fixer-class agents that crash mid-flight cannot record evidence-anchored fixes; lead misclassifies as self-degraded losing abandoned status fidelity. Closed by EARC slice 1: writer accepts --fixes-json + --evidence-source; trace gains lead_evidence_source + per-entry lead_transcribed:true; validator delegates to shared validate_build_evidence."
     },
     {
       "path": ".claude/hooks/agent-trace-write-gate.sh",
@@ -572,8 +575,9 @@
     "rationale_for_narrow_scope": "Most gates are verdict-pass-through (the verdict file itself is the evidence channel) or input-schema (the payload IS the bug — no repair path). Only the two reported instances exhibit the binary-contract-no-evidence-escape pathology in the EARC sense. Slice 4 generalisation flips the WARN linter rule to DENY but does NOT migrate additional gates, because the inventory shows the pathology is genuinely confined to the two reported instances + their structural siblings (handled in Slice 3's bootstrap-phase-a-write-guard.sh)."
   },
   "_enforcement_versions": {
-    "schema_version": "1.0",
+    "schema_version": "1.1",
     "last_audited": "2026-04-30",
-    "audit_owner": "EARC implementation (closes #1182, #1189)"
+    "audit_owner": "EARC implementation (closes #1182, #1189)",
+    "_v1_1_changes": "Slice 4 (chore/earc-generalisation): updated covered_in_slice + covered_in_pr fields on the two reported instances after slices 1 + 3 shipped. existing_escape rewritten to reflect the now-shipped EARC channels. Bash-guard reference added for #1182. The earc-gate-evidence-escape coherence linter rule (template-coherence-rules.json) now reports zero findings against this inventory."
   }
 }
