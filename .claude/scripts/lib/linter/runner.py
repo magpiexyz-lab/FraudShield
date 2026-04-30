@@ -1152,6 +1152,188 @@ def main() -> int:
         return out
 
 
+    def check_gate_artifact_identity(rule):
+        """GRAIM v2 C1+C2 lint: VERIFY blocks reading enforced_artifacts must assert
+        {skill, run_id} match against active context. Warn-only by default; per-artifact
+        severity flip happens via enforced_artifacts allowlist growth in Slice 3.
+
+        Rule shape:
+          {
+            "id": "<rule_id>",
+            "type": "gate_artifact_identity",
+            "manifest_path": ".claude/patterns/gate-readable-artifacts-canonical.json",
+            "enforced_artifacts": [".runs/observation-enforcement.json", ...],
+            "registry_path": "<optional path; default .claude/patterns/state-registry.json>"
+          }
+
+        Walks every VERIFY string in state-registry.json. For each enforced artifact
+        whose path appears in a VERIFY block, the block MUST also assert
+        d.get('skill') == active_skill AND d.get('run_id') == active_run_id.
+        """
+        out = []
+        enforced = set(rule.get("enforced_artifacts", []))
+        if not enforced:
+            return out  # nothing to enforce yet — allowlist is empty
+
+        reg_path = rule.get("registry_path", os.path.join(REPO_ROOT, ".claude/patterns/state-registry.json"))
+        reg_abs = reg_path if os.path.isabs(reg_path) else os.path.join(REPO_ROOT, reg_path)
+        if not os.path.isfile(reg_abs):
+            return [_emit_finding(rule, f"registry not found at {reg_path}")]
+        try:
+            reg = json.load(open(reg_abs))
+        except (OSError, json.JSONDecodeError) as e:
+            return [_emit_finding(rule, f"registry unreadable: {e}")]
+
+        # Walk every VERIFY string in the registry. Mirrors check_artifact_transience:
+        # registry top-level is dict-of-skills; each skill's children are state entries,
+        # and a state entry is EITHER a bare string (legacy VERIFY) OR a dict with a
+        # `verify` key. Sibling fields like `artifact` / `lifecycle` are NOT verify
+        # strings and must not be treated as such.
+        verify_strings = []
+        for skill_name, skill_node in reg.items():
+            if not isinstance(skill_node, dict):
+                continue
+            for state_id, state_val in skill_node.items():
+                if isinstance(state_val, str):
+                    verify_strings.append((f"{skill_name}.{state_id}", state_val))
+                elif isinstance(state_val, dict):
+                    v = state_val.get("verify")
+                    if isinstance(v, str):
+                        verify_strings.append((f"{skill_name}.{state_id}.verify", v))
+
+        for state_path, verify_str in verify_strings:
+            for art in enforced:
+                if art not in verify_str:
+                    continue
+                # Identity assertion checks: must compare d.get('skill')/d.get('run_id')
+                # against active_skill/active_run_id.
+                has_skill_check = (
+                    ("d.get('skill')" in verify_str or 'd.get("skill")' in verify_str)
+                    and "active_skill" in verify_str
+                )
+                has_run_id_check = (
+                    ("d.get('run_id')" in verify_str or 'd.get("run_id")' in verify_str)
+                    and "active_run_id" in verify_str
+                )
+                if not (has_skill_check and has_run_id_check):
+                    out.append(_emit_finding(rule,
+                        f"VERIFY at registry.{state_path} reads {art} but lacks "
+                        f"skill/run_id identity assertion (GRAIM v2 C2 violation)"))
+        return out
+
+
+    def check_boundary_kind_required(rule):
+        """GRAIM v2 C3 lint: declared fast-path branches must gate on
+        boundary_kind == diff. Empty-signal fast-paths must require explicit opt-in.
+
+        Rule shape:
+          {
+            "id": "<rule_id>",
+            "type": "boundary_kind_required",
+            "enforced_artifacts": [".runs/agent-traces/design-critic-*.json", ...],
+            "agent_files_glob": "<optional; default .claude/agents/*.md>",
+            "skill_files_glob": "<optional; default .claude/skills/**/*.md>"
+          }
+
+        For each enforced boundary-emitting artifact path, scan agent + skill files
+        for fast-path heuristics (the words "fast-path"/"fast_path" near the path)
+        without `boundary_kind` gating.
+        """
+        out = []
+        enforced = set(rule.get("enforced_artifacts", []))
+        if not enforced:
+            return out
+
+        skill_glob = rule.get("skill_files_glob", os.path.join(REPO_ROOT, ".claude/skills/**/*.md"))
+        agent_glob = rule.get("agent_files_glob", os.path.join(REPO_ROOT, ".claude/agents/*.md"))
+        # Resolve relative globs against REPO_ROOT
+        if not os.path.isabs(skill_glob):
+            skill_glob = os.path.join(REPO_ROOT, skill_glob)
+        if not os.path.isabs(agent_glob):
+            agent_glob = os.path.join(REPO_ROOT, agent_glob)
+
+        candidate_files = sorted(glob.glob(skill_glob, recursive=True)) + sorted(glob.glob(agent_glob))
+        for sf in candidate_files:
+            try:
+                content = open(sf).read()
+            except OSError:
+                continue
+            lower_content = content.lower()
+            mentions_fast_path = ("fast-path" in lower_content or "fast_path" in lower_content)
+            if not mentions_fast_path:
+                continue
+            for art in enforced:
+                if art in content and "boundary_kind" not in content:
+                    out.append(_emit_finding(rule,
+                        f"{os.path.relpath(sf, REPO_ROOT)} mentions {art} fast-path "
+                        f"but does not gate on boundary_kind == diff (GRAIM v2 C3 violation)"))
+        return out
+
+
+    def check_gate_artifact_discovery(rule):
+        """GRAIM v2 promotion guard: warn-only — find .runs/*.json paths gate-read by
+        VERIFY/hooks that are NOT declared in the canonical manifest. Catches the
+        case where a telemetry artifact silently becomes gate-readable.
+
+        Rule shape:
+          {
+            "id": "<rule_id>",
+            "type": "gate_artifact_discovery",
+            "manifest_path": ".claude/patterns/gate-readable-artifacts-canonical.json",
+            "registry_path": "<optional; default .claude/patterns/state-registry.json>",
+            "hooks_glob": "<optional; default .claude/hooks/*.sh>"
+          }
+        """
+        out = []
+        manifest_path = rule.get("manifest_path", os.path.join(REPO_ROOT, ".claude/patterns/gate-readable-artifacts-canonical.json"))
+        registry_path = rule.get("registry_path", os.path.join(REPO_ROOT, ".claude/patterns/state-registry.json"))
+        hooks_glob = rule.get("hooks_glob", os.path.join(REPO_ROOT, ".claude/hooks/*.sh"))
+
+        if not os.path.isabs(manifest_path):
+            manifest_path = os.path.join(REPO_ROOT, manifest_path)
+        if not os.path.isabs(registry_path):
+            registry_path = os.path.join(REPO_ROOT, registry_path)
+        if not os.path.isabs(hooks_glob):
+            hooks_glob = os.path.join(REPO_ROOT, hooks_glob)
+
+        if not os.path.isfile(manifest_path):
+            return out  # silent no-op: manifest absent means GRAIM not yet present
+        try:
+            manifest = json.load(open(manifest_path))
+        except (OSError, json.JSONDecodeError):
+            return out
+
+        declared = {a.get("path", "") for a in manifest.get("artifacts", []) if a.get("path")}
+
+        # Discover .runs/*.json paths in VERIFY blocks (raw text scan over registry)
+        discovered = set()
+        artifact_re = re.compile(r"\.runs/[a-zA-Z0-9_./-]+\.json(?![a-zA-Z0-9])")
+        if os.path.isfile(registry_path):
+            try:
+                reg_text = open(registry_path).read()
+                for m in artifact_re.finditer(reg_text):
+                    discovered.add(m.group(0))
+            except OSError:
+                pass
+
+        # Discover .runs/*.json paths in hooks
+        for hook in sorted(glob.glob(hooks_glob)):
+            try:
+                text = open(hook).read()
+                for m in artifact_re.finditer(text):
+                    discovered.add(m.group(0))
+            except OSError:
+                continue
+
+        # Promotion candidates: discovered but not declared
+        promotion_candidates = discovered - declared
+        for art in sorted(promotion_candidates):
+            out.append(_emit_finding(rule,
+                f"{art} is gate-read (in VERIFY or hook) but not declared in "
+                f"GRAIM canonical manifest — promotion regression risk"))
+        return out
+
+
     def check_gate_evidence_escape(rule):
         """EARC slice 1: every gate listed in gate-inventory.json with
         earc_subpattern in {gate-side, writer-side} must offer a documented
@@ -1875,6 +2057,9 @@ def main() -> int:
         "artifact_transience":              (check_artifact_transience,              {"skill"},                                                {"init_script"},                                              False),
         "executor_enforcement":             (check_executor_enforcement,             set(),                                                    {"manifest_path", "hooks_dir", "agents_glob"},                False),
         "gate_evidence_escape":             (check_gate_evidence_escape,             set(),                                                    {"inventory_path", "registry_path"},                          False),
+        "gate_artifact_identity":           (check_gate_artifact_identity,           {"manifest_path", "enforced_artifacts"},                  {"registry_path"},                                            False),
+        "boundary_kind_required":           (check_boundary_kind_required,           {"enforced_artifacts"},                                   {"agent_files_glob", "skill_files_glob"},                     False),
+        "gate_artifact_discovery":          (check_gate_artifact_discovery,          {"manifest_path"},                                        {"registry_path", "hooks_glob"},                              False),
     }
     META_KEYS = {"id", "type", "severity", "description", "_transitional_note", "_comment"}
 

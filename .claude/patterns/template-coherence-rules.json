@@ -258,6 +258,28 @@
       "registry_path": ".claude/patterns/state-registry.json",
       "description": "EARC (closes #1182, #1189 recurrence): every gate listed in gate-inventory.json with earc_subpattern in {gate-side, writer-side} must offer a documented evidence-escape branch (inline reference to attestation/EARC/lead_evidence_source) or be declared in state-registry.repair_evidence.",
       "_comment": "Slice 1 (#1203): shipped in WARN. Slice 4b: flipped to BLOCK once gate-inventory.json showed zero unhandled findings — the two reported instances are wired via slices 1 + 3, and any new gate added with earc_subpattern in {gate-side, writer-side} but lacking an escape will now fail the linter."
+    },
+    {
+      "id": "graim-gate-artifact-identity",
+      "type": "gate_artifact_identity",
+      "severity": "warn",
+      "manifest_path": ".claude/patterns/gate-readable-artifacts-canonical.json",
+      "enforced_artifacts": [".runs/observation-enforcement.json"],
+      "description": "GRAIM v2 C1+C2 — warn when a VERIFY reading an enforced gate-readable artifact lacks identity assertion. enforced_artifacts grows in Slice 3."
+    },
+    {
+      "id": "graim-boundary-kind-required",
+      "type": "boundary_kind_required",
+      "severity": "warn",
+      "enforced_artifacts": [".runs/agent-traces/design-critic-*.json"],
+      "description": "GRAIM v2 C3 — warn when a fast-path branch emits a boundary-emitting artifact without gating on boundary_kind == diff."
+    },
+    {
+      "id": "graim-gate-artifact-discovery",
+      "type": "gate_artifact_discovery",
+      "severity": "warn",
+      "manifest_path": ".claude/patterns/gate-readable-artifacts-canonical.json",
+      "description": "GRAIM v2 — permanent warn-only auto-discovery: flag .runs/*.json paths that are gate-read but not in the canonical manifest (promotion regression catch)."
     }
   ]
 }

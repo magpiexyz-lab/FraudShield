@@ -142,6 +142,45 @@
         "agents_glob": { "type": "string", "description": "Glob of agent .md files (default .claude/agents/*.md)." },
         "description": { "type": "string" }
       }
+    },
+    "rule_gate_artifact_identity": {
+      "description": "GRAIM v2 C1+C2: validate that any VERIFY block reading a gate-readable artifact (declared in enforced_artifacts) includes identity assertions (run_id + skill match against active context).",
+      "required": ["id", "type", "manifest_path", "enforced_artifacts"],
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "const": "gate_artifact_identity" },
+        "severity": { "$ref": "#/definitions/severity" },
+        "manifest_path": { "type": "string", "description": "Path to gate-readable-artifacts-canonical.json" },
+        "enforced_artifacts": { "type": "array", "items": { "type": "string" }, "description": "Subset of artifacts in manifest_path for which identity assertion is enforced. Grows incrementally as Slice 3 migrations land." },
+        "registry_path": { "type": "string", "description": "Path to state-registry.json (default .claude/patterns/state-registry.json)." },
+        "description": { "type": "string" }
+      }
+    },
+    "rule_boundary_kind_required": {
+      "description": "GRAIM v2 C3: validate that fast-path branches in declared agents/scripts gate on boundary_kind == diff. Empty-signal fast-paths must require explicit opt-in.",
+      "required": ["id", "type", "enforced_artifacts"],
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "const": "boundary_kind_required" },
+        "severity": { "$ref": "#/definitions/severity" },
+        "agent_files_glob": { "type": "string", "description": "Glob of agent .md files (default .claude/agents/*.md)." },
+        "skill_files_glob": { "type": "string", "description": "Glob of skill state files (default .claude/skills/**/*.md)." },
+        "enforced_artifacts": { "type": "array", "items": { "type": "string" }, "description": "Subset of boundary-emitting paths for which boundary_kind gating is enforced." },
+        "description": { "type": "string" }
+      }
+    },
+    "rule_gate_artifact_discovery": {
+      "description": "GRAIM v2: warn-only auto-discovery — grep all VERIFY blocks + hooks for .runs/*.json reads and warn when a path is gate-read but not declared in the GRAIM canonical manifest. Catches promotion regressions where a telemetry artifact silently becomes gate-readable.",
+      "required": ["id", "type", "manifest_path"],
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "const": "gate_artifact_discovery" },
+        "severity": { "$ref": "#/definitions/severity" },
+        "manifest_path": { "type": "string", "description": "Path to gate-readable-artifacts-canonical.json" },
+        "registry_path": { "type": "string" },
+        "hooks_glob": { "type": "string", "description": "Glob of hook files (default .claude/hooks/*.sh)." },
+        "description": { "type": "string" }
+      }
     }
   },
   "type": "object",
@@ -162,7 +201,10 @@
           { "$ref": "#/definitions/rule_internal_href_validity" },
           { "$ref": "#/definitions/rule_pages_no_payload_type_exports" },
           { "$ref": "#/definitions/rule_artifact_transience" },
-          { "$ref": "#/definitions/rule_executor_enforcement" }
+          { "$ref": "#/definitions/rule_executor_enforcement" },
+          { "$ref": "#/definitions/rule_gate_artifact_identity" },
+          { "$ref": "#/definitions/rule_boundary_kind_required" },
+          { "$ref": "#/definitions/rule_gate_artifact_discovery" }
         ]
       }
     }
