@@ -31,6 +31,18 @@ This ensures thin-wrapper pages (e.g., landing pages with variants) receive
 full visual review instead of fast-pathing with an empty boundary.
 
 1. Compute the PR file boundary: `git diff --name-only $(git merge-base HEAD main)...HEAD`
+1a. **Determine boundary_kind** (#1196 — distinguish "PR didn't touch this page" from "no commits exist yet"):
+   ```bash
+   if [ "$(git rev-parse HEAD 2>/dev/null)" = "$(git merge-base HEAD main 2>/dev/null)" ]; then
+     BOUNDARY_KIND="full-tree"
+   else
+     BOUNDARY_KIND="diff"
+   fi
+   ```
+   - `BOUNDARY_KIND="diff"` → empty FILE_BOUNDARY legitimately means "PR didn't touch this page" → fast-path is correct.
+   - `BOUNDARY_KIND="full-tree"` → no commits exist on the feature branch (HEAD == merge-base, typical at /bootstrap pre-commit) → empty FILE_BOUNDARY is **ambiguous**, NOT a signal to skip. The lead supplies a non-empty fallback boundary instead (see step below).
+
+   **Skip this branch** if `design-page-set.json` declares `not_applicable: true` (non-web-app archetype; design-critic does not run anyway per the line-18 archetype gate).
 2. For each discovered page file `src/app/<page>/page.tsx`:
    - Compute `PR_file_boundary ∩ src/app/<page>/**`. If non-empty, skip (page has page-local files in PR).
    - Read the page file. Extract all imports from `src/components/` or `src/lib/`
@@ -74,6 +86,20 @@ full visual review instead of fast-pathing with an empty boundary.
    If no thin wrappers detected: write with empty `claims` and `thin_wrappers` arrays.
    > **Backward compatible:** All downstream logic (gate validation, Stage 1c exclusion)
    > treats missing or empty `design-claims.json` as "no claims" — current behavior preserved.
+
+5a. **Lead-supplied fallback boundary for full-tree mode** (#1196 — only when `BOUNDARY_KIND == "full-tree"`):
+   For each entry in `.runs/design-page-set.json["pages"]`:
+   - Compute `fallback_boundary[page]` = page-local files matched by `src/app/<page>/**` (recursive)
+     **MINUS** shadcn primitives (drop any path starting with `src/components/ui/` or `src/components/magicui/` per the same filter at lines 38-42)
+     **MINUS** `**/api/**` (API routes are not visual)
+   - For landing entry (`design-page-set.json["landing"]`, may be null):
+     - If null → skip landing
+     - Else use `landing.source_files` (already filtered to non-API page sources by `derive_pages.py:392-421`)
+       and apply the same shadcn filter
+
+   When `BOUNDARY_KIND == "full-tree"`, the FILE_BOUNDARY emitted into the agent's spawn prompt (next step) MUST use `fallback_boundary[page]` instead of `PR_file_boundary ∩ src/app/<page>/**`.
+
+   The agent contract is unchanged — design-critic always sees a concrete reviewable boundary. Skill identity stays in the lead.
 
 #### Stage 1: Per-page review (parallel)
 
@@ -159,6 +185,7 @@ Spawn **one design-critic agent per page**, ALL as parallel foreground Agent cal
     `image_issues_for_landing` is optional — omit if you observe nothing
     image-related."
 - Instruction to write trace as `design-critic-<page_name>.json`
+- **Pre-condition for fast-path** (#1196): the empty-boundary fast-path is only valid when `BOUNDARY_KIND == "diff"`. When `BOUNDARY_KIND == "full-tree"` (no commits exist; typical at /bootstrap pre-commit), the lead has already supplied a non-empty fallback boundary in Step 5a above — the FILE_BOUNDARY block in the spawn prompt will not be empty. If you encounter `BOUNDARY_KIND="full-tree"` AND empty FILE_BOUNDARY, this is a contract violation by the lead — emit `degraded_reason="lead-supplied-empty-boundary-in-full-tree-mode"` and verdict=fail; do NOT take fast-path.
 - **Empty-boundary fast path** (#1061): If ALL files between `FILE_BOUNDARY_START` and `FILE_BOUNDARY_END`
   are empty (no page-local files in PR) **AND no `CLAIMED_SHARED_START`/`CLAIMED_SHARED_END` block
   is present**, execute a **fast-path review**: check whether any modified library files (`src/lib/**`)
@@ -183,7 +210,8 @@ Spawn **one design-critic agent per page**, ALL as parallel foreground Agent cal
                    "page":"<page>","fast_path":true,"min_score":10,"min_score_all":10,
                    "pages_reviewed":1,"sections_below_8":0,"fixes_applied":0,
                    "unresolved_sections":0,"image_issues_for_landing":[],
-                   "candidates_skipped_evidence":{"reason":"empty-boundary-fast-path"}}'
+                   "candidates_skipped_evidence":{"reason":"empty-boundary-fast-path"},
+                   "boundary_kind":"$BOUNDARY_KIND"}'
   ```
   The helper writes `provenance="self-degraded"`, `partial=true`, `degraded_reason="empty-boundary-fast-path"`,
   and `no_fixes_claimed=true` (since `fixes:[]`). State-3b Stage-1c will run

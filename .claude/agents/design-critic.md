@@ -189,6 +189,10 @@ in Step 3.5 of `.claude/procedures/design-critic.md` — before screenshotting.
 > `validated_fallback` predicate; `aggregate_ok` accepts it without manual
 > override.
 
+> Note (#1196): `boundary-skip` may carry an additional `boundary_kind` field
+> in the trace's `extra-json`. This is an observability tag set by the lead;
+> the agent does not consume it.
+
 ### Verdict gate (tight)
 
 - If `review_method ∈ {"source-only", "unknown"}`, select one of two sub-branches:
