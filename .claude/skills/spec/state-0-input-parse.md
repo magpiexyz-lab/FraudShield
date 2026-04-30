@@ -101,7 +101,17 @@ Wait for user confirmation.
 
 **VERIFY:**
 ```bash
-test -f .runs/spec-context.json
+test -f .runs/spec-context.json && python3 -c "import json,glob; d=json.load(open('.runs/spec-context.json')); ctx=None
+for f in glob.glob('.runs/*-context.json'):
+    if 'epilogue' in f: continue
+    try: c=json.load(open(f))
+    except: continue
+    if c.get('completed') is True: continue
+    if ctx is None or (c.get('timestamp','') > (ctx.get('timestamp','') or '')): ctx=c
+active_skill=ctx.get('skill','') if ctx else ''
+active_run_id=ctx.get('run_id','') if ctx else ''
+assert d.get('skill') == active_skill, 'spec-context.json skill=%r does not match active_skill=%r (stale prior-skill artifact)' % (d.get('skill'), active_skill)
+assert d.get('run_id') == active_run_id, 'spec-context.json run_id=%r does not match active_run_id=%r (stale artifact)' % (d.get('run_id'), active_run_id)"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
