@@ -168,6 +168,68 @@ class TestPhaseAForgerySurface(unittest.TestCase):
         r = _hook_run("echo 'x' > src/lib/utils.ts")
         self.assertEqual(r.returncode, 0)
 
+    # -- False-positive guards ---------------------------------------------
+    # Legitimate commands that mention Phase A paths but do NOT write to
+    # them must NOT be denied. These cases justify flipping MODE=deny:
+    # if any of them fail, real-world workflows would break.
+
+    def test_git_checkout_phase_a_allowed(self):
+        """git checkout <phase-a> — no write operator; reverts via git."""
+        r = _hook_run("git checkout src/app/layout.tsx")
+        self.assertEqual(r.returncode, 0, msg=r.stderr)
+
+    def test_git_status_with_phase_a_path_allowed(self):
+        r = _hook_run("git status -- src/app/layout.tsx")
+        self.assertEqual(r.returncode, 0, msg=r.stderr)
+
+    def test_git_diff_phase_a_allowed(self):
+        r = _hook_run("git diff src/app/layout.tsx")
+        self.assertEqual(r.returncode, 0, msg=r.stderr)
+
+    def test_echo_phase_a_path_into_other_file_allowed(self):
+        """Writing the Phase A path AS A STRING into a non-Phase-A file."""
+        r = _hook_run("echo 'src/app/layout.tsx' > /tmp/audit.log")
+        self.assertEqual(r.returncode, 0, msg=r.stderr)
+
+    def test_find_named_after_phase_a_allowed(self):
+        r = _hook_run("find . -name layout.tsx -type f")
+        self.assertEqual(r.returncode, 0, msg=r.stderr)
+
+    def test_wc_phase_a_allowed(self):
+        r = _hook_run("wc -l src/app/layout.tsx")
+        self.assertEqual(r.returncode, 0, msg=r.stderr)
+
+    def test_stat_phase_a_allowed(self):
+        r = _hook_run("stat src/app/error.tsx")
+        self.assertEqual(r.returncode, 0, msg=r.stderr)
+
+    def test_diff_two_phase_a_files_allowed(self):
+        r = _hook_run("diff src/app/layout.tsx src/app/layout.tsx.bak")
+        self.assertEqual(r.returncode, 0, msg=r.stderr)
+
+    def test_commenting_about_phase_a_in_pipe_allowed(self):
+        """A pipe that mentions a Phase A path in a string but writes elsewhere."""
+        r = _hook_run("echo 'edited src/app/layout.tsx today' | tee -a /tmp/changes.log")
+        self.assertEqual(r.returncode, 0, msg=r.stderr)
+
+    def test_python_read_phase_a_allowed(self):
+        """Read-only python access to a Phase A path."""
+        r = _hook_run("python3 -c \"print(open('src/app/layout.tsx').read())\"")
+        self.assertEqual(r.returncode, 0, msg=r.stderr)
+
+    def test_pathlib_read_text_allowed(self):
+        r = _hook_run(
+            "python3 -c \"import pathlib; pathlib.Path('src/app/layout.tsx').read_text()\""
+        )
+        self.assertEqual(r.returncode, 0, msg=r.stderr)
+
+    def test_grep_then_unrelated_write_allowed(self):
+        """grep on Phase A then write to a non-Phase-A file — chain split
+        must not falsely flag the second segment because of the first
+        segment's Phase A reference."""
+        r = _hook_run("grep next src/app/layout.tsx > /tmp/found.txt")
+        self.assertEqual(r.returncode, 0, msg=r.stderr)
+
     # -- WARN mode: emits stderr but exits 0 -------------------------------
 
     def test_warn_mode_does_not_deny(self):

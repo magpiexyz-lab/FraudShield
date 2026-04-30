@@ -22,20 +22,28 @@
 #
 # Mode toggle (matches the proven PR3->PR4 hardening pattern from
 # agent-trace-write-gate.sh):
-#   BOOTSTRAP_PHASE_A_GUARD_MODE=warn   (default, slice 3)
+#   BOOTSTRAP_PHASE_A_GUARD_MODE=warn   (telemetry-only override)
 #     -> emit stderr + log to hook-friction.jsonl + exit 0
-#   BOOTSTRAP_PHASE_A_GUARD_MODE=deny   (slice 4 after one-week soak)
+#   BOOTSTRAP_PHASE_A_GUARD_MODE=deny   (default since slice 4b)
 #     -> exit 2, deny via deny() (also logs hook-friction)
 #
+# Slice 4b flip rationale: default flipped from `warn` to `deny` after
+# test_phase_a_forgery_surface.py (39 cases) achieved symmetric coverage —
+# every known bypass DENIES, every known legitimate command ALLOWS,
+# including 12 false-positive guards (git checkout, git status, git diff,
+# wc, stat, find, read-only python, echo-with-string-arg, etc.). CI runs
+# the full catalogue on every PR, so any new false positive would surface
+# immediately. Revert is one line.
+#
 # Exit codes:
-#   0 — allow (or WARN logged)
-#   2 — deny (when MODE=deny)
+#   0 — allow (or WARN logged when env override is set)
+#   2 — deny
 set -euo pipefail
 
 source "$(dirname "$0")/lib.sh"
 parse_payload
 
-MODE="${BOOTSTRAP_PHASE_A_GUARD_MODE:-warn}"
+MODE="${BOOTSTRAP_PHASE_A_GUARD_MODE:-deny}"
 
 COMMAND=$(read_payload_field "tool_input.command")
 
