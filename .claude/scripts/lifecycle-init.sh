@@ -251,6 +251,15 @@ done
 # --- Steps 3a-4 skipped in embed mode (parent skill already ran them) ---
 if [[ -z "$EMBED_MODE" ]]; then
 
+# --- Embed-mode policy (Slice 5b documentation) ---
+# When this skill runs as an EMBED (parent skill called us via lifecycle-next.sh
+# embed dispatch), $EMBED_MODE is set and the cleanup steps below are SKIPPED
+# (parent already ran them). Skill-owned artifacts (declared in
+# state-registry.json["skill_owned_artifacts"]) belonging to the PARENT skill
+# are therefore preserved automatically — the embed never enters this branch.
+# When the embedded skill runs standalone, its own skill_owned_artifacts are
+# preserved by the per-SKILL match in Edit 2 above.
+
 # --- Step 3a: Clean stale artifacts from prior runs ---
 STALE_ARTIFACTS=(
   "$PROJECT_DIR/.runs/observe-result.json"
@@ -273,19 +282,76 @@ STALE_ARTIFACTS=(
   # will preserve this; for the hotfix window, ensure prior-skill artifact is gone.
   "$PROJECT_DIR/.runs/observation-enforcement.json"
 )
+
+# --- Slice 5b: UNION with registry-derived transient-cross-skill artifacts ---
+# Source of truth for cross-skill transient lifecycle is state-registry.json
+# `lifecycle: transient-cross-skill` declarations + the new top-level
+# `epilogue_artifacts` and `transient_artifacts` sections. Manual list above
+# remains as legacy backstop (Plan-agent Q1: 9 skills have zero lifecycle
+# declarations; replacing the manual list outright would lose their cleanups).
+REGISTRY_TRANSIENTS=$(python3 -c "
+import json, sys
+try:
+    r = json.load(open('$PROJECT_DIR/.claude/patterns/state-registry.json'))
+except Exception:
+    sys.exit(0)
+paths = set()
+
+# Walk per-state lifecycle declarations
+def _walk(node):
+    if isinstance(node, dict):
+        if node.get('lifecycle') == 'transient-cross-skill':
+            for p in node.get('artifacts', []) or []:
+                paths.add(p)
+        for v in node.values():
+            _walk(v)
+    elif isinstance(node, list):
+        for v in node:
+            _walk(v)
+
+_walk(r)
+
+# Top-level epilogue_artifacts (Slice 1)
+for path, meta in (r.get('epilogue_artifacts') or {}).items():
+    if isinstance(meta, dict) and meta.get('lifecycle') == 'transient-cross-skill':
+        paths.add(path)
+
+for p in sorted(paths):
+    print(p)
+" 2>/dev/null || true)
+
+while IFS= read -r p; do
+  [ -n "$p" ] && STALE_ARTIFACTS+=( "$PROJECT_DIR/$p" )
+done <<< "$REGISTRY_TRANSIENTS"
+
 for f in "${STALE_ARTIFACTS[@]}"; do
   rm -f "$f"
 done
-# Carve-out (fix #1074 + regression of #877): when SKILL=verify, verify-lifecycle.json
-# and verify-context.json are the current run's own artifacts — Step 2 (PYEOF block
-# at L64-L234) just wrote MANIFEST, and init-context.sh writes context at Step 5.
-# Deleting them unconditionally makes standalone /verify self-break on the very next
-# lifecycle-next.sh call with NO_MANIFEST. When SKILL != verify, the stale copies
-# from an earlier embedded verify should go.
-if [[ "$SKILL" != "verify" ]]; then
-  rm -f "$PROJECT_DIR/.runs/verify-context.json"
-  rm -f "$PROJECT_DIR/.runs/verify-lifecycle.json"
-fi
+# --- Slice 5b: declarative skill_owned_artifacts carve-out ---
+# Replaces the hardcoded verify-context.json/verify-lifecycle.json carve-out
+# (#1074 + #877 regression). state-registry.json["skill_owned_artifacts"][SKILL]
+# enumerates artifacts owned by a skill — they MUST NOT be deleted when that
+# skill is the active SKILL. For all other skills, they ARE deleted (stale
+# from a prior embedded run).
+SKILL_OWNED_ALL=$(python3 -c "
+import json
+try:
+    r = json.load(open('$PROJECT_DIR/.claude/patterns/state-registry.json'))
+except Exception:
+    exit()
+owned = r.get('skill_owned_artifacts', {}) or {}
+# Print 'SKILL\tPATH' tab-separated for all skills
+for s, paths in owned.items():
+    for p in (paths or []):
+        print(f'{s}\t{p}')
+" 2>/dev/null || true)
+
+while IFS=$'\t' read -r owner_skill path; do
+  [ -z "$owner_skill" ] || [ -z "$path" ] && continue
+  if [ "$owner_skill" != "$SKILL" ]; then
+    rm -f "$PROJECT_DIR/$path"
+  fi
+done <<< "$SKILL_OWNED_ALL"
 rm -rf "$PROJECT_DIR/.runs/gate-verdicts/"
 rm -rf "$PROJECT_DIR/.runs/agent-traces/"
 
