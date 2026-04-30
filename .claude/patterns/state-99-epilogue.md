@@ -42,6 +42,18 @@ for f in glob.glob('.runs/*-context.json'):
 sys.stdout.write((best or {}).get('skill', ''))
 ")
 [ -n "$SKILL_KEY" ] || { echo 'ERROR: state-99 could not derive SKILL_KEY from .runs/*-context.json' >&2; exit 1; }
+
+# GRAIM v2 C1+C2: derive RUN_ID from the active skill's context so every
+# observation-enforcement.json writer in this state can stamp identity.
+RUN_ID=$(python3 -c "
+import json
+try:
+    d = json.load(open('.runs/${SKILL_KEY}-context.json'))
+    print(d.get('run_id', ''))
+except Exception:
+    print('')
+")
+[ -n "$RUN_ID" ] || { echo 'WARN: state-99 could not derive RUN_ID' >&2; }
 ```
 
 ### Step 1 — Delivery & recheck
@@ -84,8 +96,11 @@ deterministic source.
 
 This script is intentionally non-blocking (always exits 0). It writes
 `.runs/observation-enforcement.json` — trap-guaranteed on any exit path
-— with fields `{pass, missing, scope, skill, fast_path, timestamp}` or
-`{pass: False, error: "..."}` when the script itself crashes.
+— with fields `{pass, missing, scope, skill, run_id, fast_path, timestamp}` or
+`{pass: False, error: "..."}` when the script itself crashes. The `skill`
+and `run_id` fields are asserted by state-99 VERIFY against the active
+`.runs/<skill>-context.json` (GRAIM v2 C1+C2 — rejects stale prior-skill
+artifacts; see issue #1198).
 
 ### Step 3 — Remediation (conditional)
 
@@ -110,7 +125,7 @@ python3 -c "
 import json, datetime
 json.dump({
     'pass': False, 'skipped': True, 'scope': 'unknown',
-    'skill': '$SKILL', 'fast_path': False,
+    'skill': '$SKILL_KEY', 'run_id': '$RUN_ID', 'fast_path': False,
     'skip_reason': 'external_service_unavailable',
     'timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat()
 }, open('.runs/observation-enforcement.json', 'w'), indent=2)
@@ -143,7 +158,18 @@ this command is allowed to execute.
 
 **VERIFY:**
 ```bash
-test -f .runs/verify-recheck.json && test -f .runs/observation-enforcement.json && python3 -c "import json; d=json.load(open('.runs/observation-enforcement.json')); assert d.get('pass') is True or d.get('skipped') is True, 'observation enforcement failed: pass=%s skipped=%s missing=%s scope=%s error=%s' % (d.get('pass'), d.get('skipped'), d.get('missing'), d.get('scope'), d.get('error'))"
+test -f .runs/verify-recheck.json && test -f .runs/observation-enforcement.json && python3 -c "import json,glob; d=json.load(open('.runs/observation-enforcement.json')); ctx=None
+for f in glob.glob('.runs/*-context.json'):
+    if 'epilogue' in f: continue
+    try: c=json.load(open(f))
+    except: continue
+    if c.get('completed') is True: continue
+    if ctx is None or (c.get('timestamp','') > (ctx.get('timestamp','') or '')): ctx=c
+active_skill=ctx.get('skill','') if ctx else ''
+active_run_id=ctx.get('run_id','') if ctx else ''
+assert d.get('pass') is True or d.get('skipped') is True, 'observation enforcement failed: pass=%s skipped=%s missing=%s scope=%s error=%s' % (d.get('pass'), d.get('skipped'), d.get('missing'), d.get('scope'), d.get('error'))
+assert d.get('skill') == active_skill, 'observation-enforcement.json skill=%r does not match active_skill=%r (stale prior-skill artifact)' % (d.get('skill'), active_skill)
+assert d.get('run_id') == active_run_id, 'observation-enforcement.json run_id=%r does not match active_run_id=%r (stale artifact)' % (d.get('run_id'), active_run_id)"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete

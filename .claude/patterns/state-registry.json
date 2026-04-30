@@ -50,7 +50,11 @@
       "lifecycle": "transient-cross-skill"
     },
     "8": "python3 -c \"import json; d=json.load(open('.runs/patterns-saved.json')); assert isinstance(d.get('saved'), int), 'saved not int'; assert isinstance(d.get('total'), int), 'total not int'; assert isinstance(d.get('saved_to_files'), list), 'saved_to_files not list'; assert all(isinstance(f, str) for f in d['saved_to_files']), 'saved_to_files contains non-string'; assert d['saved'] + d.get('skipped', 0) <= d['total'], 'saved+skipped > total'\"",
-    "99": "test -f .runs/verify-recheck.json && test -f .runs/observation-enforcement.json && python3 -c \"import json; d=json.load(open('.runs/observation-enforcement.json')); assert d.get('pass') is True or d.get('skipped') is True, 'observation enforcement failed: pass=%s skipped=%s missing=%s scope=%s error=%s' % (d.get('pass'), d.get('skipped'), d.get('missing'), d.get('scope'), d.get('error'))\""
+    "99": {
+      "verify": "test -f .runs/verify-recheck.json && test -f .runs/observation-enforcement.json && python3 -c \"import json,glob; d=json.load(open('.runs/observation-enforcement.json')); ctx=None\nfor f in glob.glob('.runs/*-context.json'):\n    if 'epilogue' in f: continue\n    try: c=json.load(open(f))\n    except: continue\n    if c.get('completed') is True: continue\n    if ctx is None or (c.get('timestamp','') > (ctx.get('timestamp','') or '')): ctx=c\nactive_skill=ctx.get('skill','') if ctx else ''\nactive_run_id=ctx.get('run_id','') if ctx else ''\nassert d.get('pass') is True or d.get('skipped') is True, 'observation enforcement failed: pass=%s skipped=%s missing=%s scope=%s error=%s' % (d.get('pass'), d.get('skipped'), d.get('missing'), d.get('scope'), d.get('error'))\nassert d.get('skill') == active_skill, 'observation-enforcement.json skill=%r does not match active_skill=%r (stale prior-skill artifact)' % (d.get('skill'), active_skill)\nassert d.get('run_id') == active_run_id, 'observation-enforcement.json run_id=%r does not match active_run_id=%r (stale artifact)' % (d.get('run_id'), active_run_id)\"",
+      "artifact": ".runs/observation-enforcement.json",
+      "lifecycle": "transient-cross-skill"
+    }
   },
   "bootstrap": {
     "0": "test -f .runs/bootstrap-context.json && git branch --show-current | grep -q 'feat/bootstrap'",
@@ -80,9 +84,11 @@
       "lifecycle": "transient-cross-skill",
       "repair_evidence": {
         "writer": ".claude/scripts/write-phase-a-repair.sh",
-        "evidence_sources": ["build-result.json"],
+        "evidence_sources": [
+          "build-result.json"
+        ],
         "provenance": "lead-fix",
-        "_comment": "EARC slice 3 will land write-phase-a-repair.sh; gate at .claude/skills/bootstrap/gates/write.sh ALSO-ALLOWs when an attestation matches. Half II of the EARC contract for #1182 — covers residual cases (post-seal regressions, runtime-only failures invisible to npm run build)."
+        "_comment": "EARC slice 3 will land write-phase-a-repair.sh; gate at .claude/skills/bootstrap/gates/write.sh ALSO-ALLOWs when an attestation matches. Half II of the EARC contract for #1182 \u2014 covers residual cases (post-seal regressions, runtime-only failures invisible to npm run build)."
       }
     },
     "11a": "test -f .runs/b1-spawn-result.json && python3 -c \"import json,os; d=json.load(open('.runs/b1-spawn-result.json')); assert d.get('schema_version')==1 and d.get('state')=='11a'; ag=d.get('agents',{}); assert ag.get('scaffold-libs',{}).get('spawned') is True, 'scaffold-libs not spawned'; missing=[k for k,a in ag.items() if a.get('spawned') and not os.path.exists(a.get('trace_path',''))]; assert not missing, 'agent trace file missing on disk: '+str(missing)\"",
@@ -121,7 +127,11 @@
       "artifact": ".runs/verify-report.md",
       "lifecycle": "transient-cross-skill"
     },
-    "99": "test -f .runs/verify-recheck.json && test -f .runs/observation-enforcement.json && python3 -c \"import json; d=json.load(open('.runs/observation-enforcement.json')); assert d.get('pass') is True or d.get('skipped') is True, 'observation enforcement failed: pass=%s skipped=%s missing=%s scope=%s error=%s' % (d.get('pass'), d.get('skipped'), d.get('missing'), d.get('scope'), d.get('error'))\""
+    "99": {
+      "verify": "test -f .runs/verify-recheck.json && test -f .runs/observation-enforcement.json && python3 -c \"import json,glob; d=json.load(open('.runs/observation-enforcement.json')); ctx=None\nfor f in glob.glob('.runs/*-context.json'):\n    if 'epilogue' in f: continue\n    try: c=json.load(open(f))\n    except: continue\n    if c.get('completed') is True: continue\n    if ctx is None or (c.get('timestamp','') > (ctx.get('timestamp','') or '')): ctx=c\nactive_skill=ctx.get('skill','') if ctx else ''\nactive_run_id=ctx.get('run_id','') if ctx else ''\nassert d.get('pass') is True or d.get('skipped') is True, 'observation enforcement failed: pass=%s skipped=%s missing=%s scope=%s error=%s' % (d.get('pass'), d.get('skipped'), d.get('missing'), d.get('scope'), d.get('error'))\nassert d.get('skill') == active_skill, 'observation-enforcement.json skill=%r does not match active_skill=%r (stale prior-skill artifact)' % (d.get('skill'), active_skill)\nassert d.get('run_id') == active_run_id, 'observation-enforcement.json run_id=%r does not match active_run_id=%r (stale artifact)' % (d.get('run_id'), active_run_id)\"",
+      "artifact": ".runs/observation-enforcement.json",
+      "lifecycle": "transient-cross-skill"
+    }
   },
   "change": {
     "0": "test -f .runs/change-context.json && test -f package.json && test -f experiment/EVENTS.yaml",
@@ -194,7 +204,11 @@
       "artifact": ".runs/commit-message.txt",
       "lifecycle": "transient-cross-skill"
     },
-    "99": "test -f .runs/verify-recheck.json && test -f .runs/observation-enforcement.json && python3 -c \"import json; d=json.load(open('.runs/observation-enforcement.json')); assert d.get('pass') is True or d.get('skipped') is True, 'observation enforcement failed: pass=%s skipped=%s missing=%s scope=%s error=%s' % (d.get('pass'), d.get('skipped'), d.get('missing'), d.get('scope'), d.get('error'))\""
+    "99": {
+      "verify": "test -f .runs/verify-recheck.json && test -f .runs/observation-enforcement.json && python3 -c \"import json,glob; d=json.load(open('.runs/observation-enforcement.json')); ctx=None\nfor f in glob.glob('.runs/*-context.json'):\n    if 'epilogue' in f: continue\n    try: c=json.load(open(f))\n    except: continue\n    if c.get('completed') is True: continue\n    if ctx is None or (c.get('timestamp','') > (ctx.get('timestamp','') or '')): ctx=c\nactive_skill=ctx.get('skill','') if ctx else ''\nactive_run_id=ctx.get('run_id','') if ctx else ''\nassert d.get('pass') is True or d.get('skipped') is True, 'observation enforcement failed: pass=%s skipped=%s missing=%s scope=%s error=%s' % (d.get('pass'), d.get('skipped'), d.get('missing'), d.get('scope'), d.get('error'))\nassert d.get('skill') == active_skill, 'observation-enforcement.json skill=%r does not match active_skill=%r (stale prior-skill artifact)' % (d.get('skill'), active_skill)\nassert d.get('run_id') == active_run_id, 'observation-enforcement.json run_id=%r does not match active_run_id=%r (stale artifact)' % (d.get('run_id'), active_run_id)\"",
+      "artifact": ".runs/observation-enforcement.json",
+      "lifecycle": "transient-cross-skill"
+    }
   },
   "review": {
     "0": "test -f .runs/review-context.json",
@@ -229,7 +243,11 @@
       "artifact": ".runs/commit-message.txt",
       "lifecycle": "transient-cross-skill"
     },
-    "99": "test -f .runs/verify-recheck.json && test -f .runs/observation-enforcement.json && python3 -c \"import json; d=json.load(open('.runs/observation-enforcement.json')); assert d.get('pass') is True or d.get('skipped') is True, 'observation enforcement failed: pass=%s skipped=%s missing=%s scope=%s error=%s' % (d.get('pass'), d.get('skipped'), d.get('missing'), d.get('scope'), d.get('error'))\""
+    "99": {
+      "verify": "test -f .runs/verify-recheck.json && test -f .runs/observation-enforcement.json && python3 -c \"import json,glob; d=json.load(open('.runs/observation-enforcement.json')); ctx=None\nfor f in glob.glob('.runs/*-context.json'):\n    if 'epilogue' in f: continue\n    try: c=json.load(open(f))\n    except: continue\n    if c.get('completed') is True: continue\n    if ctx is None or (c.get('timestamp','') > (ctx.get('timestamp','') or '')): ctx=c\nactive_skill=ctx.get('skill','') if ctx else ''\nactive_run_id=ctx.get('run_id','') if ctx else ''\nassert d.get('pass') is True or d.get('skipped') is True, 'observation enforcement failed: pass=%s skipped=%s missing=%s scope=%s error=%s' % (d.get('pass'), d.get('skipped'), d.get('missing'), d.get('scope'), d.get('error'))\nassert d.get('skill') == active_skill, 'observation-enforcement.json skill=%r does not match active_skill=%r (stale prior-skill artifact)' % (d.get('skill'), active_skill)\nassert d.get('run_id') == active_run_id, 'observation-enforcement.json run_id=%r does not match active_run_id=%r (stale artifact)' % (d.get('run_id'), active_run_id)\"",
+      "artifact": ".runs/observation-enforcement.json",
+      "lifecycle": "transient-cross-skill"
+    }
   },
   "resolve": {
     "0": "test -f .runs/resolve-context.json",
@@ -260,7 +278,11 @@
       "artifact": ".runs/commit-message.txt",
       "lifecycle": "transient-cross-skill"
     },
-    "99": "test -f .runs/verify-recheck.json && test -f .runs/observation-enforcement.json && python3 -c \"import json; d=json.load(open('.runs/observation-enforcement.json')); assert d.get('pass') is True or d.get('skipped') is True, 'observation enforcement failed: pass=%s skipped=%s missing=%s scope=%s error=%s' % (d.get('pass'), d.get('skipped'), d.get('missing'), d.get('scope'), d.get('error'))\""
+    "99": {
+      "verify": "test -f .runs/verify-recheck.json && test -f .runs/observation-enforcement.json && python3 -c \"import json,glob; d=json.load(open('.runs/observation-enforcement.json')); ctx=None\nfor f in glob.glob('.runs/*-context.json'):\n    if 'epilogue' in f: continue\n    try: c=json.load(open(f))\n    except: continue\n    if c.get('completed') is True: continue\n    if ctx is None or (c.get('timestamp','') > (ctx.get('timestamp','') or '')): ctx=c\nactive_skill=ctx.get('skill','') if ctx else ''\nactive_run_id=ctx.get('run_id','') if ctx else ''\nassert d.get('pass') is True or d.get('skipped') is True, 'observation enforcement failed: pass=%s skipped=%s missing=%s scope=%s error=%s' % (d.get('pass'), d.get('skipped'), d.get('missing'), d.get('scope'), d.get('error'))\nassert d.get('skill') == active_skill, 'observation-enforcement.json skill=%r does not match active_skill=%r (stale prior-skill artifact)' % (d.get('skill'), active_skill)\nassert d.get('run_id') == active_run_id, 'observation-enforcement.json run_id=%r does not match active_run_id=%r (stale artifact)' % (d.get('run_id'), active_run_id)\"",
+      "artifact": ".runs/observation-enforcement.json",
+      "lifecycle": "transient-cross-skill"
+    }
   },
   "distribute": {
     "0": "test -f .runs/distribute-context.json && python3 -c \"import json; ctx=json.load(open('.runs/distribute-context.json')); assert 'phase' in ctx, 'phase missing'; assert ctx['phase'] in (1,2), 'phase must be 1 or 2'\" && python3 -c \"import json; p=json.load(open('.runs/distribute-preconditions.json')); assert p.get('deployed_url')\"",
@@ -280,7 +302,11 @@
       "lifecycle": "transient-cross-skill"
     },
     "6": "grep -q 'campaign_id' experiment/ads.yaml 2>/dev/null && python3 -c \"import json; s=set(json.load(open('.runs/distribute-step-check.json')).get('steps_completed',[])); required={'6a','6e','6j','6k','6f'}; assert required.issubset(s), f'missing steps: {required - s}'\" && python3 -c \"import json; d=json.load(open('.runs/distribute-campaign-audit.json')); assert d.get('all_passed')==True or d.get('manual_creation')==True, 'campaign audit not passed'; assert d.get('user_confirmed')==True, 'user has not confirmed pre-launch settings review'\" && python3 -c \"import json; d=json.load(open('.runs/distribute-campaign-audit.json')); m=d.get('manual_creation',False); assert d.get('readback_completed')==True or m==True, 'readback not completed and not manual creation'\"",
-    "99": "test -f .runs/verify-recheck.json && test -f .runs/observation-enforcement.json && python3 -c \"import json; d=json.load(open('.runs/observation-enforcement.json')); assert d.get('pass') is True or d.get('skipped') is True, 'observation enforcement failed: pass=%s skipped=%s missing=%s scope=%s error=%s' % (d.get('pass'), d.get('skipped'), d.get('missing'), d.get('scope'), d.get('error'))\""
+    "99": {
+      "verify": "test -f .runs/verify-recheck.json && test -f .runs/observation-enforcement.json && python3 -c \"import json,glob; d=json.load(open('.runs/observation-enforcement.json')); ctx=None\nfor f in glob.glob('.runs/*-context.json'):\n    if 'epilogue' in f: continue\n    try: c=json.load(open(f))\n    except: continue\n    if c.get('completed') is True: continue\n    if ctx is None or (c.get('timestamp','') > (ctx.get('timestamp','') or '')): ctx=c\nactive_skill=ctx.get('skill','') if ctx else ''\nactive_run_id=ctx.get('run_id','') if ctx else ''\nassert d.get('pass') is True or d.get('skipped') is True, 'observation enforcement failed: pass=%s skipped=%s missing=%s scope=%s error=%s' % (d.get('pass'), d.get('skipped'), d.get('missing'), d.get('scope'), d.get('error'))\nassert d.get('skill') == active_skill, 'observation-enforcement.json skill=%r does not match active_skill=%r (stale prior-skill artifact)' % (d.get('skill'), active_skill)\nassert d.get('run_id') == active_run_id, 'observation-enforcement.json run_id=%r does not match active_run_id=%r (stale artifact)' % (d.get('run_id'), active_run_id)\"",
+      "artifact": ".runs/observation-enforcement.json",
+      "lifecycle": "transient-cross-skill"
+    }
   },
   "deploy": {
     "0": "python3 -c \"import json; d=json.load(open('.runs/deploy-context.json')); assert d.get('deploy_mode') in ('initial','update'), 'deploy_mode=%s' % d.get('deploy_mode')\"",
@@ -292,7 +318,11 @@
     "4a": "python3 -c \"import json; d=json.load(open('.runs/deploy-health-4a.json')); assert isinstance(d.get('health_check_passed'), bool), 'health_check_passed not bool'; assert isinstance(d.get('auto_fix_rounds'), int) and d['auto_fix_rounds']>=0, 'auto_fix_rounds invalid'; assert isinstance(d.get('per_service_results'), dict) and len(d['per_service_results'])>0, 'per_service_results empty'\"",
     "4b": "python3 -c \"import json; d=json.load(open('.runs/deploy-health.json')); assert isinstance(d.get('health_check_passed'), bool), 'health_check_passed not bool'; assert isinstance(d.get('auto_fix_rounds'), int) and d['auto_fix_rounds']>=0, 'auto_fix_rounds invalid'; assert d.get('provision_scan_completed') is not None, 'provision_scan_completed missing'\"",
     "5": "python3 -c \"import json; d=json.load(open('.runs/deploy-manifest.json')); assert d.get('name'), 'name empty'; assert d.get('canonical_url'), 'canonical_url empty'; assert d.get('deploy_mode') in ('initial','update'), 'deploy_mode=%s' % d.get('deploy_mode'); assert d.get('deployed_at'), 'deployed_at empty'; h=d.get('hosting',{}); assert h.get('provider'), 'hosting.provider empty'\"",
-    "99": "test -f .runs/verify-recheck.json && test -f .runs/observation-enforcement.json && python3 -c \"import json; d=json.load(open('.runs/observation-enforcement.json')); assert d.get('pass') is True or d.get('skipped') is True, 'observation enforcement failed: pass=%s skipped=%s missing=%s scope=%s error=%s' % (d.get('pass'), d.get('skipped'), d.get('missing'), d.get('scope'), d.get('error'))\""
+    "99": {
+      "verify": "test -f .runs/verify-recheck.json && test -f .runs/observation-enforcement.json && python3 -c \"import json,glob; d=json.load(open('.runs/observation-enforcement.json')); ctx=None\nfor f in glob.glob('.runs/*-context.json'):\n    if 'epilogue' in f: continue\n    try: c=json.load(open(f))\n    except: continue\n    if c.get('completed') is True: continue\n    if ctx is None or (c.get('timestamp','') > (ctx.get('timestamp','') or '')): ctx=c\nactive_skill=ctx.get('skill','') if ctx else ''\nactive_run_id=ctx.get('run_id','') if ctx else ''\nassert d.get('pass') is True or d.get('skipped') is True, 'observation enforcement failed: pass=%s skipped=%s missing=%s scope=%s error=%s' % (d.get('pass'), d.get('skipped'), d.get('missing'), d.get('scope'), d.get('error'))\nassert d.get('skill') == active_skill, 'observation-enforcement.json skill=%r does not match active_skill=%r (stale prior-skill artifact)' % (d.get('skill'), active_skill)\nassert d.get('run_id') == active_run_id, 'observation-enforcement.json run_id=%r does not match active_run_id=%r (stale artifact)' % (d.get('run_id'), active_run_id)\"",
+      "artifact": ".runs/observation-enforcement.json",
+      "lifecycle": "transient-cross-skill"
+    }
   },
   "teardown": {
     "0": "test -f .runs/teardown-context.json",
@@ -300,7 +330,11 @@
     "2": "python3 -c \"import json; d=json.load(open('.runs/teardown-result.json')); assert isinstance(d.get('resources_attempted'), list) and len(d['resources_attempted'])>0, 'resources_attempted empty'; assert isinstance(d.get('successes'), int) and d['successes']>=0, 'successes invalid'; assert isinstance(d.get('failures'), int) and d['failures']>=0, 'failures invalid'; assert d['successes']+d['failures']==len(d['resources_attempted']), 'successes+failures != resources count'\"",
     "3": "python3 -c \"import json; d=json.load(open('.runs/teardown-verification.json')); assert d.get('scan_completed') is not None, 'scan_completed missing'; assert isinstance(d.get('remaining_resources'), list), 'remaining_resources not list'; assert all(isinstance(r, (str,dict)) for r in d['remaining_resources']), 'remaining_resources items invalid'; assert d.get('fully_deleted') is not None, 'fully_deleted missing'\"",
     "4": "python3 -c \"import json; d=json.load(open('.runs/teardown-cleanup.json')); assert d.get('timestamp'), 'timestamp empty'; assert d.get('deploy_manifest_deleted') is not None, 'deploy_manifest_deleted missing'\"",
-    "99": "test -f .runs/verify-recheck.json && test -f .runs/observation-enforcement.json && python3 -c \"import json; d=json.load(open('.runs/observation-enforcement.json')); assert d.get('pass') is True or d.get('skipped') is True, 'observation enforcement failed: pass=%s skipped=%s missing=%s scope=%s error=%s' % (d.get('pass'), d.get('skipped'), d.get('missing'), d.get('scope'), d.get('error'))\""
+    "99": {
+      "verify": "test -f .runs/verify-recheck.json && test -f .runs/observation-enforcement.json && python3 -c \"import json,glob; d=json.load(open('.runs/observation-enforcement.json')); ctx=None\nfor f in glob.glob('.runs/*-context.json'):\n    if 'epilogue' in f: continue\n    try: c=json.load(open(f))\n    except: continue\n    if c.get('completed') is True: continue\n    if ctx is None or (c.get('timestamp','') > (ctx.get('timestamp','') or '')): ctx=c\nactive_skill=ctx.get('skill','') if ctx else ''\nactive_run_id=ctx.get('run_id','') if ctx else ''\nassert d.get('pass') is True or d.get('skipped') is True, 'observation enforcement failed: pass=%s skipped=%s missing=%s scope=%s error=%s' % (d.get('pass'), d.get('skipped'), d.get('missing'), d.get('scope'), d.get('error'))\nassert d.get('skill') == active_skill, 'observation-enforcement.json skill=%r does not match active_skill=%r (stale prior-skill artifact)' % (d.get('skill'), active_skill)\nassert d.get('run_id') == active_run_id, 'observation-enforcement.json run_id=%r does not match active_run_id=%r (stale artifact)' % (d.get('run_id'), active_run_id)\"",
+      "artifact": ".runs/observation-enforcement.json",
+      "lifecycle": "transient-cross-skill"
+    }
   },
   "spec": {
     "0": "test -f .runs/spec-context.json",
@@ -311,14 +345,22 @@
     "5": "python3 -c \"import yaml; d=yaml.safe_load(open('experiment/experiment.yaml')); vs=d.get('variants',[]); assert isinstance(vs, list) and len(vs)>0, 'no variants'; assert all(v.get('slug') for v in vs), 'variant missing slug'\"",
     "6": "python3 -c \"import yaml; d=yaml.safe_load(open('experiment/experiment.yaml')); assert d.get('name'), 'name missing'; assert d.get('type'), 'type missing'; assert d.get('thesis'), 'thesis missing'; assert d.get('behaviors'), 'behaviors missing'; gp=d.get('golden_path') or d.get('endpoints') or d.get('commands'); assert gp, 'no golden_path/endpoints/commands'; assert d.get('stack'), 'stack missing'; assert d.get('funnel'), 'funnel missing'\"",
     "7": "python3 -c \"import json,yaml; yaml.safe_load(open('experiment/experiment.yaml')); m=json.load(open('.runs/spec-manifest.json')); assert m.get('created_at'), 'created_at empty'; assert isinstance(m.get('hypotheses'), list) and len(m['hypotheses'])>0, 'no hypotheses'; assert isinstance(m.get('behaviors'), list) and len(m['behaviors'])>0, 'no behaviors'; e=yaml.safe_load(open('experiment/EVENTS.yaml')); assert isinstance(e.get('events'), dict) and len(e['events'])>0, 'no events in EVENTS.yaml'\"",
-    "99": "test -f .runs/verify-recheck.json && test -f .runs/observation-enforcement.json && python3 -c \"import json; d=json.load(open('.runs/observation-enforcement.json')); assert d.get('pass') is True or d.get('skipped') is True, 'observation enforcement failed: pass=%s skipped=%s missing=%s scope=%s error=%s' % (d.get('pass'), d.get('skipped'), d.get('missing'), d.get('scope'), d.get('error'))\""
+    "99": {
+      "verify": "test -f .runs/verify-recheck.json && test -f .runs/observation-enforcement.json && python3 -c \"import json,glob; d=json.load(open('.runs/observation-enforcement.json')); ctx=None\nfor f in glob.glob('.runs/*-context.json'):\n    if 'epilogue' in f: continue\n    try: c=json.load(open(f))\n    except: continue\n    if c.get('completed') is True: continue\n    if ctx is None or (c.get('timestamp','') > (ctx.get('timestamp','') or '')): ctx=c\nactive_skill=ctx.get('skill','') if ctx else ''\nactive_run_id=ctx.get('run_id','') if ctx else ''\nassert d.get('pass') is True or d.get('skipped') is True, 'observation enforcement failed: pass=%s skipped=%s missing=%s scope=%s error=%s' % (d.get('pass'), d.get('skipped'), d.get('missing'), d.get('scope'), d.get('error'))\nassert d.get('skill') == active_skill, 'observation-enforcement.json skill=%r does not match active_skill=%r (stale prior-skill artifact)' % (d.get('skill'), active_skill)\nassert d.get('run_id') == active_run_id, 'observation-enforcement.json run_id=%r does not match active_run_id=%r (stale artifact)' % (d.get('run_id'), active_run_id)\"",
+      "artifact": ".runs/observation-enforcement.json",
+      "lifecycle": "transient-cross-skill"
+    }
   },
   "rollback": {
     "0": "test -f .runs/rollback-context.json",
     "1": "python3 -c \"import json; d=json.load(open('.runs/rollback-plan.json')); assert d.get('provider'), 'provider empty'; assert d.get('target_url'), 'target_url empty'; assert d.get('action'), 'action empty'\"",
     "2": "python3 -c \"import json; assert json.load(open('.runs/rollback-context.json')).get('approved') == True, 'approved not set'\"",
     "3": "python3 -c \"import json; d=json.load(open('.runs/rollback-result.json')); assert d.get('rollback_executed') is not None, 'rollback_executed missing'; assert d.get('health_check_passed') is not None, 'health_check_passed missing'; assert d.get('method') in ('cli','manual'), 'method must be cli or manual'\"",
-    "99": "test -f .runs/verify-recheck.json && test -f .runs/observation-enforcement.json && python3 -c \"import json; d=json.load(open('.runs/observation-enforcement.json')); assert d.get('pass') is True or d.get('skipped') is True, 'observation enforcement failed: pass=%s skipped=%s missing=%s scope=%s error=%s' % (d.get('pass'), d.get('skipped'), d.get('missing'), d.get('scope'), d.get('error'))\""
+    "99": {
+      "verify": "test -f .runs/verify-recheck.json && test -f .runs/observation-enforcement.json && python3 -c \"import json,glob; d=json.load(open('.runs/observation-enforcement.json')); ctx=None\nfor f in glob.glob('.runs/*-context.json'):\n    if 'epilogue' in f: continue\n    try: c=json.load(open(f))\n    except: continue\n    if c.get('completed') is True: continue\n    if ctx is None or (c.get('timestamp','') > (ctx.get('timestamp','') or '')): ctx=c\nactive_skill=ctx.get('skill','') if ctx else ''\nactive_run_id=ctx.get('run_id','') if ctx else ''\nassert d.get('pass') is True or d.get('skipped') is True, 'observation enforcement failed: pass=%s skipped=%s missing=%s scope=%s error=%s' % (d.get('pass'), d.get('skipped'), d.get('missing'), d.get('scope'), d.get('error'))\nassert d.get('skill') == active_skill, 'observation-enforcement.json skill=%r does not match active_skill=%r (stale prior-skill artifact)' % (d.get('skill'), active_skill)\nassert d.get('run_id') == active_run_id, 'observation-enforcement.json run_id=%r does not match active_run_id=%r (stale artifact)' % (d.get('run_id'), active_run_id)\"",
+      "artifact": ".runs/observation-enforcement.json",
+      "lifecycle": "transient-cross-skill"
+    }
   },
   "iterate": {
     "0": "test -f .runs/iterate-context.json",
@@ -326,7 +368,11 @@
     "2": "python3 -c \"import json; d=json.load(open('.runs/iterate-verdicts.json')); assert isinstance(d.get('dimension_scores'), dict) and len(d['dimension_scores'])>0, 'dimension_scores empty'; assert d.get('bottleneck'), 'bottleneck empty'; assert isinstance(d.get('hypothesis_verdicts'), list), 'hypothesis_verdicts not a list'\"",
     "3": "python3 -c \"import json; ctx=json.load(open('.runs/iterate-context.json')); assert ctx.get('verdict'), 'verdict missing from iterate-context.json'\"",
     "4": "python3 -c \"import json; d=json.load(open('.runs/iterate-manifest.json')); assert d.get('experiment_id'), 'experiment_id empty'; assert isinstance(d.get('round'), int) and d['round']>=1, 'round invalid'; assert d.get('verdict') in ('SCALE','KILL','PIVOT','REFINE','TOO_EARLY'), 'verdict=%s' % d.get('verdict'); assert d.get('analyzed_at'), 'analyzed_at empty'; assert isinstance(d.get('recommendations'), list), 'recommendations not a list'\"",
-    "99": "test -f .runs/verify-recheck.json && test -f .runs/observation-enforcement.json && python3 -c \"import json; d=json.load(open('.runs/observation-enforcement.json')); assert d.get('pass') is True or d.get('skipped') is True, 'observation enforcement failed: pass=%s skipped=%s missing=%s scope=%s error=%s' % (d.get('pass'), d.get('skipped'), d.get('missing'), d.get('scope'), d.get('error'))\""
+    "99": {
+      "verify": "test -f .runs/verify-recheck.json && test -f .runs/observation-enforcement.json && python3 -c \"import json,glob; d=json.load(open('.runs/observation-enforcement.json')); ctx=None\nfor f in glob.glob('.runs/*-context.json'):\n    if 'epilogue' in f: continue\n    try: c=json.load(open(f))\n    except: continue\n    if c.get('completed') is True: continue\n    if ctx is None or (c.get('timestamp','') > (ctx.get('timestamp','') or '')): ctx=c\nactive_skill=ctx.get('skill','') if ctx else ''\nactive_run_id=ctx.get('run_id','') if ctx else ''\nassert d.get('pass') is True or d.get('skipped') is True, 'observation enforcement failed: pass=%s skipped=%s missing=%s scope=%s error=%s' % (d.get('pass'), d.get('skipped'), d.get('missing'), d.get('scope'), d.get('error'))\nassert d.get('skill') == active_skill, 'observation-enforcement.json skill=%r does not match active_skill=%r (stale prior-skill artifact)' % (d.get('skill'), active_skill)\nassert d.get('run_id') == active_run_id, 'observation-enforcement.json run_id=%r does not match active_run_id=%r (stale artifact)' % (d.get('run_id'), active_run_id)\"",
+      "artifact": ".runs/observation-enforcement.json",
+      "lifecycle": "transient-cross-skill"
+    }
   },
   "iterate-check": {
     "c0": "test -f .runs/iterate-check-context.json",
@@ -337,7 +383,11 @@
       "artifact": ".runs/observe-result.json",
       "lifecycle": "transient-cross-skill"
     },
-    "99": "test -f .runs/verify-recheck.json && test -f .runs/observation-enforcement.json && python3 -c \"import json; d=json.load(open('.runs/observation-enforcement.json')); assert d.get('pass') is True or d.get('skipped') is True, 'observation enforcement failed: pass=%s skipped=%s missing=%s scope=%s error=%s' % (d.get('pass'), d.get('skipped'), d.get('missing'), d.get('scope'), d.get('error'))\""
+    "99": {
+      "verify": "test -f .runs/verify-recheck.json && test -f .runs/observation-enforcement.json && python3 -c \"import json,glob; d=json.load(open('.runs/observation-enforcement.json')); ctx=None\nfor f in glob.glob('.runs/*-context.json'):\n    if 'epilogue' in f: continue\n    try: c=json.load(open(f))\n    except: continue\n    if c.get('completed') is True: continue\n    if ctx is None or (c.get('timestamp','') > (ctx.get('timestamp','') or '')): ctx=c\nactive_skill=ctx.get('skill','') if ctx else ''\nactive_run_id=ctx.get('run_id','') if ctx else ''\nassert d.get('pass') is True or d.get('skipped') is True, 'observation enforcement failed: pass=%s skipped=%s missing=%s scope=%s error=%s' % (d.get('pass'), d.get('skipped'), d.get('missing'), d.get('scope'), d.get('error'))\nassert d.get('skill') == active_skill, 'observation-enforcement.json skill=%r does not match active_skill=%r (stale prior-skill artifact)' % (d.get('skill'), active_skill)\nassert d.get('run_id') == active_run_id, 'observation-enforcement.json run_id=%r does not match active_run_id=%r (stale artifact)' % (d.get('run_id'), active_run_id)\"",
+      "artifact": ".runs/observation-enforcement.json",
+      "lifecycle": "transient-cross-skill"
+    }
   },
   "iterate-cross": {
     "x0": "python3 -c \"import json; d=json.load(open('.runs/iterate-cross-context.json')); ms=d.get('mvps',[]); assert isinstance(ms, list) and len(ms)>0, 'mvps empty'; bad=[m.get('name','?') for m in ms if not m.get('owner') or not m.get('subaccount_name')]; assert not bad, 'MVPs missing owner/subaccount_name: %s' % bad\"",
@@ -346,14 +396,22 @@
     "x2": "python3 -c \"import json; d=json.load(open('.runs/iterate-cross-data.json')); ms=d.get('mvps',[]); assert isinstance(ms, list) and len(ms)>0, 'mvps empty'; bad=[m['name'] for m in ms if not m.get('has_funnel_stage') and m.get('data_source') != 'skipped_due_to_x1a_issue']; assert not bad, 'MVPs missing funnel_stage and not skipped: %s' % bad\"",
     "x3": "python3 -c \"import json; d=json.load(open('.runs/iterate-cross-scores.json')); ms=d.get('mvps',[]); assert isinstance(ms, list) and len(ms)>0, 'mvps empty'; allowed={'GO','NO_GO','INSUFFICIENT_DATA','STANDARD_VIOLATION','TRACKING_BROKEN','NOT_DEPLOYED'}; bad=[m.get('name','?') for m in ms if m.get('headline_verdict') not in allowed]; assert not bad, 'MVPs with invalid headline_verdict: %s' % bad\"",
     "x4": "test -f .runs/iterate-cross-telegram.txt && python3 -c \"import os; assert os.path.getsize('.runs/iterate-cross-telegram.txt')>0, 'telegram artifact empty'\"",
-    "99": "test -f .runs/verify-recheck.json && test -f .runs/observation-enforcement.json && python3 -c \"import json; d=json.load(open('.runs/observation-enforcement.json')); assert d.get('pass') is True or d.get('skipped') is True, 'observation enforcement failed: pass=%s skipped=%s missing=%s scope=%s error=%s' % (d.get('pass'), d.get('skipped'), d.get('missing'), d.get('scope'), d.get('error'))\""
+    "99": {
+      "verify": "test -f .runs/verify-recheck.json && test -f .runs/observation-enforcement.json && python3 -c \"import json,glob; d=json.load(open('.runs/observation-enforcement.json')); ctx=None\nfor f in glob.glob('.runs/*-context.json'):\n    if 'epilogue' in f: continue\n    try: c=json.load(open(f))\n    except: continue\n    if c.get('completed') is True: continue\n    if ctx is None or (c.get('timestamp','') > (ctx.get('timestamp','') or '')): ctx=c\nactive_skill=ctx.get('skill','') if ctx else ''\nactive_run_id=ctx.get('run_id','') if ctx else ''\nassert d.get('pass') is True or d.get('skipped') is True, 'observation enforcement failed: pass=%s skipped=%s missing=%s scope=%s error=%s' % (d.get('pass'), d.get('skipped'), d.get('missing'), d.get('scope'), d.get('error'))\nassert d.get('skill') == active_skill, 'observation-enforcement.json skill=%r does not match active_skill=%r (stale prior-skill artifact)' % (d.get('skill'), active_skill)\nassert d.get('run_id') == active_run_id, 'observation-enforcement.json run_id=%r does not match active_run_id=%r (stale artifact)' % (d.get('run_id'), active_run_id)\"",
+      "artifact": ".runs/observation-enforcement.json",
+      "lifecycle": "transient-cross-skill"
+    }
   },
   "retro": {
     "0": "test -f .runs/retro-context.json",
     "1": "python3 -c \"import json; d=json.load(open('.runs/retro-interview.json')); assert d.get('questions_answered')==4, 'questions_answered=%s, expected 4' % d.get('questions_answered'); assert isinstance(d.get('answers'), dict) and len(d['answers'])>0, 'answers empty'\"",
     "2": "python3 -c \"import json; d=json.load(open('.runs/retro-interview.json')); assert isinstance(d.get('answers'), dict) and len(d['answers'])>0, 'answers missing or empty'\" && test -f .runs/retro-context.json",
     "3": "python3 -c \"import json; ctx=json.load(open('.runs/retro-context.json')); assert ctx.get('issue_filed') or ctx.get('issue_skipped'), 'retro issue not filed and not skipped'\"",
-    "99": "test -f .runs/verify-recheck.json && test -f .runs/observation-enforcement.json && python3 -c \"import json; d=json.load(open('.runs/observation-enforcement.json')); assert d.get('pass') is True or d.get('skipped') is True, 'observation enforcement failed: pass=%s skipped=%s missing=%s scope=%s error=%s' % (d.get('pass'), d.get('skipped'), d.get('missing'), d.get('scope'), d.get('error'))\""
+    "99": {
+      "verify": "test -f .runs/verify-recheck.json && test -f .runs/observation-enforcement.json && python3 -c \"import json,glob; d=json.load(open('.runs/observation-enforcement.json')); ctx=None\nfor f in glob.glob('.runs/*-context.json'):\n    if 'epilogue' in f: continue\n    try: c=json.load(open(f))\n    except: continue\n    if c.get('completed') is True: continue\n    if ctx is None or (c.get('timestamp','') > (ctx.get('timestamp','') or '')): ctx=c\nactive_skill=ctx.get('skill','') if ctx else ''\nactive_run_id=ctx.get('run_id','') if ctx else ''\nassert d.get('pass') is True or d.get('skipped') is True, 'observation enforcement failed: pass=%s skipped=%s missing=%s scope=%s error=%s' % (d.get('pass'), d.get('skipped'), d.get('missing'), d.get('scope'), d.get('error'))\nassert d.get('skill') == active_skill, 'observation-enforcement.json skill=%r does not match active_skill=%r (stale prior-skill artifact)' % (d.get('skill'), active_skill)\nassert d.get('run_id') == active_run_id, 'observation-enforcement.json run_id=%r does not match active_run_id=%r (stale artifact)' % (d.get('run_id'), active_run_id)\"",
+      "artifact": ".runs/observation-enforcement.json",
+      "lifecycle": "transient-cross-skill"
+    }
   },
   "solve": {
     "0": "test -f .runs/solve-context.json",
@@ -363,7 +421,11 @@
       "artifact": ".runs/q-dimensions.json",
       "lifecycle": "transient-cross-skill"
     },
-    "99": "test -f .runs/verify-recheck.json && test -f .runs/observation-enforcement.json && python3 -c \"import json; d=json.load(open('.runs/observation-enforcement.json')); assert d.get('pass') is True or d.get('skipped') is True, 'observation enforcement failed: pass=%s skipped=%s missing=%s scope=%s error=%s' % (d.get('pass'), d.get('skipped'), d.get('missing'), d.get('scope'), d.get('error'))\""
+    "99": {
+      "verify": "test -f .runs/verify-recheck.json && test -f .runs/observation-enforcement.json && python3 -c \"import json,glob; d=json.load(open('.runs/observation-enforcement.json')); ctx=None\nfor f in glob.glob('.runs/*-context.json'):\n    if 'epilogue' in f: continue\n    try: c=json.load(open(f))\n    except: continue\n    if c.get('completed') is True: continue\n    if ctx is None or (c.get('timestamp','') > (ctx.get('timestamp','') or '')): ctx=c\nactive_skill=ctx.get('skill','') if ctx else ''\nactive_run_id=ctx.get('run_id','') if ctx else ''\nassert d.get('pass') is True or d.get('skipped') is True, 'observation enforcement failed: pass=%s skipped=%s missing=%s scope=%s error=%s' % (d.get('pass'), d.get('skipped'), d.get('missing'), d.get('scope'), d.get('error'))\nassert d.get('skill') == active_skill, 'observation-enforcement.json skill=%r does not match active_skill=%r (stale prior-skill artifact)' % (d.get('skill'), active_skill)\nassert d.get('run_id') == active_run_id, 'observation-enforcement.json run_id=%r does not match active_run_id=%r (stale artifact)' % (d.get('run_id'), active_run_id)\"",
+      "artifact": ".runs/observation-enforcement.json",
+      "lifecycle": "transient-cross-skill"
+    }
   },
   "observe": {
     "0": "python3 -c \"import json; d=json.load(open('.runs/observe-context.json')); assert d.get('template_file'), 'template_file missing'; assert d.get('symptom'), 'symptom missing'\"",
@@ -372,13 +434,21 @@
       "artifact": ".runs/observe-filing-result.json",
       "lifecycle": "transient-intra-skill"
     },
-    "99": "test -f .runs/verify-recheck.json && test -f .runs/observation-enforcement.json && python3 -c \"import json; d=json.load(open('.runs/observation-enforcement.json')); assert d.get('pass') is True or d.get('skipped') is True, 'observation enforcement failed: pass=%s skipped=%s missing=%s scope=%s error=%s' % (d.get('pass'), d.get('skipped'), d.get('missing'), d.get('scope'), d.get('error'))\""
+    "99": {
+      "verify": "test -f .runs/verify-recheck.json && test -f .runs/observation-enforcement.json && python3 -c \"import json,glob; d=json.load(open('.runs/observation-enforcement.json')); ctx=None\nfor f in glob.glob('.runs/*-context.json'):\n    if 'epilogue' in f: continue\n    try: c=json.load(open(f))\n    except: continue\n    if c.get('completed') is True: continue\n    if ctx is None or (c.get('timestamp','') > (ctx.get('timestamp','') or '')): ctx=c\nactive_skill=ctx.get('skill','') if ctx else ''\nactive_run_id=ctx.get('run_id','') if ctx else ''\nassert d.get('pass') is True or d.get('skipped') is True, 'observation enforcement failed: pass=%s skipped=%s missing=%s scope=%s error=%s' % (d.get('pass'), d.get('skipped'), d.get('missing'), d.get('scope'), d.get('error'))\nassert d.get('skill') == active_skill, 'observation-enforcement.json skill=%r does not match active_skill=%r (stale prior-skill artifact)' % (d.get('skill'), active_skill)\nassert d.get('run_id') == active_run_id, 'observation-enforcement.json run_id=%r does not match active_run_id=%r (stale artifact)' % (d.get('run_id'), active_run_id)\"",
+      "artifact": ".runs/observation-enforcement.json",
+      "lifecycle": "transient-cross-skill"
+    }
   },
   "audit": {
     "0": "test -f .runs/audit-context.json && python3 -c \"import json,os; ctx=json.load(open('.runs/audit-context.json')); assert ctx.get('scope','')!='full' or os.path.exists('.runs/audit-skill-manifest.json'), 'full scope but manifest missing'\"",
     "1": "python3 -c \"import json,os; d=json.load(open('.runs/audit-analysis.json')); assert 'duplication' in d; assert not os.path.exists('.runs/audit-skill-manifest.json') or 'skill_architecture' in d\"",
     "2": "python3 -c \"import json; d=json.load(open('.runs/audit-analysis.json')); assert 'duplication' in d and 'complexity' in d and 'abstractability' in d, 'missing dimensions'; assert isinstance(d.get('total_findings'), int) and d['total_findings']>=0, 'total_findings invalid'\"",
-    "99": "test -f .runs/verify-recheck.json && test -f .runs/observation-enforcement.json && python3 -c \"import json; d=json.load(open('.runs/observation-enforcement.json')); assert d.get('pass') is True or d.get('skipped') is True, 'observation enforcement failed: pass=%s skipped=%s missing=%s scope=%s error=%s' % (d.get('pass'), d.get('skipped'), d.get('missing'), d.get('scope'), d.get('error'))\""
+    "99": {
+      "verify": "test -f .runs/verify-recheck.json && test -f .runs/observation-enforcement.json && python3 -c \"import json,glob; d=json.load(open('.runs/observation-enforcement.json')); ctx=None\nfor f in glob.glob('.runs/*-context.json'):\n    if 'epilogue' in f: continue\n    try: c=json.load(open(f))\n    except: continue\n    if c.get('completed') is True: continue\n    if ctx is None or (c.get('timestamp','') > (ctx.get('timestamp','') or '')): ctx=c\nactive_skill=ctx.get('skill','') if ctx else ''\nactive_run_id=ctx.get('run_id','') if ctx else ''\nassert d.get('pass') is True or d.get('skipped') is True, 'observation enforcement failed: pass=%s skipped=%s missing=%s scope=%s error=%s' % (d.get('pass'), d.get('skipped'), d.get('missing'), d.get('scope'), d.get('error'))\nassert d.get('skill') == active_skill, 'observation-enforcement.json skill=%r does not match active_skill=%r (stale prior-skill artifact)' % (d.get('skill'), active_skill)\nassert d.get('run_id') == active_run_id, 'observation-enforcement.json run_id=%r does not match active_run_id=%r (stale artifact)' % (d.get('run_id'), active_run_id)\"",
+      "artifact": ".runs/observation-enforcement.json",
+      "lifecycle": "transient-cross-skill"
+    }
   },
   "upgrade": {
     "0": "test -f .runs/upgrade-context.json && git branch --show-current | grep -q 'chore/upgrade-template'",
@@ -389,7 +459,11 @@
       "artifact": ".runs/commit-message.txt",
       "lifecycle": "transient-cross-skill"
     },
-    "99": "test -f .runs/verify-recheck.json && test -f .runs/observation-enforcement.json && python3 -c \"import json; d=json.load(open('.runs/observation-enforcement.json')); assert d.get('pass') is True or d.get('skipped') is True, 'observation enforcement failed: pass=%s skipped=%s missing=%s scope=%s error=%s' % (d.get('pass'), d.get('skipped'), d.get('missing'), d.get('scope'), d.get('error'))\""
+    "99": {
+      "verify": "test -f .runs/verify-recheck.json && test -f .runs/observation-enforcement.json && python3 -c \"import json,glob; d=json.load(open('.runs/observation-enforcement.json')); ctx=None\nfor f in glob.glob('.runs/*-context.json'):\n    if 'epilogue' in f: continue\n    try: c=json.load(open(f))\n    except: continue\n    if c.get('completed') is True: continue\n    if ctx is None or (c.get('timestamp','') > (ctx.get('timestamp','') or '')): ctx=c\nactive_skill=ctx.get('skill','') if ctx else ''\nactive_run_id=ctx.get('run_id','') if ctx else ''\nassert d.get('pass') is True or d.get('skipped') is True, 'observation enforcement failed: pass=%s skipped=%s missing=%s scope=%s error=%s' % (d.get('pass'), d.get('skipped'), d.get('missing'), d.get('scope'), d.get('error'))\nassert d.get('skill') == active_skill, 'observation-enforcement.json skill=%r does not match active_skill=%r (stale prior-skill artifact)' % (d.get('skill'), active_skill)\nassert d.get('run_id') == active_run_id, 'observation-enforcement.json run_id=%r does not match active_run_id=%r (stale artifact)' % (d.get('run_id'), active_run_id)\"",
+      "artifact": ".runs/observation-enforcement.json",
+      "lifecycle": "transient-cross-skill"
+    }
   },
   "trace_schemas": {
     "solve": {
@@ -566,6 +640,25 @@
           "description": "all spawned agents should have completed traces"
         }
       ]
+    }
+  },
+  "skill_owned_artifacts": {
+    "verify": [
+      ".runs/verify-context.json",
+      ".runs/verify-lifecycle.json"
+    ]
+  },
+  "epilogue_artifacts": {
+    ".runs/observation-enforcement.json": {
+      "lifecycle": "transient-cross-skill",
+      "writers": [
+        ".claude/scripts/check-observation-artifacts.sh",
+        ".claude/patterns/state-99-epilogue.md"
+      ],
+      "consumers": [
+        "state-registry:*.99"
+      ],
+      "rationale": "GRAIM v2 C1+C2 \u2014 must carry {skill, run_id} for state-99 identity assertion"
     }
   }
 }

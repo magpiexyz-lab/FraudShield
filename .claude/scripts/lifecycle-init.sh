@@ -269,6 +269,9 @@ STALE_ARTIFACTS=(
   # #1152: prevent stale prior-run files from satisfying lead-only schema checks
   "$PROJECT_DIR/.runs/retrospective-result.json"
   "$PROJECT_DIR/.runs/observation-evidence.json"
+  # #1198: backstop for state-99 identity assertion — UNION sweep in Slice 5b
+  # will preserve this; for the hotfix window, ensure prior-skill artifact is gone.
+  "$PROJECT_DIR/.runs/observation-enforcement.json"
 )
 for f in "${STALE_ARTIFACTS[@]}"; do
   rm -f "$f"

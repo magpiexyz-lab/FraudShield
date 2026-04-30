@@ -28,6 +28,7 @@ import json, datetime
 json.dump({
     'pass': False, 'missing': ['script-error'],
     'scope': '${SCOPE:-unknown}', 'skill': '${SKILL:-unknown}',
+    'run_id': '${RUN_ID:-unknown}',
     'fast_path': False, 'error': 'script exited unexpectedly',
     'timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat()
 }, open('$RUNS_DIR/observation-enforcement.json', 'w'), indent=2)
@@ -60,12 +61,32 @@ else:
 " 2>/dev/null || echo "unknown")
 fi
 
+# ── Resolve RUN_ID for the active SKILL (GRAIM v2 C1+C2) ──
+# Caller-passed $SKILL is authoritative. Mirror state-completion-gate.sh:79-91:
+# caller wins; resolve_active_identity is a warn-only cross-check.
+RUN_ID=""
+if [ -n "$SKILL" ] && [ -f "$RUNS_DIR/${SKILL}-context.json" ]; then
+  RUN_ID=$(python3 -c "import json,sys;print(json.load(open('$RUNS_DIR/${SKILL}-context.json')).get('run_id',''))" 2>/dev/null || echo "")
+fi
+# Cross-check via resolve_active_identity (warn-only, mirror state-completion-gate.sh:79-91)
+if [ -n "$RUN_ID" ]; then
+  ACTIVE_IDENTITY="$(bash -c 'source .claude/hooks/lib.sh && resolve_active_identity' 2>/dev/null || true)"
+  if [ -n "$ACTIVE_IDENTITY" ]; then
+    IFS=$'\t' read -r _COA_ACT_SKILL _COA_ACT_RUN_ID _ _ <<< "$ACTIVE_IDENTITY"
+    if [ -n "$_COA_ACT_RUN_ID" ] && [ "$_COA_ACT_RUN_ID" != "$RUN_ID" ]; then
+      echo "WARN: check-observation-artifacts: caller-RUN_ID='$RUN_ID' but resolve_active_identity returned '$_COA_ACT_RUN_ID' — possible stale context" >&2
+    fi
+    unset _COA_ACT_SKILL _COA_ACT_RUN_ID
+  fi
+fi
+
 # ── Early exit: optimize-prompt (no observation) ──
 if [[ "$SKILL" == "optimize-prompt" ]]; then
   python3 -c "
 import json, datetime
 json.dump({
     'pass': True, 'missing': [], 'scope': 'n/a', 'skill': 'optimize-prompt',
+    'run_id': '${RUN_ID:-unknown}',
     'fast_path': False, 'skipped': True,
     'timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat()
 }, open('$RUNS_DIR/observation-enforcement.json', 'w'), indent=2)
@@ -282,6 +303,7 @@ json.dump({
     "missing": missing,
     "scope": "${SCOPE}",
     "skill": "${SKILL}",
+    "run_id": "${RUN_ID}",
     "fast_path": "${FAST_PATH}" == "true",
     "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat()
 }, open("${RUNS_DIR}/observation-enforcement.json", "w"), indent=2)
