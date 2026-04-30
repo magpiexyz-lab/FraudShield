@@ -59,6 +59,15 @@ def render_row(row):
         return f"⚠️ Template patch ({agent}): `{file_}` ({before} → {after})"
     symptom = row.get("symptom") or "<no symptom>"
     fix = row.get("fix") or "<no fix>"
+    # EARC slice 1: distinguish lead-transcribed-fix rows. These were
+    # written by the lead via write-recovery-trace.sh --fixes-json after
+    # an agent crashed; the lead anchored them to external evidence
+    # (build-result.json) and validate-recovery.sh stamped recovery_validated.
+    if row.get("lead_transcribed") is True:
+        return (
+            f"📝 Lead-transcribed ({agent}, recovery): `{file_}` "
+            f"— Symptom: {symptom} — Fix: {fix}"
+        )
     return f"Fix ({agent}): `{file_}` — Symptom: {symptom} — Fix: {fix}"
 
 

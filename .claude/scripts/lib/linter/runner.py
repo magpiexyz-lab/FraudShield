@@ -1152,6 +1152,95 @@ def main() -> int:
         return out
 
 
+    def check_gate_evidence_escape(rule):
+        """EARC slice 1: every gate listed in gate-inventory.json with
+        earc_subpattern in {gate-side, writer-side} must offer a documented
+        evidence escape — either an inline reference to attestation/repair-
+        evidence/earc-attestation, OR an entry in `state-registry.json` with
+        a non-null `repair_evidence` block.
+
+        Rule shape:
+          {
+            "id": "earc-gate-evidence-escape",
+            "type": "gate_evidence_escape",
+            "severity": "warn" | "block",
+            "inventory_path": ".claude/patterns/gate-inventory.json",
+            "registry_path": ".claude/patterns/state-registry.json"
+          }
+
+        The rule ships in WARN severity (slice 1) and flips to BLOCK in slice 4
+        after a one-week soak with zero new findings. Closes #1182 and #1189
+        recurrence-prevention dimension.
+        """
+        out = []
+        inv_path = rule.get("inventory_path", ".claude/patterns/gate-inventory.json")
+        reg_path = rule.get("registry_path", ".claude/patterns/state-registry.json")
+        inv_abs = inv_path if os.path.isabs(inv_path) else os.path.join(REPO_ROOT, inv_path)
+        reg_abs = reg_path if os.path.isabs(reg_path) else os.path.join(REPO_ROOT, reg_path)
+
+        if not os.path.isfile(inv_abs):
+            return [_emit_finding(rule,
+                f"gate-inventory.json missing at {inv_path} — "
+                f"EARC coverage cannot be verified. Slice -1 should land before this rule activates.")]
+        try:
+            inv = json.load(open(inv_abs))
+        except (OSError, json.JSONDecodeError) as e:
+            return [_emit_finding(rule, f"cannot read inventory: {e}")]
+
+        # Optional registry — when present, gates may declare their evidence
+        # channel via state-registry.repair_evidence (Slice 2 / Slice 3).
+        registry_repair_paths = set()
+        if os.path.isfile(reg_abs):
+            try:
+                reg = json.load(open(reg_abs))
+                for skill_name, states in reg.items():
+                    if not isinstance(states, dict):
+                        continue
+                    for state_id, state_def in states.items():
+                        if not isinstance(state_def, dict):
+                            continue
+                        re_block = state_def.get("repair_evidence")
+                        if isinstance(re_block, dict) and re_block.get("writer"):
+                            registry_repair_paths.add(re_block.get("writer"))
+            except (OSError, json.JSONDecodeError):
+                pass
+
+        for gate in inv.get("gates", []):
+            subpattern = gate.get("earc_subpattern")
+            if subpattern not in ("gate-side", "writer-side"):
+                continue
+            gate_path = gate.get("path", "")
+            if not gate_path:
+                continue
+            gate_abs = gate_path if os.path.isabs(gate_path) else os.path.join(REPO_ROOT, gate_path)
+            if not os.path.isfile(gate_abs):
+                # Inventory entry refers to non-existent file — separate
+                # invariant; skip rather than double-warn.
+                continue
+            try:
+                content = open(gate_abs).read().lower()
+            except OSError:
+                continue
+            # Heuristic match: any of "attestation", "earc", "repair_evidence",
+            # "lead_evidence_source", "lead_transcribed", or "evidence_validated"
+            # signals the gate is aware of the EARC contract. Writers covered
+            # in the registry's repair_evidence block are also implicitly OK.
+            inline_signals = (
+                "attestation" in content or "earc" in content
+                or "repair_evidence" in content or "lead_evidence_source" in content
+                or "lead_transcribed" in content or "evidence_validated" in content
+            )
+            registered = gate_path in registry_repair_paths
+            if not (inline_signals or registered):
+                out.append(_emit_finding(rule,
+                    f"gate {gate_path} (earc_subpattern={subpattern!r}) lacks "
+                    f"an evidence-escape branch and is not declared in any "
+                    f"state-registry repair_evidence block. Either document "
+                    f"the escape inline (mention attestation/EARC/lead_evidence_source) "
+                    f"or wire it via state-registry.repair_evidence."))
+        return out
+
+
     # ---------------------------------------------------------------------------
     # AOC v1 rule dispatchers (R1/R2/R3)
     # ---------------------------------------------------------------------------
@@ -1785,6 +1874,7 @@ def main() -> int:
         "pages_no_payload_type_exports":    (check_pages_no_payload_type_exports,    {"scope_glob"},                                           {"path_excludes", "filename_excludes", "suffix_pattern", "types_source_path"}, True),
         "artifact_transience":              (check_artifact_transience,              {"skill"},                                                {"init_script"},                                              False),
         "executor_enforcement":             (check_executor_enforcement,             set(),                                                    {"manifest_path", "hooks_dir", "agents_glob"},                False),
+        "gate_evidence_escape":             (check_gate_evidence_escape,             set(),                                                    {"inventory_path", "registry_path"},                          False),
     }
     META_KEYS = {"id", "type", "severity", "description", "_transitional_note", "_comment"}
 

@@ -43,7 +43,8 @@ TRACE_PATH_ENV="$TRACE_PATH" BUILD_RESULT_ENV="$BUILD_RESULT" E2E_RESULT_ENV="$E
 REGISTRY_ENV="$REGISTRY" PROJECT_DIR_ENV="$PROJECT_DIR" python3 - << 'PYEOF'
 import json, os, sys
 
-# Import shared evidence-validation primitives (extracted in EARC slice 0).
+# Import shared evidence-validation primitives (extracted in EARC slice 0;
+# expanded in slice 1 to cover lead-transcribed evidence-anchored recovery).
 sys.path.insert(0, os.path.join(os.environ['PROJECT_DIR_ENV'], '.claude', 'scripts'))
 from lib.validate_evidence import validate_build_evidence, validate_diff_evidence
 
@@ -114,6 +115,28 @@ if fixes:
     spawn_sha = trace.get('spawn_sha', '')
     ok, diff_errors = validate_diff_evidence(fixes, spawn_sha, project_dir=project)
     errors.extend(diff_errors)
+    # EARC slice 1 (closes #1189): when fixes carry lead_transcribed:true,
+    # the lead's claim must point to a verifiable evidence_source. Diff
+    # correlation above still applies — the lead's claim must be reflected
+    # in actual diff. The evidence_source is an ADDITIONAL anchor.
+    has_lead_transcribed = any(
+        isinstance(f, dict) and f.get('lead_transcribed') is True for f in fixes
+    )
+    if has_lead_transcribed:
+        ev_source = trace.get('lead_evidence_source')
+        if not ev_source:
+            errors.append(
+                'lead_transcribed fixes require lead_evidence_source on trace '
+                '(point to .runs/build-result.json or other anchor)'
+            )
+        else:
+            ev_path = ev_source if os.path.isabs(ev_source) else os.path.join(project, ev_source)
+            ok2, ev_errors = validate_build_evidence(
+                ev_path,
+                trace_timestamp=trace.get('timestamp'),
+                project_dir=project,
+            )
+            errors.extend(ev_errors)
 elif trace.get('no_fixes_claimed') is True:
     # Findings-only path: agent must be in non_fixer_agents. To confirm scope
     # actually executed, require either (a) a non-degraded sibling trace, OR

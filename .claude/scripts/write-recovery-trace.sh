@@ -37,6 +37,8 @@ set -euo pipefail
 AGENT=""
 REASON=""
 OVERRIDE_RUN_ID=""
+FIXES_JSON=""
+EVIDENCE_SOURCE=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -56,8 +58,24 @@ while [[ $# -gt 0 ]]; do
       OVERRIDE_RUN_ID="${1#--run-id=}"
       shift
       ;;
+    --fixes-json)
+      FIXES_JSON="${2:-}"
+      shift 2
+      ;;
+    --fixes-json=*)
+      FIXES_JSON="${1#--fixes-json=}"
+      shift
+      ;;
+    --evidence-source)
+      EVIDENCE_SOURCE="${2:-}"
+      shift 2
+      ;;
+    --evidence-source=*)
+      EVIDENCE_SOURCE="${1#--evidence-source=}"
+      shift
+      ;;
     --help|-h)
-      echo "Usage: $0 <agent-name> --reason \"<specific cause>\" [--run-id <RUN_ID>]"
+      echo "Usage: $0 <agent-name> --reason \"<specific cause>\" [--run-id <RUN_ID>] [--fixes-json '<json>' --evidence-source <path>]"
       exit 0
       ;;
     -*)
@@ -85,6 +103,19 @@ fi
 if [[ -z "$REASON" ]]; then
   echo "ERROR: write-recovery-trace.sh — --reason is mandatory (issue #963 precondition)" >&2
   echo "Usage: $0 <agent-name> --reason \"<specific cause>\"" >&2
+  exit 1
+fi
+
+# EARC slice 1 (closes #1189): if either --fixes-json or --evidence-source is
+# provided, both must be — they are paired so the validator can enforce the
+# evidence-anchored recovery path.
+if [[ -n "$FIXES_JSON" && -z "$EVIDENCE_SOURCE" ]]; then
+  echo "ERROR: write-recovery-trace.sh — --fixes-json requires --evidence-source (paired flags)." >&2
+  echo "       Lead-transcribed fixes must point to an external evidence file (build-result.json, etc.)" >&2
+  exit 1
+fi
+if [[ -n "$EVIDENCE_SOURCE" && -z "$FIXES_JSON" ]]; then
+  echo "ERROR: write-recovery-trace.sh — --evidence-source requires --fixes-json (paired flags)." >&2
   exit 1
 fi
 
@@ -246,13 +277,19 @@ HEAD_SHA=$(echo "$SPAWN_INFO" | python3 -c "import json,sys; print(json.load(sys
 
 AGENT_ENV="$AGENT" TS_ENV="$TS" REASON_ENV="$REASON" RUN_ID_ENV="$TARGET_RUN_ID" \
 SKILL_ENV="$TARGET_SKILL" SPAWN_SHA_ENV="$HEAD_SHA" SPAWN_IDX_ENV="$SPAWN_INDEX" \
-TARGET_ENV="$TARGET_TRACE" python3 - << 'PYEOF'
-import json, os
+TARGET_ENV="$TARGET_TRACE" FIXES_JSON_ENV="$FIXES_JSON" EVIDENCE_SOURCE_ENV="$EVIDENCE_SOURCE" \
+python3 - << 'PYEOF'
+import json, os, sys
 trace = {
     'agent': os.environ['AGENT_ENV'],
     'timestamp': os.environ['TS_ENV'],
     'status': 'abandoned',
-    'verdict': 'recovery',
+    # EARC slice 1: 'verdict' renamed from 'recovery' (anomalous, outside the
+    # closed verdict enum {pass,fail,blocked,unresolved}) to 'unresolved'
+    # (within the enum). Provenance stays 'recovery' — that's the correct
+    # signal for downstream gates (validate_fallback predicate keys on
+    # provenance). No consumer hardcoded verdict=='recovery'; safe rename.
+    'verdict': 'unresolved',
     'provenance': 'recovery',
     'partial': True,
     'checks_performed': ['exhaustion-recovery'],
@@ -265,8 +302,36 @@ trace = {
     'spawn_sha': os.environ['SPAWN_SHA_ENV'],
     'spawn_index': int(os.environ['SPAWN_IDX_ENV']) if os.environ['SPAWN_IDX_ENV'] else None,
 }
+
+# EARC slice 1 (closes #1189): when the lead supplies --fixes-json with an
+# anchored --evidence-source, attach the fixes (each stamped with
+# lead_transcribed:true so downstream consumers can distinguish "agent's own
+# claim" from "lead's recovery-evidence claim") and the lead_evidence_source
+# pointer. validate-recovery.sh reads these to stamp recovery_validated:true.
+fixes_raw = os.environ.get('FIXES_JSON_ENV', '').strip()
+ev_source = os.environ.get('EVIDENCE_SOURCE_ENV', '').strip()
+if fixes_raw:
+    try:
+        fixes = json.loads(fixes_raw)
+    except json.JSONDecodeError as exc:
+        sys.stderr.write(f'ERROR: --fixes-json is not valid JSON: {exc}\n')
+        sys.exit(1)
+    if not isinstance(fixes, list):
+        sys.stderr.write('ERROR: --fixes-json must be a JSON array\n')
+        sys.exit(1)
+    for f in fixes:
+        if isinstance(f, dict):
+            f['lead_transcribed'] = True
+    trace['fixes'] = fixes
+    trace['no_fixes_claimed'] = False
+if ev_source:
+    trace['lead_evidence_source'] = ev_source
+
 json.dump(trace, open(os.environ['TARGET_ENV'], 'w'), indent=2)
 PYEOF
 
 echo "Recovery trace written: $TARGET_TRACE (reason: \"$REASON\")"
+if [[ -n "$FIXES_JSON" ]]; then
+  echo "Lead-transcribed fixes attached; lead_evidence_source: $EVIDENCE_SOURCE"
+fi
 echo "Note: recovery_validated:false — run .claude/scripts/validate-recovery.sh $AGENT to stamp it true after evidence check."

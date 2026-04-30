@@ -174,6 +174,7 @@ agent trace `fixes[]` arrays; not authored by agents directly.
 | `batch_size` | int | ✓ | Count of fixes in the same trace at consolidation time; `1` for lead-fix invocations |
 | `provenance` *(v1.1)* | string | ✓ | `agent` (default — fix attributed to its source agent) \| `lead` (for lead-fix entries) \| `lead-on-behalf` (agent reported, lead transcribed). Distinguishes authorship at the row level for Q-score weighting and observation candidacy. |
 | `severity` *(v1.1)* | string | optional | `fix` (default) \| `warn`. Used by STATE 5 e2e-config WARN migration (see PR5/S8). |
+| `lead_transcribed` *(EARC slice 1)* | boolean | optional | `true` when the row originated from a `fixes[]` entry that the lead recorded via `write-recovery-trace.sh --fixes-json` (the agent crashed; the lead anchored fixes to external evidence). Distinguishes "agent's own claim" from "lead's recovery-evidence claim" for pattern-classifier and Q-score routing. The source trace also carries `lead_evidence_source`. Closes #1189. |
 
 - **Authoritative count** = `wc -l .runs/fix-ledger.jsonl`.
 - **Deterministic ordering** when rendered: by `(batch_id, fix_index)`.
@@ -190,6 +191,13 @@ with the transitional dual-check period:
 
 ```
 Fix (<agent>): `<file>` — Symptom: <symptom> — Fix: <fix>
+```
+
+Variant rendering for special row types:
+
+```
+⚠️ Template patch (<agent>): `<file>` (<before_hash> → <after_hash>)        # entry_type == "template-edit"
+📝 Lead-transcribed (<agent>, recovery): `<file>` — Symptom: ... — Fix: ... # lead_transcribed == true (EARC slice 1)
 ```
 
 ## Canonical Writer Policy

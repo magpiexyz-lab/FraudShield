@@ -211,7 +211,7 @@ def collect_rows(existing_ids, caller_run_id):
                     f"(no file field — granularity gate AOC v1.1)\n"
                 )
                 continue
-            new_rows.append({
+            row = {
                 "fix_id": fix_id,
                 "agent": agent,
                 "source_trace": trace_path,
@@ -223,7 +223,16 @@ def collect_rows(existing_ids, caller_run_id):
                 "batch_id": basename,
                 "batch_size": batch_size,
                 "provenance": row_provenance,
-            })
+            }
+            # EARC slice 1: preserve lead_transcribed flag from agent traces.
+            # When a fixer-class agent crashed and the lead recorded fixes
+            # via write-recovery-trace.sh --fixes-json, the per-entry
+            # lead_transcribed:true flag distinguishes "agent's own claim"
+            # from "lead's recovery-evidence claim" so pattern-classifier
+            # can route the row to the lead-transcribed sub-class.
+            if isinstance(fix, dict) and fix.get("lead_transcribed") is True:
+                row["lead_transcribed"] = True
+            new_rows.append(row)
     if skipped_no_file:
         sys.stderr.write(
             f"write-fix-ledger: granularity gate dropped {skipped_no_file} fix(es) "

@@ -105,7 +105,11 @@ class TestWriteRecovery(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stderr)
         trace = json.loads((self.traces / "design-critic.json").read_text())
         self.assertEqual(trace["provenance"], "recovery")
-        self.assertEqual(trace["verdict"], "recovery")
+        # EARC slice 1 (closes #1189): verdict renamed from 'recovery'
+        # (anomalous, outside the closed verdict enum) to 'unresolved'
+        # (within {pass, fail, blocked, unresolved}). Provenance still
+        # carries the recovery semantics.
+        self.assertEqual(trace["verdict"], "unresolved")
         self.assertEqual(trace["partial"], True)
         self.assertEqual(trace["recovery"], True)
         self.assertEqual(trace["recovery_validated"], False)

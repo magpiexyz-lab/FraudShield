@@ -95,6 +95,23 @@ Q0 (AOC v1.1 — Lead-authored fix branch):
         stack files (would polish friction into pattern noise) and do NOT
         save to project memory (it's not project-specific).
 
+  NO → continue → Q0a
+
+Q0a (EARC slice 1 — Lead-transcribed fix branch):
+   "Does the ledger row have lead_transcribed == true?"
+
+  YES → Lead-transcribed fix (recovery context) → SKIP with reason
+        "lead-transcribed — recovery context, project-specific".
+        These rows came from a crashed fixer-class agent's recovery: the lead
+        recorded the fix via write-recovery-trace.sh --fixes-json with an
+        external evidence anchor (build-result.json). They reflect a SINGLE
+        run's recovery state, not generalizable patterns. Do NOT save to
+        stack files (recovery is procedural, not template-rooted) and do NOT
+        save to project memory (it's already in the run's audit trail). The
+        observer epilogue still evaluates them via the 3-condition test if
+        the recovery itself surfaces template friction (e.g., agent
+        instructions silently led to crash).
+
   NO (or provenance == 'agent' / 'lead-on-behalf' / absent) → continue → Q1
 
 Q1: "Would another developer, using this exact template with a

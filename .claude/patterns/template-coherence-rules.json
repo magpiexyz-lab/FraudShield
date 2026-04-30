@@ -249,6 +249,15 @@
       "severity": "block",
       "manifest_path": ".claude/patterns/lead-only-artifacts.json",
       "description": "Three-way mapping check for lead-only artifacts (closes #1152): hook coverage + schema field declared + no agent .md lists artifact as deliverable."
+    },
+    {
+      "id": "earc-gate-evidence-escape",
+      "type": "gate_evidence_escape",
+      "severity": "warn",
+      "inventory_path": ".claude/patterns/gate-inventory.json",
+      "registry_path": ".claude/patterns/state-registry.json",
+      "description": "EARC slice 1 (closes #1182, #1189 recurrence): every gate listed in gate-inventory.json with earc_subpattern in {gate-side, writer-side} must offer a documented evidence-escape branch (inline reference to attestation/EARC/lead_evidence_source) or be declared in state-registry.repair_evidence. Ships in WARN; flips to BLOCK in slice 4 after one-week soak with zero new findings.",
+      "_transitional_note": "WARN-mode soak window per the proven PR3->PR4 hardening pattern from agent-trace-write-gate.sh."
     }
   ]
 }
