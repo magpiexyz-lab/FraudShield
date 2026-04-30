@@ -57,13 +57,12 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# Required args
-for var in TARGET_FILE EVIDENCE_SOURCE LEAD_ATTESTATION SYMPTOM; do
-  if [[ -z "${!var}" ]]; then
-    echo "ERROR: write-phase-a-repair.sh — --${var,,} (--$(echo $var | tr '_' '-' | tr 'A-Z' 'a-z')) is required" >&2
-    exit 1
-  fi
-done
+# Required args. Explicit per-flag check — original code used ${var,,}
+# which produced --target_file (underscore) instead of --target-file.
+[[ -n "$TARGET_FILE" ]]      || { echo "ERROR: write-phase-a-repair.sh — --target-file is required" >&2; exit 1; }
+[[ -n "$EVIDENCE_SOURCE" ]]  || { echo "ERROR: write-phase-a-repair.sh — --evidence-source is required" >&2; exit 1; }
+[[ -n "$LEAD_ATTESTATION" ]] || { echo "ERROR: write-phase-a-repair.sh — --lead-attestation is required" >&2; exit 1; }
+[[ -n "$SYMPTOM" ]]          || { echo "ERROR: write-phase-a-repair.sh — --symptom is required" >&2; exit 1; }
 
 # Allowed targets — must match the four files protected by bootstrap/gates/write.sh.
 case "$TARGET_FILE" in
@@ -154,7 +153,46 @@ TARGET_FULL="$PROJECT_DIR/$TARGET_FILE"
 mkdir -p "$(dirname "$TARGET_FULL")"
 TMP="$(mktemp "${TARGET_FULL}.XXXXXX")"
 printf '%s' "$NEW_CONTENT" > "$TMP"
+# Save a copy of the prior content so the post-condition check can revert
+# if the repair makes things worse (e.g., new build still fails).
+PRIOR_CONTENT_PATH=""
+if [[ -f "$TARGET_FULL" ]]; then
+  PRIOR_CONTENT_PATH="$(mktemp "${TARGET_FULL}.prior.XXXXXX")"
+  cp "$TARGET_FULL" "$PRIOR_CONTENT_PATH"
+fi
 mv "$TMP" "$TARGET_FULL"
+
+# POST-REPAIR build verification — first-principles fix.
+#
+# The pre-repair evidence check confirms the build was failing (justifying
+# the repair). But that doesn't guarantee the repair WORKS — the lead could
+# write a still-broken file, and the attestation would falsely claim
+# "evidence_validated:true" with the gate ALSO-ALLOWing a still-broken state.
+# That's exactly the #1182 failure mode (broken Phase A escapes into the
+# sealed window) shifted by one layer.
+#
+# Skip when --skip-post-build is set (test fixtures, dry runs); the flag
+# requires an explicit acknowledgement so production paths can't silently
+# skip the check.
+if [[ "${WRITE_PHASE_A_REPAIR_SKIP_POST_BUILD:-0}" != "1" ]]; then
+  echo "write-phase-a-repair.sh: running post-repair build verification..." >&2
+  POST_BUILD_LOG="$(mktemp /tmp/phase-a-repair-postbuild.XXXXXX.log)"
+  if ! ( cd "$PROJECT_DIR" && npm run build > "$POST_BUILD_LOG" 2>&1 ); then
+    echo "ERROR: write-phase-a-repair.sh — POST-repair build still failing." >&2
+    echo "       Reverting $TARGET_FILE and refusing to stamp the attestation." >&2
+    echo "       --- npm run build (tail) ---" >&2
+    tail -30 "$POST_BUILD_LOG" >&2
+    if [[ -n "$PRIOR_CONTENT_PATH" && -f "$PRIOR_CONTENT_PATH" ]]; then
+      mv "$PRIOR_CONTENT_PATH" "$TARGET_FULL"
+    fi
+    rm -f "$POST_BUILD_LOG"
+    exit 2
+  fi
+  rm -f "$POST_BUILD_LOG"
+  echo "write-phase-a-repair.sh: post-repair build PASSED." >&2
+fi
+# Repair confirmed effective; remove the prior-content backup.
+[[ -n "$PRIOR_CONTENT_PATH" && -f "$PRIOR_CONTENT_PATH" ]] && rm -f "$PRIOR_CONTENT_PATH"
 
 # Write attestation artifact (bootstrap/gates/write.sh reads this for ALSO-ALLOW).
 ATTEST_DIR="$PROJECT_DIR/.runs/phase-a-repair-attestations"
@@ -163,6 +201,7 @@ BASENAME="$(basename "$TARGET_FILE")"
 ATTEST_PATH="$ATTEST_DIR/${BASENAME}-${TS}.json"
 COMMIT_SHA="$(git -C "$PROJECT_DIR" rev-parse HEAD 2>/dev/null || echo "")"
 
+POST_BUILD_SKIPPED="${WRITE_PHASE_A_REPAIR_SKIP_POST_BUILD:-0}"
 ATTEST_PATH_ENV="$ATTEST_PATH" \
 TARGET_FILE_ENV="$TARGET_FILE" \
 EVIDENCE_SOURCE_ENV="$EVIDENCE_SOURCE" \
@@ -170,17 +209,25 @@ LEAD_ATTESTATION_ENV="$LEAD_ATTESTATION" \
 SYMPTOM_ENV="$SYMPTOM" \
 COMMIT_SHA_ENV="$COMMIT_SHA" \
 TS_ENV="$TS" \
+POST_BUILD_SKIPPED_ENV="$POST_BUILD_SKIPPED" \
 python3 - <<'PYEOF'
 import json, os
 attest = {
-    'target_file':        os.environ['TARGET_FILE_ENV'],
-    'evidence_source':    os.environ['EVIDENCE_SOURCE_ENV'],
-    'evidence_validated': True,
-    'lead_attestation':   os.environ['LEAD_ATTESTATION_ENV'],
-    'symptom':            os.environ['SYMPTOM_ENV'],
-    'commit_sha_before':  os.environ['COMMIT_SHA_ENV'],
-    'timestamp':          os.environ['TS_ENV'],
-    'writer':             'write-phase-a-repair.sh',
+    'target_file':              os.environ['TARGET_FILE_ENV'],
+    'evidence_source':          os.environ['EVIDENCE_SOURCE_ENV'],
+    'evidence_validated':       True,
+    # post_repair_build_passing is the post-condition the lead now owes the
+    # gate. 'true' iff `npm run build` succeeded after the file was written;
+    # 'skipped' only when WRITE_PHASE_A_REPAIR_SKIP_POST_BUILD=1 (test mode).
+    # The gate (bootstrap/gates/write.sh) reads this field; downstream PRs
+    # may add a stricter ALSO-ALLOW that requires post_repair_build_passing
+    # == 'true' to deflect skipped attestations from production.
+    'post_repair_build_passing': 'skipped' if os.environ['POST_BUILD_SKIPPED_ENV'] == '1' else True,
+    'lead_attestation':         os.environ['LEAD_ATTESTATION_ENV'],
+    'symptom':                  os.environ['SYMPTOM_ENV'],
+    'commit_sha_before':        os.environ['COMMIT_SHA_ENV'],
+    'timestamp':                os.environ['TS_ENV'],
+    'writer':                   'write-phase-a-repair.sh',
 }
 json.dump(attest, open(os.environ['ATTEST_PATH_ENV'], 'w'), indent=2)
 PYEOF
@@ -202,8 +249,14 @@ for f in sorted(glob.glob(os.path.join(os.environ.get('CLAUDE_PROJECT_DIR', '.')
 [[ -n "$SKILL" ]] || SKILL="bootstrap"
 
 # Build the trace JSON. Lead-fix requires non-empty fixes[] with file/symptom/fix.
-TRACE_JSON_ENV_TARGET="$TARGET_FILE" TRACE_JSON_ENV_SYM="$SYMPTOM" TRACE_JSON_ENV_FIX="$LEAD_ATTESTATION" \
-TRACE_JSON=$(python3 -c "
+# NOTE: `VAR=val FOO=$(cmd)` does NOT pass VAR to cmd — bash applies env-vars
+# only to direct command invocations, not to the assignment. The env-vars
+# must be set INSIDE the $(...) subshell, or exported, or passed via env.
+TRACE_JSON=$(
+  TRACE_JSON_ENV_TARGET="$TARGET_FILE" \
+  TRACE_JSON_ENV_SYM="$SYMPTOM" \
+  TRACE_JSON_ENV_FIX="$LEAD_ATTESTATION" \
+  python3 -c "
 import json, os
 print(json.dumps({
     'verdict': 'pass',
@@ -216,20 +269,39 @@ print(json.dumps({
     }],
     'checks_performed': ['earc-phase-a-repair'],
 }))
-")
+"
+)
 
 # Note: write-agent-trace.sh requires an active skill context. lead-fix does
 # NOT require a spawn-log entry (lead has direct knowledge). The trace agent
 # name is "lead-<skill>" by convention — matches the existing FLS v1 lead-fix
 # pattern in write-fix-ledger.py.
+#
+# Soft-fail if the trace can't be stamped (e.g., no active context on current
+# branch). The ATTESTATION is the critical artifact for the gate; the
+# lead-fix trace is downstream telemetry for Q-score / pattern-classifier.
+# Without the trace, observability is reduced but the contract (gate
+# ALSO-ALLOW + audit-trail of the repair) still holds via the attestation.
 TRACE_AGENT="lead-${SKILL}"
-bash "$SCRIPT_DIR/write-agent-trace.sh" "$TRACE_AGENT" \
-  --provenance lead-fix \
-  --lead-attestation true \
-  --trace-filename "${TRACE_AGENT}-phase-a-repair.json" \
-  --json "$TRACE_JSON"
+TRACE_PATH=".runs/agent-traces/${TRACE_AGENT}-phase-a-repair.json"
+TRACE_STATUS="ok"
+if ! bash "$SCRIPT_DIR/write-agent-trace.sh" "$TRACE_AGENT" \
+       --provenance lead-fix \
+       --lead-attestation true \
+       --trace-filename "${TRACE_AGENT}-phase-a-repair.json" \
+       --json "$TRACE_JSON" 2> /tmp/phase-a-repair-trace.err; then
+  TRACE_STATUS="skipped"
+  echo "WARN: write-phase-a-repair.sh — could not stamp lead-fix trace; attestation still written." >&2
+  echo "  Reason: $(cat /tmp/phase-a-repair-trace.err 2>/dev/null | head -1)" >&2
+  rm -f /tmp/phase-a-repair-trace.err
+  TRACE_PATH=""
+fi
 
 echo "Phase A repair complete:"
 echo "  target:          $TARGET_FILE"
 echo "  attestation:     $ATTEST_PATH"
-echo "  lead-fix trace:  .runs/agent-traces/${TRACE_AGENT}-phase-a-repair.json"
+if [[ "$TRACE_STATUS" == "ok" ]]; then
+  echo "  lead-fix trace:  $TRACE_PATH"
+else
+  echo "  lead-fix trace:  (skipped — see WARN above)"
+fi

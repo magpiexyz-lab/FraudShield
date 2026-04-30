@@ -30,17 +30,30 @@ The lead (not a subagent) creates:
 
 Phase A runs AFTER scaffold-init completes (STATE 10) to ensure design tokens exist.
 
-After creating all Phase A files, run the **build self-check** (EARC slice 2 / Half I, closes #1182 root cause): `npm run build` MUST exit 0 before sealing the Phase A sentinel. Invalid Phase A files (e.g., `next/font` config errors) thus cannot escape into the sealed window where downstream subagents can no longer fix them. If the build fails, the lead repairs the offending Phase A file in-place (no gate yet — sentinel hasn't been written) and re-runs the self-check.
+After creating all Phase A files, run the **build self-check** (EARC slice 2 / Half I, closes #1182 root cause): `npm run build` MUST exit 0 before sealing the Phase A sentinel. Invalid Phase A files (e.g., `next/font` config errors) thus cannot escape into the sealed window where downstream subagents can no longer fix them.
+
+**On failure, the lead does NOT bypass — it repairs and retries.** The procedure:
+
+1. Read the build log (last 30 lines printed to stderr by the snippet below).
+2. Identify the failing Phase A file from the error.
+3. Use the `Edit` or `Write` tool to fix the file in-place. **No gate applies yet** because `phase-a-sentinel.json` has not been written; the no-rewrite window is not active.
+4. Re-execute the build self-check snippet below until it passes.
+5. Sentinel writes only after the snippet exits 0; lead advances state only after that.
+
+If repair attempts exceed three rounds without convergence, the lead writes a `recovery` trace via `write-recovery-trace.sh` rather than continuing to retry — that's the cross-skill recovery path, not a bypass.
 
 ```bash
 mkdir -p .runs/gate-verdicts
 
 # EARC Half I: build self-check before sealing Phase A.
-# Failure here means the lead must repair the file(s) in-place and re-run
-# state-11. The phase-a-sentinel does not get written, so the no-rewrite
-# window does not yet apply.
+# Failure: lead must repair the file(s) in-place and re-run this snippet.
+# DO NOT bypass via shell write (python -c, sed -i, cat >) — those are
+# blocked by the bootstrap-phase-a-write-guard.sh hook in deny mode.
 if ! npm run build > /tmp/phase-a-build.log 2>&1; then
   echo "ERROR: state-11 build self-check failed; Phase A cannot be sealed." >&2
+  echo "       Repair the failing file(s) below using the Edit/Write tool" >&2
+  echo "       and re-run this snippet. NO sentinel will be written until" >&2
+  echo "       npm run build exits 0." >&2
   echo "--- npm run build (tail) ---" >&2
   tail -30 /tmp/phase-a-build.log >&2
   exit 1

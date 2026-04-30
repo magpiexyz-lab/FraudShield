@@ -365,5 +365,216 @@ class TestPhaseAGateAttestationAllow(unittest.TestCase):
         self.assertEqual(r.returncode, 2, msg=r.stderr)
 
 
+class TestWritePhaseARepairPostCondition(unittest.TestCase):
+    """Post-condition build verification: write-phase-a-repair.sh must run
+    `npm run build` AFTER writing the repaired file, AND only stamp the
+    attestation when build passes. If the build still fails after the repair,
+    the script must revert the file and refuse to stamp the attestation —
+    otherwise the gate ALSO-ALLOWs a still-broken state, just one layer
+    removed from the original #1182 failure mode.
+    """
+
+    def setUp(self):
+        self.td = Path(tempfile.mkdtemp(prefix="test_repair_postcond_"))
+        # Bootstrap a tiny "project" with an npm-buildable app.
+        subprocess.run(["git", "init", "-q", str(self.td)], check=True)
+        subprocess.run(
+            ["git", "-C", str(self.td), "config", "user.email", "t@t.com"], check=True
+        )
+        subprocess.run(["git", "-C", str(self.td), "config", "user.name", "t"], check=True)
+        # Copy needed scripts + libs.
+        for d in (
+            ".claude/scripts/lib",
+            ".claude/hooks",
+            ".runs",
+            "src/app",
+        ):
+            (self.td / d).mkdir(parents=True, exist_ok=True)
+        shutil.copy(
+            ROOT / ".claude/scripts/write-phase-a-repair.sh",
+            self.td / ".claude/scripts/write-phase-a-repair.sh",
+        )
+        shutil.copy(
+            ROOT / ".claude/scripts/write-agent-trace.sh",
+            self.td / ".claude/scripts/write-agent-trace.sh",
+        )
+        shutil.copy(
+            ROOT / ".claude/scripts/lib/validate_evidence.py",
+            self.td / ".claude/scripts/lib/validate_evidence.py",
+        )
+        (self.td / ".claude/scripts/lib/__init__.py").write_text("")
+        # lib-core + lib (write-agent-trace.sh sources lib).
+        shutil.copytree(
+            ROOT / ".claude/hooks", self.td / ".claude/hooks", dirs_exist_ok=True
+        )
+        # Stub package.json with a controlled `npm run build` script:
+        # exit code is whatever we put in /tmp/test-build-rc-<td>.txt.
+        rc_file = self.td / ".rc-control"
+        rc_file.write_text("0")
+        (self.td / "package.json").write_text(
+            json.dumps(
+                {
+                    "name": "test-app",
+                    "version": "0.0.0",
+                    "scripts": {
+                        "build": f"exit $(cat {rc_file})",
+                    },
+                }
+            )
+        )
+        self.rc_file = rc_file
+        # Existing layout.tsx (the "broken" state we'll repair).
+        (self.td / "src/app/layout.tsx").write_text("/* broken layout */\n")
+        subprocess.run(
+            ["git", "-C", str(self.td), "add", "."], check=True, capture_output=True
+        )
+        subprocess.run(
+            ["git", "-C", str(self.td), "commit", "-q", "-m", "init"], check=True
+        )
+        # Failing build evidence (justifies the repair).
+        json.dump({"exit_code": 1}, (self.td / ".runs/build-result.json").open("w"))
+        # Active context the writer needs.
+        json.dump(
+            {"skill": "bootstrap", "run_id": "test-run", "completed": False},
+            (self.td / ".runs/bootstrap-context.json").open("w"),
+        )
+        # spawn-log entry that write-agent-trace.sh expects (lead-fix doesn't
+        # require one, but the writer still inspects the spawn log).
+        (self.td / ".runs/agent-spawn-log.jsonl").write_text("")
+
+    def tearDown(self):
+        shutil.rmtree(self.td, ignore_errors=True)
+
+    def _set_post_build_rc(self, rc: int):
+        self.rc_file.write_text(str(rc))
+
+    def _run_repair(self, content: str = "/* fixed layout */\n"):
+        env = {
+            **os.environ,
+            "CLAUDE_PROJECT_DIR": str(self.td),
+            "PATH": os.environ.get("PATH", ""),
+        }
+        return subprocess.run(
+            [
+                "bash",
+                ".claude/scripts/write-phase-a-repair.sh",
+                "--target-file",
+                "src/app/layout.tsx",
+                "--evidence-source",
+                ".runs/build-result.json",
+                "--symptom",
+                "test symptom",
+                "--lead-attestation",
+                "test fix",
+            ],
+            cwd=str(self.td),
+            input=content,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+
+    def test_post_build_pass_stamps_attestation(self):
+        """When the post-repair build passes, attestation is stamped with
+        post_repair_build_passing:true and the file content is the new one."""
+        self._set_post_build_rc(0)
+        r = self._run_repair()
+        self.assertEqual(r.returncode, 0, msg=f"stderr={r.stderr}")
+        # Attestation written
+        att_files = list(
+            (self.td / ".runs/phase-a-repair-attestations").glob("layout.tsx-*.json")
+        )
+        self.assertEqual(len(att_files), 1, f"unexpected: {att_files}")
+        att = json.load(att_files[0].open())
+        self.assertEqual(att["post_repair_build_passing"], True)
+        # File content is the new one (note: bash $(cat) strips trailing newline,
+        # which printf '%s' preserves verbatim — so we expect no trailing \n)
+        self.assertEqual(
+            (self.td / "src/app/layout.tsx").read_text(),
+            "/* fixed layout */",
+        )
+
+    def test_post_build_fail_reverts_and_rejects(self):
+        """When the post-repair build still fails, the file is reverted and
+        no attestation is written. This is the critical first-principles fix:
+        without this, the gate could ALSO-ALLOW a still-broken state."""
+        self._set_post_build_rc(1)  # post-build still failing
+        r = self._run_repair()
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("POST-repair build still failing", r.stderr)
+        # File reverted to prior content
+        self.assertEqual(
+            (self.td / "src/app/layout.tsx").read_text(),
+            "/* broken layout */\n",
+        )
+        # No attestation written
+        att_dir = self.td / ".runs/phase-a-repair-attestations"
+        if att_dir.exists():
+            att_files = list(att_dir.glob("layout.tsx-*.json"))
+            self.assertEqual(len(att_files), 0, f"unexpected: {att_files}")
+
+    def test_skip_post_build_env_marks_attestation_skipped(self):
+        """The escape hatch (test fixtures) writes 'skipped' explicitly."""
+        # post-build would fail, but skip is set
+        self._set_post_build_rc(1)
+        env = {
+            **os.environ,
+            "CLAUDE_PROJECT_DIR": str(self.td),
+            "WRITE_PHASE_A_REPAIR_SKIP_POST_BUILD": "1",
+        }
+        r = subprocess.run(
+            [
+                "bash",
+                ".claude/scripts/write-phase-a-repair.sh",
+                "--target-file",
+                "src/app/layout.tsx",
+                "--evidence-source",
+                ".runs/build-result.json",
+                "--symptom",
+                "test symptom",
+                "--lead-attestation",
+                "test fix",
+            ],
+            cwd=str(self.td),
+            input="/* fixed */\n",
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(r.returncode, 0, msg=f"stderr={r.stderr}")
+        att_files = list(
+            (self.td / ".runs/phase-a-repair-attestations").glob("layout.tsx-*.json")
+        )
+        self.assertEqual(len(att_files), 1)
+        att = json.load(att_files[0].open())
+        # Skip marker — distinguishable from True
+        self.assertEqual(att["post_repair_build_passing"], "skipped")
+
+    def test_missing_required_flag_uses_correct_dash_form(self):
+        """Bug fix #4: error message used --target_file (underscore), should
+        be --target-file (dash). Verify the corrected form."""
+        env = {**os.environ, "CLAUDE_PROJECT_DIR": str(self.td)}
+        r = subprocess.run(
+            [
+                "bash",
+                ".claude/scripts/write-phase-a-repair.sh",
+                "--evidence-source",
+                ".runs/build-result.json",
+                "--symptom",
+                "x",
+                "--lead-attestation",
+                "y",
+            ],
+            cwd=str(self.td),
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        self.assertNotEqual(r.returncode, 0)
+        # Correct dash form, not underscore
+        self.assertIn("--target-file", r.stderr)
+        self.assertNotIn("--target_file", r.stderr)
+
+
 if __name__ == "__main__":
     unittest.main()
