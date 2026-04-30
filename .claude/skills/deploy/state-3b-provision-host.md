@@ -61,11 +61,13 @@ Collect all env vars and set them using the hosting provider's method:
    - Exclude keys already handled by stack categories above (database, Stripe, email, PostHog)
    - For each remaining key: read the value from `.env.local`. If found, set it on the hosting provider. If `.env.local` is missing or the key is absent, ask the user for the production value.
 
-- **Write intermediate artifact** (`.runs/deploy-provision-3b.json`):
+- **Write intermediate artifact** (`.runs/deploy-provision-3b.json`) via the
+  canonical writer so the file carries `{skill, run_id, written_at}` identity
+  stamping (GRAIM v2 C1):
   ```bash
-  python3 -c "
+  PAYLOAD=$(python3 -c "
   import json
-  artifact = {
+  payload = {
       'hosting_created': True,   # or False if skipped for update mode
       'domain_added': True,      # or False if failed
       'canonical_url': '<url or null>',
@@ -86,8 +88,12 @@ Collect all env vars and set them using the hosting provider's method:
           # here — this artifact is gitignored (.runs/ is in .gitignore).
       }
   }
-  json.dump(artifact, open('.runs/deploy-provision-3b.json', 'w'), indent=2)
-  "
+  print(json.dumps(payload))
+  ")
+  bash .claude/scripts/lib/write-gate-artifact.sh \
+    --path .runs/deploy-provision-3b.json \
+    --payload "$PAYLOAD" \
+    --skill deploy
   ```
 
   > `.runs/` is gitignored and overwritten per deploy run. `collected_secrets`

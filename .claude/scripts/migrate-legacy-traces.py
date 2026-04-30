@@ -437,10 +437,41 @@ def main() -> int:
             "unresolved_count": len(unresolved_log),
         }, open(RECEIPT_PATH, "w"), indent=2)
         if unresolved_log:
-            json.dump({
+            # GRAIM v2 C1: write the gate-readable unresolved file via the
+            # canonical writer so it carries {skill, run_id, written_at}.
+            # This script runs from lifecycle-init.sh and verify-report-gate.sh
+            # contexts where resolve_active_identity is populated.
+            unresolved_payload = json.dumps({
                 "generated_at": datetime.now(timezone.utc).isoformat(),
                 "unresolved": unresolved_log,
-            }, open(UNRESOLVED_PATH, "w"), indent=2)
+            })
+            try:
+                subprocess.run(
+                    [
+                        "bash",
+                        ".claude/scripts/lib/write-gate-artifact.sh",
+                        "--path",
+                        UNRESOLVED_PATH,
+                        "--payload",
+                        unresolved_payload,
+                    ],
+                    check=True,
+                )
+            except subprocess.CalledProcessError as exc:
+                # Fail-closed fallback: if the canonical writer cannot resolve
+                # identity (e.g., script invoked outside any skill context),
+                # still emit the file so verify-report-gate.sh's hard refuse
+                # branch fires. The file will lack identity stamping in that
+                # edge case — deliberate trade-off vs losing the gate signal.
+                sys.stderr.write(
+                    f"WARN: migrate-legacy-traces: write-gate-artifact failed ({exc}); "
+                    f"falling back to direct json.dump for {UNRESOLVED_PATH}\n"
+                )
+                with open(UNRESOLVED_PATH, "w") as f:
+                    json.dump({
+                        "generated_at": datetime.now(timezone.utc).isoformat(),
+                        "unresolved": unresolved_log,
+                    }, f, indent=2)
             sys.stderr.write(
                 f"WARN: migrate-legacy-traces: {len(unresolved_log)} unresolved traces "
                 f"written to {UNRESOLVED_PATH}. verify-report-gate.sh will refuse to proceed.\n"

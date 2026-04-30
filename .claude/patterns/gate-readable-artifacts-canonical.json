@@ -75,6 +75,17 @@
       "rationale": "Agent trace consumed by VERIFY block; provenance must include {skill,run_id,written_at}."
     },
     {
+      "path": ".runs/agent-traces/scaffold-pages.json",
+      "consumers": [
+        ".claude/hooks/agent-trace-write-guard.sh"
+      ],
+      "writers": [
+        ".claude/scripts/merge-scaffold-pages-traces.py"
+      ],
+      "scope": "transient-cross-skill",
+      "rationale": "Lead-merge aggregate trace produced by merge-scaffold-pages-traces.py (allowlisted in agent-trace-write-guard.sh:181). Bypasses write-agent-trace.sh — pre-AOC-v1.1 legacy aggregate, see merge script comment lines 18-22 for full lead-merge invariant retrofit deferred. Slice 3.2 enrolls in GRAIM canonical manifest; full identity stamping comes when this aggregate is upgraded to AOC v1.1 lead-merge contract."
+    },
+    {
       "path": ".runs/agent-traces/security-fixer.json",
       "consumers": [
         "state-registry:verify.3c",
@@ -352,6 +363,19 @@
       "writers": [],
       "scope": "transient-cross-skill",
       "rationale": "Read by VERIFY blocks in skills: deploy."
+    },
+    {
+      "path": ".runs/deploy-provision-3b.json",
+      "consumers": [
+        ".claude/scripts/verify-deploy-3b.py",
+        ".claude/skills/deploy/state-3c-deploy-services.md",
+        ".claude/skills/deploy/state-4b-production-validation.md"
+      ],
+      "writers": [
+        ".claude/skills/deploy/state-3b-provision-host.md"
+      ],
+      "scope": "transient-cross-skill",
+      "rationale": "Intermediate deploy artifact consumed by state-3b VERIFY (via verify-deploy-3b.py) and read by state-3c/state-4b for collected_secrets handoff. Slice 3.2: writer in state-3b migrated from inline json.dump to write-gate-artifact.sh."
     },
     {
       "path": ".runs/deploy-provision.json",
@@ -761,6 +785,15 @@
       "rationale": "Read by VERIFY blocks in skills: resolve, verify."
     },
     {
+      "path": ".runs/pipeline-phase.json",
+      "consumers": [
+        ".claude/hooks/phase-boundary-gate.sh"
+      ],
+      "writers": [],
+      "scope": "transient-cross-skill",
+      "rationale": "Pipeline-orchestrator phase signal read by phase-boundary-gate.sh. KNOWN CAVEAT: run-skill.sh currently writes the equivalent signal to '.claude/pipeline-phase.json' (not .runs/), so the .runs/ path has no live writer in-tree — phase-boundary-gate.sh fails-open when the file is absent. Writer migration to write-gate-artifact.sh + path unification deferred to follow-up PR (path discrepancy pre-dates GRAIM v2). Slice 3.2 enrolls the canonical reader path so promotion-regression detection covers it."
+    },
+    {
       "path": ".runs/plan-validation.json",
       "consumers": [
         "state-registry:change.6"
@@ -1090,6 +1123,17 @@
       "writers": [],
       "scope": "transient-cross-skill",
       "rationale": "Read by VERIFY blocks in skills: teardown."
+    },
+    {
+      "path": ".runs/trace-migration-unresolved.json",
+      "consumers": [
+        ".claude/hooks/verify-report-gate.sh"
+      ],
+      "writers": [
+        ".claude/scripts/migrate-legacy-traces.py"
+      ],
+      "scope": "transient-cross-skill",
+      "rationale": "Fail-closed signal from migrate-legacy-traces.py — verify-report-gate.sh refuses to proceed when unresolved_count > 0. Slice 3.2: writer in migrate-legacy-traces.py migrated from inline json.dump to write-gate-artifact.sh subprocess (with json.dump fallback when the canonical writer cannot resolve identity)."
     },
     {
       "path": ".runs/upgrade-context.json",

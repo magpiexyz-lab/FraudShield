@@ -265,14 +265,16 @@
       "severity": "warn",
       "manifest_path": ".claude/patterns/gate-readable-artifacts-canonical.json",
       "enforced_artifacts": [
-        ".runs/observation-enforcement.json",
         ".runs/iterate-check-context.json",
         ".runs/review-context.json",
         ".runs/spec-context.json",
         ".runs/upgrade-context.json",
-        ".runs/verify-lifecycle.json"
+        ".runs/verify-lifecycle.json",
+        ".runs/agent-traces/scaffold-pages.json",
+        ".runs/pipeline-phase.json",
+        ".runs/trace-migration-unresolved.json"
       ],
-      "description": "GRAIM v2 C1+C2 — warn when a VERIFY reading an enforced gate-readable artifact lacks identity assertion. enforced_artifacts grows in Slice 3."
+      "description": "GRAIM v2 C1+C2 — warn when a VERIFY reading an enforced gate-readable artifact lacks identity assertion. enforced_artifacts grows in Slice 3. Slice 3.1 added 5 init-context-style artifacts. Slice 3.2 added 3 non-context artifacts; .runs/deploy-provision-3b.json is enrolled in the canonical manifest (writer migrated) but held back from this allowlist because its consumer is verify-deploy-3b.py (a wrapper script, not an inline VERIFY string), so identity enforcement would emit a structural false-positive without a state-registry.json edit."
     },
     {
       "id": "graim-boundary-kind-required",
