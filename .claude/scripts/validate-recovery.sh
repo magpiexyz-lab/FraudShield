@@ -41,7 +41,11 @@ fi
 
 TRACE_PATH_ENV="$TRACE_PATH" BUILD_RESULT_ENV="$BUILD_RESULT" E2E_RESULT_ENV="$E2E_RESULT" \
 REGISTRY_ENV="$REGISTRY" PROJECT_DIR_ENV="$PROJECT_DIR" python3 - << 'PYEOF'
-import json, os, subprocess, sys
+import json, os, sys
+
+# Import shared evidence-validation primitives (extracted in EARC slice 0).
+sys.path.insert(0, os.path.join(os.environ['PROJECT_DIR_ENV'], '.claude', 'scripts'))
+from lib.validate_evidence import validate_build_evidence, validate_diff_evidence
 
 trace_path = os.environ['TRACE_PATH_ENV']
 build_path = os.environ['BUILD_RESULT_ENV']
@@ -68,16 +72,11 @@ if provenance not in ('recovery', 'self-degraded', 'lead-on-behalf'):
 
 errors = []
 
-# Evidence 1: build
-try:
-    br = json.load(open(build_path))
-    ec = br.get('exit_code')
-    if ec != 0:
-        errors.append(f'build-result.json exit_code={ec} (need 0)')
-except FileNotFoundError:
-    errors.append('build-result.json missing — run the build before validating')
-except Exception as exc:
-    errors.append(f'build-result.json malformed: {exc}')
+# Evidence 1: build (delegated to validate_build_evidence — adds freshness +
+# commit_sha checks when those fields are recorded; backwards-compatible when
+# absent, since this script's existing callers do not yet write them).
+ok, build_errors = validate_build_evidence(build_path, project_dir=project)
+errors.extend(build_errors)
 
 # Evidence 2: e2e (skip if not applicable — heuristic: file exists means tests in scope)
 # Agent-role carve-out: read-only (non-fixer) agents produce analysis, not fixes.
@@ -106,56 +105,15 @@ if os.path.isfile(e2e_path) and not is_non_fixer:
 
 # Evidence 3: diff-fix correlation
 fixes = trace.get('fixes') or []
-agent_base = (trace.get('agent') or '').split('-')[0] if '-' in (trace.get('agent') or '') else (trace.get('agent') or '')
-# Resolve base agent from trace.agent; for per-page traces agent stays the base
 agent = trace.get('agent', '')
 
 if fixes:
-    # Compute diff file set: spawn_sha..HEAD UNION porcelain untracked/modified
+    # Delegated to validate_diff_evidence (extracted; same diff-set semantics:
+    # spawn_sha..HEAD UNION porcelain --untracked-files=all, with HEAD~..HEAD
+    # fallback for shallow clones).
     spawn_sha = trace.get('spawn_sha', '')
-    diff_files = set()
-    if spawn_sha:
-        try:
-            out = subprocess.check_output(
-                ['git', 'diff', '--name-only', f'{spawn_sha}..HEAD'],
-                cwd=project, text=True, stderr=subprocess.DEVNULL)
-            diff_files.update(f for f in out.splitlines() if f)
-        except subprocess.CalledProcessError:
-            # If spawn_sha isn't reachable (e.g., shallow clone), fall back to HEAD~..HEAD
-            try:
-                out = subprocess.check_output(
-                    ['git', 'diff', '--name-only', 'HEAD~..HEAD'],
-                    cwd=project, text=True, stderr=subprocess.DEVNULL)
-                diff_files.update(f for f in out.splitlines() if f)
-            except subprocess.CalledProcessError:
-                pass
-    # Porcelain (covers modified + untracked). --untracked-files=all is
-    # required: the default collapses untracked directories to a single
-    # entry (e.g., "?? public/"), hiding the actual new files that fixer
-    # agents create.
-    try:
-        out = subprocess.check_output(
-            ['git', 'status', '--porcelain', '--untracked-files=all'],
-            cwd=project, text=True, stderr=subprocess.DEVNULL)
-        for line in out.splitlines():
-            # Format: "XY path" where XY is 2 chars + space
-            if len(line) > 3:
-                diff_files.add(line[3:].strip().strip('"'))
-    except subprocess.CalledProcessError:
-        pass
-
-    # Every fix's file must appear in diff_files
-    missing = []
-    for fix in fixes:
-        f = fix.get('file') if isinstance(fix, dict) else None
-        if not f:
-            continue  # skip malformed fix entries — schema gate catches these
-        if f not in diff_files:
-            # Check prefix match in case of path mismatch (e.g., leading ./)
-            if not any(d == f or d.endswith('/' + f) or f.endswith('/' + d) for d in diff_files):
-                missing.append(f)
-    if missing:
-        errors.append(f'fixes[].file not present in diff: {missing}')
+    ok, diff_errors = validate_diff_evidence(fixes, spawn_sha, project_dir=project)
+    errors.extend(diff_errors)
 elif trace.get('no_fixes_claimed') is True:
     # Findings-only path: agent must be in non_fixer_agents. To confirm scope
     # actually executed, require either (a) a non-degraded sibling trace, OR
