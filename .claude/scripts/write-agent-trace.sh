@@ -14,9 +14,10 @@
 #
 # Usage:
 #   bash .claude/scripts/write-agent-trace.sh <agent> --json '<trace-json>' \
-#        [--provenance {self|self-degraded|lead-on-behalf|lead-synthesized}] \
+#        [--provenance {self|self-degraded|lead-on-behalf|lead-synthesized|lead-fix}] \
 #        [--source <attestation>]               # required for lead-on-behalf
 #        [--coverage-provider <artifact-path>]  # required for lead-synthesized
+#        [--lead-attestation true]              # required for lead-fix
 #        [--trace-filename <name>.json]         # default: <agent>.json
 #
 # Behavior:
@@ -61,6 +62,7 @@ PROVENANCE="self"
 JSON_PAYLOAD=""
 SOURCE=""
 COVERAGE_PROVIDER=""
+LEAD_ATTESTATION=""
 TRACE_FILENAME=""
 SPAWN_INDEX_OVERRIDE=""
 
@@ -70,6 +72,7 @@ while [[ $# -gt 0 ]]; do
     --provenance)         PROVENANCE="${2:-self}"; shift 2 ;;
     --source)             SOURCE="${2:-}"; shift 2 ;;
     --coverage-provider)  COVERAGE_PROVIDER="${2:-}"; shift 2 ;;
+    --lead-attestation)   LEAD_ATTESTATION="${2:-}"; shift 2 ;;
     --trace-filename)     TRACE_FILENAME="${2:-}"; shift 2 ;;
     --spawn-index)        SPAWN_INDEX_OVERRIDE="${2:-}"; shift 2 ;;
     -h|--help)            usage; exit 0 ;;
@@ -97,9 +100,9 @@ if [[ -z "$JSON_PAYLOAD" ]]; then
 fi
 
 case "$PROVENANCE" in
-  self|self-degraded|lead-on-behalf|lead-synthesized) ;;
+  self|self-degraded|lead-on-behalf|lead-synthesized|lead-fix) ;;
   *)
-    echo "ERROR: write-agent-trace.sh — --provenance must be one of: self, self-degraded, lead-on-behalf, lead-synthesized (got: $PROVENANCE)" >&2
+    echo "ERROR: write-agent-trace.sh — --provenance must be one of: self, self-degraded, lead-on-behalf, lead-synthesized, lead-fix (got: $PROVENANCE)" >&2
     exit 1
     ;;
 esac
@@ -113,6 +116,17 @@ fi
 if [[ "$PROVENANCE" == "lead-synthesized" && -z "$COVERAGE_PROVIDER" ]]; then
   echo "ERROR: write-agent-trace.sh — --coverage-provider is required when --provenance lead-synthesized" >&2
   echo "  Provide the artifact path that satisfies coverage (e.g., 'tests/flows.test.ts')" >&2
+  exit 1
+fi
+
+# EARC slice 3: lead-fix is the canonical provenance for in-flight lead-applied
+# fixes (e.g., write-phase-a-repair.sh repairing a Phase A file with build
+# evidence). lead-fix has its own preconditions (lead_attestation:true; no
+# spawn-log requirement; no recovery_validated chain — the lead has direct
+# knowledge). Per agent-trace-protocol.md:89.
+if [[ "$PROVENANCE" == "lead-fix" && "$LEAD_ATTESTATION" != "true" ]]; then
+  echo "ERROR: write-agent-trace.sh — --lead-attestation true is required when --provenance lead-fix" >&2
+  echo "  lead-fix marks an in-flight lead-applied fix; the attestation flag is the consent signal." >&2
   exit 1
 fi
 
@@ -137,6 +151,7 @@ AGENT_ENV="$AGENT" \
 PROVENANCE_ENV="$PROVENANCE" \
 SOURCE_ENV="$SOURCE" \
 COVERAGE_PROVIDER_ENV="$COVERAGE_PROVIDER" \
+LEAD_ATTESTATION_ENV="$LEAD_ATTESTATION" \
 TRACE_FILENAME_ENV="$TRACE_FILENAME" \
 SPAWN_INDEX_OVERRIDE_ENV="$SPAWN_INDEX_OVERRIDE" \
 JSON_PAYLOAD_ENV="$JSON_PAYLOAD" \
@@ -153,6 +168,7 @@ agent = os.environ["AGENT_ENV"]
 provenance = os.environ["PROVENANCE_ENV"]
 source = os.environ.get("SOURCE_ENV", "")
 coverage_provider = os.environ.get("COVERAGE_PROVIDER_ENV", "")
+lead_attestation = os.environ.get("LEAD_ATTESTATION_ENV", "")
 trace_filename = os.environ.get("TRACE_FILENAME_ENV", "")
 spawn_index_override_str = os.environ.get("SPAWN_INDEX_OVERRIDE_ENV", "")
 spawn_index_override = int(spawn_index_override_str) if spawn_index_override_str else None
@@ -308,6 +324,39 @@ if provenance == "lead-synthesized":
     # checks_performed may be empty for synthesized markers (artifact-integrity-gate
     # allows empty checks for lead-synthesized).
     trace.setdefault("checks_performed", [])
+
+if provenance == "lead-fix":
+    # EARC slice 3: lead self-applied fix (e.g., write-phase-a-repair.sh).
+    # Per agent-trace-protocol.md:89, lead-fix preconditions are
+    # lead_attestation:true + partial:true + non-empty fixes[] entries with
+    # file/symptom/fix populated. Downstream gates use pass_lead_fix predicate
+    # — no recovery_validated chain (lead has direct knowledge).
+    trace["partial"] = True
+    trace["lead_attestation"] = True
+    # Granularity check: at least one fix entry, all with non-empty file,
+    # symptom, fix.
+    fixes = trace.get("fixes")
+    if not isinstance(fixes, list) or len(fixes) == 0:
+        sys.stderr.write(
+            "ERROR: write-agent-trace.sh — provenance=lead-fix requires payload.fixes to be a non-empty array\n"
+        )
+        sys.exit(1)
+    for i, fix in enumerate(fixes):
+        if not isinstance(fix, dict):
+            sys.stderr.write(
+                f"ERROR: write-agent-trace.sh — fixes[{i}] must be an object\n"
+            )
+            sys.exit(1)
+        for k in ("file", "symptom", "fix"):
+            v = fix.get(k)
+            if not isinstance(v, str) or not v.strip():
+                sys.stderr.write(
+                    f"ERROR: write-agent-trace.sh — fixes[{i}].{k} must be a non-empty string (lead-fix granularity gate)\n"
+                )
+                sys.exit(1)
+    # checks_performed should reflect what the lead actually did.
+    if not isinstance(trace.get("checks_performed"), list):
+        trace["checks_performed"] = []
 
 # Atomic write to .runs/agent-traces/<name>.json
 out_dir = ".runs/agent-traces"

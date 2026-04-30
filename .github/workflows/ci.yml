@@ -85,7 +85,7 @@ jobs:
         run: pip3 install pyyaml pytest
 
       - name: Test validators
-        run: python3 -m pytest scripts/ -v --tb=short
+        run: python3 -m pytest scripts/ .claude/scripts/tests/ -v --tb=short
 
       - name: Validate frontmatter
         run: python3 scripts/validate-frontmatter.py

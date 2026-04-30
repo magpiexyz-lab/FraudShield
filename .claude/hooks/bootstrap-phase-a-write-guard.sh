@@ -1,0 +1,145 @@
+#!/usr/bin/env bash
+# bootstrap-phase-a-write-guard.sh — PreToolUse hook for Bash commands.
+# EARC slice 3 (closes #1182). Blocks Bash filesystem writes to the four
+# Phase A files protected by .claude/skills/bootstrap/gates/write.sh:
+#   - src/app/layout.tsx
+#   - src/app/not-found.tsx
+#   - src/app/error.tsx
+#   - src/app/globals.css
+#
+# Modeled on agent-trace-write-guard.sh — same 4-layer evasion catalogue:
+#   (a) chain delimiters (&&, ;, |)
+#   (b) fd-redirect normalization (2>&1, >&1, etc.)
+#   (c) Python literal open(<phase-a-path>, 'w'|'a')
+#   (d) Python variable-indirection (var = "<phase-a>"; open(var, "w"))
+#   plus catch-all for sed -i / perl -i / awk redirect / tee-redirect.
+#
+# The single allowlisted writer is .claude/scripts/write-phase-a-repair.sh,
+# which validates external evidence (build-result.json showing the build is
+# failing) and stamps a lead-fix trace + attestation. The Phase A skill gate
+# (skill convention) ALSO-ALLOWs Edit/Write tool calls when a fresh
+# attestation matches.
+#
+# Mode toggle (matches the proven PR3->PR4 hardening pattern from
+# agent-trace-write-gate.sh):
+#   BOOTSTRAP_PHASE_A_GUARD_MODE=warn   (default, slice 3)
+#     -> emit stderr + log to hook-friction.jsonl + exit 0
+#   BOOTSTRAP_PHASE_A_GUARD_MODE=deny   (slice 4 after one-week soak)
+#     -> exit 2, deny via deny() (also logs hook-friction)
+#
+# Exit codes:
+#   0 — allow (or WARN logged)
+#   2 — deny (when MODE=deny)
+set -euo pipefail
+
+source "$(dirname "$0")/lib.sh"
+parse_payload
+
+MODE="${BOOTSTRAP_PHASE_A_GUARD_MODE:-warn}"
+
+COMMAND=$(read_payload_field "tool_input.command")
+
+# Fast-path: no mention of any Phase A path → allow.
+case "$COMMAND" in
+  *src/app/layout.tsx*|*src/app/not-found.tsx*|*src/app/error.tsx*|*src/app/globals.css*) ;;
+  *) exit 0 ;;
+esac
+
+# Layer (b): fd-redirect normalization (must run before chain detection).
+NORM=$(printf '%s' "$COMMAND" | sed -E 's/[0-9]*>+&[0-9]+//g')
+
+# Helper: emit a finding. In warn mode, log to hook-friction.jsonl + stderr +
+# exit 0. In deny mode, deny() takes care of both logging and exit 2.
+emit_finding() {
+  local msg="$1"
+  if [[ "$MODE" == "deny" ]]; then
+    deny "$msg"
+  else
+    _write_hook_friction "WARN: $msg"
+    echo "WARN [bootstrap-phase-a-write-guard] $msg" >&2
+    echo "  (mode=warn — soak window in slice 3; flips to deny in slice 4)" >&2
+    exit 0
+  fi
+}
+
+# Allow-list short-circuit. write-phase-a-repair.sh is the canonical writer
+# (slice 3). Match leading-anchor pattern for command boundary.
+ALLOWED_REGEX='(^|[[:space:]]|&&|;|\|)[[:space:]]*bash[[:space:]]+[./]*\.?claude/scripts/write-phase-a-repair\.sh[[:space:]]'
+if echo "$COMMAND" | grep -qE "$ALLOWED_REGEX"; then
+  # Defense-in-depth: require --target-file flag (the script's own arg check
+  # would catch absence too, but mirroring the agent-trace-write-guard pattern
+  # we enforce it at the hook level so the deny path remains reachable for
+  # accidentally-malformed invocations).
+  if echo "$COMMAND" | grep -qE 'write-phase-a-repair\.sh[^&|;]*--target-file'; then
+    exit 0
+  else
+    emit_finding "write-phase-a-repair.sh invocation lacks --target-file"
+  fi
+fi
+
+PHASE_A_REGEX='src/app/(layout\.tsx|not-found\.tsx|error\.tsx|globals\.css)'
+
+# Layer (a): chained writes targeting Phase A files. Split on &&/;/|, within
+# each segment look for a write operator (>, >>, &>) bound to a Phase A path,
+# OR tee/cp/mv targeting Phase A.
+if echo "$NORM" | awk -v r="$PHASE_A_REGEX" '
+    BEGIN{RS="[&|;]"}
+    {
+      if (match($0, "([0-9]*&?>+|[0-9]*>>?)[[:space:]]*[\"'"'"']?[^|;&\"'"'"']*"r)) found=1
+      else if (match($0, "(^|[[:space:]])(tee|cp|mv)[[:space:]][^|;&]*"r)) found=1
+    }
+    END{exit !found}'; then
+  emit_finding "chained shell write to Phase A file detected — use write-phase-a-repair.sh"
+fi
+
+# Layer (c): Python literal open(<phase-a-path>, 'w'|'a').
+if echo "$COMMAND" | grep -qE "open\([^)]*$PHASE_A_REGEX[^)]*,[[:space:]]*['\"][wa]"; then
+  emit_finding "python open-for-write on a Phase A file is blocked — use write-phase-a-repair.sh"
+fi
+
+# Layer (d): Python variable-indirection — var = "<phase-a>"; open(var, "w").
+INDIRECT_CHECK=$(echo "$COMMAND" | python3 -c '
+import re, sys
+cmd = sys.stdin.read()
+phase_a = r"src/app/(layout\.tsx|not-found\.tsx|error\.tsx|globals\.css)"
+assignments = set()
+for m in re.finditer(
+    r"([A-Za-z_][A-Za-z0-9_]*)\s*=\s*[\x27\x22][^\x27\x22]*" + phase_a + r"[^\x27\x22]*[\x27\x22]",
+    cmd,
+):
+    assignments.add(m.group(1))
+for var in assignments:
+    pat = r"open\(\s*" + re.escape(var) + r"\s*,[^)]*[\x27\x22][wa][\x27\x22\+b]*"
+    if re.search(pat, cmd):
+        print("DENY")
+        sys.exit(0)
+' 2>/dev/null || true)
+if [[ "$INDIRECT_CHECK" == "DENY" ]]; then
+  emit_finding "variable-indirection write to a Phase A file detected"
+fi
+
+# Catch-all: in-place editors (sed -i, perl -i -pe) and awk redirect chains.
+if echo "$COMMAND" | grep -qE "(sed[[:space:]]+(-[a-zA-Z]*)?-i|perl[[:space:]]+(-[a-zA-Z]*)?-i)([^|;&]*)$PHASE_A_REGEX"; then
+  emit_finding "in-place editor (sed -i / perl -i) targeting a Phase A file is blocked"
+fi
+
+# pathlib.Path("<phase-a>").write_text(...) / .write_bytes(...) — common
+# python -c bypass pattern.
+if echo "$COMMAND" | grep -qE "Path\([^)]*$PHASE_A_REGEX[^)]*\)\.write_(text|bytes)"; then
+  emit_finding "pathlib.Path.write_text on a Phase A file is blocked"
+fi
+
+# Final catch-all (mirrors the bound write-operator pattern used in
+# agent-trace-write-guard.sh's catch-all). Within each segment, require a
+# write operator IMMEDIATELY adjacent to a Phase A target.
+if echo "$NORM" | awk -v r="$PHASE_A_REGEX" '
+    BEGIN{RS="[&|;]"}
+    {
+      if (match($0, "([0-9]*&?>+|[0-9]*>>?)[[:space:]]*[\"'"'"']?[^|;&\"'"'"']*"r"[^[:space:]\"'"'"']*")) found=1
+      else if (match($0, "(^|[[:space:]])(tee|cp|mv)[[:space:]][^|;&]*"r"[^[:space:]\"'"'"']*")) found=1
+    }
+    END{exit !found}'; then
+  emit_finding "Phase A file write must go through write-phase-a-repair.sh; direct shell writes are blocked"
+fi
+
+exit 0
