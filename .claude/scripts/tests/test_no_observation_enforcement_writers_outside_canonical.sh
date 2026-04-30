@@ -3,7 +3,8 @@
 # observation-enforcement.json may exist outside the declared canonical sites.
 #
 # Canonical writers (allow-listed):
-#   - .claude/scripts/check-observation-artifacts.sh   (main, trap fallback, optimize-prompt fast-path)
+#   - .claude/scripts/check-observation-artifacts.sh   (main delegates to canonical writer; trap fallback, optimize-prompt fast-path remain inline pending Slice 3+ migration)
+#   - .claude/scripts/lib/write-gate-artifact.sh       (canonical writer — GRAIM v2 Slice 3)
 #   - .claude/patterns/state-99-epilogue.md            (legitimate-skip Step 3a)
 #
 # Other paths reference the artifact but only as readers/cleanup/declarations:
@@ -19,6 +20,7 @@ cd "$(dirname "$0")/../../.."
 
 UNAUTHORIZED=$(grep -rln "observation-enforcement\.json" .claude/scripts/ .claude/patterns/ .claude/skills/ 2>/dev/null \
   | grep -v "check-observation-artifacts\.sh" \
+  | grep -v "lib/write-gate-artifact\.sh" \
   | grep -v "state-99-epilogue\.md" \
   | grep -v "state-registry\.json" \
   | grep -v "lifecycle-init\.sh" \

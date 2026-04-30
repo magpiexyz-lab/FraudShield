@@ -285,28 +285,30 @@ if [[ ${#MISSING[@]} -gt 0 ]]; then
   PASS="false"
 fi
 
-# ── Write audit artifact ──
+# ── Write audit artifact (delegates to canonical writer — GRAIM v2 Slice 3) ──
 # Build missing list as newline-delimited string, then convert in Python
 MISSING_STR=""
 for m in "${MISSING[@]+"${MISSING[@]}"}"; do
   MISSING_STR="${MISSING_STR}${m}"$'\n'
 done
 
-python3 <<PYEOF
-import json, datetime
-
-missing_raw = """${MISSING_STR}""".strip()
+# Build payload (without identity fields — write-gate-artifact.sh stamps them)
+PAYLOAD=$(MISSING_STR_ENV="$MISSING_STR" SCOPE_ENV="$SCOPE" FAST_PATH_ENV="$FAST_PATH" python3 <<'PYEOF'
+import json, os
+missing_raw = os.environ['MISSING_STR_ENV'].strip()
 missing = [m for m in missing_raw.split('\n') if m] if missing_raw else []
-
-json.dump({
-    "pass": len(missing) == 0,
-    "missing": missing,
-    "scope": "${SCOPE}",
-    "skill": "${SKILL}",
-    "run_id": "${RUN_ID}",
-    "fast_path": "${FAST_PATH}" == "true",
-    "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat()
-}, open("${RUNS_DIR}/observation-enforcement.json", "w"), indent=2)
+payload = {
+    'pass': len(missing) == 0,
+    'missing': missing,
+    'scope': os.environ['SCOPE_ENV'],
+    'fast_path': os.environ['FAST_PATH_ENV'] == 'true',
+}
+print(json.dumps(payload))
 PYEOF
+)
+bash "${PROJECT_DIR}/.claude/scripts/lib/write-gate-artifact.sh" \
+  --path "${RUNS_DIR}/observation-enforcement.json" \
+  --payload "$PAYLOAD" \
+  --skill "$SKILL"
 
 exit 0
