@@ -319,6 +319,15 @@ json.dump(d, open('$COHERENCE_CACHE', 'w'), indent=2)
     echo "Re-run: python3 .claude/scripts/check-worktree-ownership-pattern.py" >&2
     exit 1
   fi
+
+  # Worktree-boundary hook registration (issue #1225): blocking. Asserts that
+  # worktree-boundary-gate.sh exists and is registered under Write, Edit,
+  # MultiEdit, and NotebookEdit PreToolUse matchers in settings.json.
+  if ! python3 "$PROJECT_DIR/.claude/scripts/check-worktree-boundary-hook-registered.py" >&2; then
+    echo "BLOCK: worktree-boundary-hook-registered violation (issue #1225)." >&2
+    echo "Re-run: python3 .claude/scripts/check-worktree-boundary-hook-registered.py" >&2
+    exit 1
+  fi
 fi
 
 # --- Step 5: Delivery (code-writing skills only) ---
