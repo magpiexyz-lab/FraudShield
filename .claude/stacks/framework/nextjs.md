@@ -477,6 +477,25 @@ const safeUrl = z.url().refine(
 
 Defense-in-depth: at render time, also gate anchor `href` with a helper `isSafeHref(url)` that re-checks scheme — covers legacy rows that were persisted before the validator landed. This applies to any user-supplied URL field (portfolio links, milestone links, webhook URLs, OAuth redirect URIs). The schema-level `.refine()` is the primary guard; render-time re-check is belt-and-suspenders.
 
+### When a login page redirects based on a `next` query parameter
+Validate that `next` starts with `/` AND does NOT start with `//` before redirecting. A bare `startsWith("/")` check accepts `?next=//evil.com` because protocol-relative URLs begin with `/` — the browser then resolves `//evil.com` against the current scheme and redirects the authenticated user to an external origin. This is a classic open-redirect (OWASP A1-Broken-Access-Control / A10-Server-Side-Request-Forgery surface).
+
+```typescript
+// WRONG — accepts //evil.com
+if (next && next.startsWith("/")) redirect(next);
+
+// CORRECT — rejects protocol-relative URLs
+const safeNext = next && next.startsWith("/") && !next.startsWith("//") ? next : "/";
+redirect(safeNext);
+```
+
+When `stack.auth: supabase`, the auto-scaffolded OAuth callback handler at `src/app/auth/callback/route.ts` already implements this validation (search for `rawNext.startsWith` in the rendered file or in `.claude/stacks/auth/supabase.md`). The principle above applies when:
+- hand-rolling a login redirect for a non-supabase auth provider,
+- adding a custom `/login` page that bypasses the supabase callback,
+- adding any post-auth or post-action redirect that consumes a `next` / `redirect_to` / `return_to` query parameter.
+
+Per OWASP guidance, when an allowlist of redirect destinations is feasible (e.g., a small set of known internal paths), prefer that over scheme validation. The `startsWith("/") && !startsWith("//")` form is the minimum guard; an allowlist is the strongest.
+
 ### Next.js 16.x: scaffold `src/middleware.ts` + `middleware()` (today's working default). Next.js 17+: `src/proxy.ts` + `proxy()`
 **Today (Next.js 16.x — the template default after `npm install next`):** scaffold `src/middleware.ts` with `export async function middleware(request: NextRequest)`. Despite Next.js 16's deprecation of the `middleware.ts` filename, **the `proxy.ts` registration is incomplete on Next.js 16.x** — following the deprecated `proxy.ts` + `proxy()` prescription verbatim produces an empty `.next/server/middleware-manifest.json` after `npm run build`, and auth-gated routes are reachable without redirect (a security regression). Issue #1120 reproduced this on 16.2.4 with auth + DEMO_MODE. The deprecation warning on `npm run dev` / `npm run build` is the lesser evil compared to a non-functioning auth gate.
 
@@ -701,6 +720,40 @@ export function NavBar() {
 ```
 
 The returned `null` is evaluated on the client after hydration, so the server-rendered output may briefly include the global nav before React decides to hide it. Acceptable tradeoff for the simpler implementation; if flash-of-unstyled-content is unacceptable, move the gate to the root layout's server component using `headers()` to read the path. The alternative `body:has(#sentinel-id) .global-nav { display: none }` CSS pattern also works but is fragile — it depends on a sentinel element being present and is less obvious to future maintainers. Without this gate, every marketing/auth page ships with duplicate navigation bars (fix #1072).
+
+```yaml
+id: nextjs-open-redirect-next-param
+maturity: raw
+anti_pattern: false
+composite_identity:
+  root_cause_class: open redirect via unvalidated next query parameter
+  divergence_pattern: stack-file-security-guidance-gap
+  stack_scope: framework/nextjs
+composite_identity_hash: 593435a0ab4a
+symptom_keywords: [open-redirect, next-param, login, redirect, OWASP-A1, protocol-relative, startsWith]
+fix_template: |
+  Validate next.startsWith("/") AND !next.startsWith("//") before consuming
+  the next query parameter in a redirect. A bare startsWith("/") accepts
+  ?next=//evil.com because protocol-relative URLs begin with /. The browser
+  resolves //evil.com against the current scheme and redirects to an external
+  origin. Pattern:
+    const safeNext = next && next.startsWith("/") && !next.startsWith("//") ? next : "/";
+    redirect(safeNext);
+  When stack.auth: supabase, the auto-scaffolded OAuth callback at
+  src/app/auth/callback/route.ts already implements this validation (see
+  auth/supabase.md callback handler — search for rawNext.startsWith). The
+  guard above applies when hand-rolling a login redirect for a non-supabase
+  auth provider or adding any post-action redirect that consumes a next /
+  redirect_to / return_to query parameter. When an allowlist of redirect
+  destinations is feasible, prefer the allowlist over scheme validation.
+prevention_mechanism: Stack Knowledge entry above documents the guard with code example and cross-reference to auth/supabase.md canonical implementation. Recurrence guard is documentation-quality.
+confidence_score: 0.7
+occurrence_count: 1
+linked_issues: [1228]
+first_seen: 2026-05-01
+last_seen: 2026-05-01
+graduated_to: null
+```
 
 ## PR Instructions
 - No additional framework setup needed after merging — `npm install && npm run dev` is sufficient

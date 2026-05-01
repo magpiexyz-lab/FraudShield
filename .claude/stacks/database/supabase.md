@@ -615,6 +615,8 @@ The recommended fix path is the [Supabase Vercel Integration](https://vercel.com
 
   **When widening a CHECK constraint on a server-managed column** (e.g., adding a new plan tier to an existing enum), audit whether the old CHECK was the only thing preventing self-escalation. If yes, add the column to the REVOKE list in the same migration.
 
+- When a Supabase operation fails in an API route, log the raw error server-side (`console.error`) and return a generic message to the client. Postgres errors include internal schema details (table names, constraint names, RLS policy names) that reveal database structure to attackers (OWASP A4-InfoLeakage). See `## Stack Knowledge` → "When catching Supabase errors in API routes" for the canonical pattern.
+
 ## Patterns
 - Browser client (`supabase.ts`) for client-side components
 - Server client (`createServerSupabaseClient()`) for user-scoped API routes — enforces RLS via cookie-based auth
@@ -623,6 +625,22 @@ The recommended fix path is the [Supabase Vercel Integration](https://vercel.com
 - **Mutation routes on state-machine tables SELECT the status column by default.** For any mutation route (`POST /api/<entity>/<action>`, `PATCH /api/<entity>/[id]/<action>`) targeting a table with a `status` column whose values form a DAG of allowed transitions, the SELECT that precedes the mutation MUST include `status` so the state-transition guard (see `.claude/procedures/wire.md` Step 5) can return 409 when `current_status !== expected_pre_state`. The default SELECT shape is `select("id, status, <other-fields-needed>")` — omitting `status` is the class of defect surfaced by #1062 (tests failed with 500 instead of 409 because the route never read current state).
 
 ## Stack Knowledge
+
+### When catching Supabase errors in API routes
+Return a generic message to the client and log the raw error server-side. Supabase errors include internal Postgres details — table names, constraint names, RLS policy names — that reveal database schema and access-control structure to attackers (OWASP A4-InfoLeakage). The pattern:
+
+```typescript
+const { data, error } = await supabase.from("tasks").insert(input);
+if (error) {
+  console.error("[tasks] Supabase error:", error);
+  return NextResponse.json({ error: "Failed to create task" }, { status: 500 });
+}
+return NextResponse.json({ data });
+```
+
+Never do: `return NextResponse.json({ error: error.message }, { status: 500 })` — this forwards the raw Postgres error string (e.g., `new row violates row-level security policy "tasks_insert_own"`) which leaks both the table identity and the policy identity to the caller.
+
+For `ZodError` validation failures the same principle applies — see your framework stack file (`.claude/stacks/framework/<value>.md` "When catching ZodError" / API Route Conventions). Stack-level rule of thumb: every `if (error)` branch in an API route handler MUST log the raw error and return a generic message. The server-side log retains the full diagnostic; the client receives only the failure category.
 
 ### Demo mode returns generic seed data, not schema-specific data
 The demo client (`createDemoClient()`) returns `DEMO_SEED_DATA` — 3 generic rows with `id`, `name`, `status`, `created_at`, `user_id` fields — for all `.from().select()` calls. Pages that destructure schema-specific fields (e.g., `row.amount`, `row.description`) will get `undefined` in demo mode. This is intentional: the demo client cannot know the real schema at template time.
@@ -713,6 +731,37 @@ through to the array terminal and render 404 / broken state in DEMO_MODE. The
 fix is to add an explicit handler for the missing method; the prevention is to
 keep TEMPLATE.md's canonical proxy pattern teaching both handlers so future
 stack authors copy the both-aliases form.
+
+```yaml
+id: supabase-error-leak-api-route
+maturity: raw
+anti_pattern: false
+composite_identity:
+  root_cause_class: API-route error response leaks raw database error
+  divergence_pattern: stack-file-security-guidance-gap
+  stack_scope: database/supabase
+composite_identity_hash: b90753595312
+symptom_keywords: [supabase, error.message, api-route, info-leakage, OWASP-A4, RLS, schema-leak, postgres]
+fix_template: |
+  Every if (error) branch in an API route handler that calls Supabase MUST
+  log the raw error via console.error (server-side) and return a generic
+  message to the client. Never forward error.message — it leaks Postgres
+  internals: table names, constraint names, RLS policy names. Pattern:
+    if (error) {
+      console.error("[<entity>] Supabase error:", error);
+      return NextResponse.json({ error: "Failed to <action>" }, { status: 500 });
+    }
+  This pairs with the framework-level rule for ZodError forwarding (see
+  framework/nextjs.md API Route Conventions). A single shared mental model
+  for every error response: log raw, return generic.
+prevention_mechanism: Stack Knowledge entry above documents the pattern; pairing with framework-level ZodError rule covers both validation and database error paths. Recurrence guard is documentation-quality.
+confidence_score: 0.7
+occurrence_count: 1
+linked_issues: [1229]
+first_seen: 2026-05-01
+last_seen: 2026-05-01
+graduated_to: null
+```
 
 ## PR Instructions
 - When creating migrations, add to the PR body: "After merging, migrations are applied automatically during the next Vercel build (via the `prebuild` script). If not using the Supabase Vercel Integration, CI applies them on merge to `main` (requires CI secrets), or run `make migrate` manually — see Migration Setup in README."
