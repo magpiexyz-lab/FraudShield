@@ -52,7 +52,17 @@ esac
 # Strip them at the source so both checks see the command without fd tokens.
 # File writes (>file, >>file, &>file, >&file GNU extension, tee, cp, mv) do
 # NOT match the `>+&[digit]` pattern and are preserved intact.
-NORM=$(printf '%s' "$COMMAND" | sed -E 's/[0-9]*>+&[0-9]+//g')
+#
+# Second pass collapses the GNU `>& filename` form (cmd >& filename ≡
+# cmd > filename 2>&1 — a real file write) to plain `> filename`. Without
+# this, the literal `&` between `>` and the filename is consumed as the
+# awk chain-record separator (RS="[&|;]"), splitting the write operator
+# from its target into two adjacent records and silently allowing the
+# write. Order matters: the first sed strips fd-to-fd forms (digit-after-&)
+# so this second pass only reshapes the file form (non-digit-after-&).
+NORM=$(printf '%s' "$COMMAND" \
+  | sed -E 's/[0-9]*>+&[0-9]+//g' \
+  | sed -E 's/>&([[:space:]]*)([^&|;[:space:]])/> \1\2/g')
 
 # ── Pre-allow checks (MUST run before allow-writer short-circuit) ──
 

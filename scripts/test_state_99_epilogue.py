@@ -75,13 +75,29 @@ class TestT1_RegistryDispatch:
 class TestT3_VerifyJsonPaths:
     @pytest.fixture
     def verify_cmd(self):
+        # Registry entries can be either a bare string OR an object
+        # `{"verify": "...", "artifact": "...", "lifecycle": "..."}` (Wave B
+        # introduced object form for state-99 across every skill — they share
+        # the canonical observation-enforcement VERIFY). Extract the verify
+        # field when the entry is an object.
         reg = json.load(open(REGISTRY))
-        return reg["solve"]["99"]
+        entry = reg["solve"]["99"]
+        if isinstance(entry, dict):
+            return entry["verify"]
+        return entry
 
     @pytest.fixture
     def sandbox(self, tmp_path):
+        # Write a matching <skill>-context.json so the GRAIM v2 C1+C2
+        # identity-cross-check assertions inside the VERIFY (skill+run_id
+        # match the active context) succeed. Without this, every "pass"
+        # case fails on the new identity-staleness assertion even though
+        # the pass/skipped semantics under test are unchanged.
         (tmp_path / ".runs").mkdir()
         (tmp_path / ".runs" / "verify-recheck.json").write_text('{"passed":0,"failed":0,"total":0}')
+        (tmp_path / ".runs" / "t-context.json").write_text(
+            '{"skill":"t","run_id":"r1","branch":"feat/x","timestamp":"2026-04-30T00:00:00Z"}'
+        )
         return tmp_path
 
     def _run(self, cmd, cwd):
@@ -89,26 +105,26 @@ class TestT3_VerifyJsonPaths:
 
     def test_pass_true_satisfies(self, verify_cmd, sandbox):
         (sandbox / ".runs" / "observation-enforcement.json").write_text(
-            '{"pass":true,"missing":[],"scope":"code","skill":"t","fast_path":false}'
+            '{"pass":true,"missing":[],"scope":"code","skill":"t","run_id":"r1","fast_path":false}'
         )
         assert self._run(verify_cmd, sandbox).returncode == 0
 
     def test_skipped_true_satisfies(self, verify_cmd, sandbox):
         (sandbox / ".runs" / "observation-enforcement.json").write_text(
-            '{"pass":false,"skipped":true,"scope":"unknown","skill":"t","fast_path":false,"skip_reason":"external"}'
+            '{"pass":false,"skipped":true,"scope":"unknown","skill":"t","run_id":"r1","fast_path":false,"skip_reason":"external"}'
         )
         assert self._run(verify_cmd, sandbox).returncode == 0
 
     def test_error_alone_rejected(self, verify_cmd, sandbox):
         (sandbox / ".runs" / "observation-enforcement.json").write_text(
-            '{"pass":false,"missing":["x"],"scope":"code","skill":"t","fast_path":false,"error":"script exited unexpectedly"}'
+            '{"pass":false,"missing":["x"],"scope":"code","skill":"t","run_id":"r1","fast_path":false,"error":"script exited unexpectedly"}'
         )
         # Must NOT pass — error-only path recreates the vacuous VERIFY bug
         assert self._run(verify_cmd, sandbox).returncode != 0
 
     def test_pass_false_no_error_rejected(self, verify_cmd, sandbox):
         (sandbox / ".runs" / "observation-enforcement.json").write_text(
-            '{"pass":false,"missing":["x"],"scope":"code","skill":"t","fast_path":false}'
+            '{"pass":false,"missing":["x"],"scope":"code","skill":"t","run_id":"r1","fast_path":false}'
         )
         assert self._run(verify_cmd, sandbox).returncode != 0
 

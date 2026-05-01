@@ -84,8 +84,33 @@ jobs:
       - name: Install Python dependencies
         run: pip3 install pyyaml pytest
 
-      - name: Test validators
-        run: python3 -m pytest scripts/ .claude/scripts/tests/ -v --tb=short
+      # Configure a default git identity AND init.defaultBranch=main.
+      # - identity: tests do `git init` + `git commit --allow-empty` in
+      #   temp dirs; without a global identity the commit fails with
+      #   "Author identity unknown" and 9+ tests cascade.
+      # - init.defaultBranch: test_resolve_active_identity.py creates
+      #   contexts with branch="main" then `git checkout -q main`. CI's
+      #   default `master` makes the checkout silently fail (the test
+      #   uses `|| true`), the resolver's branch filter rejects all
+      #   contexts, and 8 identity tests cascade.
+      # Both values are intentionally unmappable to real accounts.
+      - name: Configure git for tests
+        run: |
+          git config --global user.email "ci@local"
+          git config --global user.name "CI"
+          git config --global init.defaultBranch main
+
+      # Split pytest into two invocations: scripts/lib/ and .claude/scripts/lib/
+      # are both Python packages named `lib`. A single combined pytest run
+      # inserts scripts/ on sys.path first; tests under .claude/scripts/tests/
+      # then resolve `from lib.<module>` against scripts/lib/ (which lacks
+      # those modules) and fail with ModuleNotFoundError. Running the two
+      # trees separately gives each test file the correct `lib` package.
+      - name: Test validators (scripts/)
+        run: python3 -m pytest scripts/ -v --tb=short
+
+      - name: Test validators (.claude/scripts/tests/)
+        run: python3 -m pytest .claude/scripts/tests/ -v --tb=short
 
       - name: Validate frontmatter
         run: python3 scripts/validate-frontmatter.py

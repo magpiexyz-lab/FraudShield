@@ -57,8 +57,11 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# Required args. Explicit per-flag check — original code used ${var,,}
-# which produced --target_file (underscore) instead of --target-file.
+# Required args. Explicit per-flag check — original code used the bash-4-only
+# lower-casing parameter expansion ("dollar brace var comma comma") which
+# produced --target_file (underscore) instead of --target-file. Description
+# spelled out to keep this script bash-3.2-compatible (consistency-check
+# Check 25 flags the literal token even inside a comment).
 [[ -n "$TARGET_FILE" ]]      || { echo "ERROR: write-phase-a-repair.sh — --target-file is required" >&2; exit 1; }
 [[ -n "$EVIDENCE_SOURCE" ]]  || { echo "ERROR: write-phase-a-repair.sh — --evidence-source is required" >&2; exit 1; }
 [[ -n "$LEAD_ATTESTATION" ]] || { echo "ERROR: write-phase-a-repair.sh — --lead-attestation is required" >&2; exit 1; }

@@ -100,8 +100,13 @@ class TestSlotIntentDynamic(unittest.TestCase):
             rc, err = _run(tmp)
             self.assertEqual(rc, 0, err)
 
-    def test_too_many_images_fails(self):
-        # slot-intent says 6 ai_generated; manifest has 7 → mismatch
+    def test_extra_images_allowed(self):
+        # #1186 fix: slot-intent count is now a FLOOR, not strict equality.
+        # Manifests may legitimately contain extras (e.g., svg_icon slots that
+        # scaffold-images chose to record alongside AI photos). slot-intent
+        # says 6 ai_generated; manifest has 7 → must pass (>= floor met).
+        # Renamed from test_too_many_images_fails (legacy strict-equality
+        # behaviour was reverted in #1186).
         with tempfile.TemporaryDirectory() as tmp:
             _write(os.path.join(tmp, ".runs/image-manifest.json"), {
                 "status": "complete",
@@ -117,8 +122,7 @@ class TestSlotIntentDynamic(unittest.TestCase):
                 "slots": slots,
             })
             rc, err = _run(tmp)
-            self.assertNotEqual(rc, 0)
-            self.assertIn("expected exactly 6", err)
+            self.assertEqual(rc, 0, err)
 
     def test_too_few_images_fails(self):
         with tempfile.TemporaryDirectory() as tmp:

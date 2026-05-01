@@ -60,7 +60,15 @@ if [[ -d "$ATTEST_DIR" ]]; then
     # session without letting stale attestations linger).
     if [[ -f "$LATEST" ]]; then
       NOW=$(date +%s)
-      ATTEST_MTIME=$(stat -f %m "$LATEST" 2>/dev/null || stat -c %Y "$LATEST" 2>/dev/null)
+      # Linux first: `stat -c %Y` succeeds and exits 0. macOS lacks `-c`, so it
+      # fails (silently) and the `-f %m` fallback runs. The reverse order would
+      # silently corrupt the captured value on Linux because `stat -f %m FILE`
+      # there interprets `%m` as a file arg (no such file) AND continues to
+      # stat FILE, so it exits 1 BUT also writes garbage to stdout, which the
+      # `||` shell still appends to the captured value, producing
+      # multi-line output that crashes the next `$((...))` expansion under
+      # `set -u` with a "File: unbound variable" error.
+      ATTEST_MTIME=$(stat -c %Y "$LATEST" 2>/dev/null || stat -f %m "$LATEST" 2>/dev/null)
       if [[ -n "$ATTEST_MTIME" ]]; then
         AGE=$((NOW - ATTEST_MTIME))
         if (( AGE <= 300 )); then

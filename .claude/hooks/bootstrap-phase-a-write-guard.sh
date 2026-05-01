@@ -101,7 +101,9 @@ if echo "$NORM" | awk -v r="$PHASE_A_REGEX" '
 fi
 
 # Layer (c): Python literal open(<phase-a-path>, 'w'|'a').
-if echo "$COMMAND" | grep -qE "open\([^)]*$PHASE_A_REGEX[^)]*,[[:space:]]*['\"][wa]"; then
+# Brace-wrap ${PHASE_A_REGEX} so shellcheck does not misread `[^)]*` as an
+# array index expansion (SC1087). Functionally identical for `set -u`.
+if echo "$COMMAND" | grep -qE "open\([^)]*${PHASE_A_REGEX}[^)]*,[[:space:]]*['\"][wa]"; then
   emit_finding "python open-for-write on a Phase A file is blocked — use write-phase-a-repair.sh"
 fi
 
@@ -133,7 +135,9 @@ fi
 
 # pathlib.Path("<phase-a>").write_text(...) / .write_bytes(...) — common
 # python -c bypass pattern.
-if echo "$COMMAND" | grep -qE "Path\([^)]*$PHASE_A_REGEX[^)]*\)\.write_(text|bytes)"; then
+# Brace-wrap ${PHASE_A_REGEX} so shellcheck does not misread `[^)]*` as an
+# array index expansion (SC1087). Functionally identical for `set -u`.
+if echo "$COMMAND" | grep -qE "Path\([^)]*${PHASE_A_REGEX}[^)]*\)\.write_(text|bytes)"; then
   emit_finding "pathlib.Path.write_text on a Phase A file is blocked"
 fi
 

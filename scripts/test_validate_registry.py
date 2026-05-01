@@ -38,7 +38,10 @@ class TestRegistryStructure:
 class TestStateEntryFormats:
     def test_all_entries_are_string_or_object(self):
         reg = load_registry()
+        skip_sections = {"trace_schemas", "skill_owned_artifacts", "epilogue_artifacts"}
         for skill, states in reg.items():
+            if skill in skip_sections:
+                continue
             for state_id, entry in states.items():
                 assert isinstance(entry, (str, dict)), (
                     f"{skill}.{state_id}: entry must be str or dict, "
@@ -47,7 +50,7 @@ class TestStateEntryFormats:
 
     def test_object_entries_have_verify_key(self):
         reg = load_registry()
-        skip_sections = {"trace_schemas"}
+        skip_sections = {"trace_schemas", "skill_owned_artifacts", "epilogue_artifacts"}
         for skill, states in reg.items():
             if skill in skip_sections:
                 continue
@@ -59,7 +62,7 @@ class TestStateEntryFormats:
 
     def test_object_entries_verify_is_string(self):
         reg = load_registry()
-        skip_sections = {"trace_schemas"}
+        skip_sections = {"trace_schemas", "skill_owned_artifacts", "epilogue_artifacts"}
         for skill, states in reg.items():
             if skill in skip_sections:
                 continue
@@ -71,7 +74,7 @@ class TestStateEntryFormats:
 
     def test_object_entries_calls_is_list(self):
         reg = load_registry()
-        skip_sections = {"trace_schemas"}
+        skip_sections = {"trace_schemas", "skill_owned_artifacts", "epilogue_artifacts"}
         for skill, states in reg.items():
             if skill in skip_sections:
                 continue
@@ -83,7 +86,7 @@ class TestStateEntryFormats:
 
     def test_calls_entries_have_required_keys(self):
         reg = load_registry()
-        skip_sections = {"trace_schemas"}
+        skip_sections = {"trace_schemas", "skill_owned_artifacts", "epilogue_artifacts"}
         for skill, states in reg.items():
             if skill in skip_sections:
                 continue
@@ -165,6 +168,26 @@ KNOWN_OBJECT_ENTRIES = {
     ("observe", "1"),
     ("solve", "2"),
     ("upgrade", "3"),
+    # Shared epilogue state-99 entries — every skill's 99 is a transient-cross-skill
+    # object entry sharing the same VERIFY (artifact: observation-enforcement.json).
+    ("verify", "99"),
+    ("bootstrap", "99"),
+    ("change", "99"),
+    ("review", "99"),
+    ("distribute", "99"),
+    ("resolve", "99"),
+    ("solve", "99"),
+    ("spec", "99"),
+    ("upgrade", "99"),
+    ("deploy", "99"),
+    ("teardown", "99"),
+    ("rollback", "99"),
+    ("iterate-check", "99"),
+    ("iterate-cross", "99"),
+    ("iterate", "99"),
+    ("retro", "99"),
+    ("observe", "99"),
+    ("audit", "99"),
 }
 
 # State IDs that refer to shared state files in .claude/patterns/ rather than
@@ -179,7 +202,7 @@ class TestRegistryBaseline:
         reg = load_registry()
         count = 0
         for skill, states in reg.items():
-            if skill == "trace_schemas":
+            if skill in {"trace_schemas", "skill_owned_artifacts", "epilogue_artifacts"}:
                 continue
             count += len(states)
         assert count >= 100, f"Expected ~147 state entries, found {count}"
@@ -196,7 +219,7 @@ class TestRegistryBaseline:
     def test_non_listed_entries_are_strings(self):
         """Entries NOT in KNOWN_OBJECT_ENTRIES must still be strings."""
         reg = load_registry()
-        skip_sections = {"trace_schemas"}
+        skip_sections = {"trace_schemas", "skill_owned_artifacts", "epilogue_artifacts"}
         for skill, states in reg.items():
             if skill in skip_sections:
                 continue
@@ -230,7 +253,7 @@ def _state_sort_key(state_id):
 class TestStateOrdering:
     def test_state_keys_in_ascending_order(self):
         reg = load_registry()
-        skip_sections = {"trace_schemas"}
+        skip_sections = {"trace_schemas", "skill_owned_artifacts", "epilogue_artifacts"}
         for skill, states in reg.items():
             if skill in skip_sections:
                 continue
@@ -310,7 +333,7 @@ class TestReverseSync:
 
     def test_every_registry_entry_has_state_file(self):
         reg = load_registry()
-        skip = {"trace_schemas"}
+        skip = {"trace_schemas", "skill_owned_artifacts", "epilogue_artifacts"}
 
         # Discover shared terminal state files under .claude/patterns/
         import glob as _glob
@@ -350,7 +373,7 @@ class TestPostconditionSyntax:
     def test_python_commands_parse(self):
         import ast
         reg = load_registry()
-        skip = {"trace_schemas"}
+        skip = {"trace_schemas", "skill_owned_artifacts", "epilogue_artifacts"}
         errors = []
         for skill, states in reg.items():
             if skill in skip:
@@ -377,7 +400,7 @@ class TestPostconditionSyntax:
 
     def test_object_entries_structure(self):
         reg = load_registry()
-        skip = {"trace_schemas"}
+        skip = {"trace_schemas", "skill_owned_artifacts", "epilogue_artifacts"}
         errors = []
         for skill, states in reg.items():
             if skill in skip:
