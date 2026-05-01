@@ -31,14 +31,15 @@
      $MATCH
      ```
 
-2. **Static placeholder check (archetype-aware, pre-flight):**
+2. **Static placeholder check (archetype-aware, env-first, pre-flight):**
    - Read `type` from experiment.yaml (default: `web-app` if missing or unparseable).
-   - Determine grep paths by archetype:
+   - **Env-first short-circuit:** read `NEXT_PUBLIC_POSTHOG_KEY` from `.env.local` (preferred) or the calling shell's environment. If set to a non-empty value other than `phc_TEAM_KEY`, log "Analytics env override detected — skipping placeholder grep" and continue to step 3. Source-level placeholder is irrelevant when env wins at runtime; greppping it would block the legitimate env-override workflow (where the user sets the key in Vercel/Railway and never replaces source). This mirrors the prebuild script's Path 1 logic in `analytics/posthog.md` `## Production Observability > Layer 1`.
+   - Otherwise (no env override OR env still equals the placeholder), determine grep paths by archetype:
      - web-app: `src/lib/analytics.ts`, `src/lib/analytics-server.ts`, `src/lib/events.ts`
      - service: `src/lib/analytics-server.ts`, `src/app/route.ts`
      - cli: `src/lib/analytics-server.ts`, `site/index.html`
    - Grep each existing path for the literal `phc_TEAM_KEY` (single OR double-quoted).
-   - If any file contains the placeholder: STOP with an actionable error listing the files. This catches the same misconfiguration class as the analytics stack file's `## Production Observability` Layer 1 (build-time) and Layer 2 (runtime), as the third gate before paid distribution begins.
+   - If any file contains the placeholder AND no env override is set: STOP with an actionable error listing the files. This catches the same misconfiguration class as the analytics stack file's `## Production Observability` Layer 1 (build-time) and Layer 2 (runtime), as the third gate before paid distribution begins.
    - Check command:
      ```bash
      ARCHETYPE=$(python3 -c "
@@ -49,24 +50,37 @@
      except Exception:
          print('web-app')
      ")
-     ANALYTICS_FILES="src/lib/analytics-server.ts"
-     case "$ARCHETYPE" in
-       web-app) ANALYTICS_FILES="$ANALYTICS_FILES src/lib/analytics.ts src/lib/events.ts" ;;
-       service) ANALYTICS_FILES="$ANALYTICS_FILES src/app/route.ts" ;;
-       cli)     ANALYTICS_FILES="$ANALYTICS_FILES site/index.html" ;;
-     esac
-     PLACEHOLDER_FILES=()
-     for f in $ANALYTICS_FILES; do
-       [ -f "$f" ] || continue
-       if grep -q '"phc_TEAM_KEY"\|'"'"'phc_TEAM_KEY'"'"'' "$f"; then
-         PLACEHOLDER_FILES+=("$f")
+     # Env-first short-circuit: respect NEXT_PUBLIC_POSTHOG_KEY override the same
+     # way the prebuild script does. Read .env.local first, then fall back to the
+     # calling shell. Strip surrounding quotes the way dotenv-style parsers do.
+     KEY_VAL=""
+     if [ -f .env.local ]; then
+       KEY_VAL=$(grep -E '^[[:space:]]*NEXT_PUBLIC_POSTHOG_KEY[[:space:]]*=' .env.local \
+         | head -1 | sed -E 's/^[^=]+=[[:space:]]*//' | sed -E 's/^"(.*)"$/\1/' | sed -E "s/^'(.*)'\$/\1/")
+     fi
+     [ -z "$KEY_VAL" ] && KEY_VAL="${NEXT_PUBLIC_POSTHOG_KEY:-}"
+     if [ -n "$KEY_VAL" ] && [ "$KEY_VAL" != "phc_TEAM_KEY" ]; then
+       echo "Analytics env override detected (NEXT_PUBLIC_POSTHOG_KEY) — skipping placeholder grep"
+     else
+       ANALYTICS_FILES="src/lib/analytics-server.ts"
+       case "$ARCHETYPE" in
+         web-app) ANALYTICS_FILES="$ANALYTICS_FILES src/lib/analytics.ts src/lib/events.ts" ;;
+         service) ANALYTICS_FILES="$ANALYTICS_FILES src/app/route.ts" ;;
+         cli)     ANALYTICS_FILES="$ANALYTICS_FILES site/index.html" ;;
+       esac
+       PLACEHOLDER_FILES=()
+       for f in $ANALYTICS_FILES; do
+         [ -f "$f" ] || continue
+         if grep -q '"phc_TEAM_KEY"\|'"'"'phc_TEAM_KEY'"'"'' "$f"; then
+           PLACEHOLDER_FILES+=("$f")
+         fi
+       done
+       if [ ${#PLACEHOLDER_FILES[@]} -gt 0 ]; then
+         echo "STOP: PostHog is not configured for distribution. The placeholder 'phc_TEAM_KEY' is still present in:"
+         printf '  - %s\n' "${PLACEHOLDER_FILES[@]}"
+         echo "Replace the placeholder with your team's PostHog key (or set NEXT_PUBLIC_POSTHOG_KEY in .env.local for the env-override workflow), redeploy, then re-run /distribute."
+         exit 1
        fi
-     done
-     if [ ${#PLACEHOLDER_FILES[@]} -gt 0 ]; then
-       echo "STOP: PostHog is not configured for distribution. The placeholder 'phc_TEAM_KEY' is still present in:"
-       printf '  - %s\n' "${PLACEHOLDER_FILES[@]}"
-       echo "Replace the placeholder with your team's PostHog key (or set NEXT_PUBLIC_POSTHOG_KEY in your hosting platform), redeploy, then re-run /distribute."
-       exit 1
      fi
      ```
    - This step does NOT alter the existing `analytics_live` precondition — that is set by Step 3 below. It runs first because grepping local source is faster and more reliable than HogQL queries (which can fall back to manual when `query:read` scope is missing).

@@ -297,10 +297,10 @@
       "applies_to_glob": ".claude/stacks/**/*.md",
       "required_section": "## Production Observability",
       "trigger_pattern_any": [
-        "\\?\\?\\s*\"phc_TEAM_KEY\"",
-        "\\|\\|\\s*\"placeholder-stripe-publishable\"",
-        "\\|\\|\\s*\"placeholder-anon-key\"",
-        "\\|\\|\\s*\"https://placeholder\\.supabase\\.co\""
+        "\\?\\?\\s*[\"']phc_TEAM_KEY[\"']",
+        "\\|\\|\\s*[\"']placeholder-stripe-publishable[\"']",
+        "\\|\\|\\s*[\"']placeholder-anon-key[\"']",
+        "\\|\\|\\s*[\"']https://placeholder\\.supabase\\.co[\"']"
       ],
       "exclude_glob": [
         ".claude/stacks/TEMPLATE.md",

@@ -364,10 +364,19 @@ See `.claude/skills/distribute/state-2-validate-analytics.md` for the exact step
 Each segment uses `test ! -f X || node X` to no-op when its script is absent (intermediate bootstrap states stay safe). Any non-zero exit propagates and fails the build. The order matters when one stack's check depends on another's effects (analytics check after migrations, since neither writes to the other's surface but the convention is "infrastructure first, then config").
 
 ## Reverse Proxy Setup
-Client-side analytics use `/ingest` as the API host to bypass ad blockers that filter `us.i.posthog.com`. Bootstrap adds these rewrites to `next.config.ts`:
+Client-side analytics use `/ingest` as the API host to bypass ad blockers that filter `us.i.posthog.com`. Bootstrap adds these rewrites AND a client-side `VERCEL_ENV` injection to `next.config.ts`:
 
 ```ts
 const nextConfig: NextConfig = {
+  env: {
+    // Inject Vercel's deploy-environment indicator into the client bundle.
+    // Vercel does NOT auto-prefix system env vars with NEXT_PUBLIC_, so without
+    // this block client-side `process.env.NEXT_PUBLIC_VERCEL_ENV` is undefined
+    // and the disable_compression production gate (## Test Blocking) fails open.
+    // `?? ""` keeps this defined-but-empty on non-Vercel builds (local dev,
+    // bootstrap) so gates fall through cleanly.
+    NEXT_PUBLIC_VERCEL_ENV: process.env.VERCEL_ENV ?? "",
+  },
   async rewrites() {
     return [
       { source: "/ingest/decide", destination: "https://us.i.posthog.com/decide" },
@@ -382,6 +391,7 @@ Notes:
 - `skipTrailingSlashRedirect` is required — without it, Next.js redirects `/ingest/e` to `/ingest/e/` before the rewrite applies, breaking the proxy
 - Server-side tracking (`analytics-server.ts`) still uses the direct PostHog URL — rewrites only apply to client-side browser requests
 - This is PostHog's officially recommended approach for avoiding ad blockers
+- The `env` block is the **only way** to make Vercel system env vars visible to client code. Vercel injects `VERCEL_ENV` server-side automatically; this block re-exports it under the `NEXT_PUBLIC_` prefix that Next.js requires for client-bundle inlining. Removing this block breaks the disable_compression gate (## Test Blocking) AND the client-side preview-deploy filter in the warn-once gate (analytics.ts).
 
 ### Cross-stack contract: auth middleware must whitelist `/ingest/`
 
