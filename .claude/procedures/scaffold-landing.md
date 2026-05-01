@@ -105,7 +105,27 @@ Generate a JSON-LD `<script type="application/ld+json">` block for the landing p
 
 If `stack.analytics` is present and not already included:
 - For web-app: verify analytics per `patterns/analytics-verification.md`
-- For service/cli: add inline snippet per surface stack file's analytics section
+- For service/cli: add inline snippet per surface stack file's analytics section.
+  When the surface stack template uses the literal `<%POSTHOG_KEY%>` placeholder
+  (see `.claude/stacks/surface/co-located.md` Inline analytics snippet block),
+  substitute it with the analytics stack file's current `POSTHOG_KEY` constant
+  value before writing the file. Procedure:
+  1. Read `.claude/stacks/analytics/posthog.md`. Find the line matching
+     `const POSTHOG_KEY = process.env.NEXT_PUBLIC_POSTHOG_KEY ?? "<value>";`.
+     Extract `<value>` (typically `phc_TEAM_KEY`, but a downstream fork may
+     have replaced it with their team's real `phc_xxx` key).
+  2. Replace every literal occurrence of `<%POSTHOG_KEY%>` in the rendered
+     surface output (`src/app/route.ts` for service co-located, `site/index.html`
+     for cli detached) with the extracted value, quoted as a string literal.
+  3. Do NOT replace the `phc_TEAM_KEY` literal that appears inside the
+     misconfiguration check (`if (!key || key === "phc_TEAM_KEY")`) —
+     that comparison is intentional and survives the substitution because
+     `<%POSTHOG_KEY%>` is the only template variable.
+
+  This substitution makes the prebuild script (analytics stack file's
+  `## Production Observability` Layer 1) able to grep `src/app/route.ts` /
+  `site/index.html` for `phc_TEAM_KEY` literally, catching unconfigured forks
+  at build time alongside the lib files.
 
 > **Note:** Visual rendering review (screenshots, layout breaks, mobile responsiveness)
 > is performed by the design-critic agent in `/verify` (web-app only). Scaffold agents

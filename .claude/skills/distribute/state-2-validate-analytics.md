@@ -31,7 +31,47 @@
      $MATCH
      ```
 
-2. **Live analytics verification:**
+2. **Static placeholder check (archetype-aware, pre-flight):**
+   - Read `type` from experiment.yaml (default: `web-app` if missing or unparseable).
+   - Determine grep paths by archetype:
+     - web-app: `src/lib/analytics.ts`, `src/lib/analytics-server.ts`, `src/lib/events.ts`
+     - service: `src/lib/analytics-server.ts`, `src/app/route.ts`
+     - cli: `src/lib/analytics-server.ts`, `site/index.html`
+   - Grep each existing path for the literal `phc_TEAM_KEY` (single OR double-quoted).
+   - If any file contains the placeholder: STOP with an actionable error listing the files. This catches the same misconfiguration class as the analytics stack file's `## Production Observability` Layer 1 (build-time) and Layer 2 (runtime), as the third gate before paid distribution begins.
+   - Check command:
+     ```bash
+     ARCHETYPE=$(python3 -c "
+     import yaml
+     try:
+         d = yaml.safe_load(open('experiment/experiment.yaml'))
+         print(d.get('type', 'web-app'))
+     except Exception:
+         print('web-app')
+     ")
+     ANALYTICS_FILES="src/lib/analytics-server.ts"
+     case "$ARCHETYPE" in
+       web-app) ANALYTICS_FILES="$ANALYTICS_FILES src/lib/analytics.ts src/lib/events.ts" ;;
+       service) ANALYTICS_FILES="$ANALYTICS_FILES src/app/route.ts" ;;
+       cli)     ANALYTICS_FILES="$ANALYTICS_FILES site/index.html" ;;
+     esac
+     PLACEHOLDER_FILES=()
+     for f in $ANALYTICS_FILES; do
+       [ -f "$f" ] || continue
+       if grep -q '"phc_TEAM_KEY"\|'"'"'phc_TEAM_KEY'"'"'' "$f"; then
+         PLACEHOLDER_FILES+=("$f")
+       fi
+     done
+     if [ ${#PLACEHOLDER_FILES[@]} -gt 0 ]; then
+       echo "STOP: PostHog is not configured for distribution. The placeholder 'phc_TEAM_KEY' is still present in:"
+       printf '  - %s\n' "${PLACEHOLDER_FILES[@]}"
+       echo "Replace the placeholder with your team's PostHog key (or set NEXT_PUBLIC_POSTHOG_KEY in your hosting platform), redeploy, then re-run /distribute."
+       exit 1
+     fi
+     ```
+   - This step does NOT alter the existing `analytics_live` precondition — that is set by Step 3 below. It runs first because grepping local source is faster and more reliable than HogQL queries (which can fall back to manual when `query:read` scope is missing).
+
+3. **Live analytics verification:**
    - Read `name` from experiment.yaml and `deployed_at` from `.runs/deploy-manifest.json`
    - Read `stack.analytics` value from experiment.yaml and read the analytics stack file at `.claude/stacks/analytics/<value>.md`
    - Find the **Auto Query** section — follow its instructions to verify live events
@@ -43,12 +83,12 @@
    - If the secondary query also returns 0 events: stop "No analytics events found for project '<name>' since deployment. Open <deployed_url> in your browser, wait 60 seconds, then re-run `/distribute`."
    - If the analytics stack file has no Auto Query section, skip live verification and log: "Live analytics verification skipped — provider does not support auto-query. Verify manually that events are flowing." Write `analytics_live: true`.
 
-3. **Load hypothesis:**
+4. **Load hypothesis:**
    - If `.runs/spec-manifest.json` exists, read it and extract all hypotheses where `category` is `"demand"` or `"reach"` (the categories relevant to distribution). For each: `statement`, `metric.formula`, `metric.threshold`.
    - Store as hypothesis context for State 4 GENERATE. If the file does not exist, skip — all subsequent states work without it.
    - Write `hypothesis_loaded: true/false` to preconditions
 
-4. **PageSpeed check (Phase 1 only):**
+5. **PageSpeed check (Phase 1 only):**
    - Read `phase` from `.runs/distribute-context.json`. If phase is 1:
      1. Read the deployed URL from preconditions
      2. Query PageSpeed Insights API:

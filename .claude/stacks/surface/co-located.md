@@ -48,10 +48,39 @@ social proof, pricing, or comparison sections that don't directly map to a
 single experiment.yaml field. The content inventory is input, not structure.
 
 **Inline analytics snippet (if `stack.analytics` is present):** Embed a
-`<script>` tag to fire `visit_landing` with UTM properties on page load
-(read the project API key from the analytics stack file's hardcoded value).
-If `stack.analytics` is absent, skip the tracking script — the surface
-page still works as a marketing page, just without visit tracking.
+`<script>` tag in the surface HTML's `<head>` (or just before `</body>`) that
+first checks for misconfiguration, then fires `visit_landing` with UTM
+properties on page load. The snippet template uses a literal placeholder
+`<%POSTHOG_KEY%>` that `scaffold-landing` replaces at bootstrap time with the
+analytics stack file's `POSTHOG_KEY` value (which may itself still be the
+`phc_TEAM_KEY` placeholder if the fork hasn't been customized — that's fine,
+the runtime check below catches it and matches the analytics stack file's
+`## Production Observability` Layer 2 contract).
+
+```html
+<script>
+(function() {
+  var key = "<%POSTHOG_KEY%>";
+  if (!key || key === "phc_TEAM_KEY") {
+    var host = window.location.hostname;
+    var isLocal =
+      host === "localhost" || host === "127.0.0.1" || host === "0.0.0.0" || host === "[::1]" ||
+      host.indexOf(".local", host.length - 6) !== -1;
+    if (!isLocal) {
+      console.error(
+        "[analytics] PostHog is not configured for this surface — visit_landing will not be sent. " +
+        "Set NEXT_PUBLIC_POSTHOG_KEY in your hosting platform OR replace 'phc_TEAM_KEY' in src/app/route.ts before launching ads."
+      );
+    }
+    return;
+  }
+  // ... existing posthog snippet (init + capture('visit_landing', { utm_*, gclid, ... })) goes here
+})();
+</script>
+```
+
+If `stack.analytics` is absent, skip the entire script — the surface page still
+works as a marketing page, just without visit tracking.
 
 **CSS:** Inline `<style>` — no build step, no framework dependency.
 

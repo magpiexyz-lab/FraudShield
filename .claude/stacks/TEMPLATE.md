@@ -133,6 +133,39 @@ VARIABLE_NAME=description-or-example
 - [External service configuration]
 
 <!-- =========================================================================
+     ## Production Observability
+     (REQUIRED for stack files prescribing env-gated generated code)
+
+     Any stack file whose `## Files to Create` blocks include source code
+     gated on environment variables (e.g., API keys, secrets, configuration)
+     MUST include a `## Production Observability` section specifying:
+
+     1. The fail-loud mechanism (one or more of):
+        - Build-time prebuild guard (Node script + package.json prebuild hook)
+        - Runtime module-load console.error gated on hosting platform indicator
+        - Health-check route signal
+     2. The placeholder-replacement contract (if applicable): how the literal
+        placeholder string flows from stack file → bootstrap codegen → generated
+        source → fork customization → deploy.
+     3. How the contract interacts with `/distribute` STATE 2 verification.
+     4. A behavior matrix showing what happens for each combination of
+        (source customization × env override × deployment context).
+
+     Rationale: stack files prescribing silent fallbacks like
+     `if (!KEY) return;` or `?? "PLACEHOLDER"` without compensating visibility
+     create an entire class of production-failure modes that are invisible
+     until users complain. See issue #1170 for the canonical incident
+     (PostHog) and the `posthog-missing-key-silent-noop` Stack Knowledge
+     entry in `.claude/stacks/analytics/posthog.md` for the canonical fix
+     template.
+
+     Tracking: `.claude/patterns/template-coherence-rules.json` enforces
+     this convention via the `must_contain_section` rule type — any stack
+     file matching the `env_gated_source` pattern is required to declare
+     a `## Production Observability` heading. Skipping this section in a
+     new stack file is a CI-blocking error, not a guideline. -->
+
+<!-- =========================================================================
      ## Stack Knowledge (OPTIONAL — added by /resolve STATE 9 as it learns)
 
      Structured composite-identity-hashed entries sedimented by /resolve runs

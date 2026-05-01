@@ -72,14 +72,33 @@ export function getStripe(): Stripe {
 ```ts
 import { loadStripe } from "@stripe/stripe-js";
 
+const STRIPE_PUBLISHABLE_PLACEHOLDER = "placeholder-stripe-publishable";
+const stripeKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || STRIPE_PUBLISHABLE_PLACEHOLDER;
+
+// Issue #1170 follow-up: warn loudly when the placeholder fallback is hit on a
+// deployed host. Stripe's `loadStripe()` does not surface a configuration error
+// for an invalid publishable key — checkout silently fails when a user clicks
+// "Pay" — so the warning has to come from this module at load time.
+const isStripeMisconfigured = stripeKey === STRIPE_PUBLISHABLE_PLACEHOLDER;
+const isDeployedHost =
+  typeof window !== "undefined" &&
+  !["localhost", "127.0.0.1", "0.0.0.0", "[::1]"].includes(window.location.hostname) &&
+  !window.location.hostname.endsWith(".local");
+
+if (isStripeMisconfigured && isDeployedHost && process.env.NEXT_PUBLIC_VERCEL_ENV !== "preview") {
+  console.error(
+    "[stripe-client] Stripe is not configured for this deployment — checkout will silently fail. " +
+    "Set NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY in your hosting platform (Vercel → Settings → " +
+    "Environment Variables) to a real `pk_test_*` or `pk_live_*` publishable key."
+  );
+}
+
 // Use `||` (falsy check) rather than `??` so empty-string env values (common on
 // CI/Vercel when a var is declared but unset) fall back to the placeholder
 // instead of initializing Stripe.js with "" and crashing at load time.
-export const stripePromise = loadStripe(
-  process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || "placeholder-stripe-publishable"
-);
+export const stripePromise = isStripeMisconfigured ? null : loadStripe(stripeKey);
 ```
-- Use this in client components to redirect to Stripe Checkout
+- Use this in client components to redirect to Stripe Checkout. When `stripePromise` is `null`, callers should disable the checkout button (or short-circuit the redirect) — never call Stripe APIs with the placeholder.
 
 ## Environment Variables
 ```
@@ -264,6 +283,16 @@ Notes:
 - The `// TODO: Update user's payment status in database` compiles silently — unlike the checkout route's `user.id` reference which fails the build. You must implement the database update using the `userId` extracted from session metadata before the payment flow is complete. Without this, successful payments are not recorded.
 - Extracts `user_id`, `plan`, and `amount_cents` from session metadata (set during checkout creation)
 - Returns `200` for all event types (don't error on unknown events)
+
+## Production Observability
+
+When `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` is missing or empty, `src/lib/stripe-client.ts` falls back to the literal placeholder `placeholder-stripe-publishable`. Stripe's `loadStripe()` does NOT surface a configuration error for an invalid publishable key — checkout silently fails when the user clicks "Pay" — so the misconfiguration is invisible until a real conversion attempt fails.
+
+**Fail-loud mechanism (issue #1170 follow-up):** `stripe-client.ts` performs a module-load `console.error` when the placeholder is in use AND the page is running on a deployed host (hostname not in `["localhost", "127.0.0.1", "0.0.0.0", "[::1]"]`, not `*.local`, and not a Vercel preview build). When misconfigured, `stripePromise` is exported as `null`; client components MUST treat a `null` promise as "checkout disabled" — never call Stripe APIs through it.
+
+This warning surfaces at first page load, before any user clicks "Pay", giving operators time to set the correct `pk_test_*` / `pk_live_*` value in the hosting platform.
+
+The server-side `getStripe()` factory in `src/lib/stripe.ts` already throws when `STRIPE_SECRET_KEY` is missing (line 60-62) — that path is loud by design. Only the client-side publishable key needed the additional surfacing.
 
 ## Patterns
 - Use **Stripe Checkout** (hosted payment page) — never handle raw card data

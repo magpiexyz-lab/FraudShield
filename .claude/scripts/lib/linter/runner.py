@@ -2025,6 +2025,90 @@ def main() -> int:
         return findings
 
 
+    def check_must_contain_section(rule):
+        """Verify files matching `applies_to_glob` contain a `required_section`
+        heading whenever any of `trigger_pattern_any` regex matches their content.
+
+        Rule shape:
+          {
+            "id": "<rule_id>",
+            "type": "must_contain_section",
+            "severity": "block" | "warn",
+            "applies_to_glob": "<glob path>",                  # e.g. ".claude/stacks/**/*.md"
+            "required_section": "## Section Heading",          # literal match required
+            "trigger_pattern_any": ["regex1", "regex2", ...],  # if ANY regex matches → required_section MUST be present
+            "exclude_glob": ["path1", "path2", ...]            # optional: skip these paths/globs
+          }
+
+        Rationale: stack files prescribing env-gated source code (e.g.,
+        `?? "phc_TEAM_KEY"`, `|| "placeholder-stripe-publishable"`) must
+        include a documented `## Production Observability` story so future
+        downstream consumers understand the fail-loud contract. Otherwise
+        the silent-fallback antipattern recurs (issue #1170 lineage).
+
+        Conservative semantics:
+          - Trigger patterns are evaluated against full file contents (no
+            heading-aware exclusion). False positives are filtered by
+            `exclude_glob` if needed.
+          - `required_section` is matched as a literal substring; the rule
+            does not parse markdown structure. This intentionally allows
+            the heading to appear in any section depth (## or ###).
+          - Failure mode: the file matched a trigger pattern but does NOT
+            contain the required heading anywhere → emit one finding per
+            (file, trigger pattern) pair so the author sees which trigger
+            fired.
+        """
+        out = []
+        rid = rule.get("id", "<unknown>")
+        applies_glob = rule.get("applies_to_glob", "")
+        required_section = rule.get("required_section", "")
+        trigger_patterns = rule.get("trigger_pattern_any", [])
+        exclude_globs = rule.get("exclude_glob", []) or []
+
+        if not applies_glob or not required_section or not trigger_patterns:
+            return out  # under-specified rule — surfaced by schema validation
+
+        try:
+            compiled = [re.compile(p) for p in trigger_patterns]
+        except re.error as e:
+            out.append(f"  [{rid}] invalid regex in trigger_pattern_any: {e}")
+            return out
+
+        # fnmatch-style exclusion via glob.fnmatch.translate
+        import fnmatch
+        def _excluded(path):
+            for g in exclude_globs:
+                if fnmatch.fnmatch(path, g):
+                    return True
+            return False
+
+        files = sorted(glob.glob(os.path.join(REPO_ROOT, applies_glob), recursive=True))
+        for fpath in files:
+            rel = os.path.relpath(fpath, REPO_ROOT)
+            if _excluded(rel):
+                continue
+            try:
+                content = open(fpath, encoding="utf-8").read()
+            except (OSError, UnicodeDecodeError):
+                continue
+
+            if required_section in content:
+                continue  # heading present — no-op even if triggers match
+
+            for i, cre in enumerate(compiled):
+                m = cre.search(content)
+                if not m:
+                    continue
+                trig_repr = trigger_patterns[i]
+                line_no = content[: m.start()].count("\n") + 1
+                out.append(
+                    f"  [{rid}] {rel}:{line_no} matches trigger /{trig_repr}/ "
+                    f"but is missing required section '{required_section}'"
+                )
+
+        return out
+
+
     # ---------------------------------------------------------------------------
     # Cross-file rule dispatch — registry-driven with type + field validation.
     #
@@ -2060,6 +2144,7 @@ def main() -> int:
         "gate_artifact_identity":           (check_gate_artifact_identity,           {"manifest_path", "enforced_artifacts"},                  {"registry_path"},                                            False),
         "boundary_kind_required":           (check_boundary_kind_required,           {"enforced_artifacts"},                                   {"agent_files_glob", "skill_files_glob"},                     False),
         "gate_artifact_discovery":          (check_gate_artifact_discovery,          {"manifest_path"},                                        {"registry_path", "hooks_glob"},                              False),
+        "must_contain_section":             (check_must_contain_section,             {"applies_to_glob", "required_section", "trigger_pattern_any"}, {"exclude_glob"},                                       False),
     }
     META_KEYS = {"id", "type", "severity", "description", "_transitional_note", "_comment"}
 

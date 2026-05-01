@@ -1,5 +1,5 @@
 ---
-assumes: []
+assumes: [framework/nextjs]  # @next/env loadEnvConfig used in scripts/check-analytics-env.mjs prebuild script
 packages:
   runtime: [posthog-js, posthog-node]  # posthog-js conditional: only when framework is nextjs
   dev: []
@@ -7,9 +7,10 @@ files:
   - src/lib/analytics.ts  # conditional: only when framework is nextjs
   - src/lib/analytics-server.ts
   - src/lib/events.ts  # conditional: only when framework is nextjs
+  - scripts/check-analytics-env.mjs  # prebuild guard, see ## Production Observability Layer 1
 env:
-  server: []
-  client: []
+  server: [POSTHOG_SERVER_KEY]
+  client: [NEXT_PUBLIC_POSTHOG_KEY]
 ci_placeholders: {}
 clean:
   files: []
@@ -38,12 +39,39 @@ const PROJECT_NAME = "TODO"; // Replaced by bootstrap with experiment.yaml `name
 const PROJECT_OWNER = "TODO"; // Replaced by bootstrap with experiment.yaml `owner`
 const POSTHOG_KEY = process.env.NEXT_PUBLIC_POSTHOG_KEY ?? "phc_TEAM_KEY";
 const POSTHOG_HOST = "/ingest";
+const POSTHOG_PLACEHOLDER = "phc_TEAM_KEY";
+
+// Positive misconfiguration check — covers BOTH empty key and unreplaced placeholder.
+// See ## Production Observability for the full contract and behavior matrix.
+const isMisconfigured = !POSTHOG_KEY || POSTHOG_KEY === POSTHOG_PLACEHOLDER;
+
+// Hostname-based deployed-host detection. Works for any hosting platform without
+// requiring NEXT_PUBLIC_* env injection. Excludes localhost, IPv6 loopback, and
+// `*.local` mDNS hostnames so dev environments stay quiet. Vercel preview deploys
+// are excluded via the additional NEXT_PUBLIC_VERCEL_ENV check (see init() below).
+const isDeployedHost =
+  typeof window !== "undefined" &&
+  !["localhost", "127.0.0.1", "0.0.0.0", "[::1]"].includes(window.location.hostname) &&
+  !window.location.hostname.endsWith(".local");
+
+let warned = false;
+function warnOnce() {
+  if (warned) return;
+  warned = true;
+  console.error(
+    "[analytics] PostHog is not configured for this deployment — events will not be sent. " +
+    "Set NEXT_PUBLIC_POSTHOG_KEY in your hosting platform, OR replace 'phc_TEAM_KEY' in src/lib/analytics.ts."
+  );
+}
 
 let initialized = false;
 
 function init() {
   if (initialized || typeof window === "undefined") return;
-  if (!POSTHOG_KEY) return;
+  if (isMisconfigured) {
+    if (isDeployedHost && process.env.NEXT_PUBLIC_VERCEL_ENV !== "preview") warnOnce();
+    return;
+  }
   posthog.init(POSTHOG_KEY, {
     api_host: POSTHOG_HOST,
     capture_pageview: false,
@@ -54,6 +82,7 @@ function init() {
 
 export function track(event: string, properties?: Record<string, unknown>) {
   init();
+  if (isMisconfigured) return;
   posthog.capture(event, {
     ...properties,
     project_name: PROJECT_NAME,
@@ -63,11 +92,13 @@ export function track(event: string, properties?: Record<string, unknown>) {
 
 export function identify(userId: string, traits?: Record<string, unknown>) {
   init();
+  if (isMisconfigured) return;
   posthog.identify(userId, traits);
 }
 
 export function reset() {
   init();
+  if (isMisconfigured) return;
   posthog.reset();
 }
 ```
@@ -77,7 +108,7 @@ Notes:
 - `capture_pageview: false` because pages fire explicit events via `events.ts`
 - `capture_exceptions: true` sends unhandled JS errors and promise rejections to PostHog as `$exception` events — provides post-deploy error visibility without additional error tracking setup
 - Bootstrap replaces `PROJECT_NAME` and `PROJECT_OWNER` with actual experiment.yaml values
-- `POSTHOG_HOST` is `/ingest` on the client (proxied via Next.js rewrites to avoid ad blockers) and `https://us.i.posthog.com` on the server (direct, not affected by ad blockers). `POSTHOG_KEY` uses a hardcoded shared publishable key (`phc_TEAM_KEY` — replace with your team's actual key). Override with `NEXT_PUBLIC_POSTHOG_KEY` env var to use a different PostHog project. PostHog `phc_` keys are publishable (write-only, safe for client-side embedding — same class as Stripe `pk_test_`).
+- `POSTHOG_HOST` is `/ingest` on the client (proxied via Next.js rewrites to avoid ad blockers) and `https://us.i.posthog.com` on the server (direct, not affected by ad blockers). `POSTHOG_KEY` defaults to the **placeholder** `phc_TEAM_KEY`, which **must be replaced** before deploy — either by editing the constant directly (fork-once workflow) or by setting `NEXT_PUBLIC_POSTHOG_KEY` in your hosting platform's environment variables (per-project override). The placeholder being still present at deploy time is a misconfiguration; see `## Production Observability` for the three-layer fail-loud mechanism that catches it. PostHog `phc_` keys are publishable (write-only, safe for client-side embedding — same class as Stripe `pk_test_`).
 - Global properties are placed after the spread so they can't be overridden by callers
 
 ### `src/lib/analytics-server.ts` — Server-side tracking (for webhooks and API routes)
@@ -88,13 +119,29 @@ const PROJECT_NAME = "TODO"; // Replaced by bootstrap with experiment.yaml `name
 const PROJECT_OWNER = "TODO"; // Replaced by bootstrap with experiment.yaml `owner`
 export const POSTHOG_KEY = process.env.POSTHOG_SERVER_KEY ?? process.env.NEXT_PUBLIC_POSTHOG_KEY ?? "phc_TEAM_KEY";
 export const POSTHOG_HOST = "https://us.i.posthog.com";
+const POSTHOG_PLACEHOLDER = "phc_TEAM_KEY";
+
+const isMisconfigured = !POSTHOG_KEY || POSTHOG_KEY === POSTHOG_PLACEHOLDER;
+// Server-side has full env access — gate on hosting-platform indicators.
+// `VERCEL === "1"` is the canonical Vercel deploy indicator (see TEMPLATE.md).
+// `RAILWAY_ENVIRONMENT_NAME` is the Railway equivalent. Add other host indicators here
+// when introducing new hosting stack files.
+const isHostingPlatform = process.env.VERCEL === "1" || !!process.env.RAILWAY_ENVIRONMENT_NAME;
+
+if (isMisconfigured && isHostingPlatform) {
+  console.error(
+    "[analytics-server] PostHog is not configured for this deployment — server events will not be sent. " +
+    "Set NEXT_PUBLIC_POSTHOG_KEY (or POSTHOG_SERVER_KEY) in your hosting platform, " +
+    "or replace 'phc_TEAM_KEY' in src/lib/analytics-server.ts."
+  );
+}
 
 export async function trackServerEvent(
   event: string,
   distinctId: string,
   properties?: Record<string, unknown>
 ) {
-  if (!POSTHOG_KEY) return;
+  if (isMisconfigured) return;
   const client = new PostHog(POSTHOG_KEY, {
     host: POSTHOG_HOST,
   });
@@ -115,7 +162,7 @@ export async function trackServerEvent(
 
 Notes:
 - Creates a PostHog client per call and calls `shutdown()` to flush — required for serverless (Vercel)
-- `POSTHOG_KEY` uses the hardcoded shared publishable key, with optional override via `POSTHOG_SERVER_KEY` or `NEXT_PUBLIC_POSTHOG_KEY` env vars; `POSTHOG_HOST` uses the direct PostHog URL since server-side requests are not affected by ad blockers. Both `POSTHOG_KEY` and `POSTHOG_HOST` are exported for use by the health check route.
+- `POSTHOG_KEY` defaults to the placeholder `phc_TEAM_KEY` (must be replaced before deploy — see client-side notes above and `## Production Observability`). Optional override via `POSTHOG_SERVER_KEY` (server-only, takes precedence) or `NEXT_PUBLIC_POSTHOG_KEY` (shared with client). `POSTHOG_HOST` uses the direct PostHog URL since server-side requests are not affected by ad blockers. Both `POSTHOG_KEY` and `POSTHOG_HOST` are exported for use by the health check route.
 - Auto-attaches `project_name` and `project_owner` like client-side `track()`
 - Bootstrap replaces `PROJECT_NAME` and `PROJECT_OWNER` with actual experiment.yaml values
 - Use this in webhook handlers and API routes for server-side events (e.g., `pay_success`)
@@ -186,7 +233,135 @@ Notes:
 - Pages import from `@/lib/events` instead of calling `track()` directly — this provides compile-time validation of event names and property types.
 
 ## Environment Variables
-No PostHog environment variables are needed — the shared publishable key and host are hardcoded as constants in the analytics libraries (see `src/lib/analytics.ts`). All experiments share one PostHog project (filtered by `project_name`).
+
+```
+NEXT_PUBLIC_POSTHOG_KEY=phc_...   # client-side publishable key (optional override)
+POSTHOG_SERVER_KEY=phc_...        # server-side key (optional override; defaults to client value)
+```
+
+Both are **optional overrides** for the source-level publishable key constant declared in the analytics library files. Before any project bootstrapped from this template can deploy to production, one of two workflows must satisfy the publishable key:
+
+1. **Per-project env override (recommended for downstream forks):** set `NEXT_PUBLIC_POSTHOG_KEY` in your hosting platform (Vercel → Project → Settings → Environment Variables, or `vercel env add`) to your team's real publishable key. Optionally set `POSTHOG_SERVER_KEY` to a server-only key.
+2. **Fork-once source replacement:** edit the analytics library files' constant directly with your team's real publishable key. All future bootstraps from your fork inherit the replaced value.
+
+If neither is done, the prebuild script (see `## Production Observability` Layer 1) fails the deploy build, and the deployed code's runtime warnings (Layer 2) surface the misconfiguration in DevTools. All experiments share one PostHog project (filtered by `project_name`).
+
+## Production Observability
+
+PostHog failures in production must be **immediately visible** — not silent. This stack prescribes three layers of "fail loud" so misconfigurations surface at the earliest possible point in the deploy lifecycle.
+
+### Layer 1 — Build-time prebuild check
+
+Implemented by `scripts/check-analytics-env.mjs`, emitted by `scaffold-libs.md` Step 6.5 when `stack.analytics: posthog` is present. Wired into `package.json` via the `prebuild` lifecycle hook so it runs automatically before `npm run build`.
+
+Logic:
+1. **Skip-gate**: exit 0 when neither `process.env.CI === "1" && process.env.VERCEL === "1"` (Vercel CI build platform — `CI=1` distinguishes it from local `vercel build`) nor `process.env.RAILWAY_ENVIRONMENT_NAME` (Railway) is present. This keeps bootstrap and local builds passing.
+2. **Env-override path**: if `NEXT_PUBLIC_POSTHOG_KEY` is set and not equal to `phc_TEAM_KEY` → exit 0 (env wins; source-level placeholder doesn't matter at runtime).
+3. **Source-fallback path**: grep these specific paths only:
+   - `src/lib/analytics.ts`
+   - `src/lib/analytics-server.ts`
+   - `src/app/route.ts` (service co-located surface)
+   - `site/index.html` (cli detached surface)
+
+   If any contains the literal `"phc_TEAM_KEY"` (single OR double-quoted) → exit 1 with an actionable error listing the files. Otherwise → exit 0 (source has been customized).
+
+#### `scripts/check-analytics-env.mjs` (canonical source)
+
+scaffold-libs emits this file verbatim into the project root when `stack.analytics: posthog`:
+
+```js
+#!/usr/bin/env node
+// Validates analytics configuration before build, on hosting platforms only.
+// Runs as `prebuild` lifecycle hook. Skips on bootstrap/local builds.
+
+import { loadEnvConfig } from "@next/env";
+import fs from "node:fs";
+
+// Load .env.local / .env so local `npm run build` invocations see the same
+// NEXT_PUBLIC_POSTHOG_KEY override that Next.js itself uses. On Vercel build
+// platforms env vars are already populated, so this is a no-op there.
+loadEnvConfig(process.cwd());
+
+// Skip-gate: only run on real Vercel/Railway build platforms.
+// `process.env.CI === "1"` distinguishes Vercel CI builds from local `vercel build`,
+// which also sets VERCEL=1 but not CI=1.
+const isVercelBuildPlatform = process.env.CI === "1" && process.env.VERCEL === "1";
+const isRailwayBuildPlatform = !!process.env.RAILWAY_ENVIRONMENT_NAME;
+if (!isVercelBuildPlatform && !isRailwayBuildPlatform) process.exit(0);
+
+const PLACEHOLDER = "phc_TEAM_KEY";
+const envKey = process.env.NEXT_PUBLIC_POSTHOG_KEY ?? "";
+
+// Path 1: env override is valid → pass.
+if (envKey && envKey !== PLACEHOLDER) process.exit(0);
+
+// Path 2: env unset/placeholder → check if source has a real fallback.
+const SOURCE_PATHS = [
+  "src/lib/analytics.ts",
+  "src/lib/analytics-server.ts",
+  "src/app/route.ts",   // service co-located surface
+  "site/index.html",    // cli detached surface
+];
+
+const filesWithPlaceholder = SOURCE_PATHS
+  .filter(p => fs.existsSync(p))
+  .filter(p => {
+    const src = fs.readFileSync(p, "utf8");
+    return src.includes(`"${PLACEHOLDER}"`) || src.includes(`'${PLACEHOLDER}'`);
+  });
+
+if (filesWithPlaceholder.length === 0) process.exit(0);  // source customized → pass
+
+console.error(`\n[analytics] PostHog is not configured for this deployment.`);
+console.error(`Files still containing the '${PLACEHOLDER}' placeholder:`);
+for (const p of filesWithPlaceholder) console.error(`  - ${p}`);
+console.error(`\nFix one of:`);
+console.error(`  1. Set NEXT_PUBLIC_POSTHOG_KEY in your hosting platform`);
+console.error(`     (Vercel → Project → Settings → Environment Variables).`);
+console.error(`  2. Replace '${PLACEHOLDER}' in the listed source files with`);
+console.error(`     your team's PostHog publishable key (phc_xxx).\n`);
+process.exit(1);
+```
+
+### Layer 2 — Runtime module-load validator
+
+The `isMisconfigured` constant in both `analytics.ts` and `analytics-server.ts` (computed at module load) catches BOTH empty key and unreplaced placeholder cases. When `isMisconfigured` is true:
+- **Client (`analytics.ts`)**: `console.error`-once via `warnOnce()` on deployed hostnames (excluding `localhost`, `127.0.0.1`, `0.0.0.0`, `[::1]`, `*.local`). Vercel preview deploys are also excluded via `process.env.NEXT_PUBLIC_VERCEL_ENV !== "preview"` to avoid noisy preview-smoke logs.
+- **Server (`analytics-server.ts`)**: `console.error`-once at module load when `process.env.VERCEL === "1"` or `process.env.RAILWAY_ENVIRONMENT_NAME` is set.
+- **CLI**: `console.error`-once inside `isAnalyticsEnabled()` so it surfaces in published CLI binaries (where `VERCEL` and `RAILWAY_ENVIRONMENT_NAME` are absent).
+
+`init()`, `track()`, `identify()`, `reset()`, and `trackServerEvent()` all short-circuit on `isMisconfigured` so no PostHog SDK calls are attempted with a bogus key.
+
+### Layer 3 — `/distribute` STATE 2 pre-flight static grep
+
+Before launching paid distribution, `/distribute` STATE 2 step "2.0 Static placeholder check" runs an archetype-aware grep over the same path set as Layer 1 and STOPS with an actionable error if `phc_TEAM_KEY` is still present. This catches the misconfiguration before ad spend, complementing Layer 1 (which catches at build) and Layer 2 (which catches at first page-load).
+
+See `.claude/skills/distribute/state-2-validate-analytics.md` for the exact step.
+
+### Behavior matrix
+
+| Source-level constant | `NEXT_PUBLIC_POSTHOG_KEY` env | Resolved `POSTHOG_KEY` | `init()` runs? | Warning fires? |
+|---|---|---|---|---|
+| `phc_TEAM_KEY` (unconfigured fork) | unset | `phc_TEAM_KEY` | no | yes (deployed hosts) |
+| `phc_TEAM_KEY` (unconfigured fork) | `""` (set-but-empty) | `""` | no | yes (deployed hosts) |
+| `phc_TEAM_KEY` (unconfigured fork) | real `phc_xxx` key | real key | yes | no |
+| `phc_REAL_xxx` (replaced fork) | unset | `phc_REAL_xxx` | yes | no |
+| `phc_REAL_xxx` (replaced fork) | real `phc_yyy` key | real key (env wins) | yes | no |
+| `phc_REAL_xxx` (replaced fork) | `""` (set-but-empty) | `""` | no | yes (deployed hosts) |
+
+### Prebuild composition with other stacks
+
+`scaffold-libs.md` owns the `prebuild` entry in `package.json` (see `database/supabase.md` Migration Setup). When multiple stacks contribute prebuild work, scaffold-libs composes them via `&&`-chained, defensively-guarded segments:
+
+```json
+{
+  "scripts": {
+    "prebuild": "(test ! -f scripts/auto-migrate.mjs || node scripts/auto-migrate.mjs) && (test ! -f scripts/check-analytics-env.mjs || node scripts/check-analytics-env.mjs)"
+  }
+}
+```
+
+Each segment uses `test ! -f X || node X` to no-op when its script is absent (intermediate bootstrap states stay safe). Any non-zero exit propagates and fails the build. The order matters when one stack's check depends on another's effects (analytics check after migrations, since neither writes to the other's surface but the convention is "infrastructure first, then config").
 
 ## Reverse Proxy Setup
 Client-side analytics use `/ingest` as the API host to bypass ad blockers that filter `us.i.posthog.com`. Bootstrap adds these rewrites to `next.config.ts`:
@@ -235,12 +410,27 @@ directly for all events defined in experiment/EVENTS.yaml.
 ### CLI Opt-In Consent
 
 When the archetype is `cli`, analytics must be opt-in per the CLI archetype
-contract. Wrap all `trackServerEvent()` calls in a consent check:
+contract. Wrap all `trackServerEvent()` calls in a consent check that ALSO
+surfaces misconfiguration to end users (CLI binaries don't have a hosting
+platform indicator like `VERCEL=1`, so the module-load `console.error` in
+`analytics-server.ts` won't fire — the warning has to live here).
 
 ```ts
+let cliWarned = false;
 function isAnalyticsEnabled(): boolean {
-  return process.env.DO_NOT_TRACK !== "1"
-    && process.env.<CLI_NAME>_TELEMETRY_OPTOUT !== "1";
+  if (process.env.DO_NOT_TRACK === "1") return false;
+  if (process.env.<CLI_NAME>_TELEMETRY_OPTOUT === "1") return false;
+  if (isMisconfigured) {
+    if (!cliWarned) {
+      cliWarned = true;
+      console.error(
+        "[analytics] CLI analytics is enabled but the PostHog key is missing or unreplaced. " +
+        "Events will not be sent. Replace 'phc_TEAM_KEY' in src/lib/analytics-server.ts before publishing."
+      );
+    }
+    return false;
+  }
+  return true;
 }
 ```
 
@@ -259,6 +449,12 @@ export async function trackServerEvent(
   // ... existing PostHog capture logic
 }
 ```
+
+The `cliWarned` flag is module-scoped so the warning fires at most once per CLI
+process even when `trackServerEvent()` is called repeatedly. The check happens
+inside `isAnalyticsEnabled()` (not at module load) because module-load
+`console.error` would also fire when the user opted out — annoying for opted-out
+users who don't care about analytics being misconfigured.
 
 The `DO_NOT_TRACK` env var follows the [Console Do Not Track](https://consoledonottrack.com/)
 standard. The project-specific `<CLI_NAME>_TELEMETRY_OPTOUT` provides a
@@ -283,16 +479,23 @@ When running E2E tests, block analytics requests to prevent test data from pollu
 ```
 This matches the proxied PostHog ingestion endpoint (`/ingest/*`). Playwright's `page.route()` uses this pattern to intercept and abort analytics requests. See the testing stack file's `blockAnalytics` helper for usage.
 
-**sendBeacon + batching limitations:** PostHog JS uses `navigator.sendBeacon()` by default (which Playwright's `page.route()` cannot intercept) and batches multiple events into a single XHR after a threshold (which delays event emission past a test's assertion window). Both behaviors must be disabled for reliable Playwright interception. When the testing stack is present, bootstrap should set BOTH `disable_compression: true` AND `request_batching: false` on `posthog.init()`:
+**sendBeacon + batching limitations:** PostHog JS uses `navigator.sendBeacon()` by default (which Playwright's `page.route()` cannot intercept) and batches multiple events into a single XHR after a threshold (which delays event emission past a test's assertion window). Both behaviors must be disabled for reliable Playwright interception. When the testing stack is present, bootstrap should emit `posthog.init()` with the testing flags **gated on `NEXT_PUBLIC_VERCEL_ENV !== "production"`** so they fire in preview/dev (where tests run) but NOT in real production deploys (where compressed transport + batching is the optimal choice):
+
 ```ts
+const isPreviewOrDev = process.env.NEXT_PUBLIC_VERCEL_ENV !== "production";
 posthog.init(POSTHOG_KEY, {
   api_host: POSTHOG_HOST,
   capture_pageview: false,
   capture_exceptions: true,
-  disable_compression: true, // Force XHR transport (Playwright cannot intercept sendBeacon)
-  request_batching: false,   // Force immediate per-event XHR (batching delays events past assertion time)
+  ...(isPreviewOrDev && {
+    disable_compression: true, // Force XHR transport (Playwright cannot intercept sendBeacon)
+    request_batching: false,   // Force immediate per-event XHR (batching delays events past assertion time)
+  }),
 });
 ```
+
+The `NEXT_PUBLIC_VERCEL_ENV` value is injected into the client bundle via `next.config.ts`'s `env` block (see `framework/nextjs.md` — Vercel does NOT auto-prefix system env vars with `NEXT_PUBLIC_`). On non-Vercel hosts the value is empty string so `!== "production"` is true and the flags apply (suboptimal-but-safe per-event XHR for non-Vercel production until that host's stack file injects an analogous indicator).
+
 Both flags work together. `disable_compression` forces XHR transport; `request_batching: false` makes each event fire immediately instead of waiting for a batch threshold. The testing helper `captureAnalytics` (see `testing/playwright.md`) does handle batched bodies for slower assertions, but immediate-fire reduces flakiness in tight action → assertion windows. Both options are safe for MVPs — per-event XHRs and uncompressed payloads only matter at scale.
 
 When creating a new analytics stack file, document the equivalent endpoint pattern so the testing stack file can adapt its route blocking.
@@ -363,8 +566,42 @@ test("signup fires welcome_email_sent", async ({ page }) => {
 
 The marker is wrapper-level — a typed wrapper that fires the event MUST also write the marker. Bootstrap's `analytics-events.ts` template (when `stack.testing` is present) generates wrappers in this shape automatically; bare `posthog.capture()` calls don't get markers and therefore can't be tested this way.
 
+### Missing PostHog key produces silent no-op without `## Production Observability` safeguard
+
+```yaml
+id: posthog-missing-key-silent-noop
+maturity: stable
+anti_pattern: false
+composite_identity:
+  root_cause_class: missing_env_var_at_production_runtime
+  divergence_pattern: silent_noop_without_visibility
+  stack_scope: analytics/posthog
+composite_identity_hash: 81f48e6bba35
+symptom_keywords: [posthog, analytics, silent, noop, missing-key, placeholder, phc_TEAM_KEY]
+fix_template: |
+  Three-layer fail-loud:
+  (1) prebuild script `scripts/check-analytics-env.mjs` with env-first
+      source-fallback grep gated on `CI=1 && VERCEL=1` (or `RAILWAY_ENVIRONMENT_NAME`),
+      wired via `prebuild` lifecycle hook with `test ! -f X || node X` defensive idiom;
+  (2) module-load `isMisconfigured` validator + `console.error`-once in
+      `analytics.ts` and `analytics-server.ts`, gated on hostname (client) /
+      hosting indicator (server) / `isAnalyticsEnabled()` (CLI);
+  (3) `/distribute` STATE 2 step "2.0 Static placeholder check" — archetype-aware
+      pre-flight grep for `phc_TEAM_KEY` before existing HogQL Auto Query.
+  See `## Production Observability` for the full contract and behavior matrix.
+prevention_mechanism: prebuild-env-source-validator + module-load-positive-validator
+confidence_score: 0.9
+occurrence_count: 1
+linked_issues: [1170]
+first_seen: 2026-04-30
+last_seen: 2026-04-30
+graduated_to: null
+```
+
+When the generated `analytics.ts` / `analytics-server.ts` is deployed with `NEXT_PUBLIC_POSTHOG_KEY` unset OR set to empty string, the original `?? "phc_TEAM_KEY"` fallback masked the misconfiguration entirely — every `track()` call silently dropped, the entire client-side funnel invisible until someone manually opened DevTools. The fix replaces the silent fallback with a positive `isMisconfigured` check that fires loudly at three layers (build, runtime, post-deploy verification). All layers are designed for both fork workflows: env override (per-project) and source-level placeholder replacement (fork-once). Original incident: issue #1170, discovered during `/distribute` STATE 6 manual ad-launch verification.
+
 ## PR Instructions
-- No PostHog env vars needed — credentials are hardcoded in the analytics libraries
+- `NEXT_PUBLIC_POSTHOG_KEY` MUST be set in the hosting platform's environment OR the source-level `phc_TEAM_KEY` placeholder must be replaced with the team's real key (see `## Environment Variables` and `## Production Observability`). Otherwise the prebuild script will fail the production build.
 - Verify events are flowing: open the app, perform an action, then check PostHog → Activity → Live Events
 
 ## Dashboard Navigation (for /iterate skill)

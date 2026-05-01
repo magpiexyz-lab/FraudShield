@@ -43,7 +43,27 @@ npm install -D typescript @types/react @types/node eslint@9 @eslint/js typescrip
 - `.nvmrc`: containing `20` (used by CI and local version managers)
 - `package.json`: `scripts` with `dev`, `build`, `start`, `lint` (`eslint src/`); `engines: { "node": ">=20" }`. Stack-specific scripts (e.g., `prebuild` for database auto-migrate) are added by the owning scaffold-libs stage together with the target file it invokes — scaffold-setup must NOT write such script entries ahead of the helper file's creation, which would leave a fragile window where any intermediate `npm run build` fails at an unresolvable `prebuild`.
 - `tsconfig.json`: enable `strict: true`, `@/` path alias mapping to `src/`, and `exclude: ["node_modules", ".next", ".runs"]` — see the Stack Knowledge entry "tsconfig.json must exclude .runs/" for the rationale
-- `next.config.ts`: minimal, no custom config
+- `next.config.ts`: starts minimal. Stack files extend it conditionally with their own `nextConfig` blocks (rewrites, env injection, etc.) — additions are merged into a single object literal, not stacked configs. Notable extensions:
+  - `analytics/posthog.md` adds `rewrites()` for the `/ingest/*` proxy and `skipTrailingSlashRedirect: true`.
+  - `analytics/posthog.md` (and any stack relying on a deploy-environment client-side gate) requires an `env` block injecting `NEXT_PUBLIC_VERCEL_ENV: process.env.VERCEL_ENV ?? ""`. Vercel does NOT auto-prefix system env vars with `NEXT_PUBLIC_` — without this injection, client-side `process.env.NEXT_PUBLIC_VERCEL_ENV` is `undefined` and any `=== "production"` gate evaluates to false even on real production deploys. The `?? ""` keeps the value defined-but-empty when the build runs outside Vercel (local dev, bootstrap), so gates fall through to non-production code paths cleanly.
+
+  Combined example (when both `stack.analytics: posthog` and `stack.hosting: vercel` are present):
+  ```ts
+  import type { NextConfig } from "next";
+  const nextConfig: NextConfig = {
+    env: {
+      NEXT_PUBLIC_VERCEL_ENV: process.env.VERCEL_ENV ?? "",
+    },
+    async rewrites() {
+      return [
+        { source: "/ingest/decide", destination: "https://us.i.posthog.com/decide" },
+        { source: "/ingest/:path*", destination: "https://us.i.posthog.com/:path*" },
+      ];
+    },
+    skipTrailingSlashRedirect: true,
+  };
+  export default nextConfig;
+  ```
 
 ### `eslint.config.mjs`
 ```js

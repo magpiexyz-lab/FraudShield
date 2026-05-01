@@ -56,10 +56,19 @@ Can include CSS-based terminal animation showing CLI usage.
 
 ## Analytics
 
-Same inline analytics snippet approach as co-located (see analytics stack file for the provider-specific snippet). Inline `<script>` fires
+Same inline analytics snippet approach as co-located (see `co-located.md` for
+the canonical snippet template — it uses `<%POSTHOG_KEY%>` substitution and a
+runtime misconfiguration check that matches the analytics stack file's
+`## Production Observability` Layer 2 contract). Inline `<script>` fires
 `visit_landing` on page load with: `referrer`, `utm_source`, `utm_medium`,
 `utm_campaign`, `utm_content`, `click_id`, plus global properties
 (`project_name`, `project_owner`).
+
+In `site/index.html` (cli detached surface), the substituted snippet looks
+the same as in service `src/app/route.ts` — only the surrounding HTML
+changes. The same console.error fires when the placeholder is still in
+place at deploy time, so CLI projects also get post-deploy visibility for
+analytics misconfiguration.
 
 ## Deployment
 

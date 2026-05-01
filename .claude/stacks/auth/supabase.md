@@ -703,6 +703,18 @@ const supabase = createServerClient(
 - Fire `signup_start` on form render (include `method` property: `"email"`, `"google"`, `"github"`)
 - Fire `signup_complete` only when `data.session` exists after `signUp()` — when email confirmation is enabled (the default), `signUp()` returns `session: null` and the user must confirm their email before they're logged in. `signup_complete` should only fire for confirmed, logged-in users.
 
+## Production Observability
+
+When the URL/key env vars are missing or match the canonical placeholder default (`https://placeholder.supabase.co` / `placeholder-anon-key`), `createAuthClient()` and `createServerAuthClient()` route to a demo client that returns mocked auth data — no real user can sign up or log in. This routing is intentional (`#1145` mitigates `placeholder.supabase.co` DNS attempts at build/import time), but in production it means the deployment is silently running with mocked auth.
+
+**Fail-loud mechanism (issue #1170 follow-up):** the placeholder branch in both factory functions calls a `_warn*PlaceholderWarned` once-flag helper that emits `console.error` when:
+- Client (`createAuthClient`): hostname is NOT localhost / `127.0.0.1` / `0.0.0.0` / `[::1]` / `*.local`.
+- Server (`createServerAuthClient`): `process.env.VERCEL === "1"` OR `process.env.RAILWAY_ENVIRONMENT_NAME` is set.
+
+This makes silent demo routing visible in production logs and DevTools without breaking dev/local where the placeholder is the expected default. The warning is one-time per module instance to avoid log spam; it surfaces "this deployment used the demo auth client because env vars were not set" so operators can investigate (typically: forgot to wire the Supabase Vercel Integration, or env vars set to empty string instead of the real values).
+
+The Supabase Vercel Integration auto-injects `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`; using the integration eliminates this misconfiguration class. See `database/supabase.md` `## Provisioning` for the integration setup.
+
 ## OAuth / Social Login
 
 The callback route (`src/app/auth/callback/route.ts`, created above) handles OAuth redirects — no additional route infrastructure is needed to add social login.
@@ -812,6 +824,27 @@ function createDemoClient() {
   } as unknown as ReturnType<typeof createBrowserClient>;
 }
 
+// Issue #1170 follow-up: warn-once when placeholder fallback hits in a deployed-host
+// context. Routing to demo client is intentional (#1145) but silent in production
+// usually means env vars were not configured — surface as `console.error`.
+let _supabaseAuthPlaceholderWarned = false;
+function _warnSupabaseAuthPlaceholder() {
+  if (_supabaseAuthPlaceholderWarned) return;
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname;
+    const isLocal =
+      ["localhost", "127.0.0.1", "0.0.0.0", "[::1]"].includes(host) ||
+      host.endsWith(".local");
+    if (isLocal) return;
+  }
+  _supabaseAuthPlaceholderWarned = true;
+  console.error(
+    "[supabase-auth] Browser auth client placeholder fallback was hit — this " +
+    "deployment is using the demo auth client. Set NEXT_PUBLIC_SUPABASE_URL " +
+    "and NEXT_PUBLIC_SUPABASE_ANON_KEY in your hosting platform to enable real auth."
+  );
+}
+
 export function createAuthClient() {
   // Issue #1145: NEXT_PUBLIC_* env vars are inlined at build time by Next.js, so a
   // build produced without NEXT_PUBLIC_DEMO_MODE=true compiles the demo branch to
@@ -822,6 +855,7 @@ export function createAuthClient() {
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
   const isDemoFlag = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
   const isPlaceholder = !url || !anon || url === "https://placeholder.supabase.co";
+  if (isPlaceholder && !isDemoFlag) _warnSupabaseAuthPlaceholder();
   if (isDemoFlag || isPlaceholder) return createDemoClient();
   return createBrowserClient(
     url || "https://placeholder.supabase.co",
@@ -881,6 +915,21 @@ function createDemoClient() {
   } as unknown as ReturnType<typeof createServerClient>;
 }
 
+// Issue #1170 follow-up: server-side warn-once for auth placeholder fallback.
+let _supabaseAuthServerPlaceholderWarned = false;
+function _warnSupabaseAuthServerPlaceholder() {
+  if (_supabaseAuthServerPlaceholderWarned) return;
+  const isHostingPlatform =
+    process.env.VERCEL === "1" || !!process.env.RAILWAY_ENVIRONMENT_NAME;
+  if (!isHostingPlatform) return;
+  _supabaseAuthServerPlaceholderWarned = true;
+  console.error(
+    "[supabase-auth-server] Server auth client placeholder fallback was hit — this " +
+    "deployment is using the demo auth client. Set NEXT_PUBLIC_SUPABASE_URL and " +
+    "NEXT_PUBLIC_SUPABASE_ANON_KEY in your hosting platform to enable real auth."
+  );
+}
+
 export async function createServerAuthClient() {
   if (process.env.DEMO_MODE === "true" && process.env.VERCEL === "1") {
     throw new Error("DEMO_MODE is not allowed in production");
@@ -891,6 +940,7 @@ export async function createServerAuthClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
   const isPlaceholder = !url || !anon || url === "https://placeholder.supabase.co";
+  if (isPlaceholder && process.env.DEMO_MODE !== "true") _warnSupabaseAuthServerPlaceholder();
   if (process.env.DEMO_MODE === "true" || isPlaceholder) return createDemoClient();
   const cookieStore = await cookies();
   return createServerClient(

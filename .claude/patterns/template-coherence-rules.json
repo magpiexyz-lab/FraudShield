@@ -289,6 +289,24 @@
       "severity": "warn",
       "manifest_path": ".claude/patterns/gate-readable-artifacts-canonical.json",
       "description": "GRAIM v2 — permanent warn-only auto-discovery: flag .runs/*.json paths that are gate-read but not in the canonical manifest (promotion regression catch)."
+    },
+    {
+      "id": "stack-files-env-gated-must-have-production-observability",
+      "type": "must_contain_section",
+      "severity": "block",
+      "applies_to_glob": ".claude/stacks/**/*.md",
+      "required_section": "## Production Observability",
+      "trigger_pattern_any": [
+        "\\?\\?\\s*\"phc_TEAM_KEY\"",
+        "\\|\\|\\s*\"placeholder-stripe-publishable\"",
+        "\\|\\|\\s*\"placeholder-anon-key\"",
+        "\\|\\|\\s*\"https://placeholder\\.supabase\\.co\""
+      ],
+      "exclude_glob": [
+        ".claude/stacks/TEMPLATE.md",
+        ".claude/stacks/_archive/**"
+      ],
+      "description": "Issue #1170 lineage: stack files prescribing env-gated source code with literal placeholder fallbacks (e.g. ?? \"phc_TEAM_KEY\", || \"placeholder-stripe-publishable\") MUST include a `## Production Observability` section documenting the fail-loud contract. Without it the silent-fallback antipattern recurs. See .claude/stacks/TEMPLATE.md for the section requirements."
     }
   ]
 }
