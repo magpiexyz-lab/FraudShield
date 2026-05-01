@@ -24,14 +24,14 @@ Run `git diff --quiet && git diff --cached --quiet`. If either fails (there are 
 
 ## Worktree Detection
 
-Check if running inside a git worktree:
+Check if running inside a git worktree (canonical helper — single source of truth):
 ```bash
-if [[ "$(git rev-parse --git-common-dir)" != "$(git rev-parse --git-dir)" ]]; then
-  IN_WORKTREE=true
-else
-  IN_WORKTREE=false
-fi
+IN_WORKTREE=$(bash .claude/scripts/lib/in-worktree.sh)
 ```
+
+The helper itself uses `git rev-parse --git-common-dir != --git-dir` (the values
+differ inside any non-primary worktree). This replaces the previously-inlined
+4-line block; callers MUST use the helper rather than re-inlining the comparison.
 
 ## Switch to Default Branch and Pull Latest
 

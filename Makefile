@@ -63,6 +63,8 @@ lint-template: ## Fast: run validators against .claude/ content (~1-3s; no valid
 	fi
 	@echo "-- test-template-coherence (#1128 evidence-channel regression guard) --"
 	@bash scripts/test-template-coherence.sh
+	@echo "-- check-worktree-ownership-pattern (#1200 recurrence guard) --"
+	@python3 .claude/scripts/check-worktree-ownership-pattern.py
 	@echo ""
 	@echo "== All CI-bound template validators passed. Safe to push .claude/ edits. =="
 

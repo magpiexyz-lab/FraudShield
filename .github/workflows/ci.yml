@@ -171,6 +171,9 @@ jobs:
             echo "No consistency-check.sh found — skipping"
           fi
 
+      - name: Worktree-ownership pattern (#1200 recurrence guard)
+        run: python3 .claude/scripts/check-worktree-ownership-pattern.py
+
   build:
     needs: [validate, detect]
     if: needs.detect.outputs.nvmrc_present == 'true'
