@@ -41,22 +41,26 @@ Before entering the lifecycle, check `.runs/current-plan.md`:
 
 ## Lifecycle
 
-1. Enter worktree isolation:
-   a. Clean stale worktrees (>24h) from failed prior runs:
+0. Opportunistically clean >24h stale change worktrees (skips active sessions):
+   ```bash
+   bash .claude/scripts/lib/clean-stale-worktrees.sh change
+   ```
+1. Enter worktree isolation (conditional — only when not already isolated):
+   a. Detect existing isolation:
       ```bash
-      for wt in $(git worktree list --porcelain | grep '^worktree ' | awk '{print $2}' | grep '\.claude/worktrees/change-'); do
-        if [[ -d "$wt" ]]; then
-          AGE_SEC=$(( $(date +%s) - $(stat -f %m "$wt" 2>/dev/null || stat -c %Y "$wt" 2>/dev/null || echo 0) ))
-          if [[ $AGE_SEC -gt 86400 ]]; then
-            git worktree remove --force "$wt" 2>/dev/null || true
-          fi
-        fi
-      done
+      IN_WORKTREE=$(bash .claude/scripts/lib/in-worktree.sh)
       ```
-   b. Call `EnterWorktree` with name `"change-<current-timestamp>"`
-   c. If it succeeds: run `mkdir -p .runs` then `npm ci`
-   d. If it fails: continue in current directory (no worktree)
-2. Run `bash .claude/scripts/lifecycle-init.sh change '{"skill":"change"}'`
+   b. If `IN_WORKTREE=false`:
+      - Call `EnterWorktree` with name `"change-<current-timestamp>"`
+      - On success: run `mkdir -p .runs` then `npm ci`; set `WORKTREE_OWNER=true`
+      - On failure: continue in current directory; set `WORKTREE_OWNER=false`
+   c. If `IN_WORKTREE=true`:
+      - Skip `EnterWorktree` (the parent session owns this worktree)
+      - Set `WORKTREE_OWNER=false`
+2. Run `bash .claude/scripts/lifecycle-init.sh change '{"skill":"change"}'`, then merge worktree_owner into the context (reuses init-context.sh's has_identity merge path):
+   ```bash
+   bash .claude/scripts/init-context.sh change "{\"worktree_owner\": $WORKTREE_OWNER}"
+   ```
 3. State execution loop:
    a. Run: `NEXT=$(bash .claude/scripts/lifecycle-next.sh change)`
    b. If NEXT is "FINALIZE" → go to step 4
@@ -66,9 +70,14 @@ Before entering the lifecycle, check `.runs/current-plan.md`:
    f. After ACTIONS complete, run the state's STATE TRACKING command
       (the `bash .claude/scripts/advance-state.sh` call in the state file)
    g. Return to step 3a
-4. If worktree was entered in step 1:
+4. Conditional cleanup (only when this skill owns the worktree):
+   ```bash
+   OWNER=$(python3 -c "import json; print(str(json.load(open('.runs/change-context.json')).get('worktree_owner', False)).lower())")
+   ```
+   If `OWNER=true`:
    a. Run `bash .claude/scripts/lifecycle-worktree-sync.sh`
    b. Call `ExitWorktree` with action `"remove"` and `discard_changes: true`
+   Else: skip cleanup. The parent session owns the worktree, OR the context predates this fix and may need one-time manual cleanup.
 
 **Note:** STATE 7 (USER_APPROVAL) pauses for user input. The lifecycle loop resumes when the user responds with approval.
 

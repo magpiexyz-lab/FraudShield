@@ -13,11 +13,26 @@ Find the optimal solution to a problem using first-principles analysis, structur
 
 ## Lifecycle
 
-1. Enter worktree isolation:
-   a. Call `EnterWorktree` with name `"solve-<current-timestamp>"`
-   b. If it succeeds: run `mkdir -p .runs`
-   c. If it fails: continue in current directory (no worktree)
-2. Run `bash .claude/scripts/lifecycle-init.sh solve`
+0. Opportunistically clean >24h stale solve worktrees (skips active sessions):
+   ```bash
+   bash .claude/scripts/lib/clean-stale-worktrees.sh solve
+   ```
+1. Enter worktree isolation (conditional — only when not already isolated):
+   a. Detect existing isolation:
+      ```bash
+      IN_WORKTREE=$(bash .claude/scripts/lib/in-worktree.sh)
+      ```
+   b. If `IN_WORKTREE=false`:
+      - Call `EnterWorktree` with name `"solve-<current-timestamp>"`
+      - On success: run `mkdir -p .runs`; set `WORKTREE_OWNER=true`
+      - On failure: continue in current directory; set `WORKTREE_OWNER=false`
+   c. If `IN_WORKTREE=true`:
+      - Skip `EnterWorktree` (the parent session owns this worktree)
+      - Set `WORKTREE_OWNER=false`
+2. Run `bash .claude/scripts/lifecycle-init.sh solve`, then merge worktree_owner into the context (reuses init-context.sh's has_identity merge path):
+   ```bash
+   bash .claude/scripts/init-context.sh solve "{\"worktree_owner\": $WORKTREE_OWNER}"
+   ```
 3. State execution loop:
    a. Run: `NEXT=$(bash .claude/scripts/lifecycle-next.sh solve)`
    b. If NEXT is "FINALIZE" → go to step 4
@@ -26,9 +41,14 @@ Find the optimal solution to a problem using first-principles analysis, structur
    e. After ACTIONS complete, run the state's STATE TRACKING command
       (the `bash .claude/scripts/advance-state.sh` call in the state file)
    f. Return to step 3a
-4. If worktree was entered in step 1:
+4. Conditional cleanup (only when this skill owns the worktree):
+   ```bash
+   OWNER=$(python3 -c "import json; print(str(json.load(open('.runs/solve-context.json')).get('worktree_owner', False)).lower())")
+   ```
+   If `OWNER=true`:
    a. Run `bash .claude/scripts/lifecycle-worktree-sync.sh`
    b. Call `ExitWorktree` with action `"remove"`
+   Else: skip cleanup. The parent session owns the worktree, OR the context predates this fix and may need one-time manual cleanup.
 
 ## Do NOT
 - Modify any source files — this skill is analysis only

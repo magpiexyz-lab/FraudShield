@@ -118,7 +118,7 @@ FEATURE_BRANCH=$(git branch --show-current)
 # /upgrade tracks sync state via .claude/template-sync-meta.json instead of merge ancestry.
 # DO_NOT add --auto: repo allow_auto_merge=false — --auto silently becomes
 # an immediate non-gated merge (see issue #1003, feedback_gh_pr_merge_auto_fallback).
-if [[ -n "${CLAUDE_WORKTREE:-}" ]]; then
+if [[ "$(bash .claude/scripts/lib/in-worktree.sh)" == "true" ]]; then
   # In worktree: --delete-branch triggers local checkout of main which fails
   # (main is checked out in primary worktree). Branch is cleaned up by ExitWorktree.
   gh pr merge --squash
@@ -136,7 +136,7 @@ If `gh pr merge` fails:
 ## Post-Merge
 
 ```bash
-if [[ -z "${CLAUDE_WORKTREE:-}" ]]; then
+if [[ "$(bash .claude/scripts/lib/in-worktree.sh)" == "false" ]]; then
   git checkout main && git pull
   git branch -d "$FEATURE_BRANCH" 2>/dev/null || true
 fi

@@ -410,7 +410,7 @@ fi # end embed guard for Steps 3a-3b
 # --- Step 4: Branch creation (skipped in embed mode) ---
 BRANCH=$(python3 -c "import json; print(json.load(open('$MANIFEST')).get('branch',''))" 2>/dev/null || echo "")
 
-if [[ -z "$EMBED_MODE" && -n "$BRANCH" && -z "${CLAUDE_WORKTREE:-}" ]]; then
+if [[ -z "$EMBED_MODE" && -n "$BRANCH" && "$(bash "$PROJECT_DIR/.claude/scripts/lib/in-worktree.sh")" == "false" ]]; then
   # Extract slug from EXTRA if present
   SLUG=""
   if [[ -n "$EXTRA" ]]; then

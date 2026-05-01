@@ -309,6 +309,16 @@ json.dump(d, open('$COHERENCE_CACHE', 'w'), indent=2)
   # .runs/init-context-caller-findings.jsonl; never blocks. Phase E2 of
   # canonical-writer-policy work.
   bash "$PROJECT_DIR/.claude/scripts/check-init-context-callers.sh" 2>/dev/null || true
+
+  # Worktree-ownership pattern (issue #1200): blocking. Asserts that every
+  # command file calling EnterWorktree also has the canonical IN_WORKTREE
+  # detection block + worktree_owner ownership flag + conditional ExitWorktree;
+  # and that no state file calls EnterWorktree (Rule 13 forbids it).
+  if ! python3 "$PROJECT_DIR/.claude/scripts/check-worktree-ownership-pattern.py" >&2; then
+    echo "BLOCK: worktree-ownership-pattern violation (issue #1200)." >&2
+    echo "Re-run: python3 .claude/scripts/check-worktree-ownership-pattern.py" >&2
+    exit 1
+  fi
 fi
 
 # --- Step 5: Delivery (code-writing skills only) ---
@@ -491,7 +501,7 @@ if d.get('exit_code') != 0:
     # Merge
     if [[ -z "$SKIP_MERGE" ]]; then
       FEATURE_BRANCH=$(git branch --show-current)
-      if [[ -n "${CLAUDE_WORKTREE:-}" ]]; then
+      if [[ "$(bash .claude/scripts/lib/in-worktree.sh)" == "true" ]]; then
         gh pr merge --squash || {
           echo "WARN: gh pr merge failed — PR left open" >&2
           SKIP_MERGE="merge-failed"
@@ -505,7 +515,7 @@ if d.get('exit_code') != 0:
     fi
 
     # Post-merge (FEATURE_BRANCH captured on line 300 before merge)
-    if [[ -z "$SKIP_MERGE" && -z "${CLAUDE_WORKTREE:-}" ]]; then
+    if [[ -z "$SKIP_MERGE" && "$(bash .claude/scripts/lib/in-worktree.sh)" == "false" ]]; then
       git checkout main && git pull
       git branch -d "$FEATURE_BRANCH" 2>/dev/null || true
     fi
