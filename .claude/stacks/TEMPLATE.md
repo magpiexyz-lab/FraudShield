@@ -95,13 +95,17 @@ VARIABLE_NAME=description-or-example
          get: (_, prop) => {
            if (prop === "then") return (resolve) => resolve(terminal);
            if (prop === "single") return () => chainable({ data: null, error: null });
+           if (prop === "maybeSingle") return () => chainable({ data: null, error: null });
            return chainable(terminal);
          },
          apply: () => chainable(terminal),
        });
      The `then` trap returns a proper thenable so `await` resolves to the
-     terminal value. The `single()` handler returns `{ data: null }` instead
-     of the default array shape.
+     terminal value. The `single()` and `maybeSingle()` handlers both return
+     `{ data: null }` instead of the default array shape — they share semantics
+     in the demo case (zero-row outcome). Pages calling either method see a
+     usable null result; without the explicit `maybeSingle` handler, calls fall
+     through to the array terminal and break null-coalescing logic in pages.
 
      For auth-like namespaces with many methods (e.g., `auth`), use a Proxy
      fallback so unknown methods return a safe default instead of crashing:

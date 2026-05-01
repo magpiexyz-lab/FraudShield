@@ -770,6 +770,7 @@ function createDemoClient() {
       get: (_, prop) => {
         if (prop === "then") return (resolve: (v: unknown) => void) => resolve(terminal);
         if (prop === "single") return () => chainable({ data: null, error: null });
+        if (prop === "maybeSingle") return () => chainable({ data: null, error: null });
         return chainable(terminal);
       },
       apply: () => chainable(terminal),
@@ -841,6 +842,7 @@ function createDemoClient() {
       get: (_, prop) => {
         if (prop === "then") return (resolve: (v: unknown) => void) => resolve(terminal);
         if (prop === "single") return () => chainable({ data: null, error: null });
+        if (prop === "maybeSingle") return () => chainable({ data: null, error: null });
         return chainable(terminal);
       },
       apply: () => chainable(terminal),

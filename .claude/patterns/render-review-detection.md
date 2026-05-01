@@ -236,7 +236,7 @@ if (navError) {
   // URL-mismatch gate below would misclassify this as `rendered-*`. We
   // catch it here: any 404 on a dynamic-segment route under DEMO_MODE is
   // deterministically attributable to the Supabase stub returning null
-  // from .single() for the synthetic fixture ID (see
+  // from .single() / .maybeSingle() for the synthetic fixture ID (see
   // .claude/scripts/lib/derive_pages.py synthetic-ID table). A 404 on a
   // STATIC route stays a genuine bug and falls through to the
   // URL-mismatch branch.

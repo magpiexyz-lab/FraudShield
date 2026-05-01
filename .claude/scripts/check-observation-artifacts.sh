@@ -236,6 +236,40 @@ else
       echo "WARN: observation-enforcement: missing retrospective-result.json — Step 5a may have been skipped (scope=$SCOPE, agent traces exist)" >&2
     fi
 
+    # hook-friction-summary.json — required for full/process scope when
+    # .runs/hook-friction.jsonl has rows for the current run_id (#1226).
+    # Without the summary, the lead Q2 retrospective is missing its 4th
+    # evidence channel and tends to produce falsely-clean process_compliance.
+    # Filter by run_id to avoid penalizing future runs that inherit a
+    # historical jsonl with no current-run rows.
+    FRICTION_RUN_ROWS=$(python3 -c "
+import json, os
+fp = '$RUNS_DIR/hook-friction.jsonl'
+rid = '$RUN_ID'
+if not os.path.isfile(fp) or os.path.getsize(fp) == 0 or not rid:
+    print(0)
+else:
+    n = 0
+    try:
+        with open(fp) as f:
+            for line in f:
+                line = line.strip()
+                if not line: continue
+                try:
+                    e = json.loads(line)
+                except Exception:
+                    continue
+                if e.get('run_id') == rid:
+                    n += 1
+    except Exception:
+        n = 0
+    print(n)
+" 2>/dev/null || echo "0")
+    if [[ "$FRICTION_RUN_ROWS" != "0" ]] && [[ ! -f "$RUNS_DIR/hook-friction-summary.json" ]]; then
+      MISSING+=("hook-friction-summary.json")
+      echo "WARN: observation-enforcement: missing hook-friction-summary.json — $FRICTION_RUN_ROWS run-scoped friction event(s) need Q2 4th evidence channel (#1226). lifecycle-finalize.sh Step 2.6 should aggregate." >&2
+    fi
+
     # Hard-gate enforcement (fix #1066): when hard_gate_failure=true, the
     # retrospective MUST have populated Q1/Q2/Q3 fields — sentinel entries are
     # allowed for degraded evidence, but empty arrays / 'skipped-hard-gate'

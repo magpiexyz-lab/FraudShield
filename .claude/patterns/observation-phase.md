@@ -75,11 +75,14 @@ fi
 # c. Generate template file list
 cat .claude/template-owned-dirs.txt | grep -v '^#' | grep -v '^$' | xargs -I{} find {} -type f 2>/dev/null | sort
 
-# d. Aggregate hook-friction.jsonl (per-hook block counts + sample reasons) — #1128 L6.
-# Writes .runs/hook-friction-summary.json filtered to the current run_id.
-# Step 5a Q2 reads the summary as the 4th evidence channel.
-if [[ -s .runs/hook-friction.jsonl ]]; then
-  python3 .claude/scripts/aggregate-hook-friction.py 2>/dev/null || true
+# d. Aggregate hook-friction.jsonl is now produced unconditionally by
+#    lifecycle-finalize.sh Step 2.6 (#1226). The summary is the 4th evidence
+#    channel for the Step 5a Q2 retrospective. Verify the artifact is present
+#    when this jsonl has rows for the current run_id — its absence is a hard
+#    failure surfaced by check-observation-artifacts.sh and compliance-audit's
+#    check_q2_evidence_complete.
+if [[ -s .runs/hook-friction.jsonl ]] && [[ ! -f .runs/hook-friction-summary.json ]]; then
+  echo "WARN: observation-phase Step 2d — hook-friction-summary.json missing despite non-empty hook-friction.jsonl (lifecycle-finalize.sh Step 2.6 should have aggregated)" >&2
 fi
 ```
 

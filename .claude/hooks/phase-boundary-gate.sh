@@ -74,12 +74,23 @@ fi
 if [[ "$TOOL_NAME" == "Bash" ]]; then
   COMMAND=$(read_payload_field "tool_input.command")
 
-  # Only fire on actual advance-state.sh invocations (not strings mentioning it)
-  if ! echo "$COMMAND" | grep -qE 'bash\s+\S*advance-state\.sh\s'; then
-    exit 0
+  # Only fire on actual advance-state.sh invocations at command-head position
+  # (#1223). See state-completion-gate.sh for the full rationale.
+  _PROJECT_DIR_GATE="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}"
+  _INVOCATION_HELPER="$_PROJECT_DIR_GATE/.claude/scripts/lib/check-advance-state-invocation.py"
+  if [[ ! -f "$_INVOCATION_HELPER" ]]; then
+    # Helper missing — fall back to legacy grep so we do not over-block.
+    if ! printf '%s' "$COMMAND" | grep -qE 'bash\s+\S*advance-state\.sh\s'; then
+      exit 0
+    fi
+    parse_advance_state_args
+  else
+    if ! printf '%s' "$COMMAND" | python3 "$_INVOCATION_HELPER"; then
+      exit 0
+    fi
+    SKILL=$(printf '%s' "$COMMAND" | python3 "$_INVOCATION_HELPER" --print-skill)
+    STATE_ID=$(printf '%s' "$COMMAND" | python3 "$_INVOCATION_HELPER" --print-state-id)
   fi
-
-  parse_advance_state_args
 
   if [[ -z "$SKILL" || -z "$STATE_ID" ]]; then
     exit 0

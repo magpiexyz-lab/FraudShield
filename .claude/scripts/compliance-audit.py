@@ -672,6 +672,95 @@ def check_cross_artifact_counts(skill):
             "detail": f"cross-artifact counts consistent for {skill}"}
 
 
+# --- Check (k): Q2 evidence completeness (closes #1226) ---
+def check_q2_evidence_complete(skill, run_id):
+    """When hook-friction.jsonl has rows for the current run_id, the Q2
+    retrospective MUST have access to its 4th evidence channel:
+
+      1. .runs/hook-friction-summary.json must exist (produced by
+         aggregate-hook-friction.py — now invoked by lifecycle-finalize.sh).
+      2. retrospective-result.json.process_compliance MUST NOT be a
+         literal 'clean' / 'Clean' when friction events for this run exist —
+         a clean verdict with friction is suspicious per #1226's symptom.
+
+    Skips when:
+      - hook-friction.jsonl is absent or has no rows for current run_id
+        (legitimate friction-free run).
+      - retrospective-result.json is absent (Step 5a was scope-skipped per
+        observation-phase.md scope gate; not this check's responsibility).
+
+    Schema-aware: process_compliance can be a string OR list OR object.
+      - string: lower-compare against {'clean', ''}.
+      - list: empty list = clean.
+      - object: read .verdict subfield (lower-compare).
+    """
+    name = "q2_evidence_complete"
+    friction_path = os.path.join(RUNS_DIR, "hook-friction.jsonl")
+    if not os.path.isfile(friction_path) or os.path.getsize(friction_path) == 0:
+        return {"name": name, "result": "skip",
+                "detail": "no hook-friction.jsonl rows for run"}
+
+    # Filter friction events by run_id — only count rows belonging to current run.
+    run_rows = 0
+    try:
+        with open(friction_path) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    e = json.loads(line)
+                except Exception:
+                    continue
+                if e.get("run_id") == run_id:
+                    run_rows += 1
+    except Exception as exc:
+        return {"name": name, "result": "skip",
+                "detail": f"unreadable hook-friction.jsonl: {exc}"}
+
+    if run_rows == 0:
+        return {"name": name, "result": "skip",
+                "detail": "no hook-friction.jsonl rows for this run_id"}
+
+    failures = []
+    summary_path = os.path.join(RUNS_DIR, "hook-friction-summary.json")
+    if not os.path.isfile(summary_path):
+        failures.append(
+            f"hook-friction-summary.json missing despite {run_rows} run-scoped friction event(s) "
+            f"— aggregate-hook-friction.py did not run (lifecycle-finalize.sh Step 2d should run it)"
+        )
+
+    retro_path = os.path.join(RUNS_DIR, "retrospective-result.json")
+    if os.path.isfile(retro_path):
+        retro = load_json(retro_path) or {}
+        pc = retro.get("process_compliance")
+
+        def _is_clean(value):
+            if isinstance(value, str):
+                return value.strip().lower() in ("", "clean")
+            if isinstance(value, list):
+                return len(value) == 0
+            if isinstance(value, dict):
+                v = value.get("verdict")
+                if isinstance(v, str):
+                    return v.strip().lower() in ("", "clean")
+                return False
+            return False
+
+        if pc is not None and _is_clean(pc):
+            failures.append(
+                f"retrospective-result.json.process_compliance is 'clean' but {run_rows} "
+                f"run-scoped hook-friction event(s) recorded — Q2 retrospective should "
+                f"address them (false-clean retrospective per #1226)"
+            )
+
+    if failures:
+        return {"name": name, "result": "fail",
+                "detail": "; ".join(failures)}
+    return {"name": name, "result": "pass",
+            "detail": f"{run_rows} friction event(s) acknowledged by Q2 evidence channel"}
+
+
 # --- Check (j): Lead-deliverable compliance (closes #1152) ---
 def check_lead_deliverable_compliance(skill):
     """For each artifact in lead-only-artifacts.json that exists at audit-time,
@@ -753,6 +842,7 @@ def main():
         check_agent_trace_coverage(args.skill),
         check_cross_artifact_counts(args.skill),
         check_lead_deliverable_compliance(args.skill),
+        check_q2_evidence_complete(args.skill, args.run_id),
     ]
 
     anomaly_count = sum(1 for c in checks if c["result"] == "fail")

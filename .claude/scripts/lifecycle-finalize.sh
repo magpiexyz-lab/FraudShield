@@ -186,6 +186,18 @@ if [[ -d "$PROJECT_DIR/.runs/agent-traces" ]]; then
   python3 "$PROJECT_DIR/.claude/scripts/write-fix-ledger.py" >/dev/null 2>&1 || true
 fi
 
+# --- Step 2.6: Aggregate hook-friction.jsonl into hook-friction-summary.json (#1226) ---
+# Canonical owner of aggregate-hook-friction.py invocation. Always runs when
+# .runs/hook-friction.jsonl is non-empty so the Q2 4th evidence channel is
+# always available to the lead retrospective (Step 5a in observation-phase.md).
+# Idempotent: aggregator overwrites the summary file each run. Filtered by
+# current run_id inside the aggregator. Replaces the previously-conditional
+# call inside observation-phase.md Step 2d, which the lead could skip and
+# silently produce a falsely-clean retrospective.
+if [[ -s "$PROJECT_DIR/.runs/hook-friction.jsonl" ]]; then
+  python3 "$PROJECT_DIR/.claude/scripts/aggregate-hook-friction.py" >/dev/null 2>&1 || true
+fi
+
 # --- Step 3: Q-score — read q-dimensions.json, call write-q-score.py ---
 Q_DIMS_PATH="$PROJECT_DIR/.runs/q-dimensions.json"
 if [[ -f "$Q_DIMS_PATH" ]]; then

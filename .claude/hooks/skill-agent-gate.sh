@@ -30,12 +30,81 @@ fi
 # Replaces a prior timestamp-walk that disagreed with state-completion-gate's
 # arg-driven lookup on embed-verify (issue #941). The helper filters by
 # current branch + completed flag + 48h staleness cap (R2 C2).
+#
+# Identity-resolution failure handling (#1224): when resolve_active_identity
+# returns empty (no matching context, stale branch field — see #1222), the
+# legacy behavior was to exit 0 silently — which let the agent spawn proceed
+# but dropped the spawn-log entry. Downstream consumers (compliance-audit,
+# Step 5a retrospective Q3, validate-recovery) then could not tell whether
+# the agent ran at all. The new behavior writes a degraded spawn-log entry
+# so the failure is observable, then exits 0 (we still allow the spawn —
+# blocking would silently degrade many test/diagnostic flows).
 ACTIVE_IDENTITY="$(resolve_active_identity)"
+DEGRADED_REASON=""
 if [[ -z "$ACTIVE_IDENTITY" ]]; then
-  exit 0
+  DEGRADED_REASON="active_identity_unresolvable"
 fi
-IFS=$'\t' read -r ACTIVE_SKILL ACTIVE_RUN_ID ACTIVE_ATTR _ACTIVE_ANCESTORS <<< "$ACTIVE_IDENTITY"
-if [[ -z "$ACTIVE_SKILL" ]]; then
+if [[ -z "$DEGRADED_REASON" ]]; then
+  IFS=$'\t' read -r ACTIVE_SKILL ACTIVE_RUN_ID ACTIVE_ATTR _ACTIVE_ANCESTORS <<< "$ACTIVE_IDENTITY"
+  if [[ -z "$ACTIVE_SKILL" ]]; then
+    DEGRADED_REASON="active_skill_empty"
+  fi
+fi
+
+if [[ -n "$DEGRADED_REASON" ]]; then
+  # Best-available run_id: scan non-completed contexts (any branch) for the
+  # latest run_id rather than write 'unknown', so downstream provenance scans
+  # (state-completion-gate.sh:223,289) can still cross-reference the spawn.
+  # Falls back to 'unknown' only when no non-completed context exists.
+  _SAG_BEST_RUN_ID=$(python3 -c "
+import json, glob, os
+project = '$PROJECT_DIR'
+best_ts = ''
+best_run = ''
+best_skill = ''
+for f in glob.glob(os.path.join(project, '.runs', '*-context.json')):
+    if 'epilogue-context' in f:
+        continue
+    try:
+        d = json.load(open(f))
+    except Exception:
+        continue
+    if d.get('completed') is True:
+        continue
+    ts = d.get('timestamp', '')
+    if ts and ts > best_ts:
+        best_ts = ts
+        best_run = d.get('run_id', '') or ''
+        best_skill = d.get('skill', '') or ''
+print(best_skill + '\t' + best_run)
+" 2>/dev/null || echo $'\t')
+  IFS=$'\t' read -r _SAG_FALLBACK_SKILL _SAG_FALLBACK_RUN_ID <<< "$_SAG_BEST_RUN_ID"
+  : "${_SAG_FALLBACK_SKILL:=unknown}"
+  : "${_SAG_FALLBACK_RUN_ID:=unknown}"
+
+  echo "WARN: skill-agent-gate: $DEGRADED_REASON for $SUBAGENT_TYPE — writing degraded spawn-log entry (skill=$_SAG_FALLBACK_SKILL run_id=$_SAG_FALLBACK_RUN_ID)" >&2
+
+  _SAG_DEGRADED_LOG="$PROJECT_DIR/.runs/agent-spawn-log.jsonl"
+  mkdir -p "$PROJECT_DIR/.runs"
+  _SAG_DEGRADED_HEAD_SHA=$(git rev-parse HEAD 2>/dev/null || echo "")
+
+  python3 -c "
+import json, datetime
+entry = {
+    'agent': '$SUBAGENT_TYPE',
+    'skill': '$_SAG_FALLBACK_SKILL',
+    'run_id': '$_SAG_FALLBACK_RUN_ID',
+    'attributed_to': '$_SAG_FALLBACK_SKILL',
+    'spawn_index': 0,
+    'head_sha': '$_SAG_DEGRADED_HEAD_SHA',
+    'timestamp': datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+    'hook': 'skill-agent-gate',
+    'degraded': True,
+    'degradation_reason': '$DEGRADED_REASON',
+}
+with open('$_SAG_DEGRADED_LOG', 'a') as f:
+    f.write(json.dumps(entry) + '\n')
+" 2>/dev/null || true
   exit 0
 fi
 

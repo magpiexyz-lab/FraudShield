@@ -11,20 +11,35 @@ parse_payload
 
 COMMAND=$(read_payload_field "tool_input.command")
 
-# Only fire on actual advance-state.sh invocations (not strings mentioning it)
-if ! echo "$COMMAND" | grep -qE 'bash\s+\S*advance-state\.sh\s'; then
-  exit 0
+# Only fire on actual advance-state.sh invocations at command-head position
+# (#1223). Naive substring grep fired on script names appearing inside heredoc
+# bodies, --body arguments, and quoted strings — the helper strips heredocs,
+# shlex-tokenizes, and only matches at command-head positions. Fails open on
+# parse errors so the gate never silently flips to fail-closed (issue #1223).
+_PROJECT_DIR_GATE="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}"
+_INVOCATION_HELPER="$_PROJECT_DIR_GATE/.claude/scripts/lib/check-advance-state-invocation.py"
+if [[ ! -f "$_INVOCATION_HELPER" ]]; then
+  # Helper missing — fall back to the legacy grep so we do not over-block.
+  if ! printf '%s' "$COMMAND" | grep -qE 'bash\s+\S*advance-state\.sh\s'; then
+    exit 0
+  fi
+  parse_advance_state_args
+else
+  if ! printf '%s' "$COMMAND" | python3 "$_INVOCATION_HELPER"; then
+    exit 0
+  fi
+  SKILL=$(printf '%s' "$COMMAND" | python3 "$_INVOCATION_HELPER" --print-skill)
+  STATE_ID=$(printf '%s' "$COMMAND" | python3 "$_INVOCATION_HELPER" --print-state-id)
 fi
-
-parse_advance_state_args
 
 if [[ -z "$SKILL" || -z "$STATE_ID" ]]; then
   exit 0
 fi
 
 # Format validation: SKILL and STATE_ID must be safe shell-injection-free identifiers.
-# Reject malformed input (e.g., chained advance-state calls smushed together) explicitly
-# rather than letting it interpolate into the python lookup below.
+# Reject malformed input (kept as defense-in-depth; the helper's tokenization
+# normally guarantees well-formed values, but a future caller could still pass
+# garbage args).
 if ! [[ "$SKILL" =~ ^[a-z][a-z0-9_-]*$ && "$STATE_ID" =~ ^[0-9]+[a-z]?$ ]]; then
   deny "State completion gate: malformed args SKILL='$SKILL' STATE_ID='$STATE_ID'. Run advance-state.sh with one skill/state per Bash call (do not chain with &&)."
 fi

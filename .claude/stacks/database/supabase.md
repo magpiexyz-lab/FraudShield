@@ -42,6 +42,7 @@ function createDemoClient() {
       get: (_, prop) => {
         if (prop === "then") return (resolve: (v: unknown) => void) => resolve(terminal);
         if (prop === "single") return () => chainable({ data: null, error: null });
+        if (prop === "maybeSingle") return () => chainable({ data: null, error: null });
         return chainable(terminal);
       },
       apply: () => chainable(terminal),
@@ -137,6 +138,7 @@ function createDemoClient() {
       get: (_, prop) => {
         if (prop === "then") return (resolve: (v: unknown) => void) => resolve(terminal);
         if (prop === "single") return () => chainable({ data: null, error: null });
+        if (prop === "maybeSingle") return () => chainable({ data: null, error: null });
         return chainable(terminal);
       },
       apply: () => chainable(terminal),
@@ -566,7 +568,7 @@ The demo client (`createDemoClient()`) returns `DEMO_SEED_DATA` — 3 generic ro
 **Mitigation for page authors:** When rendering data from Supabase queries, use optional chaining or defaults for schema-specific fields: `row.amount ?? 0`, `row.description ?? ""`. The generic fields (`id`, `name`, `status`, `created_at`) are always present in demo data.
 
 ### Single-row queries return null in demo mode
-The chainable proxy's `.single()` method returns `{ data: null, error: null }` — not a row from `DEMO_SEED_DATA`. Pages that call `.from("table").select().eq(...).single()` and expect a non-null result should handle the null case (loading state or fallback UI). This matches the real Supabase behavior when no row matches the filter.
+The chainable proxy's `.single()` and `.maybeSingle()` methods both return `{ data: null, error: null }` — not a row from `DEMO_SEED_DATA`. Pages that call `.from("table").select().eq(...).single()` or `.maybeSingle()` and expect a non-null result should handle the null case (loading state or fallback UI). For `.maybeSingle()`, this matches real Supabase behavior when zero rows match the filter; for `.single()`, real Supabase returns a `PGRST116` error on zero rows while the demo client returns `error:null` (a pre-existing simplification — pages that branch on `error.code === "PGRST116"` will not exercise that branch in demo mode).
 
 ### When `npm run dev` fails with `TypeError: Failed to fetch` in demo mode
 Client-side Supabase needs `NEXT_PUBLIC_DEMO_MODE=true` in addition to server-side `DEMO_MODE=true`. Always set both together:
@@ -609,6 +611,46 @@ export function getTierDisplayName(tier: PlanTier): string {
 All components — dashboard cards, billing pages, upgrade CTAs, aria-labels — must import from this one file. Do NOT call `capitalize()` on the raw enum key; do NOT write inline `tier === "growth" ? "Growth" : ...` chains.
 
 Tier renames now require a one-line change in one file. Type-checking catches unknown tier values at compile time. When `stack.payment: stripe` is added later, migrate the helper to the same file as `PLAN_PRICES` — the import path stays stable if you keep the module path.
+
+```yaml
+id: supabase-demo-client-maybesingle-alias
+maturity: raw
+anti_pattern: false
+composite_identity:
+  root_cause_class: demo-client proxy missing API method alias
+  divergence_pattern: alias-handler-absent
+  stack_scope: database/supabase
+composite_identity_hash: 4400992b48ea
+symptom_keywords: [maybeSingle, demo-mode, 404, chainable, proxy, supabase, single-row]
+fix_template: |
+  When real Supabase exposes paired terminal methods with identical zero-row
+  semantics (.single() / .maybeSingle()), the demo-client chainable Proxy must
+  intercept BOTH props — not just one. Pattern:
+    get: (_, prop) => {
+      if (prop === "then") return (resolve) => resolve(terminal);
+      if (prop === "single") return () => chainable({ data: null, error: null });
+      if (prop === "maybeSingle") return () => chainable({ data: null, error: null });
+      return chainable(terminal);
+    }
+  Without the maybeSingle handler, .from(...).select().eq(...).maybeSingle()
+  falls through to the seed-row array terminal, breaking page null-coalescing
+  logic and rendering 404 in DEMO_MODE on dynamic-segment routes.
+prevention_mechanism: TEMPLATE.md canonical proxy pattern teaches both handlers; consolidated Stack Knowledge entry above documents both methods. Recurrence guard is documentation-quality only.
+confidence_score: 0.7
+occurrence_count: 1
+linked_issues: [1178]
+first_seen: 2026-04-30
+last_seen: 2026-04-30
+graduated_to: null
+```
+
+When the demo-client chainable proxy intercepts only `.single()` and not its
+sibling `.maybeSingle()` (or analogous paired terminals — `.csv()/.geojson()`,
+etc., when their semantics align), pages calling the unintercepted method fall
+through to the array terminal and render 404 / broken state in DEMO_MODE. The
+fix is to add an explicit handler for the missing method; the prevention is to
+keep TEMPLATE.md's canonical proxy pattern teaching both handlers so future
+stack authors copy the both-aliases form.
 
 ## PR Instructions
 - When creating migrations, add to the PR body: "After merging, migrations are applied automatically during the next Vercel build (via the `prebuild` script). If not using the Supabase Vercel Integration, CI applies them on merge to `main` (requires CI secrets), or run `make migrate` manually — see Migration Setup in README."

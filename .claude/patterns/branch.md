@@ -49,6 +49,32 @@ fi
 
 3. **Handle collisions**: if a branch with that name already exists (`git show-ref --verify --quiet refs/heads/<branch_name>`), append `-2`. If that also exists, try `-3`, and so on.
 
-4. Create and switch to the branch: `git checkout -b <branch_name>`
+4. **Capture pre-checkout branch** (required by Step 5 — must run BEFORE `git checkout -b`):
+   ```bash
+   OLD_BRANCH="$(git branch --show-current)"
+   ```
 
-After this procedure completes, the skill is on a clean feature branch based on the latest default branch. Proceed with the skill's implementation steps.
+5. Create and switch to the branch: `git checkout -b <branch_name>`
+
+## Persist New Branch to Active Context
+
+After `git checkout -b` succeeds, propagate the new branch name to active
+`.runs/*-context.json` files via the canonical helper:
+
+```bash
+bash .claude/scripts/update-context-branch.sh "$OLD_BRANCH"
+```
+
+The helper updates the `branch` field of every non-completed context file whose
+current `branch` equals `$OLD_BRANCH` (skips epilogue contexts, completed
+contexts, and contexts on unrelated branches). It writes atomically via a
+`.tmp` + rename and appends a JSONL audit entry to `.runs/branch-update-log.jsonl`.
+
+**Why this is required:** `init-context.sh` captures `branch` at init-time,
+which is the pre-checkout default branch. Without this propagation,
+`resolve_active_identity` (`.claude/hooks/lib-state.sh`) filters out the active
+context because its `branch` field is stale, silently breaking identity
+grounding for every downstream trace writer (`write-agent-trace.sh`,
+`write-degraded-trace.py`, `check-observation-artifacts.sh`).
+
+After this procedure completes, the skill is on a clean feature branch based on the latest default branch, with active context files pointing at the new branch. Proceed with the skill's implementation steps.

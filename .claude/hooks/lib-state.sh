@@ -274,12 +274,26 @@ else:
 # --- parse_advance_state_args ---
 # Parse advance-state.sh arguments from a command string.
 # Sets SKILL and STATE_ID globals. Expects $COMMAND to be set.
+#
+# Delegates to .claude/scripts/lib/check-advance-state-invocation.py when the
+# helper exists (#1223) — its shlex-based parsing correctly skips strings
+# inside heredoc bodies, --body arguments, and quoted regions. Falls back to
+# the legacy substring grep when the helper is missing (e.g., during a partial
+# template upgrade) so callers do not break.
 parse_advance_state_args() {
+  local _PASA_HELPER
+  _PASA_HELPER="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/lib/check-advance-state-invocation.py"
   # Intentionally global — callers read SKILL and STATE_ID after invoking this function
   # shellcheck disable=SC2034
-  SKILL=$(echo "$COMMAND" | grep -oE 'advance-state\.sh[[:space:]]+([a-z-]+)' | awk '{print $NF}' || echo "")
-  # shellcheck disable=SC2034
-  STATE_ID=$(echo "$COMMAND" | grep -oE 'advance-state\.sh[[:space:]]+[a-z-]+[[:space:]]+([0-9a-z_]+)' | awk '{print $NF}' || echo "")
+  if [[ -f "$_PASA_HELPER" ]]; then
+    SKILL=$(printf '%s' "$COMMAND" | python3 "$_PASA_HELPER" --print-skill 2>/dev/null || echo "")
+    # shellcheck disable=SC2034
+    STATE_ID=$(printf '%s' "$COMMAND" | python3 "$_PASA_HELPER" --print-state-id 2>/dev/null || echo "")
+  else
+    SKILL=$(echo "$COMMAND" | grep -oE 'advance-state\.sh[[:space:]]+([a-z-]+)' | awk '{print $NF}' || echo "")
+    # shellcheck disable=SC2034
+    STATE_ID=$(echo "$COMMAND" | grep -oE 'advance-state\.sh[[:space:]]+[a-z-]+[[:space:]]+([0-9a-z_]+)' | awk '{print $NF}' || echo "")
+  fi
 }
 
 # --- get_archetype ---
