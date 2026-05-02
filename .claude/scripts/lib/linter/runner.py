@@ -2214,6 +2214,17 @@ def main() -> int:
         # from `/(>|>>)/` (which has no inner content).
         path_literal_re = re.compile(r"/[^/\s]{4,}/")
 
+        # Pragma open-marker derivation. Accepts both the bare form and a
+        # reason-suffixed variant (e.g., `# coherence-allow: unbound-fastpath: <why>`)
+        # by matching only the prefix before the closing comment marker. Uses
+        # `split(" -->", 1)[0]` rather than rstrip(" -->") which is a char-
+        # class strip, not a substring strip — fragile if pragma name ended
+        # with `-` or `>`.
+        if pragma.endswith(" -->"):
+            pragma_prefix = pragma[:-len(" -->")]
+        else:
+            pragma_prefix = pragma
+
         for sg in [g.strip() for g in scan_glob_csv.split(",") if g.strip()]:
             for fpath in sorted(glob.glob(os.path.join(REPO_ROOT, sg), recursive=True)):
                 rel = os.path.relpath(fpath, REPO_ROOT)
@@ -2226,6 +2237,16 @@ def main() -> int:
                     content = open(fpath).read()
                 except OSError:
                     continue
+                file_lines = content.split("\n")
+
+                def _pragma_in_window(match_start):
+                    """±5-line window matches the markdown rule for consistency."""
+                    line_idx = content[:match_start].count("\n")
+                    win = "\n".join(file_lines[
+                        max(0, line_idx - 5):
+                        min(len(file_lines), line_idx + 6)
+                    ])
+                    return pragma_prefix in win
 
                 # Shape A: grep -qE body containing both a write-op token and `.*`
                 for m in grep_body_re.finditer(content):
@@ -2234,11 +2255,9 @@ def main() -> int:
                         continue
                     if not body_write_op_re.search(body):
                         continue
-                    line_no = content[: m.start()].count("\n") + 1
-                    win_start = max(0, m.start() - 200)
-                    win_end = min(len(content), m.end() + 200)
-                    if pragma in content[win_start:win_end]:
+                    if _pragma_in_window(m.start()):
                         continue
+                    line_no = content[: m.start()].count("\n") + 1
                     out.append(_emit_finding(
                         rule,
                         f"{rel}:{line_no} matches anti-pattern 'grep-with-.*' but hook is "
@@ -2253,11 +2272,9 @@ def main() -> int:
                         continue
                     if not path_literal_re.search(body):
                         continue
-                    line_no = content[: m.start()].count("\n") + 1
-                    win_start = max(0, m.start() - 200)
-                    win_end = min(len(content), m.end() + 200)
-                    if pragma in content[win_start:win_end]:
+                    if _pragma_in_window(m.start()):
                         continue
+                    line_no = content[: m.start()].count("\n") + 1
                     out.append(_emit_finding(
                         rule,
                         f"{rel}:{line_no} matches anti-pattern 'awk-co-occurrence' but hook is "
@@ -2347,9 +2364,13 @@ def main() -> int:
                 # Treat pragma as a prefix: the rule accepts both the bare
                 # form `<!-- coherence-allow: line-number-cross-reference -->`
                 # and reason-suffixed forms like `... -reference: <why> -->`.
-                # We strip the trailing ` -->` and match the open prefix so
-                # reviewers can document intent inline.
-                pragma_prefix = pragma.rstrip(" -->")
+                # Strip the trailing ` -->` substring (NOT character-class
+                # strip — rstrip(" -->") is by char set {' ', '-', '>'} and
+                # would corrupt prefixes ending in `-` or `>`).
+                if pragma.endswith(" -->"):
+                    pragma_prefix = pragma[:-len(" -->")]
+                else:
+                    pragma_prefix = pragma
                 # Pragma window is ±5 lines. Wider than ±1 to cover fenced code
                 # blocks and tables where multiple consecutive references share
                 # one bracketing pragma. Narrow enough that a stray pragma far

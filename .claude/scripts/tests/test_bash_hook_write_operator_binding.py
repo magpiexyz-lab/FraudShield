@@ -189,6 +189,40 @@ class TestBashHookWriteOperatorBinding(unittest.TestCase):
             f"pragma should suppress anti-pattern finding, got: {findings}",
         )
 
+    def test_verbatim_1230_pre_fix_shape_fires(self):
+        """Pin: the pre-#1230 buggy line in trace-write-guard.sh (commit
+        before 528ccd4) is the canonical instance the rule must catch. If a
+        future detector refactor weakens grep_body_re or body_write_op_re,
+        this test fails — preventing silent regression of the rule's
+        coverage of historical defects.
+
+        Verbatim from `git show 528ccd4^:.claude/hooks/trace-write-guard.sh`
+        (line 38). Hook is intentionally unregistered in the manifest so
+        the Phase 2 anti-pattern scan fires."""
+        self._write_hook(
+            "test-1230-verbatim.sh",
+            "#!/usr/bin/env bash\n"
+            "set -euo pipefail\n"
+            "COMMAND=\"$1\"\n"
+            "case \"$COMMAND\" in\n"
+            "  *agent-spawn-log*) ;;\n"
+            "  *) exit 0 ;;\n"
+            "esac\n"
+            "NORM=$(printf '%s' \"$COMMAND\" | sed -E 's/[0-9]*>+&[0-9]+//g')\n"
+            # ↓ verbatim pre-#1230 buggy regex
+            "if echo \"$NORM\" | grep -qE '(>|>>|[[:space:]]tee[[:space:]]|[[:space:]]cp[[:space:]]|[[:space:]]mv[[:space:]]|[[:space:]]dd[[:space:]]).*agent-spawn-log'; then\n"
+            "  echo 'deny' >&2\n"
+            "  exit 2\n"
+            "fi\n",
+        )
+        findings = self._findings()
+        self.assertTrue(
+            any("test-1230-verbatim.sh" in f and "anti-pattern 'grep-with-.*'" in f
+                and "not registered" in f
+                for f in findings),
+            f"detector must catch the verbatim #1230 pre-fix regex, got: {findings}",
+        )
+
     def test_registered_hook_with_post_fix_shape_passes(self):
         """The 4 committed write-guard hooks (after the dd parity fix) use the
         canonical bound-target shape; no anti-pattern findings should fire on
