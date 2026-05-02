@@ -138,11 +138,51 @@ fi
 # boundary (start, whitespace, or chain delimiter). Optional `bash ` /
 # `python3 ` wrapper permitted.
 
+# Helper (#1249): check that --reason token appears AFTER a script-name token
+# within the same shell segment (chain-delimiter bound). Combines segment
+# binding (preserves the original regex's positional semantics — a stray
+# --reason in an unrelated chained command does not satisfy the check) with
+# shlex tokenization (handles single/double-quoted reason values containing
+# newlines, line-continuations, and chain-delimiter characters inside quotes).
+# The prior regex `[^&|;]*--reason` was unbound across newlines AND failed to
+# distinguish quoted vs literal chain delimiters.
+_check_reason_token() {
+  local script_name="$1"
+  printf '%s' "$COMMAND" | python3 -c "
+import re, shlex, sys
+cmd = sys.stdin.read()
+script = '$script_name'
+try:
+    tokens = shlex.split(cmd, comments=False, posix=True)
+except ValueError:
+    sys.exit(1)
+segments, current = [], []
+for t in tokens:
+    if t in ('&&', '||', ';', '&', '|'):
+        if current:
+            segments.append(current)
+            current = []
+    else:
+        current.append(t)
+if current:
+    segments.append(current)
+script_re = re.compile(r'(^|/)' + re.escape(script) + r'\$')
+for seg in segments:
+    script_idx = next((i for i, t in enumerate(seg) if script_re.search(t)), -1)
+    if script_idx == -1:
+        continue
+    if '--reason' in seg[script_idx + 1:]:
+        sys.exit(0)
+sys.exit(1)
+" 2>/dev/null
+}
+
 ALLOWED_REGEX='(^|[[:space:]]|&&|;|\|)[[:space:]]*(bash[[:space:]]+|python3?[[:space:]]+)?[./]*\.?claude/scripts/write-recovery-trace\.sh[[:space:]]'
 if echo "$COMMAND" | grep -qE "$ALLOWED_REGEX"; then
   # write-recovery-trace.sh must include --reason (defense-in-depth with the
-  # script's own argument check). Look for --reason before any chain delimiter.
-  if echo "$COMMAND" | grep -qE 'write-recovery-trace\.sh[^&|;]*--reason'; then
+  # script's own argument check). #1249: shlex-tokenizing helper handles
+  # multi-line / quoted reason values that the prior bash regex could not.
+  if _check_reason_token "write-recovery-trace.sh"; then
     exit 0
   else
     deny "Agent trace write guard: write-recovery-trace.sh invocation lacks --reason (required by issue #963 contract)."
@@ -151,7 +191,7 @@ fi
 
 ALLOWED_REGEX_DEGRADED='(^|[[:space:]]|&&|;|\|)[[:space:]]*(bash[[:space:]]+|python3?[[:space:]]+)?[./]*\.?claude/scripts/write-degraded-trace\.py[[:space:]]'
 if echo "$COMMAND" | grep -qE "$ALLOWED_REGEX_DEGRADED"; then
-  if echo "$COMMAND" | grep -qE 'write-degraded-trace\.py[^&|;]*--reason'; then
+  if _check_reason_token "write-degraded-trace.py"; then
     exit 0
   else
     deny "Agent trace write guard: write-degraded-trace.py invocation lacks --reason (required by trace schema)."

@@ -11,18 +11,63 @@
 
 ### Spawn Phase 1 agents
 
-> **EXPLICIT FOREGROUND INSTRUCTION**: Spawn all Phase 1 agents as parallel foreground Agent tool calls in a **SINGLE message**. Do NOT use `run_in_background: true`. The platform blocks you until ALL return. This is the enforcement mechanism — background agents can be forgotten; foreground agents cannot.
+> **CRITICAL — Template enforcement (read BEFORE spawning):** Read
+> `.claude/agent-prompt-footer.md` and append its full content to every
+> agent spawn prompt below. The `skill-agent-gate.sh` hook checks for the
+> directive marker `<!-- DIRECTIVES:batch_search,pr_changed_first,context_digest,pre_existing -->`
+> at the top of the prompt and BLOCKS spawns that lack it. The spawn-prompt
+> examples in this state are minimal — you MUST add the footer block to each
+> one before invoking the Agent tool. See the `build-info-collector` example
+> below for the inlined-footer reference.
 
-Spawn the following agents simultaneously (per scope table in [verify.md](../verify.md)):
+> **EXPLICIT FOREGROUND INSTRUCTION (#1247):** Phase 1 spawning is **two-step
+> sequential** because `skill-agent-gate.sh` requires `build-info-collector.json`
+> to exist on disk before any of the dependent Phase 1 agents
+> (security-defender, security-attacker, behavior-verifier, performance-reporter,
+> accessibility-scanner, spec-reviewer) can spawn. Following the prior
+> "all in one message" instruction produced 6 hook denials per /verify run.
+>
+> **Step A:** Spawn `build-info-collector` FIRST as a single foreground Agent
+> tool call. Wait for it to return.
+>
+> **Step B:** Verify the trace exists before dispatching the parallel batch:
+> ```bash
+> test -f .runs/agent-traces/build-info-collector.json || \
+>   echo "ERROR: build-info-collector trace missing — invoke verify.md Trace State Detection / recovery before continuing"
+> ```
+> If the trace is absent, follow the [Trace State Detection](../verify.md#trace-state-detection)
+> and [Recovery Traces](../verify.md#recovery-traces) protocol before Step C.
+>
+> **Step C:** Spawn the remaining Phase 1 agents as parallel foreground Agent
+> tool calls in a **SINGLE message** (security-defender, security-attacker,
+> behavior-verifier, performance-reporter, accessibility-scanner, spec-reviewer
+> — gated by the scope table in [verify.md](../verify.md)). Do NOT use
+> `run_in_background: true`. The platform blocks you until ALL return.
 
-#### build-info-collector
+#### build-info-collector (Step A — spawn alone, wait for trace)
 
 Spawn the `build-info-collector` agent (`subagent_type: build-info-collector`).
+
+**Inlined-footer example** (copy-paste reference for the directive marker
+that every spawn prompt MUST carry):
+
+```
+<!-- DIRECTIVES:batch_search,pr_changed_first,context_digest,pre_existing -->
+
+[Your spawn-prompt body here. For build-info-collector specifically:]
+If build/lint errors were fixed above, pass: "Build errors were fixed
+in this verification run. Collect the diff and summaries."
+If no errors were fixed, pass: "No build errors were fixed."
+
+[Append the rest of .claude/agent-prompt-footer.md content below the body.]
+```
 
 If build/lint errors were fixed above, pass: "Build errors were fixed
 in this verification run. Collect the diff and summaries."
 
 If no errors were fixed, pass: "No build errors were fixed."
+
+#### Step C agents (spawn the following six in a SINGLE message after Step B verifies the trace)
 
 #### security-defender (if scope is `full` or `security`)
 
@@ -58,8 +103,9 @@ Spawn the `spec-reviewer` agent (`subagent_type: spec-reviewer`). Pass: "Read `.
 
 After each agent returns, use [Trace State Detection](../verify.md#trace-state-detection) to check each spawned agent's trace individually. Use [Recovery Traces](../verify.md#recovery-traces) for agents that returned output but crashed before writing their trace. Use [Exhaustion Protocol](../verify.md#exhaustion-protocol) for agents in Trace State 2.
 
-> **Template enforcement:** Read `.claude/agent-prompt-footer.md` and append its full content
-> to every agent spawn prompt. The skill-agent-gate hook checks for the directive marker.
+> **Template enforcement reminder (also stated above the spawn list):** Every Agent
+> spawn prompt MUST carry the directive marker block from `.claude/agent-prompt-footer.md`.
+> The skill-agent-gate hook BLOCKS spawns whose prompts lack the marker.
 
 ### Invoke review-verdict-gate (after each reviewer trace lands)
 

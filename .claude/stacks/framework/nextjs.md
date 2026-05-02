@@ -616,6 +616,21 @@ Rule semantics: axe-core fires this rule when an `<aside>` is **nested** inside 
 </main>
 ```
 
+### When accessibility scanner reports heading-order violation (general rule)
+Headings must descend sequentially: `<h1>` → `<h2>` → `<h3>`. Skipping a level (e.g., `<h1>` directly to `<h3>` with no intermediate `<h2>`) fails WCAG 1.3.1 "Info and Relationships" — screen readers use heading hierarchy for document outline and skipped levels confuse navigation. The triggering pattern in scaffolded pages is usually a page title at `<h1>` with each section header jumping to `<h3>` (no `<h2>` for major sections), or reusing a component that internally renders `<h3>` on a page that already uses `<h2>`.
+
+Visual size is controlled by CSS — use Tailwind classes to size headings independently of their semantic level, so the rank stays correct without sacrificing visual hierarchy:
+
+```tsx
+{/* h3 that looks like a large heading — semantic rank stays h3, visual size is large */}
+<h3 className="text-2xl font-semibold">Section Title</h3>
+
+{/* Or h2 styled as smaller — semantic rank stays h2 */}
+<h2 className="text-lg">Subsection Title</h2>
+```
+
+Use the browser Accessibility Tree panel (Chrome DevTools → Elements → Accessibility) or `axe-core` to audit heading order before committing. The card-title special case is a common subset — see the next entry.
+
 ### When card or list-item titles skip a heading level (heading-order)
 axe-core `heading-order` fires when an outline rank jumps by more than 1 (e.g., `<h1>` followed by `<h3>` with no `<h2>` between, or `<h2>` followed by `<h4>`). A common trigger: card / list-item title components default to `<h3>` regardless of page heading context, so a page with a single `<h1>` and a row of cards renders `<h1>` → `<h3>` (skipping `<h2>`).
 
@@ -641,6 +656,67 @@ import { Card, CardTitle } from "@/components/ui/card";
   </article>
 ))}
 ```
+
+### When a textarea or input is flagged as missing an accessible label
+Every `<textarea>`, `<input>`, and `<select>` must be associated with a label via one of:
+
+1. `<label htmlFor="id">` + matching `id` on the field (preferred — visible label)
+2. `aria-label="..."` directly on the element (use when no visible label exists)
+3. `aria-labelledby="id"` referencing an existing visible heading or text node
+
+```tsx
+{/* Preferred: visible label */}
+<label htmlFor="notes">Notes</label>
+<textarea id="notes" />
+
+{/* When label is not visible */}
+<textarea aria-label="Search query" />
+```
+
+A `placeholder` is **not** a label substitute — placeholders disappear when the user types and are not announced on focus by all screen readers. Scaffolded result/output pages commonly render a textarea with only a placeholder; axe-core flags these as "Form element does not have an associated label" (WCAG 1.3.1, 4.1.2).
+
+### When an interactive element contains only an icon (no visible text)
+Icon-only buttons (hamburger menu, show/hide password toggle, modal close `×`, icon-only action buttons in data tables) have no accessible name — screen readers announce "button" with no context, failing WCAG 4.1.2. Every icon-only interactive must carry an `aria-label` (or `aria-labelledby` referencing visible text), and the icon itself should carry `aria-hidden="true"` so it is not announced in addition to the label.
+
+```tsx
+import { Menu, ToggleLeft } from "lucide-react";
+
+{/* hamburger */}
+<button aria-label="Open navigation menu" onClick={toggleMenu}>
+  <Menu aria-hidden="true" />
+</button>
+
+{/* on/off toggle — use role="switch" + aria-checked for stateful toggles */}
+<button
+  role="switch"
+  aria-checked={enabled}
+  aria-label="Enable notifications"
+  onClick={() => setEnabled(!enabled)}
+>
+  <ToggleLeft aria-hidden="true" />
+</button>
+```
+
+The supabase auth-stack `nav-bar.tsx` template already uses `aria-label="Open menu"` for the hamburger SheetTrigger — this entry documents the underlying pattern so downstream icon buttons (settings toggles, table actions, modal close) inherit the same convention.
+
+### When auth middleware redirects to /login during demo mode
+When a Next.js project uses `src/middleware.ts` for auth-based redirects AND supports demo mode, an unauthenticated request to a protected route still redirects to `/login` even with `DEMO_MODE=true` set — blocking all demo traffic. The demo client returns a fake session object, but middleware runs **server-side, before any client SDK is instantiated**, so the demo session is invisible to the middleware function. The only working short-circuit is an `process.env.DEMO_MODE === "true"` check at the top of the middleware function.
+
+```ts
+// src/middleware.ts
+import { NextRequest, NextResponse } from "next/server";
+
+export async function middleware(request: NextRequest) {
+  // Demo mode (server env): skip auth redirect — no real session exists.
+  // DEMO_MODE is the canonical server-side flag; NEXT_PUBLIC_DEMO_MODE is
+  // the client-side counterpart and is not visible to middleware (which
+  // runs in the Edge / server runtime).
+  if (process.env.DEMO_MODE === "true") return NextResponse.next();
+  // ... existing auth logic
+}
+```
+
+The shipped `auth/supabase.md` middleware template currently checks `NEXT_PUBLIC_DEMO_MODE` only — projects that need server-side `DEMO_MODE` honor (e.g., the playwright config flips `DEMO_MODE=true` when Supabase is unreachable) must add the explicit guard above. Without it, demo runs see every protected-route visit redirected to `/login`, which itself may crash if the auth client tries to read missing env vars before the demo guard runs.
 
 ### When openGraph metadata is missing images array, og:image is absent
 When the `openGraph` config object in `layout.tsx` is written without an `images` property, the `og:image` meta tag is entirely absent from the rendered HTML. Social sharing previews and link unfurls show no image. Always include the `images` array in the openGraph config:

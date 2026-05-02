@@ -87,12 +87,17 @@ def main() -> int:
         for b, _ in stub_traces:
             sys.stderr.write(f"  - {b}\n")
 
+    # Resolve run_id: try bootstrap-context.json first (the original caller),
+    # then verify-context.json as fallback for embed-verify re-merge scenarios.
     run_id = ""
-    try:
-        with open(".runs/bootstrap-context.json") as f:
-            run_id = json.load(f).get("run_id", "")
-    except Exception:
-        pass
+    for ctx_file in (".runs/bootstrap-context.json", ".runs/verify-context.json"):
+        try:
+            with open(ctx_file) as f:
+                run_id = json.load(f).get("run_id", "")
+            if run_id:
+                break
+        except Exception:
+            continue
 
     merged = {
         "agent": "scaffold-pages",
@@ -109,6 +114,15 @@ def main() -> int:
             "self_check_scored",
         ],
         "verdict": "pass",
+        # AOC v1.1 (#1254): aggregate trace composed by lead from sibling
+        # per-page traces. provenance="lead-merge" + partial=True are
+        # required for any provenance != self by artifact-integrity-gate.sh.
+        # status="completed" required by AOC v1.1 schema. contributing_spawn_indexes
+        # is set below conditionally so state-completion-gate.sh sibling count
+        # match doesn't reject when spawn-log scan is empty in run_id-scoped mode.
+        "status": "completed",
+        "provenance": "lead-merge",
+        "partial": True,
         # #1190: preserve attempted-but-incomplete signal alongside the
         # completion count. stub_count > 0 indicates the spawn batch had
         # rate-limited or crashed agents; the lead should re-spawn for the
@@ -132,6 +146,42 @@ def main() -> int:
             merged["verdict"] = per_page_verdict
 
     merged["timestamp"] = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    # AOC v1.1 (#1254): contributing_spawn_indexes binds the lead-merge
+    # aggregate to specific scaffold-pages spawns. When run_id is set, scan
+    # spawn-log for matching entries and include the indexes; when scan is
+    # empty (run_id present but spawn-log lacks entries), OMIT the field
+    # entirely — including a synthesized index list would trigger
+    # state-completion-gate.sh count-mismatch rejection. When run_id is
+    # empty (legacy / pre-AOC replay), fall back to the per-batch index range
+    # so the field is non-empty for downstream consumers.
+    spawn_log_path = ".runs/agent-spawn-log.jsonl"
+    if run_id and os.path.exists(spawn_log_path):
+        contributing: list[int] = []
+        try:
+            with open(spawn_log_path) as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        rec = json.loads(line)
+                    except Exception:
+                        continue
+                    if (
+                        rec.get("agent") == "scaffold-pages"
+                        and rec.get("run_id") == run_id
+                        and rec.get("hook") == "skill-agent-gate"
+                        and rec.get("spawn_index") is not None
+                    ):
+                        contributing.append(int(rec["spawn_index"]))
+        except OSError:
+            pass
+        if contributing:
+            merged["contributing_spawn_indexes"] = sorted(set(contributing))
+        # else: omit — count mismatch would be rejected
+    elif not run_id:
+        merged["contributing_spawn_indexes"] = list(range(len(real_traces)))
 
     with open(aggregate_path, "w") as f:
         json.dump(merged, f)

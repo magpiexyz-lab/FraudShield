@@ -129,6 +129,21 @@ def main():
     # --- Check 14: Fix count cross-reference (AOC v1 FLS v1 authoritative) ---
     # Authoritative source: .runs/fix-ledger.jsonl. Transitional dual-check
     # falls back to fix-log.md prose regex when ledger absent.
+    #
+    # #1251: filter BOTH ledger aggregation and trace iteration by current
+    # run_id so foreign-skill traces (e.g., implementer-* written by bootstrap
+    # STATE 16 and read during embedded /verify) do not produce phantom
+    # "trace=N, ledger=0" warnings. Read run_id from verify-context.json;
+    # fall back to no-filter when run_id is unavailable so this check stays
+    # functional in pre-AOC replays and standalone invocations.
+    verify_ctx_path = os.path.join(project, '.runs/verify-context.json')
+    current_run_id = ''
+    try:
+        with open(verify_ctx_path) as f:
+            current_run_id = json.load(f).get('run_id', '') or ''
+    except Exception:
+        pass
+
     ledger_path = os.path.join(project, '.runs/fix-ledger.jsonl')
     fix_log_path = os.path.join(project, '.runs/fix-log.md')
     if os.path.isdir(traces_dir):
@@ -143,6 +158,8 @@ def main():
                     try:
                         r = json.loads(line)
                     except json.JSONDecodeError:
+                        continue
+                    if current_run_id and r.get('run_id') != current_run_id:
                         continue
                     a = r.get('agent')
                     by_agent[a] = by_agent.get(a, 0) + 1
@@ -160,6 +177,8 @@ def main():
             if name.startswith('design-critic-'): continue
             try:
                 d = json.load(open(tf))
+                if current_run_id and d.get('run_id') and d.get('run_id') != current_run_id:
+                    continue
                 fixes = d.get('fixes', None)
                 if fixes is None: continue
                 if source == 'ledger':

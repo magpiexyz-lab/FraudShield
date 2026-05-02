@@ -203,6 +203,9 @@ def main() -> int:
     # artifact-integrity-gate.sh:144-147 for any provenance != self). The
     # aggregate_ok hard-gate predicate keys on `contributing_spawn_indexes`
     # being a non-empty list (and verifies each sibling independently).
+    # AOC v1.1 (#1254): status="completed" is required by the schema for
+    # downstream consumers that filter on trace.status.
+    merged["status"] = "completed"
     merged["provenance"] = "lead-merge"
     merged["partial"] = True
     # contributing_spawn_indexes semantics (state-completion-gate.sh:261-283):
