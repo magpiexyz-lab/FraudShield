@@ -90,7 +90,7 @@ full visual review instead of fast-pathing with an empty boundary.
 5a. **Lead-supplied fallback boundary for full-tree mode** (#1196 — only when `BOUNDARY_KIND == "full-tree"`):
    For each entry in `.runs/design-page-set.json["pages"]`:
    - Compute `fallback_boundary[page]` = page-local files matched by `src/app/<page>/**` (recursive)
-     **MINUS** shadcn primitives (drop any path starting with `src/components/ui/` or `src/components/magicui/` per the same filter at lines 38-42)
+     **MINUS** shadcn primitives (drop any path starting with `src/components/ui/` or `src/components/magicui/` per the same shadcn-primitive filter applied to imports in step 2 above)
      **MINUS** `**/api/**` (API routes are not visual)
    - For landing entry (`design-page-set.json["landing"]`, may be null):
      - If null → skip landing
@@ -222,7 +222,7 @@ Spawn **one design-critic agent per page**, ALL as parallel foreground Agent cal
   > by this fast-path branch. NOT produced by `render-review-detection.md` Section 3
   > (which only outputs `rendered-authed | rendered-demo | source-only | unknown | prereq-unmet`).
   > Distinguishes "no work for this page in PR" from "couldn't render, blind." The merge
-  > script's tight gate (`merge-design-critic-traces.py` L121-138) excludes `boundary-skip`
+  > script's tight gate (`merge-design-critic-traces.py`: search for "boundary-skip" in the source-only/unknown unresolved-forcing branch) excludes `boundary-skip`
   > from the source-only/unknown unresolved-forcing rule. POLICY drift test
   > (`test_review_verdict_gate_policy_drift.py`) is unaffected — `boundary-skip` does NOT
   > appear in `render-review-detection.md`.

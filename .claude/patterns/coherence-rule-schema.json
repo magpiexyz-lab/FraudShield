@@ -181,6 +181,33 @@
         "hooks_glob": { "type": "string", "description": "Glob of hook files (default .claude/hooks/*.sh)." },
         "description": { "type": "string" }
       }
+    },
+    "rule_bash_hook_write_operator_binding": {
+      "description": "#1236 — class-level prevention for the unbound-co-occurrence regex anti-pattern in Bash-matcher write-guard hooks. Phase 1: every entry in manifest_path must (a) point at an existing hook, (b) have its protected_path_regex literal appear in the hook source (proving it is referenced inside a bound-target match()), and (c) reference every declared write_operator in the hook source. Phase 2: scan_glob (CSV of globs across .claude/hooks and .claude/scripts) is searched for two historical anti-pattern shapes — `grep -qE '<write-op>.*<path>'` (the #1230/pre-#1185 shape) and `awk '/<path>/ && /(<write-op>)/'` (the original co-occurrence). Any match in an unregistered hook fires a 'must register' finding. Pragma `# coherence-allow: unbound-fastpath` suppresses within ±200 chars.",
+      "required": ["id", "type", "manifest_path", "scan_glob"],
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "const": "bash_hook_write_operator_binding" },
+        "severity": { "$ref": "#/definitions/severity" },
+        "manifest_path": { "type": "string", "description": "Path to write-guard-hooks.json (the declarative manifest of registered write-guard hooks)." },
+        "scan_glob": { "type": "string", "description": "Comma-separated globs of .sh files to scan for anti-pattern shapes (e.g., '.claude/hooks/*.sh,.claude/scripts/**/*.sh')." },
+        "pragma": { "type": "string", "description": "Comment string that suppresses the anti-pattern finding when present within ±200 chars of the match (default '# coherence-allow: unbound-fastpath')." },
+        "convention_doc": { "type": "string", "description": "Path to canonical pattern doc (e.g., .claude/patterns/bound-target-write-guard.md). Appended to finding messages as '(see <doc>)'." },
+        "description": { "type": "string" }
+      }
+    },
+    "rule_markdown_cross_file_line_reference": {
+      "description": "#1238 — flags stale line-number cross-references in template markdown. Branch 1 (cross-file): emits when a line-number qualifier (`(line N)`, `lines N-M`, `L\\d+-\\d+`, `on line N`) co-occurs within a 3-line window with a path-mention to a template-eligible file (extensions: md, yaml, yml, json, py, sh; src/ prefix excluded since src/ is scaffold-emitted code). Branch 2 (same-file): emits when the qualifier appears with NO path-mention in the 3-line window — covers self-references that rot when the same file is edited. Pragma <!-- coherence-allow: line-number-cross-reference --> on the same line or adjacent line suppresses both branches.",
+      "required": ["id", "type", "target_glob"],
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "const": "markdown_cross_file_line_reference" },
+        "severity": { "$ref": "#/definitions/severity" },
+        "target_glob": { "type": "string", "description": "Glob of markdown files to scan (e.g., '.claude/{stacks,skills,agents,patterns,templates}/**/*.md'). Brace expansion is supported by the rule handler." },
+        "pragma": { "type": "string", "description": "HTML comment that suppresses the finding when present within ±1 line (default '<!-- coherence-allow: line-number-cross-reference -->')." },
+        "convention_doc": { "type": "string", "description": "Path to canonical pattern doc (e.g., .claude/patterns/cross-reference-style.md). Appended to finding messages as '(see <doc>)'." },
+        "description": { "type": "string" }
+      }
     }
   },
   "type": "object",
@@ -204,7 +231,9 @@
           { "$ref": "#/definitions/rule_executor_enforcement" },
           { "$ref": "#/definitions/rule_gate_artifact_identity" },
           { "$ref": "#/definitions/rule_boundary_kind_required" },
-          { "$ref": "#/definitions/rule_gate_artifact_discovery" }
+          { "$ref": "#/definitions/rule_gate_artifact_discovery" },
+          { "$ref": "#/definitions/rule_bash_hook_write_operator_binding" },
+          { "$ref": "#/definitions/rule_markdown_cross_file_line_reference" }
         ]
       }
     }

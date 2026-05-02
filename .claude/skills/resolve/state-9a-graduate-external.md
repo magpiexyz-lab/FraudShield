@@ -102,7 +102,7 @@ points to include the new `<category>`:
 | `.claude/archetypes/service.md` | `optional_stacks` |
 | `.claude/archetypes/cli.md` | `optional_stacks` |
 | `.claude/skills/bootstrap/state-2-resolve-archetype.md` | known shared categories list |
-| `.claude/procedures/scaffold-externals.md` | exclusion list (line 14) |
+| `.claude/procedures/scaffold-externals.md` | exclusion list (search for "shared categories" — top of file) |
 | `scripts/validate-experiment.py` | `SHARED_STACK_KEYS` |
 | `scripts/validators/_utils.py` | `OPTIONAL_CATEGORIES` |
 | `scripts/validators/_stack_deps.py` | `SHARED_STACK_CATEGORIES` |

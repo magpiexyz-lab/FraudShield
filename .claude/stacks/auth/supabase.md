@@ -155,6 +155,7 @@ export default function ResetPasswordPage() {
 
 #### When `stack.database` is NOT supabase (standalone client):
 Replace the import on line 5:
+<!-- coherence-allow: line-number-cross-reference: refers to embedded code block below -->
 ```tsx
 // Instead of: import { createClient } from "@/lib/supabase";
 import { createAuthClient as createClient } from "@/lib/supabase-auth";
@@ -247,6 +248,7 @@ export default function SignupPage() {
 
 #### When `stack.database` is NOT supabase (standalone client):
 Replace the import on line 4 of the signup page:
+<!-- coherence-allow: line-number-cross-reference: refers to embedded code block below -->
 ```tsx
 // Instead of: import { createClient } from "@/lib/supabase";
 import { createAuthClient as createClient } from "@/lib/supabase-auth";
@@ -425,6 +427,7 @@ export default function LoginPage() {
 
 #### When `stack.database` is NOT supabase (standalone client):
 Replace the import on line 5 of the login page:
+<!-- coherence-allow: line-number-cross-reference: refers to embedded code block below -->
 ```tsx
 // Instead of: import { createClient } from "@/lib/supabase";
 import { createAuthClient as createClient } from "@/lib/supabase-auth";
@@ -554,6 +557,7 @@ export function NavBar() {
 
 #### When `stack.database` is NOT supabase (standalone client):
 Replace the import on line 6:
+<!-- coherence-allow: line-number-cross-reference: refers to embedded code block below -->
 ```tsx
 import { createAuthClient as createClient } from "@/lib/supabase-auth";
 ```

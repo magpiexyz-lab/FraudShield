@@ -50,6 +50,8 @@ SUITES=(
   ".claude/scripts/tests/test_auth_routing.py"
   ".claude/scripts/tests/test_iterate_cross_verdicts.py"
   ".claude/scripts/tests/test_worktree_boundary_gate.py"
+  ".claude/scripts/tests/test_bash_hook_write_operator_binding.py"
+  ".claude/scripts/tests/test_markdown_cross_file_line_reference.py"
 )
 
 FAIL=0

@@ -96,8 +96,8 @@ if echo "$NORM" | awk '
       # heredoc bodies cannot bridge from a > targeting one path to a gated
       # path elsewhere in the body.
       if (match($0, /([0-9]*&?>+|[0-9]*>>?)[[:space:]]*["'\'']?[^|;&"'\''\n]*\.runs\/(fix-ledger\.jsonl|fix-log\.md)/)) found=1
-      # tee / cp / mv with a gated path target later on the same segment
-      else if (match($0, /(^|[[:space:]])(tee|cp|mv)[[:space:]][^|;&\n]*\.runs\/(fix-ledger\.jsonl|fix-log\.md)/)) found=1
+      # tee / cp / mv / dd with a gated path target later on the same segment
+      else if (match($0, /(^|[[:space:]])(tee|cp|mv|dd)[[:space:]][^|;&\n]*\.runs\/(fix-ledger\.jsonl|fix-log\.md)/)) found=1
     }
     END{exit !found}'; then
   deny "Fix-ledger write guard: writes to .runs/fix-ledger.jsonl / .runs/fix-log.md must go through write-fix-ledger.py / render-fix-log.py (AOC v1 FLS v1). Direct shell writes are blocked."

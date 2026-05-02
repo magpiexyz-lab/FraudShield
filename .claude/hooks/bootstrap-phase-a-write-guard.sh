@@ -94,7 +94,7 @@ if echo "$NORM" | awk -v r="$PHASE_A_REGEX" '
     BEGIN{RS="[&|;]"}
     {
       if (match($0, "([0-9]*&?>+|[0-9]*>>?)[[:space:]]*[\"'"'"']?[^|;&\"'"'"']*"r)) found=1
-      else if (match($0, "(^|[[:space:]])(tee|cp|mv)[[:space:]][^|;&]*"r)) found=1
+      else if (match($0, "(^|[[:space:]])(tee|cp|mv|dd)[[:space:]][^|;&]*"r)) found=1
     }
     END{exit !found}'; then
   emit_finding "chained shell write to Phase A file detected — use write-phase-a-repair.sh"
@@ -148,7 +148,7 @@ if echo "$NORM" | awk -v r="$PHASE_A_REGEX" '
     BEGIN{RS="[&|;]"}
     {
       if (match($0, "([0-9]*&?>+|[0-9]*>>?)[[:space:]]*[\"'"'"']?[^|;&\"'"'"']*"r"[^[:space:]\"'"'"']*")) found=1
-      else if (match($0, "(^|[[:space:]])(tee|cp|mv)[[:space:]][^|;&]*"r"[^[:space:]\"'"'"']*")) found=1
+      else if (match($0, "(^|[[:space:]])(tee|cp|mv|dd)[[:space:]][^|;&]*"r"[^[:space:]\"'"'"']*")) found=1
     }
     END{exit !found}'; then
   emit_finding "Phase A file write must go through write-phase-a-repair.sh; direct shell writes are blocked"

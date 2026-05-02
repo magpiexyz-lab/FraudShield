@@ -179,12 +179,13 @@ in Step 3.5 of `.claude/procedures/design-critic.md` — before screenshotting.
 > `provenance="self-degraded"`, `degraded_reason="empty-boundary-fast-path"`,
 > and `verdict="pass"`. The trace is written via `write-degraded-trace.py` (a
 > sanctioned writer in `agent-trace-write-guard.sh`'s allowlist). The merge
-> script's tight gate (`merge-design-critic-traces.py` L121-138) excludes
+> script's tight gate (`merge-design-critic-traces.py`: search for
+> "boundary-skip" in the source-only/unknown unresolved-forcing branch) excludes
 > `boundary-skip` from the source-only/unknown unresolved-forcing rule —
 > `(boundary-skip, pass)` is preserved as-is. The POLICY drift test
 > (`test_review_verdict_gate_policy_drift.py`) is unaffected because it parses
 > only `render-review-detection.md` Section 3's enum, where `boundary-skip`
-> deliberately does NOT appear. Stage-1c (`state-3b-quality-gate.md` L7-31)
+> deliberately does NOT appear. Stage-1c (`state-3b-quality-gate.md#archetype-gate`)
 > stamps `recovery_validated=true` so the trace satisfies the
 > `validated_fallback` predicate; `aggregate_ok` accepts it without manual
 > override.

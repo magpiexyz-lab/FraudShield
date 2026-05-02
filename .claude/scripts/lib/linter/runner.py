@@ -1433,7 +1433,9 @@ def main() -> int:
         rid = rule.get("id", "<unknown>")
         rtype = rule.get("type", "<unknown>")
         sev = rule.get("severity", "block")
-        return f"  [{rid}] ({rtype}/{sev}) {message}"
+        doc = rule.get("convention_doc")
+        doc_suffix = f" (see {doc})" if doc else ""
+        return f"  [{rid}] ({rtype}/{sev}) {message}{doc_suffix}"
 
 
     def check_verdict_vocab_consistency(rule):
@@ -2109,6 +2111,281 @@ def main() -> int:
         return out
 
 
+    def check_bash_hook_write_operator_binding(rule):
+        """Issue #1236 — class-level prevention for the unbound-co-occurrence
+        regex anti-pattern in Bash-matcher write-guard hooks.
+
+        Phase 1: every entry in manifest_path must (a) point at an existing hook,
+        (b) have its protected_path_regex literal appear in the hook source
+        (proving it is referenced inside a bound-target match()), and (c) have
+        every declared write_operator referenced in the hook source.
+
+        Phase 2: scan_glob (CSV of globs) is searched for two historical
+        anti-pattern shapes — `grep -qE '<write-op>.*<path>'` (the #1230 / pre-
+        #1185 shape) and `awk '/<path>/ && /(<write-op>)/'` (original co-
+        occurrence). Any match in an unregistered hook fires a 'must register'
+        finding. Pragma `# coherence-allow: unbound-fastpath` within ±200 chars
+        suppresses.
+        """
+        out = []
+        rid = rule.get("id", "<unknown>")
+        manifest_path = rule.get("manifest_path", "")
+        scan_glob_csv = rule.get("scan_glob", "")
+        pragma = rule.get("pragma", "# coherence-allow: unbound-fastpath")
+
+        manifest_full = os.path.join(REPO_ROOT, manifest_path)
+        if not os.path.isfile(manifest_full):
+            out.append(_emit_finding(rule, f"manifest missing: {manifest_path}"))
+            return out
+        try:
+            manifest = json.load(open(manifest_full))
+        except (OSError, json.JSONDecodeError) as e:
+            out.append(_emit_finding(rule, f"manifest parse error: {e}"))
+            return out
+
+        write_guards = manifest.get("write_guards", [])
+        registered_hooks = {entry["hook"] for entry in write_guards if "hook" in entry}
+
+        # Phase 1 — Manifest verification
+        for entry in write_guards:
+            hook = entry.get("hook")
+            ppr = entry.get("protected_path_regex")
+            ops = entry.get("write_operators", [])
+            if not hook or not ppr or not ops:
+                out.append(_emit_finding(
+                    rule, f"manifest entry incomplete (need hook+protected_path_regex+write_operators): {entry}"
+                ))
+                continue
+            hook_full = os.path.join(REPO_ROOT, hook)
+            if not os.path.isfile(hook_full):
+                out.append(_emit_finding(rule, f"{hook}: manifest entry points at nonexistent file"))
+                continue
+            try:
+                content = open(hook_full).read()
+            except OSError:
+                continue
+            if ppr not in content:
+                out.append(_emit_finding(
+                    rule, f"{hook}: protected_path_regex literal '{ppr}' not found in source — bound-target match() missing"
+                ))
+                continue
+            for op in ops:
+                # Word-like operators (alphanumeric) need word-boundary checks so
+                # 'dd' doesn't false-pass on 'embedded' / '.add', etc. Symbol
+                # operators ('>', '>>', '&?>') are checked via plain substring.
+                if op.replace("?", "").isalnum():
+                    pat = re.compile(r"\b" + re.escape(op) + r"\b")
+                    if not pat.search(content):
+                        out.append(_emit_finding(
+                            rule, f"{hook}: declared write_operator '{op}' missing from bound-target detection"
+                        ))
+                else:
+                    if op not in content:
+                        out.append(_emit_finding(
+                            rule, f"{hook}: declared write_operator '{op}' missing from bound-target detection"
+                        ))
+
+        # Phase 2 — Anti-pattern scan across scan_glob
+        # Shape A: `grep -qE '<write-op>.*<path>'` or `grep -qE '<path>.*<write-op>'`
+        # The presence of `.*` between a write-op token and a path-like literal
+        # in a single grep regex is the historical bug shape (no positional
+        # binding). Detection: a grep -qE / -E quoted body that contains BOTH
+        # a write-op token AND `.*`.
+        grep_body_re = re.compile(
+            r"grep\s+-(?:q[a-zA-Z]*E|E[a-zA-Z]*q?|qE|Eq)\s+(['\"])([^'\"]+)\1",
+            re.MULTILINE,
+        )
+        # Shape B: `awk '/<path>/ && /(<op>)/'` — co-occurrence joined by &&
+        # without positional binding. Detection: an awk single-quoted body
+        # that contains BOTH `&&` joining two regex literals AND a write-op
+        # token. We use a coarse two-step check (find awk body, then inspect)
+        # so we don't have to enumerate every awk regex shape.
+        awk_body_re = re.compile(r"awk\b[^|;\n]*?'([^']*?&&[^']*)'", re.MULTILINE)
+
+        # Word-boundary-aware write-op detector for body inspection. Matches
+        # both symbol ops (>, >>, &>) and word ops (tee, cp, mv, dd) — but
+        # word ops must have non-alphanumeric (or quote/space) boundary.
+        body_write_op_re = re.compile(
+            r"&?>>?|"
+            r"(?:^|[\s/(|])(?:tee|cp|mv|dd)(?=[\s/)$|*]|$)"
+        )
+        # Path-like literal heuristic: a /something/ regex with at least 4
+        # non-slash chars between slashes. Distinguishes `/agent-traces/`
+        # from `/(>|>>)/` (which has no inner content).
+        path_literal_re = re.compile(r"/[^/\s]{4,}/")
+
+        for sg in [g.strip() for g in scan_glob_csv.split(",") if g.strip()]:
+            for fpath in sorted(glob.glob(os.path.join(REPO_ROOT, sg), recursive=True)):
+                rel = os.path.relpath(fpath, REPO_ROOT)
+                # Registered hooks are manifest-verified above; skip the
+                # anti-pattern scan to avoid duplicate findings on legitimate
+                # post-fix bound shapes.
+                if rel in registered_hooks:
+                    continue
+                try:
+                    content = open(fpath).read()
+                except OSError:
+                    continue
+
+                # Shape A: grep -qE body containing both a write-op token and `.*`
+                for m in grep_body_re.finditer(content):
+                    body = m.group(2)
+                    if ".*" not in body:
+                        continue
+                    if not body_write_op_re.search(body):
+                        continue
+                    line_no = content[: m.start()].count("\n") + 1
+                    win_start = max(0, m.start() - 200)
+                    win_end = min(len(content), m.end() + 200)
+                    if pragma in content[win_start:win_end]:
+                        continue
+                    out.append(_emit_finding(
+                        rule,
+                        f"{rel}:{line_no} matches anti-pattern 'grep-with-.*' but hook is "
+                        f"not registered in {manifest_path}"
+                    ))
+
+                # Shape B: awk single-quoted body containing && and a write-op
+                # and at least one path-like regex literal.
+                for m in awk_body_re.finditer(content):
+                    body = m.group(1)
+                    if not body_write_op_re.search(body):
+                        continue
+                    if not path_literal_re.search(body):
+                        continue
+                    line_no = content[: m.start()].count("\n") + 1
+                    win_start = max(0, m.start() - 200)
+                    win_end = min(len(content), m.end() + 200)
+                    if pragma in content[win_start:win_end]:
+                        continue
+                    out.append(_emit_finding(
+                        rule,
+                        f"{rel}:{line_no} matches anti-pattern 'awk-co-occurrence' but hook is "
+                        f"not registered in {manifest_path}"
+                    ))
+        return out
+
+
+    def check_markdown_cross_file_line_reference(rule):
+        """Issue #1238 — flags stale line-number cross-references in template
+        markdown.
+
+        Branch 1 (cross-file): emits when a line-number qualifier (`(line N)`,
+        `lines N-M`, `L\\d+-\\d+`, `on line N`) co-occurs within a 3-line window
+        with a path-mention to a template-eligible file (extensions: md, yaml,
+        yml, json, py, sh; src/-prefixed paths excluded — src/ is scaffold-
+        emitted code that the rule deliberately ignores).
+
+        Branch 2 (same-file): emits when the qualifier appears with NO
+        path-mention in the 3-line window. Covers self-references that rot when
+        the same file is edited.
+
+        Pragma <!-- coherence-allow: line-number-cross-reference --> on the same
+        line or within ±1 line suppresses both branches.
+        """
+        out = []
+        rid = rule.get("id", "<unknown>")
+        target_glob = rule.get("target_glob", "")
+        pragma = rule.get("pragma", "<!-- coherence-allow: line-number-cross-reference -->")
+
+        # Path-mention: file with template-eligible extension; src/ prefix excluded
+        # for Branch 1 attribution (src/ is scaffold-emitted code, not template-rot).
+        path_mention_re = re.compile(
+            r"(?:^|[^a-zA-Z0-9./_-])"
+            r"(?!src/)"
+            r"((?!.*/src/)[a-zA-Z][\w.-]*(?:/[\w.-]+)*\.(?:md|yaml|yml|json|py|sh))"
+        )
+        # Any-path mention (INCLUDING src/) — used to suppress Branch 2 when a
+        # src/ path is the implicit subject of the line-number reference (e.g.,
+        # "src/lib/stripe.ts already throws when KEY is missing (line 60-62)").
+        any_path_mention_re = re.compile(
+            r"[a-zA-Z][\w./-]*\.(?:md|yaml|yml|json|py|sh|tsx?|jsx?|css|sql)"
+        )
+        # Line-number qualifier — requires a strong citation signal to avoid
+        # false-positives on prose phrases like "Description line 1" (Google
+        # Ads label) or "line 14" used as content rather than a reference.
+        # Accepted forms:
+        #   - `(line N)` or `(line N-M)` — parenthesized citation
+        #   - `(lines N-M)` — parenthesized range
+        #   - `L\d+-\d+` — L-prefix with range
+        #   - `on line N` / `on lines N-M` — explicit citation
+        #   - `lines N-M` / `lines N to M` — explicit range
+        # Standalone "line N" (no parens, no range, no "on") is intentionally
+        # not matched — too ambiguous with content prose.
+        line_num_re = re.compile(
+            r"\(\s*line\s+\d+(?:\s*[-–]\s*\d+)?\s*\)"
+            r"|\(\s*lines\s+\d+\s*[-–]\s*\d+\s*\)"
+            r"|\bL\d+\s*[-–]\s*\d+\b"
+            r"|\bon\s+lines?\s+\d+(?:\s*[-–]\s*\d+|\s+to\s+\d+)?\b"
+            r"|\blines\s+\d+\s*[-–]\s*\d+\b"
+            r"|\blines\s+\d+\s+to\s+\d+\b",
+            re.IGNORECASE,
+        )
+
+        def _expand_braces(glob_pat):
+            m = re.search(r"\{([^{}]+)\}", glob_pat)
+            if not m:
+                return [glob_pat]
+            results = []
+            for choice in m.group(1).split(","):
+                results.extend(_expand_braces(
+                    glob_pat[: m.start()] + choice + glob_pat[m.end():]
+                ))
+            return results
+
+        seen = set()
+        for expanded in _expand_braces(target_glob):
+            for fpath in sorted(glob.glob(os.path.join(REPO_ROOT, expanded), recursive=True)):
+                if fpath in seen:
+                    continue
+                seen.add(fpath)
+                rel = os.path.relpath(fpath, REPO_ROOT)
+                try:
+                    lines = open(fpath, encoding="utf-8").read().split("\n")
+                except (OSError, UnicodeDecodeError):
+                    continue
+                # Treat pragma as a prefix: the rule accepts both the bare
+                # form `<!-- coherence-allow: line-number-cross-reference -->`
+                # and reason-suffixed forms like `... -reference: <why> -->`.
+                # We strip the trailing ` -->` and match the open prefix so
+                # reviewers can document intent inline.
+                pragma_prefix = pragma.rstrip(" -->")
+                # Pragma window is ±5 lines. Wider than ±1 to cover fenced code
+                # blocks and tables where multiple consecutive references share
+                # one bracketing pragma. Narrow enough that a stray pragma far
+                # from the reference doesn't accidentally suppress new rot.
+                for i, line in enumerate(lines):
+                    qm = line_num_re.search(line)
+                    if not qm:
+                        continue
+                    pragma_window = "\n".join(lines[max(0, i - 5): min(len(lines), i + 6)])
+                    if pragma_prefix in pragma_window:
+                        continue
+                    window = "\n".join(lines[max(0, i - 1): min(len(lines), i + 2)])
+                    pm = path_mention_re.search(window)
+                    snippet = line.strip()
+                    if len(snippet) > 100:
+                        snippet = snippet[:100] + "..."
+                    if pm:
+                        out.append(_emit_finding(
+                            rule,
+                            f"{rel}:{i + 1} cross-file line-number reference to '{pm.group(1)}': '{snippet}'"
+                        ))
+                    else:
+                        # Branch 2 suppression: if a src/ path or other path-like
+                        # token appears in the window, the line-number is the
+                        # implicit subject of that path — not a same-file rot
+                        # reference. Avoids false-positives on prose like
+                        # "src/lib/stripe.ts already throws (line 60-62)".
+                        if any_path_mention_re.search(window):
+                            continue
+                        out.append(_emit_finding(
+                            rule,
+                            f"{rel}:{i + 1} same-file line-number reference (no path mention): '{snippet}'"
+                        ))
+        return out
+
+
     # ---------------------------------------------------------------------------
     # Cross-file rule dispatch — registry-driven with type + field validation.
     #
@@ -2145,8 +2422,10 @@ def main() -> int:
         "boundary_kind_required":           (check_boundary_kind_required,           {"enforced_artifacts"},                                   {"agent_files_glob", "skill_files_glob"},                     False),
         "gate_artifact_discovery":          (check_gate_artifact_discovery,          {"manifest_path"},                                        {"registry_path", "hooks_glob"},                              False),
         "must_contain_section":             (check_must_contain_section,             {"applies_to_glob", "required_section", "trigger_pattern_any"}, {"exclude_glob"},                                       False),
+        "bash_hook_write_operator_binding": (check_bash_hook_write_operator_binding, {"manifest_path", "scan_glob"},                                 {"pragma"},                                                   False),
+        "markdown_cross_file_line_reference": (check_markdown_cross_file_line_reference, {"target_glob"},                                            {"pragma"},                                                   False),
     }
-    META_KEYS = {"id", "type", "severity", "description", "_transitional_note", "_comment"}
+    META_KEYS = {"id", "type", "severity", "description", "_transitional_note", "_comment", "convention_doc"}
 
     # Derive STRICT_AOC_TYPES from HANDLERS — single source of truth.
     # Replaces the hardcoded set previously at the top of main(). When a new

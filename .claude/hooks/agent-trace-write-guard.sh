@@ -83,8 +83,8 @@ if echo "$NORM" | awk '
     {
       # Bound write operator -> agent-traces target (>file, >>file, &>file)
       if (match($0, /([0-9]*&?>+|[0-9]*>>?)[[:space:]]*["'\'']?[^|;&"'\'']*agent-traces\//)) found=1
-      # tee / cp / mv with an agent-traces target later on the same segment
-      else if (match($0, /(^|[[:space:]])(tee|cp|mv)[[:space:]][^|;&]*agent-traces\//)) found=1
+      # tee / cp / mv / dd with an agent-traces target later on the same segment
+      else if (match($0, /(^|[[:space:]])(tee|cp|mv|dd)[[:space:]][^|;&]*agent-traces\//)) found=1
     }
     END{exit !found}'; then
   deny "Agent trace write guard: agent-traces/*.json write target detected on a chained command segment (write operator bound to agent-traces path)."
@@ -243,8 +243,8 @@ if echo "$NORM" | awk '
       # Bound write operator -> agent-traces target (>file, >>file, &>file)
       # within the same un-split shell segment.
       if (match($0, /([0-9]*&?>+|[0-9]*>>?)[[:space:]]*["'\'']?[^|;&"'\'']*agent-traces\/[^[:space:]"'\'']*\.json/)) found=1
-      # tee / cp / mv with an agent-traces target later on the same segment
-      else if (match($0, /(^|[[:space:]])(tee|cp|mv)[[:space:]][^|;&]*agent-traces\/[^[:space:]"'\'']*\.json/)) found=1
+      # tee / cp / mv / dd with an agent-traces target later on the same segment
+      else if (match($0, /(^|[[:space:]])(tee|cp|mv|dd)[[:space:]][^|;&]*agent-traces\/[^[:space:]"'\'']*\.json/)) found=1
     }
     END{exit !found}'; then
   deny "Agent trace write guard: .runs/agent-traces/*.json writes must go through init-trace.py / write-recovery-trace.sh / write-degraded-trace.py / write-agent-trace.sh / augment-trace.py. Direct shell writes are blocked."

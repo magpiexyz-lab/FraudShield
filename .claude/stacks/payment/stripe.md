@@ -318,7 +318,7 @@ The server-side `getStripe()` factory in `src/lib/stripe.ts` already throws when
 Stripe delivers at-least-once, so webhook replays are expected. The route template above uses the correct pattern: `INSERT INTO stripe_events(stripe_event_id)` and catch PostgreSQL error code `23505` (unique_violation) as a successful no-op. **Do NOT rewrite this as a SELECT-then-INSERT check** — that is a Time-of-Check-Time-of-Use (TOCTOU) race: two concurrent deliveries of the same event ID can both pass the SELECT and both INSERT, causing duplicate side-effects (double payment processing, double `trackServerEvent("pay_success")`). The INSERT + catch-`23505` pattern is atomic at the database level via the `PRIMARY KEY` on `stripe_event_id`; keep it.
 
 ### When a Stripe key appears as a literal in a test fixture, avoid the sk_test_ / pk_test_ prefix
-Hardcoded values like `sk_test_demo`, `sk_test_abc123`, or any string beginning with `sk_test_` / `pk_test_` trigger secret-scanning false positives in CI, in `gitleaks`-style audits, and in GitHub's push-protection secret-scanning. The scanners match the Stripe key prefix pattern regardless of whether the value is a real key. Use a descriptive placeholder that does NOT match the Stripe key format — prefer the `placeholder-stripe-*` family already declared in this stack's frontmatter `ci_placeholders` (line 15) for self-consistency.
+Hardcoded values like `sk_test_demo`, `sk_test_abc123`, or any string beginning with `sk_test_` / `pk_test_` trigger secret-scanning false positives in CI, in `gitleaks`-style audits, and in GitHub's push-protection secret-scanning. The scanners match the Stripe key prefix pattern regardless of whether the value is a real key. Use a descriptive placeholder that does NOT match the Stripe key format — prefer the `placeholder-stripe-*` family already declared in this stack's frontmatter `ci_placeholders` slot for self-consistency.
 
 ```ts
 // WRONG — `sk_test_` prefix triggers secret-scanning FPs
@@ -331,7 +331,7 @@ process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY = "placeholder-stripe-publishable
 process.env.STRIPE_WEBHOOK_SECRET = "placeholder-stripe-webhook-secret";
 ```
 
-This applies to ALL test files (Vitest, Jest, Playwright global setup) that hardcode a mock Stripe key, and to any inline docs/README code samples. The stack file's own `loadStripe` fallback on line 79 already uses the safe `placeholder-stripe-publishable` — do the same for fixtures.
+This applies to ALL test files (Vitest, Jest, Playwright global setup) that hardcode a mock Stripe key, and to any inline docs/README code samples. The stack file's own `loadStripe` fallback near the top of this file already uses the safe `placeholder-stripe-publishable` — do the same for fixtures.
 
 ### Never use client-submitted bounds for amount validation — re-read authoritative values from the database
 API routes that accept client-submitted numeric bounds (price ranges, discount bounds, quantity limits, quote-tier floors/ceilings) and use those bounds to validate or clamp a final value are vulnerable to fraud: the client controls both the submitted value AND the bounds it is validated against. A client can submit `{range_low: 0, range_high: 1e9, final: 1}` and bypass the intended tier constraints entirely. The authoritative bounds must be sourced from the database (server-computed values tied to a user/tier/product), not from the request body.

@@ -307,6 +307,25 @@
         ".claude/stacks/_archive/**"
       ],
       "description": "Issue #1170 lineage: stack files prescribing env-gated source code with literal placeholder fallbacks (e.g. ?? \"phc_TEAM_KEY\", || \"placeholder-stripe-publishable\") MUST include a `## Production Observability` section documenting the fail-loud contract. Without it the silent-fallback antipattern recurs. See .claude/stacks/TEMPLATE.md for the section requirements."
+    },
+    {
+      "id": "bash-hook-write-operator-binding",
+      "type": "bash_hook_write_operator_binding",
+      "severity": "block",
+      "manifest_path": ".claude/patterns/write-guard-hooks.json",
+      "scan_glob": ".claude/hooks/*.sh,.claude/scripts/**/*.sh",
+      "pragma": "# coherence-allow: unbound-fastpath",
+      "convention_doc": ".claude/patterns/bound-target-write-guard.md",
+      "description": "Issue #1236 — class-level prevention for the unbound-co-occurrence regex anti-pattern that has recurred 7 times (#1023, #1045, #1064, #1123, #1185, #1223, #1230). Phase 1 verifies every entry in write-guard-hooks.json points at an existing hook whose source contains the protected_path_regex literal (proving it is referenced inside a bound-target match()) and references every declared write_operator. Phase 2 scans .claude/hooks/*.sh and .claude/scripts/**/*.sh for the historical anti-pattern shapes (`grep -qE '<op>.*<path>'` and `awk '/path/ && /(op)/'`) and flags any match in an unregistered hook as 'must register'."
+    },
+    {
+      "id": "markdown-cross-file-line-reference",
+      "type": "markdown_cross_file_line_reference",
+      "severity": "block",
+      "target_glob": ".claude/{stacks,skills,agents,patterns,templates}/**/*.md",
+      "pragma": "<!-- coherence-allow: line-number-cross-reference -->",
+      "convention_doc": ".claude/patterns/cross-reference-style.md",
+      "description": "Issue #1238 — flags stale line-number cross-references in template markdown. Branch 1 (cross-file) emits when a line-number qualifier (`(line N)`, `lines N-M`, `L\\d+-\\d+`, `on line N`) co-occurs within a 3-line window with a path-mention to a template-eligible file (extensions: md, yaml, yml, json, py, sh; src/-prefixed paths excluded since src/ is scaffold-emitted). Branch 2 (same-file) emits when the qualifier appears with no path-mention in the 3-line window — covers self-references that rot when the same file is edited. Pragma <!-- coherence-allow: line-number-cross-reference --> on the same or adjacent line suppresses both branches."
     }
   ]
 }
