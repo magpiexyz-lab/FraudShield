@@ -87,7 +87,21 @@
     "solve-critic": {
       "allowed_verdicts": ["pass"],
       "allowed_results": ["count_summary"],
-      "required_structured_fields": ["type_a_count", "type_b_count", "type_c_count"]
+      "required_structured_fields": ["type_a_count", "type_b_count", "type_c_count"],
+      "_rmg_v2_concern_schema": {
+        "_doc": "RMG v2 Phase D — each entry in concerns[] must carry concern_id (12-char sha1 of category|description) and category (enum). prior_failure_dossier_evaluated[] is required when the spawn prompt included a Prior-Failure Dossier; empty list otherwise.",
+        "concern_required_fields": ["type", "concern_id", "category", "description", "evidence"],
+        "category_enum": [
+          "cross-run-prior-failure-unaddressed",
+          "within-run-round1-concern-unaddressed",
+          "unguardability-rationale-weak",
+          "symptom-only",
+          "unguarded-recurrence",
+          "uncovered-instances",
+          "other"
+        ],
+        "trace_optional_fields": ["prior_failure_dossier_evaluated"]
+      }
     },
     "resolve-reviewer": {
       "allowed_verdicts": ["pass"],

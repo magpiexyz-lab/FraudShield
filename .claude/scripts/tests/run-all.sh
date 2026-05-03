@@ -55,6 +55,7 @@ SUITES=(
   ".claude/scripts/tests/test_recurrence_guard_parser.py"
   ".claude/scripts/tests/test_recurrence_detector.py"
   ".claude/scripts/tests/test_dossier_builder.py"
+  ".claude/scripts/tests/test_concern_id_stability.py"
 )
 
 FAIL=0

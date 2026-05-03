@@ -59,9 +59,62 @@ challenge vectors:
    instance of a systemic pattern.
 
 Classify prevention concerns using the same TYPE A/B/C taxonomy:
-- Symptom-only fix → TYPE A (fixable design flaw)
-- Unguarded recurrence where a guard is feasible → TYPE A
-- Uncovered instances → TYPE A
+- Symptom-only fix → TYPE A (category=`symptom-only`)
+- Unguarded recurrence where a guard is feasible → TYPE A (`unguarded-recurrence`)
+- Uncovered instances → TYPE A (`uncovered-instances`)
+
+### RMG v2 Vectors (when problem_type = defect)
+
+When the spawn prompt includes a Prior-Failure Dossier (Phase 1a + Phase 4b
+from solve-reasoning) and a designer-emitted `prior_failure_response[]`, apply
+three additional vectors. Each fires as TYPE A.
+
+4. **`cross-run-prior-failure-unaddressed`** — for every Phase-1a dossier
+   entry, the designer must have a matching `prior_failure_response` entry
+   whose `concrete_delta_step_or_guard` cites either an implementation
+   checklist step number OR a guard `artifact` path that did NOT appear in
+   the prior commit. If the dossier carries `prior_commit_sha`, run
+   `git show <sha> -- <step or artifact>` to verify the cited delta is
+   genuinely absent from the prior commit. Generic phrases like "be more
+   careful" or "fix at root cause" do not satisfy this vector.
+
+5. **`within-run-round1-concern-unaddressed`** — fires only on round 2.
+   For every round-1 concern (matched by stable `concern_id`), the round-2
+   design must cite `addressed_by:<step#>` AND the cited step must
+   demonstrably address the concern's `description`. A round-2 design that
+   simply paraphrases the round-1 concern without changing the
+   implementation is a TYPE A regression.
+
+6. **`unguardability-rationale-weak`** — fires whenever
+   `prevention_analysis.recurrence_guard.kind == "none"`. The
+   `unguardability_rationale` MUST answer both:
+     (a) why no executable check (test, lint, hook, or invariant)
+         expresses the invariant, AND
+     (b) which observation, human-review, or monitoring process catches
+         the next instance.
+   Missing either half is TYPE A. Prefer pushing the designer to
+   `kind=lint` (pointing at a markdown coherence-rule) over `kind=none`
+   for prose-only fixes.
+
+### Concern IDs and Categories (RMG v2)
+
+Each concern carries a stable `concern_id` (12-char sha1 of
+`category|canonicalized-description`) and a `category` enum value drawn
+from:
+
+`cross-run-prior-failure-unaddressed | within-run-round1-concern-unaddressed |
+unguardability-rationale-weak | symptom-only | unguarded-recurrence |
+uncovered-instances | other`
+
+Compute `concern_id` via `.claude/scripts/lib/concern_id.py`:
+
+```python
+from concern_id import concern_id_for
+cid = concern_id_for(category="symptom-only", description="<your description>")
+```
+
+Round 2 cross-checks round-1 concerns by `concern_id` (stable across
+paraphrasing), not by free-text — see vector 5 above.
 
 ### Concern Classification
 
@@ -79,8 +132,11 @@ For each concern: type, description, evidence, and (for TYPE A) suggested fix.
 ## Concern N
 
 **Type**: A | B | C
+**ID**: <12-char concern_id from concern_id_for(category, description)>
+**Category**: <one of: cross-run-prior-failure-unaddressed | within-run-round1-concern-unaddressed | unguardability-rationale-weak | symptom-only | unguarded-recurrence | uncovered-instances | other>
 **Description**: <what is wrong>
 **Evidence**: <file:line or reasoning chain>
+**Addressed-by**: <round 2 only: cite the step # or artifact in the round-2 design that addresses the matching round-1 concern_id>
 **Fix**: <for TYPE A: suggested fix. For TYPE B/C: N/A>
 ```
 
@@ -110,8 +166,20 @@ trace = {
     "type_b_count": <N>,
     "type_c_count": <N>,
     "concerns": [
-        {"type": "<A|B|C>", "description": "<text>", "evidence": "<text>", "fix": "<text or null>"}
+        {
+            "type": "<A|B|C>",
+            "concern_id": "<12-char sha1 of category|canonicalized-description>",
+            "category": "<see Concern IDs and Categories — required>",
+            "description": "<text>",
+            "evidence": "<text>",
+            "fix": "<text or null>",
+            "addressed_by": "<round 2 only: cited step # or artifact path; null otherwise>"
+        }
     ],
+    # RMG v2: list of prior_run_id values from the Phase 1a dossier that
+    # this critic round actually evaluated. Empty when the dossier was
+    # absent or empty. Cross-checked by adversarial-merge-gate.sh.
+    "prior_failure_dossier_evaluated": [<run_id>, ...],
 }
 subprocess.run(
     ["bash", ".claude/scripts/write-agent-trace.sh", "solve-critic",

@@ -306,7 +306,14 @@ context file for run_id correlation:
 - `/change`: `--context .runs/change-context.json`
 - `/solve`: `--context .runs/solve-context.json`
 
-**Critic receives**: the recommended solution + problem statement + constraint space + Phase 3 self-answered gaps.
+**Critic receives**: the recommended solution + problem statement + constraint
+space + Phase 3 self-answered gaps. When `problem_type=defect`, the critic
+also receives the Phase 1a + Phase 4b Prior-Failure Dossier and the
+designer-emitted `prior_failure_response[]`. On round 2, the critic also
+receives the round-1 concerns array (with stable `concern_id`) so the
+`within-run-round1-concern-unaddressed` vector can verify each round-1
+concern is addressed by a cited step.
+
 **Critic does NOT receive**: the reasoning chain from Phases 1-4.
 
 The critic protocol (TYPE A/B/C classification, output format) is defined in
