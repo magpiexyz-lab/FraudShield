@@ -53,6 +53,7 @@ SUITES=(
   ".claude/scripts/tests/test_bash_hook_write_operator_binding.py"
   ".claude/scripts/tests/test_markdown_cross_file_line_reference.py"
   ".claude/scripts/tests/test_recurrence_guard_parser.py"
+  ".claude/scripts/tests/test_recurrence_detector.py"
 )
 
 FAIL=0
