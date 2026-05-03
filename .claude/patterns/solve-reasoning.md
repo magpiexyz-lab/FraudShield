@@ -252,10 +252,11 @@ Using the constraint space from Phase 2 and self-answered gaps from Phase 3:
    inside rationale; switch to dict shape if needed. `kind=none` always
    requires the dict shape.
 
-   During the post-Phase-A soak window the parser runs in tolerant mode
-   (`RMG_V2_TOLERANT=1` default) and accepts legacy free-text strings,
-   returning `kind="legacy_freetext"`; the lifecycle-finalize gate logs a
-   warning but does not block. The follow-up cutover PR flips tolerant off.
+   Post-cutover: legacy free-text strings are rejected at parse time by
+   default. The escape hatch `RMG_V2_TOLERANT=1` is preserved for
+   emergencies — when set, the parser returns `kind="legacy_freetext"`
+   and the lifecycle-finalize gate logs a warning instead of blocking.
+   Default off: no in-tree writer emits free-text post-Phase-A.
 
 Output:
 - **1 recommended solution** with ordered implementation checklist

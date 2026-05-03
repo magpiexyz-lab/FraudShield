@@ -173,14 +173,30 @@ class LightModeBulletTests(unittest.TestCase):
 
 
 class TolerantModeTests(unittest.TestCase):
-    def test_legacy_freetext_tolerant(self):
+    """Post-cutover: tolerant mode is OFF by default.
+
+    `RMG_V2_TOLERANT=1` re-enables the legacy free-text escape hatch as an
+    emergency-only switch. The default behavior rejects free-text entirely.
+    """
+
+    def test_legacy_freetext_tolerant_when_explicitly_enabled(self):
         with _strict_env("1"):
             result = parse("we will add a regression test in a follow-up PR")
             self.assertEqual(result["kind"], LEGACY_KIND)
             self.assertIsNone(result["artifact"])
             self.assertTrue(result["rationale"].startswith("we will add"))
 
-    def test_legacy_freetext_strict_rejects(self):
+    def test_legacy_freetext_default_off_rejects(self):
+        # Clear the env var so the default (off) takes effect.
+        prev = os.environ.pop("RMG_V2_TOLERANT", None)
+        try:
+            with self.assertRaises(RecurrenceGuardParseError):
+                parse("we will add a regression test in a follow-up PR")
+        finally:
+            if prev is not None:
+                os.environ["RMG_V2_TOLERANT"] = prev
+
+    def test_legacy_freetext_explicit_off_rejects(self):
         with _strict_env("0"):
             with self.assertRaises(RecurrenceGuardParseError):
                 parse("we will add a regression test in a follow-up PR")
@@ -190,7 +206,7 @@ class TolerantModeTests(unittest.TestCase):
             with self.assertRaises(RecurrenceGuardParseError):
                 parse({"kind": "manual", "artifact": "x", "rationale": "y"})
 
-    def test_long_legacy_truncated(self):
+    def test_long_legacy_truncated_when_tolerant(self):
         with _strict_env("1"):
             long_text = "x" * (RATIONALE_MAX + 50)
             result = parse(long_text)

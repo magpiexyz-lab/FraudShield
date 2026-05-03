@@ -160,21 +160,49 @@ class GuardArtifactTests(unittest.TestCase):
         # Either parser (1) or heuristic (3) blocks; both are correct hard fails.
         self.assertIn(result.returncode, (1, 3), msg=result.stderr)
 
-    def test_legacy_freetext_warns_but_passes(self):
-        # Tolerant mode default-on; legacy free-text returns kind=legacy_freetext
-        # which the script explicitly logs as WARN and exits 0.
-        result = _run(
-            {
-                "prevention_analysis": {
-                    "problem_type": "defect",
-                    "recurrence_risk": "guarded",
-                    "recurrence_guard": "we'll add a regression test later",
-                }
-            },
-            self.project_dir,
-        )
-        self.assertEqual(result.returncode, 0, msg=result.stderr)
-        self.assertIn("legacy", result.stderr.lower())
+    def test_legacy_freetext_blocks_by_default(self):
+        # Post-cutover: tolerant mode is OFF by default. Legacy free-text fails
+        # to parse and exits 1 (hard block).
+        prev = os.environ.pop("RMG_V2_TOLERANT", None)
+        try:
+            result = _run(
+                {
+                    "prevention_analysis": {
+                        "problem_type": "defect",
+                        "recurrence_risk": "guarded",
+                        "recurrence_guard": "we'll add a regression test later",
+                    }
+                },
+                self.project_dir,
+            )
+            self.assertEqual(result.returncode, 1, msg=result.stderr)
+        finally:
+            if prev is not None:
+                os.environ["RMG_V2_TOLERANT"] = prev
+
+    def test_legacy_freetext_warns_when_escape_hatch_explicit(self):
+        # Setting RMG_V2_TOLERANT=1 re-enables the legacy escape hatch:
+        # parser returns kind=legacy_freetext, helper logs WARN and exits 0.
+        prev = os.environ.get("RMG_V2_TOLERANT")
+        os.environ["RMG_V2_TOLERANT"] = "1"
+        try:
+            result = _run(
+                {
+                    "prevention_analysis": {
+                        "problem_type": "defect",
+                        "recurrence_risk": "guarded",
+                        "recurrence_guard": "we'll add a regression test later",
+                    }
+                },
+                self.project_dir,
+            )
+            self.assertEqual(result.returncode, 0, msg=result.stderr)
+            self.assertIn("legacy", result.stderr.lower())
+        finally:
+            if prev is None:
+                os.environ.pop("RMG_V2_TOLERANT", None)
+            else:
+                os.environ["RMG_V2_TOLERANT"] = prev
 
     def test_malformed_dict_blocks(self):
         result = _run(

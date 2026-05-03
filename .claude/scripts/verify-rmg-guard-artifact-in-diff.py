@@ -11,9 +11,9 @@ through the RMG v2 parser (Phase A), and:
     answers BOTH (a) why no executable check expresses the invariant, AND
     (b) which observation/human-review/monitoring process catches the next
     instance. (Heuristic: hint A and hint B regexes both match.)
-  * For `kind == "legacy_freetext"` (tolerant mode soak): logs a warning
-    and exits 0. The warning is escalated to a block once the soak window
-    closes via the follow-up cutover PR.
+  * For `kind == "legacy_freetext"`: only reachable when the emergency
+    escape hatch `RMG_V2_TOLERANT=1` is set. Logs a warning and exits 0.
+    Default (escape hatch off) makes free-text fail at parse time (exit 1).
 
 Invoked by `.claude/scripts/lifecycle-finalize.sh` Step 4.6.
 
@@ -26,8 +26,8 @@ CLI:
   --merge-base REF     git ref to compare HEAD against (default: origin/main)
 
 Exit codes:
-  0  pass (or kind=legacy_freetext during soak)
-  1  parse failure
+  0  pass (also: kind=legacy_freetext under RMG_V2_TOLERANT=1 escape hatch)
+  1  parse failure (default for legacy free-text post-cutover)
   2  artifact missing from PR diff and working tree
   3  unguardability_rationale missing or insufficient (kind=none)
 """
@@ -123,8 +123,10 @@ def main(argv: list[str] | None = None) -> int:
 
     if kind == "legacy_freetext":
         print(
-            "WARN: legacy free-text recurrence_guard accepted under "
-            "RMG_V2_TOLERANT soak; cutover PR will turn this into a block.",
+            "WARN: legacy free-text recurrence_guard accepted via the "
+            "RMG_V2_TOLERANT=1 emergency escape hatch. Default behavior "
+            "blocks free-text at parse time. Restore typed schema to "
+            "drop the warning.",
             file=sys.stderr,
         )
         return 0

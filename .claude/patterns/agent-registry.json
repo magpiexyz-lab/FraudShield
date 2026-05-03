@@ -87,9 +87,14 @@
     "solve-critic": {
       "allowed_verdicts": ["pass"],
       "allowed_results": ["count_summary"],
-      "required_structured_fields": ["type_a_count", "type_b_count", "type_c_count"],
+      "required_structured_fields": [
+        "type_a_count",
+        "type_b_count",
+        "type_c_count",
+        "prior_failure_dossier_evaluated"
+      ],
       "_rmg_v2_concern_schema": {
-        "_doc": "RMG v2 Phase D — each entry in concerns[] must carry concern_id (12-char sha1 of category|description) and category (enum). prior_failure_dossier_evaluated[] is required when the spawn prompt included a Prior-Failure Dossier; empty list otherwise.",
+        "_doc": "RMG v2 Phase D — each entry in concerns[] must carry concern_id (12-char sha1 of category|canonicalized-description) and category (enum). prior_failure_dossier_evaluated is now strict-required at the trace top level (empty list when no dossier was passed). Tightened in the post-cutover follow-up after first-principles risk analysis confirmed required_structured_fields is documentation/contract — runtime traces are not retroactively validated against it.",
         "concern_required_fields": ["type", "concern_id", "category", "description", "evidence"],
         "category_enum": [
           "cross-run-prior-failure-unaddressed",
@@ -99,8 +104,7 @@
           "unguarded-recurrence",
           "uncovered-instances",
           "other"
-        ],
-        "trace_optional_fields": ["prior_failure_dossier_evaluated"]
+        ]
       }
     },
     "resolve-reviewer": {

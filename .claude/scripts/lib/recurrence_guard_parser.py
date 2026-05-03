@@ -9,9 +9,14 @@ Two input shapes:
   * Light mode  — single bullet string (or list of bullet strings) written by
                   the inline light-mode template
 
-Tolerant mode (RMG_V2_TOLERANT=1, default during the soak window) accepts
-legacy free-text strings written before this PR landed and returns
-`{kind: "legacy_freetext"}` so callers can warn instead of blocking.
+Tolerant mode is **off by default** post-cutover. Setting
+`RMG_V2_TOLERANT=1` re-enables the legacy free-text escape hatch and
+returns `{kind: "legacy_freetext"}` instead of raising. The escape
+hatch is preserved for emergencies — e.g., an unforeseen agent prompt
+regression that re-emits prose. Default off because no in-tree code
+path writes legacy free-text after Phase A (all four writers emit
+typed dicts or `None`), so soak protection has no real surface area
+(see RMG v2 first-principles cutover analysis).
 
 Public surface:
     parse(value)               -> dict canonical guard
@@ -55,7 +60,9 @@ class RecurrenceGuardParseError(ValueError):
 
 
 def _tolerant_enabled() -> bool:
-    return os.environ.get("RMG_V2_TOLERANT", "1") not in ("0", "false", "False")
+    # Default off post-cutover. Set RMG_V2_TOLERANT=1 to re-enable the
+    # legacy free-text escape hatch in an emergency.
+    return os.environ.get("RMG_V2_TOLERANT", "0") in ("1", "true", "True")
 
 
 def _validate_kind(kind: str, raw: Any) -> str:

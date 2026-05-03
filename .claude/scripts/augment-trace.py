@@ -125,6 +125,8 @@ ALLOWED_AUGMENT_FIELDS = {
     "type_c_count",
     "concerns",
     "round",
+    # solve-critic — RMG v2 Phase D + cutover
+    "prior_failure_dossier_evaluated",
     # challenger counts
     "confirmed_count",
     "disputed_count",
