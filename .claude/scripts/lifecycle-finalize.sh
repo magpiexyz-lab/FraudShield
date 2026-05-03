@@ -330,6 +330,65 @@ json.dump(d, open('$COHERENCE_CACHE', 'w'), indent=2)
   fi
 fi
 
+# --- Step 4.6: RMG v2 typed-guard artifact existence + advisory recurrence detector ---
+# Runs only when .runs/solve-trace.json exists AND prevention_analysis.problem_type
+# == "defect". Two responsibilities:
+#
+#   1. Verify the typed recurrence_guard parses via
+#      .claude/scripts/lib/recurrence_guard_parser.py (Phase A). When the guard's
+#      kind is in {test, lint, hook, invariant}, assert its `artifact` path is
+#      either present in the PR diff (git diff <merge_base>...HEAD --name-only)
+#      or already on disk in the repo. When kind=none, assert
+#      `unguardability_rationale` is present and non-trivial. Failure BLOCKS
+#      delivery. This is the layer that turned recurrence_guard from a
+#      documented intent into an enforced artifact.
+#
+#   2. Best-effort: invoke the recurrence-detector (Phase B) in advisory mode.
+#      Wrapped in `set +e` — any non-zero exit logs a warning and is ignored
+#      so a flaky detector cannot block delivery (per plan: detector is
+#      additive, not load-bearing).
+#
+# This step exists at lifecycle-finalize time (post-build, pre-PR) rather than
+# in adversarial-merge-gate.sh because the hook fires PreToolUse Write/Edit
+# when the PR does not yet exist (`gh pr diff` is unavailable). Plan note R2-A7.
+SOLVE_TRACE="$PROJECT_DIR/.runs/solve-trace.json"
+if [[ -f "$SOLVE_TRACE" ]]; then
+  IS_DEFECT=$(python3 -c "
+import json
+try:
+    d = json.load(open('$SOLVE_TRACE'))
+    pa = d.get('prevention_analysis') or {}
+    print('1' if pa.get('problem_type') == 'defect' else '0')
+except Exception:
+    print('0')
+" 2>/dev/null || echo "0")
+
+  if [[ "$IS_DEFECT" == "1" ]]; then
+    MERGE_BASE_REF="${MERGE_BASE:-}"
+    if [[ -z "$MERGE_BASE_REF" ]]; then
+      MERGE_BASE_REF=$(git -C "$PROJECT_DIR" merge-base origin/main HEAD 2>/dev/null || echo "main")
+    fi
+    if ! python3 "$PROJECT_DIR/.claude/scripts/verify-rmg-guard-artifact-in-diff.py" \
+          --trace "$SOLVE_TRACE" \
+          --merge-base "$MERGE_BASE_REF" >&2; then
+      echo "BLOCK: RMG v2 typed-guard artifact check failed at lifecycle-finalize Step 4.6." >&2
+      echo "Re-run: python3 .claude/scripts/verify-rmg-guard-artifact-in-diff.py --trace .runs/solve-trace.json --merge-base \$(git merge-base origin/main HEAD)" >&2
+      exit 1
+    fi
+  fi
+fi
+
+# Advisory recurrence-detector: never blocks. Its output is consumed by Phase 1a
+# dossier on the NEXT defect run; this run does not depend on the result.
+set +e
+PROJECT_DIR="$PROJECT_DIR" python3 "$PROJECT_DIR/.claude/scripts/recurrence-detector.py" \
+  --advisory-only >/dev/null 2>&1
+RECDET_RC=$?
+set -e
+if [[ $RECDET_RC -ne 0 ]]; then
+  echo "WARN: recurrence-detector exited $RECDET_RC (advisory only — does not block)" >&2
+fi
+
 # --- Step 5: Delivery (code-writing skills only) ---
 DELIVERY_STATUS="none"
 COMMIT_MSG="$PROJECT_DIR/.runs/commit-message.txt"

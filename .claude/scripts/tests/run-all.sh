@@ -56,6 +56,7 @@ SUITES=(
   ".claude/scripts/tests/test_recurrence_detector.py"
   ".claude/scripts/tests/test_dossier_builder.py"
   ".claude/scripts/tests/test_concern_id_stability.py"
+  ".claude/scripts/tests/test_verify_rmg_guard_artifact.py"
 )
 
 FAIL=0

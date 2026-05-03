@@ -74,6 +74,18 @@ context):
    (modulo file-specific differences)? Are there inconsistencies between how different
    issues' fixes interact?
 
+4. **RMG v2 guard-presence** (when `prevention_analysis.problem_type=defect`):
+   For each fix's `recurrence_guard` with `kind in {test, lint, hook, invariant}`,
+   confirm the `artifact` path is touched in the PR diff (`git diff main...HEAD
+   --name-only`). For `kind=none`, confirm `unguardability_rationale` is present
+   and substantive. The reviewer cross-checks against
+   `.claude/scripts/verify-rmg-guard-artifact-in-diff.py`; if the helper exits
+   non-zero, the reviewer surfaces the gap as a `needs-revision` verdict for
+   the matching issue. The same helper runs as a hard gate at
+   `lifecycle-finalize.sh` Step 4.6, so a failure here is also a delivery
+   blocker — STATE 10 makes the gap visible to the user instead of letting
+   delivery break silently.
+
 The agent writes its trace to `.runs/agent-traces/resolve-reviewer.json` via the AOC v1.1
 centralized writer. Trace shape:
 
