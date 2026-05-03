@@ -32,6 +32,46 @@ import os
 import sys
 
 
+# #1265: sanctioned `degraded_reason` allowlist for the source-only/unknown
+# verdict carve-out (lines below) AND the worst-wins validated_fallback skip.
+# Centralizing here prevents the "N+1 sanctioned reason will repeat the
+# defect" class. Adding a new reason: append here AND document it in
+# .claude/agents/design-critic.md (Rendered-Review Contract). The carve-out
+# at line 122-128 of the loop body uses this set; the validated_fallback
+# worst-wins skip uses provenance + recovery_validated rather than
+# enumerating reasons (keeps coverage in sync with evaluate-hard-gate-
+# predicates.py validated_fallback predicate semantics).
+SANCTIONED_DEGRADED_REASONS = frozenset({
+    "demo-mode-fixture-short-circuit",
+    "redirect-source-only",
+    "empty-boundary-fast-path",
+})
+
+# #1265: provenance values whose self-degraded-or-recovery state is
+# acceptable as a sibling-class exception in worst-wins aggregation
+# when accompanied by recovery_validated=True. Mirrors the
+# validated_fallback predicate in
+# .claude/scripts/evaluate-hard-gate-predicates.py — the two artifacts
+# must stay coherent (a sibling that satisfies the hard-gate predicate
+# also must not pull down the merged verdict).
+_VALIDATED_FALLBACK_PROVENANCES = frozenset({
+    "self-degraded",
+    "recovery",
+    "lead-on-behalf",
+})
+
+
+def _coalesce(value, default):
+    # `dict.get(k, default)` returns `default` only when k is absent;
+    # an explicit JSON `null` returns None. `min(int, None)` and
+    # `int + None` then crash. Use this helper anywhere a numeric
+    # default must apply to BOTH absent-key and explicit-null cases.
+    # Critically: distinct from `value or default`, which also coerces
+    # legitimate 0 to default (procedures/design-critic.md uses
+    # min_score=0 as the empty-boundary sentinel).
+    return default if value is None else value
+
+
 def main() -> int:
     traces_dir = ".runs/agent-traces"
     per_page_pattern = os.path.join(traces_dir, "design-critic-*.json")
@@ -84,13 +124,13 @@ def main() -> int:
             sys.stderr.write(f"merge-design-critic-traces: cannot parse {b}: {exc}\n")
             return 2
 
-        merged["pages_reviewed"] += d.get("pages_reviewed", 1)
-        merged["min_score"] = min(merged["min_score"], d.get("min_score", 10))
-        merged["min_score_all"] = min(merged["min_score_all"], d.get("min_score_all", 10))
+        merged["pages_reviewed"] += _coalesce(d.get("pages_reviewed"), 1)
+        merged["min_score"] = min(merged["min_score"], _coalesce(d.get("min_score"), 10))
+        merged["min_score_all"] = min(merged["min_score_all"], _coalesce(d.get("min_score_all"), 10))
         merged["checks_performed"].extend(d.get("checks_performed", []))
-        merged["sections_below_8"] += d.get("sections_below_8", 0)
-        merged["fixes_applied"] += d.get("fixes_applied", 0)
-        merged["unresolved_sections"] += d.get("unresolved_sections", 0)
+        merged["sections_below_8"] += _coalesce(d.get("sections_below_8"), 0)
+        merged["fixes_applied"] += _coalesce(d.get("fixes_applied"), 0)
+        merged["unresolved_sections"] += _coalesce(d.get("unresolved_sections"), 0)
 
         # render-review-detection aggregation (render-review-detection.md)
         page_key = (
@@ -124,7 +164,7 @@ def main() -> int:
                 and original_verdict.lower() != "unresolved"
                 and not (
                     prov_here == "self-degraded"
-                    and degraded_reason == "demo-mode-fixture-short-circuit"
+                    and degraded_reason in SANCTIONED_DEGRADED_REASONS
                 )
             ):
                 print(
@@ -169,12 +209,43 @@ def main() -> int:
         if degraded_reason:
             merged.setdefault("per_page_degraded_reason", {})[page_key] = degraded_reason
 
-        bv = d.get("verdict", "pass").lower()
-        if worst_verdicts.get(bv, 0) > worst_verdicts.get(merged["verdict"], 0):
-            merged["verdict"] = bv
-            merged["weakest_page"] = d.get("weakest_page", d.get("page", ""))
+        # #1265: skip validated_fallback siblings in worst-wins so an unresolved
+        # sibling that satisfies the hard-gate validated_fallback predicate
+        # does not pull down the aggregate verdict (cascade-blocking downstream
+        # fixers via false-positive design-ux-merge.json verdict=fail). Track
+        # them in `validated_fallback_pages` for downstream observability.
+        # When ALL effective siblings are validated_fallback, the loop leaves
+        # merged["verdict"] at "pass" — aggregate_ok validates per-sibling
+        # independently so this is consistent with the hard-gate contract,
+        # but we mark `all_validated_fallback=True` after the loop so consumers
+        # (state-7b Q-score, verify-report) can distinguish "all-pass" from
+        # "all-validated-fallback-pass."
+        recovery_validated = bool(d.get("recovery_validated", False))
+        is_validated_fallback = (
+            prov_here in _VALIDATED_FALLBACK_PROVENANCES
+            and recovery_validated
+        )
+        if is_validated_fallback:
+            merged.setdefault("validated_fallback_pages", []).append(page_key)
+        else:
+            bv = d.get("verdict", "pass").lower()
+            if worst_verdicts.get(bv, 0) > worst_verdicts.get(merged["verdict"], 0):
+                merged["verdict"] = bv
+                merged["weakest_page"] = d.get("weakest_page", d.get("page", ""))
         if d.get("retry_attempted"):
             merged["retry_attempted"] = True
+
+    # #1265: when ALL effective siblings (excluding shared/aggregate) are
+    # validated_fallback, mark the aggregate so downstream consumers can
+    # distinguish "all-pass" from "all-validated-fallback-pass." Verdict
+    # stays "pass" — aggregate_ok validates per-sibling, so this is the
+    # contract-correct shape.
+    effective_siblings = [
+        b for b in batches if b not in (shared_base, aggregate_path)
+    ]
+    validated_fallback_pages = merged.get("validated_fallback_pages") or []
+    if effective_siblings and len(validated_fallback_pages) == len(effective_siblings):
+        merged["all_validated_fallback"] = True
 
     # Stage 1c shared-component verdict upgrade
     if os.path.exists(shared_base):

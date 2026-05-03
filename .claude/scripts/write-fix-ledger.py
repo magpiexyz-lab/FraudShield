@@ -15,7 +15,14 @@ Contract:
     symptom, fix, timestamp, batch_id, batch_size.
   - AOC v1.1: per-row `provenance` field (agent | lead | lead-on-behalf)
     and optional `severity` (fix | warn).
-  - fix_id = <source_trace_basename>:<fix_array_index> for agent fixes.
+  - fix_id = <source_trace_basename>:<run_id>:<fix_array_index> for agent fixes
+    (run_id qualifier added in #1267 to defend against cross-run collisions
+    when run N and run N+1 both produce identical (basename, idx) pairs from
+    different agent spawns). When trace_run_id is empty (legacy traces or
+    contexts missing run_id), falls back to legacy <basename>:<idx> form
+    for backward compatibility — those rows can still collide cross-run, but
+    modern traces always carry run_id from active context so the collision
+    surface shrinks to legacy data only.
     fix_id = lead-<skill>:<run_id>:<monotonic-counter> for --lead-fix.
   - batch_id = source_trace_basename for agent fixes; per-invocation
     timestamp for --lead-fix (each invocation is its own batch).
@@ -188,7 +195,15 @@ def collect_rows(existing_ids, caller_run_id):
         row_provenance = _row_provenance_from_trace(trace)
         batch_size = len(fixes)
         for idx, fix in enumerate(fixes):
-            fix_id = f"{basename}:{idx}"
+            # #1267: include run_id in fix_id to prevent cross-run collision
+            # (run N's design-critic:0 silently dedup'd run N+1's design-critic:0,
+            # dropping new fixes). Empty trace_run_id falls back to the legacy
+            # 2-part form so pre-#1267 ledger rows stay addressable.
+            fix_id = (
+                f"{basename}:{trace_run_id}:{idx}"
+                if trace_run_id
+                else f"{basename}:{idx}"
+            )
             if fix_id in existing_ids:
                 continue
             # Accept loose shapes in the source fixes[] array: {file, symptom, fix}

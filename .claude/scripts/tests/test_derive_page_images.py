@@ -297,6 +297,69 @@ class TestDerivePageImages(unittest.TestCase):
             im = derive_page_images([], tmp, include_landing=True)
             self.assertNotIn("landing", im)
 
+    def test_colocated_route_data_module_followed(self):
+        # #1273: page imports a co-located route data module under
+        # src/app/<route>/. Layer 2 must walk into the data module and
+        # pick up its image references — has_images=true with
+        # detected_via=imported-component.
+        with tempfile.TemporaryDirectory() as tmp:
+            self._make(
+                tmp,
+                "src/app/portfolio/cases.ts",
+                # Existing _IMAGE_PATTERNS match `public/images/` literal —
+                # one realistic shape for a route data module is to embed
+                # the public path including the `public/` prefix in a const.
+                'export const HERO = "public/images/hero.png"\n',
+            )
+            self._make(
+                tmp,
+                "src/app/portfolio/[slug]/page.tsx",
+                'import { HERO } from "../cases"\n'
+                'export default function(){return <p>{HERO}</p>}\n',
+            )
+            page_set = derive_page_set_for_design_critic({"type": "web-app"}, tmp)
+            # Slug from _path_to_page_info: dynamic-segment suffix -> "portfolio-slug"
+            key = "portfolio-slug"
+            self.assertIn(key, im := derive_page_images(page_set, tmp, include_landing=False))
+            self.assertTrue(im[key]["has_images"])
+            self.assertEqual(im[key]["detected_via"], "imported-component")
+            self.assertIn("src/app/portfolio/cases.ts", im[key]["evidence_files"])
+
+    def test_colocated_route_module_NOT_followed_from_nonapp_importer(self):
+        # #1273 boundary guard: importer NOT under src/app/ must not be
+        # allowed to resolve into src/app/<route>/ — the locality rule
+        # keeps Layer 2 walks scoped to the page's own route tree.
+        with tempfile.TemporaryDirectory() as tmp:
+            self._make(
+                tmp,
+                "src/app/portfolio/cases.ts",
+                'export const HERO = "/images/hero.png"\n',
+            )
+            # A lib helper that itself imports the route data module via
+            # a relative path. derive_page_images() resolves layer-2
+            # imports starting at the page file (under src/app/) so a
+            # lib importer is never reached as an "importer" in this
+            # walk; this test instead verifies the standalone
+            # _resolve_import boundary rule.
+            from importlib import import_module
+            dp = import_module("scripts.lib.derive_pages") if False else None
+            # Direct call to _resolve_import to assert the boundary.
+            import sys, os
+            sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
+            try:
+                from derive_pages import _resolve_import
+                resolved = _resolve_import(
+                    "src/lib/utils.ts",
+                    "../app/portfolio/cases",
+                    tmp,
+                )
+                self.assertIsNone(
+                    resolved,
+                    "src/lib importer must NOT resolve into src/app/<route>/",
+                )
+            finally:
+                sys.path.pop(0)
+
     def test_dynamic_route_child_with_image(self):
         with tempfile.TemporaryDirectory() as tmp:
             self._make(

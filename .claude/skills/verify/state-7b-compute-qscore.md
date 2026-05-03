@@ -55,7 +55,11 @@
            dims['Q_security'] = round(1 - min(weighted / 5, 1), 3)
 
        elif name == 'design-critic' and scope in ('full', 'visual'):
-           dims['Q_design'] = round(d.get('min_score', 10) / 10, 3)
+           # Coalesce explicit-null min_score to 10 (best-effort no-data;
+           # aggregate_ok validates per-sibling). dict.get(k, default) returns
+           # None for explicit-null values — would crash int division.
+           ms = d.get('min_score')
+           dims['Q_design'] = round((10 if ms is None else ms) / 10, 3)
 
        elif name == 'ux-journeyer' and scope in ('full', 'visual'):
            dims['Q_ux'] = round(1 - min(d.get('unresolved_dead_ends', 0) / 3, 1), 3)

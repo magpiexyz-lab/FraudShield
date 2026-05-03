@@ -521,7 +521,8 @@ export function NavBar() {
       <Link href="/" className="flex items-center gap-2">
         {/* Logo from scaffold-images — read path from .runs/image-manifest.json */}
         {/* Decorative: brand name is already announced by the adjacent <span>, so alt="" + aria-hidden prevents double announcement. */}
-        <Image src="/images/logo.svg" alt="" aria-hidden width={32} height={32} />
+        {/* unoptimized: next/image rejects SVG by default (returns HTTP 400 → broken-image icon). See framework/nextjs.md "When loading SVG assets through next/image". */}
+        <Image src="/images/logo.svg" alt="" aria-hidden width={32} height={32} unoptimized />
         <span className="text-xl font-bold">APP_NAME</span>
       </Link>
       {/* Desktop nav */}

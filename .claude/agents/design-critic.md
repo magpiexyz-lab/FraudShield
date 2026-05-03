@@ -243,6 +243,17 @@ in Step 3.5 of `.claude/procedures/design-critic.md` — before screenshotting.
   Do NOT apply fixes. Trace written via normal completion path; the
   merge script's self-heal preserves this outcome.
 
+  **Sub-branch S2 opt-in — `redirect-source-only`**: when the source-only
+  classification is caused by a server-side `redirect()` route (not
+  reachable for visual review by design), the agent MAY route through
+  `write-degraded-trace.py --reason "redirect-source-only" --verdict unresolved`
+  instead. This stamps `provenance="self-degraded"` with a
+  `degraded_reason` value listed in `merge-design-critic-traces.py`'s
+  `SANCTIONED_DEGRADED_REASONS` set, so the per-page sibling participates
+  in `aggregate_ok`'s `validated_fallback` predicate (skipped from
+  worst-wins) and does not cascade-block downstream fixers via a
+  false-positive `design-ux-merge.json` verdict=fail (#1265).
+
 - If `review_method == "boundary-skip"` (#1061 — state-3a-synthetic): the
   empty-boundary fast-path emitted this. The trace was written by
   `write-degraded-trace.py --reason "empty-boundary-fast-path" --verdict pass`

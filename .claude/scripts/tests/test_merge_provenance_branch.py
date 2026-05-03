@@ -167,8 +167,12 @@ class TestMergeProvenanceBranch(unittest.TestCase):
     # ----- C3 -----
     def test_c3_demo_mode_short_circuit_preserved(self):
         """self-degraded + demo-mode-fixture-short-circuit trace is NOT self-healed;
-        verdict stays unresolved (as written); demo_mode_short_circuit_pages
-        records the page; per_page_provenance tracks it."""
+        verdict no longer propagates unresolved from validated_fallback siblings
+        (#1265 — alignment with aggregate_ok hard-gate predicate); aggregate
+        verdict is "pass" (initial); validated_fallback_pages records the
+        sibling; all_validated_fallback flag fires when 100% of effective
+        siblings are validated_fallback. demo_mode_short_circuit_pages and
+        per_page_provenance still track it."""
         per_page = [
             make_trace(
                 "quote",
@@ -181,7 +185,10 @@ class TestMergeProvenanceBranch(unittest.TestCase):
             ),
         ]
         merged = run_merge(per_page)
-        self.assertEqual(merged["verdict"], "unresolved")
+        # #1265: validated_fallback sibling no longer pulls down aggregate verdict
+        self.assertEqual(merged["verdict"], "pass")
+        self.assertEqual(merged["validated_fallback_pages"], ["quote"])
+        self.assertIs(merged["all_validated_fallback"], True)
         # Self-heal did NOT fire (provenance carve-out)
         self.assertNotIn("review_method_gate_corrections", merged)
         # Demo-mode short-circuit recorded
@@ -203,6 +210,8 @@ class TestMergeProvenanceBranch(unittest.TestCase):
 
     # ----- C4 -----
     def test_c4_mixed_run_landing_pass_quote_degraded(self):
+        # #1265: quote's validated_fallback unresolved no longer propagates;
+        # landing (self-pass) determines the aggregate verdict.
         per_page = [
             make_trace("landing", review_method="rendered-demo"),
             make_trace(
@@ -216,7 +225,11 @@ class TestMergeProvenanceBranch(unittest.TestCase):
             ),
         ]
         merged = run_merge(per_page)
-        self.assertEqual(merged["verdict"], "unresolved")  # worst wins
+        # #1265: landing's pass propagates; quote's validated_fallback skipped
+        self.assertEqual(merged["verdict"], "pass")
+        self.assertEqual(merged["validated_fallback_pages"], ["quote"])
+        # NOT all-validated-fallback — landing is provenance=self
+        self.assertNotIn("all_validated_fallback", merged)
         self.assertEqual(
             merged["per_page_provenance"],
             {"landing": "self", "quote": "self-degraded"},
@@ -259,11 +272,12 @@ class TestMergeProvenanceBranch(unittest.TestCase):
         )
 
     def test_c7_mixed_fast_path_and_demo_mode(self):
-        """#1061 + #1042: real fresh-bootstrap shape — landing fast-paths +
-        quote demo-mode-short-circuits. Aggregate verdict=unresolved (worst
-        from quote); both sanctioned paths recorded separately. The aggregate
-        is fully sanctioned (every per-page provenance is self-degraded with
-        recovery_validated=true and a sanctioned reason)."""
+        """#1061 + #1042 + #1265: real fresh-bootstrap shape — landing
+        fast-paths + quote demo-mode-short-circuits. ALL per-page siblings
+        are validated_fallback (self-degraded + recovery_validated=True),
+        so worst-wins skips both → aggregate verdict stays "pass" (initial)
+        with all_validated_fallback marker for downstream visibility. Both
+        sanctioned paths recorded separately."""
         per_page = [
             make_trace(
                 "landing",
@@ -285,8 +299,16 @@ class TestMergeProvenanceBranch(unittest.TestCase):
             ),
         ]
         merged = run_merge(per_page)
-        # quote is unresolved → worst-verdict
-        self.assertEqual(merged["verdict"], "unresolved")
+        # #1265: both siblings are validated_fallback → both skipped from
+        # worst-wins; aggregate verdict stays "pass" with all-fallback marker.
+        # aggregate_ok validates per-sibling so this is the contract-correct
+        # shape (no false-positive design-ux-merge.json verdict=fail
+        # cascade-blocking downstream fixers).
+        self.assertEqual(merged["verdict"], "pass")
+        self.assertEqual(
+            sorted(merged["validated_fallback_pages"]), ["landing", "quote"]
+        )
+        self.assertIs(merged["all_validated_fallback"], True)
         # Both sanctioned paths tracked separately
         self.assertEqual(merged["empty_boundary_fast_path_pages"], ["landing"])
         self.assertEqual(merged["demo_mode_short_circuit_pages"], ["quote"])

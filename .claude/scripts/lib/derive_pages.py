@@ -453,14 +453,30 @@ def _resolve_import(
     Handles:
       - "@/components/foo" → "src/components/foo.tsx" (or .jsx/.ts/.js)
       - "@/lib/bar"        → "src/lib/bar.tsx"
+      - "@/app/<route>/x"  → "src/app/<route>/x.{tsx,jsx,ts,js}" — only when
+        the importer is itself under src/app/<route>/ (#1273: co-located
+        route data modules like src/app/portfolio/cases.ts referenced from
+        src/app/portfolio/[slug]/page.tsx). The boundary check prevents
+        Layer 2 from leaking src/app/ resolution to src/lib/ importers.
       - relative (./ or ../) paths resolved against importer's directory,
-        but ONLY if the resolved path sits under src/components/ or src/lib/
+        but ONLY if the resolved path sits under src/components/, src/lib/,
+        or — when the importer is itself under src/app/ — src/app/.
     Returns None when the import cannot be resolved to a source file under
-    those two trees.
+    those allowed trees.
     """
+    importer_under_app = importer_path.startswith("src/app/")
+    allowed_prefixes = ("src/components/", "src/lib/")
+    if importer_under_app:
+        allowed_prefixes = allowed_prefixes + ("src/app/",)
+
     if import_spec.startswith("@/components/") or import_spec.startswith(
         "@/lib/"
     ):
+        base = import_spec[2:]  # strip "@/"
+        candidate_roots = [os.path.join(repo_root, "src", base)]
+    elif import_spec.startswith("@/app/") and importer_under_app:
+        # #1273: only resolve @/app/* when the importer itself is under
+        # src/app/ — keeps Layer 2 walk locality intact.
         base = import_spec[2:]  # strip "@/"
         candidate_roots = [os.path.join(repo_root, "src", base)]
     elif import_spec.startswith("./") or import_spec.startswith("../"):
@@ -469,7 +485,7 @@ def _resolve_import(
         )
         resolved = os.path.normpath(os.path.join(importer_dir, import_spec))
         rel = os.path.relpath(resolved, repo_root).replace(os.sep, "/")
-        if not (rel.startswith("src/components/") or rel.startswith("src/lib/")):
+        if not any(rel.startswith(p) for p in allowed_prefixes):
             return None
         candidate_roots = [resolved]
     else:
@@ -496,7 +512,14 @@ def derive_page_images(
 
     Layer 1 (direct-source): grep each entry's source_files for image patterns.
     Layer 2 (one-level import-graph walk): parse the top page file for import
-    statements and grep each resolved src/components/** or src/lib/** target.
+    statements and grep each resolved import target. Resolution scope (#1273):
+      - src/components/** and src/lib/** for any importer (canonical shared
+        component / utility trees);
+      - src/app/<route>/** ONLY when the importer is itself under src/app/
+        (co-located route data modules like src/app/portfolio/cases.ts
+        referenced from src/app/portfolio/[slug]/page.tsx). The locality
+        guard prevents Layer 2 from leaking src/app/ resolution to
+        src/lib/ importers.
 
     Landing override (when include_landing=True): if an entry is named
     "landing", force has_images=true (owns global slots: hero/features/logo/

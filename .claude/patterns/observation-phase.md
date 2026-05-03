@@ -453,8 +453,48 @@ findings via the observer agent in Step 6 (Unified Filing).
 
 Run cross-artifact consistency checks:
 ```bash
-SKILL=$(python3 -c "import json;d=[json.load(open(f)) for f in __import__('glob').glob('.runs/*-context.json') if 'epilogue' not in f and 'verify' not in f];print(d[0]['skill'] if d else 'unknown')" 2>/dev/null)
-RUN_ID=$(python3 -c "import json;d=[json.load(open(f)) for f in __import__('glob').glob('.runs/*-context.json') if 'epilogue' not in f and 'verify' not in f];print(d[0].get('run_id','') if d else '')" 2>/dev/null)
+_ACTIVE_CTX=$(python3 -c "
+# #1268: pick the active skill context.
+#  1. Exclude epilogue-context.json (always a derived artifact, not a skill).
+#  2. Among remaining contexts, partition into non-completed vs completed.
+#  3. Sort each partition by mtime descending (most-recently-touched first).
+#  4. Prefer the newest non-completed; fall back to newest completed.
+#  5. Staleness floor: if newest non-completed is older than newest completed
+#     by more than 60 minutes, prefer the completed (defends against stale
+#     crashed contexts being treated as active vs a fresh completed sibling).
+#  6. Print 'skill\trun_id' so two values can be parsed in one subprocess call
+#     (avoids two separate filter-rewrites drifting out of sync).
+import json, glob, os, sys
+candidates = []
+for f in glob.glob('.runs/*-context.json'):
+    if os.path.basename(f) == 'epilogue-context.json':
+        continue
+    try:
+        ctx = json.load(open(f))
+    except Exception:
+        continue
+    try:
+        mtime = os.path.getmtime(f)
+    except OSError:
+        continue
+    candidates.append((f, mtime, bool(ctx.get('completed', False)), ctx))
+non_completed = sorted([c for c in candidates if not c[2]], key=lambda x: x[1], reverse=True)
+completed     = sorted([c for c in candidates if c[2]],     key=lambda x: x[1], reverse=True)
+chosen = None
+if non_completed:
+    chosen = non_completed[0]
+    if completed and completed[0][1] - chosen[1] > 3600:
+        chosen = completed[0]
+elif completed:
+    chosen = completed[0]
+if chosen is None:
+    print('unknown\t')
+else:
+    ctx = chosen[3]
+    print((ctx.get('skill') or 'unknown') + '\t' + (ctx.get('run_id') or ''))
+" 2>/dev/null || echo "unknown\t")
+SKILL="${_ACTIVE_CTX%%$'\t'*}"
+RUN_ID="${_ACTIVE_CTX#*$'\t'}"
 python3 .claude/scripts/compliance-audit.py --skill "$SKILL" --run-id "$RUN_ID"
 ```
 

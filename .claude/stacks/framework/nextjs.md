@@ -296,7 +296,8 @@ import Image from "next/image";
 import Link from "next/link";
 
 <Link href="/" className="flex items-center gap-2">
-  <Image src="/images/logo.svg" alt="" aria-hidden width={32} height={32} />
+  {/* unoptimized: next/image rejects SVG by default — see "When loading SVG assets through next/image" below. */}
+  <Image src="/images/logo.svg" alt="" aria-hidden width={32} height={32} unoptimized />
   <span>APP_NAME</span>
 </Link>
 ```
@@ -358,6 +359,38 @@ import { NavBar } from "@/components/nav-bar";
 - Return generic error messages to the client — do not leak stack traces or internal details
 
 ## Stack Knowledge
+
+### When inline SVG `<text>` needs CSS font features (tabular numbers, ligatures, etc.)
+
+Pass `fontFeatureSettings` via the `style` prop, NOT as a JSX attribute. React does not recognize `fontFeatureSettings` as a valid SVG element prop — it emits an "unrecognized prop" warning and the server-rendered HTML diverges from the client tree, producing a hydration mismatch. tabular-numeric alignment (`"tnum"`) is lost on the first client render.
+
+```tsx
+// WRONG — React drops the prop, hydration mismatch
+<text fontFeatureSettings='"tnum"'>{value}</text>
+
+// CORRECT — style prop carries the CSS font-feature-settings declaration
+<text style={{ fontFeatureSettings: '"tnum"' }}>{value}</text>
+```
+
+Applies to any inline SVG text element that needs CSS font features: tabular numbers in dashboards / data viz, small-caps / oldstyle figures in marketing copy, contextual ligatures in display headings. The pattern generalizes to other CSS-only SVG presentation properties whose JSX prop spelling is camelCase but is not in React's SVG attribute whitelist (e.g., `paintOrder`).
+
+### When loading SVG assets through `next/image`
+
+`next/image` rejects SVG sources by default — the optimizer image endpoint returns HTTP 400 and the browser falls back to the broken-image glyph. Two acceptable patterns:
+
+```tsx
+import Image from "next/image";
+
+// CORRECT (a) — keep <Image> for layout/lazy/responsive behavior, opt out of optimization for SVG
+<Image src="/images/logo.svg" alt="" aria-hidden width={32} height={32} unoptimized />
+
+// CORRECT (b) — use plain <img> for one-off SVGs that don't need next/image's responsive features
+<img src="/images/logo.svg" alt="" aria-hidden width={32} height={32} />
+```
+
+Both patterns ship the SVG file as-is to the browser (no rasterization or format conversion). Choose (a) when the slot already uses `<Image>` and consistency matters (e.g., NavBar logo next to PNG/WebP siblings); choose (b) for landing-page hero illustrations and standalone SVG icons. Never write `<Image src="*.svg" />` without `unoptimized` — it produces a broken image on every page that renders the component.
+
+The auto-scaffolded NavBar logo (created from `auth/supabase.md` template via `wire.md` Step 3) and the standalone logo example in this file's Multi-nav section both use pattern (a). `procedures/scaffold-landing.md` and `agents/scaffold-landing.md` correctly prefer pattern (b) for landing-page images.
 
 ### When using a variable-axis next/font/google font (e.g., Fraunces with `axes: ["opsz"]`)
 

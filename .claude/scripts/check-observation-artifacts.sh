@@ -48,16 +48,40 @@ trap _write_fallback_artifact EXIT
 # indeterminate filesystem ordering we used before.
 SKILL="${1:-}"
 if [[ -z "$SKILL" ]]; then
+  # #1268: same active-context discovery as observation-phase.md Step 5b.
+  # Exclude epilogue-context.json; partition by completed; prefer newest
+  # non-completed; staleness floor = if non-completed >60 min older than
+  # newest completed, prefer the completed (defense against stale crashed
+  # contexts vs fresh completed siblings). The two callsites must stay in
+  # sync — observation-phase reads SKILL/RUN_ID for compliance-audit, and
+  # this script writes SKILL/RUN_ID for observe-evidence-check; divergence
+  # would propagate the wrong skill into compliance scoring.
   SKILL=$(python3 -c "
 import json, glob, os
-files = [f for f in glob.glob('$RUNS_DIR/*-context.json')
-         if 'epilogue' not in f and 'verify' not in f]
-# Sort by mtime desc — most recently written context is most likely the active skill.
-files.sort(key=lambda f: os.path.getmtime(f), reverse=True)
-if files:
-    print(json.load(open(files[0])).get('skill', 'unknown'))
-else:
-    print('unknown')
+RUNS_DIR='$RUNS_DIR'
+candidates = []
+for f in glob.glob(RUNS_DIR + '/*-context.json'):
+    if os.path.basename(f) == 'epilogue-context.json':
+        continue
+    try:
+        ctx = json.load(open(f))
+    except Exception:
+        continue
+    try:
+        mtime = os.path.getmtime(f)
+    except OSError:
+        continue
+    candidates.append((f, mtime, bool(ctx.get('completed', False)), ctx))
+non_completed = sorted([c for c in candidates if not c[2]], key=lambda x: x[1], reverse=True)
+completed     = sorted([c for c in candidates if c[2]],     key=lambda x: x[1], reverse=True)
+chosen = None
+if non_completed:
+    chosen = non_completed[0]
+    if completed and completed[0][1] - chosen[1] > 3600:
+        chosen = completed[0]
+elif completed:
+    chosen = completed[0]
+print((chosen[3].get('skill') if chosen else None) or 'unknown')
 " 2>/dev/null || echo "unknown")
 fi
 

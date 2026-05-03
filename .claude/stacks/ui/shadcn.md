@@ -412,6 +412,36 @@ export function WeeklyDigestPrompt() {
 
 ## Stack Knowledge
 
+### When scaffolding interactive buttons (remove, add, icon-only controls), enforce 44px mobile touch target floor
+
+WCAG 2.5.5 (Target Size) requires touch targets to be at least 44×44 CSS pixels on mobile. shadcn's default icon button sizes (`h-7 w-7` = 28px, `h-9` = 36px) are below this floor — they look right on desktop but are difficult or impossible to tap on mobile. Always set the mobile floor to `h-11 w-11` (44px) and use the `md:` breakpoint to keep a tighter desktop aesthetic.
+
+```tsx
+import { Button } from "@/components/ui/button";
+import { X } from "lucide-react";
+
+// WRONG — icon-only remove button at 28px, untappable on mobile,
+// hover-only opacity-0 makes it invisible until focused
+<Button variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100">
+  <X className="h-4 w-4" />
+</Button>
+
+// CORRECT — 44px mobile floor with tighter desktop aesthetic,
+// always-visible on mobile (no hover-only opacity)
+<Button
+  variant="ghost"
+  size="icon"
+  className="h-11 w-11 md:h-8 md:w-8 md:opacity-0 md:group-hover:opacity-100"
+>
+  <X className="h-4 w-4" />
+</Button>
+
+// CORRECT — Add button: 44px mobile, smaller desktop
+<Button className="h-11 md:h-9">Add row</Button>
+```
+
+Applies to all interactive controls that may appear on mobile: remove (X) buttons in list rows, add buttons in form arrays, icon-only toolbar buttons, sort-direction toggles. Hover-reveal (`opacity-0 group-hover:opacity-100`) is acceptable on desktop (`md:` and above) but **never** on mobile — touch devices have no hover state, so the control becomes invisible AND untappable.
+
 ### When using role=alert or aria-live for error/status announcements
 
 Always mount the live region UNCONDITIONALLY; toggle visibility via class swap, not via DOM insertion. Some screen readers miss announcements from regions inserted into the DOM after page load (WCAG 4.1.3 Status Messages).
