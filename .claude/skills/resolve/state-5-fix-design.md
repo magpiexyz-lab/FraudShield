@@ -107,7 +107,13 @@ from prevention_analysis.recurrence_guard).
           'problem_type': 'defect',
           'root_cause_addressed': True,
           'recurrence_risk': '<none|guarded|unguarded>',
-          'recurrence_guard': '<description or null>',
+          # RMG v2 typed schema. When recurrence_risk == 'none', set this to None.
+          # Otherwise emit a dict matching .claude/scripts/lib/recurrence_guard_parser.py:
+          #   {"kind": "test|lint|hook|invariant|none",
+          #    "artifact": "<path-or-rule-id>" | None,
+          #    "rationale": "<≤200ch>",
+          #    "unguardability_rationale": "<≥80ch, only when kind == 'none'>"}
+          'recurrence_guard': None,  # replace with typed dict when risk != 'none'
           'scope': {
               'all_covered': True,
               'instance_count': 0
@@ -126,7 +132,7 @@ from prevention_analysis.recurrence_guard).
 
 **VERIFY:**
 ```bash
-python3 -c "import json; st=json.load(open('.runs/solve-trace.json')); required=['mode','problem_decomposition','constraint_enumeration','solution_design','self_check','output']; missing=[k for k in required if k not in st]; assert not missing, 'solve-trace.json missing: %s' % missing; pa=st.get('prevention_analysis'); assert pa is not None, 'prevention_analysis required for resolve'; assert isinstance(pa, dict) and 'root_cause_addressed' in pa and 'recurrence_risk' in pa and 'scope' in pa, 'prevention_analysis incomplete'"
+python3 .claude/scripts/verify-recurrence-guard.py --require-prevention  # .runs/solve-trace.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

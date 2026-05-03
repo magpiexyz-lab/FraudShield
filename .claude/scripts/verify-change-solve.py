@@ -6,8 +6,15 @@ Checks:
 - solve-trace.json has all required fields
 - change-challenge.json exists with valid structure
 - Full mode requires critic_rounds > 0
+- RMG v2: when preliminary_type=Fix and recurrence_risk != 'none',
+  recurrence_guard parses via .claude/scripts/lib/recurrence_guard_parser.py
 """
 import json
+import os
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "lib"))
+from recurrence_guard_parser import RecurrenceGuardParseError, parse  # noqa: E402
 
 ctx = json.load(open(".runs/change-context.json"))
 sd = ctx.get("solve_depth")
@@ -42,6 +49,18 @@ if pt == "Fix":
     assert pa["recurrence_risk"] in ("none", "guarded", "unguarded"), (
         "recurrence_risk invalid: %s" % pa["recurrence_risk"]
     )
+    if pa["recurrence_risk"] != "none":
+        guard = pa.get("recurrence_guard")
+        assert guard is not None, (
+            "recurrence_guard required when recurrence_risk != 'none' (RMG v2)"
+        )
+        try:
+            parse(guard)
+        except RecurrenceGuardParseError as exc:
+            raise AssertionError(
+                "recurrence_guard fails RMG v2 parser: %s (raw=%r)"
+                % (exc, getattr(exc, "raw_value", guard))
+            )
 
 cc = json.load(open(".runs/change-challenge.json"))
 assert isinstance(cc.get("critic_rounds"), int), "critic_rounds missing or not int"

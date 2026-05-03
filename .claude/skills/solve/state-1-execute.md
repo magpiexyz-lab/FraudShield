@@ -36,7 +36,13 @@ to activate the prevention dimension.
           'problem_type': 'defect',
           'root_cause_addressed': True,
           'recurrence_risk': '<none|guarded|unguarded>',
-          'recurrence_guard': '<description or null>',
+          # RMG v2 typed schema — see .claude/scripts/lib/recurrence_guard_parser.py.
+          # None when recurrence_risk == 'none'; otherwise a dict:
+          #   {"kind": "test|lint|hook|invariant|none",
+          #    "artifact": "<path-or-rule-id>" | None,
+          #    "rationale": "<≤200ch>",
+          #    "unguardability_rationale": "<≥80ch, only when kind == 'none'>"}
+          'recurrence_guard': None,
           'scope': {'all_covered': True, 'instance_count': 0}
       }
   json.dump(trace, open('.runs/solve-trace.json', 'w'), indent=2)
@@ -50,7 +56,7 @@ to activate the prevention dimension.
 
 **VERIFY:**
 ```bash
-python3 -c "import json; d=json.load(open('.runs/solve-trace.json')); assert d.get('mode') in ('light','full'), 'mode must be light or full'; required=['problem_decomposition','constraint_enumeration','solution_design','self_check','output']; missing=[k for k in required if not d.get(k)]; assert not missing, 'empty fields: %s' % missing; assert 'phase_3_gaps' in d, 'phase_3_gaps field missing'; assert d['mode']!='full' or d.get('phase_3_gaps'), 'phase_3_gaps empty in full mode'; ctx=json.load(open('.runs/solve-context.json')); assert d.get('run_id')==ctx.get('run_id'), 'run_id mismatch: trace=%s context=%s' % (d.get('run_id'), ctx.get('run_id'))"
+python3 .claude/scripts/verify-recurrence-guard.py --require-phase-3-gaps --require-run-id --skill solve  # .runs/solve-trace.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

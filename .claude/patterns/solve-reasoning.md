@@ -74,7 +74,10 @@ If any answer reveals a gap: revise Step 3. Same one-revision-pass-max rule.
 
 ### Prevention Analysis (when problem_type = defect)
 - **Root cause addressed**: [yes/no — explain]
-- **Recurrence risk**: [none | guarded (<mechanism>) | unguarded (<why acceptable>)]
+- **Recurrence risk**: [none | guarded | unguarded (<why acceptable>)]
+- **Recurrence guard**: when risk != none, emit one of:
+  - light-mode bullet — `- kind=<test|lint|hook|invariant> | artifact=<path|null> | rationale=<≤200ch>`
+  - full-mode JSON (required when kind=none) — see Full Mode "Recurrence guard" block
 - **Scope**: [all instances covered | N known instances, all addressed]
 ```
 
@@ -169,8 +172,49 @@ Using the constraint space from Phase 2 and self-answered gaps from Phase 3:
    - **Scope**: Are there other instances beyond the reported one? Solution must
      cover all known instances.
    - Output: `prevention_analysis` — root_cause_addressed (bool),
-     recurrence_risk (none|guarded|unguarded), recurrence_guard (description or null),
-     scope (all_covered bool, instance_count int).
+     recurrence_risk (none|guarded|unguarded), recurrence_guard (typed object — see
+     **Recurrence-Guard Schema** below), scope (all_covered bool, instance_count int).
+
+   #### Recurrence-Guard Schema (RMG v2 — required when `recurrence_risk != "none"`)
+
+   `recurrence_guard` is a typed object parsed by
+   `.claude/scripts/lib/recurrence_guard_parser.py`. Both shapes below are
+   accepted; the parser canonicalizes to the dict form.
+
+   **Full-mode shape (dict, preferred):**
+
+   ```json
+   {
+     "kind": "test | lint | hook | invariant | none",
+     "artifact": "<path-or-rule-id-or-null>",
+     "rationale": "<≤200 chars; what this guard catches>",
+     "unguardability_rationale": "<required when kind=none; ≥80 chars>"
+   }
+   ```
+
+   - `kind=test|lint|hook|invariant`: `artifact` MUST point to an existing file
+     path or a rule id; the lifecycle-finalize Step 4.6 gate enforces presence
+     in the PR diff.
+   - `kind=none`: `artifact` is null and `unguardability_rationale` MUST answer
+     **(a)** why no executable check expresses the invariant, AND **(b)** which
+     observation/human-review/monitoring process catches the next instance.
+     Prefer `kind=lint` (pointing at a markdown coherence-rule) over `kind=none`
+     for prose-only fixes.
+
+   **Light-mode shape (single bullet — only when `kind != none`):**
+
+   ```
+   - kind=<token> | artifact=<path|null> | rationale=<≤200ch>
+   ```
+
+   The bullet grammar is enforced by the parser. Pipes (`|`) are not allowed
+   inside rationale; switch to dict shape if needed. `kind=none` always
+   requires the dict shape.
+
+   During the post-Phase-A soak window the parser runs in tolerant mode
+   (`RMG_V2_TOLERANT=1` default) and accepts legacy free-text strings,
+   returning `kind="legacy_freetext"`; the lifecycle-finalize gate logs a
+   warning but does not block. The follow-up cutover PR flips tolerant off.
 
 Output:
 - **1 recommended solution** with ordered implementation checklist
@@ -249,8 +293,21 @@ Present the final output:
 ## Prevention Analysis (when problem_type = defect)
 - **Root cause addressed**: [yes/no — explain how the solution targets the cause]
 - **Recurrence risk**: [none | guarded | unguarded]
-- **Recurrence guard**: [description of prevention mechanism, or N/A]
+- **Recurrence guard**: [typed object per RMG v2 schema — full-mode JSON block
+  below, OR a single light-mode bullet `- kind=<token> | artifact=<path|null> |
+  rationale=<≤200ch>` when kind != none]
 - **Scope**: [N instances identified, all covered | single instance, no others found]
+
+### Recurrence guard (full-mode JSON; emit when kind=none or for clarity)
+
+```json
+{
+  "kind": "test | lint | hook | invariant | none",
+  "artifact": "<path-or-rule-id-or-null>",
+  "rationale": "<≤200 chars>",
+  "unguardability_rationale": "<required when kind=none; ≥80 chars covering (a) why no executable check expresses the invariant, (b) which review/observability/monitoring process catches the next instance>"
+}
+```
 
 ## Critic Convergence
 - Rounds completed: [1 or 2]

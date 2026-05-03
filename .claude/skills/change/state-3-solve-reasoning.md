@@ -88,7 +88,13 @@ if preliminary_type == 'Fix':
         'problem_type': 'defect',
         'root_cause_addressed': True,
         'recurrence_risk': '<none|guarded|unguarded>',
-        'recurrence_guard': '<description or null>',
+        # RMG v2 typed schema — see .claude/scripts/lib/recurrence_guard_parser.py.
+        # None when recurrence_risk == 'none'; otherwise a dict:
+        #   {"kind": "test|lint|hook|invariant|none",
+        #    "artifact": "<path-or-rule-id>" | None,
+        #    "rationale": "<≤200ch>",
+        #    "unguardability_rationale": "<≥80ch, only when kind == 'none'>"}
+        'recurrence_guard': None,
         'scope': {'all_covered': True, 'instance_count': 0}
     }
 json.dump(trace, open('.runs/solve-trace.json', 'w'), indent=2)
