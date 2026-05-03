@@ -118,6 +118,47 @@ Launch 3 agents concurrently:
 >
 > Output: list of findings, each with: file path, what it does, gap remaining.
 
+#### Phase 1a — Prior-Failure Dossier (RMG v2; runs only when `problem_type=defect`)
+
+After Agent 2 returns and BEFORE the lead synthesizes Phase 2, the lead builds
+a Prior-Failure Dossier. This is the **Recall** layer of RMG v2 — every defect
+run reads what prior fix attempts looked like on the same files / symptoms so
+the new design cannot accidentally repeat a failed approach.
+
+Inputs (derive from caller's context):
+- `divergence_files`: file set under repair (resolve: `divergence_point.file`
+  union over reproductions; change/solve: affected files in scope).
+- `symptom_signature`: canonicalized form of `reproductions[*].actual` (resolve)
+  or `$ARGUMENTS` summary (solve/change). Canonicalization is performed by
+  `.claude/scripts/lib/symptom_canonicalizer.py`.
+
+Mechanism: invoke `dossier_builder.build_dossier(divergence_files,
+symptom_signature, project_dir)` from
+`.claude/scripts/lib/dossier_builder.py`. The builder reads
+`.runs/fix-ledger.jsonl`, `.runs/recurrence-candidates.jsonl` (Phase B
+artifact), and `git log -- <files>` and returns a two-phase dossier.
+
+**Phase 1a — designer-visible reveal (anchoring resistance)**: only the
+following fields are surfaced to the designer for Phase 4 initial design:
+
+```
+{
+  "prior_run_id": str,
+  "files_touched": [str, ...],
+  "regression_test_present": bool,
+  "occurrence_count_60d": int
+}
+```
+
+`failure_mode` and `what_was_missed` are **withheld** during Phase 4. The
+designer must independently diagnose the problem; the dossier just flags
+that this area has prior incidents and how many.
+
+**Phase 4b — full reveal (cross-check, RMG v2 R2-A2)**: see Phase 4b below.
+
+When the dossier is empty, Phase 1a is a no-op. When `problem_type` is not
+`defect`, the dossier is not built at all.
+
 **Agent 3 — Hard Constraints** (Explore subagent)
 > Identify immutable boundaries: API contracts, backwards compatibility
 > requirements, performance budgets, security requirements, deployment
@@ -222,6 +263,39 @@ Output:
 
 For each alternative: name the tradeoff axis where it wins.
 
+### Phase 4b — Prior-Failure Reveal & Response (RMG v2; runs only when Phase 1a dossier is non-empty)
+
+After the initial design from Phase 4 is emitted, the lead reveals the
+remaining dossier fields (`failure_mode`, `what_was_missed`,
+`prior_commit_sha`) — i.e., the prose that was withheld from Phase 4 to
+prevent diagnostic anchoring (R2-A2).
+
+The designer then MUST emit a `prior_failure_response` array, one entry per
+Phase 1a dossier entry:
+
+```json
+"prior_failure_response": [
+  {
+    "prior_run_id": "<from dossier>",
+    "failure_mode": "<from Phase 4b reveal>",
+    "how_addressed": "<≤300 chars: how the new design addresses this prior failure mode>",
+    "concrete_delta_step_or_guard": "<implementation step number OR guard artifact path that did NOT appear in the prior fix's commit>"
+  }
+]
+```
+
+**`concrete_delta_step_or_guard` is required.** It must reference either:
+- A step number from the Phase 4 implementation checklist that introduces
+  something new the prior commit did not contain, OR
+- A `recurrence_guard.artifact` path that did not exist in the prior fix.
+
+This makes "we addressed it by being more careful" non-passing — the
+designer must point at a concrete artifact or step that demonstrably
+diverges from the prior attempt. solve-critic Phase 5 verifies this in
+Phase D (Layer 2).
+
+If the dossier is empty, Phase 4b is a no-op.
+
 ### Phase 5 — Critic Loop (1 Named agent, max 2 rounds)
 
 Spawn the `solve-critic` Named agent (`subagent_type: solve-critic`).
@@ -289,6 +363,10 @@ Present the final output:
 - **TYPE B** (system constraints): [list, or "None"]
 - **TYPE C** (open questions): [list, or "None"]
 - **Caveats**: [unresolved TYPE A from round 2, if any, or "None"]
+
+## Prior-Failure Response (when Phase 1a dossier is non-empty)
+- One entry per dossier row. Each entry MUST cite a concrete delta step or
+  guard artifact absent from the prior commit (Phase 4b contract).
 
 ## Prevention Analysis (when problem_type = defect)
 - **Root cause addressed**: [yes/no — explain how the solution targets the cause]
@@ -359,4 +437,10 @@ default, full when complexity warrants it.
 - **Domain-specific critics**: callers may inject additional critic vectors into Phase 5 (see `/resolve` Step 5b vectors)
 - **Post-validation iteration**: callers may apply their own domain validation after solve-reasoning completes and iterate once if rejected
 - **Prevention activation**: Callers set `problem_type = "defect"` to activate prevention questions. When not set, prevention dimension is skipped entirely. The pattern treats this as a pure input — it never infers problem_type on its own.
+- **RMG v2 dossier activation**: When `problem_type = "defect"` is set, the
+  Phase 1a dossier and Phase 4b reveal run **for all three callers** uniformly
+  (R2-A6). Callers do not need bespoke wiring — solve-reasoning pulls the
+  dossier from the shared artifacts (`.runs/fix-ledger.jsonl` and
+  `.runs/recurrence-candidates.jsonl`). When the artifacts are empty/absent
+  the dossier is empty and Phase 4b is a no-op.
 - **Generic vs domain separation**: Core prevention handles root cause, recurrence, and scope coverage for all defects. Callers add domain-specific validation only (e.g., config universality, deployment constraints). Never re-implement generic prevention in a caller.

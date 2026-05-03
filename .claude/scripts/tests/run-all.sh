@@ -54,6 +54,7 @@ SUITES=(
   ".claude/scripts/tests/test_markdown_cross_file_line_reference.py"
   ".claude/scripts/tests/test_recurrence_guard_parser.py"
   ".claude/scripts/tests/test_recurrence_detector.py"
+  ".claude/scripts/tests/test_dossier_builder.py"
 )
 
 FAIL=0

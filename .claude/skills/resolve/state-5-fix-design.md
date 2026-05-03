@@ -57,6 +57,12 @@ When `solve_depth = "full"`: call `.claude/patterns/solve-reasoning.md` full mod
   - Agent 1 = divergence investigation (trace the assumption violation, git blame context)
   - Agent 2 = blast radius + prior fix art (grep for the causal pattern broadly, find past fixes for similar patterns)
   - Agent 3 = fix constraints (validator compatibility, archetype universality, backwards compatibility)
+- **Phase 1a Dossier (RMG v2)**: build a Prior-Failure Dossier via
+  `.claude/scripts/lib/dossier_builder.py` with
+  `divergence_files = union of reproductions[*].divergence_point.file` and
+  `symptom_signature = canonicalize_symptom(reproductions[*].actual)`. Phase 1a
+  reveals only minimal fields to the designer; Phase 4b reveals the rest and
+  the designer emits `prior_failure_response`.
 - **Phase 3 gap resolution**: autonomous — AI self-answers research gaps using first-principles reasoning
 - **Phase 5 Critic** (STATE 5d): domain-specific vectors configured in Step 5c below, executed in STATE 5d
 - **Output mapping**:
@@ -118,7 +124,16 @@ from prevention_analysis.recurrence_guard).
               'all_covered': True,
               'instance_count': 0
           }
-      }
+      },
+      # RMG v2 Phase C: Prior-Failure Response. One entry per Phase 1a dossier
+      # entry. Each entry MUST cite a concrete delta step or guard artifact
+      # absent from the prior commit (R2-A2). Empty list when dossier was empty.
+      # Schema:
+      #   {"prior_run_id": str,
+      #    "failure_mode": str,
+      #    "how_addressed": str (≤300 chars),
+      #    "concrete_delta_step_or_guard": str (step #N OR guard artifact path)}
+      'prior_failure_response': []
   }
   json.dump(trace, open('.runs/solve-trace.json', 'w'), indent=2)
   "

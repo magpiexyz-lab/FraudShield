@@ -45,6 +45,11 @@ to activate the prevention dimension.
           'recurrence_guard': None,
           'scope': {'all_covered': True, 'instance_count': 0}
       }
+      # RMG v2 Phase C: Prior-Failure Response. One entry per Phase 1a
+      # dossier entry; each entry cites a concrete delta step or guard
+      # artifact absent from the prior commit (R2-A2). Empty when dossier
+      # was empty.
+      trace['prior_failure_response'] = []
   json.dump(trace, open('.runs/solve-trace.json', 'w'), indent=2)
   "
   ```
