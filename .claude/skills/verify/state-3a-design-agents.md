@@ -129,11 +129,13 @@ fi
 
 **`review_method="boundary-skip-all-pages"`** is a state-3a-synthetic value, distinct from per-page `boundary-skip` (#1061). It does NOT appear in `render-review-detection.md`'s enum and is not consumed by the merger (the merger is not invoked when Stage 0 fires).
 
+> **STOP HERE when Stage 0 fired (`ALL_PAGES_FAST_PATH=true`).** Skip everything between this directive and the **POSTCONDITIONS** block at the end of state-3a — the pre-flight, Stage 1 per-page Agent spawns, Stage 1b shared-fixes, and Stage 1c shared-component agent are ALL bypassed. The lead-synthesized aggregate covers state-3a's outputs; the VERIFY block at the end has its own Stage 0 short-circuit branch. Concretely: when `[ "$ALL_PAGES_FAST_PATH" = "true" ]`, the lead MUST jump directly to `bash .claude/scripts/advance-state.sh verify 3a`.
+
 If `ALL_PAGES_FAST_PATH=false`, proceed to the existing pre-flight + Stage 1 below.
 
 #### Pre-flight: Thin-wrapper detection and claim assignment
 
-> **Skip when Stage 0 fired.** If `.runs/all-pages-fast-path-decision.json` exists, this pre-flight is bypassed (the lead-synthesized aggregate already covers state-3a's outputs). Concretely: the steps below run only when `ALL_PAGES_FAST_PATH != "true"`.
+> **Skip when Stage 0 fired** (per the STOP-HERE directive above). The Pre-flight + Stage 1 + Stage 1b + Stage 1c blocks below run only when `ALL_PAGES_FAST_PATH != "true"`. A lead reading this section after the STOP-HERE directive has misordered execution.
 
 Before spawning any design-critic agents, detect pages whose visual content
 lives entirely in shared components and assign those components as "claims."

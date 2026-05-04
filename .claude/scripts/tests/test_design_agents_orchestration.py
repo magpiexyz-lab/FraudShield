@@ -31,6 +31,8 @@ ROOT = Path(__file__).resolve().parents[3]
 MERGE_SCRIPT = ROOT / ".claude/scripts/merge-design-critic-traces.py"
 WRITE_AGENT_TRACE = ROOT / ".claude/scripts/write-agent-trace.sh"
 STATE_3A_MD = ROOT / ".claude/skills/verify/state-3a-design-agents.md"
+STATE_3B_MD = ROOT / ".claude/skills/verify/state-3b-quality-gate.md"
+STATE_7A_MD = ROOT / ".claude/skills/verify/state-7a-write-report.md"
 STATE_REGISTRY = ROOT / ".claude/patterns/state-registry.json"
 AGENT_REGISTRY = ROOT / ".claude/patterns/agent-registry.json"
 GATE_HOOK = ROOT / ".claude/hooks/state-completion-gate.sh"
@@ -118,6 +120,81 @@ class TestStage0Detector(unittest.TestCase):
                       "review_method=boundary-skip-all-pages missing")
         self.assertIn("lead-synthesized", text,
                       "lead-synthesized provenance missing")
+
+    def test_state3a_imperative_skip_directive(self):
+        """state-3a must imperatively halt the lead from running pre-flight +
+        Stage 1 + Stage 1b + Stage 1c when Stage 0 fired (post-merge fix-up:
+        soft callouts are insufficient — leads can miss them).
+        """
+        text = STATE_3A_MD.read_text()
+        self.assertIn("STOP HERE", text,
+                      "state-3a missing imperative STOP HERE directive when Stage 0 fired")
+        # The directive must appear AFTER the Stage 0 ACTIONS block and BEFORE
+        # the existing Pre-flight section (i.e., it gates the rest of state-3a).
+        stop_idx = text.find("STOP HERE")
+        preflight_idx = text.find("Pre-flight: Thin-wrapper detection")
+        stage0_idx = text.find("Stage 0: All-pages fast-path detector")
+        self.assertGreater(stop_idx, stage0_idx,
+                           "STOP HERE directive must appear after Stage 0 heading")
+        self.assertLess(stop_idx, preflight_idx,
+                        "STOP HERE directive must appear before Pre-flight section")
+
+    def test_state3b_imperative_skip_step_b(self):
+        """state-3b Step B (consistency-checker spawn) must imperatively halt
+        the lead from spawning the agent when Stage 0 fired.
+        """
+        text = STATE_3B_MD.read_text()
+        # Locate Step B section. Scope search to the next sibling/parent
+        # heading — must skip past Step B's own `#####` prefix and not match
+        # `####` substrings inside `#####` headings.
+        step_b_idx = text.find("##### Step B: Spawn consistency checker")
+        self.assertGreater(step_b_idx, -1, "Step B heading missing")
+        # Search starting AFTER Step B's heading line (skip its own `#####`).
+        search_start = text.find("\n", step_b_idx) + 1
+        # Find the next 4-hash heading (#### at line start, NOT prefixed by
+        # another #) — that's the Post-design-critic lint gate.
+        m = re.search(r"^####(?!#)", text[search_start:], re.MULTILINE)
+        next_heading_idx = search_start + m.start() if m else len(text)
+        step_b_section = text[step_b_idx:next_heading_idx]
+        self.assertIn("STOP HERE", step_b_section,
+                      "Step B missing imperative STOP HERE directive when Stage 0 fired")
+        self.assertIn("all-pages-fast-path-decision.json", step_b_section,
+                      "Step B skip directive must reference decision artifact")
+
+    def test_state3b_guards_use_file_existence_not_subprocess_local_var(self):
+        """Each fenced bash block in state-3b is its own subprocess. Guards
+        MUST gate on `.runs/all-pages-fast-path-decision.json` file existence,
+        NOT on a $STAGE0_FAST_PATH bash variable that doesn't persist between
+        fences (post-merge fix-up: the variable-based guards were purely
+        decorative because each fence got a fresh subprocess with empty env).
+        """
+        text = STATE_3B_MD.read_text()
+        self.assertNotRegex(
+            text, r'\$STAGE0_FAST_PATH',
+            "state-3b uses $STAGE0_FAST_PATH which doesn't persist across "
+            "separate fenced bash blocks — guards become decorative. "
+            "Use `if [ ! -f .runs/all-pages-fast-path-decision.json ]` instead.",
+        )
+        # Positive assertion: the actual file-existence guards must be present
+        # before each of the three skip targets (Stage 1c loop, merger, post-merge validation).
+        guard_pattern = r'if \[ ! -f \.runs/all-pages-fast-path-decision\.json \]'
+        guard_count = len(re.findall(guard_pattern, text))
+        self.assertGreaterEqual(guard_count, 3,
+                                f"expected ≥3 file-existence guards in state-3b "
+                                f"(Stage 1c, Step A merger, post-merge validation); found {guard_count}")
+
+    def test_state7a_pages_remaining_field_sources_documented(self):
+        """state-7a Notes cell must tell the lead WHERE M, N, and slug-list
+        come from in the trace (post-merge fix-up: parameterized format alone
+        is insufficient — the spec must specify field provenance).
+        """
+        text = STATE_7A_MD.read_text()
+        self.assertIn("design-consistency-checker", text,
+                      "state-7a missing design-consistency-checker row")
+        self.assertIn("trace.pages_reviewed", text,
+                      "state-7a Notes cell missing trace.pages_reviewed source")
+        self.assertIn("trace.pages_remaining", text,
+                      "state-7a Notes cell missing trace.pages_remaining source")
 
 
 class TestStage0GateExemption(unittest.TestCase):

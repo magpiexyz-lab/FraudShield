@@ -27,13 +27,10 @@ post-design-critic lint gate and lead-side validation.
 ```bash
 if [ -f .runs/all-pages-fast-path-decision.json ]; then
   echo "Stage 0 fast-path active — skipping Stage 1c, Step A merger, Step B consistency-checker spawn"
-  STAGE0_FAST_PATH=true
-else
-  STAGE0_FAST_PATH=false
 fi
 ```
 
-The blocks below run only when `STAGE0_FAST_PATH=false`.
+The blocks below each gate on file existence directly (`.runs/all-pages-fast-path-decision.json`) — bash variables do NOT persist between separate fenced bash blocks because each fence is its own subprocess.
 
 #### Stage 1c: Pre-merge validate-recovery for self-degraded traces (#1042)
 
@@ -49,7 +46,7 @@ merge. Without this stamp, the aggregate trace cannot satisfy the
 AND recovery_validated==true`).
 
 ```bash
-if [ "$STAGE0_FAST_PATH" != "true" ]; then
+if [ ! -f .runs/all-pages-fast-path-decision.json ]; then
   for trace in .runs/agent-traces/design-critic-*.json; do
     [[ "$trace" == *"-shared.json" ]] && continue
     [[ "$trace" == *"/design-critic.json" ]] && continue
@@ -84,7 +81,7 @@ which is correct (you cannot clear `aggregate_ok` on a broken build).
 Before spawning the consistency checker, the lead merges per-page traces into `design-critic.json`. The merge logic lives in a dedicated script so `agent-trace-write-guard.sh` can authorise exactly this write (issue #1045 — inline `python3 -c` blocks that open `agent-traces/*` for write are blocked by the guard's open-for-write regex):
 
 ```bash
-if [ "$STAGE0_FAST_PATH" != "true" ]; then
+if [ ! -f .runs/all-pages-fast-path-decision.json ]; then
   python3 .claude/scripts/merge-design-critic-traces.py
 fi
 ```
@@ -93,7 +90,7 @@ Exit codes: `0` merge succeeded, `1` no per-page traces found, `2` per-page trac
 
 After writing the merged trace, validate merge correctness:
 ```bash
-if [ "$STAGE0_FAST_PATH" != "true" ]; then
+if [ ! -f .runs/all-pages-fast-path-decision.json ]; then
   python3 -c "
 import json, glob
 merged = json.load(open('.runs/agent-traces/design-critic.json'))
@@ -113,9 +110,16 @@ fi
 
 ##### Step B: Spawn consistency checker (cross-page visual review only)
 
-> **Skip when Stage 0 fired.** The lead-synthesized `design-consistency-checker.json` aggregate already exists with `verdict=pass, inconsistent_count=0` (no per-page rendering changed in this PR, so cross-page consistency cannot have regressed).
+> **STOP HERE when Stage 0 fired (`.runs/all-pages-fast-path-decision.json` exists).** The lead-synthesized `design-consistency-checker.json` aggregate already exists with `verdict=pass, inconsistent_count=0`. Do NOT spawn the agent — its trace would collide with the lead-synthesized one and waste turns. Skip directly to the post-design-critic lint gate. Concretely:
+>
+> ```bash
+> if [ -f .runs/all-pages-fast-path-decision.json ]; then
+>   echo "Stage 0 active — skipping Step B consistency-checker spawn"
+>   # Jump to the post-design-critic lint gate below; do NOT execute the Agent tool call.
+> fi
+> ```
 
-Spawn the `design-consistency-checker` agent (`subagent_type: design-consistency-checker`). It reads per-page traces and screenshots all pages for cross-page consistency — but does NOT merge traces or fix code.
+Spawn the `design-consistency-checker` agent (`subagent_type: design-consistency-checker`) **only when the STOP-HERE check above did not fire** (i.e., `.runs/all-pages-fast-path-decision.json` does NOT exist). It reads per-page traces and screenshots all pages for cross-page consistency — but does NOT merge traces or fix code.
 
 Pass:
 - `base_url`: `http://localhost:3000`
