@@ -260,6 +260,23 @@ if echo "$COMMAND" | grep -qE "$ALLOWED_REGEX_AUGMENT_TRACE"; then
   fi
 fi
 
+# AOC v1.2 (PR3): audit-only sanctioned-skip writer for fixer agents that
+# were blocked from spawning by an upstream hard gate. Required to include
+# both --reason (the canonical hard_gate_failure enum) and
+# --upstream-merge-path (the proof artifact). The writer itself enforces
+# fixer-only restriction, upstream validation, and unresolved_critical
+# computation. Without this allow-rule, the writer would be caught by the
+# final catch-all below and every #1250 fixer-skip would be denied.
+ALLOWED_REGEX_SKIPPED_FIXER='(^|[[:space:]]|&&|;|\|)[[:space:]]*bash[[:space:]]+[./]*\.?claude/scripts/write-skipped-fixer-trace\.sh[[:space:]]'
+if echo "$COMMAND" | grep -qE "$ALLOWED_REGEX_SKIPPED_FIXER"; then
+  if echo "$COMMAND" | grep -qE 'write-skipped-fixer-trace\.sh[^&|;]*--reason' \
+     && echo "$COMMAND" | grep -qE 'write-skipped-fixer-trace\.sh[^&|;]*--upstream-merge-path'; then
+    exit 0
+  else
+    deny "Agent trace write guard: write-skipped-fixer-trace.sh invocation lacks --reason and/or --upstream-merge-path (both required AOC v1.2; closes #1250)."
+  fi
+fi
+
 # ── Final catch-all: any direct write operator targeting agent-traces ──
 # Use the fd-redirect-stripped NORM so `cmd 2>&1 > agent-traces/foo.json` still
 # denies correctly (on the real `>` that writes the file) but

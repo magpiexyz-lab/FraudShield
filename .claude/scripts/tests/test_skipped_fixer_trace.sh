@@ -108,6 +108,39 @@ expect_fail "caller --unresolved-critical rejected" \
 expect_fail "invalid --reason rejected" \
   bash -c "cd $TMPDIR && bash .claude/scripts/write-skipped-fixer-trace.sh security-fixer --reason made_up --upstream-merge-path .runs/security-merge.json"
 
+# STUB-PROTECTION contract: writer must REFUSE to overwrite non-stub trace.
+# Without this guard, a buggy state-file or duplicate invocation could
+# silently downgrade a real verdict=pass to audit-only blocked.
+echo ""
+echo "  Verifying stub-protection (refuse to overwrite non-stub trace)..."
+# Synthesize a non-stub fixer trace (verdict=pass).
+python3 -c "
+import json
+json.dump({'agent':'quality-fixer','status':'completed','verdict':'pass','provenance':'self','result':'fixed'},
+          open('$TMPDIR/.runs/agent-traces/quality-fixer.json','w'))
+json.dump({'fixer_skipped':True,'reason':'hard_gate_failure','issues':[{'severity':'critical'}]},
+          open('$TMPDIR/.runs/quality-merge.json','w'))
+"
+set +e
+( cd "$TMPDIR" && bash .claude/scripts/write-skipped-fixer-trace.sh quality-fixer --reason hard_gate_failure --upstream-merge-path .runs/quality-merge.json ) >/dev/null 2>&1
+RC=$?
+set -e
+if [[ $RC -ne 0 ]]; then
+  ACTUAL=$(python3 -c "import json; t=json.load(open('$TMPDIR/.runs/agent-traces/quality-fixer.json')); print(t.get('verdict')+'/'+t.get('provenance'))")
+  if [[ "$ACTUAL" == "pass/self" ]]; then
+    PASS=$((PASS+1))
+    echo "  OK: stub-protection refused overwrite; original verdict=pass/self preserved"
+  else
+    FAIL=$((FAIL+1))
+    FAILS+=("stub-protection passed but trace was modified to $ACTUAL")
+    echo "  FAIL: writer rejected but trace was modified: $ACTUAL"
+  fi
+else
+  FAIL=$((FAIL+1))
+  FAILS+=("stub-protection FAILED — writer overwrote non-stub trace")
+  echo "  FAIL: writer overwrote non-stub trace (stub-protection broken)"
+fi
+
 # AUDIT-ONLY contract: trace must fail all pass_* predicates.
 echo ""
 echo "  Verifying audit-only contract (verdict must fail every pass_* predicate)..."

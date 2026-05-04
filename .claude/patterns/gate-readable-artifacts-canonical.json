@@ -762,6 +762,18 @@
       "rationale": "Read by VERIFY blocks in skills: observe."
     },
     {
+      "path": ".runs/observation-evidence.json",
+      "consumers": [
+        "observation-phase.md (Step 4 — observer reads envelope)",
+        "compliance-audit.py:check_lead_deliverable_compliance"
+      ],
+      "writers": [
+        ".claude/scripts/write-observation-evidence.py"
+      ],
+      "scope": "transient-cross-skill",
+      "rationale": "AOC v1.2 (closes #1259): unified observer evidence envelope. Observer reads ONLY this artifact in Step 4; the envelope schema is the input contract. Promoted from gate-readable-artifacts-pending-review.json (was 'no_reader' / 'exempt (telemetry-only)') because it now has TWO real consumers: observer (via prompt) and compliance-audit (sibling-required for retrospective-result.json). Direct Write/Edit blocked by gate-artifact-write-gate.sh — must go through write-observation-evidence.py which routes through write-gate-artifact.sh canonical writer."
+    },
+    {
       "path": ".runs/observe-result.json",
       "consumers": [
         "state-registry:iterate-check.c3"

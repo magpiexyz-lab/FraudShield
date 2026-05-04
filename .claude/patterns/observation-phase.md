@@ -167,8 +167,36 @@ manifest at `.claude/scripts/lib/observer_evidence_families.py`. No
 exclusion mechanism — adding a family requires editing that constant
 (visible in PR diff).
 
+**Identity-resolution path** — observation-phase typically runs from
+skill-epilogue.md AFTER lifecycle-finalize.sh has marked the active
+context `completed:true`. In that case `resolve_active_identity` returns
+empty and the canonical writer needs explicit source flags. Read the
+epilogue context for the source identity:
+
 ```bash
-python3 .claude/scripts/write-observation-evidence.py
+# Derive source identity from the skill-epilogue context. SKILL_KEY is
+# typically already exported by state-99-epilogue.md Step 0.
+SKILL_KEY="${SKILL_KEY:-$(python3 -c "
+import json, glob
+best = None; best_ts = ''
+for f in glob.glob('.runs/*-context.json'):
+    if f.endswith('/epilogue-context.json'): continue
+    try: d = json.load(open(f))
+    except: continue
+    ts = d.get('timestamp','') or ''
+    if ts >= best_ts: best=d; best_ts=ts
+print((best or {}).get('skill',''))
+")}"
+SOURCE_RUN_ID=$(python3 -c "import json; print(json.load(open('.runs/${SKILL_KEY}-context.json')).get('run_id',''))")
+
+# Try the no-override path first (works pre-completion, e.g., embedded
+# observation-phase calls from /verify or /resolve mid-skill). If that
+# fails (post-completion: all *-context.json have completed:true), fall
+# back to explicit source flags.
+python3 .claude/scripts/write-observation-evidence.py 2>/dev/null \
+  || python3 .claude/scripts/write-observation-evidence.py \
+       --source-run-id "$SOURCE_RUN_ID" \
+       --source-skill "$SKILL_KEY"
 ```
 
 The envelope schema includes:

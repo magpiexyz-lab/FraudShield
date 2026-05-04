@@ -322,14 +322,6 @@
       "recommendation": "exempt (telemetry-only)"
     },
     {
-      "path": ".runs/observation-evidence.json",
-      "classification": "no_reader",
-      "writers": [
-        ".claude/scripts/lifecycle-init.sh"
-      ],
-      "recommendation": "exempt (telemetry-only)"
-    },
-    {
       "path": ".runs/observe-evidence-check.json",
       "classification": "no_reader",
       "writers": [

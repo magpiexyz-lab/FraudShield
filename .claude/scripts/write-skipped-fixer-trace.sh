@@ -229,6 +229,50 @@ TRACES_DIR="$PROJECT_DIR/.runs/agent-traces"
 mkdir -p "$TRACES_DIR"
 TARGET_TRACE="$TRACES_DIR/$AGENT.json"
 
+# AOC v1.2 stub-protection (mirrors write-recovery-trace.sh:249-269 pattern).
+# If the target trace already exists AND is NOT a stub (status:started + no
+# verdict), REFUSE to overwrite. This prevents the failure mode where the
+# fixer actually ran successfully (verdict:pass), wrote its trace, and
+# then a buggy state-file or lead miscall re-invokes this writer — which
+# would silently downgrade the pass to audit-only blocked, halting the
+# pipeline on a false positive.
+if [[ -f "$TARGET_TRACE" ]]; then
+  TRACE_STATE=$(python3 -c "
+import json, sys
+try:
+    t = json.load(open('$TARGET_TRACE'))
+except Exception as e:
+    print('READ_ERROR'); sys.exit(0)
+status = t.get('status', '')
+verdict = t.get('verdict')
+provenance = t.get('provenance', '')
+# Already lead-skipped: idempotent overwrite is OK (re-run safety).
+if provenance == 'lead-skipped':
+    print('SKIP_OK')
+elif status == 'started' and not verdict:
+    print('STUB')
+else:
+    print(f'NON_STUB:status={status},verdict={verdict},provenance={provenance}')
+" 2>/dev/null)
+  case "$TRACE_STATE" in
+    STUB|SKIP_OK) ;;  # safe to (re)write
+    READ_ERROR)
+      echo "WARN: write-skipped-fixer-trace.sh — existing trace at $TARGET_TRACE is unreadable; overwriting." >&2
+      ;;
+    NON_STUB:*)
+      echo "ERROR: write-skipped-fixer-trace.sh — REFUSE to overwrite non-stub trace at $TARGET_TRACE" >&2
+      echo "  Existing trace state: ${TRACE_STATE#NON_STUB:}" >&2
+      echo "  This writer is for sanctioned-skip ONLY — when the fixer was" >&2
+      echo "  blocked from spawning by an upstream gate. If the fixer DID" >&2
+      echo "  run and wrote a real trace, calling this writer would silently" >&2
+      echo "  downgrade verdict=pass to verdict=blocked + result=skipped," >&2
+      echo "  halting the pipeline on a false positive. Investigate the" >&2
+      echo "  caller — likely a state-file branch error or duplicate invocation." >&2
+      exit 1
+      ;;
+  esac
+fi
+
 AGENT_ENV="$AGENT" \
 SKILL_ENV="$ACTIVE_SKILL" \
 RUN_ID_ENV="$ACTIVE_RUN_ID" \
