@@ -216,6 +216,16 @@ if [[ -f "$SPAWN_LOG" && -f "$_SCG_MANIFEST" ]]; then
   PROVENANCE_RESULT=$(python3 -c "
 import json, glob, os, sys
 
+# #1256: Sanctioned coverage_provider allowlist for lead-synthesized aggregates
+# whose corresponding agents were never spawned (Stage 0 fast-path). Mirrors
+# SANCTIONED_DEGRADED_REASONS in merge-design-critic-traces.py:44 — adding a
+# new path: append here AND document in agent-output-contract.md. The exemption
+# at the per-trace check below skips the no-spawn-record error for traces with
+# provenance='lead-synthesized' AND coverage_provider in this set.
+SANCTIONED_COVERAGE_PROVIDERS = frozenset({
+    '.runs/all-pages-fast-path-decision.json',
+})
+
 manifest = json.load(open('$_SCG_MANIFEST'))
 declared = set(manifest.get('agents', {}).keys())
 if not declared:
@@ -317,6 +327,13 @@ for tf in sorted(glob.glob(os.path.join(traces_dir, '*.json'))):
 
     # Provenance check: base agent must appear in spawn-log
     if base not in spawned:
+        # #1256 Stage 0 exemption: lead-synthesized aggregate from a sanctioned
+        # all-pages-fast-path detector. Agent was never spawned by design — the
+        # decision artifact (coverage_provider) is the proof of coverage.
+        prov = td.get('provenance')
+        cp = td.get('coverage_provider', '')
+        if prov == 'lead-synthesized' and cp in SANCTIONED_COVERAGE_PROVIDERS:
+            continue
         errors.append(f'{bn}: no spawn record for {base}')
 
 if errors:

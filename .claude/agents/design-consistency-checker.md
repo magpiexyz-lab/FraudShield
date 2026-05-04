@@ -11,7 +11,7 @@ disallowedTools:
   - Edit
   - Write
   - Agent
-maxTurns: 500
+maxTurns: 1000
 ---
 
 # Design Consistency Checker

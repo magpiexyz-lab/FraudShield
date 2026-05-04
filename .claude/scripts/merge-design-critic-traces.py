@@ -247,6 +247,71 @@ def main() -> int:
     if effective_siblings and len(validated_fallback_pages) == len(effective_siblings):
         merged["all_validated_fallback"] = True
 
+    # #1274: Lead-applied shared-fix credit at merge time.
+    # When the lead applies shared-component fixes during state-3a Stage 1b
+    # (logged via write-fix-ledger.py --lead-fix), per-page design-critic
+    # traces are immutable post-write and still record the pre-fix
+    # `unresolved_shared` count. Consult fix-ledger.jsonl to credit those
+    # lead-applied fixes against the aggregate's unresolved_sections.
+    #
+    # Filter notes:
+    #   - provenance is filtered by the LITERAL string 'lead' (not 'lead-fix';
+    #     write-fix-ledger.py:373 writes literal 'lead' for --lead-fix mode)
+    #     plus 'lead-on-behalf' for the case where lead transcribed an
+    #     agent's reported aggregate fix.
+    #   - run_id filter prevents cross-run pollution per #1267 hardening.
+    #   - per-page traces remain immutable; only the merged aggregate is
+    #     corrected. The audit trail lives in merged["lead_fix_corrections"].
+    ledger_path = ".runs/fix-ledger.jsonl"
+    lead_fixed_files: set[str] = set()
+    if os.path.exists(ledger_path):
+        with open(ledger_path) as _f:
+            for _line in _f:
+                _line = _line.strip()
+                if not _line:
+                    continue
+                try:
+                    _e = json.loads(_line)
+                except Exception:
+                    continue
+                if not run_id or _e.get("run_id") != run_id:
+                    continue
+                if _e.get("provenance") in ("lead", "lead-on-behalf"):
+                    _fp = _e.get("file")
+                    if _fp:
+                        lead_fixed_files.add(_fp)
+
+    lead_fix_corrections: list = []
+    if lead_fixed_files:
+        for batch in batches:
+            if batch in (shared_base, aggregate_path):
+                continue
+            try:
+                with open(batch) as _f:
+                    _d = json.load(_f)
+            except Exception:
+                continue
+            for _si in _d.get("shared_issues", []) or []:
+                if _si.get("file") in lead_fixed_files:
+                    page_key = (
+                        os.path.basename(batch)
+                        .replace("design-critic-", "")
+                        .replace(".json", "")
+                    )
+                    lead_fix_corrections.append({
+                        "page": page_key,
+                        "file": _si["file"],
+                        "section": _si.get("section"),
+                    })
+        if lead_fix_corrections:
+            merged["lead_fix_corrections"] = lead_fix_corrections
+            creditable = len(lead_fix_corrections)
+            merged["unresolved_sections"] = max(
+                0, merged.get("unresolved_sections", 0) - creditable
+            )
+            if merged["verdict"] == "unresolved" and merged["unresolved_sections"] == 0:
+                merged["verdict"] = "fixed"
+
     # Stage 1c shared-component verdict upgrade
     if os.path.exists(shared_base):
         try:

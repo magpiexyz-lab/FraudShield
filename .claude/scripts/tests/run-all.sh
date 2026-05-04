@@ -57,6 +57,7 @@ SUITES=(
   ".claude/scripts/tests/test_dossier_builder.py"
   ".claude/scripts/tests/test_concern_id_stability.py"
   ".claude/scripts/tests/test_verify_rmg_guard_artifact.py"
+  ".claude/scripts/tests/test_design_agents_orchestration.py"
 )
 
 FAIL=0

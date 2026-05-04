@@ -1,7 +1,7 @@
 {
   "$comment": "GRAIM v2 — auto-classified candidates discovered outside state-registry VERIFY blocks. Each entry tagged with classification. hook_read entries should be promoted to canonical via Slice 3 migration. no_reader entries are exempt (telemetry-only). inline_md_read entries need human inclusion/exclusion decision.",
   "version": "1.0",
-  "generated_at": "2026-04-30T11:14:14Z",
+  "generated_at": "2026-05-04T06:51:10Z",
   "generator": ".claude/scripts/derive-graim-manifest.py",
   "artifacts": [
     {
@@ -26,6 +26,14 @@
       "writers": [
         ".claude/scripts/init-context.sh",
         ".claude/skills/iterate/state-x0-discover-mvps.md"
+      ],
+      "recommendation": "exempt (telemetry-only)"
+    },
+    {
+      "path": ".runs/agent-traces/build-info-collector.json",
+      "classification": "no_reader",
+      "writers": [
+        ".claude/skills/verify/state-2-phase1-parallel.md"
       ],
       "recommendation": "exempt (telemetry-only)"
     },
@@ -307,22 +315,11 @@
       "classification": "no_reader",
       "writers": [
         ".claude/patterns/observation-phase.md",
-        ".claude/scripts/aggregate-hook-friction.py"
+        ".claude/scripts/aggregate-hook-friction.py",
+        ".claude/scripts/check-observation-artifacts.sh",
+        ".claude/scripts/compliance-audit.py"
       ],
       "recommendation": "exempt (telemetry-only)"
-    },
-    {
-      "path": ".runs/iterate-check-context.json",
-      "classification": "inline_md_read",
-      "writers": [
-        ".claude/skills/iterate/state-c0-read-ads-context.md",
-        ".claude/skills/iterate/state-c2-auto-fix.md",
-        ".claude/skills/iterate/state-c3-report.md"
-      ],
-      "recommendation": "human review needed",
-      "readers_in_md": [
-        ".claude/skills/iterate/state-c2-auto-fix.md"
-      ]
     },
     {
       "path": ".runs/observation-evidence.json",
@@ -426,19 +423,6 @@
       "recommendation": "exempt (telemetry-only)"
     },
     {
-      "path": ".runs/review-context.json",
-      "classification": "inline_md_read",
-      "writers": [
-        ".claude/agents/review-challenger.md",
-        ".claude/skills/review/state-0-read-context.md",
-        ".claude/skills/review/state-6-commit-pr.md"
-      ],
-      "recommendation": "human review needed",
-      "readers_in_md": [
-        ".claude/skills/review/state-6-commit-pr.md"
-      ]
-    },
-    {
       "path": ".runs/slot-intent-migration-suggestions.json",
       "classification": "no_reader",
       "writers": [
@@ -479,18 +463,6 @@
         ".claude/patterns/solve-reasoning.md"
       ],
       "recommendation": "exempt (telemetry-only)"
-    },
-    {
-      "path": ".runs/spec-context.json",
-      "classification": "inline_md_read",
-      "writers": [
-        ".claude/skills/spec/state-0-input-parse.md",
-        ".claude/skills/spec/state-7-output.md"
-      ],
-      "recommendation": "human review needed",
-      "readers_in_md": [
-        ".claude/skills/spec/state-7-output.md"
-      ]
     },
     {
       "path": ".runs/stack-knowledge-audit-filed.json",
@@ -534,35 +506,11 @@
       "recommendation": "exempt (telemetry-only)"
     },
     {
-      "path": ".runs/upgrade-context.json",
-      "classification": "inline_md_read",
-      "writers": [
-        ".claude/skills/upgrade/state-0-input-branch.md",
-        ".claude/skills/upgrade/state-1-merge-validate.md",
-        ".claude/skills/upgrade/state-2-memory-reconcile.md",
-        ".claude/skills/upgrade/state-3-commit-pr.md"
-      ],
-      "recommendation": "human review needed",
-      "readers_in_md": [
-        ".claude/skills/upgrade/state-0-input-branch.md",
-        ".claude/skills/upgrade/state-1-merge-validate.md",
-        ".claude/skills/upgrade/state-3-commit-pr.md"
-      ]
-    },
-    {
       "path": ".runs/upgrade-migration-applied.json",
       "classification": "no_reader",
       "writers": [
         ".claude/scripts/migrate-experiment-yaml.py",
         ".claude/skills/upgrade/state-1-merge-validate.md"
-      ],
-      "recommendation": "exempt (telemetry-only)"
-    },
-    {
-      "path": ".runs/verify-lifecycle.json",
-      "classification": "no_reader",
-      "writers": [
-        ".claude/scripts/lifecycle-init.sh"
       ],
       "recommendation": "exempt (telemetry-only)"
     }

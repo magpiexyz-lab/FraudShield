@@ -232,8 +232,8 @@
   "hard_gates": [
     {
       "agent": "design-critic",
-      "allow_predicates": ["pass_clean", "pass_after_fixes", "pass_self_pass_or_fail", "validated_fallback", "aggregate_ok", "legacy_pass_no_recovery"],
-      "_block_explanation": "Blocked unless AOC v1 pass_clean/pass_after_fixes, or v2 pass_self_pass_or_fail / validated_fallback (also covers #1042 fixture short-circuit via self-degraded + recovery_validated) / aggregate_ok, or legacy_pass_no_recovery (pre-migration)."
+      "allow_predicates": ["pass_clean", "pass_after_fixes", "pass_self_pass_or_fail", "validated_fallback", "aggregate_ok", "legacy_pass_no_recovery", "pass_lead_synthesized"],
+      "_block_explanation": "Blocked unless AOC v1 pass_clean/pass_after_fixes, or v2 pass_self_pass_or_fail / validated_fallback (also covers #1042 fixture short-circuit via self-degraded + recovery_validated) / aggregate_ok, or legacy_pass_no_recovery (pre-migration), or pass_lead_synthesized (#1256 Stage 0 all-pages-fast-path lead-synthesized aggregate with sanctioned coverage_provider)."
     },
     {
       "agent": "ux-journeyer",

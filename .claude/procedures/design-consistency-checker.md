@@ -81,6 +81,80 @@ Flag:
 
 Severity: `major` if nav/footer inconsistent, `minor` if button variants differ.
 
+## Step 2.5: Budget Self-Monitoring (added per #1257)
+
+C5 (screenshot-based) is the most expensive step — each page requires a
+Playwright screenshot + analysis. On projects with > 8 pages, naive iteration
+can exhaust the agent's `maxTurns` budget mid-loop, leaving zero substantive
+cross-page review. The Tier 2 Exhaustion Protocol then writes a
+`verdict: incomplete` recovery trace (WARN, not BLOCK), but no real findings
+emerge.
+
+This soft-exit primitive prevents that outcome by letting the agent emit a
+**partial trace with verdict from the pages it DID complete**, rather than
+failing closed.
+
+### Setup (run once at agent start, before C5)
+
+Read `expected_pages: <N>` from the spawn prompt (passed by state-3b
+Stage 2). Compute:
+
+```
+per_page_budget = floor(maxTurns / expected_pages)
+```
+
+Track `consumed_turns` as a counter — increment it once per Bash invocation,
+file read, or tool call. (Claude Code does not expose a `turns_remaining`
+introspection API; the agent-side counter is the deterministic substrate.)
+
+### Boundary check (run AFTER each page's C5 screenshot + analysis completes)
+
+After completing C5 for page index `i` (1-indexed), compute:
+
+```
+expected_consumed = floor((i / expected_pages) * maxTurns)
+threshold = 50  # slack for setup + per-page overhead
+
+if consumed_turns > expected_consumed + threshold:
+    # Soft-exit: emit partial trace and exit cleanly.
+    emit_soft_exit()
+    return
+```
+
+### Soft-exit invocation
+
+When the budget threshold is crossed, write a partial trace via
+`write-degraded-trace.py`:
+
+```bash
+python3 .claude/scripts/write-degraded-trace.py design-consistency-checker \
+  --reason "budget-soft-exit" \
+  --verdict "$( [ "$INCONSISTENT_COUNT" -gt 0 ] && echo fail || echo pass )" \
+  --checks-performed "C1-color,C2-typography,C3-spacing,C4-component,C5-layout" \
+  --extra-json '{
+    "inconsistent_count": <N>,
+    "pages_reviewed": <M>,
+    "pages_remaining": ["<page-slug-1>", ...],
+    "inconsistencies": [...]
+  }'
+```
+
+**NOTE**: `write-degraded-trace.py` automatically sets `partial: true` and
+`provenance: self-degraded` (line 192). Do NOT pass a `--partial` flag —
+it does not exist; the field is set unconditionally for self-degraded
+traces.
+
+**Verdict semantics**: the verdict reflects findings from the COMPLETED
+pages only. If 10/18 pages reviewed and 0 inconsistencies → `verdict=pass`
+with `partial=true` (clear coverage signal in `pages_remaining`). If 10/18
+reviewed and 3 inconsistencies → `verdict=fail` with `inconsistent_count=3`
+and `partial=true`. This preserves the invariant `verdict==fail iff
+inconsistent_count > 0`.
+
+State-3b VERIFY accepts `partial: true` as valid completion (not retry
+trigger); state-7a verify-report displays `pages_reviewed` and
+`pages_remaining` so the user can judge coverage.
+
 ## Step 3: Visual Analysis (C5)
 
 C5 is **SCREENSHOT-BASED** — catches visual symptoms that code analysis might miss (e.g., CSS inheritance effects, dynamic styling).

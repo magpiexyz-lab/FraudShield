@@ -27,9 +27,11 @@
       "consumers": [
         "state-registry:verify.3b"
       ],
-      "writers": [],
+      "writers": [
+        ".claude/scripts/write-agent-trace.sh"
+      ],
       "scope": "transient-cross-skill",
-      "rationale": "Agent trace consumed by VERIFY block; provenance must include {skill,run_id,written_at}."
+      "rationale": "Agent trace consumed by VERIFY block; provenance must include {skill,run_id,written_at}. #1256 Stage 0 fast-path may write a lead-synthesized trace via write-agent-trace.sh with coverage_provider=.runs/all-pages-fast-path-decision.json."
     },
     {
       "path": ".runs/agent-traces/design-critic-landing.json",
@@ -44,16 +46,18 @@
     {
       "path": ".runs/agent-traces/design-critic.json",
       "consumers": [
+        "state-registry:verify.3a",
         "state-registry:verify.3b",
         "state-registry:verify.3c",
         "state-registry:verify.7b"
       ],
       "writers": [
         ".claude/scripts/check-design-critic-sanctioned.py",
-        ".claude/scripts/merge-design-critic-traces.py"
+        ".claude/scripts/merge-design-critic-traces.py",
+        ".claude/scripts/write-agent-trace.sh"
       ],
       "scope": "transient-cross-skill",
-      "rationale": "Agent trace consumed by VERIFY block; provenance must include {skill,run_id,written_at}."
+      "rationale": "Agent trace consumed by VERIFY block; provenance must include {skill,run_id,written_at}. #1256 Stage 0 fast-path writes a lead-synthesized aggregate via write-agent-trace.sh with coverage_provider=.runs/all-pages-fast-path-decision.json (sanctioned by state-completion-gate.sh SANCTIONED_COVERAGE_PROVIDERS allowlist)."
     },
     {
       "path": ".runs/agent-traces/quality-fixer.json",
@@ -104,6 +108,18 @@
       "writers": [],
       "scope": "transient-cross-skill",
       "rationale": "Agent trace consumed by VERIFY block; provenance must include {skill,run_id,written_at}."
+    },
+    {
+      "path": ".runs/all-pages-fast-path-decision.json",
+      "consumers": [
+        "state-registry:verify.3a",
+        "state-registry:verify.3b"
+      ],
+      "writers": [
+        ".claude/skills/verify/state-3a-design-agents.md"
+      ],
+      "scope": "transient-cross-skill",
+      "rationale": "#1256 Stage 0 all-pages-fast-path detector decision artifact. Written by state-3a Stage 0 (lead-side bash, no agent) when PR boundary contains zero UI-rendering source files (after excluding test files, shadcn primitives, and api routes). Read by state-3a/3b VERIFY blocks to short-circuit per-page-glob assertions, and by state-completion-gate.sh SANCTIONED_COVERAGE_PROVIDERS allowlist to exempt the lead-synthesized design-critic.json + design-consistency-checker.json aggregates from the per-trace spawn-log integrity check."
     },
     {
       "path": ".runs/audit-analysis.json",

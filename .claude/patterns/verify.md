@@ -239,6 +239,18 @@ Re-spawn the agent with a reduced scope prompt:
 2. Continue to next STATE — this is a WARN, not a BLOCK
 3. Note in verify report: "Agent <name> exhausted turns — results incomplete."
 
+> **Soft-exit completion (#1257):** A trace with `provenance: "self-degraded"`,
+> `partial: true`, and `degraded_reason: "budget-soft-exit"` is a **valid
+> completion path** — the agent self-detected approaching budget exhaustion at
+> a page boundary and emitted a partial trace with verdict from the pages it
+> DID complete (preserving `verdict==fail iff inconsistent_count > 0`).
+> Distinct from State 2 "started but no verdict" exhaustion: no retry needed,
+> no recovery trace required, no `verdict: incomplete` write. State-7a verify
+> report displays `pages_reviewed` / `pages_remaining` so the user can judge
+> coverage. Currently used by `design-consistency-checker`; see
+> `.claude/procedures/design-consistency-checker.md` Step 2.5 for the
+> page-budget allocation primitive.
+
 #### Tier 3 — Non-critical agents
 
 **Detection**: Trace State 2 after agent returns.

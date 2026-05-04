@@ -23,7 +23,117 @@ After each edit-capable agent completes, read its completion report and append i
 >
 > [visual-agents] web-app: design-critic, ux-journeyer, consistency-checker | service: skip | cli: skip
 
+#### Stage 0: All-pages fast-path detector (#1256)
+
+If the PR boundary contains zero UI-rendering source files (after excluding
+test files, shadcn primitives, and api routes), every per-page design-critic
+agent would trivially fast-path via the empty-boundary path. Spawning N
+agents to all immediately fast-path burns ~30s of spawn overhead per agent
+(~9 min on an 18-page web-app). This Stage 0 detects the condition once
+upfront and short-circuits the entire design-quality stage with a single
+lead-synthesized aggregate.
+
+**Trigger** (lead-side, no agents):
+
+```bash
+# Compute boundary kind first (matches the existing pre-flight 1a logic).
+if [ "$(git rev-parse HEAD 2>/dev/null)" = "$(git merge-base HEAD main 2>/dev/null)" ]; then
+  BOUNDARY_KIND="full-tree"
+else
+  BOUNDARY_KIND="diff"
+fi
+
+ALL_PAGES_FAST_PATH=false
+if [ "$BOUNDARY_KIND" = "diff" ]; then
+  PR_RELEVANT=$(git diff --name-only $(git merge-base HEAD main)...HEAD \
+    | grep -E '^(src/lib|src/components|src/app)/' \
+    | grep -v -E '^src/components/(ui|magicui)/' \
+    | grep -v -E '^src/app/api/' \
+    | grep -v -E '\.test\.[jt]sx?$' \
+    | wc -l | tr -d ' ')
+  if [ "$PR_RELEVANT" = "0" ]; then
+    ALL_PAGES_FAST_PATH=true
+  fi
+fi
+```
+
+The detector excludes:
+- `*.test.[jt]sx?` — test files (no visual surface)
+- `src/components/ui/**` and `src/components/magicui/**` — shadcn primitives (matches the existing thin-wrapper exclusion at the pre-flight step 2's import filter; not in design-review scope)
+- `src/app/api/**` — API routes (matches the existing fallback_boundary exclusion in pre-flight step 5a; not visual)
+
+The detector ONLY fires when `BOUNDARY_KIND="diff"`. In `full-tree` mode (no commits on the feature branch yet — typical at /bootstrap pre-commit), the detector is skipped: there is no PR diff to interpret.
+
+**On trigger** (write artifacts, skip pre-flight + Stage 1 + Stage 1b + Stage 1c):
+
+```bash
+if [ "$ALL_PAGES_FAST_PATH" = "true" ]; then
+  # 1. Decision artifact (consumed by state-completion-gate.sh exemption,
+  #    state-3a/3b VERIFY branches, and state-7a verify-report Notes cell).
+  python3 -c "
+import json, datetime, subprocess, os
+mb = subprocess.check_output(['git','merge-base','HEAD','main']).decode().strip()
+pr_files = subprocess.check_output(
+    ['git','diff','--name-only', mb + '...HEAD']
+).decode().splitlines()
+ps = json.load(open('.runs/design-page-set.json'))
+json.dump({
+    'pr_files': pr_files,
+    'boundary_kind': 'diff',
+    'page_set': ps.get('pages', []),
+    'landing': ps.get('landing'),
+    'trigger': 'zero ui-rendering source files in pr boundary after shadcn-primitive, api-route, and test-file exclusion',
+    'timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat()
+}, open('.runs/all-pages-fast-path-decision.json','w'), indent=2)
+"
+
+  # 2. Synthesize design-critic.json aggregate.
+  #    Provenance=lead-synthesized + sanctioned coverage_provider clears
+  #    state-completion-gate.sh per-trace check (#1256 SANCTIONED_COVERAGE_PROVIDERS
+  #    allowlist) and verify-report-gate.sh hard_gate via the
+  #    pass_lead_synthesized predicate added to agent-registry.json.
+  N_PAGES=$(python3 -c "
+import json
+ps = json.load(open('.runs/design-page-set.json'))
+n = len(ps.get('pages', []))
+if isinstance(ps.get('landing'), dict): n += 1
+print(n)
+")
+  bash .claude/scripts/write-agent-trace.sh design-critic \
+    --provenance lead-synthesized \
+    --coverage-provider .runs/all-pages-fast-path-decision.json \
+    --trace-filename design-critic.json \
+    --json "{\"verdict\":\"pass\",\"result\":\"clean\",\"pages\":$N_PAGES,\"pages_reviewed\":$N_PAGES,\"min_score\":10,\"min_score_all\":10,\"sections_below_8\":0,\"unresolved_sections\":0,\"unresolved_shared\":0,\"fixes_applied\":0,\"checks_performed\":[],\"image_issues_for_landing\":[],\"weakest_page\":\"\",\"per_page_review_methods\":{},\"per_page_review_evidence\":[],\"per_page_provenance\":{},\"per_page_recovery_validated\":{},\"validated_fallback_pages\":[],\"pre_existing_debt\":[],\"fixes\":[],\"all_validated_fallback\":false,\"shared_fixes_applied\":0,\"review_method\":\"boundary-skip-all-pages\"}"
+
+  # 3. Synthesize design-consistency-checker.json. Same lead-synthesized
+  #    provenance + sanctioned coverage_provider clears state-completion-gate.
+  #    design-consistency-checker is NOT in agent-registry.json hard_gates,
+  #    so no allow_predicates change is needed for this agent.
+  bash .claude/scripts/write-agent-trace.sh design-consistency-checker \
+    --provenance lead-synthesized \
+    --coverage-provider .runs/all-pages-fast-path-decision.json \
+    --trace-filename design-consistency-checker.json \
+    --json '{"verdict":"pass","result":"count_summary","inconsistent_count":0,"checks_performed":[],"review_method":"boundary-skip-all-pages","inconsistencies":[]}'
+
+  # 4. Empty design-claims.json so state-3a POSTCONDITION ("design-claims.json exists")
+  #    is satisfied even though we skipped pre-flight.
+  echo '{"claims":{},"thin_wrappers":[]}' > .runs/design-claims.json
+
+  # 5. Skip the rest of state-3a (pre-flight + Stage 1 + Stage 1b + Stage 1c).
+  #    State-3a VERIFY below branches on the decision artifact and accepts
+  #    the synthesized aggregate without per-page traces.
+  #    State-3b's Stage 1c validate-recovery loop, Step A merger, and
+  #    Stage 2 spawn are similarly skipped via the decision artifact guard.
+fi
+```
+
+**`review_method="boundary-skip-all-pages"`** is a state-3a-synthetic value, distinct from per-page `boundary-skip` (#1061). It does NOT appear in `render-review-detection.md`'s enum and is not consumed by the merger (the merger is not invoked when Stage 0 fires).
+
+If `ALL_PAGES_FAST_PATH=false`, proceed to the existing pre-flight + Stage 1 below.
+
 #### Pre-flight: Thin-wrapper detection and claim assignment
+
+> **Skip when Stage 0 fired.** If `.runs/all-pages-fast-path-decision.json` exists, this pre-flight is bypassed (the lead-synthesized aggregate already covers state-3a's outputs). Concretely: the steps below run only when `ALL_PAGES_FAST_PATH != "true"`.
 
 Before spawning any design-critic agents, detect pages whose visual content
 lives entirely in shared components and assign those components as "claims."
@@ -322,7 +432,12 @@ reported shared issues are for claimed components, Stage 1c has no work — skip
 
 **VERIFY:**
 ```bash
-python3 -c "import json,glob,os; ctx=json.load(open('.runs/verify-context.json')); needs_dc=ctx.get('scope') in ('full','visual') and ctx.get('archetype')=='web-app'; assert not needs_dc or os.path.exists('.runs/design-claims.json'), 'design-claims.json missing (pre-flight must run before agent spawns)'; ps=json.load(open('.runs/design-page-set.json')) if os.path.exists('.runs/design-page-set.json') else {'landing': None, 'not_applicable': True}; expects_landing=needs_dc and isinstance(ps.get('landing'), dict); assert (not expects_landing) or os.path.exists('.runs/agent-traces/design-critic-landing.json'), 'design-critic-landing.json missing — Stage 1 must spawn landing critic when design-page-set.json has a landing entry (#1143)'; fs=sorted(glob.glob('.runs/agent-traces/design-critic-*.json')) if needs_dc else []; per_page=[f for f in fs if os.path.basename(f) not in ('design-critic.json','design-critic-shared.json')]; assert not needs_dc or len(per_page)>=1, 'no per-page design-critic traces (scope=%s, archetype=%s)' % (ctx.get('scope'),ctx.get('archetype')); shallow=[]
+python3 -c "import json,glob,os,sys; ctx=json.load(open('.runs/verify-context.json')); needs_dc=ctx.get('scope') in ('full','visual') and ctx.get('archetype')=='web-app'
+if os.path.exists('.runs/all-pages-fast-path-decision.json'):
+    assert os.path.exists('.runs/design-claims.json'), 'Stage 0: design-claims.json missing'
+    assert os.path.exists('.runs/agent-traces/design-critic.json'), 'Stage 0: design-critic.json (lead-synthesized aggregate) missing'
+    sys.exit(0)
+assert not needs_dc or os.path.exists('.runs/design-claims.json'), 'design-claims.json missing (pre-flight must run before agent spawns)'; ps=json.load(open('.runs/design-page-set.json')) if os.path.exists('.runs/design-page-set.json') else {'landing': None, 'not_applicable': True}; expects_landing=needs_dc and isinstance(ps.get('landing'), dict); assert (not expects_landing) or os.path.exists('.runs/agent-traces/design-critic-landing.json'), 'design-critic-landing.json missing — Stage 1 must spawn landing critic when design-page-set.json has a landing entry (#1143)'; fs=sorted(glob.glob('.runs/agent-traces/design-critic-*.json')) if needs_dc else []; per_page=[f for f in fs if os.path.basename(f) not in ('design-critic.json','design-critic-shared.json')]; assert not needs_dc or len(per_page)>=1, 'no per-page design-critic traces (scope=%s, archetype=%s)' % (ctx.get('scope'),ctx.get('archetype')); shallow=[]
 for f in per_page:
     d=json.load(open(f))
     if d.get('partial') is True: continue

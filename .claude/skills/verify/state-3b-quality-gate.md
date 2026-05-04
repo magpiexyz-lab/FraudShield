@@ -9,7 +9,35 @@
 > REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table, row "Visual agents".
 > [visual-agents] web-app: design-critic, ux-journeyer, consistency-checker | service: skip | cli: skip
 
+#### Stage 0 short-circuit (#1256)
+
+If `.runs/all-pages-fast-path-decision.json` exists, state-3a's Stage 0
+already wrote the lead-synthesized `design-critic.json` AND
+`design-consistency-checker.json` aggregates. Skip Stages 1c, 2 (Step A
+merger), and Step B (consistency-checker spawn) entirely; proceed to the
+post-design-critic lint gate and lead-side validation.
+
+> **GRAIM C3 invariant**: Stage 0 fires only when `boundary_kind == diff`
+> (gated upstream in state-3a's detector). In `boundary_kind == full-tree`
+> mode (no commits exist on the feature branch), Stage 0 is skipped because
+> the empty diff is ambiguous, not a "no UI changes" signal — the existing
+> per-page lead-supplied fallback boundary path runs instead. This decision
+> is made in state-3a; state-3b only reads the resulting decision artifact.
+
+```bash
+if [ -f .runs/all-pages-fast-path-decision.json ]; then
+  echo "Stage 0 fast-path active — skipping Stage 1c, Step A merger, Step B consistency-checker spawn"
+  STAGE0_FAST_PATH=true
+else
+  STAGE0_FAST_PATH=false
+fi
+```
+
+The blocks below run only when `STAGE0_FAST_PATH=false`.
+
 #### Stage 1c: Pre-merge validate-recovery for self-degraded traces (#1042)
+
+> **Skip when Stage 0 fired.** No per-page self-degraded traces exist in fast-path mode.
 
 For every per-page design-critic trace with `provenance="self-degraded"`
 (typically DEMO_MODE fixture short-circuits written via
@@ -21,18 +49,20 @@ merge. Without this stamp, the aggregate trace cannot satisfy the
 AND recovery_validated==true`).
 
 ```bash
-for trace in .runs/agent-traces/design-critic-*.json; do
-  [[ "$trace" == *"-shared.json" ]] && continue
-  [[ "$trace" == *"/design-critic.json" ]] && continue
-  prov=$(python3 -c "import json,sys; print(json.load(open('$trace')).get('provenance',''))" 2>/dev/null || echo "")
-  if [[ "$prov" == "self-degraded" ]]; then
-    base=$(basename "$trace" .json)
-    bash .claude/scripts/validate-recovery.sh "$base" || {
-      echo "BLOCK: validate-recovery failed for $trace" >&2
-      exit 1
-    }
-  fi
-done
+if [ "$STAGE0_FAST_PATH" != "true" ]; then
+  for trace in .runs/agent-traces/design-critic-*.json; do
+    [[ "$trace" == *"-shared.json" ]] && continue
+    [[ "$trace" == *"/design-critic.json" ]] && continue
+    prov=$(python3 -c "import json,sys; print(json.load(open('$trace')).get('provenance',''))" 2>/dev/null || echo "")
+    if [[ "$prov" == "self-degraded" ]]; then
+      base=$(basename "$trace" .json)
+      bash .claude/scripts/validate-recovery.sh "$base" || {
+        echo "BLOCK: validate-recovery failed for $trace" >&2
+        exit 1
+      }
+    fi
+  done
+fi
 ```
 
 Idempotency: `validate-recovery.sh` is re-entrant — when
@@ -49,17 +79,22 @@ which is correct (you cannot clear `aggregate_ok` on a broken build).
 
 ##### Step A: Lead merges per-page traces
 
+> **Skip when Stage 0 fired.** The lead-synthesized `design-critic.json` aggregate already exists; the merger is not invoked.
+
 Before spawning the consistency checker, the lead merges per-page traces into `design-critic.json`. The merge logic lives in a dedicated script so `agent-trace-write-guard.sh` can authorise exactly this write (issue #1045 — inline `python3 -c` blocks that open `agent-traces/*` for write are blocked by the guard's open-for-write regex):
 
 ```bash
-python3 .claude/scripts/merge-design-critic-traces.py
+if [ "$STAGE0_FAST_PATH" != "true" ]; then
+  python3 .claude/scripts/merge-design-critic-traces.py
+fi
 ```
 
-Exit codes: `0` merge succeeded, `1` no per-page traces found, `2` per-page trace parse error. Preserves every field the prior inline merge produced (pages_reviewed, min_score, checks_performed, per_page_review_methods, per_page_review_evidence, review_method_gate_corrections, pre_existing_debt, fixes, shared_fixes_applied, run_id, timestamp).
+Exit codes: `0` merge succeeded, `1` no per-page traces found, `2` per-page trace parse error. Preserves every field the prior inline merge produced (pages_reviewed, min_score, checks_performed, per_page_review_methods, per_page_review_evidence, review_method_gate_corrections, pre_existing_debt, fixes, shared_fixes_applied, run_id, timestamp). The merger also consults `.runs/fix-ledger.jsonl` for lead-applied shared-component fixes (#1274) and emits `lead_fix_corrections[]` audit array; see Stage 1b doc above for the lead-side ledger contract.
 
 After writing the merged trace, validate merge correctness:
 ```bash
-python3 -c "
+if [ "$STAGE0_FAST_PATH" != "true" ]; then
+  python3 -c "
 import json, glob
 merged = json.load(open('.runs/agent-traces/design-critic.json'))
 pages = sorted(glob.glob('.runs/agent-traces/design-critic-*.json'))
@@ -71,11 +106,14 @@ if merged_checks != total_checks:
 else:
     print(f'Merge validation: PASS ({merged_checks} checks)')
 "
+fi
 ```
 
 > **Do NOT delete per-page traces** — the consistency checker needs them for cross-page comparison.
 
 ##### Step B: Spawn consistency checker (cross-page visual review only)
+
+> **Skip when Stage 0 fired.** The lead-synthesized `design-consistency-checker.json` aggregate already exists with `verdict=pass, inconsistent_count=0` (no per-page rendering changed in this PR, so cross-page consistency cannot have regressed).
 
 Spawn the `design-consistency-checker` agent (`subagent_type: design-consistency-checker`). It reads per-page traces and screenshots all pages for cross-page consistency — but does NOT merge traces or fix code.
 
@@ -83,8 +121,15 @@ Pass:
 - `base_url`: `http://localhost:3000`
 - `run_id`: from verify-context.json
 - List of pages reviewed
+- `expected_pages: <N>` — total page count for the agent's per-page-budget
+  computation (#1257 soft-exit primitive). Compute `N` as
+  `len(.runs/design-page-set.json["pages"]) + (1 if landing else 0)`.
+  Pass to the spawn prompt so the agent can compute
+  `per_page_budget = floor(maxTurns / expected_pages)` and self-monitor
+  via the Budget Self-Monitoring section in
+  `.claude/procedures/design-consistency-checker.md`.
 
-**Wait for completion.** Handle exhaustion per [Exhaustion Protocol](../verify.md#exhaustion-protocol) Tier 2.
+**Wait for completion.** Handle exhaustion per [Exhaustion Protocol](../verify.md#exhaustion-protocol) Tier 2. A trace with `partial: true` and `degraded_reason: "budget-soft-exit"` is a valid completion (not exhaustion); no retry needed (#1257).
 
 #### Post-design-critic lint gate
 
@@ -121,6 +166,29 @@ Sources: `lead-spec-reviewer`, `lead-a11y`, `lead-behavior-verifier`, `lead-perf
 
 > **Why:** Phase 1 agents are read-only. When the lead acts on their findings, those fixes must be logged or the observation epilogue cannot evaluate them for template-rooted issues.
 
+### Lead-applied SHARED-component fixes (state-3a Stage 1b)
+
+When the lead applies a fix to a shared component during state-3a Stage 1b
+(e.g., `src/components/landing-content.tsx` flagged as `unresolved_shared` by a
+per-page critic), the fix MUST be logged to BOTH `.runs/fix-log.md` AND
+`.runs/fix-ledger.jsonl`:
+
+```bash
+python3 .claude/scripts/write-fix-ledger.py --lead-fix \
+  --run-id "$RUN_ID" \
+  --file "src/components/landing-content.tsx" \
+  --symptom "<what the per-page critic flagged>" \
+  --fix "<what was changed>"
+```
+
+Per-page design-critic traces are immutable post-write — they continue to
+record the pre-fix `unresolved_shared` count. The merger
+(`merge-design-critic-traces.py`) consults `fix-ledger.jsonl` and credits
+lead-applied fixes against the merged aggregate's `unresolved_sections` count.
+The audit trail is in `merged["lead_fix_corrections"]`. Without the ledger row,
+the merger cannot credit the fix, and the aggregate verdict will keep
+`unresolved` even though the underlying issue was fixed (#1274).
+
 **POSTCONDITIONS:**
 - Merged `design-critic.json` trace exists in `.runs/agent-traces/`
 - `design-consistency-checker.json` trace exists (when scope is `full` or `visual` AND archetype is `web-app`)
@@ -129,7 +197,15 @@ Sources: `lead-spec-reviewer`, `lead-a11y`, `lead-behavior-verifier`, `lead-perf
 
 **VERIFY:**
 ```bash
-python3 -c "import json,os,glob; ctx=json.load(open('.runs/verify-context.json')); needs_dc=ctx.get('scope') in ('full','visual') and ctx.get('archetype')=='web-app'; assert not needs_dc or os.path.exists('.runs/agent-traces/design-critic.json'), 'design-critic.json missing (scope=%s, archetype=%s)' % (ctx.get('scope'),ctx.get('archetype')); assert not needs_dc or os.path.exists('.runs/agent-traces/design-consistency-checker.json'), 'design-consistency-checker.json missing'; assert json.load(open('.runs/build-result.json'))['exit_code']==0; assert (not needs_dc) or os.path.exists('.runs/design-page-set.json'), 'design-page-set.json missing (state-2a must run before state-3b)'; assert (not needs_dc) or os.path.exists('.runs/page-image-map.json'), 'page-image-map.json missing (state-2a must run before state-3b)'; ps=json.load(open('.runs/design-page-set.json')) if os.path.exists('.runs/design-page-set.json') else {'pages':[], 'landing': None, 'not_applicable': not needs_dc}; pim=json.load(open('.runs/page-image-map.json')).get('pages',{}) if os.path.exists('.runs/page-image-map.json') else {}; has_candidates=os.path.exists('.runs/image-candidates.json'); landing_trace='.runs/agent-traces/design-critic-landing.json'; landing_d=json.load(open(landing_trace)) if os.path.exists(landing_trace) else None; sc_path='.runs/image-candidates.json'; sidecar={}
+python3 -c "import json,os,glob,sys; ctx=json.load(open('.runs/verify-context.json')); needs_dc=ctx.get('scope') in ('full','visual') and ctx.get('archetype')=='web-app'
+if os.path.exists('.runs/all-pages-fast-path-decision.json'):
+    assert os.path.exists('.runs/agent-traces/design-critic.json'), 'Stage 0: design-critic.json missing'
+    assert os.path.exists('.runs/agent-traces/design-consistency-checker.json'), 'Stage 0: design-consistency-checker.json missing'
+    assert json.load(open('.runs/build-result.json'))['exit_code']==0, 'Stage 0: build failed'
+    assert os.path.exists('.runs/design-page-set.json'), 'Stage 0: design-page-set.json missing'
+    assert os.path.exists('.runs/page-image-map.json'), 'Stage 0: page-image-map.json missing'
+    sys.exit(0)
+assert not needs_dc or os.path.exists('.runs/agent-traces/design-critic.json'), 'design-critic.json missing (scope=%s, archetype=%s)' % (ctx.get('scope'),ctx.get('archetype')); assert not needs_dc or os.path.exists('.runs/agent-traces/design-consistency-checker.json'), 'design-consistency-checker.json missing'; assert json.load(open('.runs/build-result.json'))['exit_code']==0; assert (not needs_dc) or os.path.exists('.runs/design-page-set.json'), 'design-page-set.json missing (state-2a must run before state-3b)'; assert (not needs_dc) or os.path.exists('.runs/page-image-map.json'), 'page-image-map.json missing (state-2a must run before state-3b)'; ps=json.load(open('.runs/design-page-set.json')) if os.path.exists('.runs/design-page-set.json') else {'pages':[], 'landing': None, 'not_applicable': not needs_dc}; pim=json.load(open('.runs/page-image-map.json')).get('pages',{}) if os.path.exists('.runs/page-image-map.json') else {}; has_candidates=os.path.exists('.runs/image-candidates.json'); landing_trace='.runs/agent-traces/design-critic-landing.json'; landing_d=json.load(open(landing_trace)) if os.path.exists(landing_trace) else None; sc_path='.runs/image-candidates.json'; sidecar={}
 if has_candidates:
     try: sidecar=json.load(open(sc_path))
     except (json.JSONDecodeError, OSError): sidecar={}

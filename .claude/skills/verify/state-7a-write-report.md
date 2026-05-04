@@ -155,8 +155,9 @@ overall_verdict: pass | fail
 ## Review Agents
 | Agent | Verdict | Notes |
 |-------|---------|-------|
-| design-critic | [pass/fixed/skipped] | [1-line summary] |
+| design-critic | [pass/fixed/skipped] | [1-line summary; if `review_method == "boundary-skip-all-pages"` (#1256 Stage 0): "all-pages-fast-path-shortcut — N pages, zero UI source files in PR boundary"] |
 | design-critic-shared | [fixed/skipped/N/A] | [shared component fixes, or "no shared issues"] |
+| design-consistency-checker | [pass/fail/partial] | [if `partial: true` AND `degraded_reason: "budget-soft-exit"`: "M of N pages reviewed; remaining: <slug-list> (#1257 soft-exit)"; if `review_method: "boundary-skip-all-pages"` (#1256 Stage 0): "all pages fast-path; cross-page consistency unchanged"; else: "1-line summary"] |
 | ux-journeyer | [pass/fixed/skipped] | [1-line summary] |
 | security-defender | [pass/N issues] | [1-line summary] |
 | security-attacker | [pass/N findings] | [1-line summary] |
