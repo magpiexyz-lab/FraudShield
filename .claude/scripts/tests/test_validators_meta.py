@@ -475,14 +475,24 @@ class TestSchemaVersionGate(unittest.TestCase):
         finally:
             sys.path.pop(0)
 
-    def test_required_schema_version_inert_until_merge(self):
+    def test_required_schema_version_post_cutoff_active(self):
         sys.path.insert(0, str(SCRIPTS_DIR))
         try:
-            from lib.schema_version_gate import required_schema_version, is_v2_active
-            # Until merge cutoff sed: gate is INERT, all run_ids → 1
-            self.assertFalse(is_v2_active())
+            from lib.schema_version_gate import (
+                required_schema_version, is_v2_active, MIGRATION_CUTOFF_ISO,
+            )
+            # Post-merge: gate is ACTIVE. MIGRATION_CUTOFF_ISO must match the
+            # ISO 8601 UTC pattern. Pre-cutoff run_ids → 1, post-cutoff → 2.
+            self.assertTrue(is_v2_active(),
+                f"gate must be active post-merge; cutoff={MIGRATION_CUTOFF_ISO!r}")
+            # A run_id from a year clearly before any plausible merge cutoff
+            # must be grandfathered.
             self.assertEqual(
-                required_schema_version("solve-2026-05-04T00:00:00Z"), 1
+                required_schema_version("solve-2020-01-01T00:00:00Z"), 1
+            )
+            # A run_id from a year clearly after must enforce v2.
+            self.assertEqual(
+                required_schema_version("solve-2099-12-31T23:59:59Z"), 2
             )
         finally:
             sys.path.pop(0)

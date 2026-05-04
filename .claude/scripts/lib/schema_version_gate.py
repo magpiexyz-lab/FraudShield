@@ -44,11 +44,11 @@ import re
 from datetime import datetime, timezone
 from typing import Optional
 
-# Replaced by post-merge sed to the merge commit's ISO timestamp.
-# Until replaced, this placeholder string sorts AFTER every realistic ISO
-# timestamp (year > 9999), so all runs are grandfathered (schema_version=1).
-# This ensures the gate is INERT until the post-merge follow-up commit lands.
-MIGRATION_CUTOFF_ISO = "__MERGE_COMMIT_TIMESTAMP__"
+# Activated 2026-05-04 by post-merge follow-up to PR #1291.
+# Pre-merge value was placeholder __MERGE_COMMIT_TIMESTAMP__; sed replaced
+# with the merge commit's ISO timestamp. After this point, run_ids whose
+# timestamp >= MIGRATION_CUTOFF_ISO must comply with schema_version=2.
+MIGRATION_CUTOFF_ISO = "2026-05-04T05:25:30Z"
 
 # Regex: trailing ISO 8601 UTC timestamp at end of run_id
 RUN_ID_TS_RE = re.compile(r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)$")
@@ -71,9 +71,6 @@ def required_schema_version(run_id: str) -> int:
     """
     ts = extract_run_id_timestamp(run_id)
     if ts is None:
-        return 1
-    if MIGRATION_CUTOFF_ISO == "__MERGE_COMMIT_TIMESTAMP__":
-        # Pre-merge: gate INERT. All runs grandfathered.
         return 1
     return 2 if ts >= MIGRATION_CUTOFF_ISO else 1
 
@@ -124,8 +121,13 @@ def check_artifact_schema_version(
 
 
 def is_v2_active() -> bool:
-    """True iff MIGRATION_CUTOFF has been replaced (gate is live)."""
-    return MIGRATION_CUTOFF_ISO != "__MERGE_COMMIT_TIMESTAMP__"
+    """True iff MIGRATION_CUTOFF is a valid ISO timestamp (gate is live).
+
+    Detects the placeholder by checking it matches the ISO format; when it
+    does, the gate is active. Pre-merge the placeholder __MERGE_COMMIT_TIMESTAMP__
+    fails this check, so the gate is INERT until activated.
+    """
+    return bool(re.match(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$", MIGRATION_CUTOFF_ISO))
 
 
 # CLI for ad-hoc checks: `python3 schema_version_gate.py <artifact> <run_id>`
