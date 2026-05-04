@@ -158,6 +158,34 @@ json.dump({
 "
 ```
 
+## Step 2.6: Write Observation Evidence Envelope (AOC v1.2 — closes #1259)
+
+Produce `.runs/observation-evidence.json` — the unified input contract the
+observer reads in Step 4. Every present canonical evidence family is
+referenced; the schema is defined by the writer + the shared family
+manifest at `.claude/scripts/lib/observer_evidence_families.py`. No
+exclusion mechanism — adding a family requires editing that constant
+(visible in PR diff).
+
+```bash
+python3 .claude/scripts/write-observation-evidence.py
+```
+
+The envelope schema includes:
+  - All present `*-summary.json`, `*-merge.json`, `*-evidence*.json`,
+    `*-result.json`, `agent-traces/*.json` paths
+  - `fix_ledger_path`, `fix_log_path`, `hook_friction_summary_path`,
+    `observer-diffs.txt`, `build-result.json`, `e2e-result.json`
+  - `template_recommendations[]` flattened from agent traces (AOC v1.2
+    optional field on scaffold-* agents — closes #1252 anti-pattern)
+  - `skipped_fixer_traces[]` listing any `provenance:lead-skipped` traces
+    (PR3 sanctioned-skip output — surfaced for observer convenience so it
+    can correlate with the audit-skip path)
+  - `fix_ledger_lead_fix_count` (count of `provenance:lead` ledger rows)
+
+Under post-completion conditions, supply `--source-run-id <ID>
+--source-skill <NAME>` (validator R1-R4 enforced).
+
 ## Step 3: Fast-Path Evaluation
 
 If `.runs/observer-diffs.txt` is empty AND `.runs/fix-log.md` has no entries
@@ -223,8 +251,13 @@ else:
 > logic, and issue filing format are defined there.
 
 1. Spawn the `observer` agent (`subagent_type: observer`).
-   Pass ONLY: content of `.runs/observer-diffs.txt` + Fix Log summaries +
-   template file list from Step 2c.
+   Pass ONLY: the path `.runs/observation-evidence.json` (envelope written
+   by Step 2.6) + template file list from Step 2c. The envelope IS the
+   observer input contract — every present canonical evidence family is
+   referenced inside it (diffs, fix-log, fix-ledger, hook-friction summary,
+   all agent traces, build/e2e results, template_recommendations[],
+   skipped_fixer_traces[], etc.). Observer reads from the envelope; it
+   should NOT separately glob `.runs/*` (closes #1259).
    Do NOT include experiment.yaml content, project name, or feature descriptions.
 
 2. Report the observer's result.
