@@ -34,12 +34,12 @@
       "allowed_results": ["clean", "fixed", "partial", "none"]
     },
     "security-fixer": {
-      "allowed_verdicts": ["pass", "fail", "skipped"],
+      "allowed_verdicts": ["pass", "fail", "blocked"],
       "allowed_results": ["clean", "fixed", "partial", "none", "skipped"],
-      "_skipped_note": "AOC v1.2: verdict=skipped + result=skipped is the audit-only sanctioned-skip shape written by write-skipped-fixer-trace.sh when the upstream gate fired. No pass_* predicate accepts verdict=skipped, so the hard gate blocks naturally; the trace exists solely so observer + audit consumers see the decision."
+      "_skipped_note": "AOC v1.2: verdict=blocked + result=skipped is the audit-only sanctioned-skip shape written by write-skipped-fixer-trace.sh when the upstream gate fired. AVS v1 closes verdict to {pass,fail,blocked,unresolved}, so we use 'blocked' (semantically: 'fixer was blocked from spawning by upstream') with result='skipped' as the qualifier. No pass_* predicate accepts verdict=blocked, so the hard gate blocks naturally; the trace exists solely so observer + audit consumers see the decision. Note: ux-journeyer ALREADY uses verdict=blocked as an additional_block_condition — precedent exists for this verdict value."
     },
     "quality-fixer": {
-      "allowed_verdicts": ["pass", "fail", "skipped"],
+      "allowed_verdicts": ["pass", "fail", "blocked"],
       "allowed_results": ["clean", "fixed", "partial", "none", "skipped"],
       "_skipped_note": "AOC v1.2: see security-fixer _skipped_note."
     },

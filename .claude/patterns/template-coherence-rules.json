@@ -326,6 +326,21 @@
       "pragma": "<!-- coherence-allow: line-number-cross-reference -->",
       "convention_doc": ".claude/patterns/cross-reference-style.md",
       "description": "Issue #1238 — flags stale line-number cross-references in template markdown. Branch 1 (cross-file) emits when a line-number qualifier (`(line N)`, `lines N-M`, `L\\d+-\\d+`, `on line N`) co-occurs within a 3-line window with a path-mention to a template-eligible file (extensions: md, yaml, yml, json, py, sh; src/-prefixed paths excluded since src/ is scaffold-emitted). Branch 2 (same-file) emits when the qualifier appears with no path-mention in the 3-line window — covers self-references that rot when the same file is edited. Pragma <!-- coherence-allow: line-number-cross-reference --> on the same or adjacent line suppresses both branches."
+    },
+    {
+      "id": "aoc-v12-lead-orchestrated-eligibility",
+      "type": "lead_orchestrated_eligibility_complete",
+      "severity": "block",
+      "registry_path": ".claude/patterns/agent-registry.json",
+      "description": "AOC v1.2 F7 — every agent in (verdict_agents - recovery_forbidden - lead_orchestrated_forbidden) that has a hard_gates entry MUST include `pass_lead_orchestrated` in allow_predicates; agents in `lead_orchestrated_forbidden` MUST NOT have it whitelisted. Closes design caveat C5: per-agent eligibility derives mechanically from existing registry fields (verdict_agents, recovery_forbidden, lead_orchestrated_forbidden) rather than being hand-curated."
+    },
+    {
+      "id": "aoc-v12-aggregate-ok-doc-impl-coherence",
+      "type": "aggregate_ok_predicate_doc_matches_impl",
+      "severity": "block",
+      "registry_path": ".claude/patterns/agent-registry.json",
+      "impl_path": ".claude/scripts/evaluate-hard-gate-predicates.py",
+      "description": "AOC v1.2 F8 — agent-registry.json's `_aggregate_ok_accepted_predicates` structured array MUST exactly match the predicate-name set called inside evaluate-hard-gate-predicates.py's aggregate_ok function. AST-based check using a deterministic name-pattern selector (^(pass_|validated_|legacy_|aggregate_)); no prose parsing, no line-number anchoring (closes round-3 critic concerns #6 + #2). Asserts EXACTLY ONE matching BoolOp(Or) chain in the function body — multiple chains is a refactor signal that the structured array can no longer represent the predicate set."
     }
   ]
 }

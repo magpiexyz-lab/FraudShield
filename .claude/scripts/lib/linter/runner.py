@@ -2407,6 +2407,131 @@ def main() -> int:
         return out
 
 
+    def check_lead_orchestrated_eligibility_complete(rule):
+        """AOC v1.2 F7 — assert that every agent in
+        (verdict_agents - recovery_forbidden - lead_orchestrated_forbidden)
+        with a hard_gates entry includes pass_lead_orchestrated in
+        allow_predicates, AND no agent in lead_orchestrated_forbidden has
+        it whitelisted (drift in either direction).
+
+        Closes design caveat C5: per-agent eligibility derives mechanically
+        from existing registry fields rather than being hand-curated.
+        """
+        out = []
+        rid = rule.get("id", "<unknown>")
+        registry_rel = rule.get("registry_path", ".claude/patterns/agent-registry.json")
+        registry_path = os.path.join(REPO_ROOT, registry_rel)
+        try:
+            reg = json.load(open(registry_path))
+        except Exception as e:
+            return [f"  [{rid}] cannot read registry {registry_rel}: {e}"]
+        verdict_agents = set(reg.get("verdict_agents", []))
+        recovery_forbidden = set(reg.get("recovery_forbidden", []))
+        lead_orch_forbidden = set(reg.get("lead_orchestrated_forbidden", []))
+        eligible = verdict_agents - recovery_forbidden - lead_orch_forbidden
+        for gate in reg.get("hard_gates", []):
+            agent = gate.get("agent")
+            allow = set(gate.get("allow_predicates", []))
+            if agent in eligible and "pass_lead_orchestrated" not in allow:
+                out.append(
+                    f"  [{rid}] agent {agent!r} is eligible "
+                    f"(verdict_agent AND not in recovery_forbidden AND not in "
+                    f"lead_orchestrated_forbidden) but allow_predicates lacks "
+                    f"pass_lead_orchestrated"
+                )
+            if agent in lead_orch_forbidden and "pass_lead_orchestrated" in allow:
+                out.append(
+                    f"  [{rid}] agent {agent!r} is in lead_orchestrated_forbidden "
+                    f"but allow_predicates includes pass_lead_orchestrated — "
+                    f"this is a soundness regression (security-* probes touch "
+                    f"live endpoints; retrospective lead attestation unsound)"
+                )
+        return out
+
+
+    def check_aggregate_ok_predicate_doc_matches_impl(rule):
+        """AOC v1.2 F8 — assert agent-registry.json's
+        _aggregate_ok_accepted_predicates structured array exactly matches
+        the predicate-name set called inside evaluate-hard-gate-predicates.py's
+        aggregate_ok function.
+
+        Uses an AST selector by predicate-name pattern (NOT line-number
+        anchoring — closes round-3 critic concern #2). The selector finds
+        ast.BoolOp(op=Or) nodes whose .values are ALL ast.Call to a Name
+        matching ^(pass_|validated_|legacy_|aggregate_). Asserts EXACTLY
+        ONE such BoolOp; multiple chains is a refactor signal.
+        """
+        import ast as _ast
+        import re as _re
+        out = []
+        rid = rule.get("id", "<unknown>")
+        registry_rel = rule.get("registry_path", ".claude/patterns/agent-registry.json")
+        impl_rel = rule.get("impl_path", ".claude/scripts/evaluate-hard-gate-predicates.py")
+        registry_path = os.path.join(REPO_ROOT, registry_rel)
+        impl_path = os.path.join(REPO_ROOT, impl_rel)
+        try:
+            reg = json.load(open(registry_path))
+        except Exception as e:
+            return [f"  [{rid}] cannot read registry {registry_rel}: {e}"]
+        declared = set(reg.get("_aggregate_ok_accepted_predicates", []))
+        if not declared:
+            return [
+                f"  [{rid}] registry missing _aggregate_ok_accepted_predicates "
+                f"field (added in AOC v1.2)"
+            ]
+        try:
+            tree = _ast.parse(open(impl_path).read())
+        except Exception as e:
+            return [f"  [{rid}] cannot parse impl {impl_rel}: {e}"]
+        func = next(
+            (n for n in _ast.walk(tree)
+             if isinstance(n, _ast.FunctionDef) and n.name == "aggregate_ok"),
+            None,
+        )
+        if func is None:
+            return [f"  [{rid}] aggregate_ok function not found in {impl_rel}"]
+        pattern = _re.compile(r"^(pass_|validated_|legacy_|aggregate_)")
+        matched = []
+        for node in _ast.walk(func):
+            if isinstance(node, _ast.BoolOp) and isinstance(node.op, _ast.Or):
+                names = []
+                ok = True
+                for v in node.values:
+                    if (
+                        isinstance(v, _ast.Call)
+                        and isinstance(v.func, _ast.Name)
+                        and pattern.match(v.func.id)
+                    ):
+                        names.append(v.func.id)
+                    else:
+                        ok = False
+                        break
+                if ok and names:
+                    matched.append(set(names))
+        if len(matched) == 0:
+            return [
+                f"  [{rid}] no predicate-Or chain found in aggregate_ok "
+                f"(expected exactly one BoolOp(Or) with all-pass_/validated_/"
+                f"legacy_/aggregate_ Call values)"
+            ]
+        if len(matched) > 1:
+            return [
+                f"  [{rid}] {len(matched)} predicate-Or chains found in "
+                f"aggregate_ok; refactor needed — the structured array can "
+                f"no longer represent multiple chains"
+            ]
+        impl_set = matched[0]
+        if impl_set != declared:
+            only_decl = sorted(declared - impl_set)
+            only_impl = sorted(impl_set - declared)
+            out.append(
+                f"  [{rid}] mismatch between registry "
+                f"_aggregate_ok_accepted_predicates and impl aggregate_ok: "
+                f"declared-only={only_decl}, impl-only={only_impl}"
+            )
+        return out
+
+
     # ---------------------------------------------------------------------------
     # Cross-file rule dispatch — registry-driven with type + field validation.
     #
@@ -2445,6 +2570,9 @@ def main() -> int:
         "must_contain_section":             (check_must_contain_section,             {"applies_to_glob", "required_section", "trigger_pattern_any"}, {"exclude_glob"},                                       False),
         "bash_hook_write_operator_binding": (check_bash_hook_write_operator_binding, {"manifest_path", "scan_glob"},                                 {"pragma"},                                                   False),
         "markdown_cross_file_line_reference": (check_markdown_cross_file_line_reference, {"target_glob"},                                            {"pragma"},                                                   False),
+        # AOC v1.2 PR6 — F7 + F8 lints.
+        "lead_orchestrated_eligibility_complete": (check_lead_orchestrated_eligibility_complete, set(), {"registry_path"}, True),
+        "aggregate_ok_predicate_doc_matches_impl": (check_aggregate_ok_predicate_doc_matches_impl, set(), {"registry_path", "impl_path"}, True),
     }
     META_KEYS = {"id", "type", "severity", "description", "_transitional_note", "_comment", "convention_doc"}
 

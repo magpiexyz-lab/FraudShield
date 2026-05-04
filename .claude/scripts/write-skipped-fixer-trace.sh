@@ -245,10 +245,13 @@ trace = {
     "agent": os.environ["AGENT_ENV"],
     "timestamp": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     "status": "completed",
-    # AOC v1.2: audit-only sanctioned-skip shape. verdict=skipped + result=skipped
-    # are NEW values in fixer allowed_verdicts/allowed_results (added by PR1 A1.3).
-    # No pass_* predicate matches verdict=skipped, so the hard gate blocks naturally.
-    "verdict": "skipped",
+    # AOC v1.2: audit-only sanctioned-skip shape. verdict=blocked is in AVS v1
+    # core ({pass,fail,blocked,unresolved}); result=skipped is the qualifier
+    # (added to fixer allowed_results by PR1 A1.3 + PR6 lint-driven correction).
+    # Semantic: "fixer was blocked from spawning by upstream gate". No pass_*
+    # predicate accepts verdict=blocked, so the hard gate blocks naturally.
+    # ux-journeyer already uses verdict=blocked as a block-condition; precedent.
+    "verdict": "blocked",
     "result": "skipped",
     "provenance": "lead-skipped",
     "lead_attestation": True,
