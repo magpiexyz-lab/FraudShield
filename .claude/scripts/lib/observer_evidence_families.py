@@ -52,6 +52,17 @@ CANONICAL_EVIDENCE_FAMILIES: list[tuple[str, str, str]] = [
     ("*-result.json", "result_artifacts_paths", "multi"),
 ]
 
+# Files that match a multi-glob above but should NOT appear in their list:
+#   - observation-evidence.json IS the envelope; self-reference is meaningless
+#     and creates an infinite-recursion temptation if a consumer follows it.
+#   - observe-evidence-check.json is a small telemetry artifact written by
+#     observation-phase.md Step 2.5, not evidence content. Excluding it
+#     reduces envelope noise without losing information.
+SELF_EXCLUDE_FILENAMES: frozenset[str] = frozenset({
+    "observation-evidence.json",
+    "observe-evidence-check.json",
+})
+
 
 def list_present_families(runs_dir: str) -> list[tuple[str, str, str, list[str]]]:
     """Return the subset of CANONICAL_EVIDENCE_FAMILIES that have ≥1 match
@@ -66,6 +77,8 @@ def list_present_families(runs_dir: str) -> list[tuple[str, str, str, list[str]]
     for pattern, field, kind in CANONICAL_EVIDENCE_FAMILIES:
         full = os.path.join(runs_dir, pattern)
         matches = sorted(_glob.glob(full))
+        # Exclude self-reference noise (envelope itself + telemetry sibling).
+        matches = [m for m in matches if os.path.basename(m) not in SELF_EXCLUDE_FILENAMES]
         if not matches:
             continue
         rel = [os.path.relpath(m, runs_dir) for m in matches]
