@@ -343,6 +343,26 @@ if [[ ${#MISSING[@]} -gt 0 ]]; then
   PASS="false"
 fi
 
+# ── Retrospective-completeness gate (#1276) ──
+# Runs AFTER observation-phase Step 5a has written retrospective-result.json
+# (contrast: lifecycle-finalize.sh Step 1 runs BEFORE observation, so the
+# validator must be wired here, not there). Fail-mode: when validator returns
+# non-zero AND RETROSPECTIVE_COMPLETENESS_MODE=deny, add to MISSING so the
+# observation-enforcement.json `pass` field flips to false and state-99 VERIFY
+# blocks. Default MODE=warn during rollout — only logs to stderr.
+if [[ "$SCOPE" == "full" || "$SCOPE" == "process" ]] \
+   && [[ -f "$RUNS_DIR/retrospective-pending-findings.json" ]]; then
+  RC_OUT=$(python3 "${PROJECT_DIR}/.claude/scripts/validate-retrospective-completeness.py" 2>&1) || RC_RC=$?
+  RC_RC="${RC_RC:-0}"
+  if [[ "$RC_RC" -ne 0 ]]; then
+    echo "$RC_OUT" >&2
+    if [[ "${RETROSPECTIVE_COMPLETENESS_MODE:-warn}" == "deny" ]]; then
+      MISSING+=("retrospective-completeness (#1276 — pending findings without disposition)")
+      PASS="false"
+    fi
+  fi
+fi
+
 # ── Write audit artifact (delegates to canonical writer — GRAIM v2 Slice 3) ──
 # Build missing list as newline-delimited string, then convert in Python
 MISSING_STR=""

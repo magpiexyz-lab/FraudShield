@@ -329,16 +329,13 @@ json.dump(d, open('$COHERENCE_CACHE', 'w'), indent=2)
     exit 1
   fi
 
-  # Retrospective-completeness gate (#1276): blocking when MODE=deny. Asserts
-  # every candidate in .runs/retrospective-pending-findings.json has either a
-  # filed entry OR an explicit suppression in retrospective-result.json. During
-  # rollout MODE defaults to "warn"; flip to "deny" via env var or by changing
-  # the validator's default once 1-2 real skill cycles confirm zero false positives.
-  if ! python3 "$PROJECT_DIR/.claude/scripts/validate-retrospective-completeness.py" >&2; then
-    echo "BLOCK: retrospective-completeness violation (issue #1276)." >&2
-    echo "Re-run: python3 .claude/scripts/validate-retrospective-completeness.py" >&2
-    exit 1
-  fi
+  # NOTE: Retrospective-completeness gate (#1276) was MOVED from this script
+  # to .claude/scripts/check-observation-artifacts.sh. lifecycle-finalize.sh
+  # runs in state-99 Step 1, BEFORE observation-phase Step 5a writes
+  # retrospective-result.json (which happens in state-99 Step 2). Wiring the
+  # gate here always SKIPped because the file doesn't exist yet. The gate
+  # now lives at the correct point: check-observation-artifacts.sh, which
+  # runs in state-99 Step 2a (after observation completes).
 fi
 
 # --- Step 4.6: RMG v2 typed-guard artifact existence + advisory recurrence detector ---

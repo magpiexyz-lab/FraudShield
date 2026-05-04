@@ -439,10 +439,12 @@ For EACH candidate, the lead chooses one of:
       - `defer-with-followup-#NNNN` — real finding, deferred under tracking issue NNNN
 
 After writing retrospective-result.json, the gate
-`validate-retrospective-completeness.py` runs at lifecycle-finalize.sh.
-Every pending candidate must have either a filed entry in
-`.runs/retrospective-filed-findings.json` OR a valid suppression. Missing
-disposition blocks finalize (in deny mode; warn mode logs only during rollout).
+`validate-retrospective-completeness.py` runs at
+`.claude/scripts/check-observation-artifacts.sh` (state-99 Step 2a, AFTER
+this Step 5a completes). Every pending candidate must have either a filed
+entry in `.runs/retrospective-filed-findings.json` OR a valid suppression.
+Missing disposition flips `observation-enforcement.json.pass=false` in deny
+mode, blocking state-99 advancement; warn mode logs only during rollout.
 
 #### Write result
 

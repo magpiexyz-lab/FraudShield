@@ -61,7 +61,10 @@ VALIDATORS = {
     "validate-retrospective-completeness.py": {
         "mode_env": "RETROSPECTIVE_COMPLETENESS_MODE",
         "ref_files": [
-            ".claude/scripts/lifecycle-finalize.sh",
+            # Wired at check-observation-artifacts.sh (state-99 Step 2a),
+            # NOT lifecycle-finalize.sh (state-99 Step 1) — the latter runs
+            # BEFORE retrospective-result.json is written by Step 5a.
+            ".claude/scripts/check-observation-artifacts.sh",
             ".claude/patterns/observation-phase.md",
         ],
     },

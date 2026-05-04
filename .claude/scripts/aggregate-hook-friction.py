@@ -236,12 +236,15 @@ def main():
 
     # Auto-file (#1255): groups at threshold trigger file-retrospective-finding.py
     # GUARDS:
-    #   - dry-run via env var AGGREGATE_HOOK_FRICTION_DRY_RUN=1 (for tests + smoke)
+    #   - dry-run DEFAULTS TO 1 during rollout window (matches MODE=warn
+    #     convention used by the 5 hard-block validators). Set
+    #     AGGREGATE_HOOK_FRICTION_DRY_RUN=0 to enable real auto-file once
+    #     1-2 real skill cycles confirm zero false positives.
     #   - schema_version cutoff: only fire when run_id is post-cutoff
     #     (prevents auto-file on pre-cutoff runs that the new contract was
     #     never designed to enforce)
     auto_filed_this_run = 0
-    dry_run = os.environ.get("AGGREGATE_HOOK_FRICTION_DRY_RUN") == "1"
+    dry_run = os.environ.get("AGGREGATE_HOOK_FRICTION_DRY_RUN", "1") != "0"
     if rid and not dry_run:
         # Cutoff guard
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
