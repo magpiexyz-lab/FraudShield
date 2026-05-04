@@ -15,6 +15,28 @@ Pass the problem statement verbatim -- do not reinterpret or narrow it.
 If `solve-context.json` contains `problem_type = "defect"`, pass this to solve-reasoning
 to activate the prevention dimension.
 
+### RMG v2 Phase 1a Dossier (when `problem_type = "defect"`)
+
+When the user invokes `/solve --defect` or `/solve --bug`, solve-reasoning
+Phase 1a builds a Prior-Failure Dossier via
+`.claude/scripts/lib/dossier_builder.py`. For `/solve`, derive the inputs
+from the problem statement:
+
+- `divergence_files` = file paths the lead extracts from
+  `solve-context.json.problem_statement`. When the problem statement does
+  not reference specific files (open-ended `/solve` queries), pass an empty
+  list — the dossier still surfaces composite-identity matches via the
+  recurrence-candidates artifact.
+- `symptom_signature` = `canonicalize_symptom(problem_statement)` via
+  `.claude/scripts/lib/symptom_canonicalizer.py`. This collapses line/col
+  positions, PR/issue numbers, ISO timestamps, absolute paths, and short
+  SHAs so paraphrased reports collide.
+
+The dossier flows transparently into Phase 4b — the designer must emit a
+`prior_failure_response[]` for every dossier entry citing a concrete delta
+step or guard artifact absent from the prior commit (R2-A2). Empty dossier
+→ Phase 4b is a no-op.
+
 - **Write solve trace artifact** (`.runs/solve-trace.json`) using the contract from solve-reasoning.md:
   ```bash
   python3 -c "

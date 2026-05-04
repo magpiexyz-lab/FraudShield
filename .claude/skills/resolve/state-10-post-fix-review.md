@@ -183,7 +183,7 @@ Wait for user approval before proceeding.
 <!-- VERIFY=registry: resolve-review.json artifact validation -->
 **VERIFY:**
 ```bash
-python3 -c "import json,os; d=json.load(open('.runs/resolve-review.json')); assert d.get('reviewed_count',0)>0, 'reviewed_count missing'; assert d.get('challenged_count',0)==0, 'unresolved challenged items'; trace_path='.runs/agent-traces/resolve-reviewer.json'; assert os.path.exists(trace_path), 'resolve-reviewer trace missing (PR4 — closes #1055 alias drift)'; t=json.load(open(trace_path)); assert t.get('status') != 'started' and 'verdict' in t, 'resolve-reviewer trace is a stub (no verdict) — alias drift may have re-emerged'"
+python3 -c "import json,os; d=json.load(open('.runs/resolve-review.json')); assert d.get('reviewed_count',0)>0, 'reviewed_count missing'; assert d.get('challenged_count',0)==0, 'unresolved challenged items'; trace_path='.runs/agent-traces/resolve-reviewer.json'; assert os.path.exists(trace_path), 'resolve-reviewer trace missing (PR4 — closes #1055 alias drift)'; t=json.load(open(trace_path)); assert t.get('status') != 'started' and 'verdict' in t, 'resolve-reviewer trace is a stub (no verdict) — alias drift may have re-emerged'" && python3 .claude/scripts/verify-rmg-guard-artifact-in-diff.py --trace .runs/solve-trace.json --merge-base "$(git merge-base origin/main HEAD 2>/dev/null || echo main)"  # .runs/solve-trace.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

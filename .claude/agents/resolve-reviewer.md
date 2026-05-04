@@ -73,6 +73,29 @@ When the same fix applies to multiple files, is it applied identically (modulo f
 - If a helper function was added in one file, does its usage in another file match the signature?
 - If a config field was added, do all consumers read it?
 
+### Vector 4: RMG v2 Guard-Presence (when `prevention_analysis.problem_type=defect`)
+
+For each fix's `recurrence_guard` in `.runs/solve-trace.json`:
+
+- If `kind ∈ {test, lint, hook, invariant}`: confirm the `artifact` path is touched in the PR diff (`git diff main...HEAD --name-only`) OR present on disk in the worktree.
+- If `kind == "none"`: confirm `unguardability_rationale` answers BOTH (a) why no executable check expresses the invariant, AND (b) which review/observability/monitoring process catches the next instance.
+
+The same helper used at `lifecycle-finalize.sh` Step 4.6 enforces this gate at delivery; running it during the review surfaces the gap as `needs-revision` for the user before delivery breaks silently. Invoke:
+
+```bash
+python3 .claude/scripts/verify-rmg-guard-artifact-in-diff.py \
+  --trace .runs/solve-trace.json \
+  --merge-base "$(git merge-base origin/main HEAD)"
+```
+
+Exit codes:
+- `0` — guard-presence OK (or `recurrence_risk=none`, no guard required)
+- `1` — `recurrence_guard` does not parse (RMG v2 schema violation)
+- `2` — `kind` requires an artifact, but `artifact` is missing from the PR diff and the worktree
+- `3` — `kind=none` rationale is insufficient (missing hint A or hint B)
+
+Any non-zero exit → label the matching issue `needs-revision` with the helper's stderr as `evidence`. The fix is to either ship the cited `artifact` in the PR or strengthen the `unguardability_rationale`.
+
 ## Output Contract
 
 Output per issue:
@@ -108,14 +131,14 @@ import json, subprocess
 trace = {
     "verdict": "pass",
     "result": "count_summary",
-    "checks_performed": ["completeness", "correctness", "consistency"],
+    "checks_performed": ["completeness", "correctness", "consistency", "rmg_v2_guard_presence"],
     "confirmed_count": <N>,
     "disputed_count": <M>,
     "verdicts": [
         {
             "issue": "<N>",
             "label": "<sound|needs-revision|challenged>",
-            "vector": "<completeness|correctness|consistency>",
+            "vector": "<completeness|correctness|consistency|rmg_v2_guard_presence>",
             "gap": "<description or empty>",
             "evidence": "<file:line or diff excerpt>",
             "revision": "<specific change or null>"

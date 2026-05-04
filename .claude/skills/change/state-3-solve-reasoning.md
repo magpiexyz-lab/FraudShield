@@ -45,6 +45,24 @@ This activates the prevention dimension (root cause + recurrence + scope checks)
 
 For all other preliminary_types: do not set `problem_type`.
 
+### RMG v2 Phase 1a Dossier (when `preliminary_type = "Fix"`)
+
+When `problem_type = "defect"` is set, solve-reasoning Phase 1a builds a Prior-Failure
+Dossier via `.claude/scripts/lib/dossier_builder.py`. For `/change`, derive the
+inputs from the change context:
+
+- `divergence_files` = the union of `affected_files` from
+  `.runs/exploration-trace.json` (Phase 2 plan-exploration output).
+- `symptom_signature` = `canonicalize_symptom("$ARGUMENTS")` — i.e., the
+  user's bug report. The canonicalizer at
+  `.claude/scripts/lib/symptom_canonicalizer.py` collapses line/column
+  positions, PR/issue numbers, ISO timestamps, absolute paths, and short
+  SHAs so equivalent reports collide.
+
+The dossier flows transparently into Phase 4b — the designer must emit a
+`prior_failure_response[]` for every dossier entry citing a concrete delta
+step or guard artifact absent from the prior commit (R2-A2).
+
 ### Light mode path
 
 CALL: `.claude/patterns/solve-reasoning.md` — execute light mode (Steps 1-5).
