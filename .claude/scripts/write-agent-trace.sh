@@ -65,6 +65,8 @@ COVERAGE_PROVIDER=""
 LEAD_ATTESTATION=""
 TRACE_FILENAME=""
 SPAWN_INDEX_OVERRIDE=""
+SOURCE_RUN_ID=""
+SOURCE_SKILL=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -75,6 +77,9 @@ while [[ $# -gt 0 ]]; do
     --lead-attestation)   LEAD_ATTESTATION="${2:-}"; shift 2 ;;
     --trace-filename)     TRACE_FILENAME="${2:-}"; shift 2 ;;
     --spawn-index)        SPAWN_INDEX_OVERRIDE="${2:-}"; shift 2 ;;
+    # AOC v1.2: post-completion lead-orchestrated re-spawn override.
+    --source-run-id)      SOURCE_RUN_ID="${2:-}"; shift 2 ;;
+    --source-skill)       SOURCE_SKILL="${2:-}"; shift 2 ;;
     -h|--help)            usage; exit 0 ;;
     *)
       echo "ERROR: write-agent-trace.sh — unknown argument: $1" >&2
@@ -100,12 +105,35 @@ if [[ -z "$JSON_PAYLOAD" ]]; then
 fi
 
 case "$PROVENANCE" in
-  self|self-degraded|lead-on-behalf|lead-synthesized|lead-fix) ;;
+  self|self-degraded|lead-on-behalf|lead-synthesized|lead-fix|lead-orchestrated) ;;
   *)
-    echo "ERROR: write-agent-trace.sh — --provenance must be one of: self, self-degraded, lead-on-behalf, lead-synthesized, lead-fix (got: $PROVENANCE)" >&2
+    echo "ERROR: write-agent-trace.sh — --provenance must be one of: self, self-degraded, lead-on-behalf, lead-synthesized, lead-fix, lead-orchestrated (got: $PROVENANCE)" >&2
     exit 1
     ;;
 esac
+
+# AOC v1.2: lead-orchestrated requires both --source-run-id and --source-skill;
+# conversely, supplying source flags implies provenance=lead-orchestrated.
+if [[ -n "$SOURCE_RUN_ID" || -n "$SOURCE_SKILL" ]]; then
+  if [[ "$PROVENANCE" != "lead-orchestrated" ]]; then
+    PROVENANCE="lead-orchestrated"
+  fi
+  if [[ "$LEAD_ATTESTATION" != "true" ]]; then
+    LEAD_ATTESTATION="true"
+  fi
+fi
+if [[ "$PROVENANCE" == "lead-orchestrated" ]]; then
+  if [[ -z "$SOURCE_RUN_ID" || -z "$SOURCE_SKILL" ]]; then
+    echo "ERROR: write-agent-trace.sh — --provenance lead-orchestrated requires both --source-run-id and --source-skill" >&2
+    exit 1
+  fi
+  # Validate R1-R4 via the shared validator.
+  source "$(dirname "$0")/lib/source_identity_validator.sh"
+  if ! validate_source_identity "$SOURCE_RUN_ID" "$SOURCE_SKILL" "$AGENT"; then
+    echo "ERROR: write-agent-trace.sh — source-identity validation failed (see above)" >&2
+    exit 1
+  fi
+fi
 
 if [[ "$PROVENANCE" == "lead-on-behalf" && -z "$SOURCE" ]]; then
   echo "ERROR: write-agent-trace.sh — --source is required when --provenance lead-on-behalf" >&2
@@ -134,15 +162,24 @@ fi
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-.}"
 cd "$PROJECT_DIR"
 
-ACTIVE_IDENTITY="$(bash -c 'source .claude/hooks/lib.sh && resolve_active_identity' 2>/dev/null || true)"
-if [[ -z "$ACTIVE_IDENTITY" ]]; then
-  echo "ERROR: write-agent-trace.sh — no active skill context on current branch; cannot resolve run_id" >&2
-  exit 1
-fi
-IFS=$'\t' read -r ACTIVE_SKILL ACTIVE_RUN_ID _ACTIVE_ATTR _ACTIVE_ANCESTORS <<< "$ACTIVE_IDENTITY"
-if [[ -z "$ACTIVE_RUN_ID" ]]; then
-  echo "ERROR: write-agent-trace.sh — active context has empty run_id" >&2
-  exit 1
+if [[ "$PROVENANCE" == "lead-orchestrated" ]]; then
+  # AOC v1.2: source flags supplied — bypass resolve_active_identity (which
+  # returns empty under post-completion). Validator already enforced R1-R4
+  # above (including R4: source_skill differs from any active skill).
+  ACTIVE_SKILL="$SOURCE_SKILL"
+  ACTIVE_RUN_ID="$SOURCE_RUN_ID"
+else
+  ACTIVE_IDENTITY="$(bash -c 'source .claude/hooks/lib.sh && resolve_active_identity' 2>/dev/null || true)"
+  if [[ -z "$ACTIVE_IDENTITY" ]]; then
+    echo "ERROR: write-agent-trace.sh — no active skill context on current branch; cannot resolve run_id" >&2
+    echo "  Hint: under post-completion conditions, supply --source-run-id and --source-skill (provenance=lead-orchestrated)." >&2
+    exit 1
+  fi
+  IFS=$'\t' read -r ACTIVE_SKILL ACTIVE_RUN_ID _ACTIVE_ATTR _ACTIVE_ANCESTORS <<< "$ACTIVE_IDENTITY"
+  if [[ -z "$ACTIVE_RUN_ID" ]]; then
+    echo "ERROR: write-agent-trace.sh — active context has empty run_id" >&2
+    exit 1
+  fi
 fi
 
 # Compose final trace via Python for clean JSON manipulation. Validates the
@@ -157,6 +194,8 @@ SPAWN_INDEX_OVERRIDE_ENV="$SPAWN_INDEX_OVERRIDE" \
 JSON_PAYLOAD_ENV="$JSON_PAYLOAD" \
 ACTIVE_SKILL_ENV="$ACTIVE_SKILL" \
 ACTIVE_RUN_ID_ENV="$ACTIVE_RUN_ID" \
+SOURCE_RUN_ID_ENV="$SOURCE_RUN_ID" \
+SOURCE_SKILL_ENV="$SOURCE_SKILL" \
 python3 - << 'PYEOF'
 import json
 import os
@@ -175,6 +214,8 @@ spawn_index_override = int(spawn_index_override_str) if spawn_index_override_str
 payload_raw = os.environ["JSON_PAYLOAD_ENV"]
 active_skill = os.environ.get("ACTIVE_SKILL_ENV", "")
 active_run_id = os.environ.get("ACTIVE_RUN_ID_ENV", "")
+source_run_id = os.environ.get("SOURCE_RUN_ID_ENV", "")
+source_skill = os.environ.get("SOURCE_SKILL_ENV", "")
 
 try:
     payload = json.loads(payload_raw)
@@ -324,6 +365,19 @@ if provenance == "lead-synthesized":
     # checks_performed may be empty for synthesized markers (artifact-integrity-gate
     # allows empty checks for lead-synthesized).
     trace.setdefault("checks_performed", [])
+
+if provenance == "lead-orchestrated":
+    # AOC v1.2: post-completion lead-orchestrated re-spawn. Lead supplied
+    # explicit identity via --source-run-id + --source-skill; validator
+    # already enforced R1-R4 upstream. Stamp source fields into the trace
+    # for audit trail; downstream gates use pass_lead_orchestrated predicate
+    # — no recovery_validated chain (lead has direct knowledge).
+    trace["partial"] = True
+    trace["lead_attestation"] = True
+    trace["source_run_id"] = source_run_id
+    trace["source_skill"] = source_skill
+    if not isinstance(trace.get("checks_performed"), list):
+        trace["checks_performed"] = []
 
 if provenance == "lead-fix":
     # EARC slice 3: lead self-applied fix (e.g., write-phase-a-repair.sh).

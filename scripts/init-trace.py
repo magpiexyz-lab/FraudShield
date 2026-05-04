@@ -12,6 +12,11 @@ Args:
     --context:      Optional. Path to context JSON file for run_id.
                     Defaults to ".runs/verify-context.json".
                     Use for cross-skill agents: --context .runs/resolve-context.json
+                    AOC v1.2 NOTE: this flag IS the post-completion identity
+                    override for init-trace.py — pass `.runs/<skill>-context.json`
+                    explicitly even when that file has completed:true. init-trace
+                    does not call resolve_active_identity (which would otherwise
+                    return empty); it reads the supplied context file directly.
     trace-filename: Optional. Defaults to "<agent-name>.json".
                     Use for per-page traces: "design-critic-landing.json"
 

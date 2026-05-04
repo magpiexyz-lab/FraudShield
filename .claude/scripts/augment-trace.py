@@ -203,7 +203,32 @@ def main() -> int:
         default="",
         help="defaults to <agent>.json; pass e.g. design-critic-landing.json for per-page traces",
     )
+    # AOC v1.2: post-completion lead-orchestrated re-spawn override.
+    parser.add_argument(
+        "--source-run-id", default="",
+        help="explicit run_id override for post-completion augmentation (when the inline "
+             "scan returns empty because all *-context.json have completed:true). Must be "
+             "supplied with --source-skill (R1 xor).",
+    )
+    parser.add_argument(
+        "--source-skill", default="",
+        help="explicit skill paired with --source-run-id (AOC v1.2).",
+    )
     args = parser.parse_args()
+
+    # AOC v1.2: validate source-identity flags before continuing.
+    if args.source_run_id or args.source_skill:
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
+        from source_identity_validator import validate_source_identity  # noqa: E402
+        errs = validate_source_identity(
+            args.source_run_id or None,
+            args.source_skill or None,
+            agent=args.agent,
+        )
+        if errs:
+            for e in errs:
+                sys.stderr.write(f"ERROR: augment-trace.py — {e}\n")
+            return 1
 
     if not args.field:
         sys.stderr.write("ERROR: augment-trace.py — at least one --field key=value is required\n")
@@ -234,30 +259,39 @@ def main() -> int:
     project_dir = os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
     os.chdir(project_dir)
 
-    # Read active run_id from any non-completed *-context.json (mirrors lib-state.sh)
-    import glob
+    # AOC v1.2: when source flags supplied, bypass the inline identity scan
+    # (post-completion scenario where all *-context.json have completed:true).
+    # Validator already enforced R1-R4 above (including R3 spawn-log presence).
+    if args.source_run_id and args.source_skill:
+        active_run_id = args.source_run_id
+    else:
+        # Read active run_id from any non-completed *-context.json (mirrors lib-state.sh)
+        import glob
 
-    active_run_id = ""
-    best_ts = ""
-    for f in glob.glob(".runs/*-context.json"):
-        if f.endswith("/epilogue-context.json"):
-            continue
-        try:
-            ctx = json.load(open(f))
-        except Exception:
-            continue
-        if ctx.get("completed") is True:
-            continue
-        ts = ctx.get("timestamp", "") or ""
-        if ts >= best_ts:
-            best_ts = ts
-            active_run_id = ctx.get("run_id", "")
+        active_run_id = ""
+        best_ts = ""
+        for f in glob.glob(".runs/*-context.json"):
+            if f.endswith("/epilogue-context.json"):
+                continue
+            try:
+                ctx = json.load(open(f))
+            except Exception:
+                continue
+            if ctx.get("completed") is True:
+                continue
+            ts = ctx.get("timestamp", "") or ""
+            if ts >= best_ts:
+                best_ts = ts
+                active_run_id = ctx.get("run_id", "")
 
-    if not active_run_id:
-        sys.stderr.write(
-            "ERROR: augment-trace.py — no active skill context on current branch; cannot resolve run_id\n"
-        )
-        return 1
+        if not active_run_id:
+            sys.stderr.write(
+                "ERROR: augment-trace.py — no active skill context on current branch; cannot resolve run_id\n"
+            )
+            sys.stderr.write(
+                "  Hint: under post-completion conditions, supply --source-run-id and --source-skill (AOC v1.2).\n"
+            )
+            return 1
 
     # Spawn-log lookup: must find an entry matching (agent, run_id, spawn_index)
     spawn_log_path = ".runs/agent-spawn-log.jsonl"

@@ -82,34 +82,66 @@ def main() -> int:
                              "of the same agent type (e.g., scaffold-pages-home / "
                              "scaffold-pages-pricing). When omitted, first-match semantics "
                              "are preserved (single-spawn agents).")
+    # AOC v1.2: post-completion lead-orchestrated re-spawn.
+    parser.add_argument("--source-run-id", default="",
+                        help="explicit run_id override for post-completion lead-orchestrated "
+                             "re-spawn (when resolve_active_identity returns empty). "
+                             "Must be supplied together with --source-skill (R1 xor). "
+                             "Stamps provenance=lead-orchestrated.")
+    parser.add_argument("--source-skill", default="",
+                        help="explicit skill override paired with --source-run-id.")
     args = parser.parse_args()
+
+    # AOC v1.2: validate source-identity flags before continuing.
+    if args.source_run_id or args.source_skill:
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
+        from source_identity_validator import validate_source_identity  # noqa: E402
+        errs = validate_source_identity(
+            args.source_run_id or None,
+            args.source_skill or None,
+            agent=args.agent,
+        )
+        if errs:
+            for e in errs:
+                print(f"ERROR: write-degraded-trace.py — {e}", file=sys.stderr)
+            return 1
 
     if args.spawn_index is not None and args.spawn_index < 0:
         print("ERROR: write-degraded-trace.py — --spawn-index must be a non-negative integer",
               file=sys.stderr)
         return 1
 
-    # Resolve active identity via the shell helper (single source of truth).
-    # We shell out because the helper is in bash.
-    try:
-        out = subprocess.check_output(
-            ["bash", "-c",
-             "source .claude/hooks/lib.sh && resolve_active_identity"],
-            text=True, stderr=subprocess.DEVNULL).strip()
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        out = ""
-    if not out:
-        print("ERROR: write-degraded-trace.py — no active skill context on current branch",
-              file=sys.stderr)
-        return 1
-    parts = out.split("\t")
-    while len(parts) < 4:
-        parts.append("")
-    active_skill, active_run_id, _active_attr, _ = parts[:4]
-    if not active_run_id:
-        print("ERROR: write-degraded-trace.py — active context has empty run_id",
-              file=sys.stderr)
-        return 1
+    # AOC v1.2: when source flags supplied, bypass resolve_active_identity
+    # (post-completion scenario). Validator already enforced R1-R4 above.
+    if args.source_run_id and args.source_skill:
+        active_skill = args.source_skill
+        active_run_id = args.source_run_id
+        provenance = "lead-orchestrated"
+    else:
+        provenance = "self-degraded"
+        # Resolve active identity via the shell helper (single source of truth).
+        # We shell out because the helper is in bash.
+        try:
+            out = subprocess.check_output(
+                ["bash", "-c",
+                 "source .claude/hooks/lib.sh && resolve_active_identity"],
+                text=True, stderr=subprocess.DEVNULL).strip()
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            out = ""
+        if not out:
+            print("ERROR: write-degraded-trace.py — no active skill context on current branch",
+                  file=sys.stderr)
+            print("  Hint: under post-completion conditions, supply --source-run-id and --source-skill.",
+                  file=sys.stderr)
+            return 1
+        parts = out.split("\t")
+        while len(parts) < 4:
+            parts.append("")
+        active_skill, active_run_id, _active_attr, _ = parts[:4]
+        if not active_run_id:
+            print("ERROR: write-degraded-trace.py — active context has empty run_id",
+                  file=sys.stderr)
+            return 1
 
     # Look up spawn-log entry for this agent in current run_id to inherit spawn_sha.
     # When --spawn-index <N> is supplied: require an exact match on spawn_index too.
@@ -188,7 +220,7 @@ def main() -> int:
         "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "status": "completed",
         "verdict": args.verdict,
-        "provenance": "self-degraded",
+        "provenance": provenance,
         "partial": True,
         "checks_performed": checks,
         "degraded_reason": args.reason,
@@ -201,6 +233,11 @@ def main() -> int:
         "spawn_sha": spawn_sha,
         "spawn_index": spawn_index,
     }
+    # AOC v1.2: lead-orchestrated additional required fields.
+    if provenance == "lead-orchestrated":
+        trace["lead_attestation"] = True
+        trace["source_run_id"] = args.source_run_id
+        trace["source_skill"] = args.source_skill
 
     # Merge extra structured fields, preserving canonical keys. Fix #1075.
     for k, v in extra.items():

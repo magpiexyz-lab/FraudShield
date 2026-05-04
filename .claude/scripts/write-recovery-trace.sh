@@ -39,6 +39,8 @@ REASON=""
 OVERRIDE_RUN_ID=""
 FIXES_JSON=""
 EVIDENCE_SOURCE=""
+SOURCE_SKILL=""
+PROVENANCE_VARIANT="recovery"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -56,6 +58,25 @@ while [[ $# -gt 0 ]]; do
       ;;
     --run-id=*)
       OVERRIDE_RUN_ID="${1#--run-id=}"
+      shift
+      ;;
+    # AOC v1.2: post-completion lead-orchestrated re-spawn variant.
+    # Use with --run-id to attribute the trace to a specific run + skill
+    # (validator R4 enforces: source_skill must differ from active skill).
+    --source-skill)
+      SOURCE_SKILL="${2:-}"
+      shift 2
+      ;;
+    --source-skill=*)
+      SOURCE_SKILL="${1#--source-skill=}"
+      shift
+      ;;
+    --provenance-variant)
+      PROVENANCE_VARIANT="${2:-recovery}"
+      shift 2
+      ;;
+    --provenance-variant=*)
+      PROVENANCE_VARIANT="${1#--provenance-variant=}"
       shift
       ;;
     --fixes-json)
@@ -104,6 +125,28 @@ if [[ -z "$REASON" ]]; then
   echo "ERROR: write-recovery-trace.sh — --reason is mandatory (issue #963 precondition)" >&2
   echo "Usage: $0 <agent-name> --reason \"<specific cause>\"" >&2
   exit 1
+fi
+
+# AOC v1.2: validate provenance variant + source-skill pairing.
+case "$PROVENANCE_VARIANT" in
+  recovery|lead-orchestrated) ;;
+  *)
+    echo "ERROR: write-recovery-trace.sh — --provenance-variant must be 'recovery' (default) or 'lead-orchestrated' (got: $PROVENANCE_VARIANT)" >&2
+    exit 1
+    ;;
+esac
+if [[ "$PROVENANCE_VARIANT" == "lead-orchestrated" ]]; then
+  if [[ -z "$OVERRIDE_RUN_ID" || -z "$SOURCE_SKILL" ]]; then
+    echo "ERROR: write-recovery-trace.sh — --provenance-variant lead-orchestrated requires both --run-id and --source-skill" >&2
+    exit 1
+  fi
+  # Validate R1-R4 via the shared validator (R1 xor checked here implicitly
+  # by requiring both flags above; R2/R3/R4 checked by the validator).
+  source "$(dirname "$0")/lib/source_identity_validator.sh"
+  if ! validate_source_identity "$OVERRIDE_RUN_ID" "$SOURCE_SKILL" "$AGENT"; then
+    echo "ERROR: write-recovery-trace.sh — source-identity validation failed (see above)" >&2
+    exit 1
+  fi
 fi
 
 # EARC slice 1 (closes #1189): if either --fixes-json or --evidence-source is
@@ -278,30 +321,59 @@ HEAD_SHA=$(echo "$SPAWN_INFO" | python3 -c "import json,sys; print(json.load(sys
 AGENT_ENV="$AGENT" TS_ENV="$TS" REASON_ENV="$REASON" RUN_ID_ENV="$TARGET_RUN_ID" \
 SKILL_ENV="$TARGET_SKILL" SPAWN_SHA_ENV="$HEAD_SHA" SPAWN_IDX_ENV="$SPAWN_INDEX" \
 TARGET_ENV="$TARGET_TRACE" FIXES_JSON_ENV="$FIXES_JSON" EVIDENCE_SOURCE_ENV="$EVIDENCE_SOURCE" \
+PROVENANCE_VARIANT_ENV="$PROVENANCE_VARIANT" SOURCE_SKILL_ENV="$SOURCE_SKILL" \
 python3 - << 'PYEOF'
 import json, os, sys
-trace = {
-    'agent': os.environ['AGENT_ENV'],
-    'timestamp': os.environ['TS_ENV'],
-    'status': 'abandoned',
-    # EARC slice 1: 'verdict' renamed from 'recovery' (anomalous, outside the
-    # closed verdict enum {pass,fail,blocked,unresolved}) to 'unresolved'
-    # (within the enum). Provenance stays 'recovery' — that's the correct
-    # signal for downstream gates (validate_fallback predicate keys on
-    # provenance). No consumer hardcoded verdict=='recovery'; safe rename.
-    'verdict': 'unresolved',
-    'provenance': 'recovery',
-    'partial': True,
-    'checks_performed': ['exhaustion-recovery'],
-    'degraded_reason': os.environ['REASON_ENV'],
-    'recovery_reason': os.environ['REASON_ENV'],
-    'recovery': True,
-    'recovery_validated': False,
-    'run_id': os.environ['RUN_ID_ENV'],
-    'skill': os.environ['SKILL_ENV'],
-    'spawn_sha': os.environ['SPAWN_SHA_ENV'],
-    'spawn_index': int(os.environ['SPAWN_IDX_ENV']) if os.environ['SPAWN_IDX_ENV'] else None,
-}
+
+variant = os.environ.get('PROVENANCE_VARIANT_ENV', 'recovery')
+source_skill = os.environ.get('SOURCE_SKILL_ENV', '')
+
+if variant == 'lead-orchestrated':
+    # AOC v1.2: lead-orchestrated re-spawn variant. Lead supplied --run-id and
+    # --source-skill; validator already enforced R1-R4. Stamp pass-able shape
+    # (verdict=pass, lead_attestation, source fields) so downstream gates can
+    # accept via pass_lead_orchestrated predicate.
+    trace = {
+        'agent': os.environ['AGENT_ENV'],
+        'timestamp': os.environ['TS_ENV'],
+        'status': 'completed',
+        'verdict': 'pass',
+        'provenance': 'lead-orchestrated',
+        'partial': True,
+        'lead_attestation': True,
+        'source_run_id': os.environ['RUN_ID_ENV'],
+        'source_skill': source_skill,
+        'checks_performed': ['lead-orchestrated-respawn'],
+        'degraded_reason': os.environ['REASON_ENV'],
+        'recovery': False,
+        'run_id': os.environ['RUN_ID_ENV'],
+        'skill': source_skill,
+        'spawn_sha': os.environ['SPAWN_SHA_ENV'],
+        'spawn_index': int(os.environ['SPAWN_IDX_ENV']) if os.environ['SPAWN_IDX_ENV'] else None,
+    }
+else:
+    trace = {
+        'agent': os.environ['AGENT_ENV'],
+        'timestamp': os.environ['TS_ENV'],
+        'status': 'abandoned',
+        # EARC slice 1: 'verdict' renamed from 'recovery' (anomalous, outside the
+        # closed verdict enum {pass,fail,blocked,unresolved}) to 'unresolved'
+        # (within the enum). Provenance stays 'recovery' — that's the correct
+        # signal for downstream gates (validate_fallback predicate keys on
+        # provenance). No consumer hardcoded verdict=='recovery'; safe rename.
+        'verdict': 'unresolved',
+        'provenance': 'recovery',
+        'partial': True,
+        'checks_performed': ['exhaustion-recovery'],
+        'degraded_reason': os.environ['REASON_ENV'],
+        'recovery_reason': os.environ['REASON_ENV'],
+        'recovery': True,
+        'recovery_validated': False,
+        'run_id': os.environ['RUN_ID_ENV'],
+        'skill': os.environ['SKILL_ENV'],
+        'spawn_sha': os.environ['SPAWN_SHA_ENV'],
+        'spawn_index': int(os.environ['SPAWN_IDX_ENV']) if os.environ['SPAWN_IDX_ENV'] else None,
+    }
 
 # EARC slice 1 (closes #1189): when the lead supplies --fixes-json with an
 # anchored --evidence-source, attach the fixes (each stamped with
