@@ -84,6 +84,22 @@ cat .claude/template-owned-dirs.txt | grep -v '^#' | grep -v '^$' | xargs -I{} f
 if [[ -s .runs/hook-friction.jsonl ]] && [[ ! -f .runs/hook-friction-summary.json ]]; then
   echo "WARN: observation-phase Step 2d — hook-friction-summary.json missing despite non-empty hook-friction.jsonl (lifecycle-finalize.sh Step 2.6 should have aggregated)" >&2
 fi
+
+# e. (#1255) Expanded evidence sources — the observer must consult these
+#    when present. The observer agent's trace MUST list paths it consulted
+#    in `evidence_consulted[]` (validated by
+#    .claude/scripts/validate-observer-evidence-coverage.py).
+#    - .runs/hook-friction-summary.json:
+#        contains `normalized_groups` (#1255 round-2 C6) — recurring denial
+#        patterns with paths/IDs stripped, surfacing template-rooted issues
+#        that varied per call site.
+#    - .runs/hook-friction.jsonl: raw audit trail (sample if needed)
+#    - .runs/agent-traces/scaffold-*.json `template_recommendations[]` field:
+#        structured template-gap recommendations from scaffold-* agents
+#        (#1252 contract). When non-empty, the observer marks consultation
+#        with `"scaffold-template-recommendations"` in evidence_consulted[].
+#        Entries whose `file` is template-rooted may be auto-filed via
+#        file-retrospective-finding.py.
 ```
 
 ### Fallback: consolidate agent traces → ledger → fix-log (AOC v1 FLS v1)
@@ -216,6 +232,15 @@ else:
 3. Verify `.runs/agent-traces/observer.json` exists; if agent returned output
    but trace is missing, write a recovery trace with `"recovery":true` via
    `bash .claude/scripts/write-recovery-trace.sh observer --reason "<cause>"`.
+
+4. (#1255) Validate observer consulted the expanded evidence-set:
+   ```bash
+   python3 .claude/scripts/validate-observer-evidence-coverage.py
+   ```
+   This asserts the observer trace's `evidence_consulted[]` lists all
+   non-empty evidence sources (hook-friction.jsonl, hook-friction-summary.json,
+   scaffold-* template_recommendations[]). Default MODE=warn during rollout;
+   becomes blocking after 1-2 real cycles confirm zero false positives.
 
 If observer spawning fails, retry once with reduced scope (pass only fix-log
 summaries, omit full diffs). If it still fails, the lead agent must perform
@@ -375,6 +400,50 @@ scope gate above (not overridden by hard_gate_failure).
 
 - Proceed to Step 5b after writing the full retrospective artifact.
 
+#### Programmatic candidate enumeration (#1276 hard-block)
+
+> **Why this exists:** prior fixes #1066/#1226/#1258/#1270 attempted to enforce
+> retrospective filing via prose, schema fields, and WARN logs — all bypassed
+> by lead self-judgment under turn-budget pressure. This step replaces lead
+> self-judgment of "what to file" with programmatic candidate generation
+> (lead retains semantic judgment per candidate but cannot silently drop them).
+
+Before writing the retrospective, run:
+
+```bash
+python3 .claude/scripts/enumerate-pending-retrospective-findings.py
+```
+
+This writes `.runs/retrospective-pending-findings.json` containing all
+candidates derivable from runtime evidence (hook-friction-summary.json,
+fix-ledger.jsonl template-edit rows, template-coherence-cache.json findings,
+agent traces with recovery_validated). Each candidate has a stable
+`candidate_id` (12-char hash of kind+key) used for disposition tracking.
+
+For EACH candidate, the lead chooses one of:
+  (a) **File**: invoke `python3 .claude/scripts/file-retrospective-finding.py
+      --candidate-id <id> --title "<title>" --body "<body>"` — this is the
+      sole sanctioned writer for [observe] issues from retrospective context.
+      Idempotent + dedup-aware.
+  (b) **Suppress**: add an entry to retrospective-result.json:
+      ```json
+      "suppressions": [
+        {"candidate_id": "<id>", "reason": "<enum>", "justification": "<why>"}
+      ]
+      ```
+      Suppression `reason` is a **closed enum** (round-2 critic Concern 3):
+      - `not-template-rooted` — symptom is project-specific, not in template
+      - `env-issue-out-of-scope` — env failure (CLI absent, network, etc.)
+      - `duplicate-of-#NNNN` — same as already-open issue NNNN
+      - `already-tracked-in-#NNNN` — covered by tracking issue NNNN
+      - `defer-with-followup-#NNNN` — real finding, deferred under tracking issue NNNN
+
+After writing retrospective-result.json, the gate
+`validate-retrospective-completeness.py` runs at lifecycle-finalize.sh.
+Every pending candidate must have either a filed entry in
+`.runs/retrospective-filed-findings.json` OR a valid suppression. Missing
+disposition blocks finalize (in deny mode; warn mode logs only during rollout).
+
 #### Write result
 
 The lead writes `.runs/retrospective-result.json` DIRECTLY via the Write tool
@@ -385,12 +454,14 @@ and post-validated by `compliance-audit.py`.
 ```json
 {
   "step_5a_executor": "lead",
+  "schema_version": 2,
   "process_compliance": "<summary or 'clean'>",
   "agent_instruction_compliance": [
     {"agent": "<name>", "executor": "agent", "compliant": true, "finding": null, "root_cause": "n-a"}
   ],
   "trace_fidelity": "<summary or 'clean'>",
   "observations_filed": 0,
+  "suppressions": [],
   "skipped": false
 }
 ```
@@ -400,6 +471,10 @@ records who executed each agent's procedure: `"agent"` for spawned agents,
 `"lead"` for procedures the lead executed inline. The top-level
 `step_5a_executor` records who answered Q1/Q2/Q3 — must be `"lead"` per the
 inclusion criterion in `lead-only-artifacts.json`.
+
+The `suppressions[]` field (added in schema v2) records explicit dispositions
+for candidates from `retrospective-pending-findings.json` that the lead chose
+NOT to file. See "Programmatic candidate enumeration" above.
 
 ### Step 5b-coherence: Cross-File Coherence Findings
 

@@ -243,6 +243,31 @@ For each image slot with exploit budget (all except empty-state):
 
 3. **View and score each exploit candidate** using the Read tool (same 5 dimensions)
 
+3.5. **Write provenance JSON sidecar (#1272 hard-block contract).** For each candidate generated in Steps 4.1-4.2, write a sibling `<candidate-path>.provenance.json` capturing the generation parameters BEFORE the design-critic confirmation pass needs them:
+   ```bash
+   # In Node script that called generateImage(), capture and write:
+   const fs = require('fs');
+   const provenance = {
+     model: result.model,                    // e.g. "fal-ai/flux-2-pro"
+     prompt: prompt_text,                    // the actual prompt sent
+     prompt_hash: require('crypto').createHash('sha256').update(prompt_text).digest('hex').slice(0, 16),
+     seed: result.seed || null,              // when fal returns a seed
+     generated_at: new Date().toISOString(),
+   };
+   fs.writeFileSync(
+     `.runs/image-candidates/<slot>-<phase>-<N>.provenance.json`,
+     JSON.stringify(provenance, null, 2)
+   );
+   ```
+   Why this matters: design-critic Step 5.5's hard-block validator
+   (`.claude/scripts/validate-step55-evidence.py`) joins evidence screenshots
+   with provenance triples and asserts UNIQUE `(model, prompt_hash, seed)` per
+   candidate set. Without provenance written at generation time, the validator
+   cannot distinguish "agent rendered N distinct images" from "agent labeled
+   the same image as N candidates with rotated metadata" (round-2 critic
+   Concern 1). Pixel-only perceptual hash is bypassable by trivial transforms;
+   provenance binding is the load-bearing check.
+
 4. **Select the winner across BOTH phases.** Compare all explore AND exploit candidates for this slot, pick the highest-scoring one. Copy it to the canonical path:
    ```bash
    cp .runs/image-candidates/<winning-file> public/images/<canonical-filename>

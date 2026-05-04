@@ -63,6 +63,10 @@ trace = {
     "result": "clean",
     "checks_performed": ["visual_brief_authored", "global_styles_applied", "design_tokens_seeded", "slot_intent_written"],
     "no_fixes_claimed": True,
+    # #1252 contract: declare template gaps via structured field, OR
+    # explicitly attest none. See .claude/patterns/agent-output-contract.md.
+    "template_recommendations": [],  # [{file, section, recommendation, fix_template}, ...]
+    "template_recommendations_explicit_none": True,  # set False when non-empty
     "files_created": ["<list all files created or modified>"],
 }
 subprocess.run(

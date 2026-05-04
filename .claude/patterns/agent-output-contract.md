@@ -89,6 +89,29 @@ All `verdict` values are **lowercase**. Legacy uppercase emissions (`PASS`,
 `.claude/scripts/migrate-legacy-traces.py`:`case_normalize_verdict()` and by
 updates to each agent's Trace Output section.
 
+#### template_recommendations[] (scaffold-* agents — #1252 contract)
+
+All `scaffold-*` agents (scaffold-setup, scaffold-init, scaffold-libs,
+scaffold-pages, scaffold-landing, scaffold-images, scaffold-wire,
+scaffold-externals) MUST emit one of:
+
+  - `template_recommendations: [{file, section, recommendation, fix_template}, ...]`
+    AND `template_recommendations_explicit_none: false`
+
+  - `template_recommendations: []` AND `template_recommendations_explicit_none: true`
+
+This is **schema completeness enforcement** (round-2 critic Concern 7) —
+the prior approach of grepping agent prose for "consider updating" patterns
+was bypassable by phrasing variation. Either the agent fills the structured
+field or it explicitly attests "no template gaps observed."
+
+Each entry's `file` MUST be under `.claude/` or `scripts/` (template-rooted)
+AND must exist on disk. Validator: `.claude/scripts/validate-scaffold-recommendations-schema.py`.
+
+The observation-phase Step 2 evidence collector reads this field across
+all scaffold-* traces; entries whose `file` matches a template path get
+auto-filed as [observe] issues via `file-retrospective-finding.py`.
+
 #### Count-summary agents
 
 Scanner and adversarial agents do not report a single qualitative `result`;

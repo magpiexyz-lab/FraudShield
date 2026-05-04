@@ -76,6 +76,10 @@ trace = {
     "result": "clean",
     "checks_performed": ["external_deps_scanned", "services_classified"],
     "no_fixes_claimed": True,
+    # #1252 contract: declare template gaps via structured field, OR
+    # explicitly attest none. See .claude/patterns/agent-output-contract.md.
+    "template_recommendations": [],  # [{file, section, recommendation, fix_template}, ...]
+    "template_recommendations_explicit_none": True,  # set False when non-empty
     "classifications": [{"service": "<name>", "classification": "<core/non-core>"}],
 }
 subprocess.run(

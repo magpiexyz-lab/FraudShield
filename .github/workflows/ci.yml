@@ -82,7 +82,10 @@ jobs:
           done
 
       - name: Install Python dependencies
-        run: pip3 install pyyaml pytest
+        # imagehash + Pillow added (#1272 hard-block validators): Pillow is
+        # ~3MB, imagehash is ~50KB. CI install ~3s. Used by
+        # .claude/scripts/lib/phash.py for image-evidence validation.
+        run: pip3 install pyyaml pytest imagehash Pillow
 
       # Configure a default git identity AND init.defaultBranch=main.
       # - identity: tests do `git init` + `git commit --allow-empty` in

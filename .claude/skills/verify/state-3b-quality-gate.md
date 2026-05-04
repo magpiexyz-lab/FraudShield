@@ -150,7 +150,7 @@ for p in (ps.get('pages') or []):
         missing_iifl.append(name)
 assert not missing_iifl, 'image-rendering pages missing image_issues_for_landing field (state-3a prompt + state-2a classifier drift): ' + str(missing_iifl)
 unstamped=[t for t in glob.glob('.runs/agent-traces/design-critic-*.json') if json.load(open(t)).get('provenance')=='self-degraded' and not json.load(open(t)).get('recovery_validated')]
-assert not unstamped, 'self-degraded design-critic traces missing recovery_validated stamp (Stage-1c validate-recovery skipped?): ' + str(unstamped)"
+assert not unstamped, 'self-degraded design-critic traces missing recovery_validated stamp (Stage-1c validate-recovery skipped?): ' + str(unstamped)" && python3 .claude/scripts/validate-step55-evidence.py
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

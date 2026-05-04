@@ -94,6 +94,19 @@ trace = {
     "checks_performed": ["candidates_generated", "self_scored", "winners_copied", "sidecar_written"],
     "no_fixes_claimed": True,
     "files_created": ["<list all images + public/images + .runs/image-candidates.json>"],
+    # #1261 hard-block contract (schema_version=2): declare every model/source
+    # deviation from .claude/patterns/scaffold-images-spec.json.
+    # When fully spec-compliant: spec_deviations=[] AND spec_deviations_explicit_none=True.
+    "spec_deviations": [
+        # Each entry MUST have: slot, spec_model, actual_model, reason (closed enum),
+        # justification, evidence_path. Example:
+        # {"slot": "feature-1", "spec_model": "fal-ai/recraft/v4/pro/text-to-image",
+        #  "actual_model": "fal-ai/flux-2-pro", "reason": "visual-brief-overrides",
+        #  "justification": "...", "evidence_path": ".runs/current-visual-brief.md"},
+    ],
+    "spec_deviations_explicit_none": True,  # set False when spec_deviations is non-empty
+    "template_recommendations": [],  # #1252: structured recommendations (or empty)
+    "template_recommendations_explicit_none": True,  # set False when non-empty
 }
 subprocess.run(
     ["bash", ".claude/scripts/write-agent-trace.sh", "scaffold-images",
@@ -102,6 +115,17 @@ subprocess.run(
 )
 PYEOF
 ```
+
+**Spec-deviation enum** (closed; per `.claude/patterns/scaffold-images-spec.json`):
+- `visual-brief-overrides` — visual brief mandates a different model for cross-slot consistency. Evidence: grep `.runs/current-visual-brief.md` for slot name + "mandate".
+- `source-rate-limited` — primary source returned HTTP 429. Evidence: `.runs/fal-api-errors.jsonl` entry with `slot=<slot>, http_status=429`.
+- `model-unavailable-fallback` — primary model returned 4xx model-not-found. Evidence: `.runs/fal-api-errors.jsonl` entry with `slot=<slot>, http_status in (404, 422)` OR `error_body` containing `model_not_found`.
+
+**fal API error logging** (#1261 hard-block requirement): when a fal API call returns non-2xx, append to `.runs/fal-api-errors.jsonl`:
+```bash
+echo '{"slot": "<slot>", "model": "<model_id>", "http_status": <code>, "error_body": "<truncated body>", "attempted_at": "<ISO>"}' >> .runs/fal-api-errors.jsonl
+```
+This is the load-bearing evidence for the `source-rate-limited` and `model-unavailable-fallback` deviation reasons (round-2 critic Concern 2: external-actor witness, not self-corroborating).
 
 Non-fixer role (image generation is authorship, not remediation): `no_fixes_claimed: True` is required. If this agent is respawned from design-critic Step 5.5 Priority 2 to regenerate a specific slot, the resulting change IS a fix — in that case set `no_fixes_claimed` to `False` and add `fixes: [{file: 'public/images/<slot>.webp', type: 'image-regen', module: '<slot>', reason: '<visual-defect>'}]` to the `trace` dict before passing to the writer. The centralized writer (AOC v1.1) stamps `agent`, `timestamp`, `status:"completed"`, `provenance:"self"`, `partial:false`, `run_id`, `skill`, `spawn_sha`, and `spawn_index` from active identity + spawn-log.
 

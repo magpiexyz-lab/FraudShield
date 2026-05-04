@@ -116,7 +116,7 @@ Check off in `.runs/current-plan.md`:
 
 **VERIFY:**
 ```bash
-test -f .runs/b1-verify-result.json && python3 -c "import json,glob; assert len(glob.glob('src/lib/*.ts'))>=1, 'no .ts in src/lib/'; d=json.load(open('.runs/b1-verify-result.json')); assert d.get('schema_version')==1 and d.get('state')=='11b'; assert d.get('libs',{}).get('manifest_status')=='complete', 'libs manifest not complete'; assert d.get('type_check',{}).get('passed') is True, 'type-check not passed'" && (test ! -f .runs/image-manifest.json || python3 .claude/scripts/verify-state-11a-image-count.py)
+test -f .runs/b1-verify-result.json && python3 -c "import json,glob; assert len(glob.glob('src/lib/*.ts'))>=1, 'no .ts in src/lib/'; d=json.load(open('.runs/b1-verify-result.json')); assert d.get('schema_version')==1 and d.get('state')=='11b'; assert d.get('libs',{}).get('manifest_status')=='complete', 'libs manifest not complete'; assert d.get('type_check',{}).get('passed') is True, 'type-check not passed'" && (test ! -f .runs/image-manifest.json || python3 .claude/scripts/verify-state-11a-image-count.py) && python3 .claude/scripts/validate-image-spec-compliance.py && python3 .claude/scripts/validate-scaffold-recommendations-schema.py
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

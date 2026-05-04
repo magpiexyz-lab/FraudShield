@@ -125,6 +125,10 @@ trace = {
     "result": "clean",
     "checks_performed": ["page_authored", "events_wired", "build_smoke", "self_check_scored"],
     "no_fixes_claimed": True,
+    # #1252 contract: declare template gaps via structured field, OR
+    # explicitly attest none. See .claude/patterns/agent-output-contract.md.
+    "template_recommendations": [],  # [{file, section, recommendation, fix_template}, ...]
+    "template_recommendations_explicit_none": True,  # set False when non-empty
     "files_created": ["<list all files created or modified>"],
     "page": PAGE_SLUG,
 }

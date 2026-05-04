@@ -133,8 +133,25 @@ AVS v1 mapping (per `agent-registry.json.verdict_agents_schema.observer`):
 | `"no observations"` | `"pass"` | `"clean"` |
 | `"prerequisite-unavailable"` | `"blocked"` | `"none"` |
 
+**Required field (#1255 — expanded evidence-set):** the trace MUST include
+`evidence_consulted: [<path>, ...]` listing the evidence sources you
+actually read during evaluation. Validator
+`.claude/scripts/validate-observer-evidence-coverage.py` asserts that when
+the following exist with content, they appear in this list:
+
+- `.runs/observer-diffs.txt` (always when present + non-empty)
+- `.runs/fix-log.md` (always when present + non-empty)
+- `.runs/hook-friction.jsonl` (when has rows for active run_id)
+- `.runs/hook-friction-summary.json` (when present, especially `normalized_groups`)
+- Plus the synthetic marker `"scaffold-template-recommendations"` when any
+  scaffold-* trace has non-empty `template_recommendations[]`
+
+Missing consultation when source has content → validator FAILs (warn during
+rollout). This solves #1255: prior observer evidence-set was too narrow,
+9 out of 10 template-rooted issues bypassed evaluation.
+
 ```bash
-bash .claude/scripts/write-agent-trace.sh observer --json '{"verdict":"<pass|blocked>","result":"<clean|none>","checks_performed":["prerequisites","fix_evaluation","redaction","dedup","issue_filing"],"fixes_evaluated":<N>}'
+bash .claude/scripts/write-agent-trace.sh observer --json '{"verdict":"<pass|blocked>","result":"<clean|none>","checks_performed":["prerequisites","fix_evaluation","redaction","dedup","issue_filing"],"fixes_evaluated":<N>,"evidence_consulted":[".runs/observer-diffs.txt",".runs/fix-log.md",".runs/hook-friction-summary.json"]}'
 ```
 
 The centralized writer (AOC v1.1) stamps `agent`, `timestamp`, `provenance:"self"`, `run_id`, `skill`, `spawn_sha`, and `spawn_index` from active identity + spawn-log. Replace `<pass|blocked>`, `<clean|none>`, and `<N>` with actual values before invoking.
