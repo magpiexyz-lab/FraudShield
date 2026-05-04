@@ -1,6 +1,18 @@
 #!/usr/bin/env python3
 """Migration of pre-AOC-v1 agent traces to the unified schema.
 
+AOC v1.2 note: additive bump only — no migration logic required.
+- `lead-orchestrated` and `lead-skipped` provenance values are NEW; legacy
+  traces never carried them, so there is nothing to backfill.
+- `allowed_verdicts`/`allowed_results` extension for fixers (adding `skipped`)
+  is purely additive — pre-existing traces still use the old vocabulary and
+  remain valid; no rewrite needed.
+- `lead_orchestrated_forbidden` is a registry-only addition; no trace impact.
+- `_aggregate_ok_accepted_predicates` is a registry-only addition; no trace
+  impact.
+
+
+
 Legacy traces (written before Agent Output Contract v1) lack the `result`
 field (AOC v1 qualifier) and may emit uppercase or count-form legacy
 verdicts. This script walks .runs/agent-traces/, derives missing fields

@@ -1,10 +1,15 @@
-# Agent Output Contract v1.1 (AOC v1.1)
+# Agent Output Contract v1.2 (AOC v1.2)
 
 > **Canonical source of truth for agent-trace verdict vocabulary and fix-ledger
-> semantics across the 17 `verdict_agents`.** Closes #1044 (verdict-vocab
+> semantics across the 18 `verdict_agents`.** Closes #1044 (verdict-vocab
 > mismatch) and #1048 (fix-log count drift). v1.1 closes #1067 (lead-* provenance
 > gaps), #1064 (centralized writer + lead-fix path + post-completion recovery),
-> #1055 (resolve-reviewer first-class), and #1056 (frontmatter coherence). This
+> #1055 (resolve-reviewer first-class), and #1056 (frontmatter coherence). v1.2
+> closes #1259 (observer evidence-set too narrow — adds `template_recommendations[]`
+> + observation envelope), #1250 (fixer sanctioned-skip canonical path —
+> adds `lead-skipped` audit-only provenance + `write-skipped-fixer-trace.sh`),
+> and #1275 (post-completion writer fail-closed — adds `lead-orchestrated`
+> provenance + explicit-identity overrides on every writer). This
 > file is the single dependency point for downstream cross-group work
 > (e.g., #1042 design-critic degraded fixtures via Session C orchestration).
 
@@ -139,10 +144,11 @@ definition file, and the predicate vocabulary in `evaluate-hard-gate-predicates.
 
 ### Provenance enum (canonical)
 
-AOC v1.1 formally defines the `provenance` enum covering seven write paths
-across four real-world authorship modes. This is the contract surface
-consumed by Session C for #1042 and by the cross-skill recovery / lead-fix
-flows added in v1.1.
+AOC v1.2 formally defines the `provenance` enum covering NINE write paths
+across SIX real-world authorship modes. This is the contract surface
+consumed by Session C for #1042, by the cross-skill recovery / lead-fix
+flows added in v1.1, and by the post-completion / sanctioned-skip flows
+added in v1.2.
 
 | Value | Authorship | Semantic |
 |-------|-----------|----------|
@@ -153,6 +159,8 @@ flows added in v1.1.
 | `lead-on-behalf` *(v1.1)* | Lead | Agent succeeded and returned a full payload, but the agent's own trace write was blocked (hook deny, tool-budget exhaustion). Lead transcribed the agent's reported result. Requires `source: <attestation>` (e.g., `"agent-returned-text"`, `"agent-tool-output"`) plus `partial: true` and `recovery_validated: true` for downstream confidence. |
 | `lead-synthesized` *(v1.1)* | Lead | Agent was never spawned (covered by another mechanism — e.g., a shared test file that satisfies coverage). Lead writes a consistency marker so downstream presence checks succeed. Requires `coverage_provider: <artifact-path>` plus `partial: true`; **must not** claim per-fix changes. |
 | `lead-fix` *(v1.1)* | Lead | Lead applied a fix in-flight during a verify stage without spawning a subagent. Requires `lead_attestation: true` plus `partial: true`. Routed to `pattern-classifier`'s "Lead-authored fix" branch (see `.claude/agents/pattern-classifier.md`). |
+| `lead-orchestrated` *(v1.2)* | Lead-orchestrated | Agent ran successfully, but `resolve_active_identity` returned empty (all `.runs/*-context.json` had `completed:true` — typical post-completion / retrospective re-spawn scenario). The agent self-writes its trace using explicit `--source-run-id` + `--source-skill` flags supplied by the orchestrator. Requires `lead_attestation: true`, `source_run_id: <ID>`, `source_skill: <name>` plus `partial: true`. Validation rules R1-R4 (xor of source flags, context-existence, spawn-log presence, HC13 cross-skill forgery defense) apply at the writer. **Forbidden** for agents in `recovery_forbidden` (high-risk fixers) AND `lead_orchestrated_forbidden` (security-* probes whose live-endpoint state may be irreproducible). Predicate: `pass_lead_orchestrated`. |
+| `lead-skipped` *(v1.2)* | Lead | **Audit-only** — no predicate accepts this provenance, so the hard gate blocks naturally. Lead-invoked sanctioned-skip writer (`write-skipped-fixer-trace.sh`) for fixer agents (`security-fixer`, `quality-fixer`) when an upstream hard gate fired and blocked the fixer's spawn. The trace exists solely so observer + audit consumers see the decision; it CANNOT grant pass. Requires `lead_attestation: true`, `upstream_evidence_path: <merge-file-path>`, `reason: <enum>`, `unresolved_critical: <int>` (writer-computed from upstream merge — caller cannot supply). The trace's `verdict: "skipped"` and `result: "skipped"` are NOT in the standard verdict_agents_schema vocabulary; v1.2 adds `"skipped"` to fixer-only `allowed_verdicts`/`allowed_results` for AOC validation while still failing every `pass_*` predicate (the existing `additional_block_conditions` for `verdict==fail|partial AND unresolved_critical>0` are not modified). |
 
 **`degraded_reason` is the canonical field name** for the specific cause,
 used by both self-degraded sub-cases. Session C's original `fallback_reason`
@@ -168,6 +176,8 @@ The four real-world authorship modes have distinct downstream confidence:
 | Agent succeeded, returned data, write blocked | Transcription of agent's payload | `lead-on-behalf` | `validated_fallback` (requires recovery_validated) |
 | Agent never spawned, coverage guaranteed elsewhere | Lead synthesized as marker | `lead-synthesized` | `pass_lead_synthesized` (requires coverage_provider) |
 | Lead applied fix during verify | Direct knowledge | `lead-fix` | `pass_lead_fix` (requires lead_attestation) |
+| Agent re-spawned post-completion (active identity empty) | Direct (lead orchestrated the re-spawn with explicit identity) | `lead-orchestrated` *(v1.2)* | `pass_lead_orchestrated` (requires lead_attestation + source_run_id + source_skill) |
+| Fixer sanctioned-skipped because upstream gate fired | Audit-only — no pass | `lead-skipped` *(v1.2)* | NONE (intentional — see provenance enum table) |
 
 The predicates are defined in `.claude/scripts/evaluate-hard-gate-predicates.py`
 (invoked by `.claude/hooks/lib-hard-gate.sh`) and gated per-agent via

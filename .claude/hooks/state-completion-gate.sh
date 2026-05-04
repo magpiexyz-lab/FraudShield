@@ -334,6 +334,15 @@ for tf in sorted(glob.glob(os.path.join(traces_dir, '*.json'))):
         cp = td.get('coverage_provider', '')
         if prov == 'lead-synthesized' and cp in SANCTIONED_COVERAGE_PROVIDERS:
             continue
+        # AOC v1.2: lead-skipped sanctioned-skip exemption.
+        # Fixer agents in recovery_forbidden cannot have a spawn-log entry
+        # when the upstream gate blocked their spawn. The lead-skipped trace
+        # IS the audit-only record of that decision; require
+        # upstream_evidence_path (forging would require editing the upstream
+        # merge file in the same PR — visible in diff). The companion F4
+        # hook check (added in PR4) validates the upstream-merge marker.
+        if prov == 'lead-skipped' and td.get('upstream_evidence_path') and base in {'security-fixer', 'quality-fixer'}:
+            continue
         errors.append(f'{bn}: no spawn record for {base}')
 
 if errors:

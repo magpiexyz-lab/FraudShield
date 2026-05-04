@@ -127,7 +127,7 @@ elif is_agent_trace:
             # rather than direct agent execution. lead-on-behalf is excluded
             # because the lead transcribed the agents reported checks.
             prov = d.get("provenance")
-            empty_ok = ("recovery", "self-degraded", "lead-merge", "lead-synthesized", "lead-fix")
+            empty_ok = ("recovery", "self-degraded", "lead-merge", "lead-synthesized", "lead-fix", "lead-orchestrated", "lead-skipped")
             if not d.get("recovery") and prov not in empty_ok:
                 errors.append("agent trace checks_performed is empty (set recovery: true or use provenance: self-degraded/recovery/lead-synthesized/lead-fix if exhausted)")
 
@@ -143,6 +143,8 @@ elif is_agent_trace:
             valid_prov = {
                 "self", "self-degraded", "recovery", "lead-merge",
                 "lead-on-behalf", "lead-synthesized", "lead-fix",
+                # AOC v1.2: post-completion lead-orchestrated re-spawn + audit-only fixer-skip.
+                "lead-orchestrated", "lead-skipped",
             }
             if prov not in valid_prov:
                 errors.append(f"provenance must be one of {sorted(valid_prov)}; got {prov!r}")
@@ -182,6 +184,29 @@ elif is_agent_trace:
                 if prov == "lead-fix":
                     if d.get("lead_attestation") is not True:
                         errors.append("provenance=lead-fix requires lead_attestation:true")
+                # AOC v1.2: lead-orchestrated requires explicit-identity attestation.
+                # The agent ran successfully but resolve_active_identity returned
+                # empty (post-completion). Lead supplied source_run_id+source_skill;
+                # spawn-log presence enforced upstream by the writer R3 validation.
+                if prov == "lead-orchestrated":
+                    if d.get("lead_attestation") is not True:
+                        errors.append("provenance=lead-orchestrated requires lead_attestation:true")
+                    if not d.get("source_run_id"):
+                        errors.append("provenance=lead-orchestrated requires source_run_id (the original run_id this trace is attributed to)")
+                    if not d.get("source_skill"):
+                        errors.append("provenance=lead-orchestrated requires source_skill (the original skill this trace is attributed to)")
+                # AOC v1.2: lead-skipped is audit-only for fixer sanctioned-skip.
+                # No predicate accepts verdict=skipped; this is by design — the
+                # trace exists for observability, not for granting pass.
+                if prov == "lead-skipped":
+                    if d.get("lead_attestation") is not True:
+                        errors.append("provenance=lead-skipped requires lead_attestation:true")
+                    if not d.get("upstream_evidence_path"):
+                        errors.append("provenance=lead-skipped requires upstream_evidence_path (path to upstream merge file with fixer_skipped:true)")
+                    if not d.get("reason"):
+                        errors.append("provenance=lead-skipped requires reason (canonical value: hard_gate_failure)")
+                    if not isinstance(d.get("unresolved_critical"), int):
+                        errors.append("provenance=lead-skipped requires unresolved_critical:int (writer-computed from upstream merge)")
                 # self traces should not claim partial
                 if prov == "self" and d.get("partial") is True:
                     errors.append("provenance=self with partial:true is contradictory — use provenance=self-degraded instead")

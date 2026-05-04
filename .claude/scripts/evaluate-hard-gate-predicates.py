@@ -113,6 +113,21 @@ def pass_lead_synthesized(t):
             and bool(t.get('coverage_provider')))
 
 
+def pass_lead_orchestrated(t):
+    # AOC v1.2: lead orchestrated a retrospective re-spawn under
+    # post-completion conditions where resolve_active_identity returned
+    # empty. Explicit identity supplied via --source-run-id/--source-skill;
+    # spawn-log presence enforced upstream by the writer's R3 validation.
+    # Schema validation (lead_attestation, source_run_id, source_skill)
+    # is enforced by artifact-integrity-gate.sh; this predicate trusts the
+    # gate's contract and only re-checks the verdict/provenance pair.
+    return (t.get('verdict') == 'pass'
+            and t.get('provenance') == 'lead-orchestrated'
+            and t.get('lead_attestation') is True
+            and bool(t.get('source_run_id'))
+            and bool(t.get('source_skill')))
+
+
 def aggregate_ok(t, agent, traces_dir):
     if t.get('provenance') != 'lead-merge':
         return False
@@ -140,6 +155,7 @@ def aggregate_ok(t, agent, traces_dir):
             or pass_lead_on_behalf(sib)
             or pass_lead_fix(sib)
             or pass_lead_synthesized(sib)
+            or pass_lead_orchestrated(sib)
         ):
             return False
     return True
@@ -175,6 +191,7 @@ def evaluate(agent, trace_path, traces_dir, reg_path):
         'pass_lead_on_behalf': lambda t: pass_lead_on_behalf(t),
         'pass_lead_fix': lambda t: pass_lead_fix(t),
         'pass_lead_synthesized': lambda t: pass_lead_synthesized(t),
+        'pass_lead_orchestrated': lambda t: pass_lead_orchestrated(t),
     }
 
     allow_predicates = gate.get('allow_predicates', [])
