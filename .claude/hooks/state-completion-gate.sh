@@ -355,6 +355,70 @@ if errors:
   fi
 fi
 
+# AOC v1.2 (PR4) F4 — fixer-trace presence enforcement on state-4 + state-3d.
+# When the merge file exists for a fixer state, the fixer trace MUST exist
+# UNLESS one of two exemption markers is present in the merge file:
+#   (a) source == "no-{security|quality}-agents" (scope-skip; no fixer needed)
+#   (b) fixer_skipped:true AND a lead-skipped trace exists with
+#       upstream_evidence_path referencing this merge file (audit-skip).
+# Otherwise BLOCK with diagnostic.
+#
+# This closes the new audit-skip slice introduced by PR3 AND surfaces (but
+# does not modify, out of scope) the pre-existing lib-hard-gate.sh:24
+# silent-pass-on-missing-trace surface.
+if [[ "$SKILL" == "verify" && ( "$STATE_ID" == "4" || "$STATE_ID" == "3d" ) ]]; then
+  F4_RESULT=$(STATE_ID_ENV="$STATE_ID" PROJECT_DIR_ENV="$PROJECT_DIR" python3 -c "
+import json, os, sys
+state = os.environ['STATE_ID_ENV']
+project_dir = os.environ['PROJECT_DIR_ENV']
+merge_path = os.path.join(project_dir, '.runs', 'security-merge.json' if state == '4' else 'quality-merge.json')
+fixer = 'security-fixer' if state == '4' else 'quality-fixer'
+trace_path = os.path.join(project_dir, '.runs', 'agent-traces', fixer + '.json')
+
+if not os.path.isfile(merge_path):
+    sys.exit(0)  # Merge file missing — upstream postcondition catches it
+
+try:
+    m = json.load(open(merge_path))
+except Exception as e:
+    print('cannot parse ' + merge_path + ': ' + str(e))
+    sys.exit(1)
+
+# (a) Scope-skip exemption: agents were not supposed to spawn this run.
+expected_no_agents = 'no-security-agents' if state == '4' else 'no-quality-agents'
+if m.get('source') == expected_no_agents:
+    sys.exit(0)
+
+# (b) Audit-skip exemption: fixer_skipped + lead-skipped trace.
+if m.get('fixer_skipped') is True:
+    if not os.path.isfile(trace_path):
+        print(fixer + ': merge has fixer_skipped:true but no audit trace at ' + trace_path)
+        sys.exit(1)
+    try:
+        t = json.load(open(trace_path))
+    except Exception as e:
+        print(fixer + ': cannot parse trace: ' + str(e))
+        sys.exit(1)
+    if t.get('provenance') != 'lead-skipped':
+        print(fixer + ': trace exists but provenance=' + repr(t.get('provenance')) + ', expected lead-skipped')
+        sys.exit(1)
+    expected_evidence = '.runs/' + ('security-merge.json' if state == '4' else 'quality-merge.json')
+    if t.get('upstream_evidence_path') != expected_evidence:
+        print(fixer + ': trace upstream_evidence_path=' + repr(t.get('upstream_evidence_path')) + ' does not reference ' + expected_evidence)
+        sys.exit(1)
+    sys.exit(0)  # Audit-skip exemption satisfied
+
+# Normal path: fixer trace MUST exist.
+if not os.path.isfile(trace_path):
+    print(fixer + ': trace missing and no skip-exemption marker in merge file')
+    sys.exit(1)
+" 2>&1 || true)
+  if [[ -n "$F4_RESULT" ]]; then
+    _log_verify_trace "$SKILL" "$STATE_ID" "fail-fixer-trace-presence" ""
+    deny "State completion gate: $SKILL STATE $STATE_ID — fixer-trace presence (AOC v1.2 F4): $F4_RESULT"
+  fi
+fi
+
 # Postconditions verified — allow
 # Trace: log VERIFY pass
 _log_verify_trace "$SKILL" "$STATE_ID" "pass"

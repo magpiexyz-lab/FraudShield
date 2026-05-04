@@ -8,11 +8,52 @@
 - If security agents did NOT run (scope `visual` or `build`): write `{"findings":[],"source":"no-security-agents","run_id":"<run_id>"}`
 - If hard gate fired in STATE 3: write full merge + `"fixer_skipped":true,"reason":"hard_gate_failure"`
 
-If security agents were not spawned OR hard gate failure occurred, skip security-fixer spawn and proceed to STATE 5.
+The decision of whether to spawn the security-fixer (or skip it via one of two skip paths) is made in **Step 0** of ACTIONS below — not in this preamble.
 
 **ACTIONS:**
 
-### Merge Security Results (if scope is `full` or `security`)
+### Step 0: Check skip paths (AOC v1.2)
+
+Read `.runs/security-merge.json` (write it first if it doesn't yet exist — see preamble). Three paths:
+
+**(a) Scope-based skip** — security agents were not spawned this run. Detected by `source == "no-security-agents"`. Proceed to STATE 5 immediately. NO `lead-skipped` trace is written (no fixer was supposed to run for this scope; absent trace is correct and exempted by `state-completion-gate.sh` F4 check).
+
+**(b) Hard-gate-failure skip** — security agents ran but the upstream gate fired. Detected by `"fixer_skipped": true`. Write the audit-only trace and proceed:
+
+```bash
+SKIP_BRANCH=$(python3 -c "
+import json, os
+if not os.path.isfile('.runs/security-merge.json'):
+    print('normal')
+else:
+    d = json.load(open('.runs/security-merge.json'))
+    if d.get('source') == 'no-security-agents':
+        print('scope-skip')
+    elif d.get('fixer_skipped') is True:
+        print('audit-skip')
+    else:
+        print('normal')
+")
+
+if [ "$SKIP_BRANCH" = "audit-skip" ]; then
+    REASON=$(python3 -c "import json; print(json.load(open('.runs/security-merge.json')).get('reason',''))")
+    bash .claude/scripts/write-skipped-fixer-trace.sh security-fixer \
+        --reason "$REASON" \
+        --upstream-merge-path .runs/security-merge.json
+fi
+
+if [ "$SKIP_BRANCH" != "normal" ]; then
+    # Skip Step 1 (merge) and Step 2 (spawn) below; proceed directly to STATE 5.
+    # State-completion-gate F4 will validate either the scope-skip exemption
+    # (source == no-security-agents) or the audit-skip exemption (lead-skipped
+    # trace exists with upstream_evidence_path).
+    :  # Caller proceeds to STATE 5 after this Step 0 block exits non-error
+fi
+```
+
+**(c) Normal path** — neither scope-skip nor fixer-skip flag set. Continue with Step 1 (merge) and Step 2 (security-fixer spawn) below.
+
+### Step 1: Merge Security Results (if scope is `full` or `security`)
 
 Run the automated security merge script:
 
@@ -68,7 +109,7 @@ print(f'Security merge: {result[\"defender_fails\"]} defender FAILs + {result[\"
 "
 ```
 
-### security-fixer (if merged security has issues)
+### Step 2: security-fixer (if merged security has issues)
 
 Before spawning, execute the [Atomic Execution Protocol](../verify.md#atomic-execution-protocol) snapshot:
 
@@ -87,7 +128,7 @@ After security-fixer completes: verify `.runs/agent-traces/security-fixer.json` 
 
 After each fix, append to `.runs/fix-log.md`.
 
-#### Lead-side validation (security-fixer)
+#### Step 2a: Lead-side validation (security-fixer)
 
 1. Read `.runs/agent-traces/security-fixer.json` trace.
 2. If `verdict` == `"partial"` AND `unresolved_critical` > 0, this is a **hard gate failure** — Critical/High security issues or Defender FAILs remain unfixed after 2 fix cycles. Skip STATE 5 but still write verify-report.md (STATE 7a) and execute STATE 8 (Save Patterns). Report failure to user with the unresolved items.
