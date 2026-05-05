@@ -68,14 +68,21 @@ if [[ -n "$DEGRADED_REASON" ]]; then
   # validator's errors to stderr so the lead sees why honoring was refused.
   _SAG_HONOR_SOURCE="false"
   if [[ -n "${SOURCE_RUN_ID:-}" && -n "${SOURCE_SKILL:-}" ]]; then
-    _SAG_HOOK_VALIDATOR_OUT=$(python3 "$PROJECT_DIR/.claude/scripts/lib/source_identity_validator.py" \
-      --mode hook \
-      --source-run-id "$SOURCE_RUN_ID" \
-      --source-skill "$SOURCE_SKILL" \
-      --agent "$SUBAGENT_TYPE" \
-      --project-dir "$PROJECT_DIR" 2>&1)
-    _SAG_HOOK_VALIDATOR_RC=$?
-    if [[ $_SAG_HOOK_VALIDATOR_RC -eq 0 ]]; then
+    # Path to the validator script relative to THIS hook (mirrors the
+    # `agent-gate-check.py` invocation pattern below at line ~143).
+    # Avoids depending on $PROJECT_DIR which may resolve to a fixture
+    # or worktree path without our code laid down.
+    _SAG_VALIDATOR_PY="$(dirname "$0")/../scripts/lib/source_identity_validator.py"
+    # Use `if cmd; then ... else ...` form so `set -e` does NOT trigger
+    # on validator non-zero exit. Bash 3.2 (macOS default) triggers -e
+    # on `var=$(failing-cmd)` assignment, even though POSIX/modern Bash
+    # do not. The if-form is portable across both.
+    if _SAG_HOOK_VALIDATOR_OUT=$(python3 "$_SAG_VALIDATOR_PY" \
+        --mode hook \
+        --source-run-id "$SOURCE_RUN_ID" \
+        --source-skill "$SOURCE_SKILL" \
+        --agent "$SUBAGENT_TYPE" \
+        --project-dir "$PROJECT_DIR" 2>&1); then
       _SAG_HONOR_SOURCE="true"
     else
       echo "WARN: skill-agent-gate: SOURCE_RUN_ID/SOURCE_SKILL honoring REFUSED for $SUBAGENT_TYPE:" >&2

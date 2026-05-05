@@ -439,13 +439,16 @@ trace has `unresolved_shared > 0` for **unclaimed** shared components (issues in
 files that were NOT claimed by any per-page agent via `design-claims.json`). If all
 reported shared issues are for claimed components, Stage 1c has no work — skip to Stage 2.
 
-1. Collect reported-but-unfixed shared-component issues from all per-page traces:
+1. Collect reported-but-unfixed shared-component issues from the
+   **latest per-page trace** for each page (post-fix epoch traces
+   supersede pre-fix originals — closes #1274 follow-up gap):
    ```bash
    python3 -c "
-   import json, glob
+   import sys, json
+   sys.path.insert(0, '.claude/scripts/lib')
+   from design_critic_trace_selector import select_latest_per_page_traces
    issues = []
-   for f in sorted(glob.glob('.runs/agent-traces/design-critic-*.json')):
-       if 'design-critic-shared' in f: continue
+   for f in select_latest_per_page_traces('.runs/agent-traces', 'design-critic'):
        d = json.load(open(f))
        for si in d.get('shared_issues', []):
            issues.append(si)
@@ -454,6 +457,11 @@ reported shared issues are for claimed components, Stage 1c has no work — skip
    "
    ```
    If `NONE`: this step is a no-op. Skip to Stage 2.
+
+   This consumes the SAME helper as `merge-design-critic-traces.py` and
+   `aggregate_ok` so Stage 1c never sees stale shared_issues from a
+   pre-fix per-page trace whose page already has a post-fix epoch trace
+   showing the issue resolved.
 2. Spawn a SINGLE `design-critic` agent (`subagent_type: design-critic`) with:
    - Trace name: `design-critic-shared.json`
    - File boundary: INVERTED — ONLY `src/components/**` and `src/lib/**` files from the PR boundary,
