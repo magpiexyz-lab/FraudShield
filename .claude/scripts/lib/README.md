@@ -121,18 +121,21 @@ composite_identity:
   divergence_pattern: hard-block-validator-survives-by-meta-property-test
   stack_scope: scripts/tests
 composite_identity_hash: 4c517663dd57
-symptom_keywords: [validator, softening, no-op, meta-test, ci, regression, defense-in-depth]
-confidence_score: 0.70
-occurrence_count: 1
-linked_issues: [1276, 1272, 1261, 1252, 1255]
+symptom_keywords: [validator, softening, no-op, meta-test, ci, regression, defense-in-depth, cross-state, coverage-gap, aggregate-trace]
+confidence_score: 0.75
+occurrence_count: 2
+linked_issues: [1276, 1272, 1261, 1252, 1255, 1294]
 first_seen: 2026-05-04
-last_seen: 2026-05-04
+last_seen: 2026-05-05
 graduated_to: null
 prevention_mechanism: |
   .claude/scripts/tests/test_validators_meta.py drives every hard-block
   validator with synthetic invalid input and asserts non-zero exit code,
   blocking future PRs from softening `assert <cond>` to `print("WARN");
-  sys.exit(0)`.
+  sys.exit(0)`. Cross-state coverage sub-pattern (added per #1294) extends
+  the meta-test surface to enforce that every validator wired into
+  state-registry.json appears in the VALIDATORS allowlist AND every
+  scaffold-* spawn site has a downstream validator-state.
 fix_template: |
   When shipping a hard-block validator (any script invoked by
   state-completion-gate.sh or lifecycle-finalize.sh that exit 1 on failure),
@@ -157,6 +160,44 @@ fix_template: |
 
   CI auto-discovers .claude/scripts/tests/test_*.py via .github/workflows/ci.yml
   (do NOT place under top-level tests/ — that is NOT in CI discovery).
+
+  ---
+
+  Cross-state coverage sub-pattern (added per #1294).
+
+  When a validator must run at MULTIPLE state-registry entries (e.g., one
+  per spawn-site downstream), declare an explicit allowlist in VALIDATORS:
+
+    "validate-X.py": {
+      "ref_files": [".claude/patterns/state-registry.json"],
+      "state_registry_states": [("bootstrap", "11b"), ("bootstrap", "11c"), ...],
+    }
+
+  Then add four cooperating meta-tests:
+    D-2 explicit: each (skill, state_id) in state_registry_states must have
+        the validator chained in its verify command.
+    D-3 auto-discovery: walk `.claude/skills/**/state-*.md` for the canonical
+        spawn marker `^\s*-\s*subagent_type:\s*<agent-prefix>-[a-z-]+\s*$`
+        (line-anchored, MULTILINE). For each match, assert a downstream
+        allowlisted state exists. Walks ALL skills — future scaffold-*
+        spawns in /change /upgrade /resolve auto-fail until wired.
+    D-4 superset: allowlist must cover every present spawn site (catches
+        accidental allowlist deletions).
+    D-5 inverse drift: every state-registry mention of the validator must
+        appear in the allowlist (catches: maintainer wires a new state
+        without updating VALIDATORS dict).
+
+  Aggregate-trace propagation (sibling pattern).
+
+  When a state-machine merges per-agent traces into an aggregate (e.g.,
+  merge-scaffold-pages-traces.py merging scaffold-pages-<slug>.json into
+  scaffold-pages.json), the merger MUST propagate validator-required
+  schema fields into the aggregate. Validators glob over .runs/agent-traces
+  and apply uniformly to per-agent and aggregate files; without
+  propagation the aggregate fails the schema check. Mirror the merger's
+  stub-skip partition in the validator (`if status=='started' and not
+  verdict: return []`) so rate-limited stubs (#1190) don't trigger
+  spurious failures.
 ```
 
 ---

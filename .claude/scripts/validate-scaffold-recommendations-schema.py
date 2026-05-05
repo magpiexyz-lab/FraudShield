@@ -21,6 +21,13 @@ Each entry in template_recommendations[] must have:
   - recommendation: imperative one-line description
   - fix_template: concrete change (markdown allowed)
 
+Stub-skip: per-page traces from `init-trace.py` (#1190 contract) write a
+stub with `status='started'` when scaffold-* spawns rate-limit or crash.
+Stubs lack template_recommendations by design. The aggregate merger
+(merge-scaffold-pages-traces.py) partitions stubs from real traces; this
+validator mirrors that partition (see _validate_trace) so wiring at
+bootstrap.11c does not spuriously fail rate-limited pipelines.
+
 MODE: SCAFFOLD_RECOMMENDATIONS_SCHEMA_MODE (default warn).
 Schema: skip when run_id pre-cutoff.
 """
@@ -66,6 +73,14 @@ def _validate_trace(path: str) -> list[str]:
         data = json.load(open(path))
     except Exception as e:
         return [f"{path}: parse error ({e})"]
+
+    # #1190 contract: rate-limited / crashed agents leave init-trace stubs
+    # with status='started' and no verdict. Aggregate merger
+    # (merge-scaffold-pages-traces.py:65-79) partitions them; mirror that
+    # here so wiring at bootstrap.11c does not spuriously fail rate-limited
+    # pipelines.
+    if data.get("status") == "started" and not data.get("verdict"):
+        return []
 
     errors: list[str] = []
     field = data.get("template_recommendations")

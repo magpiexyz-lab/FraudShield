@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -80,11 +81,28 @@ VALIDATORS = {
         "ref_files": [
             ".claude/patterns/state-registry.json",
         ],
+        # state_registry_states (#1294): every state-registry entry that
+        # MUST chain this validator in its VERIFY. Only scaffold-images
+        # (bootstrap.11a) writes image-manifest.json; bootstrap.11b is the
+        # downstream validator-state. /change does not spawn scaffold-* so
+        # is not listed — D-3 catches future additions across all skills.
+        "state_registry_states": [("bootstrap", "11b")],
     },
     "validate-scaffold-recommendations-schema.py": {
         "mode_env": "SCAFFOLD_RECOMMENDATIONS_SCHEMA_MODE",
         "ref_files": [
             ".claude/patterns/state-registry.json",
+        ],
+        # state_registry_states (#1294): each scaffold-* spawn must be
+        # validated by a downstream state. Bootstrap ordering:
+        #   9 scaffold-setup, 10 scaffold-init, 11a scaffold-libs/externals/
+        #   images → validated at 11b
+        #   11c scaffold-pages/landing → validated at 11c (this PR)
+        #   14 scaffold-wire → validated at 14 (this PR)
+        "state_registry_states": [
+            ("bootstrap", "11b"),
+            ("bootstrap", "11c"),
+            ("bootstrap", "14"),
         ],
     },
     "validate-observer-evidence-coverage.py": {
@@ -199,6 +217,258 @@ class TestValidatorReferences(unittest.TestCase):
                     name, content,
                     f"{name!r} not referenced from {ref_file!r} — integration broken",
                 )
+
+
+# ---------------------------------------------------------------------------
+# Cross-state coverage tests (#1294)
+#
+# A validator that must run at multiple state-registry entries declares
+# `state_registry_states: [(skill, state_id), ...]` in VALIDATORS.
+# Four tests cooperate to lock coverage and prevent silent drift:
+#   D-2 explicit allowlist: each listed state's verify mentions the validator
+#   D-3 auto-discovery:     every scaffold-* spawn site has a downstream
+#                           validator-state in the same skill (walks ALL
+#                           `.claude/skills/**/state-*.md`)
+#   D-4 spawn superset:     allowlist covers every present spawn site
+#   D-5 inverse drift:      every state-registry mention of the validator is
+#                           in the allowlist
+#
+# This is the canonical way #1294 is closed — stronger than wiring change.11b
+# (which is a no-op today) because D-3 catches future scaffold-* spawn sites
+# in any skill, including /change /upgrade /resolve.
+# ---------------------------------------------------------------------------
+
+STATE_REGISTRY_PATH = REPO_ROOT / ".claude" / "patterns" / "state-registry.json"
+SKILLS_DIR = REPO_ROOT / ".claude" / "skills"
+SCAFFOLD_SPAWN_RE = re.compile(
+    r"^\s*-\s*subagent_type:\s*(scaffold-[a-z-]+)\s*$",
+    re.MULTILINE,
+)
+
+
+def _extract_verify(entry):
+    """Mirror sync-verify-to-state-files.sh extract_verify_cmd() (lines 40-46).
+
+    State-registry entries can be either a bare command string or a
+    {"verify": ..., "artifact": ..., "lifecycle": ...} dict.
+    """
+    if isinstance(entry, str):
+        return entry
+    if isinstance(entry, dict):
+        return entry.get("verify", "")
+    return ""
+
+
+def _load_state_registry():
+    return json.loads(STATE_REGISTRY_PATH.read_text())
+
+
+def _state_index(reg, skill, state_id):
+    """Return the insertion-order index of state_id in reg[skill], or None.
+
+    JSON object keys preserve insertion order in Python ≥3.7. The order in
+    state-registry.json reflects the canonical execution order of the skill.
+    """
+    states = list(reg.get(skill, {}).keys())
+    if state_id not in states:
+        return None
+    return states.index(state_id)
+
+
+def _enumerate_scaffold_spawn_sites():
+    """Walk .claude/skills/**/state-*.md for canonical scaffold-* spawn lines.
+
+    Returns a list of tuples: (skill, state_id, agent_name, source_path).
+
+    The regex is line-anchored to the canonical spawn marker
+    `- subagent_type: scaffold-<name>`. This rejects:
+      - markdown checklist items like `- [ ] scaffold-setup completed`
+      - Python list literals like `expected = ['scaffold-setup', ...]`
+      - prose mentions of scaffold-* names
+
+    Future scaffold-* spawn sites in any skill MUST use this canonical form.
+    """
+    state_file_re = re.compile(r"^state-([0-9a-z]+)-")
+    sites = []
+    for path in sorted(SKILLS_DIR.glob("*/state-*.md")):
+        try:
+            relative = path.relative_to(SKILLS_DIR)
+        except ValueError:
+            continue
+        parts = relative.parts
+        if len(parts) < 2:
+            continue
+        skill = parts[0]
+        m = state_file_re.match(parts[1])
+        if not m:
+            continue
+        state_id = m.group(1)
+        text = path.read_text()
+        for match in SCAFFOLD_SPAWN_RE.finditer(text):
+            sites.append((skill, state_id, match.group(1), path))
+    return sites
+
+
+class TestScaffoldValidatorCrossStateCoverage(unittest.TestCase):
+    """D-2: each (skill, state_id) in VALIDATORS[*].state_registry_states must
+    actually have the validator chained in that state's verify command.
+    """
+
+    def test_state_registry_states_wire_validator(self):
+        reg = _load_state_registry()
+        for name, spec in VALIDATORS.items():
+            states = spec.get("state_registry_states") or []
+            for skill, state_id in states:
+                with self.subTest(validator=name, skill=skill, state=state_id):
+                    self.assertIn(
+                        skill, reg,
+                        f"state-registry has no skill {skill!r}",
+                    )
+                    self.assertIn(
+                        state_id, reg[skill],
+                        f"state-registry[{skill}] has no state {state_id!r}",
+                    )
+                    verify = _extract_verify(reg[skill][state_id])
+                    self.assertIn(
+                        name, verify,
+                        f"{name!r} not in state-registry[{skill}.{state_id}].verify "
+                        f"— allowlist out of sync with registry",
+                    )
+
+
+class TestScaffoldSpawningStatesHaveValidators(unittest.TestCase):
+    """D-3: every scaffold-* spawn site in `.claude/skills/**/state-*.md` must
+    have a downstream validator-state in the same skill.
+
+    Walks ALL skill directories — closes #1294's actual concern across the
+    full skill universe (bootstrap, change, upgrade, resolve, ...). A future
+    skill adding a scaffold-* spawn fails this test until the maintainer adds
+    `(skill, state_id)` to VALIDATORS[validate-scaffold-recommendations-schema.py]
+    .state_registry_states AND wires the validator into that state's verify.
+    """
+
+    def _assert_downstream_coverage(self, validator_spec, name, skill, spawn_state, agent_name):
+        reg = _load_state_registry()
+        spawn_idx = _state_index(reg, skill, spawn_state)
+        self.assertIsNotNone(
+            spawn_idx,
+            f"spawn state {skill}.{spawn_state} (agent={agent_name}) not in registry",
+        )
+        states = list(reg[skill].keys())
+        target_idxs = []
+        for sk, target_state in validator_spec.get("state_registry_states", []):
+            if sk != skill:
+                continue
+            t_idx = _state_index(reg, sk, target_state)
+            if t_idx is not None:
+                target_idxs.append(t_idx)
+        self.assertTrue(
+            any(t >= spawn_idx for t in target_idxs),
+            f"scaffold-* spawn at {skill}.{spawn_state} (agent={agent_name}) "
+            f"has no downstream validator-state for {name!r}; "
+            f"states after spawn: {states[spawn_idx:]} ; "
+            f"validator allowlist for {skill!r}: "
+            f"{[s for sk, s in validator_spec.get('state_registry_states', []) if sk == skill]}",
+        )
+
+    def test_recommendations_validator_covers_every_spawn(self):
+        spec = VALIDATORS["validate-scaffold-recommendations-schema.py"]
+        for skill, state_id, agent_name, source in _enumerate_scaffold_spawn_sites():
+            with self.subTest(skill=skill, state=state_id, agent=agent_name):
+                self._assert_downstream_coverage(
+                    spec,
+                    "validate-scaffold-recommendations-schema.py",
+                    skill,
+                    state_id,
+                    agent_name,
+                )
+
+    def test_image_spec_validator_covers_scaffold_images_spawns(self):
+        spec = VALIDATORS["validate-image-spec-compliance.py"]
+        for skill, state_id, agent_name, source in _enumerate_scaffold_spawn_sites():
+            if agent_name != "scaffold-images":
+                continue
+            with self.subTest(skill=skill, state=state_id, agent=agent_name):
+                self._assert_downstream_coverage(
+                    spec,
+                    "validate-image-spec-compliance.py",
+                    skill,
+                    state_id,
+                    agent_name,
+                )
+
+
+class TestStateRegistryStatesMatchKnownSpawnUniverse(unittest.TestCase):
+    """D-4: the recommendations validator's state_registry_states must cover
+    every (skill, downstream_validator_state) implied by the present
+    scaffold-* spawn universe. Catches: validator entry drops a coverage
+    state, leaving present spawns uncovered.
+    """
+
+    def test_recommendations_allowlist_is_superset_of_spawn_anchors(self):
+        reg = _load_state_registry()
+        spec = VALIDATORS["validate-scaffold-recommendations-schema.py"]
+        allowlist = set(tuple(p) for p in spec.get("state_registry_states", []))
+
+        # For each spawn site, derive the EARLIEST allowlist state >= spawn_idx
+        # (the canonical "downstream validator anchor"). If the validator is
+        # supposed to cover this spawn, that anchor must exist in allowlist.
+        for skill, state_id, agent_name, source in _enumerate_scaffold_spawn_sites():
+            spawn_idx = _state_index(reg, skill, state_id)
+            self.assertIsNotNone(
+                spawn_idx,
+                f"spawn state {skill}.{state_id} not in registry",
+            )
+            states = list(reg[skill].keys())
+            # Earliest allowlisted state for this skill that is >= spawn_idx
+            anchor_indices = sorted(
+                _state_index(reg, sk, st)
+                for sk, st in allowlist
+                if sk == skill and _state_index(reg, sk, st) is not None
+            )
+            anchor_indices = [i for i in anchor_indices if i >= spawn_idx]
+            self.assertTrue(
+                anchor_indices,
+                f"D-4: spawn at {skill}.{state_id} (agent={agent_name}) has no "
+                f"downstream allowlisted state in "
+                f"validate-scaffold-recommendations-schema.py.state_registry_states; "
+                f"add ({skill}, <state-after-{state_id}>) to the allowlist AND wire "
+                f"the validator at that state.",
+            )
+
+
+class TestValidatorMentionsInRegistryMatchAllowlist(unittest.TestCase):
+    """D-5: every state-registry entry whose verify command mentions a scaffold
+    validator script must appear in that validator's
+    `state_registry_states` allowlist. Inverse drift detection.
+
+    Catches: maintainer wires a new state in state-registry.json (e.g., adds
+    bootstrap.13 to validate-scaffold-recommendations-schema.py) without
+    updating VALIDATORS dict — D-2/D-4 silently pass while drift accumulates.
+    """
+
+    def test_registry_mentions_match_allowlist(self):
+        reg = _load_state_registry()
+        for name, spec in VALIDATORS.items():
+            if "state_registry_states" not in spec:
+                continue
+            allowlist = set(tuple(p) for p in spec["state_registry_states"])
+            mentioned = set()
+            for skill, states in reg.items():
+                if not isinstance(states, dict):
+                    continue
+                for state_id, entry in states.items():
+                    verify = _extract_verify(entry)
+                    if name in verify:
+                        mentioned.add((skill, state_id))
+            unlisted = mentioned - allowlist
+            self.assertFalse(
+                unlisted,
+                f"D-5: state-registry mentions {name!r} at {sorted(unlisted)} "
+                f"but VALIDATORS[{name!r}].state_registry_states does not list "
+                f"these — meta-test will not detect future removal. Add the "
+                f"missing entries to VALIDATORS dict.",
+            )
 
 
 class TestValidatorPreCutoffSkip(unittest.TestCase):

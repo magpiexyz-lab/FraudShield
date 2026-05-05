@@ -145,6 +145,31 @@ def main() -> int:
         ):
             merged["verdict"] = per_page_verdict
 
+    # Aggregate template_recommendations[] across per-page traces (#1294 audit).
+    # Without propagation, the aggregate scaffold-pages.json fails the schema
+    # validator wired at bootstrap.11c. Per-page traces individually carry the
+    # field per scaffold-pages.md:130-131; the aggregate must mirror it.
+    tr_lists = [
+        d.get("template_recommendations", [])
+        for _, d in real_traces
+        if isinstance(d.get("template_recommendations"), list)
+    ]
+    concat_recommendations = [item for lst in tr_lists for item in lst]
+    all_explicit_none = (
+        all(
+            d.get("template_recommendations_explicit_none", False)
+            for _, d in real_traces
+        )
+        if real_traces
+        else False
+    )
+    if concat_recommendations:
+        merged["template_recommendations"] = concat_recommendations
+        merged["template_recommendations_explicit_none"] = False
+    else:
+        merged["template_recommendations"] = []
+        merged["template_recommendations_explicit_none"] = bool(all_explicit_none)
+
     merged["timestamp"] = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
 
     # AOC v1.1 (#1254): contributing_spawn_indexes binds the lead-merge

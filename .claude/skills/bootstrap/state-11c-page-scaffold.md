@@ -143,7 +143,7 @@ Check off in `.runs/current-plan.md` for each completed B2 subagent:
 
 **VERIFY:**
 ```bash
-python3 -c "import json,os,glob; a=json.load(open('.runs/bootstrap-context.json')).get('archetype','web-app'); assert (a!='web-app' or os.path.isfile('src/app/layout.tsx')), 'web-app missing layout.tsx'; assert (a!='service' or os.path.isdir('src/app/api')), 'service missing api/'; assert (a!='cli' or any(os.path.isfile(f) for f in ['src/index.ts','src/cli.ts'])), 'cli missing entry'"
+python3 -c "import json,os,glob; a=json.load(open('.runs/bootstrap-context.json')).get('archetype','web-app'); assert (a!='web-app' or os.path.isfile('src/app/layout.tsx')), 'web-app missing layout.tsx'; assert (a!='service' or os.path.isdir('src/app/api')), 'service missing api/'; assert (a!='cli' or any(os.path.isfile(f) for f in ['src/index.ts','src/cli.ts'])), 'cli missing entry'" && python3 .claude/scripts/validate-scaffold-recommendations-schema.py
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
