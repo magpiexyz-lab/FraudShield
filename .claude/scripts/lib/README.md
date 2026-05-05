@@ -27,8 +27,19 @@ composite_identity:
   root_cause_class: agent-fabricates-image-evidence
   divergence_pattern: physical-artifact-required-but-pixel-only-check-bypassable
   stack_scope: scripts/lib
-composite_identity_hash: phash-prov-2026-05
+composite_identity_hash: 4716610c2cb5
 symptom_keywords: [image, screenshot, evidence, candidate, provenance, phash, fabrication, design-critic, candidates_tried]
+confidence_score: 0.85
+occurrence_count: 1
+linked_issues: [1276, 1272, 1261, 1252, 1255]
+first_seen: 2026-05-04
+last_seen: 2026-05-04
+graduated_to: null
+prevention_mechanism: |
+  phash.check_image_magic + read_provenance + validate_provenance_triple_unique
+  enforce that every candidate has an independent (model, prompt_hash, seed)
+  triple sourced from the generation provider — LLMs cannot fabricate triples
+  the API never produced.
 fix_template: |
   When validating that an LLM agent has actually produced distinct image
   candidates (not labeled the same image as N candidates), require BOTH:
@@ -69,8 +80,19 @@ composite_identity:
   root_cause_class: llm-stamps-old-schema-version-to-bypass-new-validators
   divergence_pattern: agent-controls-its-own-versioning-stamp
   stack_scope: scripts/lib
-composite_identity_hash: schver-runid-2026-05
+composite_identity_hash: f3304d1e77cc
 symptom_keywords: [schema_version, backwards_compat, migration, runid, bypass, downward_stamp, validator_skip]
+confidence_score: 0.70
+occurrence_count: 1
+linked_issues: [1276, 1272, 1261, 1252, 1255]
+first_seen: 2026-05-04
+last_seen: 2026-05-04
+graduated_to: null
+prevention_mechanism: |
+  lib.schema_version_gate.check_artifact_schema_version binds the effective
+  schema version to the run_id timestamp set by init-context.sh before any
+  LLM action, so an agent cannot down-stamp schema_version to bypass a newly
+  added v2 gate.
 fix_template: |
   When adding required fields to .runs/ artifacts, do NOT trust agent-stamped
   schema_version. Bind the EFFECTIVE schema version to the run_id timestamp
@@ -98,8 +120,19 @@ composite_identity:
   root_cause_class: future-pr-softens-validator-to-no-op
   divergence_pattern: hard-block-validator-survives-by-meta-property-test
   stack_scope: scripts/tests
-composite_identity_hash: validator-meta-2026-05
+composite_identity_hash: 4c517663dd57
 symptom_keywords: [validator, softening, no-op, meta-test, ci, regression, defense-in-depth]
+confidence_score: 0.70
+occurrence_count: 1
+linked_issues: [1276, 1272, 1261, 1252, 1255]
+first_seen: 2026-05-04
+last_seen: 2026-05-04
+graduated_to: null
+prevention_mechanism: |
+  .claude/scripts/tests/test_validators_meta.py drives every hard-block
+  validator with synthetic invalid input and asserts non-zero exit code,
+  blocking future PRs from softening `assert <cond>` to `print("WARN");
+  sys.exit(0)`.
 fix_template: |
   When shipping a hard-block validator (any script invoked by
   state-completion-gate.sh or lifecycle-finalize.sh that exit 1 on failure),

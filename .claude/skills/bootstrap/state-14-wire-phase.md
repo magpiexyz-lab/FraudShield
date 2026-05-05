@@ -4,7 +4,9 @@
 - BG2 PASS, build passes (STATE 13c POSTCONDITIONS met)
 - Optional: load Stack Knowledge hints (stable + canonical, non-graduated)
   into memory via `scripts/lib/stack_knowledge_parser.py::parse_stack_knowledge_file`
-  across all `.claude/stacks/**/*.md` files. Absent sections are expected (HC3 —
+  across every path returned by `iter_stack_knowledge_files()` (single source of
+  truth — currently `.claude/stacks/**/*.md` plus `.claude/scripts/lib/README.md`).
+  Absent sections are expected (HC3 —
   never blocking). Wire decisions consult these hints to avoid known-bad
   layout / provider-wiring patterns.
 
@@ -52,13 +54,13 @@ Verify scaffold-wire trace: `test -f .runs/agent-traces/scaffold-wire.json && py
 - **Write Stack Knowledge hints artifact** (`.runs/bootstrap-state14-stack-knowledge-hints.json`) — active prevention consulted during wire decisions:
   ```bash
   python3 -c "
-  import glob, json, os, sys
+  import json, os, sys
   sys.path.insert(0, 'scripts')
-  from lib.stack_knowledge_parser import parse_stack_knowledge_file
+  from lib.stack_knowledge_parser import iter_stack_knowledge_files, parse_stack_knowledge_file
   ACTIVE = {'stable', 'canonical'}
   hints = []
   sources = []
-  for path in sorted(glob.glob('.claude/stacks/**/*.md', recursive=True)):
+  for path in iter_stack_knowledge_files():
       entries = parse_stack_knowledge_file(path)
       if not entries:
           continue

@@ -309,6 +309,15 @@
       "description": "Issue #1170 lineage: stack files prescribing env-gated source code with literal placeholder fallbacks (e.g. ?? \"phc_TEAM_KEY\", || \"placeholder-stripe-publishable\") MUST include a `## Production Observability` section documenting the fail-loud contract. Without it the silent-fallback antipattern recurs. See .claude/stacks/TEMPLATE.md for the section requirements."
     },
     {
+      "id": "lib-readme-stack-knowledge-required",
+      "type": "must_contain_section",
+      "severity": "block",
+      "applies_to_glob": ".claude/scripts/lib/README.md",
+      "required_section": "## Stack Knowledge",
+      "trigger_pattern_any": ["^# .*Reusable helpers"],
+      "description": "Issue #1285 lineage: lib/README.md is the canonical discovery surface for reusable helpers in .claude/scripts/lib/. Removing the `## Stack Knowledge` section silently degrades cross-fix discovery for every consumer that calls iter_stack_knowledge_files() — solve-reasoning Phase 1 Agent 2, change/state-2-read-context.md hints writer, ci-check-stack-knowledge.py, validate-stack-knowledge workflow, recurrence-detector, resolve-causal-analyzer, stack_knowledge_audit, bootstrap state-12 + state-14. Trigger matches the README's H1 (`# .claude/scripts/lib/ — Reusable helpers`); when the section is absent the rule blocks PR merge."
+    },
+    {
       "id": "bash-hook-write-operator-binding",
       "type": "bash_hook_write_operator_binding",
       "severity": "block",

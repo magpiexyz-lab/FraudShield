@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Cross-file CI-only Stack Knowledge check.
 
-Runs AFTER scripts/validate-stack-knowledge.py. Walks .claude/stacks/**/*.md
-(excluding TEMPLATE.md), parses all Stack Knowledge entries, and enforces
+Runs AFTER scripts/validate-stack-knowledge.py. Walks every path returned by
+`iter_stack_knowledge_files()` (single source of truth — currently
+`.claude/stacks/**/*.md` plus `.claude/scripts/lib/README.md`, with TEMPLATE.md
+and *.archive.md excluded), parses all Stack Knowledge entries, and enforces
 global composite_identity_hash uniqueness.
 
 Exits 0 clean / 1 on any failure.
@@ -10,7 +12,6 @@ Exits 0 clean / 1 on any failure.
 
 from __future__ import annotations
 
-import glob
 import os
 import sys
 import time
@@ -18,20 +19,14 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from lib.stack_knowledge_parser import (  # noqa: E402
-    is_archive_path,
+    iter_stack_knowledge_files,
     parse_stack_knowledge,
 )
-
-STACK_GLOB = ".claude/stacks/**/*.md"
-EXCLUDE_BASENAMES = {"TEMPLATE.md"}
 
 
 def main() -> int:
     start = time.perf_counter()
-    paths = [
-        p for p in glob.glob(STACK_GLOB, recursive=True)
-        if os.path.basename(p) not in EXCLUDE_BASENAMES and not is_archive_path(p)
-    ]
+    paths = iter_stack_knowledge_files()
 
     index: dict[str, list[tuple[str, int]]] = {}
     total_entries = 0

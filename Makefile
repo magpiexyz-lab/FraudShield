@@ -31,8 +31,10 @@ sync-archetype-summaries: ## Sync canonical Summary Lines from archetype-behavio
 test-verify-semantics: ## Behavioral tests for review skill VERIFY semantics (#928 regression guard)
 	@python3 .claude/scripts/tests/test_verify_semantics.py
 
-# CI-ONLY: python3 scripts/ci-check-graduation-atomicity.py, bash .claude/scripts/stack-knowledge-audit.sh
-# (validators that require PR context or run on a schedule — parsed by scripts/consistency-check.sh Check 20)
+# CI-ONLY: python3 scripts/ci-check-graduation-atomicity.py, bash .claude/scripts/stack-knowledge-audit.sh, python3 scripts/print-stack-knowledge-files.py
+# (validators that require PR context, run on a schedule, or are CI shims —
+# parsed by scripts/consistency-check.sh Check 20. print-stack-knowledge-files.py
+# is a pure path-enumeration shim consumed only by .github/workflows/stack-knowledge-validate.yml.)
 lint-template: ## Fast: run validators against .claude/ content (~1-3s; no validator unit tests)
 	@echo "== lint-template: running all CI-bound template validators =="
 	@echo "-- validate-frontmatter --"

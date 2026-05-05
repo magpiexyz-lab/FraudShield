@@ -28,7 +28,8 @@ Reads
   .runs/resolve-reproduction.json   (divergence points — written by STATE 3)
   .runs/resolve-context.json        (run_id)
   .claude/patterns/convergence-config.json   (thresholds/timeout)
-  .claude/stacks/**/*.md            (anti-pattern entries)
+  iter_stack_knowledge_files()       (anti-pattern entries; .claude/stacks/**/*.md
+                                       plus .claude/scripts/lib/README.md)
 
 Writes
 ------
@@ -51,6 +52,7 @@ REPO_ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
 
 sys.path.insert(0, os.path.join(REPO_ROOT, "scripts"))
 from lib.stack_knowledge_parser import (  # noqa: E402
+    iter_stack_knowledge_files,
     canonicalize,
     parse_stack_knowledge,
 )
@@ -234,23 +236,30 @@ def recent_resolve_commit(commits: list[dict]) -> dict | None:
 
 
 def load_anti_patterns(stacks_dir: str = STACKS_DIR) -> list[dict]:
-    """Return all `anti_pattern: true` entries across every stack file."""
+    """Return all `anti_pattern: true` entries across every Stack Knowledge file.
+
+    Uses `iter_stack_knowledge_files()` (single source of truth — currently
+    `.claude/stacks/**/*.md` plus `.claude/scripts/lib/README.md`). The
+    `stacks_dir` parameter is retained for backwards compatibility but only
+    consulted when the helper returns no paths (test fixture path).
+    """
     result: list[dict] = []
-    if not os.path.isdir(stacks_dir):
-        return result
-    for root, _dirs, files in os.walk(stacks_dir):
-        for name in files:
-            if not name.endswith(".md"):
-                continue
-            path = os.path.join(root, name)
-            try:
-                content = open(path).read()
-            except (OSError, UnicodeDecodeError):
-                continue
-            for entry in parse_stack_knowledge(content):
-                if entry.get("anti_pattern") is True:
-                    entry["_source_file"] = os.path.relpath(path, REPO_ROOT)
-                    result.append(entry)
+    paths = iter_stack_knowledge_files(REPO_ROOT)
+    if not paths and os.path.isdir(stacks_dir):
+        # Fallback for fixture-only test setups where REPO_ROOT differs.
+        for root, _dirs, files in os.walk(stacks_dir):
+            for name in files:
+                if name.endswith(".md") and not name.endswith(".archive.md") and name != "TEMPLATE.md":
+                    paths.append(os.path.join(root, name))
+    for path in paths:
+        try:
+            content = open(path).read()
+        except (OSError, UnicodeDecodeError):
+            continue
+        for entry in parse_stack_knowledge(content):
+            if entry.get("anti_pattern") is True:
+                entry["_source_file"] = os.path.relpath(path, REPO_ROOT)
+                result.append(entry)
     return result
 
 

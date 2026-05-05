@@ -102,10 +102,15 @@ Launch 3 agents concurrently:
 >
 > Search targets: demo modes, test fixtures, mocks, fallbacks, guards, gates,
 > env vars, scripts, similar patterns in other files, related config, and the
-> optional `## Stack Knowledge` sections across `.claude/stacks/**/*.md` —
-> for each entry whose `composite_identity` matches the problem's derived
-> composite (see `scripts/lib/stack_knowledge_parser.py`), surface its
-> `fix_template` as prior art tagged with the entry's `id`, `maturity`, and
+> optional `## Stack Knowledge` sections across every path returned by
+> `scripts/lib/stack_knowledge_parser.iter_stack_knowledge_files()` — currently
+> `.claude/stacks/**/*.md` plus `.claude/scripts/lib/README.md` (the README is
+> the canonical surface for reusable lib helpers like phash,
+> schema_version_gate, and validator-meta-test). Treat the helper as the
+> single source of truth — never hardcode the glob list locally. For each
+> entry whose `composite_identity` matches the problem's derived composite
+> (see `scripts/lib/stack_knowledge_parser.py`), surface its `fix_template`
+> as prior art tagged with the entry's `id`, `maturity`, and
 > `occurrence_count`. Missing sections are expected (HC3) — absence is not
 > a finding, just skip.
 >

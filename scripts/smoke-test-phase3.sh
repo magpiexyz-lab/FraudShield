@@ -58,13 +58,13 @@ symptom_keywords: [demo, production]
 STK
   # Run the exact snippet from .claude/skills/change/state-2-read-context.md
   (cd "$w" && python3 -c "
-import glob, json, sys, os
+import json, sys, os
 sys.path.insert(0, 'scripts')
-from lib.stack_knowledge_parser import parse_stack_knowledge_file
+from lib.stack_knowledge_parser import iter_stack_knowledge_files, parse_stack_knowledge_file
 ACTIVE = {'stable', 'canonical'}
 hints = []
 sources = []
-for path in sorted(glob.glob('.claude/stacks/**/*.md', recursive=True)):
+for path in iter_stack_knowledge_files():
     entries = parse_stack_knowledge_file(path)
     if not entries:
         continue

@@ -36,7 +36,6 @@ false promotion is costlier than a skipped night.
 from __future__ import annotations
 
 import argparse
-import glob
 import hashlib
 import json
 import os
@@ -50,10 +49,11 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.abspath(os.path.join(HERE, "..", "..", ".."))
 
 sys.path.insert(0, os.path.join(REPO_ROOT, "scripts"))
-from lib.stack_knowledge_parser import parse_stack_knowledge_file  # noqa: E402
+from lib.stack_knowledge_parser import (  # noqa: E402
+    iter_stack_knowledge_files,
+    parse_stack_knowledge_file,
+)
 
-STACK_GLOB = os.path.join(REPO_ROOT, ".claude", "stacks", "**", "*.md")
-EXCLUDE_BASENAMES = {"TEMPLATE.md"}
 HISTORY_PATH = os.path.join(REPO_ROOT, ".runs", "convergence-history.jsonl")
 FILED_STATE_PATH = os.path.join(REPO_ROOT, ".runs", "stack-knowledge-audit-filed.json")
 
@@ -97,11 +97,14 @@ def _parse_iso(s: Any) -> datetime | None:
 
 
 def load_all_entries() -> list[tuple[str, dict]]:
-    """Load every (path, entry) pair across live stack files."""
+    """Load every (path, entry) pair across every Stack Knowledge file.
+
+    Source of truth: `iter_stack_knowledge_files()` (currently
+    `.claude/stacks/**/*.md` plus `.claude/scripts/lib/README.md`, with
+    TEMPLATE.md and *.archive.md excluded).
+    """
     out: list[tuple[str, dict]] = []
-    for path in sorted(glob.iglob(STACK_GLOB, recursive=True)):
-        if os.path.basename(path) in EXCLUDE_BASENAMES:
-            continue
+    for path in iter_stack_knowledge_files(REPO_ROOT):
         for entry in parse_stack_knowledge_file(path):
             out.append((path, entry))
     return out

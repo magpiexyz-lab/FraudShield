@@ -23,18 +23,12 @@ jobs:
       - name: Per-file validate (schema + forbidden-heading lint + within-file uniqueness)
         shell: bash
         run: |
-          shopt -s globstar nullglob
-          all_files=(.claude/stacks/**/*.md)
-          # Filter out archive files (*.archive.md) — they are historical docs, not live entries.
-          files=()
-          for f in "${all_files[@]}"; do
-            case "$f" in
-              *.archive.md) ;;
-              *) files+=("$f") ;;
-            esac
-          done
+          # Single source of truth for scan paths:
+          # scripts/lib/stack_knowledge_parser.STACK_KNOWLEDGE_SCAN_PATHS via
+          # iter_stack_knowledge_files() (already excludes TEMPLATE.md / *.archive.md).
+          mapfile -t files < <(python3 scripts/print-stack-knowledge-files.py)
           if [ ${#files[@]} -eq 0 ]; then
-            echo "No live stack files found — skipping."
+            echo "No live stack-knowledge files found — skipping."
             exit 0
           fi
           python3 scripts/validate-stack-knowledge.py "${files[@]}"

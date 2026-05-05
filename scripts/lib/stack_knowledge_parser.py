@@ -24,8 +24,10 @@ HC3: all readers return [] when the section is absent or the file is archive.
 
 from __future__ import annotations
 
+import glob as _glob
 import hashlib
 import json
+import os
 import re
 from typing import Any
 
@@ -147,3 +149,38 @@ def parse_stack_knowledge_file(path: str) -> list[dict[str, Any]]:
             return parse_stack_knowledge(f.read())
     except (OSError, UnicodeDecodeError):
         return []
+
+
+# Single source of truth for every consumer that needs to enumerate paths
+# containing ## Stack Knowledge sections. Hardcoded globs scattered across
+# CI scripts, skill state files, and validators were the root cause of #1285
+# (lib/ helpers built by one /solve invisible to the next).
+STACK_KNOWLEDGE_SCAN_PATHS = (
+    ".claude/stacks/**/*.md",
+    ".claude/scripts/lib/README.md",
+)
+
+EXCLUDE_BASENAMES = frozenset({"TEMPLATE.md"})
+
+
+def iter_stack_knowledge_files(project_dir: str = ".") -> list[str]:
+    """Enumerate every file path that may contain a ## Stack Knowledge section.
+
+    Every consumer (CI uniqueness check, per-file validator workflow, /change
+    state-2 hints writer, recurrence-detector, resolve-causal-analyzer,
+    stack_knowledge_audit, /bootstrap state-12/14, /solve Phase 1 Agent 2)
+    calls this instead of re-implementing the glob list. Preserves archive
+    exclusion via is_archive_path() and excludes TEMPLATE.md.
+
+    `project_dir` lets tests pass a fixture root; defaults to cwd.
+    """
+    out: list[str] = []
+    for pat in STACK_KNOWLEDGE_SCAN_PATHS:
+        full = pat if project_dir == "." else os.path.join(project_dir, pat)
+        for p in _glob.glob(full, recursive=True):
+            if os.path.basename(p) in EXCLUDE_BASENAMES:
+                continue
+            if is_archive_path(p):
+                continue
+            out.append(p)
+    return sorted(set(out))
