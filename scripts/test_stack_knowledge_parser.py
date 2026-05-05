@@ -11,11 +11,14 @@ from lib.stack_knowledge_parser import (
     canonicalize,
     compute_hash,
     is_archive_path,
+    iter_stack_knowledge_files,
     parse_stack_knowledge,
     parse_stack_knowledge_file,
     REQUIRED_FIELDS,
     MATURITY_VALUES,
     COMPOSITE_KEYS,
+    STACK_KNOWLEDGE_SCAN_PATHS,
+    EXCLUDE_BASENAMES,
 )
 
 
@@ -279,3 +282,67 @@ class TestParseStackKnowledgeFile:
         p = tmp_path / "nextjs.md"
         p.write_text("# Framework: Next.js\n\nNo stack knowledge section here.\n")
         assert parse_stack_knowledge_file(str(p)) == []
+
+
+class TestIterStackKnowledgeFiles:
+    """#1285: single source of truth for cross-directory Stack Knowledge discovery.
+
+    iter_stack_knowledge_files() must enumerate the same scan surface every
+    consumer (CI, validators, skill states) sees. Regressions here would let
+    one consumer drift from the others — exactly the failure mode #1285 fixed.
+    """
+
+    def test_paths_constant_includes_lib_readme(self):
+        """The lib/README.md surface must remain in STACK_KNOWLEDGE_SCAN_PATHS.
+
+        Removing it would silently break /solve Phase 1 Agent 2's auto-discovery
+        of reusable lib helpers — the regression #1285 was filed to prevent.
+        """
+        assert ".claude/scripts/lib/README.md" in STACK_KNOWLEDGE_SCAN_PATHS
+        assert ".claude/stacks/**/*.md" in STACK_KNOWLEDGE_SCAN_PATHS
+
+    def test_paths_constant_is_immutable(self):
+        """Tuple shape prevents callers from mutating the source of truth."""
+        assert isinstance(STACK_KNOWLEDGE_SCAN_PATHS, tuple)
+
+    def test_excludes_template_md(self, tmp_path):
+        stacks = tmp_path / ".claude" / "stacks"
+        stacks.mkdir(parents=True)
+        (stacks / "TEMPLATE.md").write_text("# Template\n")
+        (stacks / "live.md").write_text("# Live stack\n")
+        files = iter_stack_knowledge_files(str(tmp_path))
+        assert any("live.md" in f for f in files)
+        assert not any("TEMPLATE.md" in f for f in files)
+
+    def test_excludes_archive_files(self, tmp_path):
+        stacks = tmp_path / ".claude" / "stacks"
+        stacks.mkdir(parents=True)
+        (stacks / "live.md").write_text("# Live\n")
+        (stacks / "old.archive.md").write_text("# Archive\n")
+        files = iter_stack_knowledge_files(str(tmp_path))
+        assert any("live.md" in f for f in files)
+        assert not any(".archive.md" in f for f in files)
+
+    def test_includes_lib_readme_when_present(self, tmp_path):
+        lib = tmp_path / ".claude" / "scripts" / "lib"
+        lib.mkdir(parents=True)
+        (lib / "README.md").write_text("# `.claude/scripts/lib/`\n## Stack Knowledge\n")
+        files = iter_stack_knowledge_files(str(tmp_path))
+        assert any(f.endswith(".claude/scripts/lib/README.md") for f in files)
+
+    def test_returns_sorted_unique(self, tmp_path):
+        stacks = tmp_path / ".claude" / "stacks" / "framework"
+        stacks.mkdir(parents=True)
+        (stacks / "b.md").write_text("# B\n")
+        (stacks / "a.md").write_text("# A\n")
+        files = iter_stack_knowledge_files(str(tmp_path))
+        assert files == sorted(set(files))
+
+    def test_empty_when_no_paths_match(self, tmp_path):
+        # No .claude/ tree at all — every glob returns nothing.
+        assert iter_stack_knowledge_files(str(tmp_path)) == []
+
+    def test_template_basename_constant(self):
+        """EXCLUDE_BASENAMES is the canonical exclusion set — keep frozen."""
+        assert isinstance(EXCLUDE_BASENAMES, frozenset)
+        assert "TEMPLATE.md" in EXCLUDE_BASENAMES

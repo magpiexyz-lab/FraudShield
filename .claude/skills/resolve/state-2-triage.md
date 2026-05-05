@@ -2,9 +2,11 @@
 
 **PRECONDITIONS:**
 - Context files read (STATE 1 POSTCONDITIONS met)
-- Optional: parse `## Stack Knowledge` sections across `.claude/stacks/**/*.md`
-  into memory using `scripts/lib/stack_knowledge_parser.py::parse_stack_knowledge`.
-  Absent section = empty list; missing files = empty list (HC3 — never blocking).
+- Optional: parse `## Stack Knowledge` sections across every path returned by
+  `scripts/lib/stack_knowledge_parser.iter_stack_knowledge_files()` (single
+  source of truth — currently `.claude/stacks/**/*.md` plus
+  `.claude/scripts/lib/README.md`) using `parse_stack_knowledge`. Absent
+  section = empty list; missing files = empty list (HC3 — never blocking).
 
 **ACTIONS:**
 

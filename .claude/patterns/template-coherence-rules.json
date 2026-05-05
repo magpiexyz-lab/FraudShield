@@ -314,8 +314,8 @@
       "severity": "block",
       "applies_to_glob": ".claude/scripts/lib/README.md",
       "required_section": "## Stack Knowledge",
-      "trigger_pattern_any": ["^# .*Reusable helpers"],
-      "description": "Issue #1285 lineage: lib/README.md is the canonical discovery surface for reusable helpers in .claude/scripts/lib/. Removing the `## Stack Knowledge` section silently degrades cross-fix discovery for every consumer that calls iter_stack_knowledge_files() — solve-reasoning Phase 1 Agent 2, change/state-2-read-context.md hints writer, ci-check-stack-knowledge.py, validate-stack-knowledge workflow, recurrence-detector, resolve-causal-analyzer, stack_knowledge_audit, bootstrap state-12 + state-14. Trigger matches the README's H1 (`# .claude/scripts/lib/ — Reusable helpers`); when the section is absent the rule blocks PR merge."
+      "trigger_pattern_any": ["^#\\s+.*\\.claude/scripts/lib/"],
+      "description": "Issue #1285 lineage: lib/README.md is the canonical discovery surface for reusable helpers in .claude/scripts/lib/. Removing the `## Stack Knowledge` section silently degrades cross-fix discovery for every consumer that calls iter_stack_knowledge_files() — solve-reasoning Phase 1 Agent 2, change/state-2-read-context.md hints writer, ci-check-stack-knowledge.py, validate-stack-knowledge workflow, recurrence-detector, resolve-causal-analyzer, stack_knowledge_audit, bootstrap state-12 + state-14. Trigger anchors on the stable path-prefix in the README's H1 (`# .claude/scripts/lib/ — ...`) rather than the human-readable suffix, so renaming the suffix (e.g. 'Reusable helpers' → 'Helper utilities') cannot silently disable the rule. When the section is absent the rule blocks PR merge."
     },
     {
       "id": "bash-hook-write-operator-binding",

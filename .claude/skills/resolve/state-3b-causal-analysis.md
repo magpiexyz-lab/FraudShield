@@ -14,8 +14,10 @@ halt it presents the user with three options and waits for the user's reply.
 ### Step 1 — Run the headless analyzer
 
 The analyzer reads `.runs/resolve-reproduction.json`, checks each divergence
-point against git history and `anti_pattern: true` entries in
-`.claude/stacks/**/*.md`, and writes `.runs/resolve-causal-analysis.json`.
+point against git history and `anti_pattern: true` entries in every Stack
+Knowledge surface enumerated by `scripts/lib/stack_knowledge_parser.iter_stack_knowledge_files()`
+(currently `.claude/stacks/**/*.md` plus `.claude/scripts/lib/README.md`),
+and writes `.runs/resolve-causal-analysis.json`.
 A 30-second wall-clock timeout (from `convergence-config.json`) protects
 against slow `git log -L` calls.
 
