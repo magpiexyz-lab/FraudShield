@@ -116,6 +116,33 @@ Labels:
 
 If no evidence of failure found across all three vectors, label "sound".
 
+## Post-completion re-spawn
+
+When the lead orchestrates a TRUE post-completion re-spawn of resolve-reviewer
+(typical: retrospective audit of a completed `/resolve` run, `/observe`
+extending review coverage on a closed PR), use the AOC v1.2
+`lead-orchestrated` provenance per the **Post-completion re-spawn
+orchestrator playbook** in `.claude/patterns/agent-output-contract.md`.
+
+Lead exports `SOURCE_RUN_ID` + `SOURCE_SKILL` BEFORE invoking the Agent
+tool so `skill-agent-gate.sh` can stamp a non-degraded spawn-log entry.
+Agent writes its trace via:
+
+```bash
+bash .claude/scripts/write-agent-trace.sh resolve-reviewer \
+  --provenance lead-orchestrated \
+  --source-run-id "$SOURCE_RUN_ID" \
+  --source-skill "$SOURCE_SKILL" \
+  --json '<standard reviewer payload — verdict pass + result count_summary>'
+```
+
+`pass_lead_orchestrated` accepts the trace at the gate. Lifecycle Step 4.8
+cross-checks the spawn-log lineage.
+
+The mid-skill resolve-reviewer spawn (during an active `/resolve` run)
+follows the standard `--provenance self` path; the lead-orchestrated path
+is only for true post-completion.
+
 ## Trace Output
 
 After completing all work, write the final trace per AOC v1.1

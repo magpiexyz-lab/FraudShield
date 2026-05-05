@@ -63,8 +63,19 @@ def _resolve_active_identity_default(project_dir: Path) -> tuple[str, str]:
     return (skill, run_id)
 
 
-def _context_exists(run_id: str, skill: str, project_dir: Path) -> bool:
-    """R2: (run_id, skill) must exist in some .runs/*-context.json."""
+def _context_exists(
+    run_id: str,
+    skill: str,
+    project_dir: Path,
+    *,
+    require_completed: bool = False,
+) -> bool:
+    """R2: (run_id, skill) must exist in some .runs/*-context.json.
+
+    When `require_completed=True`, additionally requires the matching
+    context's `completed` field to be exactly True (post-completion
+    precondition for the hook's lead-orchestrated honoring path).
+    """
     runs_dir = project_dir / ".runs"
     if not runs_dir.is_dir():
         return False
@@ -76,12 +87,26 @@ def _context_exists(run_id: str, skill: str, project_dir: Path) -> bool:
         if not isinstance(data, dict):
             continue
         if data.get("run_id") == run_id and data.get("skill") == skill:
+            if require_completed and data.get("completed") is not True:
+                continue
             return True
     return False
 
 
-def _spawn_log_has(agent: str, run_id: str, project_dir: Path) -> bool:
-    """R3: (agent, run_id, hook='skill-agent-gate') in agent-spawn-log.jsonl."""
+def _spawn_log_has(
+    agent: str,
+    run_id: str,
+    project_dir: Path,
+    *,
+    require_non_degraded: bool = False,
+) -> bool:
+    """R3: (agent, run_id, hook='skill-agent-gate') in agent-spawn-log.jsonl.
+
+    When `require_non_degraded=True`, only returns True when a matching
+    entry exists with `degraded` not set to True (used by the hook's
+    anti-replay gate to detect a prior non-degraded stamping for the
+    same source identity).
+    """
     spawn_log = project_dir / ".runs" / "agent-spawn-log.jsonl"
     if not spawn_log.is_file():
         return False
@@ -100,6 +125,8 @@ def _spawn_log_has(agent: str, run_id: str, project_dir: Path) -> bool:
                     and entry.get("run_id") == run_id
                     and entry.get("hook") == "skill-agent-gate"
                 ):
+                    if require_non_degraded and entry.get("degraded") is True:
+                        continue
                     return True
     except OSError:
         return False
@@ -177,9 +204,98 @@ def validate_source_identity(
     return errors
 
 
+def validate_source_identity_for_hook(
+    source_run_id: str | None,
+    source_skill: str | None,
+    *,
+    agent: str | None = None,
+    project_dir: str | os.PathLike | None = None,
+    active_identity: tuple[str, str] | None = None,
+) -> list[str]:
+    """Hook-side counterpart of `validate_source_identity` (closes #1275 C13).
+
+    Called from `.claude/hooks/skill-agent-gate.sh` BEFORE the hook stamps
+    a non-degraded spawn-log entry from `SOURCE_RUN_ID` / `SOURCE_SKILL`
+    env vars. The writer's `validate_source_identity` runs at WRITE time
+    and trusts the spawn-log; this function runs at SPAWN time and
+    independently verifies the post-completion precondition before any
+    spawn-log entry is written.
+
+    Three gates beyond R1+R2:
+      (i) Context existence + completed:true — the supplied identity must
+          name a real prior skill that finished (post-completion only).
+      (ii) Active-identity exclusion — if any skill is currently active,
+          the normal writer path applies; honoring SOURCE_* mid-skill is
+          the forgery vector.
+      (iii) Anti-replay — refuse if a non-degraded spawn-log entry
+          already exists for the same (agent, source_run_id). Each
+          post-completion re-spawn must produce exactly one fresh entry.
+
+    R3 is intentionally inverted here vs. the writer: the writer asserts
+    the entry exists; the hook asserts the non-degraded entry does NOT
+    yet exist (so this hook invocation is the entry's first writer).
+    """
+    project_dir = Path(project_dir or os.getcwd()).resolve()
+    errors: list[str] = []
+
+    # R1 (xor) — both required for hook honoring.
+    has_run_id = bool(source_run_id)
+    has_skill = bool(source_skill)
+    if not (has_run_id and has_skill):
+        errors.append(
+            "R1 (xor): SOURCE_RUN_ID and SOURCE_SKILL must both be set "
+            "to invoke the lead-orchestrated honoring path at the hook."
+        )
+        return errors
+
+    # Gate (ii): active-identity exclusion. The hook only honors SOURCE_*
+    # when no active skill exists on the branch. If active_identity is
+    # populated, the normal spawn-log path applies; SOURCE_* should be
+    # ignored to prevent mid-skill forgery (sharpened R4).
+    if active_identity is None:
+        active_skill, _active_run_id = _resolve_active_identity_default(project_dir)
+    else:
+        active_skill, _active_run_id = active_identity
+    if active_skill:
+        errors.append(
+            f"GATE-II (active-identity exclusion): active skill={active_skill!r} "
+            f"is non-empty. SOURCE_RUN_ID/SOURCE_SKILL honoring is reserved for "
+            f"true post-completion conditions. Use the normal spawn-log path."
+        )
+        # Subsequent gates would still apply; return early to mirror
+        # write-recovery-trace.sh's fail-closed posture.
+        return errors
+
+    # Gate (i): context existence + completed:true.
+    if not _context_exists(
+        source_run_id, source_skill, project_dir, require_completed=True
+    ):
+        errors.append(
+            f"GATE-I (context+completed): no .runs/*-context.json has "
+            f"run_id={source_run_id!r} AND skill={source_skill!r} AND "
+            f"completed:true. Hook honoring requires a real prior skill that "
+            f"finished (post-completion precondition)."
+        )
+
+    # Gate (iii): anti-replay. Only meaningful when an agent is supplied
+    # (the hook always knows the agent name from the tool payload).
+    if agent is not None:
+        if _spawn_log_has(
+            agent, source_run_id, project_dir, require_non_degraded=True
+        ):
+            errors.append(
+                f"GATE-III (anti-replay): a non-degraded spawn-log entry "
+                f"already exists for (agent={agent!r}, run_id={source_run_id!r}). "
+                f"Each post-completion re-spawn must produce exactly one "
+                f"fresh entry; replay attempts are refused."
+            )
+
+    return errors
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Validate AOC v1.2 source-identity overrides (R1-R4).",
+        description="Validate AOC v1.2 source-identity overrides (R1-R4 / hook gates).",
     )
     parser.add_argument("--source-run-id", default="")
     parser.add_argument("--source-skill", default="")
@@ -188,14 +304,29 @@ def main(argv: list[str] | None = None) -> int:
         "--project-dir",
         default=os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd()),
     )
+    parser.add_argument(
+        "--mode",
+        choices=("writer", "hook"),
+        default="writer",
+        help="writer: R1-R4 (default; called from canonical writers). "
+             "hook: R1+gates I/II/III (called from skill-agent-gate.sh).",
+    )
     args = parser.parse_args(argv)
 
-    errors = validate_source_identity(
-        args.source_run_id or None,
-        args.source_skill or None,
-        agent=args.agent,
-        project_dir=args.project_dir,
-    )
+    if args.mode == "hook":
+        errors = validate_source_identity_for_hook(
+            args.source_run_id or None,
+            args.source_skill or None,
+            agent=args.agent,
+            project_dir=args.project_dir,
+        )
+    else:
+        errors = validate_source_identity(
+            args.source_run_id or None,
+            args.source_skill or None,
+            agent=args.agent,
+            project_dir=args.project_dir,
+        )
     if errors:
         for e in errors:
             print(f"ERROR: {e}", file=sys.stderr)

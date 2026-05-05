@@ -265,6 +265,31 @@ Each entry in `saved_to_files` is a **string** — either a local relative path 
 - Each local-path entry in `saved_to_files` exists on disk (URL entries starting with `http://` / `https://` are not file-checked)
 - `total` must equal `wc -l .runs/fix-ledger.jsonl` (AOC v1 FLS v1 authoritative); transitional fallback accepts the prose `**Fix` count from fix-log.md when the ledger is absent
 
+## Post-completion re-spawn
+
+`pattern-classifier` is a canonical `/observe` and `/retro` re-spawn target.
+When the lead orchestrates a TRUE post-completion re-spawn (every
+`.runs/*-context.json` has `completed:true`), use the AOC v1.2
+`lead-orchestrated` provenance per the **Post-completion re-spawn
+orchestrator playbook** in `.claude/patterns/agent-output-contract.md`.
+
+Lead exports `SOURCE_RUN_ID` + `SOURCE_SKILL` BEFORE invoking the Agent
+tool so `skill-agent-gate.sh` can stamp a non-degraded spawn-log entry.
+Agent writes its trace via:
+
+```bash
+bash .claude/scripts/write-agent-trace.sh pattern-classifier \
+  --provenance lead-orchestrated \
+  --source-run-id "$SOURCE_RUN_ID" \
+  --source-skill "$SOURCE_SKILL" \
+  --json '<standard pattern-classifier payload>'
+```
+
+`pass_lead_orchestrated` accepts the trace at the gate. Lifecycle
+Step 4.8 cross-checks the spawn-log lineage. Pattern-classifier never
+blocks delivery in normal flow; the hard_gate exists primarily to
+license this post-completion re-spawn path.
+
 ## Output Contract
 
 Return a summary:

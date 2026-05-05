@@ -300,6 +300,44 @@ will reject `candidates_tried==0` when the sidecar has unused landing-owned
 candidates AND `unresolved_images` is empty AND the trace is not self-degraded
 with `recovery_validated=True`.
 
+## Post-completion re-spawn
+
+When the lead orchestrates a TRUE post-completion re-spawn of design-critic
+(e.g., `/observe` on a completed `bootstrap` retrying Step 5.5; retrospective
+audit of a single page), the writer's normal `resolve_active_identity` path
+returns empty. Use the AOC v1.2 `lead-orchestrated` provenance per the
+**Post-completion re-spawn orchestrator playbook** in
+`.claude/patterns/agent-output-contract.md`.
+
+The lead exports `SOURCE_RUN_ID` + `SOURCE_SKILL` env vars BEFORE invoking
+the Agent tool so `skill-agent-gate.sh` can stamp a non-degraded spawn-log
+entry under the source identity (validated by the hook's three gates:
+context+completed:true, active-identity exclusion, anti-replay).
+
+The agent then writes its trace via:
+
+```bash
+bash .claude/scripts/write-agent-trace.sh design-critic \
+  --provenance lead-orchestrated \
+  --source-run-id "$SOURCE_RUN_ID" \
+  --source-skill "$SOURCE_SKILL" \
+  --trace-filename "design-critic-<page>--epoch<N>.json" \
+  --epoch <N> \
+  --json '<your standard payload>'
+```
+
+Expected verdict: `pass` (the agent confirms the prior page is OK after a
+shared-component fix or image regeneration). `pass_lead_orchestrated` accepts
+this trace at the gate. Lifecycle Step 4.8 cross-checks the spawn-log
+lineage; lifecycle Step 4.7 cross-checks that the re-spawn happened when
+the fix-ledger / ux-journeyer trace required it (#1274).
+
+**MID-SKILL re-spawn is different.** When verify is still active (state-3a
+Stage 1b shared-component fix or state-3c post-ux-journeyer re-evaluation),
+use `--provenance self` + `--epoch <N>`; R4 of `source_identity_validator`
+forbids `lead-orchestrated` mid-skill. See state-3a-design-agents.md
+Stage 1b step 5 for the canonical mid-skill protocol.
+
 ## Trace Output
 
 After completing all work, write a trace file:

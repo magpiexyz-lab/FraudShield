@@ -350,6 +350,15 @@
       "registry_path": ".claude/patterns/agent-registry.json",
       "impl_path": ".claude/scripts/evaluate-hard-gate-predicates.py",
       "description": "AOC v1.2 F8 — agent-registry.json's `_aggregate_ok_accepted_predicates` structured array MUST exactly match the predicate-name set called inside evaluate-hard-gate-predicates.py's aggregate_ok function. AST-based check using a deterministic name-pattern selector (^(pass_|validated_|legacy_|aggregate_)); no prose parsing, no line-number anchoring (closes round-3 critic concerns #6 + #2). Asserts EXACTLY ONE matching BoolOp(Or) chain in the function body — multiple chains is a refactor signal that the structured array can no longer represent the predicate set."
+    },
+    {
+      "id": "post-completion-respawn-doc-required",
+      "type": "post_completion_respawn_doc_present",
+      "severity": "warn",
+      "registry_path": ".claude/patterns/agent-registry.json",
+      "agents_dir": ".claude/agents",
+      "required_section": "## Post-completion re-spawn",
+      "description": "#1275 / Group A — every agent with `pass_lead_orchestrated` in its hard_gates `allow_predicates` MUST contain a `## Post-completion re-spawn` section in its .md describing how the lead orchestrates the re-spawn (SOURCE_RUN_ID/SOURCE_SKILL env-var contract, write-agent-trace.sh invocation, expected verdict). Enumerated from hard_gates (single source of truth) so adding a new lead-orchestrated agent automatically triggers the doc requirement. Severity=warn — informational catch for future drift."
     }
   ]
 }

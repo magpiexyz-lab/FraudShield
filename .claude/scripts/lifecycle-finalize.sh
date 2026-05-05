@@ -397,6 +397,42 @@ if [[ $RECDET_RC -ne 0 ]]; then
   echo "WARN: recurrence-detector exited $RECDET_RC (advisory only — does not block)" >&2
 fi
 
+# --- Step 4.7: design-critic post-fix re-spawn obligation gate (#1274) ---
+# When the lead applied a shared-component fix at state-3a Stage 1b OR
+# ux-journeyer touched a UI file in state-3c, every per-page design-critic
+# trace whose `shared_issues[*].file` or `reviewed_files` overlap the
+# fixed file MUST be superseded by a `--epoch>=1` re-evaluation trace
+# with verdict in {pass, fixed}. Otherwise the merged design-critic.json
+# carries a stale unresolved verdict that no longer reflects current
+# rendered state. The gate is conditional: when no fix-ledger lead-fix
+# entries exist AND ux-journeyer trace has no UI-touching fixes, it is
+# a no-op (returns 0 immediately).
+if [[ -d "$PROJECT_DIR/.runs/agent-traces" ]]; then
+  if ! python3 "$PROJECT_DIR/.claude/scripts/verify-design-critic-post-fix-respawn.py" \
+        --project-dir "$PROJECT_DIR" >&2; then
+    echo "BLOCK: design-critic post-fix re-spawn check failed at lifecycle-finalize Step 4.7." >&2
+    echo "Re-run: python3 .claude/scripts/verify-design-critic-post-fix-respawn.py" >&2
+    exit 1
+  fi
+fi
+
+# --- Step 4.8: lead-orchestrated trace ↔ spawn-log lineage gate (#1275) ---
+# Every trace with `provenance: lead-orchestrated` must be anchored to a
+# non-degraded spawn-log entry written by skill-agent-gate.sh's
+# SOURCE_RUN_ID/SOURCE_SKILL honoring path. Without this, a forged trace
+# claiming arbitrary `source_run_id` could pass the writer's R3 check
+# (which accepts degraded entries) and look identical to a legitimate
+# post-completion re-spawn. The gate is conditional: when no
+# lead-orchestrated traces exist, it is a no-op.
+if [[ -d "$PROJECT_DIR/.runs/agent-traces" ]]; then
+  if ! python3 "$PROJECT_DIR/.claude/scripts/verify-lead-orchestrated-spawn-log-lineage.py" \
+        --project-dir "$PROJECT_DIR" >&2; then
+    echo "BLOCK: lead-orchestrated trace lineage check failed at lifecycle-finalize Step 4.8." >&2
+    echo "Re-run: python3 .claude/scripts/verify-lead-orchestrated-spawn-log-lineage.py" >&2
+    exit 1
+  fi
+fi
+
 # --- Step 5: Delivery (code-writing skills only) ---
 DELIVERY_STATUS="none"
 COMMIT_MSG="$PROJECT_DIR/.runs/commit-message.txt"

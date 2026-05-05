@@ -366,9 +366,73 @@ After all per-page agents complete AND before Stage 2 (consistency check):
 1. Read each per-page trace. If any trace output mentions shared-component issues without fixing them (shared paths were excluded from boundary), the orchestrator applies those fixes serially, one file at a time.
 2. Run `npm run build` after shared-component fixes. If build fails, fix (max 2 attempts).
 3. Append each fix to `.runs/fix-log.md`: `Fix (design-critic-shared): <file> — <desc>`
-4. If no shared-component issues reported: this step is a no-op.
+4. **Also write each fix to the canonical fix-ledger** so the merger's lead-fix crediting (`merge-design-critic-traces.py:284-303`) and the Step 4.7 lifecycle gate have data:
+   ```bash
+   python3 .claude/scripts/write-fix-ledger.py --lead-fix \
+     --skill verify \
+     --fix-json '{"file":"<file>","symptom":"<short symptom>","fix":"<short fix description>"}' \
+     --severity warn
+   ```
+5. **Per-page re-evaluation (#1274 — closes Case 1).** After all shared-component fixes
+   for this Stage 1b cycle land, re-spawn `design-critic` for every page whose per-page
+   trace reported the just-fixed file under `shared_issues[*].file`. Pseudocode:
+   ```bash
+   python3 -c "
+   import json, glob, os, sys
+   try:
+       fixed = set()
+       with open('.runs/fix-ledger.jsonl') as f:
+           for line in f:
+               try:
+                   e = json.loads(line)
+               except Exception:
+                   continue
+               if e.get('provenance') in ('lead', 'lead-on-behalf') and e.get('file'):
+                   fixed.add(e['file'])
+       affected = set()
+       for tf in glob.glob('.runs/agent-traces/design-critic-*.json'):
+           bn = os.path.basename(tf)
+           if bn in ('design-critic.json', 'design-critic-shared.json'):
+               continue
+           if '--epoch' in bn:  # already a re-evaluation
+               continue
+           try:
+               d = json.load(open(tf))
+           except Exception:
+               continue
+           page = d.get('page') or d.get('weakest_page') or bn.replace('design-critic-', '').replace('.json', '')
+           for si in d.get('shared_issues', []) or []:
+               if si.get('file') in fixed:
+                   affected.add(page)
+                   break
+       print(' '.join(sorted(affected)))
+   "
+   ```
+   For each `<page>` returned, spawn `design-critic` via the Agent tool with:
+   - `subagent_type: design-critic`
+   - File boundary: just the page route (same as the original Stage 1 spawn for that page)
+   - Trace name: `design-critic-<page>--epoch<N>.json` (N = highest existing epoch + 1, default 1)
+   - The agent invokes `write-agent-trace.sh` with `--provenance self` (verify is still
+     the active skill — R4 of `source_identity_validator` forbids `lead-orchestrated`
+     mid-skill) AND `--epoch <N>` AND `--trace-filename design-critic-<page>--epoch<N>.json`
+   - Task: "This is a post-shared-fix re-evaluation. Re-screenshot and re-score the page
+     with the freshly-applied shared-component fix. Confirm `unresolved_sections=0` if
+     the fix landed cleanly, or report the remaining issues."
+
+   The merger picks the latest valid trace per page via `select_latest_per_page_traces`,
+   so the original `design-critic-<page>.json` stays on disk for HC3 forensic
+   provenance but does not feed the aggregate verdict.
+
+6. If no shared-component issues reported: steps 1-5 are no-ops.
 
 #### Stage 1c: Shared-component design-critic agent (serial, conditional)
+
+> **Why Stage 1c does NOT supersede Stage 1b's per-page re-spawn (#1274 round-2 critic
+> C6):** Stage 1c reviews the shared component file IN ISOLATION (a synthetic boundary
+> containing only the unclaimed shared files). It verifies the FIX works in the
+> component's standalone context, but it does NOT re-screenshot the per-page consumers
+> of that component — pages may still regress in different theme/layout context. The
+> per-page re-spawn from Stage 1b step 5 covers exactly this gap.
 
 **Guard**: scope is `full` or `visual` AND archetype is `web-app` AND any per-page
 trace has `unresolved_shared > 0` for **unclaimed** shared components (issues in shared

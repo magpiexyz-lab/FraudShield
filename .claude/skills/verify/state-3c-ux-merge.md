@@ -31,6 +31,63 @@ Run `npm run build`. If build fails, fix (max 2 attempts) before next agent.
 4. If `unresolved_dead_ends` > 0, this is a **hard gate failure** — real dead ends remain after fixes. Skip STATEs 4-5 but still write verify-report.md (STATE 7a) and execute STATE 8 (Save Patterns).
 5. If `dead_ends` > 0 AND `unresolved_dead_ends` == 0, all dead ends are intentional fake-door pages. Note in verify report (informational, does not block).
 6. Extract Fix Summaries from the agent's return message. Append each fix to `.runs/fix-log.md` with the prefix `Fix (ux-journeyer):`.
+7. **Per-page design-critic re-evaluation (#1274 — closes Case 2).** When ux-journeyer's
+   fixes touch UI files (`.tsx`, `.jsx`) that any per-page `design-critic-<page>.json`
+   trace previously reviewed, the page renders differently now and the original
+   design-critic verdict is stale. Re-spawn design-critic for those pages with the
+   same `--provenance self` + `--epoch <N>` protocol used in state-3a Stage 1b
+   step 5.
+
+   ```bash
+   python3 -c "
+   import json, glob, os
+   try:
+       uj = json.load(open('.runs/agent-traces/ux-journeyer.json'))
+   except Exception:
+       print('')  # ux-journeyer trace missing; nothing to do
+       raise SystemExit
+   touched = set()
+   for fix in uj.get('fixes', []) or []:
+       fp = fix.get('file')
+       if fp and (fp.endswith('.tsx') or fp.endswith('.jsx')):
+           touched.add(fp)
+   if not touched:
+       print('')
+       raise SystemExit
+   affected = set()
+   for tf in glob.glob('.runs/agent-traces/design-critic-*.json'):
+       bn = os.path.basename(tf)
+       if bn in ('design-critic.json', 'design-critic-shared.json'):
+           continue
+       if '--epoch' in bn:
+           continue
+       try:
+           d = json.load(open(tf))
+       except Exception:
+           continue
+       page = d.get('page') or d.get('weakest_page') or bn.replace('design-critic-', '').replace('.json', '')
+       reviewed = set()
+       for ev in d.get('per_page_review_evidence', []) or []:
+           rf = ev.get('reviewed_file') or ev.get('file')
+           if rf:
+               reviewed.add(rf)
+       for sf in d.get('reviewed_files', []) or []:
+           reviewed.add(sf)
+       if reviewed & touched:
+           affected.add(page)
+   print(' '.join(sorted(affected)))
+   "
+   ```
+   For each affected page returned, re-spawn design-critic via Agent tool with
+   `--provenance self` + `--epoch <next>` + `--trace-filename design-critic-<page>--epoch<next>.json`.
+   Then re-run the merger:
+   ```bash
+   python3 .claude/scripts/merge-design-critic-traces.py
+   ```
+   The merger's `select_latest_per_page_traces` helper picks the latest valid trace
+   per page; the post-fix epoch supersedes the stale `design-critic-<page>.json`
+   in the aggregate. The Step 4.7 lifecycle gate cross-checks that this re-spawn
+   actually happened.
 
 ### Design-UX Merge (if scope is `full` or `visual`, AND archetype is `web-app`)
 

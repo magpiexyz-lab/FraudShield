@@ -52,6 +52,67 @@ if [[ -z "$DEGRADED_REASON" ]]; then
 fi
 
 if [[ -n "$DEGRADED_REASON" ]]; then
+  # AOC v1.2 / #1275: lead-orchestrated post-completion honoring path.
+  # When the lead orchestrates a true post-completion re-spawn, it exports
+  # SOURCE_RUN_ID + SOURCE_SKILL env vars before invoking the Agent tool.
+  # The hook independently validates three gates (see
+  # `.claude/scripts/lib/source_identity_validator.py`
+  # `validate_source_identity_for_hook`):
+  #   (i)   SOURCE_RUN_ID + SOURCE_SKILL match a context with completed:true
+  #   (ii)  active identity is empty (we're already in this branch — gate
+  #         (ii) is structural here; the validator double-checks)
+  #   (iii) no prior NON-degraded entry exists for (agent, SOURCE_RUN_ID)
+  #         — anti-replay defense.
+  # On success: stamp a non-degraded entry stamped with the SOURCE identity.
+  # On failure: fall through to the existing degraded path AND emit the
+  # validator's errors to stderr so the lead sees why honoring was refused.
+  _SAG_HONOR_SOURCE="false"
+  if [[ -n "${SOURCE_RUN_ID:-}" && -n "${SOURCE_SKILL:-}" ]]; then
+    _SAG_HOOK_VALIDATOR_OUT=$(python3 "$PROJECT_DIR/.claude/scripts/lib/source_identity_validator.py" \
+      --mode hook \
+      --source-run-id "$SOURCE_RUN_ID" \
+      --source-skill "$SOURCE_SKILL" \
+      --agent "$SUBAGENT_TYPE" \
+      --project-dir "$PROJECT_DIR" 2>&1)
+    _SAG_HOOK_VALIDATOR_RC=$?
+    if [[ $_SAG_HOOK_VALIDATOR_RC -eq 0 ]]; then
+      _SAG_HONOR_SOURCE="true"
+    else
+      echo "WARN: skill-agent-gate: SOURCE_RUN_ID/SOURCE_SKILL honoring REFUSED for $SUBAGENT_TYPE:" >&2
+      echo "$_SAG_HOOK_VALIDATOR_OUT" >&2
+    fi
+  fi
+
+  _SAG_DEGRADED_LOG="$PROJECT_DIR/.runs/agent-spawn-log.jsonl"
+  mkdir -p "$PROJECT_DIR/.runs"
+  _SAG_DEGRADED_HEAD_SHA=$(git rev-parse HEAD 2>/dev/null || echo "")
+
+  if [[ "$_SAG_HONOR_SOURCE" == "true" ]]; then
+    echo "INFO: skill-agent-gate: lead-orchestrated source identity HONORED for $SUBAGENT_TYPE (skill=$SOURCE_SKILL run_id=$SOURCE_RUN_ID)" >&2
+    export _SAG_SUBAGENT_TYPE="$SUBAGENT_TYPE"
+    export _SAG_SOURCE_SKILL="$SOURCE_SKILL"
+    export _SAG_SOURCE_RUN_ID="$SOURCE_RUN_ID"
+    export _SAG_DEGRADED_HEAD_SHA _SAG_DEGRADED_LOG
+    python3 -c "
+import json, datetime, os
+entry = {
+    'agent': os.environ['_SAG_SUBAGENT_TYPE'],
+    'skill': os.environ['_SAG_SOURCE_SKILL'],
+    'run_id': os.environ['_SAG_SOURCE_RUN_ID'],
+    'attributed_to': os.environ['_SAG_SOURCE_SKILL'],
+    'spawn_index': 0,
+    'head_sha': os.environ['_SAG_DEGRADED_HEAD_SHA'],
+    'timestamp': datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+    'hook': 'skill-agent-gate',
+    'lead_orchestrated': True,
+}
+with open(os.environ['_SAG_DEGRADED_LOG'], 'a') as f:
+    f.write(json.dumps(entry) + '\n')
+" 2>/dev/null || true
+    unset _SAG_SUBAGENT_TYPE _SAG_SOURCE_SKILL _SAG_SOURCE_RUN_ID
+    exit 0
+  fi
+
   # Best-available run_id: scan non-completed contexts (any branch) for the
   # latest run_id rather than write 'unknown', so downstream provenance scans
   # (state-completion-gate.sh:223,289) can still cross-reference the spawn.
@@ -83,10 +144,6 @@ print(best_skill + '\t' + best_run)
   : "${_SAG_FALLBACK_RUN_ID:=unknown}"
 
   echo "WARN: skill-agent-gate: $DEGRADED_REASON for $SUBAGENT_TYPE — writing degraded spawn-log entry (skill=$_SAG_FALLBACK_SKILL run_id=$_SAG_FALLBACK_RUN_ID)" >&2
-
-  _SAG_DEGRADED_LOG="$PROJECT_DIR/.runs/agent-spawn-log.jsonl"
-  mkdir -p "$PROJECT_DIR/.runs"
-  _SAG_DEGRADED_HEAD_SHA=$(git rev-parse HEAD 2>/dev/null || echo "")
 
   python3 -c "
 import json, datetime

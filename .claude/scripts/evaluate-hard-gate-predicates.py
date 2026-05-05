@@ -138,7 +138,20 @@ def aggregate_ok(t, agent, traces_dir):
     # AOC v1.1: lead-* predicates are accepted as siblings (e.g., one
     # design-critic page completed normally, another was lead-on-behalf
     # transcribed because the agent's write was blocked).
-    sibs = glob.glob(os.path.join(traces_dir, agent + '-*.json'))
+    # #1274 round-2 critic C12: dedupe siblings by page_key so a stale
+    # OLD trace doesn't fail aggregate_ok after a post-fix re-spawn lands
+    # the latest verdict for that page. Same selector the merger uses,
+    # so the two consumers cannot drift. Only dedupes for known per-page
+    # agents (those whose traces follow `<agent>-<page>--epoch<N>.json`);
+    # other agents fall back to the flat glob (no per-page semantics).
+    try:
+        _selector_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'lib')
+        if _selector_dir not in sys.path:
+            sys.path.insert(0, _selector_dir)
+        from design_critic_trace_selector import select_latest_per_page_traces
+        sibs = select_latest_per_page_traces(traces_dir, agent)
+    except Exception:
+        sibs = glob.glob(os.path.join(traces_dir, agent + '-*.json'))
     if not sibs:
         return False
     for sf in sibs:

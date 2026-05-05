@@ -67,6 +67,7 @@ TRACE_FILENAME=""
 SPAWN_INDEX_OVERRIDE=""
 SOURCE_RUN_ID=""
 SOURCE_SKILL=""
+EPOCH="0"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -80,6 +81,10 @@ while [[ $# -gt 0 ]]; do
     # AOC v1.2: post-completion lead-orchestrated re-spawn override.
     --source-run-id)      SOURCE_RUN_ID="${2:-}"; shift 2 ;;
     --source-skill)       SOURCE_SKILL="${2:-}"; shift 2 ;;
+    # #1274: per-page re-evaluation epoch. Default 0 = original trace.
+    # When >0, default trace filename gains `--epoch<N>` suffix and the
+    # JSON gains an `epoch` field consumed by design_critic_trace_selector.
+    --epoch)              EPOCH="${2:-0}"; shift 2 ;;
     -h|--help)            usage; exit 0 ;;
     *)
       echo "ERROR: write-agent-trace.sh — unknown argument: $1" >&2
@@ -196,6 +201,7 @@ ACTIVE_SKILL_ENV="$ACTIVE_SKILL" \
 ACTIVE_RUN_ID_ENV="$ACTIVE_RUN_ID" \
 SOURCE_RUN_ID_ENV="$SOURCE_RUN_ID" \
 SOURCE_SKILL_ENV="$SOURCE_SKILL" \
+EPOCH_ENV="$EPOCH" \
 python3 - << 'PYEOF'
 import json
 import os
@@ -216,6 +222,12 @@ active_skill = os.environ.get("ACTIVE_SKILL_ENV", "")
 active_run_id = os.environ.get("ACTIVE_RUN_ID_ENV", "")
 source_run_id = os.environ.get("SOURCE_RUN_ID_ENV", "")
 source_skill = os.environ.get("SOURCE_SKILL_ENV", "")
+try:
+    epoch = int(os.environ.get("EPOCH_ENV", "0") or "0")
+    if epoch < 0:
+        epoch = 0
+except (TypeError, ValueError):
+    epoch = 0
 
 try:
     payload = json.loads(payload_raw)
@@ -412,10 +424,24 @@ if provenance == "lead-fix":
     if not isinstance(trace.get("checks_performed"), list):
         trace["checks_performed"] = []
 
+# #1274: stamp epoch into the trace JSON so design_critic_trace_selector
+# can prefer the structured field over filename parsing.
+if epoch > 0:
+    trace["epoch"] = epoch
+
 # Atomic write to .runs/agent-traces/<name>.json
 out_dir = ".runs/agent-traces"
 os.makedirs(out_dir, exist_ok=True)
-out_filename = trace_filename or f"{agent}.json"
+# When the caller did not supply --trace-filename AND --epoch > 0, default
+# the basename to `<agent>--epoch<N>.json`. Per-page callers (design-critic
+# Single-Page Mode) supply `--trace-filename design-critic-<page>.json`
+# explicitly; for re-evaluations they pass `design-critic-<page>--epoch<N>.json`.
+if trace_filename:
+    out_filename = trace_filename
+elif epoch > 0:
+    out_filename = f"{agent}--epoch{epoch}.json"
+else:
+    out_filename = f"{agent}.json"
 out_path = os.path.join(out_dir, out_filename)
 
 # tempfile + rename for POSIX atomicity (mirrors write-fix-ledger.py pattern).

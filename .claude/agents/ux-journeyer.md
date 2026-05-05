@@ -136,6 +136,33 @@ Clicks-to-value: N (target: ≤ 3)
 - <one-line summary per fix>
 ```
 
+## Post-completion re-spawn
+
+When the lead orchestrates a TRUE post-completion re-spawn of ux-journeyer
+(every `.runs/*-context.json` has `completed:true` — typical: `/observe`
+running ux-journeyer to audit a completed bootstrap-verify cycle), use the
+AOC v1.2 `lead-orchestrated` provenance per the **Post-completion re-spawn
+orchestrator playbook** in `.claude/patterns/agent-output-contract.md`.
+
+Lead exports `SOURCE_RUN_ID` + `SOURCE_SKILL` BEFORE invoking the Agent
+tool so `skill-agent-gate.sh` can stamp a non-degraded spawn-log entry.
+Agent writes its trace via:
+
+```bash
+bash .claude/scripts/write-agent-trace.sh ux-journeyer \
+  --provenance lead-orchestrated \
+  --source-run-id "$SOURCE_RUN_ID" \
+  --source-skill "$SOURCE_SKILL" \
+  --json '<standard ux-journeyer payload — verdict pass/fail/blocked>'
+```
+
+Expected verdict: typically `pass`. `pass_lead_orchestrated` accepts this
+trace at the gate. Lifecycle Step 4.8 cross-checks the spawn-log lineage.
+
+**MID-SKILL ux-journeyer (the normal verify state-3c spawn) does NOT use
+this path** — verify is still active, so R4 forbids cross-skill flags.
+Use the standard `--provenance self` write.
+
 ## Trace Output
 
 After completing all work, write a trace file:

@@ -308,6 +308,21 @@
       "agent": "resolve-reviewer",
       "allow_predicates": ["pass_clean", "pass_self_pass_or_fail", "validated_fallback", "legacy_pass_no_recovery", "pass_lead_orchestrated"],
       "_note": "AOC v1.1 PR4 (closes #1055): resolve-reviewer is read-mostly (no fixes), so allow_predicates excludes pass_after_fixes (no fix application) and aggregate_ok (single-trace, no per-issue siblings). Sibling of resolve-challenger but with implementation-review vectors (completeness/correctness/consistency). AOC v1.2: pass_lead_orchestrated added per F7 derivation (verdict_agent, not in recovery_forbidden, not in lead_orchestrated_forbidden)."
+    },
+    {
+      "agent": "observer",
+      "allow_predicates": ["pass_clean", "pass_self_pass_or_fail", "validated_fallback", "legacy_pass_no_recovery", "pass_lead_orchestrated"],
+      "_note": "#1275 / Group A: observer is canonical /observe re-spawn target. Hard_gate exists primarily to license post-completion lead-orchestrated re-spawns (SOURCE_RUN_ID/SOURCE_SKILL honoring path) — observer is observation-only and never blocks delivery in normal flow. No additional_block_conditions because audit agents do not ship code."
+    },
+    {
+      "agent": "pattern-classifier",
+      "allow_predicates": ["pass_clean", "pass_self_pass_or_fail", "validated_fallback", "legacy_pass_no_recovery", "pass_lead_orchestrated"],
+      "_note": "#1275 / Group A: pattern-classifier is canonical /observe and /retro re-spawn target. See observer note for rationale."
+    },
+    {
+      "agent": "design-consistency-checker",
+      "allow_predicates": ["pass_clean", "pass_self_pass_or_fail", "validated_fallback", "legacy_pass_no_recovery", "pass_lead_orchestrated"],
+      "_note": "#1275 / Group A: design-consistency-checker may be lead-orchestrated re-spawned after a shared-component fix lands (state-3a Stage 1b → state-3c flow). See observer note for rationale."
     }
   ],
   "_legacy_hard_gates_v1": [

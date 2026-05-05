@@ -73,6 +73,37 @@ Inconsistencies: N (M minor, K major)
 - ...
 ```
 
+## Post-completion re-spawn
+
+`design-consistency-checker` may be lead-orchestrated re-spawned when
+a shared-component fix lands AFTER the original verify completed (rare
+but legitimate in retrospective audit flows). When the lead orchestrates
+a TRUE post-completion re-spawn (every `.runs/*-context.json` has
+`completed:true`), use the AOC v1.2 `lead-orchestrated` provenance per
+the **Post-completion re-spawn orchestrator playbook** in
+`.claude/patterns/agent-output-contract.md`.
+
+Lead exports `SOURCE_RUN_ID` + `SOURCE_SKILL` BEFORE invoking the Agent
+tool so `skill-agent-gate.sh` can stamp a non-degraded spawn-log entry.
+Agent writes its trace via:
+
+```bash
+bash .claude/scripts/write-agent-trace.sh design-consistency-checker \
+  --provenance lead-orchestrated \
+  --source-run-id "$SOURCE_RUN_ID" \
+  --source-skill "$SOURCE_SKILL" \
+  --json '<standard design-consistency-checker payload>'
+```
+
+`pass_lead_orchestrated` accepts the trace at the gate. Lifecycle
+Step 4.8 cross-checks the spawn-log lineage. Design-consistency-checker
+never blocks delivery in normal flow; the hard_gate exists primarily to
+license this post-completion re-spawn path.
+
+The mid-skill design-consistency-checker spawn (during an active
+`/verify` run) follows the standard `--provenance self` path; the
+lead-orchestrated path is only for true post-completion.
+
 ## Trace Output
 
 After completing all work, write the final trace:

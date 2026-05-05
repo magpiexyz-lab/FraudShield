@@ -75,7 +75,13 @@ def _coalesce(value, default):
 def main() -> int:
     traces_dir = ".runs/agent-traces"
     per_page_pattern = os.path.join(traces_dir, "design-critic-*.json")
-    batches = sorted(glob.glob(per_page_pattern))
+    # #1274 / round-2 critic C12: dedupe by page_key; keep latest epoch per
+    # page so post-fix re-evaluations supersede stale OLD traces. Both
+    # consumers (this merger AND aggregate_ok in evaluate-hard-gate-predicates)
+    # call the same helper to stay consistent.
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
+    from design_critic_trace_selector import select_latest_per_page_traces  # noqa: E402
+    batches = select_latest_per_page_traces(traces_dir, "design-critic")
 
     if not batches:
         sys.stderr.write(
@@ -112,11 +118,15 @@ def main() -> int:
     shared_base = os.path.join(traces_dir, "design-critic-shared.json")
     aggregate_path = os.path.join(traces_dir, "design-critic.json")
 
+    # Track per-page latest trace metadata so the fix-ledger crediting
+    # block below can suppress double-counting (#1274 round-2 critic Q5).
+    # Keyed by page_key. Only set when the latest trace satisfies the
+    # post-fix precedence rule (epoch > 0 AND unresolved_sections == 0).
+    post_fix_resolved_pages: set[str] = set()
+
     for b in batches:
-        # Skip the shared trace and the aggregate output — both live in the same
-        # directory and would be picked up by the glob otherwise.
-        if b == shared_base or b == aggregate_path:
-            continue
+        # The selector helper already excludes design-critic-shared.json
+        # and the design-critic.json aggregate; no further skips needed.
         try:
             with open(b) as f:
                 d = json.load(f)
@@ -138,6 +148,17 @@ def main() -> int:
             or d.get("weakest_page")
             or os.path.basename(b).replace("design-critic-", "").replace(".json", "")
         )
+        # #1274: post-fix precedence — when the latest trace for this page
+        # is an --epoch>0 re-evaluation AND its unresolved_sections is 0,
+        # the page is authoritatively resolved by visual re-validation.
+        # The fix-ledger crediting block below MUST NOT additionally
+        # decrement unresolved_sections for this page (would over-credit).
+        try:
+            _trace_epoch = int(d.get("epoch") or 0)
+        except (TypeError, ValueError):
+            _trace_epoch = 0
+        if _trace_epoch > 0 and _coalesce(d.get("unresolved_sections"), 0) == 0:
+            post_fix_resolved_pages.add(page_key)
         rm = d.get("review_method")
         prov_here = d.get("provenance", "self")
         degraded_reason = d.get("degraded_reason", "")
@@ -284,8 +305,7 @@ def main() -> int:
     lead_fix_corrections: list = []
     if lead_fixed_files:
         for batch in batches:
-            if batch in (shared_base, aggregate_path):
-                continue
+            # `batches` already excludes shared and aggregate via the helper.
             try:
                 with open(batch) as _f:
                     _d = json.load(_f)
@@ -294,10 +314,19 @@ def main() -> int:
             for _si in _d.get("shared_issues", []) or []:
                 if _si.get("file") in lead_fixed_files:
                     page_key = (
-                        os.path.basename(batch)
+                        _d.get("page")
+                        or _d.get("weakest_page")
+                        or os.path.basename(batch)
                         .replace("design-critic-", "")
                         .replace(".json", "")
                     )
+                    # #1274 post-fix precedence: when the latest trace for
+                    # this page is a re-evaluation that already shows
+                    # unresolved_sections=0, the visual re-validation is
+                    # authoritative — do NOT additionally credit the same
+                    # lead-fix or unresolved_sections will go negative.
+                    if page_key in post_fix_resolved_pages:
+                        continue
                     lead_fix_corrections.append({
                         "page": page_key,
                         "file": _si["file"],

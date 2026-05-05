@@ -50,7 +50,11 @@ jobs:
 
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    # Bumped from 3 → 5 minutes (Group A / #1275 + #1274). The job runs
+    # Shellcheck + 2 pytest invocations + multiple frontmatter/YAML/JSON
+    # validators; 3 min was tight even pre-change. New 51 test cases under
+    # .claude/scripts/tests/ add ~5-10s on top.
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
 

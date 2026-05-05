@@ -2532,6 +2532,62 @@ def main() -> int:
         return out
 
 
+    def check_post_completion_respawn_doc_present(rule):
+        """#1275 / Group A — assert every agent with `pass_lead_orchestrated`
+        in its hard_gates `allow_predicates` has a `## Post-completion re-spawn`
+        section in its .md.
+
+        Enumerated from `hard_gates` in the registry (single source of truth).
+        Adding a new lead-orchestrated agent to the registry automatically
+        triggers the doc requirement; F7's eligibility check ensures the
+        registry list itself is complete.
+
+        Severity is governed by the rule entry (default warn — informational
+        catch for future drift; severity=block can be set if/when the doc
+        contract becomes load-bearing).
+        """
+        out = []
+        rid = rule.get("id", "<unknown>")
+        registry_rel = rule.get("registry_path", ".claude/patterns/agent-registry.json")
+        agents_rel = rule.get("agents_dir", ".claude/agents")
+        required = rule.get("required_section", "## Post-completion re-spawn")
+        registry_path = os.path.join(REPO_ROOT, registry_rel)
+        agents_dir = os.path.join(REPO_ROOT, agents_rel)
+        try:
+            reg = json.load(open(registry_path))
+        except Exception as e:
+            return [f"  [{rid}] cannot read registry {registry_rel}: {e}"]
+        for gate in reg.get("hard_gates", []):
+            agent = gate.get("agent")
+            allow = set(gate.get("allow_predicates", []))
+            if "pass_lead_orchestrated" not in allow:
+                continue
+            if not isinstance(agent, str) or not agent:
+                continue
+            md_path = os.path.join(agents_dir, f"{agent}.md")
+            if not os.path.isfile(md_path):
+                out.append(
+                    f"  [{rid}] agent {agent!r} is in hard_gates with "
+                    f"pass_lead_orchestrated but {md_path} does not exist"
+                )
+                continue
+            try:
+                content = open(md_path).read()
+            except Exception as e:
+                out.append(f"  [{rid}] cannot read {md_path}: {e}")
+                continue
+            if required not in content:
+                out.append(
+                    f"  [{rid}] agent {agent!r} (.claude/agents/{agent}.md) "
+                    f"is registered for pass_lead_orchestrated but does not "
+                    f"contain a {required!r} section. Add the section "
+                    f"documenting how the lead orchestrates the post-completion "
+                    f"re-spawn (SOURCE_RUN_ID/SOURCE_SKILL env vars, "
+                    f"write-agent-trace.sh invocation, expected verdict)."
+                )
+        return out
+
+
     # ---------------------------------------------------------------------------
     # Cross-file rule dispatch — registry-driven with type + field validation.
     #
@@ -2573,6 +2629,8 @@ def main() -> int:
         # AOC v1.2 PR6 — F7 + F8 lints.
         "lead_orchestrated_eligibility_complete": (check_lead_orchestrated_eligibility_complete, set(), {"registry_path"}, True),
         "aggregate_ok_predicate_doc_matches_impl": (check_aggregate_ok_predicate_doc_matches_impl, set(), {"registry_path", "impl_path"}, True),
+        # #1275 / Group A — post-completion re-spawn doc presence.
+        "post_completion_respawn_doc_present": (check_post_completion_respawn_doc_present, set(), {"registry_path", "agents_dir", "required_section"}, False),
     }
     META_KEYS = {"id", "type", "severity", "description", "_transitional_note", "_comment", "convention_doc"}
 

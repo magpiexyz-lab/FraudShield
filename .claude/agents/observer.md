@@ -117,6 +117,32 @@ Return one of:
 - `"Added comment to existing observation: <issue-url>"`
 - `"Cannot file observation (prerequisite unavailable): <one-line summary of finding>"` — use when the decision framework identified a template issue but `gh` auth, repo access, or another prerequisite failed. Include the template file name and symptom so the lead can manually file it.
 
+## Post-completion re-spawn
+
+`observer` is the canonical `/observe` re-spawn target. When the lead
+runs `/observe` on a completed skill (every `.runs/*-context.json` has
+`completed:true`), follow the AOC v1.2 `lead-orchestrated` provenance
+path per the **Post-completion re-spawn orchestrator playbook** in
+`.claude/patterns/agent-output-contract.md`.
+
+Lead exports `SOURCE_RUN_ID` + `SOURCE_SKILL` (pointing at the prior
+completed skill — typically `bootstrap`, `change`, `resolve`, or
+`verify`) BEFORE invoking the Agent tool so `skill-agent-gate.sh` can
+stamp a non-degraded spawn-log entry. The agent writes its trace via:
+
+```bash
+bash .claude/scripts/write-agent-trace.sh observer \
+  --provenance lead-orchestrated \
+  --source-run-id "$SOURCE_RUN_ID" \
+  --source-skill "$SOURCE_SKILL" \
+  --json '<standard observer payload>'
+```
+
+`pass_lead_orchestrated` accepts the trace at the gate. Lifecycle
+Step 4.8 cross-checks the spawn-log lineage. Observer never blocks
+delivery in normal flow; the hard_gate exists primarily to license
+this post-completion re-spawn path.
+
 ## Trace Output
 
 Write a completion trace per `.claude/patterns/agent-trace-protocol.md` and

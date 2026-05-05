@@ -183,6 +183,108 @@ The predicates are defined in `.claude/scripts/evaluate-hard-gate-predicates.py`
 (invoked by `.claude/hooks/lib-hard-gate.sh`) and gated per-agent via
 `agent-registry.json.hard_gates[].allow_predicates`.
 
+### Post-completion re-spawn orchestrator playbook (AOC v1.2 — closes #1275)
+
+When the lead orchestrates a TRUE post-completion agent re-spawn (every
+`.runs/*-context.json` has `completed:true` — typical scenarios:
+`/observe` on a completed skill, retrospective rework, "redo missed
+Step 5.5"), the writer's normal `resolve_active_identity` path returns
+empty and rejects the trace. AOC v1.2 supplies a `lead-orchestrated`
+override that attests the trace to a prior completed skill via explicit
+`source_run_id` + `source_skill` flags, validated by R1-R4 of
+`source_identity_validator` AND a parallel three-gate hook check that
+proves the post-completion precondition before any spawn-log entry is
+written.
+
+**Step-by-step for the orchestrating lead:**
+
+1. **Identify the source skill.** Pick the prior completed skill whose
+   work the re-spawn extends (e.g., `bootstrap` for a Step 5.5 retry on
+   the bootstrap-verify run). Read its `run_id` from
+   `.runs/<skill>-context.json`. Both that file's `completed` field MUST
+   be true (post-completion precondition) AND no other context may be
+   non-completed (active-identity exclusion).
+
+2. **Export the env vars BEFORE spawning the Agent.** The
+   `skill-agent-gate.sh` PreToolUse hook reads `SOURCE_RUN_ID` and
+   `SOURCE_SKILL` from the environment to stamp a non-degraded
+   spawn-log entry under the source identity:
+   ```bash
+   export SOURCE_RUN_ID="<prior_run_id>"
+   export SOURCE_SKILL="<prior_skill_name>"
+   ```
+   Both must be set together. The hook validates via
+   `source_identity_validator.py validate_source_identity_for_hook`:
+   - **GATE I** — `(SOURCE_RUN_ID, SOURCE_SKILL)` matches a context
+     with `completed:true`.
+   - **GATE II** — no skill is currently active (mid-skill honoring
+     would be the forgery vector).
+   - **GATE III** — no prior non-degraded spawn-log entry exists for
+     `(agent, SOURCE_RUN_ID)` (anti-replay).
+   On any gate failure the hook falls through to its existing degraded
+   path AND emits the validator errors to stderr.
+
+3. **Spawn the Agent.** Standard Agent tool invocation. The agent's
+   prompt should instruct it to write its trace via:
+   ```bash
+   bash .claude/scripts/write-agent-trace.sh <agent> \
+     --provenance lead-orchestrated \
+     --source-run-id "$SOURCE_RUN_ID" \
+     --source-skill "$SOURCE_SKILL" \
+     --json '<payload>'
+   ```
+   The writer applies R1-R4 of the same validator (with full
+   `active_identity` resolved at write time) — defense in depth against
+   the hook somehow letting an invalid request through.
+
+4. **The trace gets `pass_lead_orchestrated`** at gate evaluation time
+   (`evaluate-hard-gate-predicates.py:116-128` — verdict==pass +
+   provenance==lead-orchestrated + lead_attestation==true +
+   non-empty source_run_id + source_skill).
+
+5. **Lifecycle Step 4.8** (`lifecycle-finalize.sh`) cross-checks each
+   `lead-orchestrated` trace against the spawn-log to confirm the
+   non-degraded entry exists. A trace claiming arbitrary
+   `source_run_id` without a matching hook stamping is BLOCKED at
+   delivery.
+
+**Concrete example — Step 5.5 image-candidate Pareto retry from
+#1275:**
+
+```bash
+# /observe context: lead asks for design-critic to redo Step 5.5
+# image candidate Pareto comparison after /bootstrap completed.
+export SOURCE_RUN_ID="bootstrap-2026-04-22T13:00:00Z"
+export SOURCE_SKILL="bootstrap"
+
+# Spawn design-critic. Agent prompt instructs it to write its trace as:
+# write-agent-trace.sh design-critic \
+#   --provenance lead-orchestrated \
+#   --source-run-id "$SOURCE_RUN_ID" \
+#   --source-skill "$SOURCE_SKILL" \
+#   --trace-filename design-critic-landing--epoch1.json \
+#   --epoch 1 \
+#   --json '<Step 5.5 results>'
+```
+
+The hook stamps a non-degraded spawn-log entry under
+`(agent=design-critic, run_id=bootstrap-2026-04-22T13:00:00Z,
+hook=skill-agent-gate)`. The writer validates R1-R4 and writes the
+trace. Step 4.8 confirms the lineage at delivery. The trace passes
+`pass_lead_orchestrated` and the Step 5.5 retry is canonically
+recorded.
+
+**Forbidden combinations:**
+- `lead-orchestrated` mid-skill (active identity non-empty) — use
+  `--provenance self` re-spawn instead. The verify pipeline's
+  state-3a Stage 1b and state-3c per-page re-spawn protocols (#1274)
+  follow this rule.
+- `lead-orchestrated` for agents in `recovery_forbidden`
+  (security-fixer, quality-fixer) or `lead_orchestrated_forbidden`
+  (security-* probes whose live-endpoint state may be irreproducible).
+- Replaying `SOURCE_RUN_ID` for a second non-degraded stamping in the
+  same lifecycle (gate iii anti-replay).
+
 ### FLS v1 — Fix Ledger Schema
 
 **`.runs/fix-ledger.jsonl` is the authoritative per-fix ledger.** One JSON
