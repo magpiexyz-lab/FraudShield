@@ -438,19 +438,31 @@ class TestStateRegistryStatesMatchKnownSpawnUniverse(unittest.TestCase):
 
 
 class TestValidatorMentionsInRegistryMatchAllowlist(unittest.TestCase):
-    """D-5: every state-registry entry whose verify command mentions a scaffold
-    validator script must appear in that validator's
-    `state_registry_states` allowlist. Inverse drift detection.
+    """D-5: every state-registry entry whose verify command mentions a
+    validator with a `state_registry_states` allowlist must appear in that
+    allowlist. Inverse drift detection.
 
     Catches: maintainer wires a new state in state-registry.json (e.g., adds
     bootstrap.13 to validate-scaffold-recommendations-schema.py) without
     updating VALIDATORS dict — D-2/D-4 silently pass while drift accumulates.
+
+    SCOPE LIMITATION (post-#1305 audit): only validators that DECLARE
+    `state_registry_states` participate. The other 3 validators
+    (validate-retrospective-completeness.py, validate-step55-evidence.py,
+    validate-observer-evidence-coverage.py) are OUT OF SCOPE for D-5
+    today — they don't yet have explicit cross-state allowlists. To
+    promote them, add `state_registry_states` to their VALIDATORS entry
+    with the canonical (skill, state_id) list and the gate becomes
+    automatic. Tracked as future work.
     """
 
     def test_registry_mentions_match_allowlist(self):
         reg = _load_state_registry()
         for name, spec in VALIDATORS.items():
             if "state_registry_states" not in spec:
+                # See SCOPE LIMITATION in class docstring. Skipping is
+                # intentional, not an oversight — promotion requires
+                # adding state_registry_states to the validator's entry.
                 continue
             allowlist = set(tuple(p) for p in spec["state_registry_states"])
             mentioned = set()
