@@ -200,6 +200,73 @@ fix_template: |
   spurious failures.
 ```
 
+### canonical-writer policy (Issue #1299)
+```yaml
+id: canonical-writer-policy-pattern
+maturity: stable
+anti_pattern: false
+composite_identity:
+  root_cause_class: state-file-direct-write-antipattern
+  divergence_pattern: json.dump-or-Write-instead-of-canonical-writer
+  stack_scope: scripts/lib
+composite_identity_hash: 7287eb2efedb
+symptom_keywords: [canonical-writer, gate-readable, GRAIM, write-gate-artifact, identity-stamping, skill-run_id-written_at]
+confidence_score: 0.95
+occurrence_count: 1
+linked_issues: [1299, 1198, 1217]
+first_seen: 2026-05-01
+last_seen: 2026-05-06
+graduated_to: null
+prevention_mechanism: |
+  Two-layer defense:
+    (1) Lint: gate_artifact_writer_enforcement rule
+        (.claude/patterns/template-coherence-rules.json) scans state files,
+        agents, patterns, procedures, and helper scripts for write-syntax
+        tokens (with open(...,'w'|'a'), json.dump-with-open, > path,
+        tee path, cat <<EOF > path) targeting paths declared in
+        .claude/patterns/gate-readable-artifacts-canonical.json. Severity=warn
+        during soak; flips to block in chore/canonical-writer-migration-deny.
+        Read syntax (open(...,'r'), json.load, os.path.exists, [-f path],
+        backtick prose) is allowlisted at line level (R2-C1 — avoids
+        ~455-instance false-positive baseline).
+    (2) Hook: gate-artifact-write-gate.sh (Write/Edit matcher, MODE=deny
+        since #1217) blocks Write/Edit on manifest paths. Sibling
+        gate-artifact-bash-write-guard.sh (Bash matcher, ships in
+        chore/canonical-writer-migration-hook-warn) catches direct
+        bash redirects, python -c with open() writes, and tee/cat <<EOF
+        chains targeting manifest paths.
+fix_template: |
+  When writing to any path in .claude/patterns/gate-readable-artifacts-canonical.json,
+  invoke .claude/scripts/lib/write-gate-artifact.sh with --path and --payload.
+  Caller payload MUST NOT include skill/run_id/written_at — the writer
+  auto-stamps them.
+
+  Reference (in-skill, normal flow):
+    PAYLOAD=$(python3 -c "
+    import json
+    print(json.dumps({'key': 'value'}))
+    ")
+    bash .claude/scripts/lib/write-gate-artifact.sh \
+      --path .runs/foo.json \
+      --payload "$PAYLOAD" \
+      --skill <skill>
+
+  Reference (post-completion, AOC v1.2):
+    bash .claude/scripts/lib/write-gate-artifact.sh \
+      --path .runs/foo.json \
+      --payload "$PAYLOAD" \
+      --source-run-id "$RUN_ID" \
+      --source-skill "$SKILL_KEY"
+
+  Canonical example: .claude/skills/deploy/state-3b-provision-host.md:64-97.
+
+  When migrating an existing direct-write site, run
+  .claude/scripts/codemod-canonical-writer.py --dry-run first; the codemod
+  handles S1 (with open) and S2 (json.dump-with-open) mechanically and
+  emits a manual-review queue for bash-interpolated, conditional, and
+  multi-write payloads.
+```
+
 ---
 
 ## Existing helpers (no Stack Knowledge — single-caller or in-flux)

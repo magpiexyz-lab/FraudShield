@@ -1648,6 +1648,149 @@ def main() -> int:
         return findings
 
 
+    def check_gate_artifact_writer_enforcement(rule):
+        """Issue #1299: writes to paths declared in
+        gate-readable-artifacts-canonical.json must go through the canonical
+        writer (.claude/scripts/lib/write-gate-artifact.sh) so {skill, run_id,
+        written_at} stamping is automatic.
+
+        Scans state files, agents, patterns, procedures, and helper scripts
+        (.sh/.py) for write-syntax tokens targeting manifest paths. Read
+        syntax (open(...,'r'), json.load, os.path.exists, [-f path], backtick
+        prose) is allowlisted at line level (R2-C1) so the ~455 non-write
+        mentions do not produce false-positive findings.
+
+        Allowed writers: rule.allowed_writers + the canonical writer itself.
+        Severity flips from warn to block in the chore/canonical-writer-
+        migration-deny PR after the soak window confirms zero new-code-path
+        friction entries.
+        """
+        findings = []
+        allowed = set(rule.get("allowed_writers", []))
+        # Always allow the canonical writer (it IS the canonical mechanism).
+        allowed.add(".claude/scripts/lib/write-gate-artifact.sh")
+
+        manifest_path = rule.get("manifest_path", "")
+        manifest_abs = os.path.join(REPO_ROOT, manifest_path)
+        if not os.path.isfile(manifest_abs):
+            findings.append(_emit_finding(
+                rule,
+                f"manifest_path {manifest_path!r} does not exist",
+            ))
+            return findings
+        try:
+            manifest_data = json.load(open(manifest_abs))
+        except (json.JSONDecodeError, OSError) as exc:
+            findings.append(_emit_finding(
+                rule,
+                f"manifest_path {manifest_path!r} could not be parsed: {exc}",
+            ))
+            return findings
+        gated = {a.get("path") for a in manifest_data.get("artifacts", [])}
+        gated.discard(None)
+        gated.discard("")
+        if not gated:
+            return findings  # Empty manifest = no enforcement.
+
+        scan_corpus = rule.get("scan_corpus", [
+            ".claude/skills",
+            ".claude/agents",
+            ".claude/patterns",
+            ".claude/procedures",
+            ".claude/scripts",
+        ])
+        # Test fixtures intentionally reference gated paths; skip them.
+        SKIP_PREFIXES = (
+            ".claude/scripts/tests/",
+            ".claude/scripts/lib/tests/",
+            ".claude/scripts/lib/linter/",  # the linter itself
+        )
+        # Specific files to skip (they ARE the canonical infrastructure).
+        SKIP_FILES = {
+            ".claude/scripts/lib/write-gate-artifact.sh",
+            ".claude/scripts/append-hook-friction.py",
+            ".claude/hooks/gate-artifact-write-gate.sh",
+            ".claude/hooks/gate-artifact-bash-write-guard.sh",
+            ".claude/patterns/gate-readable-artifacts-canonical.json",
+            ".claude/patterns/template-coherence-rules.json",
+            ".claude/patterns/agent-output-contract.md",
+            ".claude/scripts/verify-linter.sh",
+            ".claude/scripts/codemod-canonical-writer.py",
+            ".claude/scripts/codemod-canonical-writer-audit.py",
+        }
+
+        # Read-syntax suppressors (R2-C1): if any matches on a line, do NOT
+        # treat write-token matches on the same line as findings.
+        READ_SUPPRESSORS = [
+            re.compile(r"open\([^)]*,\s*['\"]r['\"]"),
+            re.compile(r"\bjson\.load\b"),
+            re.compile(r"\bos\.path\.exists\b"),
+            re.compile(r"\[\s*-[fe]\s+"),
+            re.compile(r"\bif\s+\[\s*!\s*-"),
+        ]
+
+        # Build a single regex alternation of all gated paths.
+        gated_alt = "|".join(re.escape(p) for p in sorted(gated))
+        # Write-syntax tokens (R2-C1): write-only.
+        WRITE_PATTERNS = [
+            # with open(target, 'w'|'a')
+            re.compile(r"with\s+open\(\s*['\"](?P<path>" + gated_alt + r")['\"]\s*,\s*['\"][wa]"),
+            # json.dump(..., open(target, 'w'|'a'))
+            re.compile(r"json\.dump\([^()]{0,4096}?open\(\s*['\"](?P<path>" + gated_alt + r")['\"]\s*,\s*['\"][wa]"),
+            # > target / >> target
+            re.compile(r">{1,2}\s*(?P<path>" + gated_alt + r")\b"),
+            # tee target
+            re.compile(r"\btee\s+(?:-a\s+)?(?P<path>" + gated_alt + r")\b"),
+            # cat > target <<EOF
+            re.compile(r"cat\s+>\s*(?P<path>" + gated_alt + r")\s*<<"),
+        ]
+
+        for root in scan_corpus:
+            root_abs = os.path.join(REPO_ROOT, root)
+            if not os.path.isdir(root_abs):
+                continue
+            for dirpath, _dirs, files in os.walk(root_abs):
+                for fn in files:
+                    if not (fn.endswith(".md") or fn.endswith(".sh")
+                            or fn.endswith(".py")):
+                        continue
+                    fpath = os.path.join(dirpath, fn)
+                    relpath = os.path.relpath(fpath, REPO_ROOT)
+                    if relpath in SKIP_FILES:
+                        continue
+                    if any(relpath.startswith(p) for p in SKIP_PREFIXES):
+                        continue
+                    if relpath in allowed:
+                        continue
+                    try:
+                        content = open(fpath).read()
+                    except OSError:
+                        continue
+                    seen_paths_in_file: set[str] = set()
+                    for line_idx, line in enumerate(content.splitlines()):
+                        if any(p.search(line) for p in READ_SUPPRESSORS):
+                            continue
+                        for pat in WRITE_PATTERNS:
+                            m = pat.search(line)
+                            if m is None:
+                                continue
+                            target = m.group("path")
+                            if target not in gated:
+                                continue
+                            key = (relpath, target)
+                            if key in seen_paths_in_file:
+                                continue
+                            seen_paths_in_file.add(key)
+                            findings.append(_emit_finding(
+                                rule,
+                                f"{relpath}:{line_idx + 1}: direct write to "
+                                f"gate-readable path {target} — "
+                                f"use bash .claude/scripts/lib/write-gate-artifact.sh",
+                            ))
+                            break  # one finding per pattern per line
+        return findings
+
+
     def check_consumer_coverage(rule):
         """AOC v1 R3: every consumer must reference canonical_source (path string)."""
         findings = []
@@ -2971,6 +3114,9 @@ def main() -> int:
         "artifact_lifecycle":               (check_artifact_lifecycle,               {"skill"},                                                set(),                                                        False),
         "verdict_vocab_consistency":        (check_verdict_vocab_consistency,        set(),                                                    {"registry_path", "agent_files_glob", "predicate_file"},      True),
         "ledger_ownership":                 (check_ledger_ownership,                 {"allowed_writers", "gated_paths"},                       set(),                                                        True),
+        # Issue #1299 — gate-artifact canonical-writer enforcement. is_strict_aoc=False
+        # initially (severity=warn during soak). Flips True in chore/canonical-writer-migration-deny.
+        "gate_artifact_writer_enforcement": (check_gate_artifact_writer_enforcement, {"manifest_path"},                                        {"allowed_writers", "scan_corpus"},                            False),
         "consumer_coverage":                (check_consumer_coverage,                {"canonical_source", "consumers"},                        set(),                                                        True),
         "frontmatter_artifact_consistency": (check_frontmatter_artifact_consistency, {"schema_path", "writer"},                                {"consumers"},                                                True),
         "internal_href_validity":           (check_internal_href_validity,           set(),                                                    {"scaffold_glob", "route_owner_hints"},                       False),

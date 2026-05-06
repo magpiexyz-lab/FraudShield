@@ -107,6 +107,17 @@
       "description": "AOC v1 R2: fix-ledger.jsonl and fix-log.md may only be written by the canonical writers. Catches any template file or script that writes directly to either path (e.g., echo >> .runs/fix-log.md, open('.runs/fix-log.md','a')). Complemented at runtime by .claude/hooks/fix-ledger-write-guard.sh."
     },
     {
+      "id": "gate-artifact-writer-enforcement",
+      "type": "gate_artifact_writer_enforcement",
+      "severity": "warn",
+      "manifest_path": ".claude/patterns/gate-readable-artifacts-canonical.json",
+      "allowed_writers": [],
+      "scan_corpus": [".claude/skills", ".claude/agents", ".claude/patterns", ".claude/procedures", ".claude/scripts"],
+      "convention_doc": ".claude/patterns/agent-output-contract.md",
+      "_transitional_note": "Severity=warn during soak window. Flipped to block in chore/canonical-writer-migration-deny PR after the soak window confirms zero new-code-path entries in .runs/hook-friction.jsonl from gate-artifact-bash-write-guard.sh.",
+      "description": "Issue #1299: writes to gate-readable manifest paths (declared in gate-readable-artifacts-canonical.json) must go through .claude/scripts/lib/write-gate-artifact.sh so {skill,run_id,written_at} stamping is automatic. Scans state-files, agent docs, patterns, procedures, and helper scripts (.sh/.py) for write-syntax tokens (with open(path,'w'|'a'), json.dump-with-open, > path, tee path, cat <<EOF > path). Read-syntax (open(...,'r'), json.load, os.path.exists, [-f path], [-e path]) is allowlisted at line level to avoid the ~455-instance false-positive baseline (solve-critic R2-C1). Complemented at runtime by .claude/hooks/gate-artifact-bash-write-guard.sh."
+    },
+    {
       "id": "aoc-consumer-coverage",
       "type": "consumer_coverage",
       "severity": "block",
