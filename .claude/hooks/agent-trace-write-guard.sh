@@ -39,58 +39,23 @@ parse_payload
 
 COMMAND=$(read_payload_field "tool_input.command")
 
-# Fast-path: no mention of agent-traces → allow
+# Fast-path: no mention of agent-traces → allow.
+# Cheap raw-string glob — runs BEFORE canonicalization so unrelated commands
+# (the common case) skip the python startup entirely. (#1298 r1-c4 perf.)
 case "$COMMAND" in
   *agent-traces*) ;;
   *) exit 0 ;;
 esac
 
-# Normalize fd-to-fd redirects (2>&1, >&1, 3>&2, 2>>&1, etc.) before write-op
-# detection. These are stderr/fd redirection tokens, not file writes — but
-# their bare `>` character falsely matches the write-operator regex below,
-# and their embedded `&` falsely splits the awk chain-record (RS="[&|;]").
-# Strip them at the source so both checks see the command without fd tokens.
-# File writes (>file, >>file, &>file, >&file GNU extension, tee, cp, mv) do
-# NOT match the `>+&[digit]` pattern and are preserved intact.
+# ── Pre-canonicalization Python-source checks (RAW $COMMAND) ──
 #
-# Second pass collapses the GNU `>& filename` form (cmd >& filename ≡
-# cmd > filename 2>&1 — a real file write) to plain `> filename`. Without
-# this, the literal `&` between `>` and the filename is consumed as the
-# awk chain-record separator (RS="[&|;]"), splitting the write operator
-# from its target into two adjacent records and silently allowing the
-# write. Order matters: the first sed strips fd-to-fd forms (digit-after-&)
-# so this second pass only reshapes the file form (non-digit-after-&).
-NORM=$(printf '%s' "$COMMAND" \
-  | sed -E 's/[0-9]*>+&[0-9]+//g' \
-  | sed -E 's/>&([[:space:]]*)([^&|;[:space:]])/> \1\2/g')
+# These checks run on RAW $COMMAND BEFORE canonicalization so heredoc-fed
+# python attacks (`python3 <<PY ... open('agent-traces/x','w') ... PY`) are
+# still caught — canonicalization would strip the body and hide the attack
+# surface (#1298 r1-c2).
 
-# ── Pre-allow checks (MUST run before allow-writer short-circuit) ──
-
-# Reject chained writes whose redirect target is an agent-traces path.
-# Split on &&/;/| and deny only when a write operator is BOUND to an
-# agent-traces target (operator followed by a token containing agent-traces/).
-# Issue #1123: the previous co-occurrence regex (`/agent-traces\// && /(>|>>|tee|cp|mv)/`)
-# false-positived on chained commands that READ from agent-traces and WROTE to
-# unrelated paths (e.g., `python -c '...read agent-traces...' > /tmp/foo` or
-# `ls .runs/agent-traces && bash advance-state.sh`).
-# The bound regex matches: optional file descriptor, redirect operator, optional
-# whitespace/quote, anything-but-chain-delimiters, then `agent-traces/`. Or:
-# tee/cp/mv as words followed (eventually on the same segment) by an
-# agent-traces target. The Python open-for-write regex below handles the
-# scripted write path separately.
-if echo "$NORM" | awk '
-    BEGIN{RS="[&|;]"}
-    {
-      # Bound write operator -> agent-traces target (>file, >>file, &>file)
-      if (match($0, /([0-9]*&?>+|[0-9]*>>?)[[:space:]]*["'\'']?[^|;&"'\'']*agent-traces\//)) found=1
-      # tee / cp / mv / dd with an agent-traces target later on the same segment
-      else if (match($0, /(^|[[:space:]])(tee|cp|mv|dd)[[:space:]][^|;&]*agent-traces\//)) found=1
-    }
-    END{exit !found}'; then
-  deny "Agent trace write guard: agent-traces/*.json write target detected on a chained command segment (write operator bound to agent-traces path)."
-fi
-
-# Block Python open(...) for write/append on agent-traces
+# Block Python open(...) for write/append on agent-traces.
+# coherence-allow: raw-command — heredoc-fed python attack detection (#1298 r1-c2)
 if echo "$COMMAND" | grep -qE "open\([^)]*agent-traces/[^)]*,[[:space:]]*['\"][wa]"; then
   deny "Agent trace write guard: python open-for-write on agent-traces/ is blocked. Use write-recovery-trace.sh or write-degraded-trace.py."
 fi
@@ -111,6 +76,7 @@ fi
 #   2. For each such variable, check if `open(<varname>, ...)` appears later
 #      with mode 'w' or 'a'.
 #   3. If any pair matches, print DENY.
+# coherence-allow: raw-command — heredoc-fed python attack detection (#1298 r1-c2)
 INDIRECT_CHECK=$(echo "$COMMAND" | python3 -c '
 import re, sys
 cmd = sys.stdin.read()
@@ -132,6 +98,76 @@ if [[ "$INDIRECT_CHECK" == "DENY" ]]; then
   deny "Agent trace write guard: variable-indirection write to agent-traces/ blocked (variable bound to agent-traces path is later passed to open() with write mode). Use write-agent-trace.sh / write-recovery-trace.sh / write-degraded-trace.py."
 fi
 
+# Issue #1298: strip heredoc bodies before shell-redirect / allow-list checks
+# so heredoc-body data text doesn't trigger the bound-redirect catch-all or
+# falsely match a writer-name. Re-test fast-path on canonical: when the
+# `agent-traces` mention was ONLY in a heredoc body, exit 0 here.
+#
+# Resilience: if the canonicalizer fails for any reason (python3 missing,
+# script error, malformed input), fall back to RAW $COMMAND. Direct shell
+# writes are still caught by the bound-redirect catch-all on $NORM. The
+# heredoc-body false-positive fix is temporarily lost — acceptable trade
+# vs the harder failure mode of denying every Bash command. Use the `if`
+# form (not `var=$(...) || var=...`) for bash 3.2 set -e portability.
+if CANONICAL_TMP=$(printf '%s' "$COMMAND" | python3 "$(dirname "$0")/../scripts/lib/canonicalize_bash_command.py" 2>/dev/null); then
+  COMMAND_CANONICAL="$CANONICAL_TMP"
+else
+  # coherence-allow: raw-command — fail-soft fallback to RAW $COMMAND when canonicalize unavailable (#1298)
+  COMMAND_CANONICAL="$COMMAND"
+fi
+case "$COMMAND_CANONICAL" in
+  *agent-traces*) ;;
+  *) exit 0 ;;
+esac
+
+# Normalize fd-to-fd redirects (2>&1, >&1, 3>&2, 2>>&1, etc.) before write-op
+# detection. These are stderr/fd redirection tokens, not file writes — but
+# their bare `>` character falsely matches the write-operator regex below,
+# and their embedded `&` falsely splits the awk chain-record (RS="[&|;]").
+# Strip them at the source so both checks see the command without fd tokens.
+# File writes (>file, >>file, &>file, >&file GNU extension, tee, cp, mv) do
+# NOT match the `>+&[digit]` pattern and are preserved intact.
+#
+# Second pass collapses the GNU `>& filename` form (cmd >& filename ≡
+# cmd > filename 2>&1 — a real file write) to plain `> filename`. Without
+# this, the literal `&` between `>` and the filename is consumed as the
+# awk chain-record separator (RS="[&|;]"), splitting the write operator
+# from its target into two adjacent records and silently allowing the
+# write. Order matters: the first sed strips fd-to-fd forms (digit-after-&)
+# so this second pass only reshapes the file form (non-digit-after-&).
+#
+# Derive from CANONICAL so heredoc-body text doesn't pollute the bound-
+# redirect catch-all on $NORM (#1298).
+NORM=$(printf '%s' "$COMMAND_CANONICAL" \
+  | sed -E 's/[0-9]*>+&[0-9]+//g' \
+  | sed -E 's/>&([[:space:]]*)([^&|;[:space:]])/> \1\2/g')
+
+# ── Pre-allow shell-redirect chain check (MUST run before allow-list) ──
+
+# Reject chained writes whose redirect target is an agent-traces path.
+# Split on &&/;/| and deny only when a write operator is BOUND to an
+# agent-traces target (operator followed by a token containing agent-traces/).
+# Issue #1123: the previous co-occurrence regex (`/agent-traces\// && /(>|>>|tee|cp|mv)/`)
+# false-positived on chained commands that READ from agent-traces and WROTE to
+# unrelated paths (e.g., `python -c '...read agent-traces...' > /tmp/foo` or
+# `ls .runs/agent-traces && bash advance-state.sh`).
+# The bound regex matches: optional file descriptor, redirect operator, optional
+# whitespace/quote, anything-but-chain-delimiters, then `agent-traces/`. Or:
+# tee/cp/mv as words followed (eventually on the same segment) by an
+# agent-traces target. The Python open-for-write regex above handles the
+# scripted write path separately.
+if echo "$NORM" | awk '
+    BEGIN{RS="[&|;]"}
+    {
+      # Bound write operator -> agent-traces target (>file, >>file, &>file)
+      if (match($0, /([0-9]*&?>+|[0-9]*>>?)[[:space:]]*["'\'']?[^|;&"'\'']*agent-traces\//)) found=1
+      # tee / cp / mv / dd with an agent-traces target later on the same segment
+      else if (match($0, /(^|[[:space:]])(tee|cp|mv|dd)[[:space:]][^|;&]*agent-traces\//)) found=1
+    }
+    END{exit !found}'; then
+  deny "Agent trace write guard: agent-traces/*.json write target detected on a chained command segment (write operator bound to agent-traces path)."
+fi
+
 # ── Allow-list short-circuit ──
 
 # Leading-anchor regex: each sanctioned writer must appear at a command
@@ -146,9 +182,11 @@ fi
 # newlines, line-continuations, and chain-delimiter characters inside quotes).
 # The prior regex `[^&|;]*--reason` was unbound across newlines AND failed to
 # distinguish quoted vs literal chain delimiters.
+# Args: $1 = script_name; $2 = command string (canonical form per #1298)
 _check_reason_token() {
   local script_name="$1"
-  printf '%s' "$COMMAND" | python3 -c "
+  local cmd_str="$2"
+  printf '%s' "$cmd_str" | python3 -c "
 import re, shlex, sys
 cmd = sys.stdin.read()
 script = '$script_name'
@@ -177,12 +215,15 @@ sys.exit(1)
 " 2>/dev/null
 }
 
+# Allow-list regex matches use $COMMAND_CANONICAL (heredoc bodies stripped) so
+# narrative prose mentioning a sanctioned writer-name does not trigger the
+# allow-list and then a false `--reason` deny. (#1298)
 ALLOWED_REGEX='(^|[[:space:]]|&&|;|\|)[[:space:]]*(bash[[:space:]]+|python3?[[:space:]]+)?[./]*\.?claude/scripts/write-recovery-trace\.sh[[:space:]]'
-if echo "$COMMAND" | grep -qE "$ALLOWED_REGEX"; then
+if echo "$COMMAND_CANONICAL" | grep -qE "$ALLOWED_REGEX"; then
   # write-recovery-trace.sh must include --reason (defense-in-depth with the
   # script's own argument check). #1249: shlex-tokenizing helper handles
   # multi-line / quoted reason values that the prior bash regex could not.
-  if _check_reason_token "write-recovery-trace.sh"; then
+  if _check_reason_token "write-recovery-trace.sh" "$COMMAND_CANONICAL"; then
     exit 0
   else
     deny "Agent trace write guard: write-recovery-trace.sh invocation lacks --reason (required by issue #963 contract)."
@@ -190,8 +231,8 @@ if echo "$COMMAND" | grep -qE "$ALLOWED_REGEX"; then
 fi
 
 ALLOWED_REGEX_DEGRADED='(^|[[:space:]]|&&|;|\|)[[:space:]]*(bash[[:space:]]+|python3?[[:space:]]+)?[./]*\.?claude/scripts/write-degraded-trace\.py[[:space:]]'
-if echo "$COMMAND" | grep -qE "$ALLOWED_REGEX_DEGRADED"; then
-  if _check_reason_token "write-degraded-trace.py"; then
+if echo "$COMMAND_CANONICAL" | grep -qE "$ALLOWED_REGEX_DEGRADED"; then
+  if _check_reason_token "write-degraded-trace.py" "$COMMAND_CANONICAL"; then
     exit 0
   else
     deny "Agent trace write guard: write-degraded-trace.py invocation lacks --reason (required by trace schema)."
@@ -199,20 +240,20 @@ if echo "$COMMAND" | grep -qE "$ALLOWED_REGEX_DEGRADED"; then
 fi
 
 ALLOWED_REGEX_INIT='(^|[[:space:]]|&&|;|\|)[[:space:]]*python3?[[:space:]]+[./]*scripts/init-trace\.py[[:space:]]'
-if echo "$COMMAND" | grep -qE "$ALLOWED_REGEX_INIT"; then
+if echo "$COMMAND_CANONICAL" | grep -qE "$ALLOWED_REGEX_INIT"; then
   exit 0
 fi
 
 # Allow the recovery-validator (read-modify-write on recovery traces only —
 # it only stamps recovery_validated:true on existing traces).
 ALLOWED_REGEX_VALIDATE='(^|[[:space:]]|&&|;|\|)[[:space:]]*bash[[:space:]]+[./]*\.?claude/scripts/validate-recovery\.sh[[:space:]]'
-if echo "$COMMAND" | grep -qE "$ALLOWED_REGEX_VALIDATE"; then
+if echo "$COMMAND_CANONICAL" | grep -qE "$ALLOWED_REGEX_VALIDATE"; then
   exit 0
 fi
 
 # Allow the legacy-trace migrator (read-modify-write, no new traces created)
 ALLOWED_REGEX_MIGRATE='(^|[[:space:]]|&&|;|\|)[[:space:]]*python3?[[:space:]]+[./]*\.?claude/scripts/migrate-legacy-traces\.py'
-if echo "$COMMAND" | grep -qE "$ALLOWED_REGEX_MIGRATE"; then
+if echo "$COMMAND_CANONICAL" | grep -qE "$ALLOWED_REGEX_MIGRATE"; then
   exit 0
 fi
 
@@ -220,7 +261,7 @@ fi
 # verify state-3b — issue #1045 extracted this from an inline python3 -c
 # block that tripped the open-for-write regex below).
 ALLOWED_REGEX_MERGE_DESIGN_CRITIC='(^|[[:space:]]|&&|;|\|)[[:space:]]*python3?[[:space:]]+[./]*\.?claude/scripts/merge-design-critic-traces\.py'
-if echo "$COMMAND" | grep -qE "$ALLOWED_REGEX_MERGE_DESIGN_CRITIC"; then
+if echo "$COMMAND_CANONICAL" | grep -qE "$ALLOWED_REGEX_MERGE_DESIGN_CRITIC"; then
   exit 0
 fi
 
@@ -229,7 +270,7 @@ fi
 # that wrote .runs/agent-traces/scaffold-pages.json directly, mirroring the
 # #1045 resolution for design-critic).
 ALLOWED_REGEX_MERGE_SCAFFOLD_PAGES='(^|[[:space:]]|&&|;|\|)[[:space:]]*python3?[[:space:]]+[./]*\.?claude/scripts/merge-scaffold-pages-traces\.py'
-if echo "$COMMAND" | grep -qE "$ALLOWED_REGEX_MERGE_SCAFFOLD_PAGES"; then
+if echo "$COMMAND_CANONICAL" | grep -qE "$ALLOWED_REGEX_MERGE_SCAFFOLD_PAGES"; then
   exit 0
 fi
 
@@ -237,8 +278,8 @@ fi
 # (the trace payload). Provenance, source, coverage_provider preconditions
 # are enforced inside the script.
 ALLOWED_REGEX_WRITE_AGENT_TRACE='(^|[[:space:]]|&&|;|\|)[[:space:]]*bash[[:space:]]+[./]*\.?claude/scripts/write-agent-trace\.sh[[:space:]]'
-if echo "$COMMAND" | grep -qE "$ALLOWED_REGEX_WRITE_AGENT_TRACE"; then
-  if echo "$COMMAND" | grep -qE 'write-agent-trace\.sh[^&|;]*--json'; then
+if echo "$COMMAND_CANONICAL" | grep -qE "$ALLOWED_REGEX_WRITE_AGENT_TRACE"; then
+  if echo "$COMMAND_CANONICAL" | grep -qE 'write-agent-trace\.sh[^&|;]*--json'; then
     exit 0
   else
     deny "Agent trace write guard: write-agent-trace.sh invocation lacks --json '<...>' (required AOC v1.1)."
@@ -252,8 +293,8 @@ fi
 # agent + run_id, which is required for per-page parallel spawns where the
 # agent does not know its specific spawn_index.
 ALLOWED_REGEX_AUGMENT_TRACE='(^|[[:space:]]|&&|;|\|)[[:space:]]*python3?[[:space:]]+[./]*\.?claude/scripts/augment-trace\.py'
-if echo "$COMMAND" | grep -qE "$ALLOWED_REGEX_AUGMENT_TRACE"; then
-  if echo "$COMMAND" | grep -qE 'augment-trace\.py[^&|;]*--field'; then
+if echo "$COMMAND_CANONICAL" | grep -qE "$ALLOWED_REGEX_AUGMENT_TRACE"; then
+  if echo "$COMMAND_CANONICAL" | grep -qE 'augment-trace\.py[^&|;]*--field'; then
     exit 0
   else
     deny "Agent trace write guard: augment-trace.py invocation lacks --field <key>=<value> (required: at least one whitelisted descriptive field to augment)."
@@ -268,9 +309,9 @@ fi
 # computation. Without this allow-rule, the writer would be caught by the
 # final catch-all below and every #1250 fixer-skip would be denied.
 ALLOWED_REGEX_SKIPPED_FIXER='(^|[[:space:]]|&&|;|\|)[[:space:]]*bash[[:space:]]+[./]*\.?claude/scripts/write-skipped-fixer-trace\.sh[[:space:]]'
-if echo "$COMMAND" | grep -qE "$ALLOWED_REGEX_SKIPPED_FIXER"; then
-  if echo "$COMMAND" | grep -qE 'write-skipped-fixer-trace\.sh[^&|;]*--reason' \
-     && echo "$COMMAND" | grep -qE 'write-skipped-fixer-trace\.sh[^&|;]*--upstream-merge-path'; then
+if echo "$COMMAND_CANONICAL" | grep -qE "$ALLOWED_REGEX_SKIPPED_FIXER"; then
+  if echo "$COMMAND_CANONICAL" | grep -qE 'write-skipped-fixer-trace\.sh[^&|;]*--reason' \
+     && echo "$COMMAND_CANONICAL" | grep -qE 'write-skipped-fixer-trace\.sh[^&|;]*--upstream-merge-path'; then
     exit 0
   else
     deny "Agent trace write guard: write-skipped-fixer-trace.sh invocation lacks --reason and/or --upstream-merge-path (both required AOC v1.2; closes #1250)."

@@ -2124,14 +2124,25 @@ def main() -> int:
         anti-pattern shapes — `grep -qE '<write-op>.*<path>'` (the #1230 / pre-
         #1185 shape) and `awk '/<path>/ && /(<write-op>)/'` (original co-
         occurrence). Any match in an unregistered hook fires a 'must register'
-        finding. Pragma `# coherence-allow: unbound-fastpath` within ±200 chars
+        finding. Pragma `# coherence-allow: unbound-fastpath` within ±5 lines
         suppresses.
+
+        Phase 3 (#1298): every registered hook MUST canonicalize $COMMAND via
+        canonicalize_bash_command.py before running shell-redirect or allow-list
+        regex matches on it. Heredoc-body data text in raw $COMMAND otherwise
+        produces false positives. Each registered hook source must contain a
+        canonicalize_bash_command.py invocation; any raw "$COMMAND" reference
+        AFTER that line requires pragma `# coherence-allow: raw-command` within
+        ±5 lines (escape hatch for python-source / variable-indirection
+        regexes that intentionally consume RAW to catch heredoc-fed attacks
+        like `python3 <<PY ... open('<protected>','w') ... PY`).
         """
         out = []
         rid = rule.get("id", "<unknown>")
         manifest_path = rule.get("manifest_path", "")
         scan_glob_csv = rule.get("scan_glob", "")
         pragma = rule.get("pragma", "# coherence-allow: unbound-fastpath")
+        pragma_phase3 = rule.get("pragma_phase3", "# coherence-allow: raw-command")
 
         manifest_full = os.path.join(REPO_ROOT, manifest_path)
         if not os.path.isfile(manifest_full):
@@ -2280,6 +2291,67 @@ def main() -> int:
                         f"{rel}:{line_no} matches anti-pattern 'awk-co-occurrence' but hook is "
                         f"not registered in {manifest_path}"
                     ))
+
+        # Phase 3 — Canonicalization enforcement (#1298)
+        #
+        # Each registered hook must canonicalize $COMMAND via
+        # canonicalize_bash_command.py before running shell-redirect / allow-list
+        # regex matches. Any raw "$COMMAND" reference AFTER the canonicalize
+        # line requires pragma `# coherence-allow: raw-command` within ±5 lines.
+        canonicalize_marker = "canonicalize_bash_command.py"
+        # Match a literal `"$COMMAND"` reference (the dollar-sign-quoted form
+        # used in `echo "$COMMAND"` / `printf '%s' "$COMMAND"` / `case "$COMMAND" in`).
+        # Excludes `"$COMMAND_CANONICAL"` and the assignment line `COMMAND=...`.
+        raw_command_re = re.compile(r'"\$COMMAND"')
+
+        # Pragma matcher reuses the open-marker derivation from Phase 2.
+        if pragma_phase3.endswith(" -->"):
+            phase3_prefix = pragma_phase3[:-len(" -->")]
+        else:
+            phase3_prefix = pragma_phase3
+
+        for entry in write_guards:
+            hook = entry.get("hook")
+            if not hook:
+                continue
+            hook_full = os.path.join(REPO_ROOT, hook)
+            if not os.path.isfile(hook_full):
+                continue  # Phase 1 already flagged
+            try:
+                content = open(hook_full).read()
+            except OSError:
+                continue
+
+            # Find the canonicalize invocation line (first occurrence).
+            canon_pos = content.find(canonicalize_marker)
+            if canon_pos == -1:
+                out.append(_emit_finding(
+                    rule,
+                    f"{hook}: missing {canonicalize_marker} invocation — "
+                    f"registered hook must canonicalize $COMMAND before regex matching (#1298)"
+                ))
+                continue
+
+            file_lines = content.split("\n")
+
+            def _phase3_pragma_in_window(match_start, _content=content, _lines=file_lines):
+                line_idx = _content[:match_start].count("\n")
+                win = "\n".join(_lines[
+                    max(0, line_idx - 5):
+                    min(len(_lines), line_idx + 6)
+                ])
+                return phase3_prefix in win
+
+            # Find every raw "$COMMAND" reference after the canonicalize line.
+            for m in raw_command_re.finditer(content, canon_pos + len(canonicalize_marker)):
+                if _phase3_pragma_in_window(m.start()):
+                    continue
+                line_no = content[: m.start()].count("\n") + 1
+                out.append(_emit_finding(
+                    rule,
+                    f"{hook}:{line_no} raw \"$COMMAND\" reference after canonicalize line "
+                    f"requires pragma '{phase3_prefix}' within ±5 lines (#1298)"
+                ))
         return out
 
 

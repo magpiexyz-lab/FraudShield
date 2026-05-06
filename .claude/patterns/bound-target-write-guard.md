@@ -184,6 +184,124 @@ a downstream bound check), suppress with the pragma:
 # coherence-allow: unbound-fastpath
 ```
 
-The pragma must appear within ±200 chars of the matched anti-pattern.
+The pragma must appear within ±5 lines of the matched anti-pattern.
 Document the legitimate intent in a code comment immediately above the
 pragma.
+
+## Canonicalization Requirement (#1298)
+
+**Bound-target adjacency** in the deny predicate is necessary but
+insufficient. A second class of false positive exists: heredoc-body data
+text in `$COMMAND` matches the bound regex even though the body is
+**data**, not shell. Issue #1298 (the 7th sibling-chain instance) showed
+that `cat > /tmp/r.txt << EOF\n... write-recovery-trace.sh ...\nEOF`
+falsely tripped the allow-list and demanded `--reason`.
+
+The fix: every registered write-guard hook MUST canonicalize `$COMMAND`
+via `.claude/scripts/lib/canonicalize_bash_command.py` (which strips
+heredoc bodies but preserves the introducer line) **before** any
+shell-redirect or allow-list regex match.
+
+### Per-line directive
+
+| Where in the hook | Use which variable |
+|---|---|
+| Cheap raw-string fast-path glob (first line in the hook body) | RAW `$COMMAND` |
+| Pre-canonicalization Python-source checks (`open()`, variable indirection, `Path().write_text`) | RAW `$COMMAND` + `# coherence-allow: raw-command` pragma |
+| Re-test fast-path on canonical (after canonicalize) | `$COMMAND_CANONICAL` |
+| `NORM` derivation (sed fd-redirect normalization) | `$COMMAND_CANONICAL` |
+| Bound-redirect chain-write check (awk) | `$NORM` (CANONICAL-derived) |
+| Allow-list regex matches + `--reason` / `--field` token checks | `$COMMAND_CANONICAL` |
+| Final catch-all bound-redirect | `$NORM` (CANONICAL-derived) |
+| sed -i / perl -i in-place editor check | `$COMMAND_CANONICAL` |
+
+The Python-source checks (`open(...)` literal regex, variable-indirection
+helper, `Path().write_text`) **must** stay on RAW `$COMMAND` so heredoc-fed
+attacks like `python3 << PY ... open('<protected>','w') ... PY` are still
+caught — canonicalization would strip the body and hide the attack
+surface. Every such RAW reference must carry the pragma:
+
+```bash
+# coherence-allow: raw-command — heredoc-fed python attack detection (#1298 r1-c2)
+```
+
+The pragma must appear within ±5 lines of the raw `"$COMMAND"` reference.
+
+### Conservative direction is INTENTIONAL
+
+`strip_heredoc_bodies` over-strips relative to POSIX bash in three ways:
+
+1. Plain `<<DELIM` requires the closing line to be **exactly** the
+   delimiter — no leading or trailing whitespace tolerated. POSIX bash
+   would NOT close on `   EOF` or `EOF   `; we conservatively over-strip.
+2. `<<-DELIM` permits leading **tabs only** (not spaces). POSIX matches.
+3. Unterminated heredoc strips to end-of-string. POSIX bash would not
+   recover from this either — but we explicitly emit only the introducer
+   line + a trailing newline.
+
+Direction matters: **over-strip → over-deny** (false positive, harmless on
+retry). **UNDER-STRIP → over-allow** (false negative, security regression).
+
+**Future maintainers: do NOT relax these checks to match POSIX bash
+exactly.** A `stripped.strip() == delim` form (which closes on lines
+containing only whitespace and the delim) reopens the heredoc-body bypass
+class. Any tightening must be accompanied by a security review and a
+fixture demonstrating the over-strip behavior is no longer needed.
+
+## Audit list of PreToolUse:Bash hooks
+
+Programmatic enumeration:
+
+```bash
+grep -l 'read_payload_field "tool_input.command"' .claude/hooks/*.sh
+```
+
+Categorized by canonicalization status:
+
+### In write-guard manifest — covered by this rule (4 hooks)
+
+These are the registered write-guard hooks subject to the
+`bash_hook_write_operator_binding` rule's Phase 1+2+3:
+
+- `agent-trace-write-guard.sh` — protects `.runs/agent-traces/*.json`
+- `trace-write-guard.sh` — protects `.runs/agent-spawn-log.jsonl`
+- `fix-ledger-write-guard.sh` — protects `.runs/fix-ledger.jsonl` and
+  `.runs/fix-log.md`
+- `bootstrap-phase-a-write-guard.sh` — protects
+  `src/app/{layout,not-found,error}.tsx` and `src/app/globals.css`
+
+### Substring-grep hooks with their own canonicalizer (out of scope)
+
+These hooks substring-match `$COMMAND` for invocation detection (not
+write-guarding). They use `check-advance-state-invocation.py` which
+imports `strip_heredoc_bodies` from `canonicalize_bash_command.py` —
+they inherit the loop-restart + POSIX-strictness fixes from #1298
+transparently:
+
+- `state-completion-gate.sh`
+- `phase-boundary-gate.sh`
+
+The `bash_hook_write_operator_binding` rule does **not** scope-creep to
+cover this class — it has its own canonicalizer with its own contract.
+
+### Same-class candidates outside #1298 scope (recommend separate observations)
+
+Round-2 critic of /solve for #1298 confirmed empirically that these three
+hooks substring-match `$COMMAND` for command-invocation tokens (commit
+create, PR create) and exhibit the same heredoc-body false-positive class:
+
+- `observe-commit-gate.sh` — substring-match commit-create token
+- `skill-commit-gate.sh` — substring-match commit-create token
+- `verify-pr-gate.sh` — substring-match PR-create token
+
+These are **out of #1298 scope** because the protected operation is
+command invocation (not write-guarding) and the false-positive direction
+is over-block on legitimate /tmp report writes whose body mentions the
+trigger token. They are tracked separately. **Do NOT add them to
+`write-guard-hooks.json`** — the manifest is for write-guards only.
+
+### Different surface (not in scope)
+
+- `skill-agent-gate.sh` — PreToolUse:**Agent** matcher (no `$COMMAND`)
+- `lib-core.sh` / `lib.sh` / `lib-*.sh` — libraries sourced by hooks, not
+  hooks themselves

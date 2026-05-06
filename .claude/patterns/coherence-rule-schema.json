@@ -183,7 +183,7 @@
       }
     },
     "rule_bash_hook_write_operator_binding": {
-      "description": "#1236 — class-level prevention for the unbound-co-occurrence regex anti-pattern in Bash-matcher write-guard hooks. Phase 1: every entry in manifest_path must (a) point at an existing hook, (b) have its protected_path_regex literal appear in the hook source (proving it is referenced inside a bound-target match()), and (c) reference every declared write_operator in the hook source. Phase 2: scan_glob (CSV of globs across .claude/hooks and .claude/scripts) is searched for two historical anti-pattern shapes — `grep -qE '<write-op>.*<path>'` (the #1230/pre-#1185 shape) and `awk '/<path>/ && /(<write-op>)/'` (the original co-occurrence). Any match in an unregistered hook fires a 'must register' finding. Pragma `# coherence-allow: unbound-fastpath` suppresses within ±200 chars.",
+      "description": "#1236 — class-level prevention for the unbound-co-occurrence regex anti-pattern in Bash-matcher write-guard hooks. Phase 1: every entry in manifest_path must (a) point at an existing hook, (b) have its protected_path_regex literal appear in the hook source (proving it is referenced inside a bound-target match()), and (c) reference every declared write_operator in the hook source. Phase 2: scan_glob (CSV of globs across .claude/hooks and .claude/scripts) is searched for two historical anti-pattern shapes — `grep -qE '<write-op>.*<path>'` (the #1230/pre-#1185 shape) and `awk '/<path>/ && /(<write-op>)/'` (the original co-occurrence). Any match in an unregistered hook fires a 'must register' finding. Pragma `# coherence-allow: unbound-fastpath` suppresses within ±5 lines. Phase 3 (#1298): every registered hook MUST canonicalize $COMMAND via canonicalize_bash_command.py before regex matching; raw `\"$COMMAND\"` references after the canonicalize line require pragma `# coherence-allow: raw-command` within ±5 lines (escape hatch for python-source / variable-indirection regexes that intentionally consume RAW to catch heredoc-fed attacks).",
       "required": ["id", "type", "manifest_path", "scan_glob"],
       "properties": {
         "id": { "type": "string" },
@@ -191,7 +191,8 @@
         "severity": { "$ref": "#/definitions/severity" },
         "manifest_path": { "type": "string", "description": "Path to write-guard-hooks.json (the declarative manifest of registered write-guard hooks)." },
         "scan_glob": { "type": "string", "description": "Comma-separated globs of .sh files to scan for anti-pattern shapes (e.g., '.claude/hooks/*.sh,.claude/scripts/**/*.sh')." },
-        "pragma": { "type": "string", "description": "Comment string that suppresses the anti-pattern finding when present within ±200 chars of the match (default '# coherence-allow: unbound-fastpath')." },
+        "pragma": { "type": "string", "description": "Phase 2 pragma: comment string that suppresses the anti-pattern finding when present within ±5 lines of the match (default '# coherence-allow: unbound-fastpath')." },
+        "pragma_phase3": { "type": "string", "description": "Phase 3 pragma: comment string that suppresses the raw-$COMMAND-after-canonicalize finding when present within ±5 lines (default '# coherence-allow: raw-command')." },
         "convention_doc": { "type": "string", "description": "Path to canonical pattern doc (e.g., .claude/patterns/bound-target-write-guard.md). Appended to finding messages as '(see <doc>)'." },
         "description": { "type": "string" }
       }

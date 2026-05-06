@@ -230,6 +230,40 @@ class TestPhaseAForgerySurface(unittest.TestCase):
         r = _hook_run("grep next src/app/layout.tsx > /tmp/found.txt")
         self.assertEqual(r.returncode, 0, msg=r.stderr)
 
+    # -- Issue #1298: heredoc-body false positive class -------------------
+
+    def test_1298_heredoc_body_mentions_phase_a_path_allows(self):
+        """#1298: prose mentioning a Phase A path inside a heredoc body must
+        NOT trigger the bound-redirect — the body is data, not shell."""
+        cmd = (
+            "cat > /tmp/r.txt << 'EOF'\n"
+            "Doc on src/app/layout.tsx repair: example shows cat > src/app/layout.tsx\n"
+            "EOF"
+        )
+        r = _hook_run(cmd)
+        self.assertEqual(r.returncode, 0, msg=r.stderr)
+
+    def test_1298_chained_heredoc_then_real_phase_a_write_denies(self):
+        """#1298 r1-c1: trailing real write to Phase A must still deny."""
+        cmd = (
+            "cat << 'EOF'\n"
+            "harmless body\n"
+            "EOF\n"
+            "echo {} > src/app/layout.tsx"
+        )
+        r = _hook_run(cmd)
+        self.assertEqual(r.returncode, 2, msg=r.stderr)
+
+    def test_1298_python_heredoc_fed_open_phase_a_still_denies(self):
+        """#1298 r1-c2: heredoc-fed python open() on Phase A must still deny."""
+        cmd = (
+            "python3 << 'PY'\n"
+            "open('src/app/layout.tsx', 'w').write('forge')\n"
+            "PY"
+        )
+        r = _hook_run(cmd)
+        self.assertEqual(r.returncode, 2, msg=r.stderr)
+
     # -- WARN mode: emits stderr but exits 0 -------------------------------
 
     def test_warn_mode_does_not_deny(self):

@@ -29,13 +29,82 @@ parse_payload
 
 COMMAND=$(read_payload_field "tool_input.command")
 
-# Fast-path: no mention of spawn-log → allow
+# Fast-path: no mention of spawn-log → allow.
+# Cheap raw-string glob — runs BEFORE canonicalization so unrelated commands
+# (the common case) skip the python startup entirely. (#1298 r1-c4 perf.)
 case "$COMMAND" in
   *agent-spawn-log*) ;;
   *) exit 0 ;;
 esac
 
-# Two-pass NORM (mirrors agent-trace-write-guard.sh:54-65):
+# ── Pre-canonicalization Python-source checks (RAW $COMMAND) ──
+#
+# These checks run on RAW $COMMAND BEFORE canonicalization so heredoc-fed
+# python attacks (`python3 <<PY ... open('...spawn-log.jsonl','w') ... PY`)
+# are still caught — canonicalization would strip the body and hide the
+# attack surface (#1298 r1-c2).
+
+# Block Python open(...) for write/append on the canonical spawn-log file.
+# The literal-path form: `open(".runs/agent-spawn-log.jsonl", "w")`.
+# coherence-allow: raw-command — heredoc-fed python attack detection (#1298 r1-c2)
+if echo "$COMMAND" | grep -qE "open\([^)]*agent-spawn-log\.jsonl[^)]*,[[:space:]]*['\"][wa]"; then
+  deny "Trace write guard: agent-spawn-log.jsonl is hook-managed (Python open-for-write detected)."
+fi
+
+# Block Python variable-indirection writes to the spawn-log.
+#
+# Pattern: `f="...agent-spawn-log.jsonl..."; ... open(f, "w")` — the literal
+# path is bound to a variable, and the open() call uses the variable rather
+# than the literal. The literal-path regex above only catches direct
+# open(<literal>) forms, so this Python helper closes the indirection gap
+# (mirrors agent-trace-write-guard.sh:114-133).
+#
+# Implementation: scan the COMMAND string as a single unit (NOT split on `;` —
+# the chain-record awk's RS="[&|;]" would tear Python `import json; ...`
+# source across awk records, breaking variable correlation).
+# coherence-allow: raw-command — heredoc-fed python attack detection (#1298 r1-c2)
+INDIRECT_CHECK=$(echo "$COMMAND" | python3 -c '
+import re, sys
+cmd = sys.stdin.read()
+# Capture all <var> = "...agent-spawn-log.jsonl..." assignments.
+assignments = set()
+for m in re.finditer(
+    r"([A-Za-z_][A-Za-z0-9_]*)\s*=\s*[\x27\x22][^\x27\x22]*agent-spawn-log\.jsonl[^\x27\x22]*[\x27\x22]",
+    cmd,
+):
+    assignments.add(m.group(1))
+for var in assignments:
+    # open(<var>, ..., "w") or "a" or with positional mode arg
+    pat = r"open\(\s*" + re.escape(var) + r"\s*,[^)]*[\x27\x22][wa][\x27\x22\+b]*"
+    if re.search(pat, cmd):
+        print("DENY")
+        sys.exit(0)
+' 2>/dev/null || true)
+if [[ "$INDIRECT_CHECK" == "DENY" ]]; then
+  deny "Trace write guard: agent-spawn-log.jsonl variable-indirection write blocked (variable bound to spawn-log path is later passed to open() with write mode)."
+fi
+
+# Issue #1298: strip heredoc bodies before shell-redirect bound-target check
+# so heredoc-body data text doesn't trigger the bound regex. Re-test fast-path
+# on canonical: when the `agent-spawn-log` mention was ONLY in a heredoc body,
+# exit 0 here.
+#
+# Resilience: if the canonicalizer fails (python3 missing, script error),
+# fall back to RAW $COMMAND. The bound-redirect awk on $NORM still fires on
+# real shell writes — heredoc-body false-positive fix is the only thing
+# temporarily lost. Use `if` form for bash 3.2 set -e portability.
+if CANONICAL_TMP=$(printf '%s' "$COMMAND" | python3 "$(dirname "$0")/../scripts/lib/canonicalize_bash_command.py" 2>/dev/null); then
+  COMMAND_CANONICAL="$CANONICAL_TMP"
+else
+  # coherence-allow: raw-command — fail-soft fallback to RAW $COMMAND when canonicalize unavailable (#1298)
+  COMMAND_CANONICAL="$COMMAND"
+fi
+case "$COMMAND_CANONICAL" in
+  *agent-spawn-log*) ;;
+  *) exit 0 ;;
+esac
+
+# Two-pass NORM (mirrors agent-trace-write-guard.sh):
 #
 # Pass 1 — strip fd-to-fd redirects (2>&1, >&1, 3>&2, 2>>&1). These are
 # stderr/fd redirection tokens, not file writes — but their bare `>`
@@ -52,7 +121,10 @@ esac
 # from its target into two adjacent records and silently allowing the
 # write. Order matters: pass 1 strips digit-after-& first, pass 2 reshapes
 # the file form (non-digit-after-&) second.
-NORM=$(printf '%s' "$COMMAND" \
+#
+# Derive from CANONICAL so heredoc-body text doesn't pollute the bound-
+# redirect check on $NORM (#1298).
+NORM=$(printf '%s' "$COMMAND_CANONICAL" \
   | sed -E 's/[0-9]*>+&[0-9]+//g' \
   | sed -E 's/>&([[:space:]]*)([^&|;[:space:]])/> \1\2/g')
 
@@ -79,44 +151,6 @@ if echo "$NORM" | awk '
     }
     END{exit !found}'; then
   deny "Trace write guard: agent-spawn-log.jsonl is hook-managed. Only skill-agent-gate.sh may write to it."
-fi
-
-# Block Python open(...) for write/append on the canonical spawn-log file.
-# The literal-path form: `open(".runs/agent-spawn-log.jsonl", "w")`.
-if echo "$COMMAND" | grep -qE "open\([^)]*agent-spawn-log\.jsonl[^)]*,[[:space:]]*['\"][wa]"; then
-  deny "Trace write guard: agent-spawn-log.jsonl is hook-managed (Python open-for-write detected)."
-fi
-
-# Block Python variable-indirection writes to the spawn-log.
-#
-# Pattern: `f="...agent-spawn-log.jsonl..."; ... open(f, "w")` — the literal
-# path is bound to a variable, and the open() call uses the variable rather
-# than the literal. The literal-path regex above only catches direct
-# open(<literal>) forms, so this Python helper closes the indirection gap
-# (mirrors agent-trace-write-guard.sh:114-133).
-#
-# Implementation: scan the COMMAND string as a single unit (NOT split on `;` —
-# the chain-record awk's RS="[&|;]" would tear Python `import json; ...`
-# source across awk records, breaking variable correlation).
-INDIRECT_CHECK=$(echo "$COMMAND" | python3 -c '
-import re, sys
-cmd = sys.stdin.read()
-# Capture all <var> = "...agent-spawn-log.jsonl..." assignments.
-assignments = set()
-for m in re.finditer(
-    r"([A-Za-z_][A-Za-z0-9_]*)\s*=\s*[\x27\x22][^\x27\x22]*agent-spawn-log\.jsonl[^\x27\x22]*[\x27\x22]",
-    cmd,
-):
-    assignments.add(m.group(1))
-for var in assignments:
-    # open(<var>, ..., "w") or "a" or with positional mode arg
-    pat = r"open\(\s*" + re.escape(var) + r"\s*,[^)]*[\x27\x22][wa][\x27\x22\+b]*"
-    if re.search(pat, cmd):
-        print("DENY")
-        sys.exit(0)
-' 2>/dev/null || true)
-if [[ "$INDIRECT_CHECK" == "DENY" ]]; then
-  deny "Trace write guard: agent-spawn-log.jsonl variable-indirection write blocked (variable bound to spawn-log path is later passed to open() with write mode)."
 fi
 
 exit 0

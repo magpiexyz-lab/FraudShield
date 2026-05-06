@@ -41,24 +41,53 @@ parse_payload
 
 COMMAND=$(read_payload_field "tool_input.command")
 
-# Fast-path: no mention of the gated paths → allow
+# Fast-path: no mention of the gated paths → allow.
+# Cheap raw-string glob — runs BEFORE canonicalization so unrelated commands
+# (the common case) skip the python startup entirely. (#1298 r1-c4 perf.)
 case "$COMMAND" in
   *fix-ledger.jsonl*|*fix-log.md*) ;;
   *) exit 0 ;;
 esac
 
-# Normalize fd-to-fd redirects (2>&1, >&1, etc.) — same rationale as
-# agent-trace-write-guard.sh.
-NORM=$(printf '%s' "$COMMAND" | sed -E 's/[0-9]*>+&[0-9]+//g')
-
+# ── Pre-canonicalization Python-source checks (RAW $COMMAND) ──
+#
 # Block Python open(...) for write/append on the gated paths (independent of
 # the bound chain check below — open(..., 'w') has no shell-redirect to bind).
+# These run on RAW $COMMAND so heredoc-fed python attacks
+# (`python3 <<PY ... open('.runs/fix-ledger.jsonl','w') ... PY`) are still
+# caught — canonicalization would strip the body and hide the attack
+# surface (#1298 r1-c2).
+# coherence-allow: raw-command — heredoc-fed python attack detection (#1298 r1-c2)
 if echo "$COMMAND" | grep -qE "open\([^)]*\.runs/fix-ledger\.jsonl[^)]*,[[:space:]]*['\"][wa]"; then
   deny "Fix-ledger write guard: python open-for-write on .runs/fix-ledger.jsonl is blocked. Use write-fix-ledger.py (AOC v1 FLS v1)."
 fi
+# coherence-allow: raw-command — heredoc-fed python attack detection (#1298 r1-c2)
 if echo "$COMMAND" | grep -qE "open\([^)]*\.runs/fix-log\.md[^)]*,[[:space:]]*['\"][wa]"; then
   deny "Fix-ledger write guard: python open-for-write on .runs/fix-log.md is blocked. Use render-fix-log.py (AOC v1 FLS v1)."
 fi
+
+# Issue #1298: strip heredoc bodies before shell-redirect / allow-list checks
+# so heredoc-body data text doesn't trigger the bound regex or falsely match
+# a writer-name. Re-test fast-path on canonical: when the gated-path mention
+# was ONLY in a heredoc body, exit 0 here.
+#
+# Resilience: if the canonicalizer fails (python3 missing, script error),
+# fall back to RAW $COMMAND. The bound-redirect awk on $NORM still fires on
+# real shell writes. Use `if` form for bash 3.2 set -e portability.
+if CANONICAL_TMP=$(printf '%s' "$COMMAND" | python3 "$(dirname "$0")/../scripts/lib/canonicalize_bash_command.py" 2>/dev/null); then
+  COMMAND_CANONICAL="$CANONICAL_TMP"
+else
+  # coherence-allow: raw-command — fail-soft fallback to RAW $COMMAND when canonicalize unavailable (#1298)
+  COMMAND_CANONICAL="$COMMAND"
+fi
+case "$COMMAND_CANONICAL" in
+  *fix-ledger.jsonl*|*fix-log.md*) ;;
+  *) exit 0 ;;
+esac
+
+# Normalize fd-to-fd redirects (2>&1, >&1, etc.) — same rationale as
+# agent-trace-write-guard.sh. Derive from CANONICAL (#1298).
+NORM=$(printf '%s' "$COMMAND_CANONICAL" | sed -E 's/[0-9]*>+&[0-9]+//g')
 
 # Benign known-residual: allow STATE 0 header init
 # (matches `echo '# Error Fix Log' > .runs/fix-log.md`).
@@ -105,13 +134,15 @@ fi
 
 # ── Allow-list short-circuit ──
 
+# Allow-list regex matches use $COMMAND_CANONICAL (heredoc bodies stripped) so
+# narrative prose mentioning these script names does not falsely allow. (#1298)
 ALLOWED_REGEX_WRITER='(^|[[:space:]]|&&|;|\|)[[:space:]]*python3?[[:space:]]+[./]*\.?claude/scripts/write-fix-ledger\.py'
-if echo "$COMMAND" | grep -qE "$ALLOWED_REGEX_WRITER"; then
+if echo "$COMMAND_CANONICAL" | grep -qE "$ALLOWED_REGEX_WRITER"; then
   exit 0
 fi
 
 ALLOWED_REGEX_RENDERER='(^|[[:space:]]|&&|;|\|)[[:space:]]*python3?[[:space:]]+[./]*\.?claude/scripts/render-fix-log\.py'
-if echo "$COMMAND" | grep -qE "$ALLOWED_REGEX_RENDERER"; then
+if echo "$COMMAND_CANONICAL" | grep -qE "$ALLOWED_REGEX_RENDERER"; then
   exit 0
 fi
 

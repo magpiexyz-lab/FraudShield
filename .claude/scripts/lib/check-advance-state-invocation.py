@@ -53,66 +53,20 @@ token is one of the segment separators: && || ; | & ( ).
 from __future__ import annotations
 
 import os
-import re
 import shlex
 import sys
 
+# Re-export from the canonicalizer module. Closes #1298 — the previous inline
+# implementation had three pre-existing correctness bugs (loop-restart wipes
+# trailing real writes; POSIX-strictness over-permissive; same-line multi-
+# heredoc skipped). The shared module fixes all three; existing #1223 callers
+# (state-completion-gate.sh, phase-boundary-gate.sh) inherit the fix
+# transparently through this import.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from canonicalize_bash_command import strip_heredoc_bodies  # noqa: E402
+
 
 _SEGMENT_SEPARATORS = {"&&", "||", ";", "|", "&", "(", ")"}
-_HEREDOC_START = re.compile(
-    r"<<(-)?\s*(?P<quote>['\"]?)(?P<delim>[A-Za-z_][A-Za-z0-9_]*)(?P=quote)"
-)
-
-
-def strip_heredoc_bodies(cmd: str) -> str:
-    """Remove heredoc bodies. Preserves the heredoc-introducer line.
-
-    Iterates until no more heredocs can be stripped (handles nested forms in
-    sequence). Each removal replaces the body with a sentinel line so that
-    line-numbering changes are visible in failure messages.
-    """
-    while True:
-        m = _HEREDOC_START.search(cmd)
-        if not m:
-            return cmd
-
-        delim = m.group("delim")
-        strip_indent = bool(m.group(1))  # `<<-` permits leading tabs
-
-        # Find the start of the line CONTAINING the introducer; the body
-        # begins on the line AFTER that.
-        intro_line_end = cmd.find("\n", m.end())
-        if intro_line_end == -1:
-            # No newline after the introducer — heredoc body is empty (no
-            # body lines to consume). Treat as already-stripped to make
-            # progress and break the loop.
-            return cmd[: m.end()] + cmd[m.end():]
-
-        body_start = intro_line_end + 1
-
-        # Walk lines looking for the closing delimiter on its own line.
-        idx = body_start
-        end_of_close = None
-        while idx < len(cmd):
-            line_end = cmd.find("\n", idx)
-            if line_end == -1:
-                line = cmd[idx:]
-                next_idx = len(cmd)
-            else:
-                line = cmd[idx:line_end]
-                next_idx = line_end + 1
-            stripped = line.lstrip("\t") if strip_indent else line
-            if stripped.strip() == delim:
-                end_of_close = next_idx
-                break
-            idx = next_idx
-
-        if end_of_close is None:
-            # Unterminated heredoc — strip to end-of-string and stop.
-            return cmd[:body_start] + "\n"
-
-        cmd = cmd[:body_start] + cmd[end_of_close:]
-        # Loop again to strip any remaining heredocs.
 
 
 def parse_invocation(cmd: str) -> tuple[bool, str, str]:

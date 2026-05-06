@@ -253,6 +253,122 @@ class TestBashHookWriteOperatorBinding(unittest.TestCase):
             f"unrelated hook should not fire, got: {findings}",
         )
 
+    # ---- Canonicalization enforcement (Phase 3, #1298) ----
+
+    def test_phase3_canonicalize_before_match_passes(self):
+        """Phase 3: hook calls canonicalize_bash_command.py before any
+        regex match. No raw $COMMAND references after canonicalize line.
+        Should produce 0 findings."""
+        self._write_manifest([
+            {
+                "hook": ".claude/hooks/test-canon-ok.sh",
+                "protected_path_regex": "test-protected/",
+                "write_operators": [">", ">>"],
+            }
+        ])
+        self._write_hook(
+            "test-canon-ok.sh",
+            "#!/usr/bin/env bash\n"
+            "COMMAND=\"$1\"\n"
+            "case \"$COMMAND\" in *test-protected/*) ;; *) exit 0 ;; esac\n"
+            "COMMAND_CANONICAL=$(printf '%s' \"$COMMAND\" | python3 .claude/scripts/lib/canonicalize_bash_command.py)\n"
+            "case \"$COMMAND_CANONICAL\" in *test-protected/*) ;; *) exit 0 ;; esac\n"
+            "if echo \"$COMMAND_CANONICAL\" | awk '/(>|>>) test-protected\\//'; then\n"
+            "  echo deny >&2; exit 2\n"
+            "fi\n",
+        )
+        findings = self._findings()
+        self.assertFalse(
+            any("test-canon-ok.sh" in f and "#1298" in f for f in findings),
+            f"hook with canonicalize before match should pass Phase 3, got: {findings}",
+        )
+
+    def test_phase3_missing_canonicalize_fires(self):
+        """Phase 3: registered hook with NO canonicalize_bash_command call
+        must fire 'missing canonicalize' finding."""
+        self._write_manifest([
+            {
+                "hook": ".claude/hooks/test-no-canon.sh",
+                "protected_path_regex": "test-protected/",
+                "write_operators": [">", ">>"],
+            }
+        ])
+        self._write_hook(
+            "test-no-canon.sh",
+            "#!/usr/bin/env bash\n"
+            "COMMAND=\"$1\"\n"
+            "case \"$COMMAND\" in *test-protected/*) ;; *) exit 0 ;; esac\n"
+            # No canonicalize call — directly matches on $COMMAND.
+            "if echo \"$COMMAND\" | awk '/(>|>>) test-protected\\//'; then\n"
+            "  echo deny >&2; exit 2\n"
+            "fi\n",
+        )
+        findings = self._findings()
+        self.assertTrue(
+            any("test-no-canon.sh" in f and "missing canonicalize_bash_command.py" in f
+                and "#1298" in f
+                for f in findings),
+            f"expected missing-canonicalize finding, got: {findings}",
+        )
+
+    def test_phase3_raw_command_after_canonicalize_without_pragma_fires(self):
+        """Phase 3: hook canonicalizes but later uses raw "$COMMAND" without
+        the pragma — must fire."""
+        self._write_manifest([
+            {
+                "hook": ".claude/hooks/test-raw-no-pragma.sh",
+                "protected_path_regex": "test-protected/",
+                "write_operators": [">", ">>"],
+            }
+        ])
+        self._write_hook(
+            "test-raw-no-pragma.sh",
+            "#!/usr/bin/env bash\n"
+            "COMMAND=\"$1\"\n"
+            "case \"$COMMAND\" in *test-protected/*) ;; *) exit 0 ;; esac\n"
+            "COMMAND_CANONICAL=$(printf '%s' \"$COMMAND\" | python3 .claude/scripts/lib/canonicalize_bash_command.py)\n"
+            "case \"$COMMAND_CANONICAL\" in *test-protected/*) ;; *) exit 0 ;; esac\n"
+            # Raw $COMMAND reference after canonicalize, no pragma — Phase 3 fires.
+            "if echo \"$COMMAND\" | awk '/(>|>>) test-protected\\//'; then\n"
+            "  echo deny >&2; exit 2\n"
+            "fi\n",
+        )
+        findings = self._findings()
+        self.assertTrue(
+            any("test-raw-no-pragma.sh" in f and "raw \"$COMMAND\" reference" in f
+                and "#1298" in f
+                for f in findings),
+            f"expected raw-without-pragma finding, got: {findings}",
+        )
+
+    def test_phase3_raw_command_after_canonicalize_with_pragma_passes(self):
+        """Phase 3: hook canonicalizes and later uses raw "$COMMAND" but with
+        the pragma within ±5 lines — must NOT fire."""
+        self._write_manifest([
+            {
+                "hook": ".claude/hooks/test-raw-with-pragma.sh",
+                "protected_path_regex": "test-protected/",
+                "write_operators": [">", ">>"],
+            }
+        ])
+        self._write_hook(
+            "test-raw-with-pragma.sh",
+            "#!/usr/bin/env bash\n"
+            "COMMAND=\"$1\"\n"
+            "case \"$COMMAND\" in *test-protected/*) ;; *) exit 0 ;; esac\n"
+            "COMMAND_CANONICAL=$(printf '%s' \"$COMMAND\" | python3 .claude/scripts/lib/canonicalize_bash_command.py)\n"
+            "case \"$COMMAND_CANONICAL\" in *test-protected/*) ;; *) exit 0 ;; esac\n"
+            "# coherence-allow: raw-command — heredoc-fed python attack detection\n"
+            "if echo \"$COMMAND\" | grep -qE 'open\\(.*test-protected/'; then\n"
+            "  echo deny >&2; exit 2\n"
+            "fi\n",
+        )
+        findings = self._findings()
+        self.assertFalse(
+            any("test-raw-with-pragma.sh" in f and "raw \"$COMMAND\"" in f for f in findings),
+            f"hook with pragma should pass Phase 3, got: {findings}",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

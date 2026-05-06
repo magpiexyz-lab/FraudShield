@@ -301,6 +301,97 @@ class TestAgentTraceWriteGuard(unittest.TestCase):
             "variable-indirection",
         )
 
+    # ---- Issue #1298: heredoc-body false positive class ----
+
+    def test_1298_heredoc_body_mentions_writer_name_allows(self):
+        """#1298: prose mentioning write-recovery-trace.sh inside a heredoc
+        body must NOT trigger the allow-list and demand --reason."""
+        cmd = (
+            "cat > /tmp/r.txt << 'EOF'\n"
+            "Doc on .claude/scripts/write-recovery-trace.sh in the trace pipeline; "
+            "agent-traces/ is the dir.\n"
+            "EOF"
+        )
+        self._assert_allowed(cmd, "heredoc-body writer-name mention must allow")
+
+    def test_1298_heredoc_body_with_redirect_literal_allows(self):
+        """#1298: prose containing `> agent-traces/x.json` literal in a heredoc
+        body must NOT trigger the catch-all bound-redirect."""
+        cmd = (
+            "cat > /tmp/r.txt << 'EOF'\n"
+            "Example bad command: cat > .runs/agent-traces/forge.json\n"
+            "EOF"
+        )
+        self._assert_allowed(cmd, "heredoc-body redirect literal must allow")
+
+    def test_1298_chained_heredoc_then_real_write_denies(self):
+        """#1298 r1-c1 regression vector: trailing real write must NOT be
+        wiped by the strip_heredoc_bodies loop bug. The bound-redirect
+        catch-all must still fire on the trailing `echo > agent-traces/...`."""
+        cmd = (
+            "cat << 'EOF'\n"
+            "harmless\n"
+            "EOF\n"
+            "echo {} > .runs/agent-traces/forge.json"
+        )
+        self._assert_denied(cmd, "agent-traces/")
+
+    def test_1298_python_heredoc_fed_open_still_denies(self):
+        """#1298 r1-c2: heredoc-fed python `open()` attack must STILL deny.
+        The python-open regex runs on RAW $COMMAND with `coherence-allow:
+        raw-command` pragma so canonicalization doesn't hide the attack."""
+        cmd = (
+            "python3 << 'PY'\n"
+            "open('.runs/agent-traces/forge.json', 'w').write('{}')\n"
+            "PY"
+        )
+        self._assert_denied(cmd, "open-for-write")
+
+    def test_1298_heredoc_body_reason_token_does_not_satisfy(self):
+        """#1298 security improvement: a `--reason` token hidden inside a
+        heredoc body MUST NOT satisfy the writer-script --reason check.
+
+        Pre-fix behavior: shlex tokenized the heredoc body's `--reason crash`
+        as separate tokens, allowing a writer call with no real --reason to
+        bypass the #963 contract via heredoc-body smuggling.
+
+        Post-fix: canonicalize strips the heredoc body before _check_reason_token
+        runs on COMMAND_CANONICAL — the body-only --reason is no longer visible
+        to the segment scan, so the check fails and the writer call DENIES.
+        """
+        cmd = (
+            "bash .claude/scripts/write-recovery-trace.sh observer << 'PY'\n"
+            "--reason crash\n"
+            "PY\n"
+            "; ls .runs/agent-traces/"
+        )
+        self._assert_denied(cmd, "lacks --reason")
+
+    def test_1298_canonicalize_fallback_preserves_baseline_when_python_fails(self):
+        """#1298 resilience: when canonicalize_bash_command.py fails (e.g.,
+        python3 missing or script crash), the hook falls back to RAW $COMMAND
+        for downstream checks. The bound-redirect catch-all on $NORM still
+        fires on direct shell writes — heredoc-body false-positive fix is
+        the only thing temporarily lost.
+        """
+        # Replace the canonicalizer with a deliberately broken one for this test
+        canon_path = Path(self.tmp) / ".claude/scripts/lib/canonicalize_bash_command.py"
+        original = canon_path.read_text()
+        canon_path.write_text("import sys\nsys.exit(1)\n")
+        try:
+            # Direct shell write to agent-traces — must still DENY via NORM check.
+            self._assert_denied(
+                "echo {} > .runs/agent-traces/forge.json",
+                "agent-traces/",
+            )
+            # Unrelated command — must still ALLOW via fast-path.
+            self._assert_allowed(
+                "ls .runs/",
+                "fast-path on unrelated command",
+            )
+        finally:
+            canon_path.write_text(original)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

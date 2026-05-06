@@ -281,6 +281,37 @@ class TestTraceWriteGuard(unittest.TestCase):
             "python3 -c \"f='.runs/agent-spawn-log.jsonl'; data=open(f, 'r').read()\"",
             "open with explicit read mode")
 
+    # ---- Issue #1298: heredoc-body false positive class ----
+
+    def test_1298_heredoc_body_with_spawn_log_redirect_literal_allows(self):
+        """#1298: heredoc body containing `> agent-spawn-log.jsonl` literal
+        must NOT trigger the bound-redirect — the body is data, not shell."""
+        cmd = (
+            "cat > /tmp/r.txt << 'EOF'\n"
+            "Example deny: echo {} > .runs/agent-spawn-log.jsonl\n"
+            "EOF"
+        )
+        self._assert_allowed(cmd, "heredoc-body redirect literal must allow")
+
+    def test_1298_chained_heredoc_then_real_write_denies(self):
+        """#1298 r1-c1: trailing real write to spawn-log must still deny."""
+        cmd = (
+            "cat << 'EOF'\n"
+            "harmless body\n"
+            "EOF\n"
+            "echo {} > .runs/agent-spawn-log.jsonl"
+        )
+        self._assert_denied(cmd, "agent-spawn-log")
+
+    def test_1298_python_heredoc_fed_open_still_denies(self):
+        """#1298 r1-c2: heredoc-fed python open() must still deny."""
+        cmd = (
+            "python3 << 'PY'\n"
+            "open('.runs/agent-spawn-log.jsonl', 'w').write('{}')\n"
+            "PY"
+        )
+        self._assert_denied(cmd, "open-for-write")
+
 
 if __name__ == "__main__":
     unittest.main()
