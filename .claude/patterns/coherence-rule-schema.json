@@ -208,6 +208,81 @@
         "convention_doc": { "type": "string", "description": "Path to canonical pattern doc (e.g., .claude/patterns/cross-reference-style.md). Appended to finding messages as '(see <doc>)'." },
         "description": { "type": "string" }
       }
+    },
+    "rule_validator_integration_required": {
+      "description": "#1295 PR1 — per-validator integration enforcement: each listed validator script must be referenced in executable context in at least one declared integration_point.",
+      "type": "object",
+      "required": ["id", "type", "severity", "description", "validators", "integration_points"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string"},
+        "type": {"const": "validator_integration_required"},
+        "severity": {"$ref": "#/definitions/severity"},
+        "description": {"type": "string"},
+        "_comment": {"type": "string"},
+        "_transitional_note": {"type": "string"},
+        "convention_doc": {"type": "string"},
+        "validators": {
+          "type": "array",
+          "items": {"type": "string"},
+          "minItems": 1
+        },
+        "integration_points": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {"type": "string"},
+              {
+                "type": "object",
+                "required": ["path"],
+                "additionalProperties": false,
+                "properties": {
+                  "path": {"type": "string"},
+                  "executable_keys": {
+                    "type": "array",
+                    "items": {"type": "string"}
+                  },
+                  "state_value_executable": {"type": "boolean"}
+                }
+              }
+            ]
+          },
+          "minItems": 1
+        }
+      }
+    },
+    "rule_validator_inventory_completeness": {
+      "description": "#1295 PR1 — meta-rule: every disk-discovered validate-*.py must be in some validator_integration_required rule's validators[] OR explicitly exempted via skip_validators or magic-header.",
+      "type": "object",
+      "required": ["id", "type", "severity", "description"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string"},
+        "type": {"const": "validator_inventory_completeness"},
+        "severity": {"$ref": "#/definitions/severity"},
+        "description": {"type": "string"},
+        "_comment": {"type": "string"},
+        "_transitional_note": {"type": "string"},
+        "convention_doc": {"type": "string"},
+        "discovery_glob": {
+          "oneOf": [
+            {"type": "string"},
+            {"type": "array", "items": {"type": "string"}, "minItems": 1}
+          ]
+        },
+        "skip_validators": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "required": ["category", "justification"],
+            "additionalProperties": false,
+            "properties": {
+              "category": {"enum": ["cli-tool", "build-time", "test-only", "deprecated"]},
+              "justification": {"type": "string", "minLength": 1}
+            }
+          }
+        }
+      }
     }
   },
   "type": "object",
@@ -233,7 +308,9 @@
           { "$ref": "#/definitions/rule_boundary_kind_required" },
           { "$ref": "#/definitions/rule_gate_artifact_discovery" },
           { "$ref": "#/definitions/rule_bash_hook_write_operator_binding" },
-          { "$ref": "#/definitions/rule_markdown_cross_file_line_reference" }
+          { "$ref": "#/definitions/rule_markdown_cross_file_line_reference" },
+          { "$ref": "#/definitions/rule_validator_integration_required" },
+          { "$ref": "#/definitions/rule_validator_inventory_completeness" }
         ]
       }
     }

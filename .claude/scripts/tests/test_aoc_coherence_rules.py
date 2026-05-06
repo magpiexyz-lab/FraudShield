@@ -447,5 +447,267 @@ class TestWriteFixLedgerDedup(unittest.TestCase):
         self.assertEqual(len(rows), 2)
 
 
+# --- E1.1-E1.6: Stage B validator_integration_required -----------------------
+
+
+class TestStageBValidatorIntegrationRequired(unittest.TestCase):
+    """#1295 PR1 Stage B: per-validator executable-context enforcement."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def _stage_b_rule(self, ip):
+        return {
+            "rules": [{
+                "id": "test-stage-b",
+                "type": "validator_integration_required",
+                "severity": "block",
+                "description": "test",
+                "validators": [".claude/scripts/validate-testval.py"],
+                "integration_points": [ip],
+            }]
+        }
+
+    # E1.1: happy — validator referenced via `verify` key in JSON
+    def test_e1_1_referenced_via_verify_key_passes(self):
+        registry = {"state1": {"verify": "python3 validate-testval.py"}}
+        files = {
+            ".claude/scripts/validate-testval.py": "#!/usr/bin/env python3\n",
+            ".claude/patterns/fake-registry.json": json.dumps(registry),
+        }
+        ip = {
+            "path": ".claude/patterns/fake-registry.json",
+            "executable_keys": ["verify"],
+            "state_value_executable": False,
+        }
+        _setup_repo(self.tmpdir, self._stage_b_rule(ip), files)
+        rc, out, _ = _run_linter(self.tmpdir)
+        self.assertEqual(rc, 0, f"E1.1 expected pass, got:\n{out}")
+
+    # E1.2: happy — validator referenced via bare-string state value (state-name regex)
+    def test_e1_2_referenced_via_state_name_regex_passes(self):
+        registry = {"11b": "python3 validate-testval.py"}
+        files = {
+            ".claude/scripts/validate-testval.py": "#!/usr/bin/env python3\n",
+            ".claude/patterns/fake-registry.json": json.dumps(registry),
+        }
+        ip = {
+            "path": ".claude/patterns/fake-registry.json",
+            "executable_keys": [],
+            "state_value_executable": True,
+        }
+        _setup_repo(self.tmpdir, self._stage_b_rule(ip), files)
+        rc, out, _ = _run_linter(self.tmpdir)
+        self.assertEqual(rc, 0, f"E1.2 expected pass, got:\n{out}")
+
+    # E1.3: NEGATIVE — validator referenced ONLY in `description` field (HC-PR1-1)
+    def test_e1_3_description_field_not_executable_fails(self):
+        registry = {"state1": {"description": "uses validate-testval.py to check things"}}
+        files = {
+            ".claude/scripts/validate-testval.py": "#!/usr/bin/env python3\n",
+            ".claude/patterns/fake-registry.json": json.dumps(registry),
+        }
+        ip = {
+            "path": ".claude/patterns/fake-registry.json",
+            "executable_keys": ["verify"],
+            "state_value_executable": True,
+        }
+        _setup_repo(self.tmpdir, self._stage_b_rule(ip), files)
+        rc, out, _ = _run_linter(self.tmpdir)
+        self.assertEqual(rc, 1, f"E1.3 expected failure (description not executable), got clean:\n{out}")
+        self.assertIn("test-stage-b", out)
+
+    # E1.4: NEGATIVE — validator referenced only in .sh comment line
+    def test_e1_4_sh_comment_not_executable_fails(self):
+        sh_content = "#!/usr/bin/env bash\n# validate-testval.py is mentioned here\necho done\n"
+        files = {
+            ".claude/scripts/validate-testval.py": "#!/usr/bin/env python3\n",
+            ".claude/scripts/fake-hook.sh": sh_content,
+        }
+        _setup_repo(self.tmpdir, self._stage_b_rule(".claude/scripts/fake-hook.sh"), files)
+        rc, out, _ = _run_linter(self.tmpdir)
+        self.assertEqual(rc, 1, f"E1.4 expected failure (.sh comment not executable), got clean:\n{out}")
+        self.assertIn("test-stage-b", out)
+
+    # E1.5: NEGATIVE — validator referenced only in .md prose (outside code fence)
+    def test_e1_5_md_prose_not_executable_fails(self):
+        md_content = "## Section\n\nvalidate-testval.py is mentioned here but outside code block.\n"
+        files = {
+            ".claude/scripts/validate-testval.py": "#!/usr/bin/env python3\n",
+            ".claude/patterns/fake-doc.md": md_content,
+        }
+        _setup_repo(self.tmpdir, self._stage_b_rule(".claude/patterns/fake-doc.md"), files)
+        rc, out, _ = _run_linter(self.tmpdir)
+        self.assertEqual(rc, 1, f"E1.5 expected failure (.md prose not executable), got clean:\n{out}")
+        self.assertIn("test-stage-b", out)
+
+    # E1.6: NEGATIVE — validator referenced only inside calls[].path (parent_key resets to `path`)
+    def test_e1_6_calls_path_not_executable_fails(self):
+        registry = {"state1": {"calls": [{"path": "validate-testval.py", "artifact": "foo.json"}]}}
+        files = {
+            ".claude/scripts/validate-testval.py": "#!/usr/bin/env python3\n",
+            ".claude/patterns/fake-registry.json": json.dumps(registry),
+        }
+        ip = {
+            "path": ".claude/patterns/fake-registry.json",
+            "executable_keys": ["verify"],
+            "state_value_executable": True,
+        }
+        _setup_repo(self.tmpdir, self._stage_b_rule(ip), files)
+        rc, out, _ = _run_linter(self.tmpdir)
+        self.assertEqual(rc, 1, f"E1.6 expected failure (calls[].path not executable), got clean:\n{out}")
+        self.assertIn("test-stage-b", out)
+
+
+# --- E1.7-E1.12: Stage C validator_inventory_completeness --------------------
+
+
+class TestStageCValidatorInventoryCompleteness(unittest.TestCase):
+    """#1295 PR1 Stage C: meta-rule for validator inventory drift."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def _stage_b_rule(self, validators_b):
+        return {
+            "id": "test-stage-b",
+            "type": "validator_integration_required",
+            "severity": "block",
+            "description": "test",
+            "validators": validators_b,
+            "integration_points": [".claude/scripts/fake-lifecycle.sh"],
+        }
+
+    def _stage_c_rule(self, skip=None):
+        rule = {
+            "id": "test-stage-c",
+            "type": "validator_inventory_completeness",
+            "severity": "block",
+            "description": "test",
+            "discovery_glob": [".claude/scripts/validate-*.py"],
+        }
+        if skip is not None:
+            rule["skip_validators"] = skip
+        return rule
+
+    def _setup(self, validators_b, validators_on_disk, skip=None):
+        """Write Stage B + Stage C rules and files.
+
+        validators_b: list of relative paths for Stage B validators[]
+        validators_on_disk: {relpath: content} for each on-disk validator
+        Stage B integration_point is fake-lifecycle.sh with non-comment refs.
+        """
+        sh_lines = ["#!/usr/bin/env bash"]
+        for v in validators_b:
+            sh_lines.append(f"python3 {os.path.basename(v)}")
+        files = {".claude/scripts/fake-lifecycle.sh": "\n".join(sh_lines) + "\n"}
+        files.update(validators_on_disk)
+        rules = {"rules": [self._stage_b_rule(validators_b), self._stage_c_rule(skip)]}
+        _setup_repo(self.tmpdir, rules, files)
+
+    # E1.7: happy — all on-disk validators covered by Stage B validators[]
+    def test_e1_7_all_covered_passes(self):
+        v = ".claude/scripts/validate-main.py"
+        self._setup(
+            validators_b=[v],
+            validators_on_disk={v: "#!/usr/bin/env python3\n"},
+        )
+        rc, out, _ = _run_linter(self.tmpdir)
+        self.assertEqual(rc, 0, f"E1.7 expected pass, got:\n{out}")
+
+    # E1.8: NEGATIVE — skip_validators with bad category
+    def test_e1_8_bad_skip_category_fails(self):
+        v_main = ".claude/scripts/validate-main.py"
+        v_other = ".claude/scripts/validate-other.py"
+        self._setup(
+            validators_b=[v_main],
+            validators_on_disk={
+                v_main: "#!/usr/bin/env python3\n",
+                v_other: "#!/usr/bin/env python3\n",
+            },
+            skip={v_other: {"category": "bad-category", "justification": "test reason"}},
+        )
+        rc, out, _ = _run_linter(self.tmpdir)
+        self.assertEqual(rc, 1, f"E1.8 expected failure (bad category), got clean:\n{out}")
+        self.assertIn("test-stage-c", out)
+
+    # E1.9: NEGATIVE — skip_validators with empty justification
+    def test_e1_9_empty_justification_fails(self):
+        v_main = ".claude/scripts/validate-main.py"
+        v_other = ".claude/scripts/validate-other.py"
+        self._setup(
+            validators_b=[v_main],
+            validators_on_disk={
+                v_main: "#!/usr/bin/env python3\n",
+                v_other: "#!/usr/bin/env python3\n",
+            },
+            skip={v_other: {"category": "build-time", "justification": ""}},
+        )
+        rc, out, _ = _run_linter(self.tmpdir)
+        self.assertEqual(rc, 1, f"E1.9 expected failure (empty justification), got clean:\n{out}")
+        self.assertIn("test-stage-c", out)
+
+    # E1.10: NEGATIVE — magic-header inside docstring does NOT exempt (tokenize-COMMENT-only)
+    def test_e1_10_magic_header_in_docstring_not_exempt_fails(self):
+        v_main = ".claude/scripts/validate-main.py"
+        v_other = ".claude/scripts/validate-other.py"
+        # The magic header appears inside a string literal (docstring), NOT as a COMMENT token.
+        # tokenize.tokenize will produce a STRING token for the docstring, not COMMENT.
+        docstring_with_magic = (
+            '#!/usr/bin/env python3\n'
+            '"""\n'
+            'Example usage:\n'
+            '    # validator-class: cli-tool\n'
+            '"""\n'
+            'import sys\n'
+        )
+        self._setup(
+            validators_b=[v_main],
+            validators_on_disk={
+                v_main: "#!/usr/bin/env python3\n",
+                v_other: docstring_with_magic,
+            },
+        )
+        rc, out, _ = _run_linter(self.tmpdir)
+        self.assertEqual(rc, 1, f"E1.10 expected failure (docstring magic header not exempt), got clean:\n{out}")
+        self.assertIn("test-stage-c", out)
+
+    # E1.11: happy — magic-header on line 2 as real COMMENT token exempts the validator
+    def test_e1_11_real_comment_magic_header_passes(self):
+        v_main = ".claude/scripts/validate-main.py"
+        v_other = ".claude/scripts/validate-other.py"
+        real_magic = "#!/usr/bin/env python3\n# validator-class: build-time\n\"\"\"description.\"\"\"\n"
+        self._setup(
+            validators_b=[v_main],
+            validators_on_disk={
+                v_main: "#!/usr/bin/env python3\n",
+                v_other: real_magic,
+            },
+        )
+        rc, out, _ = _run_linter(self.tmpdir)
+        self.assertEqual(rc, 0, f"E1.11 expected pass, got:\n{out}")
+
+    # E1.12: happy — skip_validators with valid category + non-empty justification
+    def test_e1_12_valid_skip_validators_passes(self):
+        v_main = ".claude/scripts/validate-main.py"
+        v_other = ".claude/scripts/validate-other.py"
+        self._setup(
+            validators_b=[v_main],
+            validators_on_disk={
+                v_main: "#!/usr/bin/env python3\n",
+                v_other: "#!/usr/bin/env python3\n",
+            },
+            skip={v_other: {"category": "build-time", "justification": "Run by /spec; not a lifecycle gate."}},
+        )
+        rc, out, _ = _run_linter(self.tmpdir)
+        self.assertEqual(rc, 0, f"E1.12 expected pass, got:\n{out}")
+
+
 if __name__ == "__main__":
     unittest.main()

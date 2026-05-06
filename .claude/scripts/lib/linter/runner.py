@@ -2589,6 +2589,250 @@ def main() -> int:
 
 
     # ---------------------------------------------------------------------------
+    # #1295 PR1 — Stage B + Stage C handler functions.
+    # ---------------------------------------------------------------------------
+
+    def check_validator_integration_required(rule):
+        """#1295 PR1 — assert each validator script is referenced by basename in
+        EXECUTABLE CONTEXT in at least one declared integration_point.
+
+        Per file type executable-context:
+          - .json: parse JSON; for each string value, check parent_key:
+              * if parent_key in declared executable_keys (e.g., 'verify')
+                → executable
+              * if parent_key matches state-name regex
+                ^(?=.*\\d)[a-z0-9]+$ AND state_value_executable=True → executable
+                (HC-PR1-1: state-registry has 111 bare-string state values
+                 where parent_key is the state name like '11b'; these carry
+                 python3 commands as VALUE, not under 'verify' key)
+              * everything else → prose (NOT executable)
+          - .sh: skip lines starting with `#` (comment lines)
+          - .md: require appearance inside fenced ``` code block
+          - other: full text (fallback)
+        """
+        import json as _json
+        import re as _re
+        findings = []
+        rid = rule.get("id", "<unknown>")
+        validators = rule.get("validators") or []
+        integration_points = rule.get("integration_points") or []
+        if not validators:
+            return [f"  [{rid}] no validators declared"]
+        if not integration_points:
+            return [f"  [{rid}] no integration_points declared"]
+
+        state_name_re = _re.compile(r"^(?=.*\d)[a-z0-9]+$")  # HC-PR1-1
+
+        def _normalize_ip(ip):
+            """Accept string OR dict {path, executable_keys, state_value_executable}."""
+            if isinstance(ip, str):
+                return (ip, None, False)
+            return (
+                ip.get("path"),
+                ip.get("executable_keys") or [],
+                bool(ip.get("state_value_executable", False)),
+            )
+
+        def _executable_text(path, executable_keys, state_value_executable):
+            try:
+                text = open(path, encoding="utf-8", errors="ignore").read()
+            except OSError:
+                return ""
+            if path.endswith(".json"):
+                try:
+                    data = _json.loads(text)
+                except _json.JSONDecodeError:
+                    return ""
+                keys_set = set(executable_keys or [])
+                buf = []
+                def _walk(x, parent_key=None):
+                    if isinstance(x, dict):
+                        for k, v in x.items():
+                            _walk(v, k)
+                    elif isinstance(x, list):
+                        for v in x:
+                            _walk(v, parent_key)
+                    elif isinstance(x, str):
+                        is_exec = parent_key in keys_set
+                        if not is_exec and state_value_executable and parent_key:
+                            # HC-PR1-1: bare-string state value (parent_key
+                            # matches state-name regex)
+                            if state_name_re.match(parent_key):
+                                is_exec = True
+                        if is_exec:
+                            buf.append(x)
+                _walk(data)
+                return "\n".join(buf)
+            if path.endswith(".sh"):
+                return "\n".join(
+                    ln for ln in text.splitlines()
+                    if not ln.lstrip().startswith("#"))
+            if path.endswith(".md"):
+                parts = []
+                in_fence = False
+                for ln in text.splitlines():
+                    if ln.lstrip().startswith("```"):
+                        in_fence = not in_fence
+                        continue
+                    if in_fence:
+                        parts.append(ln)
+                return "\n".join(parts)
+            return text
+
+        for v_rel in validators:
+            v_path = os.path.join(REPO_ROOT, v_rel)
+            if not os.path.isfile(v_path):
+                findings.append(f"  [{rid}] validator script not found: {v_rel}")
+                continue
+            v_basename = os.path.basename(v_rel)
+            referenced_in = []
+            for ip in integration_points:
+                ip_rel, exec_keys, state_val_exec = _normalize_ip(ip)
+                if not ip_rel:
+                    continue
+                ip_path = os.path.join(REPO_ROOT, ip_rel)
+                if not os.path.isfile(ip_path):
+                    continue
+                exec_text = _executable_text(ip_path, exec_keys, state_val_exec)
+                if v_basename in exec_text:
+                    referenced_in.append(ip_rel)
+            if not referenced_in:
+                ip_paths = [_normalize_ip(ip)[0] for ip in integration_points]
+                findings.append(
+                    f"  [{rid}] validator {v_rel} not referenced in any "
+                    f"declared integration point ({', '.join(str(p) for p in ip_paths)}) "
+                    f"in EXECUTABLE CONTEXT. JSON values OUTSIDE declared "
+                    f"executable_keys / state-value positions do NOT count "
+                    f"(HC-PR1-1). .sh comment-line and .md prose mentions "
+                    f"do NOT count. Wire the validator or remove from "
+                    f"validators[]."
+                )
+        return findings
+
+    def check_validator_inventory_completeness(rule):
+        """#1295 PR1 — meta-rule: every disk-discovered validate-*.py MUST be
+        in some `validator_integration_required` rule's validators[] OR in
+        skip_validators (with category + justification, HC-PR1-3) OR have
+        `# validator-class: <category>` magic header in lines 1-5.
+        Closes manifest-relocation gap (#1295 concern #5).
+        """
+        import json as _json
+        import re as _re
+        import tokenize as _tokenize
+        import io as _io
+        findings = []
+        rid = rule.get("id", "<unknown>")
+        discovery_glob = rule.get("discovery_glob") or []
+        if isinstance(discovery_glob, str):
+            discovery_glob = [discovery_glob]
+        skip_validators = rule.get("skip_validators") or {}
+        valid_categories = {"cli-tool", "build-time", "test-only", "deprecated"}
+
+        # HC-PR1-3 schema validation on skip_validators dict.
+        if not isinstance(skip_validators, dict):
+            return [f"  [{rid}] skip_validators must be a dict "
+                    f"{{path: {{category, justification}}}}; got "
+                    f"{type(skip_validators).__name__}"]
+        for sv_path, sv_meta in skip_validators.items():
+            if not isinstance(sv_meta, dict):
+                findings.append(
+                    f"  [{rid}] skip_validators[{sv_path!r}] must be a dict "
+                    f"with 'category' and 'justification' fields")
+                continue
+            cat = sv_meta.get("category")
+            just = (sv_meta.get("justification") or "").strip()
+            if cat not in valid_categories:
+                findings.append(
+                    f"  [{rid}] skip_validators[{sv_path!r}] has category "
+                    f"{cat!r}; must be in {sorted(valid_categories)}")
+            if not just:
+                findings.append(
+                    f"  [{rid}] skip_validators[{sv_path!r}] has empty "
+                    f"justification; must explain why this validator is "
+                    f"exempt from the integration-required rule")
+
+        # Discover validators on disk.
+        # Round-1 critic C5 fix: normalize separators to forward slash for
+        # cross-platform comparison with declared (POSIX-style) paths.
+        discovered = set()
+        for g in discovery_glob:
+            for p in glob.glob(os.path.join(REPO_ROOT, g)):
+                rel = os.path.relpath(p, REPO_ROOT).replace(os.sep, "/")
+                discovered.add(rel)
+
+        # HC-PR1-3 (round-1 critic C1 fix): magic-header MUST come from a
+        # COMMENT token, not a string literal inside a docstring. Use
+        # tokenize.tokenize to get only COMMENT tokens; check first 5
+        # source-line region.
+        magic_value_re = _re.compile(
+            r"^# validator-class: (cli-tool|build-time|test-only|deprecated)\s*$"
+        )
+        magic_exempt = set()
+        for v in discovered:
+            v_path = os.path.join(REPO_ROOT, v)
+            try:
+                src = open(v_path, encoding="utf-8", errors="ignore").read()
+            except OSError:
+                continue
+            try:
+                tokens = list(_tokenize.tokenize(_io.BytesIO(src.encode()).readline))
+            except (_tokenize.TokenizeError, SyntaxError, IndentationError):
+                # Tokenize fails on malformed source — skip (no exemption).
+                continue
+            # Only consider COMMENT tokens whose start line is within first 5.
+            for tok in tokens:
+                if tok.type != _tokenize.COMMENT:
+                    continue
+                if tok.start[0] > 5:
+                    break  # tokens are ordered by line; can stop early
+                if magic_value_re.match(tok.string.strip()):
+                    magic_exempt.add(v)
+                    break
+
+        # Read all `validator_integration_required` rules to compute the
+        # declared validators set.
+        rules_path = os.path.join(
+            REPO_ROOT, ".claude/patterns/template-coherence-rules.json")
+        declared = set()
+        found_stage_b_rule = False
+        try:
+            rules_data = _json.load(open(rules_path))
+            for r in rules_data.get("rules", []):
+                if r.get("type") == "validator_integration_required":
+                    found_stage_b_rule = True
+                    for v in r.get("validators") or []:
+                        declared.add(v)
+        except Exception as e:
+            return findings + [
+                f"  [{rid}] cannot read rules file: {e}"]
+
+        # Round-1 critic C4 fix: explicit failure when Stage B rule is
+        # absent — otherwise Stage C silently emits N false positives.
+        if not found_stage_b_rule and discovered:
+            findings.append(
+                f"  [{rid}] no `validator_integration_required` rule "
+                f"registered in {os.path.relpath(rules_path, REPO_ROOT)} — "
+                f"Stage C cannot compute coverage. Ensure Stage B rule is "
+                f"present (PR1 must include both rules atomically)."
+            )
+            return findings  # Don't compute spurious missing-list
+
+        skip_set = set(skip_validators.keys())
+        missing = discovered - declared - skip_set - magic_exempt
+        for m in sorted(missing):
+            findings.append(
+                f"  [{rid}] validator {m} exists on disk but is not in any "
+                f"`validator_integration_required` rule's validators[], not "
+                f"in skip_validators (with category + justification), AND "
+                f"does not have `# validator-class: <category>` magic header "
+                f"in its first 5 lines. Choose one of: (a) add to a rule's "
+                f"validators[]; (b) add to skip_validators dict with category "
+                f"+ justification; (c) add `# validator-class: <category>` "
+                f"as a comment line at the top of the file."
+            )
+        return findings
+
+    # ---------------------------------------------------------------------------
     # Cross-file rule dispatch — registry-driven with type + field validation.
     #
     # HANDLERS maps each rule type to:
@@ -2631,6 +2875,19 @@ def main() -> int:
         "aggregate_ok_predicate_doc_matches_impl": (check_aggregate_ok_predicate_doc_matches_impl, set(), {"registry_path", "impl_path"}, True),
         # #1275 / Group A — post-completion re-spawn doc presence.
         "post_completion_respawn_doc_present": (check_post_completion_respawn_doc_present, set(), {"registry_path", "agents_dir", "required_section"}, False),
+        # #1295 PR1 — Stage B + Stage C validator coherence rules.
+        "validator_integration_required": (
+            check_validator_integration_required,
+            {"validators", "integration_points"},
+            set(),
+            True,  # is_strict_aoc — hard-block validators MUST stay integrated
+        ),
+        "validator_inventory_completeness": (
+            check_validator_inventory_completeness,
+            set(),
+            {"discovery_glob", "skip_validators"},
+            True,  # is_strict_aoc — meta-rule for hard-block validator coverage
+        ),
     }
     META_KEYS = {"id", "type", "severity", "description", "_transitional_note", "_comment", "convention_doc"}
 

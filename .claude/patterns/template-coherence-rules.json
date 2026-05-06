@@ -359,6 +359,69 @@
       "agents_dir": ".claude/agents",
       "required_section": "## Post-completion re-spawn",
       "description": "#1275 / Group A — every agent with `pass_lead_orchestrated` in its hard_gates `allow_predicates` MUST contain a `## Post-completion re-spawn` section in its .md describing how the lead orchestrates the re-spawn (SOURCE_RUN_ID/SOURCE_SKILL env-var contract, write-agent-trace.sh invocation, expected verdict). Enumerated from hard_gates (single source of truth) so adding a new lead-orchestrated agent automatically triggers the doc requirement. Severity=warn — informational catch for future drift."
+    },
+    {
+      "id": "hard-block-validators-integration-required",
+      "type": "validator_integration_required",
+      "severity": "block",
+      "validators": [
+        ".claude/scripts/validate-retrospective-completeness.py",
+        ".claude/scripts/validate-step55-evidence.py",
+        ".claude/scripts/validate-image-spec-compliance.py",
+        ".claude/scripts/validate-scaffold-recommendations-schema.py",
+        ".claude/scripts/validate-observer-evidence-coverage.py"
+      ],
+      "integration_points": [
+        {
+          "path": ".claude/patterns/state-registry.json",
+          "executable_keys": ["verify"],
+          "state_value_executable": true
+        },
+        ".claude/patterns/observation-phase.md",
+        ".claude/scripts/check-observation-artifacts.sh",
+        ".claude/scripts/lifecycle-finalize.sh"
+      ],
+      "description": "#1295 PR1 — each hard-block validator MUST be referenced by basename in EXECUTABLE CONTEXT in at least one declared integration_point. JSON: only inside declared executable_keys (verify) OR bare-string state values whose parent_key matches state-name regex ^(?=.*\\d)[a-z0-9]+$ (HC-PR1-1 disambiguation: state-registry has 111 such bare-string entries; description/rationale strings do NOT count). .sh: non-comment lines only. .md: fenced code blocks only. Adding a new validator: add to validators[] AND wire it into ≥1 integration point's executable context in the same PR. Baseline=0 verified during /solve PR1 sandbox: all 5 validators detected, no false positives on description fields."
+    },
+    {
+      "id": "hard-block-validator-inventory-completeness",
+      "type": "validator_inventory_completeness",
+      "severity": "block",
+      "discovery_glob": [
+        ".claude/scripts/validate-*.py",
+        "scripts/validate-*.py"
+      ],
+      "skip_validators": {
+        ".claude/scripts/validate-behavior-pages.py": {
+          "category": "cli-tool",
+          "justification": "Standalone CLI for behavior-page enumeration; not invoked by lifecycle-finalize. Use case: developers run manually to debug behavior coverage."
+        },
+        "scripts/validate-stack-knowledge.py": {
+          "category": "build-time",
+          "justification": "Run by /upgrade skill during template sync; not part of skill lifecycle gates."
+        },
+        "scripts/validate-experiment.py": {
+          "category": "build-time",
+          "justification": "Run by /spec skill at experiment.yaml authoring time; not part of skill lifecycle gates."
+        },
+        "scripts/validate-events.py": {
+          "category": "build-time",
+          "justification": "Run by /spec at experiment.yaml authoring; events.yaml validation is pre-execution."
+        },
+        "scripts/validate-semantics.py": {
+          "category": "build-time",
+          "justification": "Run by /spec at experiment.yaml authoring; semantic checks pre-execution."
+        },
+        "scripts/validate-frontmatter.py": {
+          "category": "build-time",
+          "justification": "Run by lifecycle-init for stack-file frontmatter validation; pre-skill-execution check, not part of finalize gates."
+        },
+        "scripts/validate-convergence-config.py": {
+          "category": "build-time",
+          "justification": "Run by /iterate at convergence-config authoring; pre-execution validation."
+        }
+      },
+      "description": "#1295 PR1 — every disk-discovered validate-*.py MUST be in some `validator_integration_required` rule's validators[] OR in skip_validators (with category in {cli-tool, build-time, test-only, deprecated} AND non-empty justification, HC-PR1-3) OR have `# validator-class: <category>` magic header at start of line 1-5 (no docstring nesting). Closes manifest-relocation gap. The justification requirement prevents silent-skip degradation."
     }
   ]
 }
