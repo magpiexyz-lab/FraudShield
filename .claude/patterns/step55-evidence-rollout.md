@@ -190,3 +190,42 @@ Pre-cutoff sidecars (no `schema_version` field) on pre-cutoff runs are
 grandfathered (validator SKIPs). Post-cutoff runs encountering an unstamped
 sidecar BLOCK in deny mode (producer-side drift). See
 `.claude/scripts/validate-step55-evidence.py:main()` for the decision matrix.
+
+## Migration for Legacy Projects
+
+**Symptom**: a project that ran `/bootstrap` between the cutoff
+(`2026-05-04T05:25:30Z`) and PR #1309 merge (`2026-05-06`) has a
+post-cutoff `run_id` BUT a sidecar without `schema_version`. This is
+because `scaffold-images` started stamping `schema_version: 2` only after
+PR #1309. On warn mode (today) the validator emits a "missing
+schema_version" violation in telemetry — soak query treats this as
+non-clean, **soak never passes** until the legacy sidecar is migrated.
+On deny mode (after flip) the validator BLOCKs.
+
+**Fix**: run the migration script once per affected project, then re-run
+`/verify`:
+
+```bash
+python3 .claude/scripts/migrate-image-candidates-v2.py
+# → "stamped v2" on first run; "already v2" on subsequent runs (idempotent)
+```
+
+The script:
+- adds `"schema_version": 2` as the first key in `.runs/image-candidates.json`
+- preserves all other fields verbatim
+- atomic write (temp + rename) so a SIGINT mid-write cannot corrupt the file
+- returns exit 0 even when sidecar is absent (safe to wire into pre-flight)
+- exit 1 only on malformed JSON
+
+**When to run**: any time the soak query reports that the latest entry
+in `.runs/step55-soak-telemetry.jsonl` has
+`violation_categories: ["missing_schema_version"]`. Once 10 clean
+warn-mode runs accumulate after the migration, the deny-mode flip is
+sanctioned.
+
+**Detection (CI helper)**: the deny-mode flip PR may wire this script
+into `.claude/skills/verify/state-2a-*.md` or `lifecycle-finalize.sh` as a
+one-shot pre-flight migration so future legacy bootstraps auto-resolve
+without operator action. This is intentionally NOT done in this PR — the
+script is opt-in, operator-driven, to keep the blast radius minimal during
+the soak window.

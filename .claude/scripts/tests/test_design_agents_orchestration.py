@@ -292,6 +292,53 @@ class TestConsistencyCheckerSoftExit(unittest.TestCase):
                             "invocation uses --partial true (the flag does not exist)")
 
 
+class TestScaffoldImagesSchemaVersionStamp(unittest.TestCase):
+    """#1272 follow-up — producer-drift recurrence guard.
+
+    The validate-step55-evidence.py validator at state-3b VERIFY enforces
+    schema_version=2 on post-cutoff sidecars. The producer-side enforcement
+    (scaffold-images Step 5b stamps the field on first write) was added in
+    PR #1309. If a future scaffold-images change accidentally drops the
+    stamp, post-cutoff projects would emit "missing schema_version" telemetry
+    and the soak gate would never pass — but the regression would only
+    surface after several real bootstraps, not at CI time.
+
+    These tests catch the regression at lint/test time."""
+
+    SCAFFOLD_IMAGES_PROC = ROOT / ".claude/procedures/scaffold-images.md"
+
+    def test_step5b_template_stamps_schema_version_2(self):
+        """scaffold-images Step 5b sidecar template MUST contain
+        `"schema_version": 2` — otherwise scaffold-images writes an
+        unstamped sidecar that triggers validate-step55-evidence.py
+        producer-drift detection on every post-cutoff verify."""
+        text = self.SCAFFOLD_IMAGES_PROC.read_text()
+        self.assertIn('"schema_version": 2', text,
+            'scaffold-images Step 5b template must stamp `"schema_version": 2` '
+            '(see PR #1309 commit f6496e2). Producer-drift would re-create '
+            'the #1272 chicken-and-egg back door.')
+
+    def test_step5b_documents_canonical_birthplace_role(self):
+        """The procedure must explain WHY the stamp is there — otherwise
+        a future maintainer might delete it as 'redundant' (design-critic
+        also stamps as defensive idempotent fallback)."""
+        text = self.SCAFFOLD_IMAGES_PROC.read_text().lower()
+        self.assertTrue(
+            "canonical birthplace" in text or "#1272 follow-up" in text,
+            "Step 5b must explain canonical-birthplace role of the stamp; "
+            "delete-protection rationale is load-bearing for the soak gate.")
+
+    def test_migration_script_referenced_from_runbook(self):
+        """The rollout runbook must reference the migration script —
+        otherwise operators won't know how to unblock soak when their
+        legacy sidecar emits 'missing schema_version' telemetry."""
+        runbook = ROOT / ".claude/patterns/step55-evidence-rollout.md"
+        text = runbook.read_text()
+        self.assertIn("migrate-image-candidates-v2.py", text,
+            "step55-evidence-rollout.md must reference the migration script "
+            "so operators can unblock the soak window on legacy sidecars.")
+
+
 # ── (c) Merger fix-ledger consultation tests ───────────────────────────
 
 

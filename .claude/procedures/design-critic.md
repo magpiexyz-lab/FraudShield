@@ -253,7 +253,20 @@ If you are reviewing the **landing page** AND `.runs/image-candidates.json` exis
    c. **Sampling rule (#1272, round-2 Concern 8):** rank unused candidates by their out-of-context scores; evaluate at minimum `min(N-1, 6)` candidates IN page context per slot (where N = total candidates). Prefer candidates within score-delta < 1 of the current winner; pick remaining slots from highest-scoring out-of-context candidates if fewer than the floor are within delta.
    d. For each candidate selected in (c), execute the Candidate Image Swap Protocol AND the **physical evidence contract (#1272 hard-block)**:
       - Save the in-context screenshot to `.runs/screenshots/candidates/<slot>-<candidate-basename>.png` (overwriting if exists). The screenshot must be PNG format, dimensions ≥ 1280×720.
-      - Save the rendered DOM alongside the screenshot to `.runs/screenshots/candidates/<slot>-<candidate-basename>.html` via `await page.content()` from the same Playwright session. Required by the DOM-binding check (#1272 follow-up): the validator at state-3b VERIFY asserts at least one `<img src>` in this DOM references either the candidate basename or the canonical slot path. Defense against fabricated scores against unrelated screenshots — agents cannot produce a DOM snapshot for a page they did not render.
+      - Save the rendered DOM alongside the screenshot to `.runs/screenshots/candidates/<slot>-<candidate-basename>.html` from the SAME Playwright session that produced the screenshot. Both writes happen inside the inline Node.js loop you already use for the Candidate Image Swap Protocol — extend it with one extra `fs.writeFileSync` call per iteration:
+
+        ```js
+        // Inside your existing per-candidate Playwright loop:
+        const safeBase = candidateBasename.replace(/\.[^.]+$/, '');
+        const pngPath  = `.runs/screenshots/candidates/${slot}-${safeBase}.png`;
+        const htmlPath = `.runs/screenshots/candidates/${slot}-${safeBase}.html`;
+        await page.goto('http://localhost:3099/' /* or page-specific route */, { waitUntil: 'networkidle' });
+        await page.setViewportSize({ width: 1280, height: 800 });
+        await page.screenshot({ path: pngPath, fullPage: true });
+        fs.writeFileSync(htmlPath, await page.content());  // <-- DOM-binding evidence
+        ```
+
+        Required by the DOM-binding check (#1272 follow-up): the validator at state-3b VERIFY asserts at least one `<img src>` in this DOM references either the candidate basename or the canonical slot path. Defense against fabricated scores against unrelated screenshots — agents cannot produce a DOM snapshot for a page they did not render.
       - Write a sibling `<candidate-path>.provenance.json` if not already present (scaffold-images writes this at generation time per #1272 — only re-write if missing). Required fields: `model`, `prompt_hash`, `seed`, `generated_at`.
       - Populate `score_in_context: {subject, style, color, composition, polish}` on the candidate in `image-candidates.json`.
       - Populate `evaluation_notes: ["<reasoning, ≥50 chars>"]` on the candidate — at least one substantive note explaining the score in context.
