@@ -35,18 +35,17 @@ Compute teardown quality (see `.claude/patterns/skill-scoring.md`):
 ```bash
 RUN_ID=$(python3 -c "import json; print(json.load(open('.runs/teardown-context.json')).get('run_id', ''))" 2>/dev/null || echo "")
 Q_DELETION=$(test ! -f .runs/deploy-manifest.json && echo "1.0" || echo "0.0")
-python3 -c "
-import json, datetime
-with open('.runs/q-dimensions.json', 'w') as f:
-    json.dump({
-        'skill': 'teardown',
-        'scope': 'teardown',
-        'dims': {'deletion': float('$Q_DELETION'), 'completion': 1.0},
-        'run_id': '$RUN_ID',
-        'timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat()
-    }, f, indent=2)
-print('Wrote .runs/q-dimensions.json')
-" || true
+PAYLOAD=$(Q_DELETION_ENV="$Q_DELETION" python3 -c "
+import json, os
+print(json.dumps({
+    'scope': 'teardown',
+    'dims': {'deletion': float(os.environ['Q_DELETION_ENV']), 'completion': 1.0}
+}))
+")
+bash .claude/scripts/lib/write-gate-artifact.sh \
+  --path .runs/q-dimensions.json \
+  --payload "$PAYLOAD" \
+  --skill teardown || true
 ```
 
 ### Step 5: Summary

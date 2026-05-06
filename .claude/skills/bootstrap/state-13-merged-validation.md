@@ -22,11 +22,14 @@ If still failing after 2 attempts: list all remaining errors and their file loca
 
 Write intermediate artifact:
 ```bash
-python3 -c "
+PAYLOAD=$(python3 -c "
 import json
-json.dump({'build_pass': True, 'exit_code': 0, 'artifacts_verified': True}, open('.runs/bootstrap-build-result.json', 'w'), indent=2)
-print('Wrote .runs/bootstrap-build-result.json')
-"
+print(json.dumps({'build_pass': True, 'exit_code': 0, 'artifacts_verified': True}))
+")
+bash .claude/scripts/lib/write-gate-artifact.sh \
+  --path .runs/bootstrap-build-result.json \
+  --payload "$PAYLOAD" \
+  --skill bootstrap
 ```
 
 **POSTCONDITIONS:**

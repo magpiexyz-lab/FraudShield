@@ -67,9 +67,20 @@ if grep -q '^variants:' experiment/experiment.yaml 2>/dev/null; then
 fi
 CORE_FILES+=']'
 COMMIT_SHA=$(git rev-parse HEAD 2>/dev/null || echo "")
-cat > .runs/gate-verdicts/phase-a-sentinel.json << PAEOF
-{"phase_a_complete": true, "build_passing": true, "commit_sha": "${COMMIT_SHA}", "timestamp": "<ISO 8601>", "files": ${CORE_FILES}}
-PAEOF
+PAYLOAD=$(COMMIT_SHA_ENV="$COMMIT_SHA" CORE_FILES_ENV="$CORE_FILES" python3 -c "
+import json, os, datetime
+print(json.dumps({
+    'phase_a_complete': True,
+    'build_passing': True,
+    'commit_sha': os.environ['COMMIT_SHA_ENV'],
+    'timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+    'files': json.loads(os.environ['CORE_FILES_ENV']),
+}))
+")
+bash .claude/scripts/lib/write-gate-artifact.sh \
+  --path .runs/gate-verdicts/phase-a-sentinel.json \
+  --payload "$PAYLOAD" \
+  --skill bootstrap
 ```
 
 The sentinel's `build_passing: true` field is a usability attestation: it proves Phase A files compiled successfully at seal time. Slice 3's gate-side EARC reads this attestation when evaluating evidence-anchored repair requests for residual cases (post-seal regressions, runtime-only failures invisible to `npm run build`, upstream dependency drift).

@@ -69,8 +69,8 @@ grep -hn '^[a-z_]*()' .claude/hooks/*.sh 2>/dev/null
 If scope is `full`, generate `.runs/audit-skill-manifest.json`:
 
 ```bash
-python3 -c "
-import json, glob, re, os
+PAYLOAD=$(python3 -c "
+import json, glob, re, os, sys
 try:
     import yaml
 except ImportError:
@@ -206,9 +206,13 @@ for cmd_file in sorted(glob.glob('.claude/commands/*.md')):
     }
 
 os.makedirs('.runs', exist_ok=True)
-json.dump(manifest, open('.runs/audit-skill-manifest.json', 'w'), indent=2)
-print(f'Skill manifest: {len(manifest)} skills, {sum(s[\"disk_state_count\"] for s in manifest.values())} state files')
-"
+print(f'Skill manifest: {len(manifest)} skills, {sum(s[\"disk_state_count\"] for s in manifest.values())} state files', file=sys.stderr)
+print(json.dumps(manifest))
+")
+bash .claude/scripts/lib/write-gate-artifact.sh \
+  --path .runs/audit-skill-manifest.json \
+  --payload "$PAYLOAD" \
+  --skill audit
 ```
 
 Validator health baseline:

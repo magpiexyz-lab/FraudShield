@@ -46,7 +46,7 @@ If still failing after 2 attempts: list all remaining errors and their file loca
 
 Write intermediate artifact:
 ```bash
-python3 -c "
+PAYLOAD=$(python3 -c "
 import json
 result = {
     'analytics_wired': True,   # or 'skipped' if stack.analytics absent
@@ -55,9 +55,12 @@ result = {
     'fake_doors': True         # or 'skipped' if no fake doors
 }
 # Set to 'skipped' for checks that don't apply to the current archetype/stack
-json.dump(result, open('.runs/bootstrap-design-validated.json', 'w'), indent=2)
-print('Wrote .runs/bootstrap-design-validated.json')
-"
+print(json.dumps(result))
+")
+bash .claude/scripts/lib/write-gate-artifact.sh \
+  --path .runs/bootstrap-design-validated.json \
+  --payload "$PAYLOAD" \
+  --skill bootstrap
 ```
 
 **POSTCONDITIONS:**

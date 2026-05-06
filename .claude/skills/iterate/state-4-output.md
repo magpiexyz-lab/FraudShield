@@ -83,18 +83,17 @@ try:
 except:
     print(json.dumps({'completion': 1.0}))
 " 2>/dev/null || echo '{"completion": 1.0}')
-python3 -c "
-import json, datetime
-with open('.runs/q-dimensions.json', 'w') as f:
-    json.dump({
-        'skill': 'iterate',
-        'scope': 'iterate',
-        'dims': json.loads('$ITERATE_DIMS'),
-        'run_id': '$RUN_ID' or 'iterate-unknown',
-        'timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat()
-    }, f, indent=2)
-print('Wrote .runs/q-dimensions.json')
-" || true
+PAYLOAD=$(ITERATE_DIMS_ENV="$ITERATE_DIMS" python3 -c "
+import json, os
+print(json.dumps({
+    'scope': 'iterate',
+    'dims': json.loads(os.environ['ITERATE_DIMS_ENV'])
+}))
+")
+bash .claude/scripts/lib/write-gate-artifact.sh \
+  --path .runs/q-dimensions.json \
+  --payload "$PAYLOAD" \
+  --skill iterate || true
 ```
 
 ### Summarize next steps

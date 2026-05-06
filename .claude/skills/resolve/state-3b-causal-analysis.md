@@ -99,14 +99,18 @@ Type 1/2/3:
      --label oscillation-escalation \
      --title "[escalation] /resolve halted: oscillation at <file:line>" \
      --body "<evidence block + linked prior commits + run_id from resolve-context.json>" 2>/dev/null || true)
-   python3 -c "
-   import json, sys
-   url = sys.argv[1].strip() if len(sys.argv) > 1 else ''
+   PAYLOAD=$(ESCALATION_URL_ENV="$ESCALATION_URL" python3 -c "
+   import json, os
+   url = os.environ['ESCALATION_URL_ENV'].strip()
    a = json.load(open('.runs/resolve-causal-analysis.json'))
    a['escalation_issue_url'] = url
    a['gh_failed'] = (url == '')
-   json.dump(a, open('.runs/resolve-causal-analysis.json','w'), indent=2)
-   " "$ESCALATION_URL"
+   print(json.dumps(a))
+   ")
+   bash .claude/scripts/lib/write-gate-artifact.sh \
+     --path .runs/resolve-causal-analysis.json \
+     --payload "$PAYLOAD" \
+     --skill resolve
    ```
    `gh` auto-creates the `oscillation-escalation` label on first use. On
    `gh` failure the artifact records `gh_failed=true` and an empty URL;
@@ -159,16 +163,29 @@ Type 1/2/3:
 
 2. Log the justification to both the artifact and context:
    ```bash
-   python3 -c "
-   import json, sys
-   reason = sys.argv[1]
+   REASON="<user-supplied justification>"
+   # Update resolve-causal-analysis.json
+   PAYLOAD_A=$(REASON_ENV="$REASON" python3 -c "
+   import json, os
    a = json.load(open('.runs/resolve-causal-analysis.json'))
-   a['halt_override_reason'] = reason
-   json.dump(a, open('.runs/resolve-causal-analysis.json', 'w'), indent=2)
+   a['halt_override_reason'] = os.environ['REASON_ENV']
+   print(json.dumps(a))
+   ")
+   bash .claude/scripts/lib/write-gate-artifact.sh \
+     --path .runs/resolve-causal-analysis.json \
+     --payload "$PAYLOAD_A" \
+     --skill resolve
+   # Update resolve-context.json
+   PAYLOAD_B=$(REASON_ENV="$REASON" python3 -c "
+   import json, os
    ctx = json.load(open('.runs/resolve-context.json'))
-   ctx['halt_override_reason'] = reason
-   json.dump(ctx, open('.runs/resolve-context.json', 'w'), indent=2)
-   " "<user-supplied justification>"
+   ctx['halt_override_reason'] = os.environ['REASON_ENV']
+   print(json.dumps(ctx))
+   ")
+   bash .claude/scripts/lib/write-gate-artifact.sh \
+     --path .runs/resolve-context.json \
+     --payload "$PAYLOAD_B" \
+     --skill resolve
    ```
 
 3. Advance to STATE 4 normally. Do NOT re-gate the override at STATE 7 —

@@ -10,18 +10,23 @@
 - If `final_errors` > `baseline_errors` -> stop and report regression
 - Write `.runs/review-complete.json` (required by verify-pr-gate.sh for PR creation):
   ```bash
-  cat > .runs/review-complete.json << RCEOF
-  {
-    "branch": "$(git branch --show-current)",
-    "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-    "iterations": <iteration count>,
-    "yield": <overall yield rate>,
-    "baseline_errors": <baseline_errors>,
-    "final_errors": <final_errors>,
-    "findings_fixed": <total fixed across all iterations>,
-    "findings_disputed": <total disputed across all iterations>
-  }
-  RCEOF
+  PAYLOAD=$(BRANCH="$(git branch --show-current)" TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)" python3 -c "
+  import json, os
+  print(json.dumps({
+      'branch': os.environ['BRANCH'],
+      'timestamp': os.environ['TIMESTAMP'],
+      'iterations': '<iteration count>',
+      'yield': '<overall yield rate>',
+      'baseline_errors': '<baseline_errors>',
+      'final_errors': '<final_errors>',
+      'findings_fixed': '<total fixed across all iterations>',
+      'findings_disputed': '<total disputed across all iterations>',
+  }))
+  ")
+  bash .claude/scripts/lib/write-gate-artifact.sh \
+    --path .runs/review-complete.json \
+    --payload "$PAYLOAD" \
+    --skill review
   ```
 
 **POSTCONDITIONS:**

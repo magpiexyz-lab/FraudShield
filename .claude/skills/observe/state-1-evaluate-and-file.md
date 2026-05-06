@@ -171,18 +171,17 @@ observation IS the user's requested task.
 
 ```bash
 RUN_ID=$(python3 -c "import json; print(json.load(open('.runs/observe-context.json')).get('run_id', ''))" 2>/dev/null || echo "")
-python3 -c "
-import json, datetime
-with open('.runs/q-dimensions.json', 'w') as f:
-    json.dump({
-        'skill': 'observe',
-        'scope': 'observe',
-        'dims': {'filing': 1.0},
-        'run_id': '$RUN_ID',
-        'timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat()
-    }, f, indent=2)
-print('Wrote .runs/q-dimensions.json')
-" || true
+PAYLOAD=$(python3 -c "
+import json, os
+print(json.dumps({
+    'scope': 'observe',
+    'dims': {'filing': 1.0}
+}))
+")
+bash .claude/scripts/lib/write-gate-artifact.sh \
+  --path .runs/q-dimensions.json \
+  --payload "$PAYLOAD" \
+  --skill observe || true
 ```
 
 **POSTCONDITIONS:**

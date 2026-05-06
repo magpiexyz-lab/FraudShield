@@ -6,13 +6,19 @@
 
 - If `stack.testing` is NOT present in experiment.yaml → write `.runs/e2e-result.json`:
   ```bash
-  echo '{"skipped":true,"reason":"no testing stack"}' > .runs/e2e-result.json
+  bash .claude/scripts/lib/write-gate-artifact.sh \
+    --path .runs/e2e-result.json \
+    --payload '{"skipped":true,"reason":"no testing stack"}' \
+    --skill verify
   ```
   Skip to STATE 7a.
 
 - If `stack.testing` is present but no test configuration file exists → write `.runs/e2e-result.json`:
   ```bash
-  echo '{"skipped":true,"reason":"no test configuration"}' > .runs/e2e-result.json
+  bash .claude/scripts/lib/write-gate-artifact.sh \
+    --path .runs/e2e-result.json \
+    --payload '{"skipped":true,"reason":"no test configuration"}' \
+    --skill verify
   ```
   Skip to STATE 7a.
 
@@ -23,7 +29,10 @@
   - `vitest` → list command: `npx vitest list`, run command: `npx vitest run`
   - If the value is absent or not one of {playwright, vitest} → write `.runs/e2e-result.json`:
     ```bash
-    echo '{"skipped":true,"reason":"unrecognized test runner"}' > .runs/e2e-result.json
+    bash .claude/scripts/lib/write-gate-artifact.sh \
+      --path .runs/e2e-result.json \
+      --payload '{"skipped":true,"reason":"unrecognized test runner"}' \
+      --skill verify
     ```
     Skip to STATE 7a.
 
@@ -43,7 +52,10 @@
   4. If test file error (syntax errors in test files, missing imports in tests): proceed to Phase B — these count against the test budget.
   5. If config errors persist after 2 attempts, write `.runs/e2e-result.json` and record a WARN-severity ledger entry:
      ```bash
-     echo '{"passed":false,"attempts":0,"config_error":true,"reason":"test config broken after 2 fix attempts"}' > .runs/e2e-result.json
+     bash .claude/scripts/lib/write-gate-artifact.sh \
+       --path .runs/e2e-result.json \
+       --payload '{"passed":false,"attempts":0,"config_error":true,"reason":"test config broken after 2 fix attempts"}' \
+       --skill verify
      python3 .claude/scripts/write-fix-ledger.py --lead-fix --skill verify --severity warn \
        --fix-json '{"file":"<config-file>","symptom":"e2e infrastructure broken after 2 fix attempts","fix":"flagged in verify report; tests NOT executed"}'
      ```
@@ -64,9 +76,10 @@
 
   After tests pass (or 3-attempt budget exhausted), write `.runs/e2e-result.json`:
   ```bash
-  cat > .runs/e2e-result.json << 'E2EEOF'
-  {"passed":<true|false>,"attempts":<N>,"fixes":<N>,"config_attempts":<CA>}
-  E2EEOF
+  bash .claude/scripts/lib/write-gate-artifact.sh \
+    --path .runs/e2e-result.json \
+    --payload '{"passed":<true|false>,"attempts":<N>,"fixes":<N>,"config_attempts":<CA>}' \
+    --skill verify
   ```
 
   **Phase C: Unit tests (co-installed vitest)**

@@ -725,18 +725,17 @@ Compute distribute execution quality (see `.claude/patterns/skill-scoring.md`):
 ```bash
 RUN_ID=$(python3 -c "import json; print(json.load(open('.runs/distribute-context.json')).get('run_id', ''))" 2>/dev/null || echo "")
 CAMPAIGN_CREATED=$(grep -q 'campaign_id' experiment/ads.yaml 2>/dev/null && echo "1.0" || echo "0.5")
-python3 -c "
-import json, datetime
-with open('.runs/q-dimensions.json', 'w') as f:
-    json.dump({
-        'skill': 'distribute',
-        'scope': 'distribute',
-        'dims': {'campaign': float($CAMPAIGN_CREATED), 'completion': 1.0},
-        'run_id': '$RUN_ID',
-        'timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat()
-    }, f, indent=2)
-print('Wrote .runs/q-dimensions.json')
-" || true
+PAYLOAD=$(CAMPAIGN_CREATED_ENV="$CAMPAIGN_CREATED" python3 -c "
+import json, os
+print(json.dumps({
+    'scope': 'distribute',
+    'dims': {'campaign': float(os.environ['CAMPAIGN_CREATED_ENV']), 'completion': 1.0}
+}))
+")
+bash .claude/scripts/lib/write-gate-artifact.sh \
+  --path .runs/q-dimensions.json \
+  --payload "$PAYLOAD" \
+  --skill distribute || true
 ```
 
 ### 6h: Auto-merge

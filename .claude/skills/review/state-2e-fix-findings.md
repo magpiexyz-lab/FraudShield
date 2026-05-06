@@ -31,16 +31,20 @@ If no fixes succeeded this iteration -> **exit loop**, proceed to State 3.
    iteration), `all_findings_processed` (all queue items have a fate, fixes
    succeeded), or `max_iterations` (capped before this iteration finished).
    ```bash
-   python3 - <<'PYEOF'
+   PAYLOAD=$(python3 -c "
    import json
    batch = {
        'fixes_succeeded': 0,    # <int — number of fixes that were kept>
        'fixes_reverted': 0,     # <int — number of fixes reverted due to regression>
        'fixes_skipped': 0,      # <int — number of findings not attempted>
-       'exit_reason': 'no_fixes'   # <"no_fixes" | "all_findings_processed" | "max_iterations">
+       'exit_reason': 'no_fixes'   # <\"no_fixes\" | \"all_findings_processed\" | \"max_iterations\">
    }
-   json.dump(batch, open('.runs/review-loop-decision.json', 'w'), indent=2)
-   PYEOF
+   print(json.dumps(batch))
+   ")
+   bash .claude/scripts/lib/write-gate-artifact.sh \
+     --path .runs/review-loop-decision.json \
+     --payload "$PAYLOAD" \
+     --skill review
    ```
    Replace placeholder values with actual counts and reason from this iteration.
 

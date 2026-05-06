@@ -58,7 +58,7 @@ fi
 Run the automated security merge script:
 
 ```bash
-python3 -c "
+PAYLOAD=$(python3 -c "
 import json, os
 traces = '.runs/agent-traces'
 ctx = json.load(open('.runs/verify-context.json'))
@@ -95,18 +95,21 @@ for f in d_fails:
         if key not in seen:
             merged.append({**f, 'source': 'defender'})
 
+import sys
 result = {
     'timestamp': __import__('datetime').datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
     'defender_fails': defender.get('fails_count', 0),
     'attacker_findings': attacker.get('findings_count', 0),
     'merged_issues': len(merged),
     'issues': merged,
-    'run_id': run_id
 }
-with open('.runs/security-merge.json', 'w') as f:
-    json.dump(result, f)
-print(f'Security merge: {result[\"defender_fails\"]} defender FAILs + {result[\"attacker_findings\"]} attacker findings -> {result[\"merged_issues\"]} merged issues')
-"
+print(f'Security merge: {result[\"defender_fails\"]} defender FAILs + {result[\"attacker_findings\"]} attacker findings -> {result[\"merged_issues\"]} merged issues', file=sys.stderr)
+print(json.dumps(result))
+")
+bash .claude/scripts/lib/write-gate-artifact.sh \
+  --path .runs/security-merge.json \
+  --payload "$PAYLOAD" \
+  --skill verify
 ```
 
 ### Step 2: security-fixer (if merged security has issues)

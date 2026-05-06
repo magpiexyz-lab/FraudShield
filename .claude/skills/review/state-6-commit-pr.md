@@ -22,18 +22,17 @@ try:
 except:
     print(json.dumps({'completion': 1.0}))
 " 2>/dev/null || echo '{"completion": 1.0}')
-python3 -c "
-import json, datetime
-with open('.runs/q-dimensions.json', 'w') as f:
-    json.dump({
-        'skill': 'review',
-        'scope': 'review',
-        'dims': json.loads('$REVIEW_DIMS'),
-        'run_id': '$RUN_ID',
-        'timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat()
-    }, f, indent=2)
-print('Wrote .runs/q-dimensions.json')
-" || true
+PAYLOAD=$(REVIEW_DIMS_ENV="$REVIEW_DIMS" python3 -c "
+import json, os
+print(json.dumps({
+    'scope': 'review',
+    'dims': json.loads(os.environ['REVIEW_DIMS_ENV'])
+}))
+")
+bash .claude/scripts/lib/write-gate-artifact.sh \
+  --path .runs/q-dimensions.json \
+  --payload "$PAYLOAD" \
+  --skill review || true
 ```
 
 If no branch exists (no findings across all iterations):

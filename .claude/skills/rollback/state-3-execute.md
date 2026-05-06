@@ -45,18 +45,17 @@ Compute rollback quality (see `.claude/patterns/skill-scoring.md`):
 
 ```bash
 RUN_ID=$(python3 -c "import json; print(json.load(open('.runs/rollback-context.json')).get('run_id', ''))" 2>/dev/null || echo "")
-python3 -c "
-import json, datetime
-with open('.runs/q-dimensions.json', 'w') as f:
-    json.dump({
-        'skill': 'rollback',
-        'scope': 'rollback',
-        'dims': {'rollback': 1.0, 'completion': 1.0},
-        'run_id': '$RUN_ID',
-        'timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat()
-    }, f, indent=2)
-print('Wrote .runs/q-dimensions.json')
-" || true
+PAYLOAD=$(python3 -c "
+import json, os
+print(json.dumps({
+    'scope': 'rollback',
+    'dims': {'rollback': 1.0, 'completion': 1.0}
+}))
+")
+bash .claude/scripts/lib/write-gate-artifact.sh \
+  --path .runs/q-dimensions.json \
+  --payload "$PAYLOAD" \
+  --skill rollback || true
 ```
 
 **POSTCONDITIONS:**

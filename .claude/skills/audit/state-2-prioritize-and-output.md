@@ -112,19 +112,17 @@ if os.path.exists('.runs/audit-manifest.json'):
     q_findings = 1.0 if int(m.get('total_findings', 0)) > 0 else 0.5
 print(json.dumps({'coverage': 1.0, 'findings': q_findings}))
 " 2>/dev/null || echo '{"coverage": 1.0, "findings": 0.5}')
-python3 -c "
-import json, datetime
-dims = json.loads('$AUDIT_DIMS')
-with open('.runs/q-dimensions.json', 'w') as f:
-    json.dump({
-        'skill': 'audit',
-        'scope': 'audit',
-        'dims': dims,
-        'run_id': '$RUN_ID',
-        'timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat()
-    }, f, indent=2)
-print('Wrote .runs/q-dimensions.json')
-" || true
+PAYLOAD=$(python3 -c "
+import json, os
+print(json.dumps({
+    'scope': 'audit',
+    'dims': json.loads(os.environ['AUDIT_DIMS_ENV'])
+}))
+")
+bash .claude/scripts/lib/write-gate-artifact.sh \
+  --path .runs/q-dimensions.json \
+  --payload "$PAYLOAD" \
+  --skill audit || true
 ```
 
 ### Actionable Prompts

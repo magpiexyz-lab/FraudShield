@@ -18,9 +18,13 @@ e. **Update the trace:** set `worktree_merged: true`.
 
 If 2+ implementer agents were spawned: quick consistency scan -- check for naming divergence, duplicate utilities (3+ copies per Rule 4), and mixed error handling patterns across modified files. Fix under green tests. Budget: 3 minutes. After scan, write result artifact:
 ```bash
-python3 -c "
+PAYLOAD=$(python3 -c "
 import json, datetime
-result = {'timestamp': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'), 'implementer_count': <N>, 'issues_found': <N>, 'issues_fixed': <N>, 'status': 'pass'}
-json.dump(result, open('.runs/consistency-scan-result.json', 'w'))
-"
+result = {'timestamp': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'), 'implementer_count': '<N>', 'issues_found': '<N>', 'issues_fixed': '<N>', 'status': 'pass'}
+print(json.dumps(result))
+")
+# Procedure called from a skill context — pass the active skill via env or use --source-* if post-completion.
+bash .claude/scripts/lib/write-gate-artifact.sh \
+  --path .runs/consistency-scan-result.json \
+  --payload "$PAYLOAD"
 ```

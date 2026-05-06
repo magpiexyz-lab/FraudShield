@@ -26,18 +26,17 @@ Compute bootstrap execution quality (see `.claude/patterns/skill-scoring.md`):
 RUN_ID=$(python3 -c "import json; print(json.load(open('.runs/bootstrap-context.json')).get('run_id', ''))" 2>/dev/null || echo "")
 GATES_PASSED=$(ls .runs/gate-verdicts/bg*.json 2>/dev/null | wc -l | tr -d ' ')
 Q_GATES=$(python3 -c "print(round(int('${GATES_PASSED}') / max(4, 1), 3))")
-python3 -c "
-import json, datetime
-with open('.runs/q-dimensions.json', 'w') as f:
-    json.dump({
-        'skill': 'bootstrap',
-        'scope': 'bootstrap',
-        'dims': {'gates': float('$Q_GATES'), 'completion': 1.0},
-        'run_id': '$RUN_ID' or 'bootstrap-unknown',
-        'timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat()
-    }, f, indent=2)
-print('Wrote .runs/q-dimensions.json')
-" || true
+PAYLOAD=$(Q_GATES_ENV="$Q_GATES" python3 -c "
+import json, os
+print(json.dumps({
+    'scope': 'bootstrap',
+    'dims': {'gates': float(os.environ['Q_GATES_ENV']), 'completion': 1.0}
+}))
+")
+bash .claude/scripts/lib/write-gate-artifact.sh \
+  --path .runs/q-dimensions.json \
+  --payload "$PAYLOAD" \
+  --skill bootstrap || true
 ```
 
 - Delete `.runs/current-visual-brief.md` (keep `.runs/current-plan.md` -- `/verify` needs it)
