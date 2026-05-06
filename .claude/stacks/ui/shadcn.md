@@ -466,6 +466,41 @@ Always mount the live region UNCONDITIONALLY; toggle visibility via class swap, 
 
 The `sr-only` class keeps the region in the accessibility tree but visually hidden when empty. When an error is set, remove `sr-only` to make it visible. Empty text keeps the region inert without announcing anything. This applies to every form-level error region, every status announcer (saved / submitted / pending), and any toast container that renders into a fixed position. Bootstrap-emitted forms that ship the conditional-mount form will be flagged by `accessibility-scanner` against WCAG 4.1.3.
 
+### When using SheetContent, always include SheetTitle (visible or sr-only)
+shadcn `<SheetContent>` (used for mobile navigation drawers, side panels, search overlays) renders a dialog-role element. WCAG 4.1.2 (Name, Role, Value) requires every dialog to have an accessible name. `SheetContent` does NOT provide a default accessible name — bootstrap-scaffolded mobile nav drawers that omit `<SheetTitle>` fail axe-core's `dialog-name` rule. Screen readers announce the drawer as "dialog" with no context.
+
+For navigation drawers where a visible heading would be redundant (the drawer's purpose is obvious from its content), use a visually-hidden title:
+
+```tsx
+import { Menu } from "lucide-react";
+import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { buttonVariants } from "@/components/ui/button";
+
+// CORRECT — sr-only title satisfies dialog-name without competing with the visible content
+<Sheet>
+  <SheetTrigger aria-label="Open menu" className={buttonVariants({ variant: "ghost", size: "icon" })}>
+    <Menu className="h-5 w-5" />
+  </SheetTrigger>
+  <SheetContent side="right">
+    <SheetTitle className="sr-only">Site navigation</SheetTitle>
+    {/* nav links */}
+  </SheetContent>
+</Sheet>
+```
+
+For content sheets (search panels, cart drawers, settings panels), use a **visible** `<SheetTitle>` — it doubles as the accessible name and the user-facing heading:
+
+```tsx
+import { SheetContent, SheetTitle } from "@/components/ui/sheet";
+
+<SheetContent side="right">
+  <SheetTitle>Cart</SheetTitle>
+  {/* cart content */}
+</SheetContent>
+```
+
+Both forms satisfy WCAG 4.1.2. The `sr-only` form is appropriate ONLY when no visible heading is warranted (pure navigation drawers, supplemental panels). When in doubt, prefer the visible form — accessibility users and sighted users get the same context.
+
 ### When a shadcn component variant class string is used in multiple page callsites
 Export the class string from a shared constants file (e.g., `src/components/<feature>/variants.ts`) and import it in each callsite. Duplicating the class string inline causes callsites to drift independently — one callsite may use `border border-ink/30` while another uses `ring-1 ring-ink/30`, producing inconsistent rendering that only surfaces during a dedicated consistency audit.
 
@@ -581,6 +616,33 @@ Custom theme tokens defined in `globals.css` using `oklch()` can fall below the 
 
 After defining or editing any custom oklch token used for text, run the accessibility-scanner agent (or `axe-core` directly) to measure the actual contrast ratio against the project background. Darken the token in 0.04–0.06 lightness steps until the ratio clears 4.5:1. **Combining opacity modifiers** (e.g., `text-[var(--annotation)]/60`) on already-borderline tokens compounds the failure — the entry above on `text-foreground` opacity is the same defect mechanism applied to a custom token. Verify post-change.
 
+### When styling input placeholder text on warm/cream/light backgrounds, never apply opacity modifiers
+On warm-palette projects with cream or parchment backgrounds (common for editorial / lifestyle / hospitality products), placeholder color utilities like `placeholder:text-[var(--ink)]/40` drop below the WCAG 1.4.3 Minimum Contrast ratio of 4.5:1. The opacity modifier compounds an already-warm token against a low-contrast background; placeholder text is also visually de-emphasized by the browser's default opacity, multiplying the effect.
+
+```tsx
+import { Input } from "@/components/ui/input";
+
+// WRONG — /40 IS in the Tailwind default scale, but compounds to <4.5:1 against a cream background
+<Input
+  placeholder="you@example.com"
+  className="placeholder:text-[var(--ink)]/40"
+/>
+
+// CORRECT — drop the modifier entirely; use a solid pre-calibrated muted-ink token
+<Input
+  placeholder="you@example.com"
+  className="placeholder:text-[var(--ink-soft)]"
+/>
+```
+
+Define `--ink-soft` (or your project's equivalent) in `globals.css` as a solid token that has been verified against the project's background in DevTools / axe-core to clear 4.5:1. Do not apply any opacity step — the right answer on light backgrounds is "use a solid token", not "use a higher step".
+
+This entry is distinct from two related ones above:
+- "When text-foreground opacity on dark backgrounds drops below /60" — on dark backgrounds the fix is to use a higher in-scale step (`/60`+); on light backgrounds the fix is to drop the modifier entirely.
+- "When custom oklch CSS tokens for secondary or annotation text fail WCAG 1.4.3" — on borderline custom oklch tokens the fix is to darken the token; the placeholder + light-bg combination is a distinct case because the `placeholder:` variant adds the browser's own placeholder de-emphasis on top.
+
+Out-of-scale modifiers like `/55` and `/65` hit a separate failure mode — they are silently dropped per "Opacity modifier values" earlier in this file, so the rendered placeholder gets the FULL token (no opacity at all). That's a different defect; this entry covers in-scale modifiers like `/40` that DO render but produce <4.5:1 contrast.
+
 ### When using shadcn CardTitle on a page where the surrounding hierarchy is not h2-deep
 shadcn `CardTitle` (in `src/components/ui/card.tsx`) renders a fixed heading element regardless of page heading context — recent versions render as `<div>`, earlier versions as `<h3>`. This is hard-coded in the scaffolded file, not configurable via an `as` prop or render prop. On a page with a single `<h1>` and a row of cards, the rank jumps from 1 → 3 (skipping `<h2>`) and axe-core fires `heading-order` (see the paired entry in `.claude/stacks/framework/nextjs.md` → `When card or list-item titles skip a heading level`).
 
@@ -621,6 +683,34 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 ```
 
 The `-mx-6 px-6` bleed the scroll region to the page edge while keeping content gutters aligned. `[scrollbar-width:none]` + `[&::-webkit-scrollbar]:hidden` removes the visible scrollbar (preserves scrollability via touch/trackpad). `md:overflow-visible md:px-0` restores normal layout on desktop where the list fits naturally. Without this wrapper, ancestor `overflow-x-hidden` clips off-viewport tabs with no scroll affordance (fix #1073).
+
+### When labeling a radiogroup, use aria-label on the group — not a bare shadcn Label
+shadcn `<Label>` renders an HTML `<label>` element. A `<label>` requires a `htmlFor` pointing to a *labelable* element. `<RadioGroup>` renders `<div role="radiogroup">` — a div is NOT a labelable element — so a floating `<Label>` placed visually above a `<RadioGroup>` creates a dangling label: it has no programmatic association with any control, and screen readers announce the group with no name. axe-core fires `label` (WCAG 1.3.1 Info and Relationships).
+
+```tsx
+import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+
+// WRONG — <Label> with no htmlFor: dangling label, not associated with the group
+<Label>Delivery preference</Label>
+<RadioGroup defaultValue="email">
+  <RadioGroupItem value="email" id="opt-email" />
+  <Label htmlFor="opt-email">Email</Label>
+  <RadioGroupItem value="sms" id="opt-sms" />
+  <Label htmlFor="opt-sms">SMS</Label>
+</RadioGroup>
+
+// CORRECT — visible group heading as <span> or <p>; group named via aria-label
+<span className="block text-sm font-medium mb-2">Delivery preference</span>
+<RadioGroup aria-label="Delivery preference" defaultValue="email">
+  <RadioGroupItem value="email" id="opt-email" />
+  <Label htmlFor="opt-email">Email</Label>
+  <RadioGroupItem value="sms" id="opt-sms" />
+  <Label htmlFor="opt-sms">SMS</Label>
+</RadioGroup>
+```
+
+If the heading element is a distant sibling (or a real heading like `<h3>` higher in the layout), give it an `id` and reference it with `aria-labelledby` on the `<RadioGroup>` instead of `aria-label`. Individual radio options inside the group still use their own `<Label htmlFor="...">` pointing to the radio `<input id="...">` — that pairing is correct because the radio input IS a labelable element.
 
 ## Import Example
 ```tsx

@@ -455,7 +455,7 @@ import { useRouter } from "next/navigation";
 import { Menu } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import type { User } from "@supabase/supabase-js";
 
 export function NavBar() {
@@ -544,6 +544,9 @@ export function NavBar() {
             <Menu className="h-5 w-5" />
           </SheetTrigger>
           <SheetContent side="right" className="w-[280px]">
+            {/* WCAG 4.1.2: every dialog needs an accessible name. SheetContent renders a dialog;
+                see .claude/stacks/ui/shadcn.md → "When using SheetContent, always include SheetTitle". */}
+            <SheetTitle className="sr-only">Site navigation</SheetTitle>
             <div className="flex flex-col gap-4 mt-8">
               {navLinks}
               {authSection}

@@ -317,6 +317,23 @@ The server-side `getStripe()` factory in `src/lib/stripe.ts` already throws when
 ### When deduplicating Stripe webhook replays, use INSERT + catch PG `23505` (already baked into the template)
 Stripe delivers at-least-once, so webhook replays are expected. The route template above uses the correct pattern: `INSERT INTO stripe_events(stripe_event_id)` and catch PostgreSQL error code `23505` (unique_violation) as a successful no-op. **Do NOT rewrite this as a SELECT-then-INSERT check** — that is a Time-of-Check-Time-of-Use (TOCTOU) race: two concurrent deliveries of the same event ID can both pass the SELECT and both INSERT, causing duplicate side-effects (double payment processing, double `trackServerEvent("pay_success")`). The INSERT + catch-`23505` pattern is atomic at the database level via the `PRIMARY KEY` on `stripe_event_id`; keep it.
 
+### When the Stripe webhook provisions a user account, never resolve identity via customer_email
+The `checkout.session.completed` event carries `customer_email` but this field is attacker-controlled — a Stripe customer object can be created with any email address. Resolving a Supabase user via `listUsers({ filter: 'email=...' })` (or any database lookup keyed on the Stripe-supplied email) and then upserting a subscribers row creates a cross-account billing IDOR: an attacker who creates a Stripe customer with a victim's email hijacks the provisioning flow.
+
+```typescript
+// WRONG — listUsers({email}) treats Stripe-controlled customer_email as identity
+const { data: list } = await sb.auth.admin.listUsers({ filter: `email=${session.customer_email}` });
+const user = list.users[0];  // attacker controls this lookup
+
+// CORRECT — only session.metadata.user_id (set at checkout creation by an authenticated server route)
+const userId = session.metadata?.user_id;
+if (!userId) return NextResponse.json({ error: "Missing user_id" }, { status: 400 });
+```
+
+For unauthenticated checkout flows where no `user_id` exists at checkout creation time (guest gift purchases, lead-magnet checkouts), use a server-side lookup-token table — not Stripe metadata — to bind the Checkout Session to the recipient. This is the same pattern as gift-purchase PII storage (see "When implementing gift purchases, store PII in a server-side table" below).
+
+A second class applies to new-account creation in webhooks: creating a Supabase user with `email_confirm: true` lets an attacker pre-claim `victim@example.com` before the real user signs up. Always set `email_confirm: false` (or equivalent) when creating accounts from webhook context — the user confirms via the normal magic-link / OTP flow.
+
 ### When a Stripe key appears as a literal in a test fixture, avoid the sk_test_ / pk_test_ prefix
 Hardcoded values like `sk_test_demo`, `sk_test_abc123`, or any string beginning with `sk_test_` / `pk_test_` trigger secret-scanning false positives in CI, in `gitleaks`-style audits, and in GitHub's push-protection secret-scanning. The scanners match the Stripe key prefix pattern regardless of whether the value is a real key. Use a descriptive placeholder that does NOT match the Stripe key format — prefer the `placeholder-stripe-*` family already declared in this stack's frontmatter `ci_placeholders` slot for self-consistency.
 
@@ -357,6 +374,34 @@ const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 success_url: `${siteUrl}/`,
 cancel_url: `${siteUrl}/`,
 ```
+
+### When implementing gift purchases, store PII in a server-side table — not in Stripe metadata
+Stripe Checkout Session `metadata` is readable by anyone with Stripe dashboard access or webhook-consumer access. Placing buyer/recipient PII (name, email, personal note) in metadata creates unnecessary exposure. Stripe metadata values are also capped at 500 characters per value — real names + heartfelt notes can exceed this and the Checkout Session creation call fails silently or truncates.
+
+Safe pattern (3 steps):
+
+1. In the gift checkout API route, INSERT a `pending_gifts` row keyed on the soon-to-be-created `session.id` (or a server-generated `gift_token` you also pass to Stripe). Store buyer/recipient PII here, not in Stripe.
+2. In Stripe metadata, store ONLY non-PII identifiers: `is_gift: "true"`, `plan_id`, `amount_cents`, `recipient_email_hash` (SHA-256 of lowercase+trimmed email — for dedup checks without revealing the address).
+3. In the webhook `checkout.session.completed` handler, SELECT the `pending_gifts` row by the same key, provision the gift, then DELETE the row (point-in-time PII — do not retain after use).
+
+```sql
+-- Schema sketch (database-stack-aware access control — see your database stack file)
+create table pending_gifts (
+  session_id text primary key,
+  buyer_email text not null,
+  buyer_name text not null,
+  recipient_email text not null,
+  recipient_name text not null,
+  personal_note text,
+  created_at timestamptz not null default now()
+);
+```
+
+**Access control is database-stack-specific:**
+- When `stack.database` is `supabase`: enable RLS with a service-role-only policy (same pattern as the `stripe_events` table above — see `.claude/stacks/database/supabase.md`).
+- When `stack.database` is `sqlite` (no RLS): route the table behind service-role API calls only — never expose the table to client code. Enforce access in route handlers (see `.claude/stacks/database/sqlite.md`).
+
+This pattern is exactly the lookup-token-in-server-table referenced by the customer_email IDOR entry above — gift purchases ARE the canonical anonymous-checkout flow that needs it.
 
 ## PR Instructions
 - After merging, set these environment variables in your hosting provider:

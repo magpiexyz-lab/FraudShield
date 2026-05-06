@@ -520,6 +520,26 @@ When creating a new analytics stack file, document the equivalent endpoint patte
 ### Never include PII in analytics event properties
 Do not send personally identifiable information (email, name, phone number, IP address) as event properties. PostHog stores event data indefinitely and may be subject to GDPR/CCPA data subject requests. Use non-PII identifiers instead: `utm_source`, `plan_type`, `user_role` (generic, not the user's name). For user identification, use `identify(userId)` with the opaque user ID — PostHog links events to users internally without exposing PII in the event stream.
 
+### When calling trackServerEvent() for anonymous users, never pass raw email as distinctId
+The `distinctId` parameter in `trackServerEvent(event, distinctId, properties)` is stored by PostHog as the user identity axis — indefinitely, and subject to GDPR data subject access requests. Passing a raw email address (e.g. from a lead-capture form, an email-preference webhook, or any unauthenticated API route) leaks PII to PostHog under the identity column itself.
+
+For anonymous / unauthenticated contexts, pass a deterministic opaque hash instead:
+
+```ts
+import { createHash } from "crypto";
+
+function leadDistinctId(email: string): string {
+  return "lead:" + createHash("sha256").update(email.toLowerCase().trim()).digest("hex").slice(0, 32);
+}
+
+// Usage:
+await trackServerEvent("sample_requested", leadDistinctId(email), { plan });
+```
+
+The `"lead:"` prefix distinguishes anonymous-lead person records from authenticated users in PostHog without ever storing the email itself. The raw email lives only in the project's own `leads` (or equivalent) table where access can be governed by RLS or route-handler service-role gating. For authenticated users, continue to use `user.id` (opaque UUID from Supabase Auth) as `distinctId`.
+
+This entry covers the `distinctId` axis. The entry above ("Never include PII in analytics event properties") covers the `properties` object — both must be non-PII.
+
 ### Testing analytics events deterministically (Playwright)
 
 DO NOT assert on PostHog network requests in Playwright tests:
