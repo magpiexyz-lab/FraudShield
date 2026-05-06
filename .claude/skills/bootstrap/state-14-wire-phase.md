@@ -77,7 +77,7 @@ Verify scaffold-wire trace: `test -f .runs/agent-traces/scaffold-wire.json && py
 
 - **Write wire trace artifact** (`.runs/bootstrap-wire-trace.json`):
   ```bash
-  python3 -c "
+  PAYLOAD=$(python3 -c "
   import json, glob, os, yaml
   ey = yaml.safe_load(open('experiment/experiment.yaml'))
   arch = ey.get('type', 'web-app')
@@ -97,8 +97,12 @@ Verify scaffold-wire trace: `test -f .runs/agent-traces/scaffold-wire.json && py
       trace['pages_wired'] = []
       trace['api_routes_wired'] = []
       trace['commands_wired'] = [os.path.splitext(os.path.basename(f))[0] for f in glob.glob('src/commands/*.ts')]
-  json.dump(trace, open('.runs/bootstrap-wire-trace.json', 'w'), indent=2)
-  "
+  print(json.dumps(trace))
+  ")
+  bash .claude/scripts/lib/write-gate-artifact.sh \
+    --path .runs/bootstrap-wire-trace.json \
+    --payload "$PAYLOAD" \
+    --skill bootstrap
   ```
 
 **POSTCONDITIONS:**

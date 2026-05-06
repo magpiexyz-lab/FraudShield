@@ -28,8 +28,14 @@ For each attempt:
 6. **Prove it.** Quote the last 3–5 lines of the build output **verbatim in a code block**. State facts: "Build completed with 0 errors. Lint passed with 0 warnings." Never say "should work", "probably passes", or "seems fine." The verify-report-gate hook checks for this.
 7. **Record the result.** Write `.runs/build-result.json` to persist the build outcome for hook validation:
    ```bash
-   RUN_ID=$(python3 -c "import json;print(json.load(open('.runs/verify-context.json')).get('run_id',''))" 2>/dev/null || echo "")
-   echo '{"exit_code":0,"timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","run_id":"'"$RUN_ID"'"}' > .runs/build-result.json
+   PAYLOAD=$(TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)" python3 -c "
+   import json, os
+   print(json.dumps({'exit_code': 0, 'timestamp': os.environ['TIMESTAMP']}))
+   ")
+   bash .claude/scripts/lib/write-gate-artifact.sh \
+     --path .runs/build-result.json \
+     --payload "$PAYLOAD" \
+     --skill verify
    ```
 
 **If all 3 attempts fail**, stop and report to the user:

@@ -45,13 +45,17 @@ bash .claude/scripts/init-context.sh upgrade '{"dry_run":false}'
 
 Store sync_base and dry_run in the context file:
 ```bash
-python3 -c "
-import json
+PAYLOAD=$(SYNC_BASE_ENV="$SYNC_BASE" python3 -c "
+import json, os
 d = json.load(open('.runs/upgrade-context.json'))
-d['sync_base'] = '$SYNC_BASE'
+d['sync_base'] = os.environ['SYNC_BASE_ENV']
 d['dry_run'] = False
-json.dump(d, open('.runs/upgrade-context.json', 'w'), indent=2)
-"
+print(json.dumps(d))
+")
+bash .claude/scripts/lib/write-gate-artifact.sh \
+  --path .runs/upgrade-context.json \
+  --payload "$PAYLOAD" \
+  --skill upgrade
 ```
 
 If `--dry-run` was specified, update the context file:

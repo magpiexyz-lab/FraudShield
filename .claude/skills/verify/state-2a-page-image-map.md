@@ -50,7 +50,7 @@ is the canonical source of truth for (a) the design-critic page set and
    `.claude/scripts/lib/derive_pages.py`:
 
    ```bash
-   python3 - <<'PYEOF'
+   COMBINED=$(python3 - <<'PYEOF'
    import datetime, json, os, sys
    # Resolve repo root via CLAUDE_PROJECT_DIR (authoritative under hooks)
    # with a getcwd() fallback for direct invocation.
@@ -72,52 +72,50 @@ is the canonical source of truth for (a) the design-critic page set and
        "%Y-%m-%dT%H:%M:%SZ"
    )
    if not needs_dc:
-       json.dump(
-           {
-               "generated_at": now,
-               "not_applicable": True,
-               "pages": [],
-               "landing": None,
-           },
-           open(".runs/design-page-set.json", "w"), indent=2,
+       design_page_set = {
+           "generated_at": now,
+           "not_applicable": True,
+           "pages": [],
+           "landing": None,
+       }
+       page_image_map = {
+           "generated_at": now,
+           "source_page_set": ".runs/design-page-set.json",
+           "not_applicable": True,
+           "pages": {},
+       }
+       print("design-page-set.json + page-image-map.json: not_applicable", file=sys.stderr)
+   else:
+       exp = yaml.safe_load(open("experiment/experiment.yaml"))
+       pages = derive_page_set_for_design_critic(exp, ".")
+       landing = derive_landing_for_design_critic(".")
+       image_map = derive_page_images(pages, ".", include_landing=True)
+       design_page_set = {"generated_at": now, "pages": pages, "landing": landing}
+       page_image_map = {
+           "generated_at": now,
+           "source_page_set": ".runs/design-page-set.json",
+           "pages": image_map,
+       }
+       n_images = sum(1 for v in image_map.values() if v["has_images"])
+       print(
+           f"design-page-set.json: {len(pages)} pages "
+           f"(landing={'yes' if landing else 'no'}); "
+           f"page-image-map.json: {n_images}/{len(image_map)} classified has_images=true",
+           file=sys.stderr,
        )
-       json.dump(
-           {
-               "generated_at": now,
-               "source_page_set": ".runs/design-page-set.json",
-               "not_applicable": True,
-               "pages": {},
-           },
-           open(".runs/page-image-map.json", "w"), indent=2,
-       )
-       print("design-page-set.json + page-image-map.json: not_applicable")
-       sys.exit(0)
-   exp = yaml.safe_load(open("experiment/experiment.yaml"))
-   pages = derive_page_set_for_design_critic(exp, ".")
-   landing = derive_landing_for_design_critic(".")
-   image_map = derive_page_images(pages, ".", include_landing=True)
-   with open(".runs/design-page-set.json", "w") as f:
-       json.dump(
-           {"generated_at": now, "pages": pages, "landing": landing},
-           f, indent=2,
-       )
-   with open(".runs/page-image-map.json", "w") as f:
-       json.dump(
-           {
-               "generated_at": now,
-               "source_page_set": ".runs/design-page-set.json",
-               "pages": image_map,
-           },
-           f,
-           indent=2,
-       )
-   n_images = sum(1 for v in image_map.values() if v["has_images"])
-   print(
-       f"design-page-set.json: {len(pages)} pages "
-       f"(landing={'yes' if landing else 'no'}); "
-       f"page-image-map.json: {n_images}/{len(image_map)} classified has_images=true"
-   )
+   print(json.dumps({"design_page_set": design_page_set, "page_image_map": page_image_map}))
    PYEOF
+   )
+   PAYLOAD_PAGES=$(echo "$COMBINED" | python3 -c "import sys,json; print(json.dumps(json.load(sys.stdin)['design_page_set']))")
+   PAYLOAD_IMAGES=$(echo "$COMBINED" | python3 -c "import sys,json; print(json.dumps(json.load(sys.stdin)['page_image_map']))")
+   bash .claude/scripts/lib/write-gate-artifact.sh \
+     --path .runs/design-page-set.json \
+     --payload "$PAYLOAD_PAGES" \
+     --skill verify
+   bash .claude/scripts/lib/write-gate-artifact.sh \
+     --path .runs/page-image-map.json \
+     --payload "$PAYLOAD_IMAGES" \
+     --skill verify
    ```
 
 5. **Downstream contract**: state-3a Stage-1 MUST read

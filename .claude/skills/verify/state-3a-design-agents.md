@@ -117,7 +117,10 @@ print(n)
 
   # 4. Empty design-claims.json so state-3a POSTCONDITION ("design-claims.json exists")
   #    is satisfied even though we skipped pre-flight.
-  echo '{"claims":{},"thin_wrappers":[]}' > .runs/design-claims.json
+  bash .claude/scripts/lib/write-gate-artifact.sh \
+    --path .runs/design-claims.json \
+    --payload '{"claims":{},"thin_wrappers":[]}' \
+    --skill verify
 
   # 5. Skip the rest of state-3a (pre-flight + Stage 1 + Stage 1b + Stage 1c).
   #    State-3a VERIFY below branches on the decision artifact and accepts

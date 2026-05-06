@@ -27,7 +27,7 @@ Follow checkpoint-resumption protocol per `patterns/checkpoint-resumption.md`.
 
 - **Write preconditions artifact** (`.runs/bootstrap-preconditions.json`):
   ```bash
-  python3 -c "
+  PAYLOAD=$(python3 -c "
   import json, shutil, os
   trace = {
       'node_available': shutil.which('node') is not None,
@@ -37,8 +37,12 @@ Follow checkpoint-resumption protocol per `patterns/checkpoint-resumption.md`.
           for f in ['page.tsx', 'route.ts']
       )
   }
-  json.dump(trace, open('.runs/bootstrap-preconditions.json', 'w'), indent=2)
-  "
+  print(json.dumps(trace))
+  ")
+  bash .claude/scripts/lib/write-gate-artifact.sh \
+    --path .runs/bootstrap-preconditions.json \
+    --payload "$PAYLOAD" \
+    --skill bootstrap
   ```
 
 **POSTCONDITIONS:**

@@ -18,9 +18,10 @@ if [ -f .runs/delivery-skip.flag ]; then
   cat .runs/delivery-skip.flag
   # Defensive: if STATE 3b escalation did not file an issue (gh_failed path),
   # file a minimal one here so the halt is auditable on GitHub.
-  python3 -c "
+  PAYLOAD=$(python3 -c "
 import json, os, subprocess, sys
 a = json.load(open('.runs/resolve-causal-analysis.json')) if os.path.exists('.runs/resolve-causal-analysis.json') else {}
+should_write = False
 if a.get('halted') and not a.get('escalation_issue_url'):
     dps = a.get('divergence_points_analyzed', [])
     loc = dps[0]['divergence_point'] if dps else 'unknown'
@@ -33,10 +34,18 @@ if a.get('halted') and not a.get('escalation_issue_url'):
             '--body', 'Auto-filed defensive escalation (STATE 3b dispatch did not record a URL).'
         ], text=True).strip()
         a['escalation_issue_url'] = url
-        json.dump(a, open('.runs/resolve-causal-analysis.json','w'), indent=2)
+        should_write = True
     except Exception as e:
         print(f'defensive escalation file failed: {e}', file=sys.stderr)
-"
+print(json.dumps({'__should_write': should_write, '__payload': a}))
+")
+  if [ "$(echo "$PAYLOAD" | python3 -c "import json,sys; print(json.load(sys.stdin)['__should_write'])")" = "True" ]; then
+    INNER=$(echo "$PAYLOAD" | python3 -c "import json,sys; print(json.dumps(json.load(sys.stdin)['__payload']))")
+    bash .claude/scripts/lib/write-gate-artifact.sh \
+      --path .runs/resolve-causal-analysis.json \
+      --payload "$INNER" \
+      --skill resolve
+  fi
   bash .claude/scripts/advance-state.sh resolve 11
   exit 0
 fi

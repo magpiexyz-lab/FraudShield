@@ -72,7 +72,8 @@ If any expected trace is missing, do NOT advance. Manifest content validation, s
 
 **Write spawn-result artifact** (inline, idempotent):
 
-```python
+```bash
+PAYLOAD=$(python3 -c "
 import json, datetime, os
 ctx = json.load(open('.runs/bootstrap-context.json'))
 image_gen_config = ctx.get('image_gen_status', 'available')
@@ -83,13 +84,17 @@ agents = {
 }
 result = {
     'schema_version': 1,
-    'run_id': ctx.get('run_id', ''),
     'state': '11a',
     'spawned_at': datetime.datetime.now(datetime.timezone.utc).isoformat(),
     'completed_at': datetime.datetime.now(datetime.timezone.utc).isoformat(),
     'agents': agents,
 }
-json.dump(result, open('.runs/b1-spawn-result.json', 'w'), indent=2)
+print(json.dumps(result))
+")
+bash .claude/scripts/lib/write-gate-artifact.sh \
+  --path .runs/b1-spawn-result.json \
+  --payload "$PAYLOAD" \
+  --skill bootstrap
 ```
 
 **Field semantics:**

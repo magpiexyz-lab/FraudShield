@@ -85,14 +85,18 @@ If new validator checks were added:
      legitimate early-exit path (registry declares
      `allows_early_exit_when: "all_fixes_rejected"`):
      ```bash
-     python3 -c "
+     PAYLOAD=$(python3 -c "
      import json
      ctx = json.load(open('.runs/resolve-context.json'))
      ctx['all_fixes_rejected'] = True
      if ctx.get('fixtures_evaluated') is None:
          ctx['fixtures_evaluated'] = ['not_needed: all_fixes_rejected']
-     json.dump(ctx, open('.runs/resolve-context.json', 'w'), indent=2)
-     "
+     print(json.dumps(ctx))
+     ")
+     bash .claude/scripts/lib/write-gate-artifact.sh \
+       --path .runs/resolve-context.json \
+       --payload "$PAYLOAD" \
+       --skill resolve
      ```
   3. Advance state and **TERMINAL** — skill ends, no PR created.
 

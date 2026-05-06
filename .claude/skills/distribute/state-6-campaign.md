@@ -445,8 +445,8 @@ print(f'Read-back: {readback[\"status\"]} — {sum(1 for s in readback[\"setting
 Write the audit result:
 
 ```bash
-python3 -c "
-import json, datetime, re, yaml, os
+PAYLOAD=$(python3 -c "
+import json, datetime, re, yaml, os, sys
 
 evidence = json.load(open('.runs/distribute-campaign-evidence.json'))
 entries = {e['step']: e for e in evidence.get('entries', [])}
@@ -609,16 +609,20 @@ audit = {
     'readback': readback if readback.get('status') else None,
     'readback_completed': readback_completed
 }
-json.dump(audit, open('.runs/distribute-campaign-audit.json', 'w'), indent=2)
 status = 'PASSED' if all_passed else 'FAILED'
 passed_count = sum(1 for c in checks if c['pass'])
-print(f'AUDIT: {status} -- {passed_count}/{len(checks)} checks passed')
+print(f'AUDIT: {status} -- {passed_count}/{len(checks)} checks passed', file=sys.stderr)
 if not all_passed:
     for c in checks:
         if not c['pass']:
             name, exp, act = c['name'], c['expected'], c['actual']
-            print(f'  FAILED: {name} -- expected: {exp}, actual: {act}')
-"
+            print(f'  FAILED: {name} -- expected: {exp}, actual: {act}', file=sys.stderr)
+print(json.dumps(audit))
+")
+bash .claude/scripts/lib/write-gate-artifact.sh \
+  --path .runs/distribute-campaign-audit.json \
+  --payload "$PAYLOAD" \
+  --skill distribute
 ```
 
 If `all_passed` is False:

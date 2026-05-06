@@ -11,7 +11,7 @@
 
 - **Record files read** in `resolve-context.json`:
   ```bash
-  python3 -c "
+  PAYLOAD=$(python3 -c "
   import json, os
   ctx = json.load(open('.runs/resolve-context.json'))
   ctx['files_read'] = ['CLAUDE.md']  # always include CLAUDE.md; add all template files read
@@ -19,8 +19,12 @@
       ctx['files_read'].append('scripts/check-inventory.md')
   else:
       ctx['check_inventory_absent'] = True
-  json.dump(ctx, open('.runs/resolve-context.json', 'w'), indent=2)
-  "
+  print(json.dumps(ctx))
+  ")
+  bash .claude/scripts/lib/write-gate-artifact.sh \
+    --path .runs/resolve-context.json \
+    --payload "$PAYLOAD" \
+    --skill resolve
   ```
 
 **POSTCONDITIONS:**

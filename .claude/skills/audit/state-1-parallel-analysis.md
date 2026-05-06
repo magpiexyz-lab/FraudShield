@@ -318,7 +318,7 @@ After all agents return (3 if scope is not full, 4 if scope is full), collect fi
 
 - **Write analysis artifact** (`.runs/audit-analysis.json`):
   ```bash
-  python3 -c "
+  PAYLOAD=$(python3 -c "
   import json
   import os
   analysis = {
@@ -329,8 +329,12 @@ After all agents return (3 if scope is not full, 4 if scope is full), collect fi
   }
   if os.path.exists('.runs/audit-skill-manifest.json'):
       analysis['skill_architecture'] = {'findings': [], 'count': 0}
-  json.dump(analysis, open('.runs/audit-analysis.json', 'w'), indent=2)
-  "
+  print(json.dumps(analysis))
+  ")
+  bash .claude/scripts/lib/write-gate-artifact.sh \
+    --path .runs/audit-analysis.json \
+    --payload "$PAYLOAD" \
+    --skill audit
   ```
 
 **VERIFY:**

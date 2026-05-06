@@ -132,13 +132,19 @@ python3 .claude/scripts/verify-resolve-challenge.py  # resolve-challenge.json, r
 
 **Ring 3 skip:** If `resolve-context.json` has `"ring": 3`, write `skip_states` before advancing:
 ```bash
-python3 -c "
-import json
-ctx = json.load(open('.runs/resolve-context.json'))
-if ctx.get('ring') == 3:
-    ctx['skip_states'] = ['6','7','8','8b','9','9a','10']
-    json.dump(ctx, open('.runs/resolve-context.json', 'w'), indent=2)
-"
+SHOULD_WRITE=$(python3 -c "import json; ctx=json.load(open('.runs/resolve-context.json')); print('yes' if ctx.get('ring') == 3 else 'no')")
+if [ "$SHOULD_WRITE" = "yes" ]; then
+  PAYLOAD=$(python3 -c "
+  import json
+  ctx = json.load(open('.runs/resolve-context.json'))
+  ctx['skip_states'] = ['6','7','8','8b','9','9a','10']
+  print(json.dumps(ctx))
+  ")
+  bash .claude/scripts/lib/write-gate-artifact.sh \
+    --path .runs/resolve-context.json \
+    --payload "$PAYLOAD" \
+    --skill resolve
+fi
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
