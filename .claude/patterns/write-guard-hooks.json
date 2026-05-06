@@ -20,6 +20,11 @@
       "hook": ".claude/hooks/bootstrap-phase-a-write-guard.sh",
       "protected_path_regex": "src/app/(layout\\.tsx|not-found\\.tsx|error\\.tsx|globals\\.css)",
       "write_operators": [">", ">>", "&?>", "tee", "cp", "mv", "dd"]
+    },
+    {
+      "hook": ".claude/hooks/gate-artifact-bash-write-guard.sh",
+      "protected_path_regex": "\\.runs\\/[^\\s\"']+\\.json",
+      "write_operators": [">", ">>", "&?>", "tee", "cp", "mv", "dd"]
     }
   ]
 }
