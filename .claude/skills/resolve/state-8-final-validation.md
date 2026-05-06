@@ -11,7 +11,7 @@
 
 - **Write validation artifact** (`.runs/resolve-validation.json`):
   ```bash
-  python3 -c "
+  PAYLOAD=$(python3 -c "
   import json
   validation = {
       'frontmatter_errors': 0,
@@ -19,8 +19,12 @@
       'consistency_errors': 0,
       'regressions': False
   }
-  json.dump(validation, open('.runs/resolve-validation.json', 'w'), indent=2)
-  "
+  print(json.dumps(validation))
+  ")
+  bash .claude/scripts/lib/write-gate-artifact.sh \
+    --path .runs/resolve-validation.json \
+    --payload "$PAYLOAD" \
+    --skill resolve
   ```
 
 **POSTCONDITIONS:**

@@ -106,15 +106,19 @@ Whether funnel numbers came from auto-query (1a) or manual input (1b), also ask 
 
 - **Write data artifact** (`.runs/iterate-data.json`):
   ```bash
-  python3 -c "
+  PAYLOAD=$(python3 -c "
   import json
   data = {
       'funnel_data': {},
       'qualitative_data': [],
       'data_source': '<auto-query|manual>'
   }
-  json.dump(data, open('.runs/iterate-data.json', 'w'), indent=2)
-  "
+  print(json.dumps(data))
+  ")
+  bash .claude/scripts/lib/write-gate-artifact.sh \
+    --path .runs/iterate-data.json \
+    --payload "$PAYLOAD" \
+    --skill iterate
   ```
 
 **VERIFY:**

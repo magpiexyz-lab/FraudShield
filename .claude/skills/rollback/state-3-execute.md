@@ -66,15 +66,19 @@ print('Wrote .runs/q-dimensions.json')
 
 - **Write result artifact** (`.runs/rollback-result.json`):
   ```bash
-  python3 -c "
+  PAYLOAD=$(python3 -c "
   import json
   result = {
       'rollback_executed': True,
       'health_check_passed': True,
       'method': '<cli|manual>'
   }
-  json.dump(result, open('.runs/rollback-result.json', 'w'), indent=2)
-  "
+  print(json.dumps(result))
+  ")
+  bash .claude/scripts/lib/write-gate-artifact.sh \
+    --path .runs/rollback-result.json \
+    --payload "$PAYLOAD" \
+    --skill rollback
   ```
 
 **VERIFY:**

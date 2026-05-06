@@ -38,15 +38,19 @@
 
 - **Write validation trace artifact** (`.runs/bootstrap-validation-trace.json`):
   ```bash
-  python3 -c "
+  PAYLOAD=$(python3 -c "
   import json
   trace = {
       'experiment_valid': True,
       'checks_passed': ['name', 'hypothesis', 'behaviors', 'golden_path', 'stack'],
       'warnings': []  # any non-blocking warnings
   }
-  json.dump(trace, open('.runs/bootstrap-validation-trace.json', 'w'), indent=2)
-  "
+  print(json.dumps(trace))
+  ")
+  bash .claude/scripts/lib/write-gate-artifact.sh \
+    --path .runs/bootstrap-validation-trace.json \
+    --payload "$PAYLOAD" \
+    --skill bootstrap
   ```
 
 **POSTCONDITIONS:**

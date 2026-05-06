@@ -95,7 +95,7 @@ issues.
 
 - **Write reproduction artifact** (`.runs/resolve-reproduction.json`):
   ```bash
-  python3 -c "
+  PAYLOAD=$(python3 -c "
   import json
   repro = {
       'reproductions': [
@@ -103,8 +103,12 @@ issues.
       ],
       'pre_fix_baseline': {'frontmatter': 0, 'semantics': 0, 'consistency': 0}
   }
-  json.dump(repro, open('.runs/resolve-reproduction.json', 'w'), indent=2)
-  "
+  print(json.dumps(repro))
+  ")
+  bash .claude/scripts/lib/write-gate-artifact.sh \
+    --path .runs/resolve-reproduction.json \
+    --payload "$PAYLOAD" \
+    --skill resolve
   ```
 
 **POSTCONDITIONS:**

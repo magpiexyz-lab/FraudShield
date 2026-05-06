@@ -13,16 +13,19 @@
    Delete it? (y/n)"
 3. Write cleanup manifest:
    ```bash
-   python3 -c "
+   PAYLOAD=$(python3 -c "
    import json, datetime
    manifest = {
        'timestamp': datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
        'deploy_manifest_deleted': True,
        'env_local_deleted': '<true-or-false>'
    }
-   with open('.runs/teardown-cleanup.json', 'w') as f:
-       json.dump(manifest, f, indent=2)
-   "
+   print(json.dumps(manifest))
+   ")
+   bash .claude/scripts/lib/write-gate-artifact.sh \
+     --path .runs/teardown-cleanup.json \
+     --payload "$PAYLOAD" \
+     --skill teardown
    ```
 
 ### Q-score

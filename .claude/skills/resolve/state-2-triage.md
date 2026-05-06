@@ -284,7 +284,7 @@ proceeding to Phase 2.** The user may reclassify issues or remove them from scop
 
 - **Write triage artifact** (`.runs/resolve-triage.json`):
   ```bash
-  python3 -c "
+  PAYLOAD=$(python3 -c "
   import json
   triage = {
       'issues': [
@@ -299,8 +299,12 @@ proceeding to Phase 2.** The user may reclassify issues or remove them from scop
       'cross_batch_consolidated_count': 0,  # issues merged into existing architecture issues
       'pattern_hints': []  # optional; [{'issue': N, 'id': '<entry-id>', 'stack_file': '<path>', 'maturity': '<m>', 'occurrence_count': <int>, 'fix_template': '<string>'}, ...]
   }
-  json.dump(triage, open('.runs/resolve-triage.json', 'w'), indent=2)
-  "
+  print(json.dumps(triage))
+  ")
+  bash .claude/scripts/lib/write-gate-artifact.sh \
+    --path .runs/resolve-triage.json \
+    --payload "$PAYLOAD" \
+    --skill resolve
   ```
 
 **POSTCONDITIONS:**

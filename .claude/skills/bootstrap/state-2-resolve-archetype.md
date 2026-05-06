@@ -32,7 +32,7 @@
 
 - **Write archetype trace artifact** (`.runs/bootstrap-archetype-trace.json`):
   ```bash
-  python3 -c "
+  PAYLOAD=$(python3 -c "
   import json
   trace = {
       'archetype': '<type field value>',
@@ -40,8 +40,12 @@
       'stacks_resolved': {'framework': '<value>', 'ui': '<value>'},  # map of category->value
       'stack_files_read': ['.claude/stacks/framework/<value>.md']  # list of files actually read
   }
-  json.dump(trace, open('.runs/bootstrap-archetype-trace.json', 'w'), indent=2)
-  "
+  print(json.dumps(trace))
+  ")
+  bash .claude/scripts/lib/write-gate-artifact.sh \
+    --path .runs/bootstrap-archetype-trace.json \
+    --payload "$PAYLOAD" \
+    --skill bootstrap
   ```
 
 **POSTCONDITIONS:**

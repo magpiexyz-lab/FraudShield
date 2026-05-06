@@ -20,15 +20,19 @@ The bug pattern found in Step 3 may exist in other template files:
 
 - **Record blast radius** in `resolve-context.json`:
   ```bash
-  python3 -c "
+  PAYLOAD=$(python3 -c "
   import json
   ctx = json.load(open('.runs/resolve-context.json'))
   ctx['blast_radius'] = [
       '<file>:<line>:confirmed',
       '<file>:<line>:potential'
   ]
-  json.dump(ctx, open('.runs/resolve-context.json', 'w'), indent=2)
-  "
+  print(json.dumps(ctx))
+  ")
+  bash .claude/scripts/lib/write-gate-artifact.sh \
+    --path .runs/resolve-context.json \
+    --payload "$PAYLOAD" \
+    --skill resolve
   ```
 
 **POSTCONDITIONS:**

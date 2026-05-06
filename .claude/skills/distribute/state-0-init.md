@@ -37,13 +37,17 @@ bash .claude/scripts/init-context.sh distribute "{\"phase\":$PHASE}"
 
 Write the preconditions artifact:
 ```bash
-python3 -c "
+PAYLOAD=$(python3 -c "
 import json
 preconditions = {
     'deployed_url': '<url>'
 }
-json.dump(preconditions, open('.runs/distribute-preconditions.json', 'w'), indent=2)
-"
+print(json.dumps(preconditions))
+")
+bash .claude/scripts/lib/write-gate-artifact.sh \
+  --path .runs/distribute-preconditions.json \
+  --payload "$PAYLOAD" \
+  --skill distribute
 ```
 
 **POSTCONDITIONS:**

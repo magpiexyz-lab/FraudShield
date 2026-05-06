@@ -21,14 +21,18 @@ Each entry includes `source: bootstrap` to distinguish from future on-touch entr
 
 - **Write trace artifact** (`.runs/bootstrap-on-touch-trace.json`):
   ```bash
-  python3 -c "
+  PAYLOAD=$(python3 -c "
   import json
   trace = {
       'on_touch_count': 0,
       'file': 'experiment/on-touch.yaml'
   }
-  json.dump(trace, open('.runs/bootstrap-on-touch-trace.json', 'w'), indent=2)
-  "
+  print(json.dumps(trace))
+  ")
+  bash .claude/scripts/lib/write-gate-artifact.sh \
+    --path .runs/bootstrap-on-touch-trace.json \
+    --payload "$PAYLOAD" \
+    --skill bootstrap
   ```
 
 Check off in `.runs/current-plan.md`: `- [x] ON-TOUCH persisted (state 17)` (#1118)

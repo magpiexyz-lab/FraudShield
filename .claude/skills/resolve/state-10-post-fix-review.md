@@ -136,7 +136,7 @@ If any fixes were applied in Step 3:
 
 - **Write review artifact** (`.runs/resolve-review.json`):
   ```bash
-  python3 -c "
+  PAYLOAD=$(python3 -c "
   import json
   review = {
       'reviewed_count': 0,
@@ -154,8 +154,12 @@ If any fixes were applied in Step 3:
           }
       ]
   }
-  json.dump(review, open('.runs/resolve-review.json', 'w'), indent=2)
-  "
+  print(json.dumps(review))
+  ")
+  bash .claude/scripts/lib/write-gate-artifact.sh \
+    --path .runs/resolve-review.json \
+    --payload "$PAYLOAD" \
+    --skill resolve
   ```
 
 If `challenged_count > 0`:

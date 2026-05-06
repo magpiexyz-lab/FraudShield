@@ -39,11 +39,10 @@ step or guard artifact absent from the prior commit (R2-A2). Empty dossier
 
 - **Write solve trace artifact** (`.runs/solve-trace.json`) using the contract from solve-reasoning.md:
   ```bash
-  python3 -c "
+  PAYLOAD=$(python3 -c "
   import json
   ctx = json.load(open('.runs/solve-context.json'))
   trace = {
-      'run_id': ctx['run_id'],
       'mode': '<light|full>',
       'problem_decomposition': '<problem statement and scope>',
       'constraint_enumeration': '<constraints identified>',
@@ -72,8 +71,12 @@ step or guard artifact absent from the prior commit (R2-A2). Empty dossier
       # artifact absent from the prior commit (R2-A2). Empty when dossier
       # was empty.
       trace['prior_failure_response'] = []
-  json.dump(trace, open('.runs/solve-trace.json', 'w'), indent=2)
-  "
+  print(json.dumps(trace))
+  ")
+  bash .claude/scripts/lib/write-gate-artifact.sh \
+    --path .runs/solve-trace.json \
+    --payload "$PAYLOAD" \
+    --skill solve
   ```
 
 **POSTCONDITIONS:**

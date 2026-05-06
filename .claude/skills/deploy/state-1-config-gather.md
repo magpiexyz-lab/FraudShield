@@ -50,7 +50,7 @@ When `deploy_mode == "update"`:
 
 - **Write config artifact** (`.runs/deploy-config.json`):
   ```bash
-  python3 -c "
+  PAYLOAD=$(python3 -c "
   import json
   config = {
       'hosting_gathered': True,
@@ -59,8 +59,12 @@ When `deploy_mode == "update"`:
       'oauth_gathered': False,    # True if auth_providers present
       'external_services': []     # list of {name, method: auto|manual}
   }
-  json.dump(config, open('.runs/deploy-config.json', 'w'), indent=2)
-  "
+  print(json.dumps(config))
+  ")
+  bash .claude/scripts/lib/write-gate-artifact.sh \
+    --path .runs/deploy-config.json \
+    --payload "$PAYLOAD" \
+    --skill deploy
   ```
 
 **POSTCONDITIONS:**

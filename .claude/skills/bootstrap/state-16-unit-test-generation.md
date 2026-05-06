@@ -58,7 +58,7 @@ For each CRITICAL module (or batch) **in dependency order, never in parallel**:
 
 - **Write modules trace artifact** (`.runs/bootstrap-modules-trace.json`):
   ```bash
-  python3 -c "
+  PAYLOAD=$(python3 -c "
   import json
   trace = {
       'modules_completed': [
@@ -66,8 +66,12 @@ For each CRITICAL module (or batch) **in dependency order, never in parallel**:
       ],
       'build_passing': True
   }
-  json.dump(trace, open('.runs/bootstrap-modules-trace.json', 'w'), indent=2)
-  "
+  print(json.dumps(trace))
+  ")
+  bash .claude/scripts/lib/write-gate-artifact.sh \
+    --path .runs/bootstrap-modules-trace.json \
+    --payload "$PAYLOAD" \
+    --skill bootstrap
   ```
 
 Check off in `.runs/current-plan.md`: `- [x] Unit test generation (state 16)` (#1118)

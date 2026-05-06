@@ -25,12 +25,16 @@ if $ARGUMENTS contains "--full":
 
 **Persist solve_depth** to `change-context.json`:
 ```bash
-python3 -c "
+PAYLOAD=$(python3 -c "
 import json
 ctx = json.load(open('.runs/change-context.json'))
 ctx['solve_depth'] = '<light|full>'  # result of the formula above
-json.dump(ctx, open('.runs/change-context.json', 'w'))
-"
+print(json.dumps(ctx))
+")
+bash .claude/scripts/lib/write-gate-artifact.sh \
+  --path .runs/change-context.json \
+  --payload "$PAYLOAD" \
+  --skill change
 ```
 
 State the depth selection with rationale. If the formula selects "full" but the affected
@@ -90,7 +94,7 @@ CALL: `.claude/patterns/solve-reasoning.md` — execute full mode (Phases 1-6).
 
 After completing the solve-reasoning pass (light or full), write `.runs/solve-trace.json`:
 ```bash
-python3 -c "
+PAYLOAD=$(python3 -c "
 import json
 trace = {
     'mode': '<light|full>',
@@ -119,8 +123,12 @@ if preliminary_type == 'Fix':
     # entry; each cites a concrete delta absent from the prior commit (R2-A2).
     # Empty when dossier was empty.
     trace['prior_failure_response'] = []
-json.dump(trace, open('.runs/solve-trace.json', 'w'), indent=2)
-"
+print(json.dumps(trace))
+")
+bash .claude/scripts/lib/write-gate-artifact.sh \
+  --path .runs/solve-trace.json \
+  --payload "$PAYLOAD" \
+  --skill change
 ```
 
 ### Write challenge artifact

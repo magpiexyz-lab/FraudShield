@@ -117,10 +117,9 @@ never self-classifies a fix as an anti-pattern.
 ### Step 7 — Write new artifact `.runs/resolve-learnings.json`
 
 ```bash
-python3 -c "
+PAYLOAD=$(python3 -c "
 import json
 out = {
-    'run_id': '<from .runs/resolve-context.json>',
     'learnings': [ ... ],           # one entry per unique composite_identity_hash
     'target_stacks': [ ... ],       # stack slugs matched (e.g. framework/nextjs)
     'proposals_filed': [ ... ],     # upstream issue URLs (or [])
@@ -135,8 +134,12 @@ out = {
     'pending_proposals': [],        # entries skipped due to gh failure
     'skipped_reason': ''            # set only when Steps 1-5 are skipped
 }
-json.dump(out, open('.runs/resolve-learnings.json', 'w'), indent=2)
-"
+print(json.dumps(out))
+")
+bash .claude/scripts/lib/write-gate-artifact.sh \
+  --path .runs/resolve-learnings.json \
+  --payload "$PAYLOAD" \
+  --skill resolve
 ```
 
 The `resolve-learnings-gate.sh` hook enforces the schema invariants on write.
@@ -147,14 +150,18 @@ For one release cycle, keep writing the legacy artifact so in-flight /resolve
 runs pre-dating this PR don't break. The VERIFY accepts either artifact.
 
 ```bash
-python3 -c "
+PAYLOAD=$(python3 -c "
 import json
 legacy = {
     'patterns_saved': [],  # parallel descriptions kept for memory-style fallback
     'skipped_reason': ''
 }
-json.dump(legacy, open('.runs/patterns-saved.json', 'w'), indent=2)
-"
+print(json.dumps(legacy))
+")
+bash .claude/scripts/lib/write-gate-artifact.sh \
+  --path .runs/patterns-saved.json \
+  --payload "$PAYLOAD" \
+  --skill resolve
 ```
 
 ### Step 9 — Append convergence history

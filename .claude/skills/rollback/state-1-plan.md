@@ -27,15 +27,19 @@ Proceed with rollback?
 
 - **Write plan artifact** (`.runs/rollback-plan.json`):
   ```bash
-  python3 -c "
+  PAYLOAD=$(python3 -c "
   import json
   plan = {
       'provider': '<hosting provider>',
       'target_url': '<canonical url>',
       'action': '<rollback command or manual steps>'
   }
-  json.dump(plan, open('.runs/rollback-plan.json', 'w'), indent=2)
-  "
+  print(json.dumps(plan))
+  ")
+  bash .claude/scripts/lib/write-gate-artifact.sh \
+    --path .runs/rollback-plan.json \
+    --payload "$PAYLOAD" \
+    --skill rollback
   ```
 
 **VERIFY:**

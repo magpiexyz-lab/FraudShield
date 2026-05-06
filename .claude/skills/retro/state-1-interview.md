@@ -33,14 +33,18 @@ Follow-up: "What was the actual result vs the target in your thesis: [thesis]?"
 
 - **Write interview artifact** (`.runs/retro-interview.json`):
   ```bash
-  python3 -c "
+  PAYLOAD=$(python3 -c "
   import json
   interview = {
       'questions_answered': 4,
       'answers': {}
   }
-  json.dump(interview, open('.runs/retro-interview.json', 'w'), indent=2)
-  "
+  print(json.dumps(interview))
+  ")
+  bash .claude/scripts/lib/write-gate-artifact.sh \
+    --path .runs/retro-interview.json \
+    --payload "$PAYLOAD" \
+    --skill retro
   ```
 
 **VERIFY:**

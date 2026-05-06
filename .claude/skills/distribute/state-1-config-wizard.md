@@ -19,14 +19,18 @@
 
 Write all configuration results to the preconditions artifact in a single update:
 ```bash
-python3 -c "
+PAYLOAD=$(python3 -c "
 import json
 p = json.load(open('.runs/distribute-preconditions.json'))
 p['channel'] = '<selected channel>'
 p['policy_checked'] = True
 p['analytics_configured'] = True
-json.dump(p, open('.runs/distribute-preconditions.json', 'w'), indent=2)
-"
+print(json.dumps(p))
+")
+bash .claude/scripts/lib/write-gate-artifact.sh \
+  --path .runs/distribute-preconditions.json \
+  --payload "$PAYLOAD" \
+  --skill distribute
 ```
 
 **POSTCONDITIONS:**

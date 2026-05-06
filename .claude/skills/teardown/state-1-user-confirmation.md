@@ -34,12 +34,16 @@ To confirm, type the project name: **<name>**
 
 - **Record confirmation** in `teardown-context.json`:
   ```bash
-  python3 -c "
+  PAYLOAD=$(python3 -c "
   import json
   ctx = json.load(open('.runs/teardown-context.json'))
   ctx['confirmed'] = True
-  json.dump(ctx, open('.runs/teardown-context.json', 'w'), indent=2)
-  "
+  print(json.dumps(ctx))
+  ")
+  bash .claude/scripts/lib/write-gate-artifact.sh \
+    --path .runs/teardown-context.json \
+    --payload "$PAYLOAD" \
+    --skill teardown
   ```
 
 **VERIFY:**

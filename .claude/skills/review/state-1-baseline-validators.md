@@ -41,7 +41,7 @@
 
 - **Write baseline artifact** (`.runs/review-baseline.json`):
   ```bash
-  python3 -c "
+  PAYLOAD=$(python3 -c "
   import json
   baseline = {
       'baseline_errors': 0,
@@ -50,8 +50,12 @@
       'max_iterations': 3,
       'max_findings_per_dimension': 3
   }
-  json.dump(baseline, open('.runs/review-baseline.json', 'w'), indent=2)
-  "
+  print(json.dumps(baseline))
+  ")
+  bash .claude/scripts/lib/write-gate-artifact.sh \
+    --path .runs/review-baseline.json \
+    --payload "$PAYLOAD" \
+    --skill review
   ```
 
 **VERIFY:**

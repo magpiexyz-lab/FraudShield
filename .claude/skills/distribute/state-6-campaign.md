@@ -330,7 +330,7 @@ Read `.runs/distribute-campaign-evidence.json` and cross-check against `experime
 Record all responses. Treat "N/A" on item 8 as a pass (no sitelinks configured). If any is "n": STOP and ask user to fix in Google Ads UI, then re-confirm. Write audit result:
 
 ```bash
-python3 -c "
+PAYLOAD=$(python3 -c "
 import json, datetime
 # Set all_passed to False if any response was 'n'
 audit = {
@@ -341,8 +341,12 @@ audit = {
         {'name': 'manual_confirmation', 'expected': 'all_yes', 'actual': 'all_yes', 'pass': True}
     ]
 }
-json.dump(audit, open('.runs/distribute-campaign-audit.json', 'w'), indent=2)
-"
+print(json.dumps(audit))
+")
+bash .claude/scripts/lib/write-gate-artifact.sh \
+  --path .runs/distribute-campaign-audit.json \
+  --payload "$PAYLOAD" \
+  --skill distribute
 ```
 
 **If automated (not manual_creation):** Perform the following checks.

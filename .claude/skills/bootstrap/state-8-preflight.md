@@ -80,13 +80,17 @@ Check off in `.runs/current-plan.md`: `- [x] FAL_KEY check completed`
 
 - **Record preflight results** in `bootstrap-context.json`:
   ```bash
-  python3 -c "
+  PAYLOAD=$(python3 -c "
   import json
   ctx = json.load(open('.runs/bootstrap-context.json'))
   ctx['preflight_passed'] = True
   ctx['image_gen_status'] = '<available_or_skipped>'
-  json.dump(ctx, open('.runs/bootstrap-context.json', 'w'), indent=2)
-  "
+  print(json.dumps(ctx))
+  ")
+  bash .claude/scripts/lib/write-gate-artifact.sh \
+    --path .runs/bootstrap-context.json \
+    --payload "$PAYLOAD" \
+    --skill bootstrap
   ```
   Replace `<available_or_skipped>` with the actual value determined above.
 

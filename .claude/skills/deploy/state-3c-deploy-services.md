@@ -211,7 +211,7 @@ Note: projects with Stripe require two production deploys during first-time setu
 
 - **Write provision artifact** (`.runs/deploy-provision.json`):
   ```bash
-  python3 -c "
+  PAYLOAD=$(python3 -c "
   import json
   provision = {
       'database_provisioned': True,   # or False if skipped
@@ -220,8 +220,12 @@ Note: projects with Stripe require two production deploys during first-time setu
       'canonical_url': '<deployment url>',
       'agents_completed': []          # list of {agent, status}
   }
-  json.dump(provision, open('.runs/deploy-provision.json', 'w'), indent=2)
-  "
+  print(json.dumps(provision))
+  ")
+  bash .claude/scripts/lib/write-gate-artifact.sh \
+    --path .runs/deploy-provision.json \
+    --payload "$PAYLOAD" \
+    --skill deploy
   ```
 
 **POSTCONDITIONS:**

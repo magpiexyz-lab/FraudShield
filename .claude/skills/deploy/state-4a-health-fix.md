@@ -57,15 +57,19 @@ If still failing after 2 fix rounds -> report precise per-service diagnosis with
 
 - **Write intermediate artifact** (`.runs/deploy-health-4a.json`):
   ```bash
-  python3 -c "
+  PAYLOAD=$(python3 -c "
   import json
   artifact = {
       'health_check_passed': True,  # or False
       'auto_fix_rounds': 0,         # 0, 1, or 2
       'per_service_results': {}     # service -> ok/error
   }
-  json.dump(artifact, open('.runs/deploy-health-4a.json', 'w'), indent=2)
-  "
+  print(json.dumps(artifact))
+  ")
+  bash .claude/scripts/lib/write-gate-artifact.sh \
+    --path .runs/deploy-health-4a.json \
+    --payload "$PAYLOAD" \
+    --skill deploy
   ```
 
 **POSTCONDITIONS:**

@@ -74,12 +74,16 @@ If the user requests changes, revise the plan and present it again. Repeat until
 
 - **Record approval** in `deploy-context.json`:
   ```bash
-  python3 -c "
+  PAYLOAD=$(python3 -c "
   import json
   ctx = json.load(open('.runs/deploy-context.json'))
   ctx['approved'] = True
-  json.dump(ctx, open('.runs/deploy-context.json', 'w'), indent=2)
-  "
+  print(json.dumps(ctx))
+  ")
+  bash .claude/scripts/lib/write-gate-artifact.sh \
+    --path .runs/deploy-context.json \
+    --payload "$PAYLOAD" \
+    --skill deploy
   ```
 
 **POSTCONDITIONS:**

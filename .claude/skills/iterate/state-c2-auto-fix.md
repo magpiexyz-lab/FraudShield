@@ -13,11 +13,15 @@ Read `.runs/iterate-check-health.json`. If `issues` array is empty:
 
 Write an empty fixes file and proceed to STATE c3:
 ```bash
-python3 -c "
+PAYLOAD=$(python3 -c "
 import json
 fixes = {'campaign_name': '<name>', 'fixed_at': '<ISO 8601>', 'issues_found': 0, 'fixes_applied': 0, 'fixes_recommended': 0, 'details': []}
-json.dump(fixes, open('.runs/iterate-check-fixes.json', 'w'), indent=2)
-"
+print(json.dumps(fixes))
+")
+bash .claude/scripts/lib/write-gate-artifact.sh \
+  --path .runs/iterate-check-fixes.json \
+  --payload "$PAYLOAD" \
+  --skill iterate
 ```
 
 ### Process issues by type
@@ -232,13 +236,17 @@ rm -f /tmp/gclid-import-*.csv
 **Step 5: Update import timestamp**
 
 ```bash
-python3 -c "
+PAYLOAD=$(python3 -c "
 import json
 from datetime import datetime
 ctx = json.load(open('.runs/iterate-check-context.json'))
 ctx['last_gclid_import_at'] = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
-json.dump(ctx, open('.runs/iterate-check-context.json', 'w'), indent=2)
-"
+print(json.dumps(ctx))
+")
+bash .claude/scripts/lib/write-gate-artifact.sh \
+  --path .runs/iterate-check-context.json \
+  --payload "$PAYLOAD" \
+  --skill iterate
 ```
 
 **Step 6: Record in fixes**
@@ -257,7 +265,7 @@ Add gclid_import entry:
 ### Write fixes artifact
 
 ```bash
-python3 -c "
+PAYLOAD=$(python3 -c "
 import json
 fixes = {
     'campaign_name': '<name>',
@@ -274,8 +282,12 @@ fixes = {
         }
     ]
 }
-json.dump(fixes, open('.runs/iterate-check-fixes.json', 'w'), indent=2)
-"
+print(json.dumps(fixes))
+")
+bash .claude/scripts/lib/write-gate-artifact.sh \
+  --path .runs/iterate-check-fixes.json \
+  --payload "$PAYLOAD" \
+  --skill iterate
 ```
 
 Replace all placeholder values with actual data from the fix actions performed.

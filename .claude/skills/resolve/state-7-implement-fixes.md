@@ -43,12 +43,16 @@ For each issue in severity order (HIGH first):
     Set `fixtures_evaluated` to a list of fixture files checked from `tests/fixtures/`,
     or `["not_needed: <reason>"]` if no fixture is applicable for this fix.
     ```bash
-    python3 -c "
+    PAYLOAD=$(python3 -c "
     import json
     ctx = json.load(open('.runs/resolve-context.json'))
     ctx['fixtures_evaluated'] = []  # list of fixture files checked, or ['not_needed: <reason>']
-    json.dump(ctx, open('.runs/resolve-context.json', 'w'), indent=2)
-    "
+    print(json.dumps(ctx))
+    ")
+    bash .claude/scripts/lib/write-gate-artifact.sh \
+      --path .runs/resolve-context.json \
+      --payload "$PAYLOAD" \
+      --skill resolve
     ```
 3c. Run all 3 validators:
    - `python3 scripts/validate-frontmatter.py`
@@ -64,12 +68,16 @@ If new validator checks were added:
 **After all fixes have been processed:**
 - Record rejected issue numbers in `resolve-context.json`:
   ```bash
-  python3 -c "
+  PAYLOAD=$(python3 -c "
   import json
   ctx = json.load(open('.runs/resolve-context.json'))
   ctx['rejected_issues'] = []  # list of issue numbers rejected by user (empty if none)
-  json.dump(ctx, open('.runs/resolve-context.json', 'w'), indent=2)
-  "
+  print(json.dumps(ctx))
+  ")
+  bash .claude/scripts/lib/write-gate-artifact.sh \
+    --path .runs/resolve-context.json \
+    --payload "$PAYLOAD" \
+    --skill resolve
   ```
 - If ALL fixes were rejected (no changes in git working tree):
   1. Report: "All fixes were rejected — no changes to commit. Issues remain open."

@@ -12,12 +12,16 @@ If the user requests changes or asks questions, address their concerns and prese
 
 - **Record approval** in `rollback-context.json`:
   ```bash
-  python3 -c "
+  PAYLOAD=$(python3 -c "
   import json
   ctx = json.load(open('.runs/rollback-context.json'))
   ctx['approved'] = True
-  json.dump(ctx, open('.runs/rollback-context.json', 'w'), indent=2)
-  "
+  print(json.dumps(ctx))
+  ")
+  bash .claude/scripts/lib/write-gate-artifact.sh \
+    --path .runs/rollback-context.json \
+    --payload "$PAYLOAD" \
+    --skill rollback
   ```
 
 **POSTCONDITIONS:**

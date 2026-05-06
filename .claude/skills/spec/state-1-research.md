@@ -55,7 +55,7 @@ Wait for the user to revise, override, or abandon.
 
 - **Write research artifact** (`.runs/spec-research.json`):
   ```bash
-  python3 -c "
+  PAYLOAD=$(python3 -c "
   import json
   research = {
       'dimensions': [
@@ -66,8 +66,12 @@ Wait for the user to revise, override, or abandon.
       ],
       'passed_count': 0
   }
-  json.dump(research, open('.runs/spec-research.json', 'w'), indent=2)
-  "
+  print(json.dumps(research))
+  ")
+  bash .claude/scripts/lib/write-gate-artifact.sh \
+    --path .runs/spec-research.json \
+    --payload "$PAYLOAD" \
+    --skill spec
   ```
 
 **VERIFY:**

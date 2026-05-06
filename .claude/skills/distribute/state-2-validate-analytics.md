@@ -131,7 +131,7 @@
 
 Update the preconditions artifact:
 ```bash
-python3 -c "
+PAYLOAD=$(python3 -c "
 import json
 p = json.load(open('.runs/distribute-preconditions.json'))
 p['project_name_verified'] = True  # or False
@@ -139,8 +139,12 @@ p['project_name_mismatch'] = False  # or True
 p['analytics_live'] = True
 p['hypothesis_loaded'] = True  # or False
 p['pagespeed_score'] = None  # or integer
-json.dump(p, open('.runs/distribute-preconditions.json', 'w'), indent=2)
-"
+print(json.dumps(p))
+")
+bash .claude/scripts/lib/write-gate-artifact.sh \
+  --path .runs/distribute-preconditions.json \
+  --payload "$PAYLOAD" \
+  --skill distribute
 ```
 
 **VERIFY:**

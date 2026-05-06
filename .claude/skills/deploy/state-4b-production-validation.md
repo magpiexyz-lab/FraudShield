@@ -209,7 +209,7 @@ failures) — observe.md's trigger evaluation excludes these.
 
 - **Write health check artifact** (`.runs/deploy-health.json`):
   ```bash
-  python3 -c "
+  PAYLOAD=$(python3 -c "
   import json
   health = {
       'health_check_passed': True,
@@ -230,8 +230,12 @@ failures) — observe.md's trigger evaluation excludes these.
       },
       'observations_filed': 0
   }
-  json.dump(health, open('.runs/deploy-health.json', 'w'), indent=2)
-  "
+  print(json.dumps(health))
+  ")
+  bash .claude/scripts/lib/write-gate-artifact.sh \
+    --path .runs/deploy-health.json \
+    --payload "$PAYLOAD" \
+    --skill deploy
   ```
 
   Populate `smoke_test` and `behavior_verification` from Steps 5d.6-5d.8 results. If the steps were skipped (no `playwright.config.ts` or no auth stack), set `ran: false` and omit the detail fields. The `behavior_verification.failures` array should contain the behavior IDs and brief descriptions from the verifier agent's trace. For CLI or detached-surface deployments, `provision_scan_completed` reflects all *applicable* checks — some checks (e.g., P2 health endpoint) are skipped with `skip:not-applicable` for static surfaces that have no `/api/health` endpoint.

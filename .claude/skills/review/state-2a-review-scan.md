@@ -200,14 +200,18 @@ After all 3 return: collect up to 15 findings, deduplicate.
 
 - **Write findings artifact** (`.runs/review-findings.json`):
   ```bash
-  python3 -c "
+  PAYLOAD=$(python3 -c "
   import json
   findings = {
       'findings': [],  # list of {title, severity, dimension, files}
       'total_count': 0
   }
-  json.dump(findings, open('.runs/review-findings.json', 'w'), indent=2)
-  "
+  print(json.dumps(findings))
+  ")
+  bash .claude/scripts/lib/write-gate-artifact.sh \
+    --path .runs/review-findings.json \
+    --payload "$PAYLOAD" \
+    --skill review
   ```
 
 **POSTCONDITIONS:**

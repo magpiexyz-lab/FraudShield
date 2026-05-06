@@ -13,12 +13,16 @@
 
 - **Update findings artifact** — add `filtered: true` to `.runs/review-findings.json`:
   ```bash
-  python3 -c "
+  PAYLOAD=$(python3 -c "
   import json
   d = json.load(open('.runs/review-findings.json'))
   d['filtered'] = True
-  json.dump(d, open('.runs/review-findings.json', 'w'), indent=2)
-  "
+  print(json.dumps(d))
+  ")
+  bash .claude/scripts/lib/write-gate-artifact.sh \
+    --path .runs/review-findings.json \
+    --payload "$PAYLOAD" \
+    --skill review
   ```
 
 **POSTCONDITIONS:**

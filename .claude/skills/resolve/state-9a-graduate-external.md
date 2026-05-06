@@ -127,7 +127,7 @@ After evaluating all services, write the combined result:
 
 - **Write graduation-result artifact** (`.runs/graduation-result.json`):
   ```bash
-  python3 -c "
+  PAYLOAD=$(python3 -c "
   import json
   result = {
       'evaluated': True,
@@ -146,8 +146,12 @@ After evaluating all services, write the combined result:
       ],
       'skipped_reason': None  # set only when no external services found
   }
-  json.dump(result, open('.runs/graduation-result.json', 'w'), indent=2)
-  "
+  print(json.dumps(result))
+  ")
+  bash .claude/scripts/lib/write-gate-artifact.sh \
+    --path .runs/graduation-result.json \
+    --payload "$PAYLOAD" \
+    --skill resolve
   ```
 
 ### Q-score

@@ -114,13 +114,17 @@ Type 1/2/3:
 
 2. Mark skip states in `.runs/resolve-context.json`:
    ```bash
-   python3 -c "
+   PAYLOAD=$(python3 -c "
    import json
    ctx = json.load(open('.runs/resolve-context.json'))
    ctx['skip_states'] = ['4','4b','5','5d','6','7','8','8b','9','9a','10']
    ctx['halted_at'] = '3b'
-   json.dump(ctx, open('.runs/resolve-context.json', 'w'), indent=2)
-   "
+   print(json.dumps(ctx))
+   ")
+   bash .claude/scripts/lib/write-gate-artifact.sh \
+     --path .runs/resolve-context.json \
+     --payload "$PAYLOAD" \
+     --skill resolve
    ```
 
 3. Write `.runs/delivery-skip.flag` so STATE 11 and `lifecycle-finalize.sh`
@@ -132,12 +136,16 @@ Type 1/2/3:
 4. Mark the causal-analysis artifact as halted (the URL was already written
    in Step 1):
    ```bash
-   python3 -c "
+   PAYLOAD=$(python3 -c "
    import json
    a = json.load(open('.runs/resolve-causal-analysis.json'))
    a['halted'] = True
-   json.dump(a, open('.runs/resolve-causal-analysis.json', 'w'), indent=2)
-   "
+   print(json.dumps(a))
+   ")
+   bash .claude/scripts/lib/write-gate-artifact.sh \
+     --path .runs/resolve-causal-analysis.json \
+     --payload "$PAYLOAD" \
+     --skill resolve
    ```
 
 5. Advance STATE 3b — `lifecycle-next.sh` will jump to STATE 11 via

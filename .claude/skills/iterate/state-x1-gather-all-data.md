@@ -207,7 +207,7 @@ Track whether each MVP had `funnel_stage` data (for STATE x2 migration decision)
 ### Write data file
 
 ```bash
-python3 -c "
+PAYLOAD=$(python3 -c "
 import json
 
 data = {
@@ -249,8 +249,12 @@ data = {
         # }
     ]
 }
-json.dump(data, open('.runs/iterate-cross-data.json', 'w'), indent=2)
-"
+print(json.dumps(data))
+")
+bash .claude/scripts/lib/write-gate-artifact.sh \
+  --path .runs/iterate-cross-data.json \
+  --payload "$PAYLOAD" \
+  --skill iterate
 ```
 
 Replace placeholder data with actual values from Google Ads and PostHog.

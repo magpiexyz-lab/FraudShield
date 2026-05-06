@@ -36,18 +36,22 @@
 
 - **Persist exploration results** to `change-context.json`:
   ```bash
-  python3 -c "
+  PAYLOAD=$(python3 -c "
   import json
   ctx = json.load(open('.runs/change-context.json'))
   ctx['preliminary_type'] = '<preliminary_type>'  # Feature|Upgrade|Fix|Polish|Analytics|Test
   ctx['affected_areas'] = <N>  # integer count of affected areas from exploration
-  json.dump(ctx, open('.runs/change-context.json', 'w'))
-  "
+  print(json.dumps(ctx))
+  ")
+  bash .claude/scripts/lib/write-gate-artifact.sh \
+    --path .runs/change-context.json \
+    --payload "$PAYLOAD" \
+    --skill change
   ```
 
 - **Write exploration trace artifact** (`.runs/exploration-trace.json`):
   ```bash
-  python3 -c "
+  PAYLOAD=$(python3 -c "
   import json
   trace = {
       'archetype': '<type field value from experiment.yaml>',
@@ -57,8 +61,12 @@
       'affected_imports': ['<imports affected by the change>'],
       'exploration_steps_completed': [1, 5]  # which plan-exploration steps were executed
   }
-  json.dump(trace, open('.runs/exploration-trace.json', 'w'), indent=2)
-  "
+  print(json.dumps(trace))
+  ")
+  bash .claude/scripts/lib/write-gate-artifact.sh \
+    --path .runs/exploration-trace.json \
+    --payload "$PAYLOAD" \
+    --skill change
   ```
 
 - **Write Stack Knowledge hints artifact** (`.runs/change-stack-knowledge-hints.json`) — active prevention input for solve-reasoning Agent 2:

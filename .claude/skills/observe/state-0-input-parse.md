@@ -32,14 +32,18 @@ rm -f .runs/observe-filing-result.json
 
 Store parsed arguments in the context file:
 ```bash
-python3 -c "
+PAYLOAD=$(python3 -c "
 import json
 d = json.load(open('.runs/observe-context.json'))
 d['template_file'] = '<parsed --file value>'
 d['symptom'] = '<parsed --symptom value>'
 d['narrative'] = '<parsed --context value or null>'
-json.dump(d, open('.runs/observe-context.json', 'w'))
-"
+print(json.dumps(d))
+")
+bash .claude/scripts/lib/write-gate-artifact.sh \
+  --path .runs/observe-context.json \
+  --payload "$PAYLOAD" \
+  --skill observe
 ```
 
 **POSTCONDITIONS:**

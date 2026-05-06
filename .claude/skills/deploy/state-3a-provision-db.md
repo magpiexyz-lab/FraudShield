@@ -32,15 +32,19 @@ and Secret (or **skip**). Store as `oauth_credentials: { provider: { client_id, 
 
 - **Write intermediate artifact** (`.runs/deploy-provision-3a.json`):
   ```bash
-  python3 -c "
+  PAYLOAD=$(python3 -c "
   import json
   artifact = {
       'database_provisioned': True,   # or False if skipped
       'supabase_ref': '<ref or null>',
       'oauth_credentials_collected': True  # or False if skipped
   }
-  json.dump(artifact, open('.runs/deploy-provision-3a.json', 'w'), indent=2)
-  "
+  print(json.dumps(artifact))
+  ")
+  bash .claude/scripts/lib/write-gate-artifact.sh \
+    --path .runs/deploy-provision-3a.json \
+    --payload "$PAYLOAD" \
+    --skill deploy
   ```
 
 **POSTCONDITIONS:**

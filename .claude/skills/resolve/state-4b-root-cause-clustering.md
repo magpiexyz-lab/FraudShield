@@ -8,12 +8,16 @@
 
 If only 1 actionable issue remains, write a single-issue clustering artifact and advance:
 ```bash
-python3 -c "
+PAYLOAD=$(python3 -c "
 import json
 # Single issue — no clustering possible. Write minimal artifact to satisfy VERIFY.
 clusters = {'clusters': [], 'uncorrelated': [<issue_number>]}
-json.dump(clusters, open('.runs/resolve-clusters.json', 'w'), indent=2)
-"
+print(json.dumps(clusters))
+")
+bash .claude/scripts/lib/write-gate-artifact.sh \
+  --path .runs/resolve-clusters.json \
+  --payload "$PAYLOAD" \
+  --skill resolve
 ```
 Then run STATE TRACKING (advance-state.sh below) and continue to next state.
 
@@ -36,7 +40,7 @@ Present in diagnosis report:
 
 - **Write clustering artifact** (`.runs/resolve-clusters.json`):
   ```bash
-  python3 -c "
+  PAYLOAD=$(python3 -c "
   import json
   clusters = {
       'clusters': [
@@ -44,8 +48,12 @@ Present in diagnosis report:
       ],
       'uncorrelated': []
   }
-  json.dump(clusters, open('.runs/resolve-clusters.json', 'w'), indent=2)
-  "
+  print(json.dumps(clusters))
+  ")
+  bash .claude/scripts/lib/write-gate-artifact.sh \
+    --path .runs/resolve-clusters.json \
+    --payload "$PAYLOAD" \
+    --skill resolve
   ```
 
 **POSTCONDITIONS:**

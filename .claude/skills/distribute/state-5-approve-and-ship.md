@@ -35,12 +35,16 @@ If the user requests changes instead of approving, revise the config to address 
 ### 5c: Record approval
 
 ```bash
-python3 -c "
+PAYLOAD=$(python3 -c "
 import json
 ctx = json.load(open('.runs/distribute-context.json'))
 ctx['approved'] = True
-json.dump(ctx, open('.runs/distribute-context.json', 'w'), indent=2)
-"
+print(json.dumps(ctx))
+")
+bash .claude/scripts/lib/write-gate-artifact.sh \
+  --path .runs/distribute-context.json \
+  --payload "$PAYLOAD" \
+  --skill distribute
 ```
 
 ### 5d: Write delivery artifacts

@@ -63,6 +63,7 @@ SUITES=(
   ".claude/scripts/tests/test_verify_rmg_guard_artifact.py"
   ".claude/scripts/tests/test_design_agents_orchestration.py"
   ".claude/scripts/tests/test_codemod_canonical_writer_audit.py"
+  ".claude/scripts/tests/test_codemod_canonical_writer.py"
 )
 
 FAIL=0

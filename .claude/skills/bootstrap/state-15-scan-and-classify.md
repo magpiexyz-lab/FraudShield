@@ -32,7 +32,7 @@ Scan the bootstrapped codebase to classify modules for unit test generation.
 
 - **Write scan artifact** (`.runs/bootstrap-scan.json`):
   ```bash
-  python3 -c "
+  PAYLOAD=$(python3 -c "
   import json
   scan = {
       'critical': [],      # list of {module, files, reason}
@@ -40,8 +40,12 @@ Scan the bootstrapped codebase to classify modules for unit test generation.
       'skip': [],          # list of {module, reason}
       'already_covered': []  # list of {module, test_file}
   }
-  json.dump(scan, open('.runs/bootstrap-scan.json', 'w'), indent=2)
-  "
+  print(json.dumps(scan))
+  ")
+  bash .claude/scripts/lib/write-gate-artifact.sh \
+    --path .runs/bootstrap-scan.json \
+    --payload "$PAYLOAD" \
+    --skill bootstrap
   ```
 
 Check off in `.runs/current-plan.md`: `- [x] Scan & classify (state 15)` (#1118)

@@ -144,7 +144,7 @@ For each MVP, set `skip_migration: true` if `tracking_broken` OR `not_deployed`.
 ### Write issues file
 
 ```bash
-python3 -c "
+PAYLOAD=$(python3 -c "
 import json
 
 issues = {
@@ -165,8 +165,12 @@ issues = {
         # }
     ]
 }
-json.dump(issues, open('.runs/iterate-cross-data-issues.json', 'w'), indent=2)
-"
+print(json.dumps(issues))
+")
+bash .claude/scripts/lib/write-gate-artifact.sh \
+  --path .runs/iterate-cross-data-issues.json \
+  --payload "$PAYLOAD" \
+  --skill iterate
 ```
 
 ### Summary report

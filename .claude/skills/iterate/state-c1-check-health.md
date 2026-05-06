@@ -76,7 +76,7 @@ While checking health, also record these metrics for the report:
 ### Write health report
 
 ```bash
-python3 -c "
+PAYLOAD=$(python3 -c "
 import json
 health = {
     'campaign_name': '<name>',
@@ -99,8 +99,12 @@ health = {
 # Populate issues from checks where status == 'issue'
 health['issues'] = [c for c in health['checks'] if c['status'] == 'issue']
 health['overall_status'] = 'issues_found' if health['issues'] else 'healthy'
-json.dump(health, open('.runs/iterate-check-health.json', 'w'), indent=2)
-"
+print(json.dumps(health))
+")
+bash .claude/scripts/lib/write-gate-artifact.sh \
+  --path .runs/iterate-check-health.json \
+  --payload "$PAYLOAD" \
+  --skill iterate
 ```
 
 Replace all placeholder values with actual data collected from Chrome MCP.

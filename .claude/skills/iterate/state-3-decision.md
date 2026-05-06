@@ -179,12 +179,16 @@ If the diagnosis reveals a need to change direction:
 
 Save the verdict to context before VERIFY:
 ```bash
-python3 -c "
+PAYLOAD=$(python3 -c "
 import json
 ctx = json.load(open('.runs/iterate-context.json'))
 ctx['verdict'] = '<VERDICT>'  # Replace with actual verdict from analysis
-json.dump(ctx, open('.runs/iterate-context.json', 'w'), indent=2)
-"
+print(json.dumps(ctx))
+")
+bash .claude/scripts/lib/write-gate-artifact.sh \
+  --path .runs/iterate-context.json \
+  --payload "$PAYLOAD" \
+  --skill iterate
 ```
 
 **VERIFY:**

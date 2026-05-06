@@ -20,14 +20,18 @@ the fix was not designed for them).
 
 - **Write side-effects artifact** (`.runs/resolve-side-effects.json`):
   ```bash
-  python3 -c "
+  PAYLOAD=$(python3 -c "
   import json
   side_effects = {
       'comments_posted': [],
       'potentially_resolved': []
   }
-  json.dump(side_effects, open('.runs/resolve-side-effects.json', 'w'), indent=2)
-  "
+  print(json.dumps(side_effects))
+  ")
+  bash .claude/scripts/lib/write-gate-artifact.sh \
+    --path .runs/resolve-side-effects.json \
+    --payload "$PAYLOAD" \
+    --skill resolve
   ```
 
 **POSTCONDITIONS:**

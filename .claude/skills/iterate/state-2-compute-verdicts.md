@@ -133,15 +133,19 @@ If the user provided per-variant metrics in STATE 1, present a comparison:
 
 - **Write verdicts artifact** (`.runs/iterate-verdicts.json`):
   ```bash
-  python3 -c "
+  PAYLOAD=$(python3 -c "
   import json
   verdicts = {
       'dimension_scores': {},
       'bottleneck': '<dimension>',
       'hypothesis_verdicts': []
   }
-  json.dump(verdicts, open('.runs/iterate-verdicts.json', 'w'), indent=2)
-  "
+  print(json.dumps(verdicts))
+  ")
+  bash .claude/scripts/lib/write-gate-artifact.sh \
+    --path .runs/iterate-verdicts.json \
+    --payload "$PAYLOAD" \
+    --skill iterate
   ```
 
 **VERIFY:**

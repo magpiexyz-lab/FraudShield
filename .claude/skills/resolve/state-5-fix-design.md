@@ -100,7 +100,7 @@ from prevention_analysis.recurrence_guard).
 
 - **Write solve trace artifact** (`.runs/solve-trace.json`) using the contract from solve-reasoning.md:
   ```bash
-  python3 -c "
+  PAYLOAD=$(python3 -c "
   import json
   trace = {
       'mode': '<light|full>',
@@ -135,8 +135,12 @@ from prevention_analysis.recurrence_guard).
       #    "concrete_delta_step_or_guard": str (step #N OR guard artifact path)}
       'prior_failure_response': []
   }
-  json.dump(trace, open('.runs/solve-trace.json', 'w'), indent=2)
-  "
+  print(json.dumps(trace))
+  ")
+  bash .claude/scripts/lib/write-gate-artifact.sh \
+    --path .runs/solve-trace.json \
+    --payload "$PAYLOAD" \
+    --skill resolve
   ```
 
 **POSTCONDITIONS:**

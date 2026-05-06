@@ -46,12 +46,16 @@
 
 - **Record completion** in `bootstrap-context.json`:
   ```bash
-  python3 -c "
+  PAYLOAD=$(python3 -c "
   import json
   ctx = json.load(open('.runs/bootstrap-context.json'))
   ctx['duplicate_check_done'] = True
-  json.dump(ctx, open('.runs/bootstrap-context.json', 'w'), indent=2)
-  "
+  print(json.dumps(ctx))
+  ")
+  bash .claude/scripts/lib/write-gate-artifact.sh \
+    --path .runs/bootstrap-context.json \
+    --payload "$PAYLOAD" \
+    --skill bootstrap
   ```
 
 **POSTCONDITIONS:**

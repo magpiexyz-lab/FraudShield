@@ -56,12 +56,16 @@ json.dump(d, open('.runs/upgrade-context.json', 'w'), indent=2)
 
 If `--dry-run` was specified, update the context file:
 ```bash
-python3 -c "
+PAYLOAD=$(python3 -c "
 import json
 d = json.load(open('.runs/upgrade-context.json'))
 d['dry_run'] = True
-json.dump(d, open('.runs/upgrade-context.json', 'w'), indent=2)
-"
+print(json.dumps(d))
+")
+bash .claude/scripts/lib/write-gate-artifact.sh \
+  --path .runs/upgrade-context.json \
+  --payload "$PAYLOAD" \
+  --skill upgrade
 ```
 
 **POSTCONDITIONS:**

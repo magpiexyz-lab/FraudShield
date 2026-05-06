@@ -99,15 +99,19 @@ For each service in `external_services`:
 
 - **Write result artifact** (`.runs/teardown-result.json`):
   ```bash
-  python3 -c "
+  PAYLOAD=$(python3 -c "
   import json
   result = {
       'resources_attempted': [],
       'successes': 0,
       'failures': 0
   }
-  json.dump(result, open('.runs/teardown-result.json', 'w'), indent=2)
-  "
+  print(json.dumps(result))
+  ")
+  bash .claude/scripts/lib/write-gate-artifact.sh \
+    --path .runs/teardown-result.json \
+    --payload "$PAYLOAD" \
+    --skill teardown
   ```
 
 **VERIFY:**

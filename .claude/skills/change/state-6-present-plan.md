@@ -13,7 +13,7 @@ Present the plan using the template for the classified type (REF: `.claude/proce
 
 CALL: `.claude/procedures/plan-validation.md` — **validate the plan against the codebase**. Execute all 5 checks before presenting the plan to the user. If validation flags conflicts, adjust the plan or add items to the Questions section prefixed with "[Validation]". Write the validation result artifact:
 ```bash
-python3 -c "
+PAYLOAD=$(python3 -c "
 import json
 validation = {
     'route_conflict': {'checked': True, 'result': '<pass|fail|skip>', 'details': '<explanation>'},
@@ -22,8 +22,12 @@ validation = {
     'component_reuse': {'checked': True, 'result': '<pass|fail|skip>', 'details': '<explanation>'},
     'analytics_naming': {'checked': True, 'result': '<pass|fail|skip>', 'details': '<explanation>'}
 }
-json.dump(validation, open('.runs/plan-validation.json', 'w'), indent=2)
-"
+print(json.dumps(validation))
+")
+bash .claude/scripts/lib/write-gate-artifact.sh \
+  --path .runs/plan-validation.json \
+  --payload "$PAYLOAD" \
+  --skill change
 ```
 
 **Plan structure validation** (before presenting for approval):

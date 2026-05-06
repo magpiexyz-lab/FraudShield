@@ -42,14 +42,17 @@ python3 -c "import json; ctx=json.load(open('.runs/change-context.json')); asser
 
 **STATE TRACKING:** After postconditions pass, update context and mark this state complete:
 ```bash
-python3 -c "
+PAYLOAD=$(python3 -c "
 import json
 ctx = json.load(open('.runs/change-context.json'))
 ctx['classification'] = '<stated-classification>'
 ctx['verification_scope'] = '<stated-scope>'
-with open('.runs/change-context.json', 'w') as f:
-    json.dump(ctx, f, indent=2)
-"
+print(json.dumps(ctx))
+")
+bash .claude/scripts/lib/write-gate-artifact.sh \
+  --path .runs/change-context.json \
+  --payload "$PAYLOAD" \
+  --skill change
 bash .claude/scripts/advance-state.sh change 4
 ```
 
