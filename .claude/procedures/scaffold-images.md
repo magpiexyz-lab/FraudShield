@@ -329,9 +329,11 @@ Set `"fallback": true` at top level if ALL images fell back to SVG.
 
 ### Step 5b: Write candidate sidecar
 
-Write `.runs/image-candidates.json` with metadata for ALL candidates generated (winners and runners-up):
+Write `.runs/image-candidates.json` with metadata for ALL candidates generated (winners and runners-up). **Stamp `"schema_version": 2` on first write — scaffold-images is the canonical birthplace per #1272 follow-up. Closes the back door where downstream agents that skip Step 5.5 also skip the version stamp, silently grandfathering the unstamped sidecar past validate-step55-evidence.py.**
+
 ```json
 {
+  "schema_version": 2,
   "generated_at": "<ISO 8601>",
   "strategy": "explore-exploit",
   "total_candidates": <total across all slots>,

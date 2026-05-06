@@ -54,6 +54,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from typing import Optional
 
 # Magic bytes — RFC-compliant headers, cannot be forged by zero-byte files
@@ -199,3 +200,72 @@ def validate_phash_diversity(
                     f"(may be same image labeled as two candidates)"
                 )
     return errors
+
+
+# ---------------------------------------------------------------------------
+# DOM-binding helpers (#1272 follow-up; round-2 critic Concern 2)
+#
+# Whole-frame pHash with hamming threshold ~30 is statistically random on
+# 64-bit hashes; pHash compares whole frames (page chrome != candidate),
+# which makes it the wrong primitive for "screenshot actually contains the
+# claimed candidate". The structural alternative: capture page.content()
+# alongside the screenshot and assert the rendered DOM has an <img src=...>
+# whose basename matches the candidate basename. This is structurally
+# unfalsifiable — the agent cannot fabricate scores against an unrelated
+# screenshot because the DOM snapshot ties the screenshot to the served URL.
+# ---------------------------------------------------------------------------
+
+_IMG_SRC_RE = re.compile(r'<img[^>]+src=["\']([^"\']+)["\']', re.IGNORECASE)
+
+
+def extract_img_srcs(html_path: str) -> list[str]:
+    """Return list of <img src=...> values from a serialized HTML file.
+
+    Returns [] on missing/unreadable file (caller treats as soft-fail signal
+    and warns rather than blocking; DOM capture is best-effort defense in
+    depth, not the only check).
+    """
+    if not os.path.isfile(html_path):
+        return []
+    try:
+        with open(html_path, encoding="utf-8", errors="ignore") as f:
+            return _IMG_SRC_RE.findall(f.read())
+    except OSError:
+        return []
+
+
+def candidate_present_in_dom(
+    srcs: list[str],
+    candidate_basename: str,
+    slot_name: Optional[str] = None,
+) -> bool:
+    """True iff any <img src> references the candidate or its target slot.
+
+    The standard design-critic Step 5.5 flow copies a candidate FROM
+    `.runs/image-candidates/<slot>-<phase>-<idx>.<ext>` TO
+    `public/images/<slot>.<ext>` before screenshotting. The served URL
+    therefore contains the SLOT name, not the candidate basename. We accept
+    either:
+      (a) candidate_basename appears in any src — agent served candidate
+          directly (alternate flow), OR
+      (b) slot_name appears in any src — agent followed canonical flow
+          (copy → canonical path → screenshot)
+
+    (b) is a weaker check — it proves the page rendered an img for the slot
+    but not that this specific candidate was the source. Combined with the
+    naming convention `.runs/screenshots/candidates/<slot>-<basename>.png`
+    (which encodes intent) and the existing evaluation_notes/provenance
+    checks, it raises the bar enough to detect "screenshot fabricated from
+    unrelated page" while remaining compatible with the canonical flow.
+    """
+    if any(candidate_basename in s for s in srcs):
+        return True
+    if slot_name:
+        # Match `/<slot>.`, `=<slot>.`, or `%2F<slot>.` (URL-encoded slash from
+        # Next.js `/_next/image?url=...` pattern) as boundary anchors so e.g.
+        # "hero" doesn't spuriously match "heroic-illustration.png".
+        slot_re = re.compile(
+            rf'(?:[/=]|%2F){re.escape(slot_name)}\.', re.IGNORECASE,
+        )
+        return any(slot_re.search(s) for s in srcs)
+    return False

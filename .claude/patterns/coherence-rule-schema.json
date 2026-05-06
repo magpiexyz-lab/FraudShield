@@ -224,7 +224,23 @@
         "convention_doc": {"type": "string"},
         "validators": {
           "type": "array",
-          "items": {"type": "string"},
+          "items": {
+            "oneOf": [
+              {"type": "string"},
+              {
+                "type": "object",
+                "required": ["path"],
+                "additionalProperties": false,
+                "properties": {
+                  "path": {"type": "string"},
+                  "required_env_prefix": {
+                    "type": "string",
+                    "description": "When set, the linter additionally asserts this env-var prefix (e.g., FOO_MODE=deny) appears immediately before the validator invocation in every integration point that references it. Defends against silent rollout regression — if a follow-up commit drops the deny-mode prefix, the rule fires."
+                  }
+                }
+              }
+            ]
+          },
           "minItems": 1
         },
         "integration_points": {

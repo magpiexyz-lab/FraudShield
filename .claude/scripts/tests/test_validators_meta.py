@@ -602,6 +602,221 @@ class TestStep55EvidenceErrors(unittest.TestCase):
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
+    def test_pre_cutoff_unstamped_sidecar_skips(self):
+        """Pre-cutoff run + unstamped sidecar → grandfather (SKIP, exit 0).
+
+        Uses a wrapper that pushes MIGRATION_CUTOFF_ISO to a far-future date
+        so the test run_id is unambiguously pre-cutoff regardless of when the
+        suite runs in real time."""
+        tmp = _setup_tempdir_with_context("verify-2026-04-01T00:00:00Z")
+        try:
+            (tmp / ".runs" / "image-candidates.json").write_text(json.dumps({
+                # No schema_version field — legacy producer
+                "slots": {
+                    "hero": {
+                        "candidates": [
+                            {"path": "a.webp", "selected": True},
+                            {"path": "b.webp"},
+                        ]
+                    }
+                }
+            }))
+            wrapper = f"""
+import sys, runpy
+sys.path.insert(0, {str(SCRIPTS_DIR)!r})
+import lib.schema_version_gate as svg
+svg.MIGRATION_CUTOFF_ISO = "2099-01-01T00:00:00Z"
+runpy.run_path({str(SCRIPTS_DIR / "validate-step55-evidence.py")!r}, run_name="__main__")
+"""
+            env = os.environ.copy()
+            env["STEP55_EVIDENCE_MODE"] = "deny"
+            r = subprocess.run(
+                ["python3", "-c", wrapper],
+                cwd=str(tmp), env=env, capture_output=True, text=True, timeout=30,
+            )
+            # Pre-cutoff run forces required_v=1; auto-stamp branch grandfathers.
+            self.assertEqual(r.returncode, 0,
+                f"pre-cutoff unstamped sidecar should SKIP; got {r.returncode}, stderr={r.stderr!r}")
+            self.assertIn("pre-cutoff", r.stdout)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_post_cutoff_unstamped_sidecar_blocks_in_deny(self):
+        """Post-cutoff run + unstamped sidecar → producer drift, BLOCK in deny."""
+        tmp = _setup_tempdir_with_context("verify-2026-05-04T00:00:00Z")
+        try:
+            (tmp / ".runs" / "image-candidates.json").write_text(json.dumps({
+                # No schema_version field — producer-side drift on post-cutoff run
+                "slots": {
+                    "hero": {
+                        "candidates": [
+                            {"path": "a.webp", "selected": True},
+                            {"path": "b.webp"},
+                        ]
+                    }
+                }
+            }))
+            r = _force_post_cutoff_invocation(
+                "validate-step55-evidence.py",
+                tmp,
+                {"STEP55_EVIDENCE_MODE": "deny"},
+            )
+            self.assertNotEqual(r.returncode, 0,
+                f"post-cutoff unstamped sidecar should BLOCK in deny mode; got {r.returncode}, stderr={r.stderr!r}")
+            self.assertIn("missing schema_version", r.stderr)
+            self.assertIn("scaffold-images Step 5b", r.stderr)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def _make_step55_fixture(self, tmp: Path, html_content: str | None = None):
+        """Build a minimal post-cutoff sidecar + screenshot + provenance for
+        DOM-binding tests. Returns the candidate path tuple (slot, basename)."""
+        # Sidecar with one evaluated candidate (score_in_context populated)
+        # plus a winner so sampling-floor isn't tripped by N=2.
+        slot = "hero"
+        basenames = ["hero-explore-1.webp", "hero-explore-2.webp"]
+        (tmp / ".runs" / "image-candidates.json").write_text(json.dumps({
+            "schema_version": 2,
+            "slots": {
+                slot: {
+                    "candidates": [
+                        {"path": f".runs/image-candidates/{basenames[0]}", "selected": True,
+                         "provenance": {"model": "fal/flux", "prompt_hash": "h0", "seed": 1}},
+                        {"path": f".runs/image-candidates/{basenames[1]}",
+                         "score_in_context": {"subject": 8, "style": 8, "color": 8, "composition": 8, "polish": 8},
+                         "evaluation_notes": ["This is a substantive evaluation note long enough to pass the 50-char minimum check."],
+                         "provenance": {"model": "fal/flux", "prompt_hash": "h1", "seed": 2}},
+                    ]
+                }
+            }
+        }))
+        # Build a 1280x720 PNG using stdlib (zlib + struct) — no Pillow needed.
+        scr_dir = tmp / ".runs" / "screenshots" / "candidates"
+        scr_dir.mkdir(parents=True, exist_ok=True)
+        screenshot_path = scr_dir / f"{slot}-{basenames[1].rsplit('.', 1)[0]}.png"
+        screenshot_path.write_bytes(_make_min_png(1280, 720))
+        if html_content is not None:
+            html_path = scr_dir / f"{slot}-{basenames[1].rsplit('.', 1)[0]}.html"
+            html_path.write_text(html_content)
+        return slot, basenames[1]
+
+    def test_dom_binding_passes_when_slot_in_dom(self):
+        """Canonical flow: candidate copied to public/images/<slot>.<ext>;
+        DOM <img src> references the slot path. Validator should accept."""
+        tmp = _setup_tempdir_with_context("verify-2026-05-04T00:00:00Z")
+        try:
+            self._make_step55_fixture(tmp, html_content=(
+                '<html><body>'
+                '<img src="/_next/image?url=%2Fimages%2Fhero.webp&w=1920">'
+                '</body></html>'
+            ))
+            r = _force_post_cutoff_invocation(
+                "validate-step55-evidence.py", tmp,
+                {"STEP55_EVIDENCE_MODE": "deny"},
+            )
+            # Sampling floor will fail (only 1 evaluated candidate when N=2,
+            # required floor is min(N-1, 6) = 1; we have 1 evidence) — should
+            # PASS the sampling floor. May still fail other checks; assert
+            # specifically that no DOM-binding error appears.
+            self.assertNotIn("DOM snapshot", r.stderr,
+                f"DOM check should not fire when slot is in DOM; stderr={r.stderr!r}")
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_dom_binding_fails_when_neither_slot_nor_basename_in_dom(self):
+        """Score fabrication: DOM has no <img> referencing the slot or
+        candidate. Should BLOCK in deny mode."""
+        tmp = _setup_tempdir_with_context("verify-2026-05-04T00:00:00Z")
+        try:
+            self._make_step55_fixture(tmp, html_content=(
+                '<html><body>'
+                '<img src="/some/unrelated/page.png">'
+                '</body></html>'
+            ))
+            r = _force_post_cutoff_invocation(
+                "validate-step55-evidence.py", tmp,
+                {"STEP55_EVIDENCE_MODE": "deny"},
+            )
+            self.assertNotEqual(r.returncode, 0,
+                f"DOM mismatch should fail in deny; got {r.returncode}, stderr={r.stderr!r}")
+            self.assertIn("DOM snapshot", r.stderr)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_dom_binding_warns_when_html_missing(self):
+        """No DOM snapshot → graceful degrade, WARN, no block."""
+        tmp = _setup_tempdir_with_context("verify-2026-05-04T00:00:00Z")
+        try:
+            self._make_step55_fixture(tmp, html_content=None)
+            r = _force_post_cutoff_invocation(
+                "validate-step55-evidence.py", tmp,
+                {"STEP55_EVIDENCE_MODE": "deny"},
+            )
+            self.assertIn("DOM-binding skipped", r.stderr,
+                f"missing DOM should warn but not block; stderr={r.stderr!r}")
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_telemetry_record_emitted_on_skip_no_sidecar(self):
+        """SKIP path (no sidecar) → telemetry row with verdict=skip."""
+        tmp = _setup_tempdir_with_context("verify-2026-05-04T00:00:00Z")
+        try:
+            r = _force_post_cutoff_invocation(
+                "validate-step55-evidence.py", tmp, {"STEP55_EVIDENCE_MODE": "warn"},
+            )
+            self.assertEqual(r.returncode, 0)
+            telemetry = tmp / ".runs" / "step55-soak-telemetry.jsonl"
+            self.assertTrue(telemetry.exists(),
+                f"telemetry file should exist; ls .runs={list((tmp/'.runs').iterdir())}")
+            lines = telemetry.read_text().strip().splitlines()
+            self.assertEqual(len(lines), 1)
+            rec = json.loads(lines[0])
+            self.assertEqual(rec["verdict"], "skip")
+            self.assertEqual(rec["skip_reason"], "no_sidecar")
+            self.assertEqual(rec["mode"], "warn")
+            self.assertIn("run_id", rec)
+            self.assertIn("timestamp", rec)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_telemetry_record_emitted_on_fail_with_categories(self):
+        """FAIL path → telemetry row with verdict=fail and violation_categories."""
+        tmp = _setup_tempdir_with_context("verify-2026-05-04T00:00:00Z")
+        try:
+            self._make_step55_fixture(tmp, html_content=(
+                '<html><body><img src="/some/unrelated/page.png"></body></html>'
+            ))
+            r = _force_post_cutoff_invocation(
+                "validate-step55-evidence.py", tmp, {"STEP55_EVIDENCE_MODE": "warn"},
+            )
+            telemetry = tmp / ".runs" / "step55-soak-telemetry.jsonl"
+            self.assertTrue(telemetry.exists())
+            rec = json.loads(telemetry.read_text().strip().splitlines()[-1])
+            self.assertEqual(rec["verdict"], "fail")
+            self.assertGreater(rec["violation_count"], 0)
+            self.assertIn("dom_unbound", rec["violation_categories"])
+            self.assertEqual(rec["mode"], "warn")
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _make_min_png(width: int, height: int) -> bytes:
+    """Build a minimal valid PNG of given dimensions using stdlib only.
+
+    Used by DOM-binding tests so we can synthesize a screenshot that passes
+    check_image_magic + check_image_min_dimensions without depending on Pillow.
+    """
+    import struct, zlib
+    def chunk(tag, data):
+        return (struct.pack(">I", len(data)) + tag + data
+                + struct.pack(">I", zlib.crc32(tag + data)))
+    sig = b"\x89PNG\r\n\x1a\n"
+    ihdr = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
+    # Minimal solid-gray IDAT: rows of \x00 filter byte + RGB triples.
+    raw = b"".join(b"\x00" + b"\x80" * (width * 3) for _ in range(height))
+    idat = zlib.compress(raw, 1)
+    return sig + chunk(b"IHDR", ihdr) + chunk(b"IDAT", idat) + chunk(b"IEND", b"")
+
 
 class TestImageSpecComplianceErrors(unittest.TestCase):
     """validate-image-spec-compliance.py: model deviation without declaration → fail."""

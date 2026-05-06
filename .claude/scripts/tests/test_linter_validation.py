@@ -175,5 +175,90 @@ class TestStrictAOCDerivation(unittest.TestCase):
             self.assertIn("(consumer_coverage/", stdout_strict)
 
 
+class TestValidatorEnvPrefixCheck(unittest.TestCase):
+    """#1272 follow-up — required_env_prefix sub-check on validator entries.
+
+    Locks the contract that a dict-form validator entry with
+    required_env_prefix triggers an additional finding when the prefix is
+    absent immediately before the validator invocation in any integration
+    point that references it.
+    """
+
+    def _setup_with_validator(self, tmpdir, state_registry_3b: str,
+                               required_env_prefix: str | None = None):
+        """Build a tmpdir mini-repo whose state-registry.json 3b entry has
+        the given verify command, and whose template-coherence-rules.json
+        declares one validator_integration_required rule."""
+        os.makedirs(os.path.join(tmpdir, ".claude/scripts"), exist_ok=True)
+        os.makedirs(os.path.join(tmpdir, ".claude/patterns"), exist_ok=True)
+        shutil.copy(LINTER, os.path.join(tmpdir, ".claude/scripts/verify-linter.sh"))
+        shutil.copytree(LIB_DIR, os.path.join(tmpdir, ".claude/scripts/lib"),
+                        dirs_exist_ok=True)
+        # Make the validator script exist so the rule passes script-existence.
+        with open(os.path.join(tmpdir, ".claude/scripts/validate-step55-evidence.py"),
+                  "w") as f:
+            f.write("#!/usr/bin/env python3\n# stub\n")
+        with open(os.path.join(tmpdir, ".claude/patterns/state-registry.json"),
+                  "w") as f:
+            json.dump({"verify": {"3b": {"verify": state_registry_3b}}}, f)
+        validator_entry = (
+            {"path": ".claude/scripts/validate-step55-evidence.py",
+             "required_env_prefix": required_env_prefix}
+            if required_env_prefix
+            else ".claude/scripts/validate-step55-evidence.py"
+        )
+        with open(os.path.join(tmpdir, ".claude/patterns/template-coherence-rules.json"),
+                  "w") as f:
+            json.dump({"rules": [{
+                "id": "test-prefix-rule",
+                "type": "validator_integration_required",
+                "severity": "block",
+                "description": "test",
+                "validators": [validator_entry],
+                "integration_points": [{
+                    "path": ".claude/patterns/state-registry.json",
+                    "executable_keys": ["verify"],
+                    "state_value_executable": True,
+                }],
+            }]}, f)
+
+    def test_prefix_required_and_present_passes(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self._setup_with_validator(
+                tmpdir,
+                "STEP55_EVIDENCE_MODE=deny python3 .claude/scripts/validate-step55-evidence.py",
+                required_env_prefix="STEP55_EVIDENCE_MODE=deny",
+            )
+            rc, stdout, _ = _run(tmpdir, "--json")
+        self.assertEqual(rc, 0, f"prefix present should pass; stdout={stdout!r}")
+        payload = json.loads(stdout)
+        self.assertEqual(payload["summary"]["cross_file_contradiction"], 0)
+
+    def test_prefix_required_but_absent_fires(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self._setup_with_validator(
+                tmpdir,
+                "python3 .claude/scripts/validate-step55-evidence.py",
+                required_env_prefix="STEP55_EVIDENCE_MODE=deny",
+            )
+            rc, stdout, _ = _run(tmpdir, "--json")
+        self.assertEqual(rc, 1, f"prefix absent should block (severity=block); stdout={stdout!r}")
+        payload = json.loads(stdout)
+        self.assertEqual(payload["summary"]["cross_file_contradiction"], 1)
+        self.assertIn("missing required env prefix", payload["cross_file_contradiction"][0])
+        self.assertIn("STEP55_EVIDENCE_MODE=deny", payload["cross_file_contradiction"][0])
+
+    def test_no_prefix_required_bare_string_works(self):
+        """Backward compat: bare-string validator entries continue to work."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self._setup_with_validator(
+                tmpdir,
+                "python3 .claude/scripts/validate-step55-evidence.py",
+                required_env_prefix=None,  # bare string
+            )
+            rc, stdout, _ = _run(tmpdir, "--json")
+        self.assertEqual(rc, 0, f"bare-string entry without prefix should pass; stdout={stdout!r}")
+
+
 if __name__ == "__main__":
     unittest.main()

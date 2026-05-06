@@ -2679,13 +2679,24 @@ def main() -> int:
                 return "\n".join(parts)
             return text
 
-        for v_rel in validators:
+        def _normalize_validator(v):
+            """Accept bare string OR dict {path, required_env_prefix?}."""
+            if isinstance(v, str):
+                return (v, None)
+            return (v.get("path"), v.get("required_env_prefix"))
+
+        for v_entry in validators:
+            v_rel, required_env_prefix = _normalize_validator(v_entry)
+            if not v_rel:
+                findings.append(f"  [{rid}] malformed validator entry: {v_entry!r}")
+                continue
             v_path = os.path.join(REPO_ROOT, v_rel)
             if not os.path.isfile(v_path):
                 findings.append(f"  [{rid}] validator script not found: {v_rel}")
                 continue
             v_basename = os.path.basename(v_rel)
             referenced_in = []
+            referenced_exec_texts = []  # parallel to referenced_in for prefix check
             for ip in integration_points:
                 ip_rel, exec_keys, state_val_exec = _normalize_ip(ip)
                 if not ip_rel:
@@ -2696,6 +2707,7 @@ def main() -> int:
                 exec_text = _executable_text(ip_path, exec_keys, state_val_exec)
                 if v_basename in exec_text:
                     referenced_in.append(ip_rel)
+                    referenced_exec_texts.append(exec_text)
             if not referenced_in:
                 ip_paths = [_normalize_ip(ip)[0] for ip in integration_points]
                 findings.append(
@@ -2707,6 +2719,31 @@ def main() -> int:
                     f"do NOT count. Wire the validator or remove from "
                     f"validators[]."
                 )
+                continue
+
+            # #1272 follow-up: env-prefix sub-check. Each reference must have
+            # the declared env prefix (e.g., STEP55_EVIDENCE_MODE=deny) within
+            # 100 chars before the validator basename in the executable text.
+            # Defends against silent rollout regression.
+            if required_env_prefix:
+                for ip_rel, exec_text in zip(referenced_in, referenced_exec_texts):
+                    # Find each occurrence of the basename and check the
+                    # preceding window for the prefix string.
+                    found_with_prefix = False
+                    for m in _re.finditer(_re.escape(v_basename), exec_text):
+                        window = exec_text[max(0, m.start() - 100):m.start()]
+                        if required_env_prefix in window:
+                            found_with_prefix = True
+                            break
+                    if not found_with_prefix:
+                        findings.append(
+                            f"  [{rid}] validator {v_rel} referenced in {ip_rel} "
+                            f"but missing required env prefix "
+                            f"{required_env_prefix!r} within 100 chars before "
+                            f"the invocation. Add the prefix (e.g., "
+                            f"`{required_env_prefix} python3 .claude/scripts/{v_basename}`) "
+                            f"or remove `required_env_prefix` from the rule entry."
+                        )
         return findings
 
     def check_validator_inventory_completeness(rule):
@@ -2801,7 +2838,12 @@ def main() -> int:
                 if r.get("type") == "validator_integration_required":
                     found_stage_b_rule = True
                     for v in r.get("validators") or []:
-                        declared.add(v)
+                        # Accept bare string OR dict {path, ...} per
+                        # #1272 follow-up schema extension.
+                        if isinstance(v, str):
+                            declared.add(v)
+                        elif isinstance(v, dict) and v.get("path"):
+                            declared.add(v["path"])
         except Exception as e:
             return findings + [
                 f"  [{rid}] cannot read rules file: {e}"]
