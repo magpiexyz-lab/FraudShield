@@ -71,11 +71,20 @@ SECTION_MARKERS = (
 )
 
 # Write-syntax tokens (R2-C1: write-only, no read syntax).
+#
+# PR-FIX-S2: the previous S2 regex `json\.dump\([^()]*?open\(...)` could not
+# span function calls in the dict payload (e.g. `datetime.now()`), missing
+# multi-line dict payloads. The unified S2 pattern below matches ANY
+# `open(target, 'w'|'a')` regardless of wrapping context — semantically that
+# IS a write to the target. The negative lookbehind `(?<!with\s)` excludes
+# the S1 form so each site reports under exactly one shape.
 WRITE_PATTERNS = [
     # S1 multi-line: with open('.runs/X.json', 'w')   (also matches 'a' mode)
     ("S1", re.compile(r"""with\s+open\(\s*['"](?P<path>\.runs/[^'"\s]+)['"]\s*,\s*['"](?P<mode>[wa])""")),
-    # S2 single-call: json.dump(..., open('.runs/X.json', 'w'))
-    ("S2", re.compile(r"""json\.dump\([^()]*?open\(\s*['"](?P<path>\.runs/[^'"\s]+)['"]\s*,\s*['"](?P<mode>[wa])""")),
+    # S2 generic: any open(target, 'w'|'a') NOT preceded by `with ` —
+    # covers json.dump(payload, open(target,'w'), ...), payload-with-function-
+    # calls, payload-spanning-newlines, etc.
+    ("S2", re.compile(r"""(?<!with\s)open\(\s*['"](?P<path>\.runs/[^'"\s]+)['"]\s*,\s*['"](?P<mode>[wa])""")),
     # S3 heredoc: cat > .runs/X.json << EOF
     ("S3", re.compile(r"""(?:^|\s)cat\s*>\s*(?P<path>\.runs/[^\s<]+)\s*<<""")),
     # S4 echo redirect: echo '...' > .runs/X.json   (or printf)

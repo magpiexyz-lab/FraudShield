@@ -158,6 +158,18 @@ class TestNonManifestPath(GoldenFixtureBase):
         self._run("07-non-manifest-path-untouched")
 
 
+class TestMultilinePayloadWithFunctionCall(GoldenFixtureBase):
+    """PR-FIX-S2 regression: previously, the audit's S2 regex
+    `json\\.dump\\([^()]*?open\\(...)` could not span function calls in a
+    multi-line dict payload (e.g. `datetime.now()`), silently missing
+    9 in-scope sites including state-99-epilogue.md. The unified
+    `(?<!with\\s)open\\(target,'w')` matcher closes that blind spot.
+    This fixture pins the regression."""
+
+    def test_multiline_payload_with_function_call(self):
+        self._run("08-multiline-payload-with-function-call")
+
+
 class TestDryRunMode(unittest.TestCase):
     """--dry-run prints diff but does not mutate files."""
 

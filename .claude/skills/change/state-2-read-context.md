@@ -71,7 +71,7 @@
 
 - **Write Stack Knowledge hints artifact** (`.runs/change-stack-knowledge-hints.json`) — active prevention input for solve-reasoning Agent 2:
   ```bash
-  python3 -c "
+  PAYLOAD=$(python3 -c "
   import json, sys
   sys.path.insert(0, 'scripts')
   from lib.stack_knowledge_parser import iter_stack_knowledge_files, parse_stack_knowledge_file
@@ -86,9 +86,13 @@
       for e in entries:
           if e.get('maturity') in ACTIVE and e.get('graduated_to') is None:
               hints.append({'source': path, 'id': e.get('id'), 'maturity': e.get('maturity'), 'composite_identity': e.get('composite_identity'), 'composite_identity_hash': e.get('composite_identity_hash'), 'fix_template': e.get('fix_template'), 'prevention_mechanism': e.get('prevention_mechanism'), 'occurrence_count': e.get('occurrence_count')})
-  json.dump({'entries': hints, 'source_files': sources, 'count': len(hints)}, open('.runs/change-stack-knowledge-hints.json', 'w'), indent=2)
-  print(f'change stack-knowledge hints: {len(hints)} active entries from {len(sources)} files')
-  "
+  print(f'change stack-knowledge hints: {len(hints)} active entries from {len(sources)} files', file=sys.stderr)
+  print(json.dumps({'entries': hints, 'source_files': sources, 'count': len(hints)}))
+  ")
+  bash .claude/scripts/lib/write-gate-artifact.sh \
+    --path .runs/change-stack-knowledge-hints.json \
+    --payload "$PAYLOAD" \
+    --skill change
   ```
   HC3: absent sections = empty hints list. Never blocking.
   The hints artifact is read by STATE 3 and passed into solve-reasoning Phase 1

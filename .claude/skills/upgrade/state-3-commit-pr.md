@@ -103,8 +103,8 @@ bash .claude/scripts/lib/write-gate-artifact.sh \
 
 Write `.runs/upgrade-step-check.json`:
 ```bash
-python3 -c "
-import json, os, subprocess
+PAYLOAD=$(python3 -c "
+import json, os, subprocess, sys
 steps = []
 if os.path.exists('package.json'):
     steps.append('build_verify')
@@ -120,16 +120,19 @@ else:
     if os.path.exists('.runs/commit-message.txt'):
         steps.append('artifacts')
 steps.append('q_score')
-os.makedirs('.runs', exist_ok=True)
-json.dump({
+print(f'SELF-CHECK: wrote .runs/upgrade-step-check.json with {len(steps)} steps', file=sys.stderr)
+print(json.dumps({
     'steps_completed': steps,
     'key_outputs': {
         'build_passed': 'build_verify' in steps or not os.path.exists('package.json'),
         'dry_run': dry_run
     }
-}, open('.runs/upgrade-step-check.json', 'w'), indent=2)
-print('SELF-CHECK: wrote .runs/upgrade-step-check.json with', len(steps), 'steps')
-"
+}))
+")
+bash .claude/scripts/lib/write-gate-artifact.sh \
+  --path .runs/upgrade-step-check.json \
+  --payload "$PAYLOAD" \
+  --skill upgrade
 ```
 
 This checkpoint is mandatory. Do not skip it.

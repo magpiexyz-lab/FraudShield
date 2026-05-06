@@ -121,15 +121,24 @@ confirmed (Anthropic API down, GitHub API down), write an explicit
 skip artifact before advancing — VERIFY accepts `skipped=True`:
 
 ```bash
-python3 -c "
+PAYLOAD=$(python3 -c "
 import json, datetime
-json.dump({
+print(json.dumps({
     'pass': False, 'skipped': True, 'scope': 'unknown',
-    'skill': '$SKILL_KEY', 'run_id': '$RUN_ID', 'fast_path': False,
+    'fast_path': False,
     'skip_reason': 'external_service_unavailable',
     'timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat()
-}, open('.runs/observation-enforcement.json', 'w'), indent=2)
-"
+}))
+")
+# state-99 runs post-skill-completion via lifecycle-finalize.sh, so the
+# active context's identity may already be marked completed=true. Pass
+# --source-run-id and --source-skill explicitly (AOC v1.2 path) using
+# SKILL_KEY/RUN_ID derived in Step 0.
+bash .claude/scripts/lib/write-gate-artifact.sh \
+  --path .runs/observation-enforcement.json \
+  --payload "$PAYLOAD" \
+  --source-run-id "$RUN_ID" \
+  --source-skill "$SKILL_KEY"
 ```
 
 This is the ONLY legitimate manual skip. Any other observation failure

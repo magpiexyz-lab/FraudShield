@@ -133,8 +133,8 @@ Read `experiment/EVENTS.yaml`. Check that at least one event has `funnel_stage: 
 
 Write `.runs/distribute-impl-step-check.json`:
 ```bash
-python3 -c "
-import json, os, subprocess
+PAYLOAD=$(python3 -c "
+import json, os, subprocess, sys
 steps = []
 utm = subprocess.run(['grep','-rq','utm_source','src/','site/'], capture_output=True)
 utm_wired = utm.returncode == 0
@@ -151,8 +151,8 @@ if fb:
     steps.append('3c')
 steps.append('3d')  # project_name fix (no-op if mismatch was false)
 steps.append('3e')  # ad-readiness checks ran
-os.makedirs('.runs', exist_ok=True)
-json.dump({
+print(f'SELF-CHECK: wrote .runs/distribute-impl-step-check.json with {len(steps)} steps', file=sys.stderr)
+print(json.dumps({
     'steps_completed': steps,
     'key_outputs': {
         'utm_wired': utm_wired,
@@ -160,9 +160,12 @@ json.dump({
         'feedback_widget_added': fb,
         'ad_readiness_passed': len(steps) >= 5
     }
-}, open('.runs/distribute-impl-step-check.json', 'w'), indent=2)
-print('SELF-CHECK: wrote .runs/distribute-impl-step-check.json with', len(steps), 'steps')
-"
+}))
+")
+bash .claude/scripts/lib/write-gate-artifact.sh \
+  --path .runs/distribute-impl-step-check.json \
+  --payload "$PAYLOAD" \
+  --skill distribute
 ```
 
 This checkpoint is mandatory. Do not skip it.

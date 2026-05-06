@@ -70,22 +70,26 @@ The detector ONLY fires when `BOUNDARY_KIND="diff"`. In `full-tree` mode (no com
 if [ "$ALL_PAGES_FAST_PATH" = "true" ]; then
   # 1. Decision artifact (consumed by state-completion-gate.sh exemption,
   #    state-3a/3b VERIFY branches, and state-7a verify-report Notes cell).
-  python3 -c "
+  PAYLOAD=$(python3 -c "
 import json, datetime, subprocess, os
 mb = subprocess.check_output(['git','merge-base','HEAD','main']).decode().strip()
 pr_files = subprocess.check_output(
     ['git','diff','--name-only', mb + '...HEAD']
 ).decode().splitlines()
 ps = json.load(open('.runs/design-page-set.json'))
-json.dump({
+print(json.dumps({
     'pr_files': pr_files,
     'boundary_kind': 'diff',
     'page_set': ps.get('pages', []),
     'landing': ps.get('landing'),
     'trigger': 'zero ui-rendering source files in pr boundary after shadcn-primitive, api-route, and test-file exclusion',
     'timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat()
-}, open('.runs/all-pages-fast-path-decision.json','w'), indent=2)
-"
+}))
+  ")
+  bash .claude/scripts/lib/write-gate-artifact.sh \
+    --path .runs/all-pages-fast-path-decision.json \
+    --payload "$PAYLOAD" \
+    --skill verify
 
   # 2. Synthesize design-critic.json aggregate.
   #    Provenance=lead-synthesized + sanctioned coverage_provider clears

@@ -220,6 +220,36 @@ class TestS2JsonDump(GateArtifactEnforcementBase):
         self.assertEqual(len(findings), 1, (out, err))
         self.assertIn(".runs/change-context.json", findings[0])
 
+    def test_multiline_payload_with_function_call_yields_finding(self):
+        """PR-FIX-S2 regression: the previous S2 regex
+        `json\\.dump\\([^()]*?open\\(...)` could not span function calls in
+        a multi-line dict payload (e.g. `datetime.now()`). State-99 had
+        exactly this shape and was silently missed. The unified matcher
+        with negative lookbehind on `with ` catches it."""
+        _setup_repo(
+            self.tmpdir,
+            _rule_with_corpus(),
+            self.manifest,
+            {
+                ".claude/skills/audit/state-0.md": (
+                    "**ACTIONS:**\n"
+                    "```bash\n"
+                    "python3 -c \"\n"
+                    "import json, datetime\n"
+                    "json.dump({\n"
+                    "    'pass': False,\n"
+                    "    'timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat()\n"
+                    "}, open('.runs/q-dimensions.json', 'w'), indent=2)\n"
+                    "\"\n"
+                    "```\n"
+                ),
+            },
+        )
+        rc, out, err = _run_linter(self.tmpdir, "--warn-only")
+        findings = _findings_in(out + err)
+        self.assertEqual(len(findings), 1, (out, err))
+        self.assertIn(".runs/q-dimensions.json", findings[0])
+
 
 class TestS4EchoRedirect(GateArtifactEnforcementBase):
     def test_echo_redirect_yields_finding(self):

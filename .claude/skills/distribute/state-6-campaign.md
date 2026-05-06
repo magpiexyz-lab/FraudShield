@@ -782,8 +782,8 @@ Read `phase` from `.runs/distribute-context.json`.
 
 Write `.runs/distribute-step-check.json`:
 ```bash
-python3 -c "
-import json, os, subprocess
+PAYLOAD=$(python3 -c "
+import json, os, subprocess, sys
 steps = ['6a']  # idempotency check always runs
 ads = {}
 if os.path.exists('experiment/ads.yaml'):
@@ -812,8 +812,8 @@ if pr.returncode == 0:
 if os.path.exists('.runs/q-dimensions.json'):
     steps.append('q_score')
 steps.append('6i')
-os.makedirs('.runs', exist_ok=True)
-json.dump({
+print(f'SELF-CHECK: wrote .runs/distribute-step-check.json with {len(steps)} steps', file=sys.stderr)
+print(json.dumps({
     'steps_completed': steps,
     'key_outputs': {
         'campaign_id': str(ads.get('campaign_id', '')),
@@ -823,9 +823,12 @@ json.dump({
         'audit_passed': str(os.path.exists(audit_file) and (json.load(open(audit_file)).get('all_passed', False) or json.load(open(audit_file)).get('manual_creation', False))) if os.path.exists(audit_file) else 'false',
         'readback_completed': str(json.load(open(audit_file)).get('readback_completed', False)) if os.path.exists(audit_file) else 'false'
     }
-}, open('.runs/distribute-step-check.json', 'w'), indent=2)
-print('SELF-CHECK: wrote .runs/distribute-step-check.json with', len(steps), 'steps')
-"
+}))
+")
+bash .claude/scripts/lib/write-gate-artifact.sh \
+  --path .runs/distribute-step-check.json \
+  --payload "$PAYLOAD" \
+  --skill distribute
 ```
 
 This checkpoint is mandatory. Do not skip it.

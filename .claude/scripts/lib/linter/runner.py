@@ -1732,11 +1732,18 @@ def main() -> int:
         # Build a single regex alternation of all gated paths.
         gated_alt = "|".join(re.escape(p) for p in sorted(gated))
         # Write-syntax tokens (R2-C1): write-only.
+        # PR-FIX-S2: replaced `json.dump([^()]*? open(...)` with a unified
+        # `open(target, 'w'|'a')` matcher. The previous regex could not
+        # span function calls in multi-line dict payloads (e.g.
+        # datetime.now()), silently missing 9 sites. The unified pattern
+        # uses a negative lookbehind to exclude the S1 form (`with open`).
         WRITE_PATTERNS = [
             # with open(target, 'w'|'a')
             re.compile(r"with\s+open\(\s*['\"](?P<path>" + gated_alt + r")['\"]\s*,\s*['\"][wa]"),
-            # json.dump(..., open(target, 'w'|'a'))
-            re.compile(r"json\.dump\([^()]{0,4096}?open\(\s*['\"](?P<path>" + gated_alt + r")['\"]\s*,\s*['\"][wa]"),
+            # generic: any open(target, 'w'|'a') NOT preceded by `with ` —
+            # covers json.dump(payload, open(target,'w')), payloads with
+            # function calls, payloads spanning newlines, etc.
+            re.compile(r"(?<!with\s)open\(\s*['\"](?P<path>" + gated_alt + r")['\"]\s*,\s*['\"][wa]"),
             # > target / >> target
             re.compile(r">{1,2}\s*(?P<path>" + gated_alt + r")\b"),
             # tee target

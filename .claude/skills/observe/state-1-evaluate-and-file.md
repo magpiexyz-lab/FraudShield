@@ -40,14 +40,18 @@ experiment.yaml hit this same problem?" If yes, all conditions pass.
 
 If any condition fails, write filing result and report to user:
 ```bash
-python3 -c "
+PAYLOAD=$(python3 -c "
 import json, datetime
-json.dump({
+print(json.dumps({
     'verdict': 'no-template-issues',
     'timestamp': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
     'reason': '<which condition failed and why>'
-}, open('.runs/observe-filing-result.json', 'w'))
-"
+}))
+")
+bash .claude/scripts/lib/write-gate-artifact.sh \
+  --path .runs/observe-filing-result.json \
+  --payload "$PAYLOAD" \
+  --skill observe
 ```
 Report: "Evaluation complete. The symptom does not qualify as a template observation:
 <reason>." Then proceed directly to Q-score and STATE 2.
@@ -151,15 +155,19 @@ If filing fails, log the error and write filing result with `verdict: "error"`.
 
 On success, write filing result:
 ```bash
-python3 -c "
+PAYLOAD=$(python3 -c "
 import json, datetime
-json.dump({
+print(json.dumps({
     'verdict': 'filed',
     'timestamp': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
     'issue_url': '<url>',
     'title': '<title>'
-}, open('.runs/observe-filing-result.json', 'w'))
-"
+}))
+")
+bash .claude/scripts/lib/write-gate-artifact.sh \
+  --path .runs/observe-filing-result.json \
+  --payload "$PAYLOAD" \
+  --skill observe
 ```
 
 Report to user: "Filed template observation: <url>"
