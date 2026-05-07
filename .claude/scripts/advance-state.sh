@@ -31,10 +31,38 @@ print('yes' if '$STATE_NUM' in reg.get('$SKILL', {}) else 'no')
 fi
 
 python3 -c "
-import json, os
+import json, os, sys, subprocess
 f='$CTX'; d=json.load(open(f))
-cs=d.get('completed_states',[])
 state=str('$STATE_NUM')
+
+# Verify BEFORE append (#1339 round-2 C4) — atomic verify-then-append in
+# this single python3 invocation eliminates the revert-race that an
+# append-then-verify-then-revert design would have. When the
+# state-completion-gate hook deferred its synchronous VERIFY (because a
+# sibling write-gate-artifact.sh appears in the chain), this is the
+# actual gate: the chain has now executed, so the artifact exists and
+# VERIFY can run authoritatively.
+reg_path = '$REGISTRY'
+if os.path.exists(reg_path):
+    try:
+        reg = json.load(open(reg_path))
+    except Exception as e:
+        sys.stderr.write('advance-state: cannot parse registry: ' + str(e) + chr(10))
+        sys.exit(1)
+    entry = reg.get('$SKILL', {}).get(state, '')
+    if isinstance(entry, dict):
+        verify_cmd = entry.get('verify', '')
+    else:
+        verify_cmd = str(entry)
+    if verify_cmd and verify_cmd != 'true':
+        r = subprocess.run(verify_cmd, shell=True, capture_output=True)
+        if r.returncode != 0:
+            sys.stderr.write('advance-state: verify failed for $SKILL.' + state + ': ' + verify_cmd + chr(10))
+            if r.stderr:
+                sys.stderr.write(r.stderr.decode(errors='replace') + chr(10))
+            sys.exit(1)
+
+cs=d.get('completed_states',[])
 if state not in cs: cs.append(state)
 d['completed_states']=cs
 

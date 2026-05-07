@@ -3096,6 +3096,96 @@ def main() -> int:
             )
         return findings
 
+    def check_state_defer_verify_pairing(rule):
+        """Issue #1339: every state that opts into defer_verify_when_writer in
+        state-registry.json MUST have its state file's ACTIONS section invoke
+        `bash .claude/scripts/lib/write-gate-artifact.sh --path <P>` for at
+        least one <P> in the declared list. Without that, the chain-aware
+        gate skip would never have a sibling writer to defer to, and the
+        opt-in becomes a silent no-op.
+        """
+        findings = []
+        rid = rule.get("id", "<unknown>")
+        reg_path = os.path.join(REPO_ROOT, rule.get("registry_path", ""))
+        skills_dir = os.path.join(REPO_ROOT, rule.get("skills_dir", ""))
+        if not os.path.isfile(reg_path):
+            findings.append(_emit_finding(rule, f"registry file missing: {reg_path}"))
+            return findings
+        if not os.path.isdir(skills_dir):
+            findings.append(_emit_finding(rule, f"skills directory missing: {skills_dir}"))
+            return findings
+        try:
+            reg = json.load(open(reg_path))
+        except (OSError, json.JSONDecodeError) as e:
+            findings.append(_emit_finding(rule, f"cannot parse {reg_path}: {e}"))
+            return findings
+        for skill, states in reg.items():
+            if not isinstance(states, dict):
+                continue
+            for state_id, entry in states.items():
+                if not isinstance(entry, dict):
+                    continue
+                defer = entry.get("defer_verify_when_writer")
+                if not defer:
+                    continue
+                if not isinstance(defer, list):
+                    findings.append(_emit_finding(
+                        rule,
+                        f"{skill}.{state_id}: defer_verify_when_writer must be a list, got {type(defer).__name__}"
+                    ))
+                    continue
+                # Find state file. Glob `state-{state_id}-*.md` over-matches
+                # ("state-8-*.md" picks up "state-8b-*.md"); filter via regex
+                # requiring the immediate suffix to be `-`.
+                import glob as _glob
+                import re as _re
+                skill_dir = os.path.join(skills_dir, skill)
+                if not os.path.isdir(skill_dir):
+                    findings.append(_emit_finding(
+                        rule,
+                        f"{skill}.{state_id}: skill directory not found at {skill_dir}"
+                    ))
+                    continue
+                pattern = _re.compile(rf"^state-{_re.escape(state_id)}-[^.]+\.md$")
+                candidates = [
+                    os.path.join(skill_dir, fn)
+                    for fn in os.listdir(skill_dir)
+                    if pattern.match(fn)
+                ]
+                if not candidates:
+                    findings.append(_emit_finding(
+                        rule,
+                        f"{skill}.{state_id} declares defer_verify_when_writer={defer} "
+                        f"but no state file at {skill_dir}/state-{state_id}-*.md"
+                    ))
+                    continue
+                # Read the state file content
+                try:
+                    txt = open(candidates[0]).read()
+                except OSError as e:
+                    findings.append(_emit_finding(
+                        rule,
+                        f"{skill}.{state_id}: cannot read {candidates[0]}: {e}"
+                    ))
+                    continue
+                # Require write-gate-artifact.sh --path <P> for at least one P
+                # in the defer list. Conservative match — exact path string.
+                ok = False
+                for p in defer:
+                    if "write-gate-artifact.sh" in txt and f"--path {p}" in txt:
+                        ok = True
+                        break
+                if not ok:
+                    findings.append(_emit_finding(
+                        rule,
+                        f"{skill}.{state_id} declares defer_verify_when_writer={defer} "
+                        f"but {os.path.relpath(candidates[0], REPO_ROOT)} ACTIONS has no "
+                        f"`bash .claude/scripts/lib/write-gate-artifact.sh --path <P>` "
+                        f"for any P in the list"
+                    ))
+        return findings
+
+
     # ---------------------------------------------------------------------------
     # Cross-file rule dispatch — registry-driven with type + field validation.
     #
@@ -3154,6 +3244,15 @@ def main() -> int:
             set(),
             {"discovery_glob", "skip_validators"},
             True,  # is_strict_aoc — meta-rule for hard-block validator coverage
+        ),
+        # #1339 — opt-in deferred VERIFY pairing. Every state with
+        # defer_verify_when_writer in state-registry.json must have a
+        # write-gate-artifact.sh invocation in its state file's ACTIONS.
+        "state_defer_verify_pairing": (
+            check_state_defer_verify_pairing,
+            {"registry_path", "skills_dir"},
+            set(),
+            True,  # is_strict_aoc — block at lifecycle-finalize.sh:289 even under --warn-only
         ),
     }
     META_KEYS = {"id", "type", "severity", "description", "_transitional_note", "_comment", "convention_doc"}

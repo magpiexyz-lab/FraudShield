@@ -264,8 +264,18 @@
       "verify": "python3 -c \"import json,subprocess; ctx=json.load(open('.runs/resolve-context.json')); has_diff=bool(subprocess.run(['git','diff','--name-only','HEAD'],capture_output=True,text=True).stdout.strip() or subprocess.run(['git','diff','--cached','--name-only'],capture_output=True,text=True).stdout.strip()); all_rejected=ctx.get('all_fixes_rejected') is True; assert has_diff or all_rejected, 'no diff and no all_fixes_rejected marker in resolve-context.json'; fe=ctx.get('fixtures_evaluated'); assert fe is not None, 'fixtures_evaluated missing from resolve-context.json'\"",
       "allows_early_exit_when": "all_fixes_rejected"
     },
-    "8": "python3 -c \"import json; d=json.load(open('.runs/resolve-validation.json')); assert 'regressions' in d, 'regressions field missing'; assert d['regressions']==False, 'regressions detected'\"",
-    "8b": "python3 -c \"import json; d=json.load(open('.runs/resolve-side-effects.json')); assert isinstance(d.get('comments_posted'), list), 'comments_posted not a list'; assert all(isinstance(c, (str,dict)) for c in d['comments_posted']), 'comments_posted items invalid'; assert isinstance(d.get('potentially_resolved'), list), 'potentially_resolved not a list'; assert all(isinstance(i, (str,int,dict)) for i in d['potentially_resolved']), 'potentially_resolved items invalid'\"",
+    "8": {
+      "verify": "python3 -c \"import json; d=json.load(open('.runs/resolve-validation.json')); assert 'regressions' in d, 'regressions field missing'; assert d['regressions']==False, 'regressions detected'\"",
+      "defer_verify_when_writer": [
+        ".runs/resolve-validation.json"
+      ]
+    },
+    "8b": {
+      "verify": "python3 -c \"import json; d=json.load(open('.runs/resolve-side-effects.json')); assert isinstance(d.get('comments_posted'), list), 'comments_posted not a list'; assert all(isinstance(c, (str,dict)) for c in d['comments_posted']), 'comments_posted items invalid'; assert isinstance(d.get('potentially_resolved'), list), 'potentially_resolved not a list'; assert all(isinstance(i, (str,int,dict)) for i in d['potentially_resolved']), 'potentially_resolved items invalid'\"",
+      "defer_verify_when_writer": [
+        ".runs/resolve-side-effects.json"
+      ]
+    },
     "9": "python3 -c \"import json, os; r='.runs/resolve-learnings.json'; l='.runs/patterns-saved.json'; assert os.path.exists(r) or os.path.exists(l), 'no learnings artifact'; d=json.load(open(r if os.path.exists(r) else l)); new_schema=isinstance(d.get('learnings'), list); legacy_schema=isinstance(d.get('patterns_saved'), list); assert new_schema or legacy_schema; assert (not new_schema) or ('proposals_filed' in d and 'halt_events' in d)\"",
     "9a": "python3 -c \"import json,os; d=json.load(open('.runs/graduation-result.json')); assert d.get('evaluated')==True, 'not evaluated'; svcs=d.get('services',[]); assert isinstance(svcs, list), 'services not a list'; [None for s in svcs if s.get('graduated') and not (s.get('file_path') and os.path.exists(s['file_path']) and s.get('frontmatter_valid')==True and not s['file_path'].startswith('.claude/stacks/external/')) and (_ for _ in ()).throw(AssertionError('graduated %s but file missing, invalid, or in external/' % s.get('service')))]\"",
     "10": {

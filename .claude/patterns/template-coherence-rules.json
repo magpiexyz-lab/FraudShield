@@ -433,6 +433,14 @@
         }
       },
       "description": "#1295 PR1 — every disk-discovered validate-*.py MUST be in some `validator_integration_required` rule's validators[] OR in skip_validators (with category in {cli-tool, build-time, test-only, deprecated} AND non-empty justification, HC-PR1-3) OR have `# validator-class: <category>` magic header at start of line 1-5 (no docstring nesting). Closes manifest-relocation gap. The justification requirement prevents silent-skip degradation."
+    },
+    {
+      "id": "state-defer-verify-pairing",
+      "type": "state_defer_verify_pairing",
+      "severity": "block",
+      "registry_path": ".claude/patterns/state-registry.json",
+      "skills_dir": ".claude/skills",
+      "description": "#1339 — every state declaring defer_verify_when_writer in state-registry.json MUST have its state file's ACTIONS section invoke `bash .claude/scripts/lib/write-gate-artifact.sh --path <P>` for at least one P in the declared list. Without that invocation, the chain-aware gate skip would never have a sibling writer to defer to and the opt-in becomes a silent no-op."
     }
   ]
 }

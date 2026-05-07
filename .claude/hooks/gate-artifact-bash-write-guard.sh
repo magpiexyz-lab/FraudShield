@@ -94,6 +94,7 @@ NORM=$(printf '%s' "$COMMAND_CANONICAL" | sed -E 's/[0-9]*>+&[0-9]+//g')
 # Per-segment awk match. Splits on &&/;/| and looks for write operator
 # (>, >>, &>, tee, cp, mv, dd) bound to a path matching $PROTECTED_PATH_REGEX.
 # Then validates that path is in the canonical manifest.
+# shellcheck disable=SC2034  # Declarative constant — registered via write-guard-hooks.json (referenced externally, not by this script body).
 WRITE_OPERATORS=">|>>|&?>|tee|cp|mv|dd"  # for write-guard-hooks.json registration
 GATED_TARGET=$(echo "$NORM" | awk '
     BEGIN{RS="[&|;]"}

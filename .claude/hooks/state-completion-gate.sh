@@ -69,20 +69,24 @@ fi
 
 # Look up VERIFY command for this skill + state (nested lookup — keep inline)
 # Supports both string format ("test -f ...") and object format ({"verify": "...", "calls": [...]})
+# defer_verify_when_writer (#1339): per-state opt-in list of artifact paths whose
+# presence in a sibling write-gate-artifact.sh chain segment justifies skipping
+# synchronous VERIFY (deferred to advance-state.sh's pre-append re-check).
 ENTRY_DATA=$(python3 -c "
 import json
 reg = json.load(open('$REGISTRY'))
 entry = reg.get('$SKILL', {}).get('$STATE_ID', '')
 if isinstance(entry, dict):
-    print(entry.get('verify', '') + '\t' + json.dumps(entry.get('calls', [])))
+    print(entry.get('verify', '') + '\t' + json.dumps(entry.get('calls', [])) + '\t' + json.dumps(entry.get('defer_verify_when_writer', [])))
 else:
-    print(str(entry) + '\t')
+    print(str(entry) + '\t\t')
 " 2>&1) || {
   deny "State registry parse error: cannot read $REGISTRY for $SKILL STATE $STATE_ID. Output: $ENTRY_DATA. Fix the JSON syntax or restore from git."
 }
 
 VERIFY_CMD=$(printf '%s' "$ENTRY_DATA" | cut -f1)
 CALLS_JSON=$(printf '%s' "$ENTRY_DATA" | cut -f2)
+DEFER_PATHS_JSON=$(printf '%s' "$ENTRY_DATA" | cut -f3)
 
 # --- Chain check: verify all prior states are in completed_states ---
 # This prevents skipping states (e.g., jumping from STATE 0 to STATE 3).
@@ -178,12 +182,82 @@ if [[ -z "$VERIFY_CMD" ]]; then
   deny "State completion gate: $SKILL STATE $STATE_ID — no VERIFY in registry. Add postcondition entry before advancing."
 fi
 
-# Run the verify command from project root
-cd "$PROJECT_DIR"
-if ! eval "$VERIFY_CMD" >/dev/null 2>&1; then
-  # Trace: log VERIFY failure
-  _log_verify_trace "$SKILL" "$STATE_ID" "fail" "$VERIFY_CMD"
-  deny "State completion gate: $SKILL STATE $STATE_ID postconditions not met. VERIFY failed: $VERIFY_CMD — complete this state's actions before marking it done."
+# --- Chain-aware deferral check (#1339) ---
+# When defer_verify_when_writer is set and the Bash chain contains a sibling
+# `bash write-gate-artifact.sh --path <P>` whose <P> is enumerated, skip the
+# synchronous VERIFY eval. advance-state.sh's pre-append VERIFY (run AFTER
+# the chain executes) becomes the gate.
+SKIP_VERIFY=0
+if [[ -n "$DEFER_PATHS_JSON" && "$DEFER_PATHS_JSON" != "[]" && "$DEFER_PATHS_JSON" != "null" ]]; then
+  _DECOMPOSER="$_PROJECT_DIR_GATE/.claude/scripts/lib/decompose-bash-chain.py"
+  if [[ -f "$_DECOMPOSER" ]]; then
+    _DECOMP_OUT=$(printf '%s' "$COMMAND" | python3 "$_DECOMPOSER" 2>&1)
+    _DECOMP_EXIT=$?
+    if [[ $_DECOMP_EXIT -ne 0 ]]; then
+      # FAIL CLOSED: parse ambiguity → deny rather than silently skip
+      deny "State completion gate: chain decomposition failed for $SKILL STATE $STATE_ID (parser uncertain). Run write-gate-artifact.sh and advance-state.sh as separate Bash invocations."
+    fi
+    # Walk segments — if any sibling is `bash .../write-gate-artifact.sh --path <P>`
+    # with <P> in defer_verify_when_writer, set SKIP_VERIFY=1.
+    SKIP_VERIFY=$(DEFER_PATHS_JSON_ENV="$DEFER_PATHS_JSON" python3 -c "
+import sys, os, json
+defer = set(json.loads(os.environ['DEFER_PATHS_JSON_ENV']))
+out = sys.stdin.read()
+for line in out.split('\n'):
+    line = line.rstrip('\r\n')
+    if not line: continue
+    parts = line.split('\t', 1)
+    head = parts[0]
+    if not head.endswith('write-gate-artifact.sh'): continue
+    args = []
+    if len(parts) > 1:
+        try: args = json.loads(parts[1])
+        except: continue
+    # Sibling write-gate-artifact.sh segment can be either:
+    #   - bash .../write-gate-artifact.sh ... (head=bash, args[0] ends with write-gate-artifact.sh)
+    #   - .../write-gate-artifact.sh ... (head ends with write-gate-artifact.sh)
+    # We're already filtering on head endswith write-gate-artifact.sh — this
+    # catches the head==write-gate-artifact case. For head==bash, we look at
+    # args[0] separately below.
+    for i, a in enumerate(args):
+        if a == '--path' and i + 1 < len(args) and args[i+1] in defer:
+            print('1'); sys.exit(0)
+# Also handle bash <writer> --path ... shape
+for line in out.split('\n'):
+    line = line.rstrip('\r\n')
+    if not line: continue
+    parts = line.split('\t', 1)
+    head = parts[0]
+    if head != 'bash': continue
+    args = []
+    if len(parts) > 1:
+        try: args = json.loads(parts[1])
+        except: continue
+    if not args or not args[0].endswith('write-gate-artifact.sh'): continue
+    for i, a in enumerate(args):
+        if a == '--path' and i + 1 < len(args) and args[i+1] in defer:
+            print('1'); sys.exit(0)
+print('0')
+" <<< "$_DECOMP_OUT" 2>/dev/null || echo "0")
+  fi
+fi
+
+if [[ "$SKIP_VERIFY" == "1" ]]; then
+  # Log success-path friction record so the deferral is visible in retrospectives
+  HOOK_FRICTION_HOOK="state-completion-gate.sh" \
+  HOOK_FRICTION_REASON="deferred-verify (sibling write-gate-artifact in chain) — $SKILL STATE $STATE_ID" \
+  HOOK_FRICTION_TOOL_NAME="Bash" \
+  HOOK_FRICTION_BLOCKED_CMD="" \
+  python3 "$PROJECT_DIR/.claude/scripts/append-hook-friction.py" 2>/dev/null || true
+  _log_verify_trace "$SKILL" "$STATE_ID" "deferred" "$VERIFY_CMD"
+else
+  # Run the verify command from project root
+  cd "$PROJECT_DIR"
+  if ! eval "$VERIFY_CMD" >/dev/null 2>&1; then
+    # Trace: log VERIFY failure
+    _log_verify_trace "$SKILL" "$STATE_ID" "fail" "$VERIFY_CMD"
+    deny "State completion gate: $SKILL STATE $STATE_ID postconditions not met. VERIFY failed: $VERIFY_CMD — complete this state's actions before marking it done."
+  fi
 fi
 
 # --- Calls artifact check: verify each call's artifact exists ---

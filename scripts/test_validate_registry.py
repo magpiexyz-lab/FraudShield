@@ -160,6 +160,12 @@ KNOWN_OBJECT_ENTRIES = {
     # Wave B entries — resolve
     ("resolve", "10"),
     ("resolve", "11"),
+    # #1339 — opt-in deferred VERIFY for chained writer + advance-state.
+    # state.8 + state.8b carry defer_verify_when_writer in object form so the
+    # state-completion-gate hook can decompose chains and skip sync VERIFY
+    # when a sibling write-gate-artifact.sh writes the listed path.
+    ("resolve", "8"),
+    ("resolve", "8b"),
     # Wave B entries — distribute
     ("distribute", "3a"),
     ("distribute", "5"),

@@ -300,6 +300,21 @@
           }
         }
       }
+    },
+    "rule_state_defer_verify_pairing": {
+      "description": "Issue #1339: every state in state-registry.json that opts into defer_verify_when_writer must have a corresponding write-gate-artifact.sh --path <P> invocation in its state file's ACTIONS section.",
+      "required": ["id", "type", "registry_path", "skills_dir"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "const": "state_defer_verify_pairing" },
+        "severity": { "$ref": "#/definitions/severity" },
+        "registry_path": { "type": "string", "description": "Path to state-registry.json relative to repo root." },
+        "skills_dir": { "type": "string", "description": "Path to .claude/skills directory relative to repo root." },
+        "description": { "type": "string" },
+        "_comment": { "type": "string" },
+        "convention_doc": { "type": "string" }
+      }
     }
   },
   "type": "object",
@@ -327,7 +342,8 @@
           { "$ref": "#/definitions/rule_bash_hook_write_operator_binding" },
           { "$ref": "#/definitions/rule_markdown_cross_file_line_reference" },
           { "$ref": "#/definitions/rule_validator_integration_required" },
-          { "$ref": "#/definitions/rule_validator_inventory_completeness" }
+          { "$ref": "#/definitions/rule_validator_inventory_completeness" },
+          { "$ref": "#/definitions/rule_state_defer_verify_pairing" }
         ]
       }
     }
