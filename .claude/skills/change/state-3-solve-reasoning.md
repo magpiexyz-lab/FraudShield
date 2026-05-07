@@ -142,6 +142,7 @@ import json
 challenge = {
     'critic_rounds': 0,           # 1 or 2 — actual rounds executed
     'round_1_type_a_count': 0,    # TYPE A concerns from round 1
+    'round_2_type_a_count': 0,    # TYPE A concerns from round 2 (always emit; 0 when critic_rounds <= 1) — required by state-registry.json challenge_fields.when_rounds_gt_1
     'concerns': [
         # {'type': '<A|B|C>', 'description': '<text>'}
     ]
@@ -154,7 +155,7 @@ If `solve_depth = "light"` (no critic ran):
 ```bash
 python3 -c "
 import json
-json.dump({'critic_rounds': 0, 'round_1_type_a_count': 0, 'concerns': []}, open('.runs/change-challenge.json', 'w'), indent=2)
+json.dump({'critic_rounds': 0, 'round_1_type_a_count': 0, 'round_2_type_a_count': 0, 'concerns': []}, open('.runs/change-challenge.json', 'w'), indent=2)
 "
 ```
 
@@ -164,7 +165,7 @@ json.dump({'critic_rounds': 0, 'round_1_type_a_count': 0, 'concerns': []}, open(
 - Solve-reasoning pass completed (light or full)
 - Output stored in working memory for plan generation
 - `.runs/solve-trace.json` exists with 5 required fields (`mode`, `problem_decomposition`, `constraint_enumeration`, `solution_design`, `self_check`, `output`)
-- `.runs/change-challenge.json` exists with `critic_rounds`, `round_1_type_a_count`, `concerns`
+- `.runs/change-challenge.json` exists with `critic_rounds`, `round_1_type_a_count`, `round_2_type_a_count`, `concerns`
 
 **VERIFY:**
 ```bash

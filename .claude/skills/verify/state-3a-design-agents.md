@@ -11,7 +11,13 @@ Spawn edit-capable agents ONE AT A TIME. Each must complete and pass `npm run bu
 > audit log — traces without matching Agent spawns will be blocked. Do NOT write
 > trace files directly. For recovery traces, use `bash .claude/scripts/write-recovery-trace.sh`.
 
-After each edit-capable agent completes, read its completion report and append its fixes to `.runs/fix-log.md`.
+After each edit-capable agent completes, read its completion report and log each fix via the canonical ledger writer (AOC v1 R2 — `.runs/fix-log.md` is derived from `.runs/fix-ledger.jsonl`; do NOT write to fix-log.md directly):
+
+```bash
+python3 .claude/scripts/write-fix-ledger.py --lead-fix --skill verify \
+  --fix-json '{"file":"<file>","symptom":"<short symptom>","fix":"<short fix description>"}' \
+  --severity warn
+```
 
 > **Shared algorithms:** Before each edit-capable agent spawn, execute [Atomic Execution Protocol](../verify.md#atomic-execution-protocol) snapshot. After each agent returns, use [Trace State Detection](../verify.md#trace-state-detection) and [Exhaustion Protocol](../verify.md#exhaustion-protocol) to handle the result.
 
@@ -372,8 +378,8 @@ After all per-page agents complete AND before Stage 2 (consistency check):
 
 1. Read each per-page trace. If any trace output mentions shared-component issues without fixing them (shared paths were excluded from boundary), the orchestrator applies those fixes serially, one file at a time.
 2. Run `npm run build` after shared-component fixes. If build fails, fix (max 2 attempts).
-3. Append each fix to `.runs/fix-log.md`: `Fix (design-critic-shared): <file> — <desc>`
-4. **Also write each fix to the canonical fix-ledger** so the merger's lead-fix crediting (`merge-design-critic-traces.py:284-303`) and the Step 4.7 lifecycle gate have data:
+3. Each shared-component fix MUST be logged via the canonical fix-ledger writer in step 4 below — do NOT write to `.runs/fix-log.md` directly (AOC v1 R2: `.runs/fix-log.md` is derived from `.runs/fix-ledger.jsonl` by `render-fix-log.py`; direct writes are silently overwritten and would also be blocked at runtime by `fix-ledger-write-guard.sh`).
+4. **Write each fix to the canonical fix-ledger** so the merger's lead-fix crediting (`merge-design-critic-traces.py:284-303`) and the Step 4.7 lifecycle gate have data:
    ```bash
    python3 .claude/scripts/write-fix-ledger.py --lead-fix \
      --skill verify \
@@ -500,7 +506,13 @@ reported shared issues are for claimed components, Stage 1c has no work — skip
    - Include `run_id`, context digest, and agent-prompt-footer content
 3. After completion: use [Trace State Detection](../verify.md#trace-state-detection) on `design-critic-shared.json`. If State 2 (exhausted), follow [Exhaustion Protocol](../verify.md#exhaustion-protocol) Tier 1 with reduced scope: "Fix only the highest-impact shared issue."
 4. Run `npm run build`. If build fails, fix (max 2 attempts).
-5. Append fixes to `.runs/fix-log.md`: `Fix (design-critic-shared): <file> — <desc>`
+5. Log each fix via the canonical fix-ledger writer (AOC v1 R2 — do NOT write to `.runs/fix-log.md` directly):
+   ```bash
+   python3 .claude/scripts/write-fix-ledger.py --lead-fix \
+     --skill verify \
+     --fix-json '{"file":"<file>","symptom":"<short symptom>","fix":"<short fix description>"}' \
+     --severity warn
+   ```
 
 > **Hook-enforced:** `skill-agent-gate.sh` blocks `design-consistency-checker` spawn if per-page traces report shared-component issues but `design-critic-shared.json` does not exist.
 

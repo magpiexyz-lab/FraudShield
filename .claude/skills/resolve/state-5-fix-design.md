@@ -106,6 +106,7 @@ from prevention_analysis.recurrence_guard).
       'mode': '<light|full>',
       'problem_decomposition': '<divergence points and blast radius summary>',
       'constraint_enumeration': '<template universality, validator compat, backwards compat>',
+      'phase_3_gaps': '<Phase 3 gap questions, self-answers, and HIGH/LOW confidence tags (full mode); empty string for light mode>',
       'solution_design': '<root_cause + fix_plan for each issue/cluster>',
       'self_check': '<revision pass results>',
       'output': '<recommended fix summary>',

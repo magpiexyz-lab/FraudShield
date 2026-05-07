@@ -654,6 +654,36 @@ The demo client (`createDemoClient()`) returns `DEMO_SEED_DATA` — 3 generic ro
 ### Single-row queries return null in demo mode
 The chainable proxy's `.single()` and `.maybeSingle()` methods both return `{ data: null, error: null }` — not a row from `DEMO_SEED_DATA`. Pages that call `.from("table").select().eq(...).single()` or `.maybeSingle()` and expect a non-null result should handle the null case (loading state or fallback UI). For `.maybeSingle()`, this matches real Supabase behavior when zero rows match the filter; for `.single()`, real Supabase returns a `PGRST116` error on zero rows while the demo client returns `error:null` (a pre-existing simplification — pages that branch on `error.code === "PGRST116"` will not exercise that branch in demo mode).
 
+### When migrations declare CREATE [UNIQUE] INDEX on (timestamptz_col::date), wrap in `AT TIME ZONE 'UTC'` to keep the expression IMMUTABLE
+
+PostgreSQL rejects `(<col>::date)` inside `CREATE [UNIQUE] INDEX` expressions when `<col>` is `timestamptz`, because the cast is STABLE (depends on the session's `TimeZone`), not IMMUTABLE. Postgres requires IMMUTABLE expressions in indexes. Symptom at `supabase db push` / `make migrate`:
+
+```
+ERROR: functions in index expression must be marked IMMUTABLE (SQLSTATE 42P17)
+```
+
+**Anti-pattern:** vitest does not apply migrations against a real Postgres in the default mvp-template test setup — the bug only surfaces at `/deploy` time, by which point the failing migration has likely already been merged.
+
+```sql
+-- WRONG — STABLE cast, fails at db push with 42P17
+CREATE UNIQUE INDEX leads_email_per_day
+  ON leads(email, (created_at::date));
+
+-- CORRECT — explicit UTC anchor makes the expression IMMUTABLE
+DROP INDEX IF EXISTS leads_email_per_day;
+CREATE UNIQUE INDEX leads_email_per_day
+  ON leads(email, ((created_at AT TIME ZONE 'UTC')::date));
+```
+
+UTC is the right anchor because `now()` returns UTC `timestamptz` and dedupe is consistent regardless of session timezone. Pair with `DROP INDEX IF EXISTS <name>;` before the `CREATE` so a pre-existing broken-expression index is replaced rather than silently kept. The same trap applies to other STABLE timestamptz operations inside index expressions (e.g., `date_trunc('day', timestamptz_col)` without a UTC anchor).
+
+`composite_identity:`
+- `root_cause_class: stable-expression-in-unique-index`
+- `divergence_pattern: sql-immutability-violation`
+- `stack_scope: database/supabase`
+- `maturity: canonical`
+- `anti_pattern: true`
+
 ### When `npm run dev` fails with `TypeError: Failed to fetch` in demo mode
 Client-side Supabase needs `NEXT_PUBLIC_DEMO_MODE=true` in addition to server-side `DEMO_MODE=true`. Always set both together:
 

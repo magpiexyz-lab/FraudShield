@@ -129,16 +129,28 @@ If agent returns with Trace State 2 (exhausted), execute the [Atomic Execution P
 
 After security-fixer completes: verify `.runs/agent-traces/security-fixer.json` exists; if agent returned output but trace is missing, write a recovery trace with `"recovery":true`.
 
-After each fix, append to `.runs/fix-log.md`.
+After each fix, log via the canonical writer (AOC v1 R2 — do NOT write to `.runs/fix-log.md` directly):
+
+```bash
+python3 .claude/scripts/write-fix-ledger.py --lead-fix --skill verify \
+  --fix-json '{"file":"<file>","symptom":"<short symptom>","fix":"<short fix description>"}'
+```
 
 #### Step 2a: Lead-side validation (security-fixer)
 
 1. Read `.runs/agent-traces/security-fixer.json` trace.
 2. If `verdict` == `"partial"` AND `unresolved_critical` > 0, this is a **hard gate failure** — Critical/High security issues or Defender FAILs remain unfixed after 2 fix cycles. Skip STATE 5 but still write verify-report.md (STATE 7a) and execute STATE 8 (Save Patterns). Report failure to user with the unresolved items.
 3. If trace has `"recovery": true` AND `verdict` == `"partial"`, treat as hard gate failure (recovery traces cannot confirm fixes succeeded).
-4. Extract Fix Summaries from the agent's return message. Append each fix to `.runs/fix-log.md` with the prefix `Fix (security-fixer):`.
-5. If the lead directly applies additional security fixes beyond what security-fixer handled (e.g., defender findings the fixer did not address), append to `.runs/fix-log.md`:
-   `Fix (lead-security): \`<file>\` — Symptom: <finding> — Fix: <what changed>`
+4. Extract Fix Summaries from the agent's return message. Log each fix via the canonical writer (AOC v1 R2 — do NOT write to `.runs/fix-log.md` directly):
+   ```bash
+   python3 .claude/scripts/write-fix-ledger.py --lead-fix --skill verify \
+     --fix-json '{"file":"<file>","symptom":"<from agent Fix Summary>","fix":"<from agent Fix Summary>"}'
+   ```
+5. If the lead directly applies additional security fixes beyond what security-fixer handled (e.g., defender findings the fixer did not address), log via the canonical writer:
+   ```bash
+   python3 .claude/scripts/write-fix-ledger.py --lead-fix --skill verify \
+     --fix-json '{"file":"<file>","symptom":"<finding>","fix":"<what changed>"}'
+   ```
 
 **POSTCONDITIONS:** `security-merge.json` exists. Security-fixer trace exists (if spawned). If security-fixer verdict is `"partial"` with `unresolved_critical` > 0, pipeline is halted.
 

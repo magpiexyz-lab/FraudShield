@@ -9,8 +9,10 @@
 Determine which issues to resolve:
 
 - If the user specified issue number(s): `gh issue view <N> --json number,title,body,labels,state,comments`
-- If the user said "resolve open issues": `gh issue list --state open --search "-label:architecture" --limit 20 --json number,title,body,labels`
-- If the user said "resolve observations": `gh issue list --label observation --search "-label:architecture" --state open --limit 20 --json number,title,body,labels`
+- If the user said "resolve open issues": `gh issue list --state open --search "-label:architecture -label:trace" --limit 20 --json number,title,body,labels`
+- If the user said "resolve observations": `gh issue list --label observation --search "-label:architecture -label:trace" --state open --limit 20 --json number,title,body,labels`
+
+> **`-label:trace` rationale (issue #1340):** `trace`-labelled issues are auto-collected, permanent open trace-collector tickets (one per team member). Their bodies are stubs (`Automated trace collection for <username>`); they are NOT actionable by /resolve. Closing them — which the standard `Stale` / `Won't fix` triage paths would do — terminates ongoing trace collection, which is user-harmful. The filter excludes them at fetch time so they never enter triage.
 
 - If the user said "--refine" or "refine":
 
@@ -31,7 +33,7 @@ Determine which issues to resolve:
 
   **Step 3 — Read GitHub observation issues:**
   ```bash
-  gh issue list --repo $TEMPLATE_REPO --label observation --search "-label:architecture" --state open \
+  gh issue list --repo $TEMPLATE_REPO --label observation --search "-label:architecture -label:trace" --state open \
     --json number,title,body --limit 50
   ```
 

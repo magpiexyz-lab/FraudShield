@@ -12,8 +12,10 @@ comment: "This may have been addressed by the fix in PR #<number>
 
 For other open issues not in the current batch:
 ```bash
-gh issue list --state open --limit 10 --json number,title,body
+gh issue list --state open --search "-label:trace -label:architecture" --limit 10 --json number,title,body
 ```
+
+> **`-label:trace -label:architecture` rationale (issue #1340 blast extension):** trace-collector issues are permanent open tickets whose bodies happen to mention common files; without filtering they spuriously land in the "Potentially Resolved" PR section. `architecture`-labelled issues are deferred to /solve and similarly should not be cross-referenced here.
 If any reference files modified in this PR: note under a
 "### Potentially Resolved" section in the PR body (do NOT close —
 the fix was not designed for them).

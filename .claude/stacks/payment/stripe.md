@@ -375,6 +375,47 @@ success_url: `${siteUrl}/`,
 cancel_url: `${siteUrl}/`,
 ```
 
+### When checkout is gated by a capability token, validate the token in `/api/checkout` with the same TTL + constant-time compare used by the resource route
+
+Any checkout route that accepts a `session_id` (or similar pending-record key) to identify what the user is purchasing MUST also require and validate the capability token associated with that session — using the same 3-step check applied by the resource endpoint: (1) well-formed token (e.g., 43-char base64url), (2) TTL not expired (`token_expires_at > now()`), (3) constant-time comparison via `crypto.timingSafeEqual`. Without this, a leaked resource URL becomes a purchase oracle: a caller who obtains the `session_id` can trigger a $X checkout even after the token has expired or been used.
+
+The complementary client-side gap: the page component that reads the token from the URL (`?t=<base64url>`) MUST also include the token in the checkout POST body — otherwise the server has no token to validate even if it tried.
+
+```typescript
+// In /api/checkout — after parsing the request body:
+const { session_id, preview_token } = checkoutRequestSchema.parse(body);
+const { data: session } = await supabase
+  .from("pending_sessions")
+  .select("preview_token, preview_token_expires_at")
+  .eq("id", session_id)
+  .single();
+if (
+  !session ||
+  !preview_token ||
+  preview_token.length !== 43 ||
+  new Date(session.preview_token_expires_at) < new Date() ||
+  !crypto.timingSafeEqual(
+    Buffer.from(preview_token),
+    Buffer.from(session.preview_token),
+  )
+) {
+  return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+}
+```
+
+Client-side requirements:
+- Read the token from the URL query param (e.g., `?t=`).
+- Route to an empty / error state when the token parameter is absent.
+- Include the token in the JSON body sent to `/api/checkout`.
+
+Forward the validated token in `cancel_url` so returning buyers do not hit the empty state:
+
+```typescript
+cancel_url: `${siteUrl}/preview?session=${session_id}&t=${preview_token}`,
+```
+
+**Applies to:** any Next.js + Stripe project where a resource page (preview, report, PDF, etc.) is gated by a short-lived URL token AND a paid checkout unlocks the full content. The token-validation rule is independent of the broader `customer_email IDOR` rule above — both apply when both conditions are present.
+
 ### When implementing gift purchases, store PII in a server-side table — not in Stripe metadata
 Stripe Checkout Session `metadata` is readable by anyone with Stripe dashboard access or webhook-consumer access. Placing buyer/recipient PII (name, email, personal note) in metadata creates unnecessary exposure. Stripe metadata values are also capped at 500 characters per value — real names + heartfelt notes can exceed this and the Checkout Session creation call fails silently or truncates.
 

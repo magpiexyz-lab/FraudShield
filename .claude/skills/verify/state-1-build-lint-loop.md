@@ -15,15 +15,16 @@ For each attempt:
 
 1. Run `npm run build`
 2. If build fails: note the errors (mentally log: "Attempt N — build: [error summary]").
-   Fix the errors. Append each fix to `.runs/fix-log.md`:
-   ```
-   **Fix N:** `<file>` — Symptom: `<what broke>` — Cause: `<why>` — Fix: `<what you changed>`
+   Fix the errors. Log each fix to the canonical ledger (AOC v1 R2 — `.runs/fix-log.md` is derived from `.runs/fix-ledger.jsonl`; do NOT write to fix-log.md directly):
+   ```bash
+   python3 .claude/scripts/write-fix-ledger.py --lead-fix --skill verify \
+     --fix-json '{"file":"<file>","symptom":"<what broke>","fix":"<what you changed>"}'
    ```
    Then start the next attempt.
 3. If build passes: run `npm run lint` (skip if no lint script exists).
    Warnings are OK; errors are not.
 4. If lint fails: note the errors (mentally log: "Attempt N — lint: [error summary]").
-   Fix the errors. Append each fix to `.runs/fix-log.md`. Then start the next attempt.
+   Fix the errors. Log each via `write-fix-ledger.py --lead-fix --skill verify` as in step 2 above. Then start the next attempt.
 5. If both pass: build and lint verification passed. Continue to STATE 2 — do NOT skip the remaining verification steps.
 6. **Prove it.** Quote the last 3–5 lines of the build output **verbatim in a code block**. State facts: "Build completed with 0 errors. Lint passed with 0 warnings." Never say "should work", "probably passes", or "seems fine." The verify-report-gate hook checks for this.
 7. **Record the result.** Write `.runs/build-result.json` to persist the build outcome for hook validation:

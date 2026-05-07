@@ -336,7 +336,7 @@ agent and cannot be modified by it.
 **Artifact tracking:** After the critic loop completes, the caller must record:
 - `critic_rounds`: number of rounds actually executed (1 or 2)
 - `round_1_type_a_count`: number of TYPE A concerns from round 1
-- `round_2_type_a_count`: number of TYPE A concerns from round 2 (only when `critic_rounds > 1`)
+- `round_2_type_a_count`: number of TYPE A concerns from round 2 (always emit; 0 when `critic_rounds <= 1`) — registry contract: `state-registry.json` `challenge_fields.when_rounds_gt_1` requires presence when round 2 ran; emit-always-0 keeps prose consistent across resolve/change/solve callers
 
 These fields enable postcondition verification that round 2 was executed when required
 and cross-artifact consistency checks between the challenge file and the critic trace.

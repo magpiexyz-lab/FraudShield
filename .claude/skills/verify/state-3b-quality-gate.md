@@ -142,7 +142,11 @@ After ALL per-page agents + Stage 1b + Stage 2 (consistency check) complete:
 1. Run: `npm run build && npm run lint`
 2. If lint errors (not warnings):
    - Fix unused imports (max 2 attempts) — this is the most common issue after multi-agent edits
-   - Append each fix to `.runs/fix-log.md`: `Fix (lint-gate): <file> — removed unused import`
+   - Log each fix via the canonical writer (AOC v1 R2 — do NOT write to `.runs/fix-log.md` directly):
+     ```bash
+     python3 .claude/scripts/write-fix-ledger.py --lead-fix --skill verify \
+       --fix-json '{"file":"<file>","symptom":"lint error after multi-agent edits","fix":"removed unused import"}'
+     ```
 3. If build errors: fix (max 2 attempts), append to fix-log
 4. Re-run `npm run build && npm run lint` to confirm clean.
 
@@ -155,20 +159,25 @@ After ALL per-page agents + Stage 1b + Stage 2 (consistency check) complete:
 3. If `verdict` == `"unresolved"`, this is a **hard gate failure** — design quality threshold (8/10) was not met after 2 fix attempts. Skip STATEs 4-5 but still write verify-report.md (STATE 7a) and execute STATE 8 (Save Patterns). Report failure to user with the `unresolved_sections` count.
 4. If `min_score` < 8 and `verdict` == `"fixed"`, note in verify report that threshold was met after fixes.
 5. If `pre_existing_debt` is non-empty, note pre-existing quality debt in verify report (informational, does not block).
-6. Extract Fix Summaries from per-page agent return messages. Append each fix to `.runs/fix-log.md` with the prefix `Fix (design-critic):`.
+6. Extract Fix Summaries from per-page agent return messages. Log each fix via the canonical writer (AOC v1 R2 — do NOT write to `.runs/fix-log.md` directly):
+   ```bash
+   python3 .claude/scripts/write-fix-ledger.py --lead-fix --skill verify \
+     --fix-json '{"file":"<file>","symptom":"<from agent Fix Summary>","fix":"<from agent Fix Summary>"}'
+   ```
 7. Note `pages` count and `consistency_fixes` count in verify report.
 
 ### Lead-applied fixes from Phase 1 findings
 
-After reviewing Phase 1 agent findings (spec-reviewer, accessibility-scanner, behavior-verifier, performance-reporter) and applying any fixes directly (not via a Phase 2 agent), append each fix to `.runs/fix-log.md`:
+After reviewing Phase 1 agent findings (spec-reviewer, accessibility-scanner, behavior-verifier, performance-reporter) and applying any fixes directly (not via a Phase 2 agent), log each fix via the canonical writer (AOC v1 R2 — do NOT write to `.runs/fix-log.md` directly):
 
+```bash
+python3 .claude/scripts/write-fix-ledger.py --lead-fix --skill verify \
+  --fix-json '{"file":"<file>","symptom":"<what agent found>","fix":"<what you changed>"}'
 ```
-Fix (lead-<source>): `<file>` — Symptom: <what agent found> — Fix: <what you changed>
-```
 
-Sources: `lead-spec-reviewer`, `lead-a11y`, `lead-behavior-verifier`, `lead-perf`.
+The renderer (`render-fix-log.py`) regenerates `.runs/fix-log.md` from the populated ledger during the skill epilogue, surfacing the fix under a `Fix (lead-<source>)` heading whose source is derived from the calling Phase 1 agent. Sources: `lead-spec-reviewer`, `lead-a11y`, `lead-behavior-verifier`, `lead-perf`.
 
-> **Why:** Phase 1 agents are read-only. When the lead acts on their findings, those fixes must be logged or the observation epilogue cannot evaluate them for template-rooted issues.
+> **Why:** Phase 1 agents are read-only. When the lead acts on their findings, those fixes must be logged via the canonical ledger or the observation epilogue cannot evaluate them for template-rooted issues. Direct writes to `.runs/fix-log.md` are blocked at runtime by `fix-ledger-write-guard.sh` and are silently overwritten by `render-fix-log.py` (AOC v1 R2).
 
 ### Lead-applied SHARED-component fixes (state-3a Stage 1b)
 

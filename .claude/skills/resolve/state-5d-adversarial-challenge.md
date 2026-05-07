@@ -113,7 +113,8 @@ proceeding to Phase 3.** The user may adjust fix plans or scope.
           }
       ],
       'critic_rounds': 0,           # 1 or 2 — actual rounds executed (see solve-reasoning.md)
-      'round_1_type_a_count': 0     # TYPE A concerns from round 1
+      'round_1_type_a_count': 0,    # TYPE A concerns from round 1
+      'round_2_type_a_count': 0     # TYPE A concerns from round 2 (always emit; 0 when critic_rounds <= 1) — required by state-registry.json challenge_fields.when_rounds_gt_1
   }
   json.dump(challenge, open('.runs/resolve-challenge.json', 'w'), indent=2)
   "

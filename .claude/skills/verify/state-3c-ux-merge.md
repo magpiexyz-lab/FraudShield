@@ -30,7 +30,11 @@ Run `npm run build`. If build fails, fix (max 2 attempts) before next agent.
 3. If `verdict` == `"blocked"`, this is a **hard gate failure** — the golden path cannot be completed. Report the blocked location to the user. Skip STATEs 4-5 but still write verify-report.md (STATE 7a) and execute STATE 8 (Save Patterns).
 4. If `unresolved_dead_ends` > 0, this is a **hard gate failure** — real dead ends remain after fixes. Skip STATEs 4-5 but still write verify-report.md (STATE 7a) and execute STATE 8 (Save Patterns).
 5. If `dead_ends` > 0 AND `unresolved_dead_ends` == 0, all dead ends are intentional fake-door pages. Note in verify report (informational, does not block).
-6. Extract Fix Summaries from the agent's return message. Append each fix to `.runs/fix-log.md` with the prefix `Fix (ux-journeyer):`.
+6. Extract Fix Summaries from the agent's return message. Log each fix via the canonical writer (AOC v1 R2 — do NOT write to `.runs/fix-log.md` directly):
+   ```bash
+   python3 .claude/scripts/write-fix-ledger.py --lead-fix --skill verify \
+     --fix-json '{"file":"<file>","symptom":"<from agent Fix Summary>","fix":"<from agent Fix Summary>"}'
+   ```
 7. **Per-page design-critic re-evaluation (#1274 — closes Case 2).** When ux-journeyer's
    fixes touch UI files (`.tsx`, `.jsx`) that any per-page `design-critic-<page>.json`
    trace previously reviewed, the page renders differently now and the original
