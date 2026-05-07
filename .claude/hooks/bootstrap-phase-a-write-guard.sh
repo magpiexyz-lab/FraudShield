@@ -165,7 +165,10 @@ fi
 if echo "$NORM" | awk -v r="$PHASE_A_REGEX" '
     BEGIN{RS="[&|;]"}
     {
-      if (match($0, "([0-9]*&?>+|[0-9]*>>?)[[:space:]]*[\"'"'"']?[^|;&\"'"'"']*"r)) found=1
+      # Issue #1333: gated path must appear immediately after operator +
+      # optional whitespace + optional quote. The prior open exclusion class
+      # admitted markdown prose between operator and path as a false-positive.
+      if (match($0, "([0-9]*&?>+|[0-9]*>>?)[[:space:]]*[\"'"'"']?"r)) found=1
       else if (match($0, "(^|[[:space:]])(tee|cp|mv|dd)[[:space:]][^|;&]*"r)) found=1
     }
     END{exit !found}'; then
@@ -184,7 +187,8 @@ fi
 if echo "$NORM" | awk -v r="$PHASE_A_REGEX" '
     BEGIN{RS="[&|;]"}
     {
-      if (match($0, "([0-9]*&?>+|[0-9]*>>?)[[:space:]]*[\"'"'"']?[^|;&\"'"'"']*"r"[^[:space:]\"'"'"']*")) found=1
+      # Issue #1333: same precision tightening as the earlier check above.
+      if (match($0, "([0-9]*&?>+|[0-9]*>>?)[[:space:]]*[\"'"'"']?"r"[^[:space:]\"'"'"']*")) found=1
       else if (match($0, "(^|[[:space:]])(tee|cp|mv|dd)[[:space:]][^|;&]*"r"[^[:space:]\"'"'"']*")) found=1
     }
     END{exit !found}'; then

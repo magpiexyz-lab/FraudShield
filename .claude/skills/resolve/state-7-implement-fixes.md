@@ -25,13 +25,23 @@ For each issue in severity order (HIGH first):
    ```
    This is purely informational — it does NOT change the approval flow below.
    **STOP. Wait for the user to approve this fix before implementing.**
-   If the user rejects a fix, log it in `.runs/fix-log.md` as
-   `**Rejected** — #<N>: <title> — rejected by user` and move to the next issue.
+   If the user rejects a fix, move to the next issue. The `rejected_issues`
+   field written at the end of this state preserves the audit trail in
+   `resolve-context.json`; do NOT write to `.runs/fix-log.md` directly
+   (AOC v1 R2 — `aoc-fix-ledger-ownership` allows only canonical writers).
 
 1. Implement the fix per the approved fix plan from Step 5
-1b. After each fix, log it in `.runs/fix-log.md` (create with header `# Error Fix Log` if absent):
-    `**Fix N** — <file>: <one-line description of what was fixed and why>`
-    This enables the skill epilogue's observation detection in Step 11.
+1b. After each fix, log it via the canonical writer (AOC v1 R2):
+    ```bash
+    python3 .claude/scripts/write-fix-ledger.py --lead-fix --skill resolve \
+      --fix-json '{"file":"<path>","symptom":"<one-line symptom>","fix":"<one-line description of what was fixed and why>"}'
+    ```
+    The renderer (`render-fix-log.py`) regenerates `.runs/fix-log.md` from
+    the populated ledger during the skill epilogue's observation detection
+    in Step 11, so lead-fix entries survive. Do NOT write to
+    `.runs/fix-log.md` directly — `aoc-fix-ledger-ownership` blocks at
+    runtime via `fix-ledger-write-guard.sh` and statically via the
+    coherence rule.
 2. If a validator check was proposed: implement it in the target script
 2b. If the bug involves a configuration not covered by existing test
     fixtures (identified in Step 5b or by checking `tests/fixtures/`):

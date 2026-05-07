@@ -121,10 +121,14 @@ if echo "$NORM" | awk '
     BEGIN{RS="[&|;]"}
     {
       # Bound write operator -> gated path target (>file, >>file, &>file).
-      # The exclusion class blocks chain delimiters, quotes, and newlines so
-      # heredoc bodies cannot bridge from a > targeting one path to a gated
-      # path elsewhere in the body.
-      if (match($0, /([0-9]*&?>+|[0-9]*>>?)[[:space:]]*["'\'']?[^|;&"'\''\n]*\.runs\/(fix-ledger\.jsonl|fix-log\.md)/)) found=1
+      # Issue #1333: the gated path MUST appear immediately after the
+      # operator + optional whitespace + optional quote. The previous open
+      # exclusion class between operator and path admitted markdown
+      # blockquote shapes (prose between > and the gated path) as false
+      # positives during gh issue create --body. The narrow form below
+      # rejects prose-between cases while still matching real shell
+      # redirects (with or without space, with or without quote).
+      if (match($0, /([0-9]*&?>+|[0-9]*>>?)[[:space:]]*["'\'']?\.runs\/(fix-ledger\.jsonl|fix-log\.md)/)) found=1
       # tee / cp / mv / dd with a gated path target later on the same segment
       else if (match($0, /(^|[[:space:]])(tee|cp|mv|dd)[[:space:]][^|;&\n]*\.runs\/(fix-ledger\.jsonl|fix-log\.md)/)) found=1
     }

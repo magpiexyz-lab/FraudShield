@@ -354,10 +354,14 @@ When the token-authorized table holds state-machine financial state (status / am
 Runs as the `prebuild` script before every `npm run build`. Applies SQL migrations from `supabase/migrations/` in order, tracking applied migrations in an `_auto_migrations` table.
 
 ```js
-import { loadEnvConfig } from "@next/env";
+import nextEnv from "@next/env";
 import pg from "pg";
 import { readdir, readFile } from "fs/promises";
 import { join } from "path";
+
+// `@next/env` is a CommonJS module; named-import fails under Node 22 ESM.
+// Default-import + destructure is the canonical CJS-interop shape.
+const { loadEnvConfig } = nextEnv;
 
 loadEnvConfig(process.cwd());
 

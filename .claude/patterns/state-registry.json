@@ -250,7 +250,7 @@
     }
   },
   "resolve": {
-    "0": "test -f .runs/resolve-context.json",
+    "0": "test -f .runs/resolve-context.json && python3 -c \"import json; ctx=json.load(open('.runs/resolve-context.json')); il=ctx.get('issue_list',[]); assert isinstance(il, list), 'issue_list not a list'; assert all(isinstance(i, dict) and isinstance(i.get('number'), int) for i in il), 'issue_list items must be {\\\"number\\\":int} dicts'\"",
     "1": "python3 -c \"import json,os; ctx=json.load(open('.runs/resolve-context.json')); fr=ctx.get('files_read',[]); assert isinstance(fr,list) and len(fr)>0, 'files_read empty'; assert 'CLAUDE.md' in fr, 'CLAUDE.md not in files_read'; assert 'scripts/check-inventory.md' in fr or ctx.get('check_inventory_absent'), 'scripts/check-inventory.md not read and not marked absent'\"",
     "2": "python3 -c \"import json; d=json.load(open('.runs/resolve-triage.json')); assert isinstance(d.get('issues'), list) and len(d['issues'])>0, 'issues missing or empty'\"",
     "3": "python3 -c \"import json,re; d=json.load(open('.runs/resolve-reproduction.json')); rs=d.get('reproductions',[]); assert isinstance(rs, list) and len(rs)>0, 'reproductions empty'; r=rs[0]; assert 'divergence_point' in r, 'divergence_point missing'; assert 'expected' in r, 'expected missing'; assert 'actual' in r, 'actual missing'; b=d.get('pre_fix_baseline',{}); assert 'frontmatter' in b and 'semantics' in b and 'consistency' in b, 'pre_fix_baseline incomplete'; bad=re.compile(r'\\s+(?:and|&|vs|\\+|;)\\s+',re.IGNORECASE); offenders=[x.get('divergence_point','') for x in rs if isinstance(x,dict) and bad.search(x.get('divergence_point',''))]; assert not offenders, 'divergence_point contract violated - embedded separator: ' + repr(offenders)\"",

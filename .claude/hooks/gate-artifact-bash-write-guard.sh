@@ -99,7 +99,11 @@ GATED_TARGET=$(echo "$NORM" | awk '
     BEGIN{RS="[&|;]"}
     {
       # Bound write operator -> .runs/*.json target.
-      if (match($0, /([0-9]*&?>+|[0-9]*>>?)[[:space:]]*["'\'']?[^|;&"'\''\n]*\.runs\/[^|;&"'\''\n]+\.json/)) {
+      # Issue #1333: gated path must appear immediately after operator +
+      # optional whitespace + optional quote. The prior open exclusion class
+      # admitted markdown prose between operator and path as a false positive
+      # when filing observations via gh issue create --body.
+      if (match($0, /([0-9]*&?>+|[0-9]*>>?)[[:space:]]*["'\'']?\.runs\/[^|;&"'\''\n]+\.json/)) {
         s = substr($0, RSTART, RLENGTH)
         if (match(s, /\.runs\/[^|;&"'\''\n[:space:]]+\.json/)) {
           print substr(s, RSTART, RLENGTH)

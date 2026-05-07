@@ -58,7 +58,11 @@ Determine which issues to resolve:
   **Step 7 — Write resolve-context.json:**
   Include `"mode": "refine"` and `trace_summary` from `.runs/refine-analysis.json` (dict keyed by `"<skill>/<state_id>"` with `{failure_rate, total, fails, team_members_affected, status}`).
 
-Store the fetched issues as `issue_list`.
+Store the fetched issues as `issue_list`. **Schema contract (consumed by STATE 11
+VERIFY):** `issue_list` MUST be a list of `{"number": <int>}` dicts. The example
+below is the canonical builder — empty input naturally produces an empty list, so
+the same call site handles both populated and all-architectural early-termination
+cases.
 
 **If `issue_list` is empty after fetching** (all open issues have the `architecture` label
 and were excluded by the filter): report to the user:
@@ -70,18 +74,26 @@ Then write resolve-context.json with empty `issue_list`, advance state 0, and **
 skill ends. No triage needed, no PR, no further states. (The `_required_states` gate only
 applies when a PR is created; with 0 issues there is no PR.)
 
-Merge resolve-specific fields into context:
+Merge resolve-specific fields into context. Capture the gh-fetch JSON in
+`ISSUES_JSON` (e.g., from a `gh issue list --json number,...` invocation above)
+and transform it to the dict-shape contract:
 ```bash
-bash .claude/scripts/init-context.sh resolve '{"issue_list":[]}'
+PAYLOAD=$(echo "$ISSUES_JSON" | python3 -c "import json,sys; issues=json.load(sys.stdin); print(json.dumps({'issue_list':[{'number':i['number']} for i in issues]}))")
+bash .claude/scripts/init-context.sh resolve "$PAYLOAD"
 ```
+
+For the all-architectural early-termination case, `ISSUES_JSON` is `[]` so
+`PAYLOAD` becomes `{"issue_list":[]}` — same effect as a hard-coded empty
+init. One call site handles both cases.
 
 **POSTCONDITIONS:**
 - `issue_list` is populated (may be empty if all issues are architecture-labeled — see early termination above)
+- `issue_list` is a list of `{"number": <int>}` dicts (matches STATE 11 VERIFY consumer contract)
 - `.runs/resolve-context.json` exists
 
 **VERIFY:**
 ```bash
-test -f .runs/resolve-context.json
+test -f .runs/resolve-context.json && python3 -c "import json; ctx=json.load(open('.runs/resolve-context.json')); il=ctx.get('issue_list',[]); assert isinstance(il, list), 'issue_list not a list'; assert all(isinstance(i, dict) and isinstance(i.get('number'), int) for i in il), 'issue_list items must be {\"number\":int} dicts'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

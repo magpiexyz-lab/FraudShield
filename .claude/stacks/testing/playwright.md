@@ -45,7 +45,10 @@ npx playwright install chromium
 
 ### `playwright.config.ts` — Playwright configuration
 ```ts
-import { loadEnvConfig } from "@next/env";
+// `@next/env` is a CommonJS module; named-import fails under Node 22 ESM.
+// Default-import + destructure is the canonical CJS-interop shape.
+import nextEnv from "@next/env";
+const { loadEnvConfig } = nextEnv;
 loadEnvConfig(process.cwd());
 
 import { execSync } from "child_process";
@@ -746,7 +749,10 @@ When `assumes` dependencies are not met (e.g., no `auth/supabase` or `database/s
 
 ### `playwright.config.ts` — Simplified (no global setup/teardown)
 ```ts
-import { loadEnvConfig } from "@next/env";
+// `@next/env` is a CommonJS module; named-import fails under Node 22 ESM.
+// Default-import + destructure is the canonical CJS-interop shape.
+import nextEnv from "@next/env";
+const { loadEnvConfig } = nextEnv;
 loadEnvConfig(process.cwd());
 
 import { defineConfig, devices } from "@playwright/test";

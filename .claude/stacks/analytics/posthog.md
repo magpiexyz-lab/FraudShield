@@ -274,8 +274,14 @@ scaffold-libs emits this file verbatim into the project root when `stack.analyti
 // Validates analytics configuration before build, on hosting platforms only.
 // Runs as `prebuild` lifecycle hook. Skips on bootstrap/local builds.
 
-import { loadEnvConfig } from "@next/env";
+import nextEnv from "@next/env";
 import fs from "node:fs";
+
+// `@next/env` is a CommonJS module; under Node 22 ESM the named-import form
+// (`import { loadEnvConfig } from ...`) fails with `SyntaxError: Named export
+// 'loadEnvConfig' not found`. Default-import + destructure is the canonical
+// CJS-interop shape and works on older Node versions too.
+const { loadEnvConfig } = nextEnv;
 
 // Load .env.local / .env so local `npm run build` invocations see the same
 // NEXT_PUBLIC_POSTHOG_KEY override that Next.js itself uses. On Vercel build
@@ -629,6 +635,48 @@ graduated_to: null
 ```
 
 When the generated `analytics.ts` / `analytics-server.ts` is deployed with `NEXT_PUBLIC_POSTHOG_KEY` unset OR set to empty string, the original `?? "phc_TEAM_KEY"` fallback masked the misconfiguration entirely — every `track()` call silently dropped, the entire client-side funnel invisible until someone manually opened DevTools. The fix replaces the silent fallback with a positive `isMisconfigured` check that fires loudly at three layers (build, runtime, post-deploy verification). All layers are designed for both fork workflows: env override (per-project) and source-level placeholder replacement (fork-once). Original incident: issue #1170, discovered during `/distribute` STATE 6 manual ad-launch verification.
+
+### Named import of @next/env fails on Node 22 ESM (CJS-interop regression)
+
+```yaml
+id: nextenv-cjs-named-import-esm-regression
+maturity: stable
+anti_pattern: false
+composite_identity:
+  root_cause_class: esm-cjs-interop-named-import-regression
+  divergence_pattern: named-import-of-cjs-only-export
+  stack_scope: analytics/posthog
+composite_identity_hash: 8e15eba7d860
+symptom_keywords: [next-env, loadEnvConfig, esm, cjs, prebuild, named-import, node22]
+fix_template: |
+  When emitting a .mjs/.ts script that imports loadEnvConfig from `@next/env`,
+  use default-import + destructure (CJS-interop):
+
+      import nextEnv from "@next/env";
+      const { loadEnvConfig } = nextEnv;
+
+  The named-import form (`import { loadEnvConfig } from "@next/env"`) fails
+  under Node 22 ESM with `SyntaxError: Named export 'loadEnvConfig' not found.
+  The requested module '@next/env' is a CommonJS module...`. Affects every
+  fresh bootstrap whose archetype emits prebuild scripts (analytics/posthog,
+  database/supabase auto-migrate.mjs, testing/playwright config).
+prevention_mechanism: validate-semantics-check-11-hardcoded-provider-names + stack-file-comment-pinning-cjs-interop-shape
+confidence_score: 0.9
+occurrence_count: 1
+linked_issues: [1325]
+first_seen: 2026-05-07
+last_seen: 2026-05-07
+graduated_to: null
+```
+
+The `@next/env` package is published as CommonJS only; under Node 22 ESM, the
+named-import form fails at module load. The default-import + destructure shape
+is the canonical CJS-interop idiom and works on all Node versions. Bootstrap
+emits this shape in three places: `scripts/check-analytics-env.mjs` (analytics
+prebuild), `scripts/auto-migrate.mjs` (database prebuild), and
+`playwright.config.ts` (testing config — both with-auth and no-auth fallback).
+Original incident: issue #1325, discovered during `/bootstrap` self-check on a
+fresh project.
 
 ## PR Instructions
 - `NEXT_PUBLIC_POSTHOG_KEY` MUST be set in the hosting platform's environment OR the source-level `phc_TEAM_KEY` placeholder must be replaced with the team's real key (see `## Environment Variables` and `## Production Observability`). Otherwise the prebuild script will fail the production build.

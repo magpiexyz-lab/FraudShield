@@ -159,8 +159,12 @@ NORM=$(printf '%s' "$COMMAND_CANONICAL" \
 if echo "$NORM" | awk '
     BEGIN{RS="[&|;]"}
     {
-      # Bound write operator -> agent-traces target (>file, >>file, &>file)
-      if (match($0, /([0-9]*&?>+|[0-9]*>>?)[[:space:]]*["'\'']?[^|;&"'\'']*agent-traces\//)) found=1
+      # Bound write operator -> agent-traces target (>file, >>file, &>file).
+      # Issue #1333: gated path must appear immediately after operator +
+      # optional whitespace + optional quote. The prior open exclusion class
+      # admitted markdown blockquote prose between operator and path as a
+      # false positive when filing issues via gh issue create --body.
+      if (match($0, /([0-9]*&?>+|[0-9]*>>?)[[:space:]]*["'\'']?agent-traces\//)) found=1
       # tee / cp / mv / dd with an agent-traces target later on the same segment
       else if (match($0, /(^|[[:space:]])(tee|cp|mv|dd)[[:space:]][^|;&]*agent-traces\//)) found=1
     }
@@ -340,7 +344,10 @@ if echo "$NORM" | awk '
     {
       # Bound write operator -> agent-traces target (>file, >>file, &>file)
       # within the same un-split shell segment.
-      if (match($0, /([0-9]*&?>+|[0-9]*>>?)[[:space:]]*["'\'']?[^|;&"'\'']*agent-traces\/[^[:space:]"'\'']*\.json/)) found=1
+      # Issue #1333: gated path must appear immediately after operator +
+      # optional whitespace + optional quote. The prior open exclusion class
+      # admitted markdown prose between operator and path as a false positive.
+      if (match($0, /([0-9]*&?>+|[0-9]*>>?)[[:space:]]*["'\'']?agent-traces\/[^[:space:]"'\'']*\.json/)) found=1
       # tee / cp / mv / dd with an agent-traces target later on the same segment
       else if (match($0, /(^|[[:space:]])(tee|cp|mv|dd)[[:space:]][^|;&]*agent-traces\/[^[:space:]"'\'']*\.json/)) found=1
     }
