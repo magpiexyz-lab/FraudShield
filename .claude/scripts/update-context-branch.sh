@@ -42,6 +42,36 @@ if [[ "$OLD_BRANCH" == "$NEW_BRANCH" ]]; then
   exit 0
 fi
 
+# Issue #1328 round-2 C6: sentinel-based propagation-gap detection.
+# branch.md's bundled chain stamps `.runs/last-branch-checkout.tsv` BEFORE
+# `git checkout -b`, so a healthy bundled invocation has gap_seconds ≈ 0.
+# A non-trivial gap indicates the orchestrator deferred propagation across
+# a turn boundary — surface it as a `deferred: true` audit row even though
+# the runtime hook (branch-checkout-propagation-gate.sh) will normally
+# block this in the first place.
+SENTINEL="$PROJECT_DIR/.runs/last-branch-checkout.tsv"
+GAP_DIAG=""
+if [[ -f "$SENTINEL" ]]; then
+  SENTINEL_TS=$(cat "$SENTINEL" 2>/dev/null || echo "")
+  if [[ "$SENTINEL_TS" =~ ^[0-9]+$ ]]; then
+    NOW=$(date +%s)
+    GAP=$(( NOW - SENTINEL_TS ))
+    if [[ $GAP -gt 30 ]]; then
+      echo "WARN: update-context-branch.sh — deferred propagation detected, gap=${GAP}s" >&2
+      GAP_DIAG="$GAP"
+    fi
+  fi
+  # Always remove sentinel after read (single atomic op). Idempotent on
+  # subsequent calls in the same shell session.
+  rm -f "$SENTINEL" 2>/dev/null || true
+else
+  # Sentinel missing — bundled chain didn't stamp one. Either:
+  #   (a) called outside the bundled pattern (legacy site, ad-hoc invocation), or
+  #   (b) lifecycle-init.sh sentinel cleanup ran between stamp and read.
+  # Annotate the audit log so observation can correlate with hook-friction.
+  GAP_DIAG="missing"
+fi
+
 # nullglob so `.runs/*-context.json` does not loop literally on the pattern
 # when no matching files exist (fresh checkout, pre-init scenarios).
 shopt -s nullglob
@@ -58,6 +88,7 @@ mkdir -p "$(dirname "$LOG")"
 OLD_BRANCH_ENV="$OLD_BRANCH" \
 NEW_BRANCH_ENV="$NEW_BRANCH" \
 LOG_ENV="$LOG" \
+GAP_DIAG_ENV="$GAP_DIAG" \
 python3 - "${CTX_FILES[@]}" << 'PYEOF'
 import json, os, sys, datetime, tempfile
 
@@ -114,6 +145,21 @@ for ctx_path in ctx_paths:
         'skill': d.get('skill', ''),
         'timestamp': now,
     }
+    # Issue #1328 round-2 C6: surface propagation-gap diagnostics so
+    # downstream observation can correlate deferred propagations with
+    # any branch-checkout-propagation-gate friction events.
+    gap_diag = os.environ.get('GAP_DIAG_ENV', '')
+    if gap_diag:
+        if gap_diag == 'missing':
+            entry['deferred'] = True
+            entry['sentinel_missing'] = True
+        else:
+            try:
+                gap_int = int(gap_diag)
+                entry['deferred'] = True
+                entry['gap_seconds'] = gap_int
+            except ValueError:
+                pass
     with open(log_path, 'a') as f:
         f.write(json.dumps(entry) + '\n')
     updated += 1

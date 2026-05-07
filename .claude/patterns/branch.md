@@ -41,40 +41,64 @@ differ inside any non-primary worktree). This replaces the previously-inlined
 
 3. If `IN_WORKTREE` is false: pull latest: run `git pull --ff-only`. If that fails, try `git pull --rebase`. If rebase also fails, run `git rebase --abort` and stop: "Could not update the default branch. Run `git pull` manually and retry." If `IN_WORKTREE` is true: skip this step.
 
-## Create Feature Branch
+## Create Feature Branch and Persist to Active Context
 
-1. Build the branch name from the skill's inputs. The skill provides the full `branch_name`.
+This step creates the new branch AND propagates the new branch name to
+active `.runs/*-context.json` files in **one atomic Bash invocation**.
 
-2. **Slugify** (if the skill passes a description instead of a fixed name): convert to lowercase, replace non-alphanumeric characters with hyphens, remove leading/trailing hyphens, truncate to 40 characters.
+**Do NOT split this across multiple Bash tool calls.** The PreToolUse
+hook `branch-checkout-propagation-gate.sh` (issue #1328) denies any Bash
+chain that contains `git checkout -b` without a sibling
+`update-context-branch.sh`. Splitting recreates the race window where
+`resolve_active_identity` filters out the active context (its `branch`
+field is stale relative to `git branch --show-current`), causing agent
+spawns during the gap to land in `degradation_reason:
+active_identity_unresolvable`. See issue #1328.
 
-3. **Handle collisions**: if a branch with that name already exists (`git show-ref --verify --quiet refs/heads/<branch_name>`), append `-2`. If that also exists, try `-3`, and so on.
+1. Build the branch name from the skill's inputs. The skill provides
+   the full `branch_name`.
 
-4. **Capture pre-checkout branch** (required by Step 5 — must run BEFORE `git checkout -b`):
+2. **Slugify** (if the skill passes a description instead of a fixed
+   name): convert to lowercase, replace non-alphanumeric characters
+   with hyphens, remove leading/trailing hyphens, truncate to 40
+   characters.
+
+3. **Handle collisions**: if a branch with that name already exists
+   (`git show-ref --verify --quiet refs/heads/<branch_name>`), append
+   `-2`. If that also exists, try `-3`, and so on.
+
+4. **Atomic create + propagate** — execute as ONE Bash invocation:
+
    ```bash
-   OLD_BRANCH="$(git branch --show-current)"
+   echo "$(date +%s)" > .runs/last-branch-checkout.tsv && \
+     OLD_BRANCH="$(git branch --show-current)" && \
+     git checkout -b "<branch_name>" && \
+     bash .claude/scripts/update-context-branch.sh "$OLD_BRANCH"
    ```
 
-5. Create and switch to the branch: `git checkout -b <branch_name>`
+The chain stamps a sentinel timestamp before the checkout; the helper
+reads the sentinel after propagation completes and records
+`gap_seconds: N` to `branch-update-log.jsonl` if the propagation took
+longer than 30 seconds (catches deferred propagation that somehow slips
+past the gate). The helper updates the `branch` field of every
+non-completed context file whose current `branch` equals `$OLD_BRANCH`
+(skips epilogue contexts, completed contexts, and contexts on
+unrelated branches). It writes atomically via a `.tmp` + rename and
+appends a JSONL audit entry to `.runs/branch-update-log.jsonl`.
 
-## Persist New Branch to Active Context
+**Escape hatch for ad-hoc / test workflows:** set
+`BRANCH_CHECKOUT_PROPAGATION_GATE_SKIP=1` before the Bash call to
+bypass the pairing requirement. Use sparingly — silent-bypass risk
+exceeds the false-positive risk for legitimate manual checkouts.
 
-After `git checkout -b` succeeds, propagate the new branch name to active
-`.runs/*-context.json` files via the canonical helper:
-
-```bash
-bash .claude/scripts/update-context-branch.sh "$OLD_BRANCH"
-```
-
-The helper updates the `branch` field of every non-completed context file whose
-current `branch` equals `$OLD_BRANCH` (skips epilogue contexts, completed
-contexts, and contexts on unrelated branches). It writes atomically via a
-`.tmp` + rename and appends a JSONL audit entry to `.runs/branch-update-log.jsonl`.
-
-**Why this is required:** `init-context.sh` captures `branch` at init-time,
-which is the pre-checkout default branch. Without this propagation,
-`resolve_active_identity` (`.claude/hooks/lib-state.sh`) filters out the active
-context because its `branch` field is stale, silently breaking identity
-grounding for every downstream trace writer (`write-agent-trace.sh`,
+**Why bundling is required:** `init-context.sh` captures `branch` at
+init-time, which is the pre-checkout default branch. Without
+same-turn propagation, `resolve_active_identity`
+(`.claude/hooks/lib-state.sh`) filters out the active context because
+its `branch` field is stale, silently breaking identity grounding for
+every downstream trace writer (`write-agent-trace.sh`,
 `write-degraded-trace.py`, `check-observation-artifacts.sh`).
 
-After this procedure completes, the skill is on a clean feature branch based on the latest default branch, with active context files pointing at the new branch. Proceed with the skill's implementation steps.
+After this procedure completes, the skill is on a clean feature branch
+based on the latest default branch, with active context files pointing
+at the new branch. Proceed with the skill's implementation steps.

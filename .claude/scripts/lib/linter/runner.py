@@ -3096,6 +3096,85 @@ def main() -> int:
             )
         return findings
 
+    def check_branch_checkout_propagation_pairing(rule):
+        """Issue #1328: every fenced bash block (markdown) or shell-script
+        segment that invokes `git checkout -b` MUST invoke
+        `update-context-branch.sh` in the same chain. Without same-turn
+        propagation, .runs/*-context.json's `branch` field stays stale
+        relative to `git branch --show-current`, and resolve_active_identity
+        filters out the active context — agent spawns in the gap stamp
+        `degradation_reason: active_identity_unresolvable`.
+
+        Markdown: scan `.md` files; within each fenced ```bash / ```sh
+        block, find lines with `git checkout -b`; require
+        `update-context-branch.sh` somewhere in the same fenced block.
+
+        Shell (.sh): scan command-head positions line-by-line; if a line
+        has `git checkout -b`, require `update-context-branch.sh` in the
+        next 5 lines (covers multi-line `&&` chains).
+        """
+        import glob as _glob
+        import re as _re
+        findings = []
+        rid = rule.get("id", "<unknown>")
+        globs = rule.get("scan_globs", [])
+        excludes = set(rule.get("exclude_paths", []))
+        files: list[str] = []
+        for g in globs:
+            files.extend(_glob.glob(os.path.join(REPO_ROOT, g), recursive=True))
+        # Normalize and dedupe
+        files = sorted(set(os.path.relpath(f, REPO_ROOT) for f in files if os.path.isfile(f)))
+        for f in files:
+            if any(e in f for e in excludes):
+                continue
+            full = os.path.join(REPO_ROOT, f)
+            try:
+                txt = open(full).read()
+            except OSError:
+                continue
+            if f.endswith(".md"):
+                # Find ```bash ... ``` and ```sh ... ``` blocks.
+                for m in _re.finditer(
+                    r"```(?:bash|sh)\n(.*?)\n```", txt, _re.DOTALL
+                ):
+                    block = m.group(1)
+                    if _re.search(
+                        r"\bgit\s+checkout\s+-b\b", block
+                    ):
+                        if "update-context-branch.sh" not in block:
+                            line_no = txt[: m.start()].count("\n") + 1
+                            findings.append(_emit_finding(
+                                rule,
+                                f"{f}:~{line_no}: fenced bash block contains "
+                                f"`git checkout -b` without sibling "
+                                f"`update-context-branch.sh` (#1328 — bundle "
+                                f"per .claude/patterns/branch.md)"
+                            ))
+            elif f.endswith(".sh"):
+                lines = txt.split("\n")
+                for i, line in enumerate(lines):
+                    # Skip comment lines (the hook's own documentation
+                    # mentions `git checkout -b` in comments).
+                    stripped = line.lstrip()
+                    if stripped.startswith("#"):
+                        continue
+                    if _re.search(r"\bgit\s+checkout\s+-b\b", line):
+                        # Look at the surrounding window: 1 line before,
+                        # 5 lines after (covers multi-line `&&` chain
+                        # continuations and a `||` fallback line).
+                        start = max(0, i - 1)
+                        end = min(len(lines), i + 6)
+                        window = "\n".join(lines[start:end])
+                        if "update-context-branch.sh" not in window:
+                            findings.append(_emit_finding(
+                                rule,
+                                f"{f}:{i+1}: `git checkout -b` without "
+                                f"nearby `update-context-branch.sh` "
+                                f"(#1328 — bundle into one chain)"
+                            ))
+        return findings
+
+
     def check_state_defer_verify_pairing(rule):
         """Issue #1339: every state that opts into defer_verify_when_writer in
         state-registry.json MUST have its state file's ACTIONS section invoke
@@ -3252,6 +3331,16 @@ def main() -> int:
             check_state_defer_verify_pairing,
             {"registry_path", "skills_dir"},
             set(),
+            True,  # is_strict_aoc — block at lifecycle-finalize.sh:289 even under --warn-only
+        ),
+        # #1328 — git checkout -b must be paired with update-context-branch.sh
+        # in the same Bash chain. Markdown: same fenced block. Shell: 5-line
+        # window. Comment lines are skipped (the hook's own documentation
+        # mentions `git checkout -b` in comments).
+        "branch_checkout_propagation_pairing": (
+            check_branch_checkout_propagation_pairing,
+            {"scan_globs"},
+            {"exclude_paths"},
             True,  # is_strict_aoc — block at lifecycle-finalize.sh:289 even under --warn-only
         ),
     }

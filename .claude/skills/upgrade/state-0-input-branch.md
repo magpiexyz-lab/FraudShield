@@ -8,9 +8,13 @@
 
 Parse `$ARGUMENTS` for the `--dry-run` flag. If present, set `dry_run = true` in the context file.
 
-Create the upgrade branch:
+Create the upgrade branch (atomic checkout + context propagation per
+issue #1328):
 ```bash
-git checkout -b chore/upgrade-template
+echo "$(date +%s)" > .runs/last-branch-checkout.tsv && \
+  OLD_BRANCH="$(git branch --show-current)" && \
+  git checkout -b chore/upgrade-template && \
+  bash .claude/scripts/update-context-branch.sh "$OLD_BRANCH"
 ```
 
 Auto-add `template` remote if missing:

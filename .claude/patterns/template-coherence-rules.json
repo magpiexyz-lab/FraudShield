@@ -441,6 +441,21 @@
       "registry_path": ".claude/patterns/state-registry.json",
       "skills_dir": ".claude/skills",
       "description": "#1339 — every state declaring defer_verify_when_writer in state-registry.json MUST have its state file's ACTIONS section invoke `bash .claude/scripts/lib/write-gate-artifact.sh --path <P>` for at least one P in the declared list. Without that invocation, the chain-aware gate skip would never have a sibling writer to defer to and the opt-in becomes a silent no-op."
+    },
+    {
+      "id": "branch-checkout-propagation-pairing",
+      "type": "branch_checkout_propagation_pairing",
+      "severity": "block",
+      "scan_globs": [
+        ".claude/patterns/**/*.md",
+        ".claude/scripts/**/*.sh",
+        ".claude/skills/**/*.md"
+      ],
+      "exclude_paths": [
+        ".claude/worktrees/",
+        "branch-checkout-propagation-gate.sh"
+      ],
+      "description": "#1328 — every `git checkout -b` (markdown fenced bash block or shell-script segment) MUST be paired with `update-context-branch.sh` in the same chain. Without same-turn propagation, .runs/*-context.json's `branch` field stays stale and resolve_active_identity filters out the active context. The runtime hook branch-checkout-propagation-gate.sh enforces this at PreToolUse; this lint catches new template authoring before merge."
     }
   ]
 }

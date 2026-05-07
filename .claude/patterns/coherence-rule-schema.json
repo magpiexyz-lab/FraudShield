@@ -315,6 +315,21 @@
         "_comment": { "type": "string" },
         "convention_doc": { "type": "string" }
       }
+    },
+    "rule_branch_checkout_propagation_pairing": {
+      "description": "Issue #1328: any fenced bash block (markdown) or shell-script segment that invokes `git checkout -b` MUST invoke `update-context-branch.sh` in the same chain. Markdown: same fenced block. Shell: 5-line window after the checkout line.",
+      "required": ["id", "type", "scan_globs"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "const": "branch_checkout_propagation_pairing" },
+        "severity": { "$ref": "#/definitions/severity" },
+        "scan_globs": { "type": "array", "items": { "type": "string" }, "description": "Globs (relative to repo root) of files to scan for the pairing. Supports recursive ** patterns." },
+        "exclude_paths": { "type": "array", "items": { "type": "string" }, "description": "Substring exclusions; if any substring matches a candidate path, the path is skipped." },
+        "description": { "type": "string" },
+        "_comment": { "type": "string" },
+        "convention_doc": { "type": "string" }
+      }
     }
   },
   "type": "object",
@@ -343,7 +358,8 @@
           { "$ref": "#/definitions/rule_markdown_cross_file_line_reference" },
           { "$ref": "#/definitions/rule_validator_integration_required" },
           { "$ref": "#/definitions/rule_validator_inventory_completeness" },
-          { "$ref": "#/definitions/rule_state_defer_verify_pairing" }
+          { "$ref": "#/definitions/rule_state_defer_verify_pairing" },
+          { "$ref": "#/definitions/rule_branch_checkout_propagation_pairing" }
         ]
       }
     }

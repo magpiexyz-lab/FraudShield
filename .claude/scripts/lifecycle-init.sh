@@ -16,6 +16,12 @@
 # Fallback: if skill.yaml not found → warn, call init-context.sh only (v1 compat)
 set -euo pipefail
 
+# Issue #1328 round-2 C4: stale-sentinel cleanup. Remove any leftover
+# .runs/last-branch-checkout.tsv from a prior crashed run BEFORE any git
+# checkout -b operations — otherwise the next propagation reads a stale
+# timestamp and mis-computes gap_seconds. Idempotent.
+rm -f .runs/last-branch-checkout.tsv 2>/dev/null || true
+
 SKILL="${1:-}"
 
 # --- Embed mode: skip cleanup/validation/branch when called by lifecycle-next.sh embed dispatch ---
@@ -429,7 +435,16 @@ except: print('')
     BRANCH="${BRANCH//\{slug\}/}"
     BRANCH="${BRANCH%-}"
   fi
-  git checkout -b "$BRANCH" 2>/dev/null || echo "WARN: lifecycle-init.sh — branch $BRANCH already exists or checkout failed" >&2
+  # Bundled checkout + propagation (issue #1328): stamp sentinel, capture
+  # OLD_BRANCH, run `git checkout -b`, propagate to active context — all
+  # in one Bash invocation so resolve_active_identity cannot see a stale
+  # context.branch field. branch-checkout-propagation-gate.sh enforces
+  # this pairing structurally; bundling here matches the contract.
+  echo "$(date +%s)" > .runs/last-branch-checkout.tsv && \
+    OLD_BRANCH_LI="$(git branch --show-current)" && \
+    git checkout -b "$BRANCH" && \
+    bash .claude/scripts/update-context-branch.sh "$OLD_BRANCH_LI" \
+    || echo "WARN: lifecycle-init.sh — bundled checkout+propagate failed for $BRANCH (branch may already exist or checkout failed)" >&2
 fi
 
 # --- Step 5: Create canonical context (run_id, branch, timestamp) ---
