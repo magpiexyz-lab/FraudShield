@@ -214,7 +214,9 @@ export function ControlledDialog() {
 > **Instantiation workflow:**
 > 1. Copy the TSX template below verbatim to `src/app/<page>/<component>.tsx` (project-owned).
 > 2. Fill in feature-specific props at the callsite (not inside the file).
-> 3. If `stack.analytics` is absent, delete the `@/lib/analytics` import line AND the `track("activate", ...)` call line. The remaining code compiles and the form still transitions to success.
+> 3. If `stack.analytics` is absent, delete the `@/lib/analytics` import line AND the `track("activate", ...)` call line. The remaining code compiles and the click→success transition still works.
+>
+> **PII boundary (Rule 4 of the Intent Capture Contract).** The template is button-only intent capture: do NOT collect email or any other PII. The `track()` call MUST NOT include an `email`, `phone`, or `name` property. Lead-capture features (collect emails for later outreach) require a separate `/change`-declared Feature with route + table + RLS + rate-limit + email-service integration — see `.claude/procedures/scaffold-externals.md` § Intent Capture Contract Rule 4 + Lead-capture extension.
 
 ### Variant mapping (Rule 6 of the Intent Capture Contract)
 
@@ -230,7 +232,6 @@ export function ControlledDialog() {
 import { useEffect, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 // If stack.analytics is absent: delete this import AND the trackCall below.
 import { track } from "@/lib/analytics";
@@ -245,8 +246,8 @@ export interface FakeDoorIntentModalProps {
   pageName: string;            // e.g. "Dashboard"
   variant?: Variant;           // default: "primary"
   triggerLabel?: string;       // default: `Enable ${feature}`
-  successHeadline?: string;    // default: "You are on the list."
-  successBody?: string;        // default: `We will email when ${feature} is ready.`
+  successHeadline?: string;    // default: "We've noted your interest."
+  successBody?: string;        // default: "We'll launch this when there's enough interest."
 }
 
 export function FakeDoorIntentModal({
@@ -259,24 +260,21 @@ export function FakeDoorIntentModal({
   const [errorMessage, setErrorMessage] = useState("");
   const successRef = useRef<HTMLDivElement>(null);
 
-  // Rule 2: focus moves to success region when status becomes success.
+  // Rule 2: focus moves to success region on click→success transition.
   useEffect(() => {
     if (status === "success") successRef.current?.focus();
   }, [status]);
 
-  async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const email = (new FormData(event.currentTarget).get("email") || "")
-      .toString().trim();
-    if (!email) {
-      setStatus("error");
-      setErrorMessage("Please enter your email.");
-      return;
-    }
+  // Rule 4: button-only intent capture. The click is the activation signal.
+  // Do NOT collect email or any other PII — the track() call below MUST NOT
+  // include user PII as event properties (the analytics provider stores event
+  // data indefinitely; GDPR/CCPA exposure). For projects that need lead capture
+  // (collect emails for outreach), add via /change as a separately declared Feature.
+  async function onActivate() {
     setStatus("submitting");
     try {
       // Rule 4: if stack.analytics is absent, delete this line AND the import.
-      track("activate", { fake_door: true, action: actionLabel, service, email });
+      track("activate", { fake_door: true, action: actionLabel, service });
       setStatus("success");
     } catch {
       setStatus("error");
@@ -292,7 +290,7 @@ export function FakeDoorIntentModal({
   //
   // Reset semantics: status resets ONLY on explicit "Back to {pageName}" click.
   // Closing via Esc / overlay leaves status alone — reopening shows the success panel if previously
-  // submitted. This prevents double-firing of track("activate", ...) on reopen.
+  // submitted. This prevents double-firing of track on reopen via onActivate.
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger
@@ -316,29 +314,21 @@ export function FakeDoorIntentModal({
         </DialogHeader>
 
         {status !== "success" ? (
-          <form onSubmit={onSubmit} className="space-y-3">
+          <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              We are building {feature} with {service}. Leave your email and we will notify you when it ships.
+              We are building {feature} with {service}. Click below to record your interest.
             </p>
-            <label htmlFor="fakedoor-email" className="sr-only">Email</label>
-            <Input
-              id="fakedoor-email"
-              name="email"
-              type="email"
-              placeholder="you@example.com"
-              required
-              disabled={status === "submitting"}
-            />
 
-            {/* Rule 1: live region is unconditionally mounted. Text toggles; container stays. */}
+            {/* Rule 1: live region is unconditionally mounted. Text toggles; container stays.
+                Errors here surface analytics-call failures (track throws) or future network errors. */}
             <p role="alert" aria-live="assertive" className="min-h-[1.25rem] text-xs text-destructive">
               {status === "error" ? errorMessage : ""}
             </p>
 
-            <Button type="submit" disabled={status === "submitting"}>
-              {status === "submitting" ? "Sending..." : "Notify me"}
+            <Button type="button" onClick={onActivate} disabled={status === "submitting"}>
+              {status === "submitting" ? "Sending..." : "Confirm interest"}
             </Button>
-          </form>
+          </div>
         ) : (
           // Rule 2 + Rule 3: focusable success region with forward CTA.
           <div
@@ -348,10 +338,10 @@ export function FakeDoorIntentModal({
             className="space-y-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <h3 className="text-base font-medium">
-              {successHeadline ?? "You are on the list."}
+              {successHeadline ?? "We've noted your interest."}
             </h3>
             <p className="text-sm text-muted-foreground">
-              {successBody ?? `We will email when ${feature} is ready.`}
+              {successBody ?? "We'll launch this when there's enough interest."}
             </p>
             <div className="flex items-center gap-2">
               {/* Rule 3 + Rule 5: forward CTA. Resets status AND closes the dialog;
@@ -404,7 +394,7 @@ export function WeeklyDigestPrompt() {
       service="Mailchimp"
       actionLabel="weekly_digest_intent"
       pageName="Settings"
-      successHeadline="Cool — we will reach out."
+      successHeadline="Got it — interest noted."
     />
   );
 }

@@ -338,6 +338,26 @@ json.dump(d, open('$COHERENCE_CACHE', 'w'), indent=2)
   # runs in state-99 Step 2a (after observation completes).
 fi
 
+# --- Step 4.5b: PII-in-FakeDoor recurrence guard (issue #1326) ---
+# Runs the bash smoke test that scans
+# .claude/{stacks,procedures,skills,agents,templates}/ AND src/{app,commands}/
+# for activate-event tracking calls that include user PII (email/phone) as
+# event properties. Catches:
+#   1. Template-side recurrence (a future stack-file edit re-introducing the shape).
+#   2. Downstream-MVP migration debt (projects that bootstrapped FakeDoor pre-fix
+#      have stale src/app/<page>/<component>.tsx; /upgrade does not auto-update
+#      project-owned files).
+# Skip via SKIP_PII_FAKEDOOR_GUARD=1 (escape hatch for the post-fix soak window
+# or for downstream MVPs that have a planned migration window).
+PII_GUARD="$PROJECT_DIR/.claude/scripts/tests/no-pii-in-fakedoor-track-call.sh"
+if [[ -z "${SKIP_PII_FAKEDOOR_GUARD:-}" ]] && [[ -f "$PII_GUARD" ]]; then
+  if ! bash "$PII_GUARD" >&2; then
+    echo "BLOCK: PII-in-FakeDoor recurrence guard failed at lifecycle-finalize Step 4.5b." >&2
+    echo "Re-run: bash $PII_GUARD" >&2
+    exit 1
+  fi
+fi
+
 # --- Step 4.6: RMG v2 typed-guard artifact existence + advisory recurrence detector ---
 # Runs only when .runs/solve-trace.json exists AND prevention_analysis.problem_type
 # == "defect". Two responsibilities:

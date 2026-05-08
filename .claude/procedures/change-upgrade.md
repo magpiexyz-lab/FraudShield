@@ -28,7 +28,7 @@
 - Read or generate the service's stack file — first search `.claude/stacks/*/<service-slug>.md` (any category directory). If a pre-built file exists, use it. If not found, generate to `.claude/stacks/external/<service-slug>.md` using the procedure in `.claude/procedures/scaffold-externals.md` (Step 6), including checking Known Service Quirks before generating
 - Replace the Fake Door component with real UI that calls the actual API route
 - Replace any stub route (501/503) with the full integration logic using the service's API
-- Remove `fake_door: true` from the `activate` event call — keep the same event name (`activate`) and `action` value for analytics continuity
+- Remove `fake_door: true` from the `activate` event call — keep the same event name (`activate`) and `action` value for analytics continuity. The post-upgrade `track("activate", { action, service })` call MUST NOT introduce PII (`email`, `phone`, `name`) as event properties either — see `.claude/stacks/analytics/posthog.md` § "Never include PII in analytics event properties". If the upgrade adds a real lead-capture flow with email collection, the email is persisted server-side via the new `/api/leads/<action>` route + `leads` table; analytics receives only the non-PII action signal.
 - Add the service's env vars to `.env.example`
 - Ask the user for credential values and add to `.env.local`
 - Verify the end-to-end user flow after the upgrade: UI → API route → external service

@@ -68,11 +68,10 @@ creates them directly:
 
 For each Fake Door feature, generate a component in the page folder where the
 feature would naturally appear (e.g., `src/app/dashboard/sms-fake-door.tsx`):
-- Real, polished UI using shadcn components (Card + Button + Dialog), following `.claude/patterns/design.md`
-- On button click: `track("activate", { action: "[feature-name]", fake_door: true })`
-- Shows a Dialog: "[Feature Name] is coming soon -- we're building this now."
-- Import and render the Fake Door component in the parent page where the feature would naturally live
-- The component should look like a real feature entry point -- not a placeholder or disabled button
+- Use the canonical Fake Door Component template at `.claude/stacks/ui/<stack.ui>.md` § Fake Door Component (the stack file declared in `experiment.yaml`). Copy the TSX template verbatim into `src/app/<page>/<component>.tsx` (project-owned).
+- The template is button-only intent capture: a click fires `track("activate", { fake_door: true, action: actionLabel, service })` per Rule 4 of the Intent Capture Contract (`.claude/procedures/scaffold-externals.md` § Intent Capture Contract). Do NOT collect email or any other PII at the template default — lead-capture features (email + persistence + outreach) go through `/change` as a separately declared Feature.
+- Import and render the Fake Door component in the parent page where the feature would naturally live.
+- The component should look like a real feature entry point -- not a placeholder or disabled button.
 
 **Fake Door VERIFY**: For each Fake Door component created:
 - Confirm the file is in `src/app/<page>/` (NOT in `src/components/`)

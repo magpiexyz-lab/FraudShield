@@ -546,6 +546,45 @@ The `"lead:"` prefix distinguishes anonymous-lead person records from authentica
 
 This entry covers the `distinctId` axis. The entry above ("Never include PII in analytics event properties") covers the `properties` object — both must be non-PII.
 
+### FakeDoor template encoded raw email as track("activate") event property (PII leak)
+
+```yaml
+id: no-pii-in-fakedoor-track-call
+maturity: stable
+anti_pattern: false
+composite_identity:
+  root_cause_class: PII (email) leaked as analytics event property
+  divergence_pattern: stack-template-encodes-pii-in-track-call
+  stack_scope: ui/shadcn
+composite_identity_hash: 70955e9dcac3
+symptom_keywords: [posthog, pii, email, fake_door, track-activate, lead-capture, gdpr, intent-capture]
+fix_template: |
+  FakeDoor is demand-validation-only at the template default. The button click is
+  the activation signal; do not collect email at the template default. Remove the
+  email property from the track() call and the email field from the form. For
+  projects that need real lead capture (email + persistence + later outreach),
+  add the Feature via /change as a separately scoped behavior — scopes a server-
+  side /api/leads/<action> route + leads table + RLS + rate-limiting + email-
+  service integration. See scaffold-externals.md § Intent Capture Contract Rule 4
+  + Lead-capture extension; CLAUDE.md Rule 0 (Scope Lock).
+prevention_mechanism: |
+  Bash smoke test at .claude/scripts/tests/no-pii-in-fakedoor-track-call.sh
+  scans .claude/{stacks,procedures,skills,agents,templates}/ AND src/{app,
+  commands}/ for any activate-event tracking call that includes a PII token
+  (email/phone) in the property bag. Wired into lifecycle-finalize.sh Step
+  4.5b (between coherence-lint Step 4.5 and RMG-guard Step 4.6); blocks
+  delivery on any hit. Catches both template-side recurrence and downstream-
+  MVP stale FakeDoor TSX in project-owned src/.
+confidence_score: 0.9
+occurrence_count: 1
+linked_issues: [1326]
+first_seen: 2026-05-08
+last_seen: 2026-05-08
+graduated_to: null
+```
+
+The FakeDoor template at `.claude/stacks/ui/shadcn.md` originally collected the user's email via a form input and passed the raw email as an event property on the activate-tracking call. This violated the canonical "Never include PII in analytics event properties" rule (above). The same shape was contractually mandated by `.claude/procedures/scaffold-externals.md` Rule 4 (Intent Capture Contract), so a fix in shadcn.md alone left contract drift. Compounding issue: the success copy promised "We will email when ready", but the template ships zero outreach infrastructure — the email went to PostHog and nowhere else (deceptive UX). Original incident: issue #1326, discovered during /resolve open-issues round-1 critic on a related PR.
+
 ### Testing analytics events deterministically (Playwright)
 
 DO NOT assert on PostHog network requests in Playwright tests:
