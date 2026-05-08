@@ -7,6 +7,9 @@ Checks:
 - override_reason required when labels differ
 - critic_rounds and round_1_type_a_count consistency
 - Adversarial trace exists (resolve-challenger or solve-critic)
+- When critic_rounds == 2, the round-1 archive exists and is parseable
+  (#1331: vector 5 needs round-1 concerns; without the archive the round-2
+  cross-check has no input source)
 """
 import json
 import os
@@ -36,3 +39,28 @@ assert not (ta > 0 and cr < 2), (
 assert os.path.exists(".runs/agent-traces/resolve-challenger.json") or os.path.exists(
     ".runs/agent-traces/solve-critic.json"
 ), "adversarial trace missing (resolve-challenger.json or solve-critic.json)"
+
+# #1331 runtime guard: when round 2 ran, the round-1 archive MUST exist with
+# parseable JSON containing round=1 concerns. Without it, vector 5
+# (within-run-round1-concern-unaddressed) has no input source — silently
+# bypassed by any future change that adds round-2 spawning without archival.
+if cr == 2:
+    archive_path = ".runs/solve-critic-round1.json"
+    assert os.path.exists(archive_path), (
+        f"critic_rounds=2 but round-1 archive missing at {archive_path} — "
+        "the orchestrator must archive solve-critic.json to this sidecar BEFORE "
+        "spawning round 2 (see solve-reasoning.md Phase 5 / state-5d-adversarial-challenge.md)"
+    )
+    try:
+        archive = json.load(open(archive_path))
+    except Exception as e:
+        raise AssertionError(f"{archive_path} not parseable as JSON: {e}")
+    assert archive.get("round") == 1, (
+        f"{archive_path} has round={archive.get('round')!r}, expected 1 — "
+        "the sidecar should be the archived round-1 trace, not a copy of round-2"
+    )
+    arc_concerns = archive.get("concerns") or []
+    assert isinstance(arc_concerns, list) and len(arc_concerns) > 0, (
+        f"{archive_path} has no concerns[] — round-2 vector 5 cannot fire without "
+        "round-1 concern_ids to cross-check"
+    )

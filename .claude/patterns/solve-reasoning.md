@@ -329,7 +329,11 @@ agent and cannot be modified by it.
 
 **Convergence rules**:
 - **Round 1**: If 0 TYPE A concerns → early exit (solution converged). Otherwise: fix all TYPE A concerns → round 2.
-- **Round 2**: Spawn a **new** solve-critic agent (use the Agent tool, NOT SendMessage to the round 1 agent). Wait for the agent to return its result before proceeding. The agent overwrites its trace with `round: 2` and updated counts. Any remaining TYPE A → package as caveats in output. Stop.
+- **Round 2**: Before spawning round 2, **archive the round-1 trace** to the sidecar location `.runs/solve-critic-round1.json` (outside `.runs/agent-traces/` so the trace-write-guard does not block it):
+  ```bash
+  python3 -c "import shutil; shutil.copy2('.runs/agent-traces/solve-critic.json', '.runs/solve-critic-round1.json')"
+  ```
+  Then spawn a **new** solve-critic agent (use the Agent tool, NOT SendMessage to the round 1 agent). The round-2 spawn prompt MUST include `round_1_concerns` (the full `concerns[]` array from the archived round-1 trace, with stable `concern_id` values) under a `## Round 1 Concerns to Cross-Check` header — see solve-critic.md "Round 2 Prompt Contract". Wait for the agent to return its result. The agent overwrites the live trace at `.runs/agent-traces/solve-critic.json` with `round: 2` and updated counts; the round-1 archive at `.runs/solve-critic-round1.json` remains as the audit-trail source for vector 5 (`within-run-round1-concern-unaddressed`). Any remaining TYPE A → package as caveats in output. Stop.
 
 **IMPORTANT**: Each critic round MUST complete (agent returns result) before the caller proceeds to Phase 6 or advances to the next state.
 

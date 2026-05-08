@@ -196,3 +196,35 @@ Replace `<1 or 2>` with the current round number.
 Replace placeholders in `concerns` with one entry per concern identified.
 
 If re-spawned for round 2, overwrite the trace with updated counts and `round: 2`.
+
+## Round 2 Prompt Contract
+
+This section documents what the round-2 spawn prompt MUST contain. It is an
+input contract from the orchestrator (the calling skill's state file or
+`solve-reasoning.md` Phase 5) — the agent does not produce or read this
+contract directly; it consumes the prompt fields the orchestrator supplies.
+
+When you (the agent) are spawned for round 2, your prompt MUST include:
+
+1. `round = 2` declaration so vector 5 (`within-run-round1-concern-unaddressed`)
+   activates.
+2. A `## Round 1 Concerns to Cross-Check` header followed by the full
+   `concerns[]` array from the round-1 trace, with stable `concern_id` values.
+   Each entry MUST include at minimum: `concern_id`, `category`, `description`,
+   `evidence`. Including `fix` is recommended.
+
+The orchestrator-side mechanics:
+- Round-1 trace is archived to `.runs/solve-critic-round1.json` (sidecar
+  location, outside `.runs/agent-traces/` so the trace-write-guard does not
+  block the copy) BEFORE the round-2 spawn.
+- The round-2 prompt sources `round_1_concerns` from this archive.
+- `lifecycle-init.sh` wipes the sidecar on each skill run (resolve/change/solve)
+  so a stale archive cannot mislead a future run.
+- `verify-resolve-challenge.py` asserts the archive exists and is parseable
+  when `critic_rounds == 2` — this is the runtime guard against missing
+  archival in a future authoring change.
+
+If your round-2 prompt is missing `round_1_concerns`, vector 5 has no input
+source and CANNOT fire correctly: emit a TYPE A concern with category
+`other` describing the missing input and `verdict="pass"` (the agent always
+completes; the orchestrator is the failing actor).
