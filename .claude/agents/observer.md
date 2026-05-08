@@ -176,6 +176,18 @@ Missing consultation when source has content → validator FAILs (warn during
 rollout). This solves #1255: prior observer evidence-set was too narrow,
 9 out of 10 template-rooted issues bypassed evaluation.
 
+The validator is invocable directly during diagnosis:
+
+```bash
+python3 .claude/scripts/validate-observer-evidence-coverage.py
+```
+
+This is a hard-block validator wired into `observation-phase.md` Step 4. Per
+the `hard-block-validators-integration-required` coherence rule
+(`minimum_integration_count: 2`, #1307), this fenced reference makes
+`observer.md` a second integration_point so a single-file edit cannot
+silently dereference the validator.
+
 ```bash
 bash .claude/scripts/write-agent-trace.sh observer --json '{"verdict":"<pass|blocked>","result":"<clean|none>","checks_performed":["prerequisites","fix_evaluation","redaction","dedup","issue_filing"],"fixes_evaluated":<N>,"evidence_consulted":[".runs/observer-diffs.txt",".runs/fix-log.md",".runs/hook-friction-summary.json"]}'
 ```

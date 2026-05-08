@@ -499,13 +499,20 @@ For EACH candidate, the lead chooses one of:
       - `already-tracked-in-#NNNN` — covered by tracking issue NNNN
       - `defer-with-followup-#NNNN` — real finding, deferred under tracking issue NNNN
 
-After writing retrospective-result.json, the gate
-`validate-retrospective-completeness.py` runs at
-`.claude/scripts/check-observation-artifacts.sh` (state-99 Step 2a, AFTER
-this Step 5a completes). Every pending candidate must have either a filed
-entry in `.runs/retrospective-filed-findings.json` OR a valid suppression.
-Missing disposition flips `observation-enforcement.json.pass=false` in deny
-mode, blocking state-99 advancement; warn mode logs only during rollout.
+After writing retrospective-result.json, the completeness gate runs:
+
+```bash
+python3 .claude/scripts/validate-retrospective-completeness.py
+```
+
+It is invoked from `.claude/scripts/check-observation-artifacts.sh` (state-99
+Step 2a, AFTER this Step 5a completes). Every pending candidate must have
+either a filed entry in `.runs/retrospective-filed-findings.json` OR a valid
+suppression. Missing disposition flips `observation-enforcement.json.pass=false`
+in deny mode, blocking state-99 advancement; warn mode logs only during
+rollout. This fenced reference makes observation-phase.md a second
+integration_point for the validator (per `hard-block-validators-integration-required`
+with `minimum_integration_count: 2`, #1307).
 
 #### Write result
 

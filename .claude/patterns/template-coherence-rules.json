@@ -329,6 +329,30 @@
       "description": "Issue #1285 lineage: lib/README.md is the canonical discovery surface for reusable helpers in .claude/scripts/lib/. Removing the `## Stack Knowledge` section silently degrades cross-fix discovery for every consumer that calls iter_stack_knowledge_files() — solve-reasoning Phase 1 Agent 2, change/state-2-read-context.md hints writer, ci-check-stack-knowledge.py, validate-stack-knowledge workflow, recurrence-detector, resolve-causal-analyzer, stack_knowledge_audit, bootstrap state-12 + state-14. Trigger anchors on the stable path-prefix in the README's H1 (`# .claude/scripts/lib/ — ...`) rather than the human-readable suffix, so renaming the suffix (e.g. 'Reusable helpers' → 'Helper utilities') cannot silently disable the rule. When the section is absent the rule blocks PR merge."
     },
     {
+      "id": "lib-helper-stack-knowledge-required",
+      "type": "lib_helper_stack_knowledge_required",
+      "severity": "block",
+      "enumeration_glob": ".claude/scripts/lib/*.py",
+      "excluded_basenames": ["__init__.py"],
+      "consumption_patterns": [
+        {
+          "pattern_template": "from\\s+(?:\\.?(?:lib|scripts\\.lib)\\.)?<module>\\s+import\\b",
+          "excluded_paths": ["**/tests/**", "**/test_*.py", "**/*_test.py", ".claude/worktrees/**", ".claude/scripts/lib/<module>.py"]
+        },
+        {
+          "pattern_template": "<module>\\.[a-zA-Z_][\\w_]*\\(",
+          "excluded_paths": ["**/tests/**", "**/test_*.py", "**/*_test.py", ".claude/worktrees/**", ".claude/scripts/lib/<module>.py"]
+        }
+      ],
+      "caller_threshold": 2,
+      "authoritative_source": ".claude/scripts/lib/README.md",
+      "allowed_extensions": [".py", ".md"],
+      "pragma": {
+        "comment_template": "# coherence-allow: not-reusable: (.+)"
+      },
+      "description": "#1300 — every public function in lib/*.py with >=caller_threshold production callers (counted via narrow consumption_patterns excluding tests/ and worktrees/) MUST have a Stack Knowledge entry in .claude/scripts/lib/README.md whose stack_scope is module-precise (`scripts/lib/<module>`), OR the helper module MUST declare `# coherence-allow: not-reusable: <reason>` at module top. Closes the gap left by lib-readme-stack-knowledge-required (must_contain_section guards heading presence only — not per-helper drift). Round-2 critic 3bf11d4b38d7 — directory-level `stack_scope: scripts/lib` entries explicitly do NOT grandfather (the linter only recognizes module-precise scope), preventing the 3 pre-existing directory-level entries (image-evidence-provenance-phash, schema-version-run-id-binding, canonical-writer-policy-pattern) from nullifying per-helper coverage on day 1. Round-2 critic 36b36a5501aa — is_strict_aoc=True so severity=block findings actually block lifecycle-finalize.sh:289 under --warn-only --strict-aoc. Round-2 critic ee3bf527cea5 — pragma scanner is a new Python-comment regex helper (_check_python_pragma) anchored to top-of-file (max 50 lines), distinct from _parse_pragmas (HTML-comment template) and _pragma_in_window (substring-only). Round-2 critic b3b4d7037be5 — allowed_extensions=[.py, .md] filters out path-string false positives in .json/.sh files; consumption_pattern 2 is anchored with `\\(` to require call syntax."
+    },
+    {
       "id": "bash-hook-write-operator-binding",
       "type": "bash_hook_write_operator_binding",
       "severity": "block",
@@ -375,6 +399,7 @@
       "id": "hard-block-validators-integration-required",
       "type": "validator_integration_required",
       "severity": "block",
+      "minimum_integration_count": 2,
       "validators": [
         ".claude/scripts/validate-retrospective-completeness.py",
         ".claude/scripts/validate-step55-evidence.py",
@@ -390,9 +415,13 @@
         },
         ".claude/patterns/observation-phase.md",
         ".claude/scripts/check-observation-artifacts.sh",
-        ".claude/scripts/lifecycle-finalize.sh"
+        ".claude/scripts/lifecycle-finalize.sh",
+        ".claude/patterns/step55-evidence-rollout.md",
+        ".claude/skills/bootstrap/state-11b-lib-verify.md",
+        ".claude/patterns/agent-output-contract.md",
+        ".claude/agents/observer.md"
       ],
-      "description": "#1295 PR1 — each hard-block validator MUST be referenced by basename in EXECUTABLE CONTEXT in at least one declared integration_point. JSON: only inside declared executable_keys (verify) OR bare-string state values whose parent_key matches state-name regex ^(?=.*\\d)[a-z0-9]+$ (HC-PR1-1 disambiguation: state-registry has 111 such bare-string entries; description/rationale strings do NOT count). .sh: non-comment lines only. .md: fenced code blocks only. Adding a new validator: add to validators[] AND wire it into ≥1 integration point's executable context in the same PR. Baseline=0 verified during /solve PR1 sandbox: all 5 validators detected, no false positives on description fields. #1272 follow-up: validator entries can be either bare strings (legacy) OR objects {path, required_env_prefix} (new — enforces an env-var prefix immediately before the invocation). The required_env_prefix sub-check is dormant infra in this PR; it activates when the deny-mode flip PR adds a rule entry with required_env_prefix populated for validate-step55-evidence.py — see .claude/patterns/step55-evidence-rollout.md for the rollout sequence."
+      "description": "#1295 PR1 — each hard-block validator MUST be referenced by basename in EXECUTABLE CONTEXT in at least one declared integration_point. JSON: only inside declared executable_keys (verify) OR bare-string state values whose parent_key matches state-name regex ^(?=.*\\d)[a-z0-9]+$ (HC-PR1-1 disambiguation: state-registry has 111 such bare-string entries; description/rationale strings do NOT count). .sh: non-comment lines only. .md: fenced code blocks only. Adding a new validator: add to validators[] AND wire it into ≥minimum_integration_count integration points' executable contexts in the same PR. #1307 — minimum_integration_count: 2 forces distinct-file cardinality so a single state-registry.json line edit cannot silently dereference multiple validators (the original failure mode in state 11b chaining 2 validators on one line). Backfill landed alongside the threshold flip: each previously single-integration validator now has a fenced bash invocation in its semantically-relevant domain-owner file (step55-evidence-rollout.md, state-11b-lib-verify.md, agent-output-contract.md, observer.md). #1272 follow-up: validator entries can be either bare strings (legacy) OR objects {path, required_env_prefix} (new — enforces an env-var prefix immediately before the invocation). The required_env_prefix sub-check is dormant infra in this PR; it activates when the deny-mode flip PR adds a rule entry with required_env_prefix populated for validate-step55-evidence.py — see .claude/patterns/step55-evidence-rollout.md for the rollout sequence."
     },
     {
       "id": "hard-block-validator-inventory-completeness",

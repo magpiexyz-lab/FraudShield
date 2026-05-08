@@ -111,7 +111,18 @@ was bypassable by phrasing variation. Either the agent fills the structured
 field or it explicitly attests "no template gaps observed."
 
 Each entry's `file` MUST be under `.claude/` or `scripts/` (template-rooted)
-AND must exist on disk. Validator: `.claude/scripts/validate-scaffold-recommendations-schema.py`.
+AND must exist on disk. The hard-block validator that enforces this contract
+is invocable directly:
+
+```bash
+python3 .claude/scripts/validate-scaffold-recommendations-schema.py
+```
+
+This validator is a hard-block validator wired into bootstrap state-registry
+(states 11b, 11c, 14). It MUST stay referenced in this file (per the
+`hard-block-validators-integration-required` coherence rule with
+`minimum_integration_count: 2`) so a single-file edit to state-registry.json
+cannot silently dereference it. See #1307 for the line-granularity defense.
 
 The observation-phase Step 2 evidence collector reads this field across
 all scaffold-* traces; entries whose `file` matches a template path get

@@ -265,6 +265,12 @@
             ]
           },
           "minItems": 1
+        },
+        "minimum_integration_count": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1,
+          "description": "#1307 — minimum number of distinct integration_points that must reference each validator. Default 1 preserves the original 'referenced in at least one place' contract; raise to 2+ to defend against single-file edits silently dereferencing all hard-block validators (e.g., state-registry.json line 11b chaining 2 validators)."
         }
       }
     },
@@ -330,6 +336,76 @@
         "_comment": { "type": "string" },
         "convention_doc": { "type": "string" }
       }
+    },
+    "rule_lib_helper_stack_knowledge_required": {
+      "description": "#1300 — every public function in lib/*.py with >= caller_threshold production callers must have a Stack Knowledge entry in lib/README.md whose stack_scope is module-precise (scripts/lib/<module>), OR the helper module must declare a not-reusable pragma at the top. Closes the gap left by `lib-readme-stack-knowledge-required` (must_contain_section), which only guards heading presence — not per-helper coverage.",
+      "type": "object",
+      "required": ["id", "type", "severity", "enumeration_glob", "consumption_patterns", "authoritative_source", "pragma"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string"},
+        "type": {"const": "lib_helper_stack_knowledge_required"},
+        "severity": {"$ref": "#/definitions/severity"},
+        "description": {"type": "string"},
+        "_comment": {"type": "string"},
+        "_transitional_note": {"type": "string"},
+        "convention_doc": {"type": "string"},
+        "enumeration_glob": {
+          "type": "string",
+          "description": "Glob (relative to repo root) of helper files to enumerate. Typically '.claude/scripts/lib/*.py'."
+        },
+        "excluded_basenames": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Filenames to skip (e.g., '__init__.py', 'README.md')."
+        },
+        "consumption_patterns": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["pattern_template"],
+            "additionalProperties": false,
+            "properties": {
+              "pattern_template": {
+                "type": "string",
+                "description": "Regex with literal '<module>' placeholder. The linter substitutes each helper's module name (basename minus .py) before compiling."
+              },
+              "excluded_paths": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Glob-like patterns (substring match with '<module>' substitution) excluding files from caller-counting (e.g., 'tests/', the helper file itself)."
+              }
+            }
+          },
+          "minItems": 1
+        },
+        "caller_threshold": {
+          "type": "integer",
+          "minimum": 2,
+          "default": 2,
+          "description": "Minimum distinct caller files required for a helper to need a Stack Knowledge entry. Default 2 matches lib/README.md convention."
+        },
+        "authoritative_source": {
+          "type": "string",
+          "description": "Path to the single Stack Knowledge file authoritative for this rule. Only stack_scope entries from this file count as coverage."
+        },
+        "allowed_extensions": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "File extensions to scan when counting callers. Default '.py'+'.md' avoids false positives from path-string mentions in JSON/SH/etc."
+        },
+        "pragma": {
+          "type": "object",
+          "required": ["comment_template"],
+          "additionalProperties": false,
+          "properties": {
+            "comment_template": {
+              "type": "string",
+              "description": "Regex matching the opt-out pragma at the top of a helper file. Use a capture group to extract the rationale (e.g., '# coherence-allow: not-reusable: (.+)')."
+            }
+          }
+        }
+      }
     }
   },
   "type": "object",
@@ -359,7 +435,8 @@
           { "$ref": "#/definitions/rule_validator_integration_required" },
           { "$ref": "#/definitions/rule_validator_inventory_completeness" },
           { "$ref": "#/definitions/rule_state_defer_verify_pairing" },
-          { "$ref": "#/definitions/rule_branch_checkout_propagation_pairing" }
+          { "$ref": "#/definitions/rule_branch_checkout_propagation_pairing" },
+          { "$ref": "#/definitions/rule_lib_helper_stack_knowledge_required" }
         ]
       }
     }

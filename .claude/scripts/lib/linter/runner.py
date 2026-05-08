@@ -2838,6 +2838,11 @@ def main() -> int:
         rid = rule.get("id", "<unknown>")
         validators = rule.get("validators") or []
         integration_points = rule.get("integration_points") or []
+        # #1307 — cardinality threshold. Default 1 preserves the original
+        # "referenced in at least one place" contract; raise to 2+ to defend
+        # against single-file edits silently dereferencing all hard-block
+        # validators (e.g., state-registry.json line 11b chaining 2 validators).
+        min_count = rule.get("minimum_integration_count", 1)
         if not validators:
             return [f"  [{rid}] no validators declared"]
         if not integration_points:
@@ -2930,16 +2935,23 @@ def main() -> int:
                 if v_basename in exec_text:
                     referenced_in.append(ip_rel)
                     referenced_exec_texts.append(exec_text)
-            if not referenced_in:
+            if len(referenced_in) < min_count:
                 ip_paths = [_normalize_ip(ip)[0] for ip in integration_points]
+                if not referenced_in:
+                    coverage = "any of"
+                else:
+                    coverage = f"only {len(referenced_in)} of"
                 findings.append(
-                    f"  [{rid}] validator {v_rel} not referenced in any "
-                    f"declared integration point ({', '.join(str(p) for p in ip_paths)}) "
-                    f"in EXECUTABLE CONTEXT. JSON values OUTSIDE declared "
-                    f"executable_keys / state-value positions do NOT count "
-                    f"(HC-PR1-1). .sh comment-line and .md prose mentions "
-                    f"do NOT count. Wire the validator or remove from "
-                    f"validators[]."
+                    f"  [{rid}] validator {v_rel} referenced in {coverage} "
+                    f"the declared integration points ({', '.join(str(p) for p in ip_paths)}) "
+                    f"in EXECUTABLE CONTEXT; minimum_integration_count={min_count}. "
+                    f"#1307: distinct-file cardinality defends against single-file edits "
+                    f"silently dereferencing all hard-block validators (e.g., a state-registry.json "
+                    f"line stripping multiple validators in one chain). JSON values OUTSIDE "
+                    f"declared executable_keys / state-value positions do NOT count (HC-PR1-1). "
+                    f".sh comment-line and .md prose mentions do NOT count. Wire the validator "
+                    f"in {min_count - len(referenced_in)} additional integration_point file(s) "
+                    f"or remove from validators[]."
                 )
                 continue
 
@@ -3265,6 +3277,207 @@ def main() -> int:
         return findings
 
 
+    def _check_python_pragma(file_path, pragma_re, max_top_lines=50):
+        """Scan top of a .py file for a regex-matched pragma (e.g.,
+        `# coherence-allow: not-reusable: <reason>`).
+
+        #1300 Python-native pragma scanner — distinct from `_parse_pragmas`
+        (HTML-comment template, used in markdown) and `_pragma_in_window`
+        (substring-only, used in bash_hook check). Anchored to top-of-file
+        (first `max_top_lines`) so the pragma must be a deliberate module-level
+        annotation, not buried mid-function.
+        """
+        import re as _re
+        try:
+            with open(file_path, encoding="utf-8") as f:
+                head = "".join(f.readlines()[:max_top_lines])
+        except OSError:
+            return False
+        return bool(_re.search(pragma_re, head))
+
+
+    def _extract_module_precise_stack_scopes(readme_path):
+        """Parse a Stack Knowledge README and return module names from
+        `stack_scope: scripts/lib/<module>` entries.
+
+        #1300 — directory-level entries (`stack_scope: scripts/lib`) are
+        DELIBERATELY rejected to defeat the grandfather clause where 3 such
+        entries (image-evidence-provenance-phash, schema-version-run-id-binding,
+        canonical-writer-policy-pattern) would otherwise nullify per-helper
+        coverage assertions. New entries MUST be module-precise.
+        """
+        import re as _re
+        if not os.path.isfile(readme_path):
+            return set()
+        try:
+            with open(readme_path, encoding="utf-8") as f:
+                text = f.read()
+        except OSError:
+            return set()
+        # Match exactly `stack_scope: scripts/lib/<module>` — the trailing
+        # word boundary plus character-class rejects bare `scripts/lib` and
+        # `scripts/lib/` (no module). Module name pattern matches Python
+        # identifier convention.
+        return set(_re.findall(r"stack_scope:\s*scripts/lib/([a-zA-Z][\w_-]+)", text))
+
+
+    def check_lib_helper_stack_knowledge_required(rule):
+        """#1300 — every public function in lib/*.py with >= caller_threshold
+        production callers must have a Stack Knowledge entry in lib/README.md
+        with module-precise stack_scope, OR the helper module must declare
+        `# coherence-allow: not-reusable: <reason>` at module top.
+
+        Pattern modelled on check_discover_consumers (regex-grep + cardinality)
+        + check_must_contain_section (trigger-pattern). Extended with:
+          - Python AST-style public-function detection (`^def [a-zA-Z]\\w*\\(`)
+          - Pragma escape hatch (Python comment, not HTML) via _check_python_pragma
+          - Authoritative-source filter (lib/README.md only — not all Stack
+            Knowledge surfaces) to avoid false coverage from unrelated stack files
+          - Exact stack_scope match (rejects substring/prefix collisions like
+            `validate_evidence` vs `validate_evidence_coverage`)
+          - Allowed-extension scope (default .py + .md) to avoid path-string
+            false positives in JSON/SH files
+        """
+        import glob as _glob
+        import re as _re
+        findings = []
+        rid = rule.get("id", "<unknown>")
+        glob_pattern = rule.get("enumeration_glob", "")
+        excluded_basenames = set(rule.get("excluded_basenames", ["__init__.py"]))
+        consumption_patterns = rule.get("consumption_patterns", [])
+        caller_threshold = rule.get("caller_threshold", 2)
+        auth_source = rule.get("authoritative_source", "")
+        allowed_ext = tuple(rule.get("allowed_extensions", [".py", ".md"]))
+        pragma_obj = rule.get("pragma") or {}
+        pragma_template = pragma_obj.get("comment_template", "")
+
+        if not glob_pattern:
+            return [f"  [{rid}] enumeration_glob is required"]
+        if not consumption_patterns:
+            return [f"  [{rid}] consumption_patterns is required"]
+        if not auth_source:
+            return [f"  [{rid}] authoritative_source is required"]
+        if not pragma_template:
+            return [f"  [{rid}] pragma.comment_template is required"]
+
+        try:
+            pragma_re = _re.compile(pragma_template)
+        except _re.error as exc:
+            return [f"  [{rid}] invalid pragma.comment_template regex: {exc}"]
+
+        # Coverage source — only the authoritative file counts (not all
+        # iter_stack_knowledge_files() outputs). Parses module-precise entries;
+        # directory-level entries (stack_scope: scripts/lib) intentionally
+        # don't grandfather, per the design.
+        auth_path = os.path.join(REPO_ROOT, auth_source)
+        covered_modules = _extract_module_precise_stack_scopes(auth_path)
+
+        helper_files = sorted(_glob.glob(os.path.join(REPO_ROOT, glob_pattern)))
+
+        for helper_path in helper_files:
+            basename = os.path.basename(helper_path)
+            if basename in excluded_basenames:
+                continue
+            module_name = basename[:-3] if basename.endswith(".py") else basename
+
+            # Pragma scan — module declares it's deliberately not reusable.
+            if _check_python_pragma(helper_path, pragma_re):
+                continue
+
+            # Public-function detection — must have at least one `def public(`.
+            try:
+                with open(helper_path, encoding="utf-8", errors="ignore") as f:
+                    source = f.read()
+            except OSError:
+                continue
+            public_funcs = _re.findall(
+                r"^def ([a-zA-Z][\w_]*)\s*\(", source, _re.MULTILINE
+            )
+            if not public_funcs:
+                continue
+
+            # Caller counting — narrow consumption_patterns + extension filter
+            # + per-pattern excluded_paths. Excluded_paths support `<module>`
+            # substitution so the helper file itself can be excluded
+            # (otherwise self-`import` matches inflate the count).
+            caller_files = set()
+            search_root = os.path.join(REPO_ROOT, ".claude")
+            for pat_obj in consumption_patterns:
+                template = pat_obj.get("pattern_template", "")
+                excluded = pat_obj.get("excluded_paths", []) or []
+                excluded_subst = [
+                    pe.replace("<module>", module_name) for pe in excluded
+                ]
+                concrete = template.replace("<module>", _re.escape(module_name))
+                try:
+                    pattern = _re.compile(concrete)
+                except _re.error:
+                    continue
+                for root, dirs, files in os.walk(search_root):
+                    # Prune by directory glob substrings
+                    pruned = []
+                    for d in list(dirs):
+                        rel_d = os.path.relpath(os.path.join(root, d), REPO_ROOT)
+                        if any(_path_glob_match(rel_d, ex) for ex in excluded_subst):
+                            pruned.append(d)
+                    for d in pruned:
+                        dirs.remove(d)
+                    for fn in files:
+                        if not fn.endswith(allowed_ext):
+                            continue
+                        full = os.path.join(root, fn)
+                        rel = os.path.relpath(full, REPO_ROOT)
+                        if any(_path_glob_match(rel, ex) for ex in excluded_subst):
+                            continue
+                        try:
+                            with open(full, encoding="utf-8", errors="ignore") as f:
+                                text = f.read()
+                        except OSError:
+                            continue
+                        if pattern.search(text):
+                            caller_files.add(rel)
+
+            # Coverage decision: ≥threshold callers AND no module-precise entry
+            if len(caller_files) >= caller_threshold and module_name not in covered_modules:
+                # Sample up to 3 caller files for the finding message — gives
+                # the author a concrete starting point without dumping the
+                # full set into the linter output.
+                sample_callers = ", ".join(sorted(caller_files)[:3])
+                more = f" (+ {len(caller_files) - 3} more)" if len(caller_files) > 3 else ""
+                findings.append(_emit_finding(
+                    rule,
+                    f"helper {module_name} ({basename}) has {len(caller_files)} "
+                    f"production callers (>= {caller_threshold}: {sample_callers}{more}) "
+                    f"but lacks a module-precise Stack Knowledge entry in {auth_source}. "
+                    f"Either: (a) add an entry with `stack_scope: scripts/lib/{module_name}` "
+                    f"and `composite_identity` + `fix_template` per the README schema; "
+                    f"OR (b) add `# coherence-allow: not-reusable: <reason>` "
+                    f"to the top of {basename} (use only when the helper is intentionally "
+                    f"single-callsite by design). Directory-level "
+                    f"`stack_scope: scripts/lib` entries do NOT count — they were the "
+                    f"original gap that prompted #1300."
+                ))
+        return findings
+
+
+    def _path_glob_match(rel_path, pattern):
+        """Substring match for path glob patterns. `**` is treated as wildcard."""
+        # Convert the simplified glob to a substring-friendly check. We don't
+        # need fnmatch's full glob semantics; the patterns we accept are
+        # things like `**/tests/**`, `**/test_*.py`, `**/*_test.py`,
+        # `.claude/scripts/lib/<already-substituted>.py`.
+        import fnmatch as _fnmatch
+        # Strip leading `**/` for matching against arbitrary depths.
+        if pattern.startswith("**/"):
+            pat = pattern[3:]
+            # Match if any path component matches
+            if _fnmatch.fnmatch(rel_path, "*/" + pat) or _fnmatch.fnmatch(rel_path, pat):
+                return True
+            # Also match if the pattern's directory part is anywhere in path
+            return pat.rstrip("/").rstrip("*").rstrip("/") in rel_path
+        return _fnmatch.fnmatch(rel_path, pattern)
+
+
     # ---------------------------------------------------------------------------
     # Cross-file rule dispatch — registry-driven with type + field validation.
     #
@@ -3312,10 +3525,12 @@ def main() -> int:
         # #1275 / Group A — post-completion re-spawn doc presence.
         "post_completion_respawn_doc_present": (check_post_completion_respawn_doc_present, set(), {"registry_path", "agents_dir", "required_section"}, False),
         # #1295 PR1 — Stage B + Stage C validator coherence rules.
+        # #1307 — minimum_integration_count is an optional cardinality
+        # threshold (default 1 preserves backwards compat).
         "validator_integration_required": (
             check_validator_integration_required,
             {"validators", "integration_points"},
-            set(),
+            {"minimum_integration_count"},
             True,  # is_strict_aoc — hard-block validators MUST stay integrated
         ),
         "validator_inventory_completeness": (
@@ -3341,6 +3556,18 @@ def main() -> int:
             check_branch_checkout_propagation_pairing,
             {"scan_globs"},
             {"exclude_paths"},
+            True,  # is_strict_aoc — block at lifecycle-finalize.sh:289 even under --warn-only
+        ),
+        # #1300 — per-helper Stack Knowledge coverage in lib/README.md.
+        # Closes the must_contain_section gap (presence-of-heading) by
+        # enumerating lib/*.py public functions, counting production callers
+        # via narrow consumption_patterns, and asserting each multi-caller
+        # helper has a module-precise stack_scope entry OR a not-reusable
+        # pragma. is_strict_aoc=True so violations block under --strict-aoc.
+        "lib_helper_stack_knowledge_required": (
+            check_lib_helper_stack_knowledge_required,
+            {"enumeration_glob", "consumption_patterns", "authoritative_source", "pragma"},
+            {"caller_threshold", "excluded_basenames", "allowed_extensions"},
             True,  # is_strict_aoc — block at lifecycle-finalize.sh:289 even under --warn-only
         ),
     }
