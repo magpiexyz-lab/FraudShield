@@ -84,13 +84,29 @@ code categories. The `test_aoc_tag_invariant` test in
 `.claude/scripts/tests/test_linter_parity.py` locks the contract that
 strict-AOC handlers always produce tagged findings.
 
-## Adding a 9th cross-file rule type
+## Adding a new cross-file rule type
 
 1. Implement `def check_my_rule(rule)` inside `runner.py` next to the existing handlers. It returns `list[str]` of findings. Use `_emit_finding(rule, msg)` if and only if you want the `(rtype/sev)` tag (mandatory for `is_strict_aoc=True`).
 2. Add an entry to `HANDLERS` with required + optional field sets matching every `rule.get(...)` call site in your handler.
 3. Add an entry to `.claude/patterns/coherence-rule-schema.json` `oneOf` array (mirrors HANDLERS for documentation).
-4. Add a fixture under `.claude/scripts/tests/fixtures/linter_synthetic/<your_rule_name>/` with `rules.json` + `files/` and a corresponding test method in `test_linter_parity.py`.
+4. Either add a fixture under `.claude/scripts/tests/fixtures/linter_synthetic/<your_rule_name>/` with `rules.json` + `files/` and a corresponding test method in `test_linter_parity.py`, OR add a dedicated test file under `.claude/scripts/tests/test_<your_rule_name>.py` that drives the same scenarios via subprocess (mirrors `test_linter_validation.py` and `test_lib_helper_stack_knowledge_required.py`). Either is acceptable — the fixture form is more uniform with existing parity tests; the dedicated test form is more readable for rule-specific edge cases (substring collisions, pragma escape hatches, multi-pattern consumption).
 5. If your rule is `is_strict_aoc=True`: ensure your finding messages all go through `_emit_finding` (the tag invariant test will fail otherwise).
+
+### Currently registered rule types (10 cross-file checks + per-state checks)
+
+| Rule type | Severity tier | Notes |
+|-----------|---------------|-------|
+| `field_role_map` | warn | canonical accessor enforcement |
+| `discover_consumers` | warn | grep + consumer-list drift |
+| `verdict_vocab_consistency` | strict-AOC | agent verdict canonical names |
+| `ledger_ownership` | strict-AOC | fix-ledger writer allowlist |
+| `consumer_coverage` | strict-AOC | fix-count consumers reference ledger |
+| `validator_integration_required` | strict-AOC | hard-block validator wiring (#1295/#1307: with `minimum_integration_count` cardinality threshold) |
+| `validator_inventory_completeness` | strict-AOC | every validate-*.py covered |
+| `lib_helper_stack_knowledge_required` | strict-AOC | per-helper Stack Knowledge entry (#1300: enumerate lib/*.py public functions, count callers via narrow consumption_patterns, exact stack_scope match in lib/README.md, Python-native `# coherence-allow: not-reusable: <reason>` pragma escape hatch) |
+| `state_defer_verify_pairing` | strict-AOC | #1339 deferred-VERIFY ↔ writer pairing |
+| `branch_checkout_propagation_pairing` | strict-AOC | #1328 git checkout-b ↔ context-update pairing |
+| (others) | warn / info | see HANDLERS table for full list |
 
 ## Decision log
 

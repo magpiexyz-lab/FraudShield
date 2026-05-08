@@ -333,7 +333,7 @@
       "type": "lib_helper_stack_knowledge_required",
       "severity": "block",
       "enumeration_glob": ".claude/scripts/lib/*.py",
-      "excluded_basenames": ["__init__.py"],
+      "excluded_basenames": ["__init__.py", "test_*.py", "*_test.py"],
       "consumption_patterns": [
         {
           "pattern_template": "from\\s+(?:\\.?(?:lib|scripts\\.lib)\\.)?<module>\\s+import\\b",

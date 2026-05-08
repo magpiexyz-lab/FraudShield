@@ -3277,6 +3277,14 @@ def main() -> int:
         return findings
 
 
+    def _fnmatch_module(basename, pattern):
+        """Case-sensitive fnmatch — supports both literal names ("__init__.py")
+        and globs ("test_*.py"). Used by excluded_basenames so test fixture
+        files inside lib/ are filtered from enumeration without naming each."""
+        import fnmatch as _fnmatch
+        return _fnmatch.fnmatchcase(basename, pattern)
+
+
     def _check_python_pragma(file_path, pragma_re, max_top_lines=50):
         """Scan top of a .py file for a regex-matched pragma (e.g.,
         `# coherence-allow: not-reusable: <reason>`).
@@ -3343,7 +3351,11 @@ def main() -> int:
         findings = []
         rid = rule.get("id", "<unknown>")
         glob_pattern = rule.get("enumeration_glob", "")
-        excluded_basenames = set(rule.get("excluded_basenames", ["__init__.py"]))
+        # excluded_basenames accepts both literal names and fnmatch globs
+        # (e.g. "test_*.py", "*_test.py") so test fixtures inside lib/ — like
+        # `.claude/scripts/lib/test_decompose_bash_chain.py` — are filtered out
+        # of enumeration without each being named explicitly.
+        excluded_basenames = list(rule.get("excluded_basenames", ["__init__.py", "test_*.py", "*_test.py"]))
         consumption_patterns = rule.get("consumption_patterns", [])
         caller_threshold = rule.get("caller_threshold", 2)
         auth_source = rule.get("authoritative_source", "")
@@ -3376,7 +3388,7 @@ def main() -> int:
 
         for helper_path in helper_files:
             basename = os.path.basename(helper_path)
-            if basename in excluded_basenames:
+            if any(_fnmatch_module(basename, pat) for pat in excluded_basenames):
                 continue
             module_name = basename[:-3] if basename.endswith(".py") else basename
 

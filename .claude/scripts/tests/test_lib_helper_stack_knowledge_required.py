@@ -375,6 +375,50 @@ class TestAgentMdImport(unittest.TestCase):
         )
 
 
+class TestExcludedBasenamesGlob(unittest.TestCase):
+    """Self-audit follow-up: `excluded_basenames` accepts both literal names
+    and fnmatch globs so test fixtures inside lib/ (e.g.,
+    `.claude/scripts/lib/test_decompose_bash_chain.py`) are filtered from
+    enumeration without each being named explicitly."""
+
+    def test_test_glob_excludes_test_fixture_in_lib(self):
+        """A test fixture file in lib/ named `test_<name>.py` must be skipped
+        even when it has public functions and would otherwise enumerate."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _setup_repo(
+                tmpdir,
+                helpers={
+                    # Real helper — should fire if uncovered
+                    "real_helper": _helper("do_thing"),
+                    # Test fixture file — must be excluded by `test_*.py` glob
+                    "test_real_helper": (
+                        "def test_thing():\n"
+                        "    from real_helper import do_thing\n"
+                        "    assert do_thing(1) == 2\n"
+                    ),
+                },
+                callers={
+                    ".claude/skills/A/state.md": (
+                        "```python\nfrom real_helper import do_thing\n```\n"
+                    ),
+                    ".claude/skills/B/state.md": (
+                        "```python\nfrom real_helper import do_thing\n```\n"
+                    ),
+                },
+                readme_content="# Reusable helpers\n\n## Stack Knowledge\n\n",
+            )
+            rc, stdout, stderr = _run(tmpdir, "--strict-aoc")
+        combined = (stdout or "") + (stderr or "")
+        # real_helper is uncovered → must fire
+        self.assertNotEqual(rc, 0, "real_helper should fire")
+        self.assertIn("real_helper", combined)
+        # test_real_helper is excluded → must NOT appear as a finding subject
+        self.assertNotIn(
+            "helper test_real_helper (test_real_helper.py)", combined,
+            "test_real_helper.py should be excluded by `test_*.py` glob",
+        )
+
+
 class TestStrictAocBlocking(unittest.TestCase):
     """Round-2 caveat 36b36a5501aa: severity=block + --warn-only --strict-aoc
     must produce a blocking exit code (i.e., is_strict_aoc=True is registered)."""

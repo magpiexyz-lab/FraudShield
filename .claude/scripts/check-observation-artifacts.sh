@@ -363,6 +363,27 @@ if [[ "$SCOPE" == "full" || "$SCOPE" == "process" ]] \
   fi
 fi
 
+# ── Observer-evidence-coverage gate (#1255 + #1307 defense-in-depth) ──
+# Pairs the retrospective-completeness validator above. observation-phase.md
+# Step 4 already invokes validate-observer-evidence-coverage.py during the
+# observer agent flow; running it again here as a final post-observation gate
+# (a) gives the validator a 2nd integration_point in a structurally-distinct
+# file (defends #1307's distinct-file cardinality requirement), and (b)
+# catches the "agent-flow skipped Step 4 entirely" case that the inline
+# validator cannot detect on its own. Same warn/deny mode pattern as
+# retrospective-completeness.
+if [[ "$SCOPE" == "full" || "$SCOPE" == "process" ]]; then
+  OEC_OUT=$(python3 "${PROJECT_DIR}/.claude/scripts/validate-observer-evidence-coverage.py" 2>&1) || OEC_RC=$?
+  OEC_RC="${OEC_RC:-0}"
+  if [[ "$OEC_RC" -ne 0 ]]; then
+    echo "$OEC_OUT" >&2
+    if [[ "${OBSERVER_EVIDENCE_COVERAGE_MODE:-warn}" == "deny" ]]; then
+      MISSING+=("observer-evidence-coverage (#1255 — observer trace missing required evidence_consulted entries)")
+      PASS="false"
+    fi
+  fi
+fi
+
 # ── Write audit artifact (delegates to canonical writer — GRAIM v2 Slice 3) ──
 # Build missing list as newline-delimited string, then convert in Python
 MISSING_STR=""
