@@ -12,12 +12,24 @@ agent-spawn-log.jsonl entry.
 """
 from __future__ import annotations
 
+import datetime
 import json
 import os
 import subprocess
 from pathlib import Path
 
 import pytest
+
+
+def _live_timestamp() -> str:
+    """Return a UTC timestamp guaranteed to be within the 48h staleness cap
+    enforced by `resolve_active_identity` in `.claude/hooks/lib-state.sh`.
+
+    Hardcoded fixture timestamps go stale as the project ages (the test was
+    originally green at fixture-write time but starts failing on day 4).
+    Using `now()` keeps the fixture live across the project's lifetime.
+    """
+    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -233,7 +245,7 @@ def test_active_identity_present_refuses_source_honoring(tmp_path: Path) -> None
     # non-degraded path to take over because active identity is non-empty.
     (runs / "verify-context.json").write_text(json.dumps({
         "skill": "verify", "run_id": "v-1", "completed": False,
-        "timestamp": "2026-05-05T05:00:00Z",
+        "timestamp": _live_timestamp(),
         "branch": _current_branch(tmp_path),
     }))
     _completed_context(runs, "bootstrap", "boot-1")

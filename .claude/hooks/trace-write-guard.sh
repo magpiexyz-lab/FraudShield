@@ -145,10 +145,13 @@ if echo "$NORM" | awk '
     BEGIN{RS="[&|;]"}
     {
       # Bound write operator -> spawn-log target (>file, >>file, &>file).
-      # Issue #1333: gated path must appear immediately after operator +
-      # optional whitespace + optional quote. The prior open exclusion class
-      # admitted markdown prose between operator and path as a false positive.
-      if (match($0, /([0-9]*&?>+|[0-9]*>>?)[[:space:]]*["'\'']?agent-spawn-log\.jsonl/)) found=1
+      # Issue #1333 + post-fix: between operator and the gated basename allow
+      # only path-like chars (no whitespace, no quote) so legitimate writes
+      # like > .runs/agent-spawn-log.jsonl match while markdown-blockquote
+      # prose > 1b. some text agent-spawn-log.jsonl does not. Pre-#1333 the
+      # exclusion class was non-chain-delim chars, which still admitted prose;
+      # #1333 removed it entirely which broke real .runs/-prefixed writes.
+      if (match($0, /([0-9]*&?>+|[0-9]*>>?)[[:space:]]*["'\'']?[^[:space:]"'\'']*agent-spawn-log\.jsonl/)) found=1
       # tee / cp / mv / dd as words with a spawn-log target on the same segment
       else if (match($0, /(^|[[:space:]])(tee|cp|mv|dd)[[:space:]][^|;&]*agent-spawn-log\.jsonl/)) found=1
     }

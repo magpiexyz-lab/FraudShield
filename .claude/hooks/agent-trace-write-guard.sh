@@ -160,11 +160,15 @@ if echo "$NORM" | awk '
     BEGIN{RS="[&|;]"}
     {
       # Bound write operator -> agent-traces target (>file, >>file, &>file).
-      # Issue #1333: gated path must appear immediately after operator +
-      # optional whitespace + optional quote. The prior open exclusion class
-      # admitted markdown blockquote prose between operator and path as a
-      # false positive when filing issues via gh issue create --body.
-      if (match($0, /([0-9]*&?>+|[0-9]*>>?)[[:space:]]*["'\'']?agent-traces\//)) found=1
+      # Issue #1333 + post-fix: between the operator and the gated basename
+      # allow only path-like chars (no whitespace, no quote) so legitimate
+      # write paths like > .runs/agent-traces/<NAME>.json match while
+      # markdown-blockquote prose > 1b. After each fix in agent-traces/...
+      # does NOT — the space after 1b. breaks the path-token capture.
+      # Pre-#1333 the exclusion class was non-chain-delim chars, which still
+      # admitted prose; #1333 removed it entirely which broke real
+      # .runs/-prefixed writes.
+      if (match($0, /([0-9]*&?>+|[0-9]*>>?)[[:space:]]*["'\'']?[^[:space:]"'\'']*agent-traces\//)) found=1
       # tee / cp / mv / dd with an agent-traces target later on the same segment
       else if (match($0, /(^|[[:space:]])(tee|cp|mv|dd)[[:space:]][^|;&]*agent-traces\//)) found=1
     }
@@ -323,7 +327,7 @@ if echo "$COMMAND_CANONICAL" | grep -qE "$ALLOWED_REGEX_SKIPPED_FIXER"; then
 fi
 
 # ── Final catch-all: any direct write operator targeting agent-traces ──
-# Use the fd-redirect-stripped NORM so `cmd 2>&1 > agent-traces/foo.json` still
+# Use the fd-redirect-stripped NORM so `cmd 2>&1 > agent-traces/<NAME>.json` still
 # denies correctly (on the real `>` that writes the file) but
 # `ls agent-traces/ 2>&1` is not falsely flagged.
 #
@@ -344,10 +348,14 @@ if echo "$NORM" | awk '
     {
       # Bound write operator -> agent-traces target (>file, >>file, &>file)
       # within the same un-split shell segment.
-      # Issue #1333: gated path must appear immediately after operator +
-      # optional whitespace + optional quote. The prior open exclusion class
-      # admitted markdown prose between operator and path as a false positive.
-      if (match($0, /([0-9]*&?>+|[0-9]*>>?)[[:space:]]*["'\'']?agent-traces\/[^[:space:]"'\'']*\.json/)) found=1
+      # Issue #1333 + post-fix: between operator and the gated basename allow
+      # only path-like chars (no whitespace, no quote) so legitimate writes
+      # like > .runs/agent-traces/<NAME>.json match while markdown-blockquote
+      # prose > 1b. After each fix in agent-traces/<NAME>.json does not.
+      # Pre-#1333 the exclusion class was non-chain-delim chars, which still
+      # admitted prose; #1333 removed it entirely which broke real
+      # .runs/-prefixed writes.
+      if (match($0, /([0-9]*&?>+|[0-9]*>>?)[[:space:]]*["'\'']?[^[:space:]"'\'']*agent-traces\/[^[:space:]"'\'']*\.json/)) found=1
       # tee / cp / mv / dd with an agent-traces target later on the same segment
       else if (match($0, /(^|[[:space:]])(tee|cp|mv|dd)[[:space:]][^|;&]*agent-traces\/[^[:space:]"'\'']*\.json/)) found=1
     }
