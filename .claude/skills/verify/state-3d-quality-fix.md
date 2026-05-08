@@ -128,7 +128,7 @@ import sys
 result = {
     'timestamp': __import__('datetime').datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
     'a11y_violations': a11y.get('violations_count', len(a11y_violations)),
-    'consistency_issues': consistency.get('inconsistencies_found', len(c_inconsistencies)),
+    'consistency_issues': consistency.get('inconsistent_count', consistency.get('inconsistencies_found', len(c_inconsistencies))),
     'merged_issues': len(merged),
     'issues': merged,
 }

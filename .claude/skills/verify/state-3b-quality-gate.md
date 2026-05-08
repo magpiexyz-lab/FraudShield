@@ -108,32 +108,75 @@ fi
 
 > **Do NOT delete per-page traces** — the consistency checker needs them for cross-page comparison.
 
-##### Step B: Spawn consistency checker (cross-page visual review only)
+##### Step B: Page-batched consistency check (#1257)
 
-> **STOP HERE when Stage 0 fired (`.runs/all-pages-fast-path-decision.json` exists).** The lead-synthesized `design-consistency-checker.json` aggregate already exists with `verdict=pass, inconsistent_count=0`. Do NOT spawn the agent — its trace would collide with the lead-synthesized one and waste turns. Skip directly to the post-design-critic lint gate. Concretely:
+> **STOP HERE when Stage 0 fired (`.runs/all-pages-fast-path-decision.json` exists).** The lead-synthesized `design-consistency-checker.json` aggregate already exists with `verdict=pass, inconsistent_count=0`. Do NOT run the prepass or spawn agents — duplicates would collide with the lead-synthesized trace and waste turns. Skip directly to the post-design-critic lint gate. Concretely:
 >
 > ```bash
 > if [ -f .runs/all-pages-fast-path-decision.json ]; then
->   echo "Stage 0 active — skipping Step B consistency-checker spawn"
->   # Jump to the post-design-critic lint gate below; do NOT execute the Agent tool call.
+>   echo "Stage 0 active — skipping Step B page-batched consistency check"
+>   # Jump to the post-design-critic lint gate below; do NOT execute B.1-B.4.
 > fi
 > ```
 
-Spawn the `design-consistency-checker` agent (`subagent_type: design-consistency-checker`) **only when the STOP-HERE check above did not fire** (i.e., `.runs/all-pages-fast-path-decision.json` does NOT exist). It reads per-page traces and screenshots all pages for cross-page consistency — but does NOT merge traces or fix code.
+The page-batched architecture replaces the prior single-agent loop (PR #1296 soft-exit primitive, superseded by #1257 final). The lead pre-computes deterministic work once; each batch agent only judges severity of pre-detected anomaly candidates. Each batch agent has the full `maxTurns=1000` budget for ≤8 pages — exhaustion class eliminated.
 
-Pass:
+###### B.1: Lead-side prepass
+
+```bash
+if [ ! -f .runs/all-pages-fast-path-decision.json ]; then
+  python3 .claude/scripts/run-consistency-static-prepass.py \
+    --base-url "http://localhost:3000" \
+    --batch-size 8
+fi
+```
+
+Writes `.runs/consistency-check-prepass.json` containing:
+- `partition`: list of `{batch_id, pages}` entries (ceil(N/8) batches; `batch_id="single"` when N ≤ 8)
+- `global_frequency_maps`: C1-C4 grep frequency maps across all pages
+- `dom_features`: C5 structural feature vectors via Playwright (per-page renderer)
+- `anomaly_candidates`: pages that deviate from the ≥80% majority on any check
+- `c5_method`: `"playwright"` on success or `"static-fallback"` if Playwright was unavailable
+
+###### B.2: Decide single-batch vs multi-batch
+
+Read `prepass.partition`:
+- **Single batch** (`batch_id="single"`, N ≤ 8): proceed to B.3a (legacy single-spawn path).
+- **Multi-batch** (N > 8): proceed to B.3b (page-batched parallel path).
+
+###### B.3a: Single-batch path
+
+Spawn 1 `design-consistency-checker` agent with the spawn prompt carrying:
+- `prepass_artifact`: `.runs/consistency-check-prepass.json`
+- `batch_id`: `"single"`
+- `assigned_pages`: full page list from `prepass.partition[0].pages`
 - `base_url`: `http://localhost:3000`
-- `run_id`: from verify-context.json
-- List of pages reviewed
-- `expected_pages: <N>` — total page count for the agent's per-page-budget
-  computation (#1257 soft-exit primitive). Compute `N` as
-  `len(.runs/design-page-set.json["pages"]) + (1 if landing else 0)`.
-  Pass to the spawn prompt so the agent can compute
-  `per_page_budget = floor(maxTurns / expected_pages)` and self-monitor
-  via the Budget Self-Monitoring section in
-  `.claude/procedures/design-consistency-checker.md`.
+- `run_id`: from `verify-context.json`
 
-**Wait for completion.** Handle exhaustion per [Exhaustion Protocol](../verify.md#exhaustion-protocol) Tier 2. A trace with `partial: true` and `degraded_reason: "budget-soft-exit"` is a valid completion (not exhaustion); no retry needed (#1257).
+The agent writes `design-consistency-checker.json` directly (no batch suffix) with `provenance=self`.
+
+###### B.3b: Multi-batch path
+
+Spawn K `design-consistency-checker` agents in a **single message batch** (mirrors state-3a Stage 1 pattern — emit K Agent tool calls in one assistant message). Each spawn prompt carries:
+- `prepass_artifact`: `.runs/consistency-check-prepass.json`
+- `batch_id`: e.g., `"batch1"` (from `prepass.partition[i].batch_id`)
+- `assigned_pages`: from `prepass.partition[i].pages`
+- `base_url`: `http://localhost:3000`
+- `run_id`: from `verify-context.json`
+
+Each batch agent writes `design-consistency-checker-<batch_id>.json` via `write-agent-trace.sh --trace-filename`.
+
+Wait for all batch agents to complete, then run the aggregator:
+
+```bash
+python3 .claude/scripts/merge-design-consistency-checker-traces.py
+```
+
+The aggregator emits `design-consistency-checker.json` with `provenance="lead-merge"` + `contributing_spawn_indexes` (canonical AOC v1.1 fields). The existing `aggregate_ok` hard-gate predicate (`evaluate-hard-gate-predicates.py:131-174`) accepts it.
+
+###### B.4: Exhaustion handling
+
+If a batch agent exhausts (Tier 2 protocol per `verify.md`), the merger sees a `verdict=incomplete` recovery trace among siblings. The `aggregate_ok` predicate's sibling-validation chain handles this (a recovery trace can satisfy `validated_fallback` if `recovery_validated=true`). No special-case soft-exit logic remains in the procedure.
 
 #### Post-design-critic lint gate
 
@@ -239,7 +282,15 @@ for p in (ps.get('pages') or []):
         missing_iifl.append(name)
 assert not missing_iifl, 'image-rendering pages missing image_issues_for_landing field (state-3a prompt + state-2a classifier drift): ' + str(missing_iifl)
 unstamped=[t for t in glob.glob('.runs/agent-traces/design-critic-*.json') if json.load(open(t)).get('provenance')=='self-degraded' and not json.load(open(t)).get('recovery_validated')]
-assert not unstamped, 'self-degraded design-critic traces missing recovery_validated stamp (Stage-1c validate-recovery skipped?): ' + str(unstamped)" && python3 .claude/scripts/validate-step55-evidence.py
+assert not unstamped, 'self-degraded design-critic traces missing recovery_validated stamp (Stage-1c validate-recovery skipped?): ' + str(unstamped)
+dcc_path='.runs/agent-traces/design-consistency-checker.json'
+if needs_dc and os.path.exists(dcc_path) and not os.path.exists('.runs/all-pages-fast-path-decision.json'):
+    dcc=json.load(open(dcc_path))
+    if dcc.get('provenance')=='lead-merge':
+        csi=dcc.get('contributing_spawn_indexes',[])
+        assert isinstance(csi,list) and len(csi)>0, 'design-consistency-checker.json provenance=lead-merge but contributing_spawn_indexes empty/missing (#1257)'
+        siblings=sorted(glob.glob('.runs/agent-traces/design-consistency-checker-batch*.json'))
+        assert len(siblings)>=len(csi), 'expected '+str(len(csi))+' per-batch sibling traces, got '+str(len(siblings))+' (#1257)'" && python3 .claude/scripts/validate-step55-evidence.py
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

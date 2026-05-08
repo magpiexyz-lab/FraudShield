@@ -2,198 +2,129 @@
 
 > Read-only cross-page visual consistency verification.
 > Invoked by `.claude/agents/design-consistency-checker.md`.
+> Page-batched architecture (#1257): each batch agent receives ≤8 pages
+> + a lead-side prepass artifact and judges severity of pre-detected
+> anomalies. The lead does all deterministic work (grep, screenshot,
+> majority-statistics) once before spawning batch agents.
 
-## Step 0: Read Context
+## Step 0: Read Spawn Inputs
 
-Read all `design-critic-*.json` traces from `.runs/agent-traces/`:
+From the spawn prompt, extract:
 
-```bash
-ls .runs/agent-traces/design-critic-*.json
-```
+- `prepass_artifact`: path to `.runs/consistency-check-prepass.json`
+- `batch_id`: `"single"` or `"batch{N}"`
+- `assigned_pages`: list of page names you are responsible for
+- `base_url`: dev server URL (informational; you do not navigate)
+- `run_id`: from `verify-context.json`
 
-Parse each trace for: page name, verdict, min_score, fixes_applied.
-
-- If a page trace has `verdict: "unresolved"`, note it but still include the page in consistency checks
-- If no per-page traces exist, log a warning and proceed with source-only analysis (skip C5)
-
-## Step 1: Discover Pages
-
-Build the full page list from:
-1. Per-page design-critic trace filenames (authoritative — each `design-critic-<page>.json` maps to a page)
-2. `base_url` routes from the spawn prompt (for screenshot navigation)
-
-## Step 2: Static Analysis (C1-C4)
-
-C1-C4 are **CODE-LEVEL** checks — deterministic, root-cause-focused. These analyze source code directly, not screenshots.
-
-### C1: Color Consistency
-
-Grep all page source files for Tailwind color classes:
+Read the prepass artifact:
 
 ```bash
-grep -rn 'bg-\|text-\|border-\|from-\|to-\|via-\|ring-' src/app/*/page.tsx
+PREPASS_PATH="<prepass_artifact from spawn prompt>"
+PREPASS_JSON=$(cat "$PREPASS_PATH")
 ```
 
-Build a color class frequency map per page. Flag:
-- A page uses a color family (e.g., `gray-*`) that NO other page uses
-- A page is MISSING a color family that appears on 2+ other pages
+The prepass payload contains:
+- `partition`: list of `{batch_id, pages}` entries (informational; verify your `batch_id` matches)
+- `global_frequency_maps`: C1-C4 grep frequency maps across ALL pages
+- `dom_features`: C5 structural feature vectors per page (header/footer/nav/sidebar presence, content_width, h1_count). May be empty if `c5_method=="static-fallback"` (Playwright unavailable).
+- `anomaly_candidates`: array of pre-detected outlier entries — pages that deviate from the ≥80% majority on any check
+- `c5_method`: `"playwright"` or `"static-fallback"`
 
-Severity: `major` if brand primary/secondary differs, `minor` if accent/neutral drifts.
+## Step 1: Filter Anomaly Candidates to Your Batch
 
-### C2: Typography Consistency
+From `prepass.anomaly_candidates`, select entries that involve any of your `assigned_pages`. An entry "involves" a page when:
+- `entry.page` is in your assigned set, OR
+- `entry.minority_pages` contains a page in your assigned set, OR
+- `entry.pages` (if present) intersects your assigned set
 
-Grep for font-family declarations and Tailwind text-size classes:
+These are pre-detected anomalies the lead found via deterministic statistical
+analysis (≥80% majority threshold). Your job is **only severity judgment**.
+
+If no candidates involve your assigned pages, your verdict is `pass` with `inconsistent_count=0` — write the trace and exit.
+
+## Step 2: Severity Judgment (LLM)
+
+For each filtered anomaly, decide severity:
+
+- **major**: brand/structural inconsistency that breaks user expectation. Examples:
+  - Different brand color family (e.g., `bg-slate` majority vs `bg-blue` outlier) on otherwise-same-tier pages
+  - Missing footer/nav on a page where it should clearly be present (peer pages all have it; no design intent justifies absence)
+  - Different heading hierarchy (h1 vs h2 for same role)
+- **minor**: stylistic drift unlikely to confuse users. Examples:
+  - Spacing token differs (`p-4` vs `p-6`) on similar sections
+  - Text size shifts within typography scale
+- **intentional** (skip — do NOT include in trace): the variance is design intent, not inconsistency. Examples:
+  - Landing page intentionally has no nav bar (the issue body's example: "landing has NO nav bar (intentional per nav-bar.tsx logic)")
+  - Empty state pages have different layout
+  - Marketing landing has different content width than dashboard pages
+
+Use the `prepass.detail` field + your domain knowledge of the pages and the project's design intent.
+
+When uncertain between minor and major, default to **minor**.
+When uncertain between minor and intentional, default to **minor** (better to over-report than under-report; design-critic catches single-page issues).
+
+## Step 3: Build Inconsistencies List
+
+Compose the `inconsistencies` array — one entry per non-skipped severity-classified anomaly:
+
+```json
+{
+  "check": "C1" | "C2" | "C3" | "C4" | "C5",
+  "severity": "major" | "minor",
+  "pages": ["<minority_page1>", "<minority_page2>", ...],
+  "detail": "<from prepass.detail; may be edited for clarity>"
+}
+```
+
+Compute scalar fields:
+- `inconsistent_count = len(inconsistencies)`
+- `verdict = "fail" if inconsistent_count > 0 else "pass"` (verdict invariant)
+- `pages_reviewed = <your assigned_pages list>` (the pages YOU are responsible for; merger sums these across batches)
+- `pages_reviewed_count = len(assigned_pages)`
+- `severity` = max severity across `inconsistencies` (`"none"` when empty, otherwise `"minor"` or `"major"`; rank: none < minor < major)
+
+## Step 4: Write Trace
+
+Use the `TRACE_FILENAME` you computed in your agent definition's First Action — `design-consistency-checker.json` for `batch_id="single"` or `design-consistency-checker-<batch_id>.json` otherwise.
+
+Invoke the canonical writer with `--trace-filename` so the file lands at the right path for the merger to pick up:
 
 ```bash
-grep -rn 'font-\|text-xs\|text-sm\|text-base\|text-lg\|text-xl\|text-2xl\|text-3xl\|text-4xl' src/app/*/page.tsx
+bash .claude/scripts/write-agent-trace.sh design-consistency-checker \
+  --trace-filename "$TRACE_FILENAME" \
+  --json "$(jq -n \
+      --argjson incs "$INCONSISTENCIES_JSON" \
+      --argjson pages "$ASSIGNED_PAGES_JSON" \
+      --arg verdict "$VERDICT" \
+      --arg severity "$SEVERITY" \
+      '{
+        verdict: $verdict,
+        result: "count_summary",
+        status: "completed",
+        checks_performed: ["C1_color","C2_typography","C3_spacing","C4_component","C5_layout"],
+        inconsistencies: $incs,
+        inconsistent_count: ($incs | length),
+        pages_reviewed: $pages,
+        pages_reviewed_count: ($pages | length),
+        severity: $severity,
+        coverage_provider: "'"$PREPASS_PATH"'"
+      }')"
 ```
 
-Flag:
-- A page uses a different font stack than others
-- Heading size hierarchy differs (e.g., page A uses `text-3xl` for h1, page B uses `text-4xl`)
+The writer stamps `agent`, `timestamp`, `provenance:"self"`, `run_id`, `skill`, `spawn_sha`, and `spawn_index` from active identity + spawn-log (AOC v1.1).
 
-Severity: `major` if font-family differs, `minor` if size scale shifts.
+## What you DON'T do (Page-batched architecture)
 
-### C3: Spacing Consistency
+- Do NOT screenshot pages — the lead pre-rendered all pages via Playwright in the prepass
+- Do NOT grep page source files — the lead computed `global_frequency_maps` in the prepass
+- Do NOT track turn budgets / boundary checks — page-batching gives you guaranteed budget for ≤8 pages within `maxTurns=1000`
+- Do NOT cross-batch-compare — the lead's `anomaly_candidates` already span all pages; you only judge severity for candidates involving YOUR assigned pages
+- Do NOT merge per-batch traces — the lead invokes `merge-design-consistency-checker-traces.py` after all batch agents complete
 
-Analyze Tailwind spacing classes across pages:
+## Failure modes
 
-```bash
-grep -rn 'p-\|px-\|py-\|m-\|mx-\|my-\|gap-\|space-' src/app/*/page.tsx
-```
-
-Flag:
-- A page uses a spacing token as primary content spacer (section padding, card gaps) that NO other page uses in the same structural role
-
-Severity: `major` if section-level spacing diverges, `minor` if component-level.
-
-### C4: Component Consistency
-
-Check shared components usage across pages:
-
-```bash
-grep -rn 'Button\|Card\|Nav\|Footer\|Header' src/app/*/page.tsx
-```
-
-Flag:
-- Same component rendered with different variant props across pages
-- A shared component present on some pages but missing on others (e.g., footer on 3/5 pages)
-
-Severity: `major` if nav/footer inconsistent, `minor` if button variants differ.
-
-## Step 2.5: Budget Self-Monitoring (added per #1257)
-
-C5 (screenshot-based) is the most expensive step — each page requires a
-Playwright screenshot + analysis. On projects with > 8 pages, naive iteration
-can exhaust the agent's `maxTurns` budget mid-loop, leaving zero substantive
-cross-page review. The Tier 2 Exhaustion Protocol then writes a
-`verdict: incomplete` recovery trace (WARN, not BLOCK), but no real findings
-emerge.
-
-This soft-exit primitive prevents that outcome by letting the agent emit a
-**partial trace with verdict from the pages it DID complete**, rather than
-failing closed.
-
-### Setup (run once at agent start, before C5)
-
-Read `expected_pages: <N>` from the spawn prompt (passed by state-3b
-Stage 2). Compute:
-
-```
-per_page_budget = floor(maxTurns / expected_pages)
-```
-
-Track `consumed_turns` as a counter — increment it once per Bash invocation,
-file read, or tool call. (Claude Code does not expose a `turns_remaining`
-introspection API; the agent-side counter is the deterministic substrate.)
-
-### Boundary check (run AFTER each page's C5 screenshot + analysis completes)
-
-After completing C5 for page index `i` (1-indexed), compute:
-
-```
-expected_consumed = floor((i / expected_pages) * maxTurns)
-threshold = 50  # slack for setup + per-page overhead
-
-if consumed_turns > expected_consumed + threshold:
-    # Soft-exit: emit partial trace and exit cleanly.
-    emit_soft_exit()
-    return
-```
-
-### Soft-exit invocation
-
-When the budget threshold is crossed, write a partial trace via
-`write-degraded-trace.py`:
-
-```bash
-python3 .claude/scripts/write-degraded-trace.py design-consistency-checker \
-  --reason "budget-soft-exit" \
-  --verdict "$( [ "$INCONSISTENT_COUNT" -gt 0 ] && echo fail || echo pass )" \
-  --checks-performed "C1-color,C2-typography,C3-spacing,C4-component,C5-layout" \
-  --extra-json '{
-    "inconsistent_count": <N>,
-    "pages_reviewed": <M>,
-    "pages_remaining": ["<page-slug-1>", ...],
-    "inconsistencies": [...]
-  }'
-```
-
-**NOTE**: `write-degraded-trace.py` automatically sets `partial: true` and
-`provenance: self-degraded` (line 192). Do NOT pass a `--partial` flag —
-it does not exist; the field is set unconditionally for self-degraded
-traces.
-
-**Verdict semantics**: the verdict reflects findings from the COMPLETED
-pages only. If 10/18 pages reviewed and 0 inconsistencies → `verdict=pass`
-with `partial=true` (clear coverage signal in `pages_remaining`). If 10/18
-reviewed and 3 inconsistencies → `verdict=fail` with `inconsistent_count=3`
-and `partial=true`. This preserves the invariant `verdict==fail iff
-inconsistent_count > 0`.
-
-State-3b VERIFY accepts `partial: true` as valid completion (not retry
-trigger); state-7a verify-report displays `pages_reviewed` and
-`pages_remaining` so the user can judge coverage.
-
-## Step 3: Visual Analysis (C5)
-
-C5 is **SCREENSHOT-BASED** — catches visual symptoms that code analysis might miss (e.g., CSS inheritance effects, dynamic styling).
-
-Using the `base_url` from the spawn prompt:
-
-1. Launch Chromium (headless) via Playwright
-2. Visit each page route at **1280x800** viewport
-3. Wait for network idle + 1s settle time
-4. Take full-page screenshots to `/tmp/consistency-check/<page-name>.png`
-5. If Playwright fails (not installed, base_url unreachable), skip C5 and note `"C5_skipped": true` in trace
-
-### C5: Layout Consistency
-
-Compare screenshots for structural elements:
-- Header/nav bar presence and position
-- Footer presence and position
-- Content width and alignment
-- Sidebar presence consistency
-
-Flag pages missing expected structural elements present on 2+ other pages.
-
-Severity: `major` if structural element missing, `minor` if positioning differs.
-
-## Step 4: Cleanup
-
-```bash
-rm -rf /tmp/consistency-check
-```
-
-## Step 5: Compute Trace Metrics
-
-Before writing the trace file, compute these metrics from your checks:
-
-- **`pages_reviewed`**: total pages checked
-- **`passed_count`**: checks C1-C5 that returned pass (0-5)
-- **`failed_count`**: checks C1-C5 that returned fail (0-5)
-- **`severity`**: highest severity across all inconsistencies (`"none"` if all pass, `"minor"` or `"major"` otherwise)
-- **`inconsistencies_found`**: total count of distinct inconsistencies across all checks
-- **`inconsistencies`**: array of structured findings, each with: `check` (C1-C5), `severity`, `pages` (affected page names), `detail` (specific class names or values)
-
-Write the final trace per the agent definition's Trace Output section.
+- **Prepass artifact missing/malformed**: write a recovery trace via `bash .claude/scripts/write-recovery-trace.sh design-consistency-checker --reason "prepass-missing"` and exit. The merger / hard-gate will surface this through the validated_fallback predicate path.
+- **Ambiguous severity**: default to `minor` (over-report bias). Add a brief justification in the `detail` field.
+- **Empty `assigned_pages`**: emit a trace with `verdict="pass"`, `inconsistent_count=0`, `pages_reviewed=[]`. The merger will still aggregate.
+- **`c5_method == "static-fallback"`**: the prepass's DOM-feature anomaly_candidates may be empty. Judge severity only on the C1-C4 grep-based candidates that are present.

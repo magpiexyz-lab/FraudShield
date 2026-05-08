@@ -9,6 +9,8 @@
 #   - .claude/scripts/validate-recovery.sh     (stamps recovery_validated only)
 #   - .claude/scripts/migrate-legacy-traces.py (one-shot legacy migration)
 #   - .claude/scripts/merge-design-critic-traces.py   (verify state-3b lead-merge)
+#   - .claude/scripts/merge-design-consistency-checker-traces.py  (verify state-3b
+#                                                                  page-batched lead-merge, #1257)
 #   - .claude/scripts/merge-scaffold-pages-traces.py  (bootstrap state-11c lead-merge,
 #                                                     extracted from inline json.dump in PR2b)
 #   - .claude/scripts/write-agent-trace.sh   (AOC v1.1 centralized writer for
@@ -279,6 +281,14 @@ fi
 # #1045 resolution for design-critic).
 ALLOWED_REGEX_MERGE_SCAFFOLD_PAGES='(^|[[:space:]]|&&|;|\|)[[:space:]]*python3?[[:space:]]+[./]*\.?claude/scripts/merge-scaffold-pages-traces\.py'
 if echo "$COMMAND_CANONICAL" | grep -qE "$ALLOWED_REGEX_MERGE_SCAFFOLD_PAGES"; then
+  exit 0
+fi
+
+# Allow the official design-consistency-checker merge script (lead-merge
+# aggregation at verify state-3b page-batched path — issue #1257 mirrors
+# the #1045 resolution for design-critic).
+ALLOWED_REGEX_MERGE_DESIGN_CONSISTENCY_CHECKER='(^|[[:space:]]|&&|;|\|)[[:space:]]*python3?[[:space:]]+[./]*\.?claude/scripts/merge-design-consistency-checker-traces\.py'
+if echo "$COMMAND_CANONICAL" | grep -qE "$ALLOWED_REGEX_MERGE_DESIGN_CONSISTENCY_CHECKER"; then
   exit 0
 fi
 

@@ -239,17 +239,19 @@ Re-spawn the agent with a reduced scope prompt:
 2. Continue to next STATE — this is a WARN, not a BLOCK
 3. Note in verify report: "Agent <name> exhausted turns — results incomplete."
 
-> **Soft-exit completion (#1257):** A trace with `provenance: "self-degraded"`,
-> `partial: true`, and `degraded_reason: "budget-soft-exit"` is a **valid
-> completion path** — the agent self-detected approaching budget exhaustion at
-> a page boundary and emitted a partial trace with verdict from the pages it
-> DID complete (preserving `verdict==fail iff inconsistent_count > 0`).
-> Distinct from State 2 "started but no verdict" exhaustion: no retry needed,
-> no recovery trace required, no `verdict: incomplete` write. State-7a verify
-> report displays `pages_reviewed` / `pages_remaining` so the user can judge
-> coverage. Currently used by `design-consistency-checker`; see
-> `.claude/procedures/design-consistency-checker.md` Step 2.5 for the
-> page-budget allocation primitive.
+> **Historical — soft-exit completion (#1257 superseded):** PR #1296 added
+> an agent-side soft-exit primitive (provenance="self-degraded",
+> partial=true, degraded_reason="budget-soft-exit") that relied on the
+> agent self-counting `consumed_turns`. This was removed in #1257 final
+> because the self-counting substrate replicated the #844 anti-pattern
+> (commit 51d660d removed the same pattern from scaffold-images as
+> unreliable). The replacement is **page-batching** (state-3b Stage 2
+> Step B) — each batch agent processes ≤8 pages with the full
+> `maxTurns=1000` budget, eliminating the exhaustion class entirely.
+> The lead's `merge-design-consistency-checker-traces.py` aggregates per-batch
+> traces into a `provenance="lead-merge"` aggregate accepted by the
+> existing `aggregate_ok` predicate. This paragraph remains for context
+> with prior commits (PR #1296 / #1309).
 
 #### Tier 3 — Non-critical agents
 

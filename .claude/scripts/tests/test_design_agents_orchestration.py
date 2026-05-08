@@ -146,8 +146,10 @@ class TestStage0Detector(unittest.TestCase):
         text = STATE_3B_MD.read_text()
         # Locate Step B section. Scope search to the next sibling/parent
         # heading — must skip past Step B's own `#####` prefix and not match
-        # `####` substrings inside `#####` headings.
-        step_b_idx = text.find("##### Step B: Spawn consistency checker")
+        # `####` substrings inside `#####` headings. Step B heading was
+        # renamed to "Page-batched consistency check (#1257)" — match by
+        # the stable "##### Step B:" prefix.
+        step_b_idx = text.find("##### Step B:")
         self.assertGreater(step_b_idx, -1, "Step B heading missing")
         # Search starting AFTER Step B's heading line (skip its own `#####`).
         search_start = text.find("\n", step_b_idx) + 1
@@ -238,58 +240,84 @@ class TestStage0GateExemption(unittest.TestCase):
 # ── (b) Consistency-checker soft-exit tests ────────────────────────────
 
 
-class TestConsistencyCheckerSoftExit(unittest.TestCase):
-    """#1257: page-budget allocation primitive + partial-trace contract."""
+class TestConsistencyCheckerPageBatching(unittest.TestCase):
+    """#1257 final: page-batching architecture replaces the soft-exit primitive.
 
-    def test_per_page_budget_computation(self):
-        """floor(maxTurns / expected_pages) — the deterministic substrate."""
-        max_turns = 1000
-        for n in (1, 8, 18, 30, 100):
-            per_page = max_turns // n
-            self.assertGreaterEqual(per_page, 0)
-            # On a 30-page project at 1000 turns: 33 turns/page (vs 16 at 500 — too tight)
-            if n == 30:
-                self.assertEqual(per_page, 33)
+    Verifies the architectural pivot:
+      * agent-registry.json: aggregate_ok in design-consistency-checker.allow_predicates
+      * agent-trace-write-guard.sh: merge-design-consistency-checker-traces.py allowlisted
+      * procedure: no soft-exit / consumed_turns / Budget Self-Monitoring residue
+      * agent definition: maxTurns 1000 retained (per-batch agents have full budget)
+      * procedure references prepass artifact + assigned_pages spawn input
+    """
 
-    def test_threshold_logic_with_slack(self):
-        """consumed > floor((reviewed/expected)*maxTurns) + threshold triggers exit."""
-        max_turns = 1000
-        expected_pages = 18
-        threshold = 50
-        # After page 8 of 18: expected_consumed ≈ floor((8/18)*1000) = 444
-        reviewed = 8
-        expected_consumed = (reviewed * max_turns) // expected_pages
-        # 444 + 50 = 494 — above this triggers soft-exit
-        self.assertEqual(expected_consumed, 444)
-        # Sanity: a consumed_turns of 600 at page 8 triggers exit
-        self.assertGreater(600, expected_consumed + threshold)
-        # While 480 at page 8 does NOT trigger
-        self.assertLessEqual(480, expected_consumed + threshold)
+    def test_aggregate_ok_in_allow_predicates(self):
+        """Page-batched lead-merge aggregate is acceptable to the hard gate."""
+        registry = json.load(open(ROOT / ".claude/patterns/agent-registry.json"))
+        for entry in registry.get("hard_gates", []):
+            if entry.get("agent") == "design-consistency-checker":
+                self.assertIn("aggregate_ok", entry.get("allow_predicates", []),
+                              "aggregate_ok must be in design-consistency-checker.allow_predicates "
+                              "so the page-batched lead-merge aggregate is accepted (#1257)")
+                return
+        self.fail("design-consistency-checker not found in agent-registry.json hard_gates")
 
-    def test_consistency_checker_maxturns_bumped(self):
-        """maxTurns: 500 → 1000 in design-consistency-checker.md frontmatter."""
+    def test_merger_allowlisted_in_write_guard(self):
+        """The page-batched aggregator must be in the write-guard allowlist."""
+        guard = (ROOT / ".claude/hooks/agent-trace-write-guard.sh").read_text()
+        self.assertIn("merge-design-consistency-checker-traces", guard,
+                      "agent-trace-write-guard.sh must allowlist the new merger (#1257)")
+
+    def test_consistency_checker_maxturns_retained_at_1000(self):
+        """Each batch agent still has the full 1000-turn budget for ≤8 pages."""
         cc_md = ROOT / ".claude/agents/design-consistency-checker.md"
         text = cc_md.read_text()
         self.assertIn("maxTurns: 1000", text,
-                      "design-consistency-checker maxTurns not bumped to 1000")
-        self.assertNotIn("maxTurns: 500", text,
-                         "stale maxTurns: 500 still present")
+                      "design-consistency-checker maxTurns must remain 1000 (#1257)")
 
-    def test_budget_self_monitoring_section_documented(self):
-        """procedures/design-consistency-checker.md has Budget Self-Monitoring."""
+    def test_procedure_has_no_soft_exit_residue(self):
+        """Phase 4/5 cleanup: no soft-exit / consumed_turns / Budget Self-Monitoring left."""
         text = CONSISTENCY_PROC.read_text()
-        self.assertIn("Budget Self-Monitoring", text,
-                      "Budget Self-Monitoring section missing")
-        self.assertIn("per_page_budget", text,
-                      "per_page_budget formula missing")
-        self.assertIn("budget-soft-exit", text,
-                      "soft-exit reason string missing")
-        # The procedure must NOT show an INVOCATION using --partial true.
-        # Documentation that explains "do NOT pass --partial" is fine — but a
-        # bash invocation with `--partial true` would be wrong (the flag doesn't
-        # exist; partial=true is auto-set by write-degraded-trace.py:192).
-        self.assertNotRegex(text, r"--partial\s+true",
-                            "invocation uses --partial true (the flag does not exist)")
+        self.assertNotIn("Budget Self-Monitoring", text,
+                         "Step 2.5 Budget Self-Monitoring must be removed (#1257 final)")
+        self.assertNotIn("consumed_turns", text,
+                         "consumed_turns self-counting must be removed (#1257 final / #844 anti-pattern)")
+        self.assertNotIn("budget-soft-exit", text,
+                         "budget-soft-exit reason must not appear in procedure (#1257 final)")
+        self.assertNotIn("per_page_budget", text,
+                         "per_page_budget formula must be removed (#1257 final)")
+
+    def test_procedure_references_prepass_and_batch_inputs(self):
+        """The page-batched procedure consumes a lead-side prepass artifact."""
+        text = CONSISTENCY_PROC.read_text()
+        self.assertIn("prepass_artifact", text,
+                      "procedure must reference prepass_artifact spawn input (#1257)")
+        self.assertIn("anomaly_candidates", text,
+                      "procedure must reference anomaly_candidates from prepass (#1257)")
+        self.assertIn("batch_id", text,
+                      "procedure must reference batch_id spawn input (#1257)")
+        self.assertIn("assigned_pages", text,
+                      "procedure must reference assigned_pages spawn input (#1257)")
+
+    def test_state_3b_describes_page_batching(self):
+        """state-3b Stage 2 Step B documents the lead prepass + multi-batch flow."""
+        text = (ROOT / ".claude/skills/verify/state-3b-quality-gate.md").read_text()
+        self.assertIn("run-consistency-static-prepass.py", text,
+                      "state-3b must invoke the lead-side prepass (#1257)")
+        self.assertIn("merge-design-consistency-checker-traces.py", text,
+                      "state-3b multi-batch path must invoke the merger (#1257)")
+        # The legacy soft-exit primitive description must be removed
+        self.assertNotIn("Budget Self-Monitoring", text,
+                         "state-3b must not reference Budget Self-Monitoring (#1257 final)")
+
+    def test_state_3b_verify_block_includes_lead_merge_check(self):
+        """state-registry.json verify[3b] enforces lead-merge contract presence."""
+        registry = json.load(open(ROOT / ".claude/patterns/state-registry.json"))
+        v = registry.get("verify", {}).get("3b", {}).get("verify", "")
+        self.assertIn("contributing_spawn_indexes", v,
+                      "verify[3b] must check lead-merge aggregate's contributing_spawn_indexes (#1257)")
+        self.assertIn("design-consistency-checker-batch", v,
+                      "verify[3b] must check per-batch sibling traces (#1257)")
 
 
 class TestScaffoldImagesSchemaVersionStamp(unittest.TestCase):

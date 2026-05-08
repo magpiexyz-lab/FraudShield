@@ -321,8 +321,8 @@
     },
     {
       "agent": "design-consistency-checker",
-      "allow_predicates": ["pass_clean", "pass_self_pass_or_fail", "validated_fallback", "legacy_pass_no_recovery", "pass_lead_orchestrated"],
-      "_note": "#1275 / Group A: design-consistency-checker may be lead-orchestrated re-spawned after a shared-component fix lands (state-3a Stage 1b → state-3c flow). See observer note for rationale."
+      "allow_predicates": ["pass_clean", "pass_self_pass_or_fail", "validated_fallback", "legacy_pass_no_recovery", "aggregate_ok", "pass_lead_orchestrated"],
+      "_note": "#1275 / Group A: design-consistency-checker may be lead-orchestrated re-spawned after a shared-component fix lands (state-3a Stage 1b → state-3c flow). #1257: aggregate_ok added so the page-batched lead-merge aggregate (provenance=lead-merge + contributing_spawn_indexes) is accepted by the gate."
     }
   ],
   "_legacy_hard_gates_v1": [

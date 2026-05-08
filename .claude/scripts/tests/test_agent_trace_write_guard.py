@@ -147,6 +147,23 @@ class TestAgentTraceWriteGuard(unittest.TestCase):
     def test_migrate_legacy_traces_allowed(self):
         self._assert_allowed("python3 .claude/scripts/migrate-legacy-traces.py")
 
+    def test_merge_design_critic_allowed(self):
+        self._assert_allowed("python3 .claude/scripts/merge-design-critic-traces.py")
+
+    def test_merge_scaffold_pages_allowed(self):
+        self._assert_allowed("python3 .claude/scripts/merge-scaffold-pages-traces.py")
+
+    def test_merge_design_consistency_checker_allowed(self):
+        # #1257: page-batched lead-merge mirror of design-critic merger
+        self._assert_allowed("python3 .claude/scripts/merge-design-consistency-checker-traces.py")
+
+    def test_python_open_for_write_to_consistency_checker_batch_denied(self):
+        # #1257: only the official merger may write design-consistency-checker-*.json;
+        # ad-hoc python3 -c open() must remain blocked.
+        self._assert_denied(
+            "python3 -c \"import json; json.dump({}, open('.runs/agent-traces/design-consistency-checker-batch1.json','w'))\"",
+        )
+
     # ---- --reason enforcement (hook fires only when command mentions agent-traces) ----
     # Note: when the script is invoked without any agent-traces path in the
     # command string, the hook's fast-path allows it. The script's own

@@ -157,7 +157,7 @@ overall_verdict: pass | fail
 |-------|---------|-------|
 | design-critic | [pass/fixed/skipped] | [1-line summary; if `review_method == "boundary-skip-all-pages"` (#1256 Stage 0): "all-pages-fast-path-shortcut — N pages, zero UI source files in PR boundary"] |
 | design-critic-shared | [fixed/skipped/N/A] | [shared component fixes, or "no shared issues"] |
-| design-consistency-checker | [pass/fail/partial] | [if `partial: true` AND `degraded_reason: "budget-soft-exit"`: format as `"<M> of <N> pages reviewed; remaining: <slug-list> (#1257 soft-exit)"` where `M = trace.pages_reviewed`, `<slug-list> = ", ".join(trace.pages_remaining)`, and `N = M + len(trace.pages_remaining)`; if `review_method: "boundary-skip-all-pages"` (#1256 Stage 0): "all pages fast-path; cross-page consistency unchanged"; else: "1-line summary"] |
+| design-consistency-checker | [pass/fail/partial] | [if `provenance: "lead-merge"` (#1257 page-batching): format as `"<K> batches × <pages_reviewed> pages reviewed (page-batched, #1257)"` where `K = len(trace.contributing_spawn_indexes)` and `pages_reviewed = trace.pages_reviewed`; if `partial: true` (a batch hit Tier 2 fallback): also append `"; remaining: " + ", ".join(trace.pages_remaining)`; if `review_method: "boundary-skip-all-pages"` (#1256 Stage 0): "all pages fast-path; cross-page consistency unchanged"; else: "1-line summary"] |
 | ux-journeyer | [pass/fixed/skipped] | [1-line summary] |
 | security-defender | [pass/N issues] | [1-line summary] |
 | security-attacker | [pass/N findings] | [1-line summary] |

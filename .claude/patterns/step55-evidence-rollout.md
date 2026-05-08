@@ -168,9 +168,12 @@ state-registry.json before the validator default is flipped, or vice versa.
    step 2 added the prefix that step 3's rule requires. Regenerate
    to confirm.
 
-PR title should use `Closes #1272` syntax. #1257 is already closed by
-the regression test that ships in commit `a20e55a` of this PR (the
-test fails at CI time if the soft-exit primitive ever regresses).
+PR title should use `Closes #1272` syntax. #1257 is addressed by the
+page-batched architecture (PR #1357 — fix/1257-page-batching). The
+soft-exit primitive that commit `a20e55a` introduced was removed in
+that fix as a #844-class anti-pattern; #1257 now closes on production
+attestation (first observed `provenance=lead-merge` aggregate trace
+from a real /verify run on a >8-page web-app), not on test ship.
 
 ## Producer Contract (scaffold-images Step 5b)
 
