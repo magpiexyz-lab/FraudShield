@@ -197,6 +197,51 @@ class TestSyntheticFixtures(unittest.TestCase):
         payload = json.loads(stdout)
         self.assertEqual(payload["summary"]["cross_file_contradiction"], 0)
 
+    # --- #1339: state_defer_verify_pairing -----------------------------
+
+    def test_state_defer_verify_pairing_violation_emits_finding(self):
+        """A state with defer_verify_when_writer in registry whose state
+        file ACTIONS lacks the matching write-gate-artifact.sh invocation
+        should be flagged. Without the invocation, the chain-aware gate
+        skip would never have a sibling writer to defer to."""
+        rc, stdout = self._run_fixture("state_defer_verify_pairing_violation")
+        self.assertIn("CROSS_FILE_CONTRADICTION", stdout)
+        self.assertIn("fixture-sdv-violation", stdout)
+        # The handler must reference both the skill.state coordinate and
+        # the missing invocation requirement.
+        self.assertIn("test.5", stdout)
+
+    def test_state_defer_verify_pairing_clean_no_findings(self):
+        """A state with defer_verify_when_writer AND a matching
+        write-gate-artifact.sh --path invocation in ACTIONS should NOT
+        be flagged."""
+        rc, stdout = self._run_fixture(
+            "state_defer_verify_pairing_clean", "--json"
+        )
+        payload = json.loads(stdout)
+        self.assertEqual(payload["summary"]["cross_file_contradiction"], 0)
+
+    # --- #1328: branch_checkout_propagation_pairing --------------------
+
+    def test_branch_checkout_propagation_violation_emits_finding(self):
+        """A markdown fenced bash block with `git checkout -b` but no
+        sibling `update-context-branch.sh` should be flagged. This is
+        the recurrence vector #1328 closes."""
+        rc, stdout = self._run_fixture("branch_checkout_propagation_violation")
+        self.assertIn("CROSS_FILE_CONTRADICTION", stdout)
+        self.assertIn("fixture-bcp-violation", stdout)
+        self.assertIn("git checkout -b", stdout)
+
+    def test_branch_checkout_propagation_clean_no_findings(self):
+        """A bundled chain (`echo > sentinel && OLD=$(...) && git
+        checkout -b X && bash update-context-branch.sh "$OLD"`) should
+        NOT be flagged — pairing is structurally satisfied."""
+        rc, stdout = self._run_fixture(
+            "branch_checkout_propagation_clean", "--json"
+        )
+        payload = json.loads(stdout)
+        self.assertEqual(payload["summary"]["cross_file_contradiction"], 0)
+
 
 class TestAOCTagInvariant(unittest.TestCase):
     """Strict-AOC handlers must produce findings with the (rule_type/severity) tag.
