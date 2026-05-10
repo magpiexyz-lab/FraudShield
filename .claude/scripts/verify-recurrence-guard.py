@@ -141,6 +141,55 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 return 1
 
+    # #1331 runtime guard: when /solve full-mode runs round 2, the orchestrator
+    # must have archived round-1 to the sidecar. Read solve-critic.json.round
+    # directly as the signal channel — when round == 2, the archive at
+    # .runs/solve-critic-round1.json must exist with round=1 + non-empty
+    # concerns[]. This mirrors the resolve/change guards in
+    # verify-resolve-challenge.py and verify-change-solve.py.
+    if args.skill == "solve":
+        sc_path = ".runs/agent-traces/solve-critic.json"
+        if os.path.exists(sc_path):
+            try:
+                sc = _load(sc_path)
+            except Exception:
+                sc = {}
+            if sc.get("round") == 2:
+                archive_path = ".runs/solve-critic-round1.json"
+                if not os.path.exists(archive_path):
+                    print(
+                        f"VERIFY FAIL: solve-critic.json has round=2 but round-1 "
+                        f"archive missing at {archive_path} — orchestrator must "
+                        "archive solve-critic.json to this sidecar BEFORE spawning "
+                        "round 2 (see solve-reasoning.md Phase 5 / "
+                        "solve/state-1-execute.md)",
+                        file=sys.stderr,
+                    )
+                    return 1
+                try:
+                    archive = _load(archive_path)
+                except Exception as exc:
+                    print(
+                        f"VERIFY FAIL: {archive_path} not parseable as JSON: {exc}",
+                        file=sys.stderr,
+                    )
+                    return 1
+                if archive.get("round") != 1:
+                    print(
+                        f"VERIFY FAIL: {archive_path} has round={archive.get('round')!r}, "
+                        "expected 1 — sidecar should be the archived round-1 trace",
+                        file=sys.stderr,
+                    )
+                    return 1
+                arc_concerns = archive.get("concerns") or []
+                if not (isinstance(arc_concerns, list) and len(arc_concerns) > 0):
+                    print(
+                        f"VERIFY FAIL: {archive_path} has no concerns[] — round-2 "
+                        "vector 5 cannot fire without round-1 concern_ids",
+                        file=sys.stderr,
+                    )
+                    return 1
+
     return 0
 
 

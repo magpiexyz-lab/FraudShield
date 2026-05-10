@@ -172,6 +172,11 @@ KNOWN_OBJECT_ENTRIES = {
     # Wave B entries — other skills
     ("iterate-check", "c3"),
     ("observe", "1"),
+    # #1331 — solve.1 migrated from string to object form (verify+artifact+lifecycle)
+    # to declare .runs/solve-challenge.json + transient-cross-skill lifecycle so
+    # artifact-transience-solve coherence rule is satisfied and the new
+    # solve-challenge.json artifact is wiped by lifecycle-init.sh.
+    ("solve", "1"),
     ("solve", "2"),
     ("upgrade", "3"),
     # Shared epilogue state-99 entries — every skill's 99 is a transient-cross-skill

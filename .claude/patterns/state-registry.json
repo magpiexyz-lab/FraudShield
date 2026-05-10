@@ -425,7 +425,11 @@
   },
   "solve": {
     "0": "test -f .runs/solve-context.json",
-    "1": "python3 .claude/scripts/verify-recurrence-guard.py --require-phase-3-gaps --require-run-id --skill solve  # .runs/solve-trace.json",
+    "1": {
+      "verify": "python3 .claude/scripts/verify-recurrence-guard.py --require-phase-3-gaps --require-run-id --skill solve && python3 -c \"import json,os; d=json.load(open('.runs/solve-challenge.json')); assert isinstance(d.get('critic_rounds'), int), 'critic_rounds missing or not int'; assert isinstance(d.get('round_1_type_a_count'), int), 'round_1_type_a_count missing or not int'; assert isinstance(d.get('round_2_type_a_count'), int), 'round_2_type_a_count missing or not int'; assert isinstance(d.get('concerns'), list), 'concerns missing or not list'; cr=d.get('critic_rounds',0); arc='.runs/solve-critic-round1.json'; assert cr!=2 or (os.path.exists(arc) and json.load(open(arc)).get('round')==1), '#1331 sidecar archive missing or wrong round'\"  # .runs/solve-trace.json, .runs/solve-challenge.json, .runs/solve-critic-round1.json",
+      "artifact": ".runs/solve-challenge.json",
+      "lifecycle": "transient-cross-skill"
+    },
     "2": {
       "verify": "python3 -c \"import json; st=json.load(open('.runs/solve-trace.json')); assert st.get('mode') in ('light','full'), 'mode invalid'; assert st.get('output'), 'output empty'; ctx=json.load(open('.runs/solve-context.json')); assert ctx.get('skill')=='solve' or 'solve' in ctx.get('run_id',''), 'context not for solve skill'; assert st.get('run_id')==ctx.get('run_id'), 'run_id mismatch: trace=%s context=%s' % (st.get('run_id'), ctx.get('run_id')); json.load(open('.runs/q-dimensions.json'))\"",
       "artifact": ".runs/q-dimensions.json",

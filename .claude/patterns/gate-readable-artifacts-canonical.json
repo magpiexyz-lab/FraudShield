@@ -1075,6 +1075,30 @@
       "rationale": "Read by VERIFY blocks in skills: solve."
     },
     {
+      "path": ".runs/solve-challenge.json",
+      "consumers": [
+        "state-registry:solve.1"
+      ],
+      "writers": [
+        ".claude/scripts/lib/write-gate-artifact.sh"
+      ],
+      "scope": "transient-cross-skill",
+      "rationale": "#1331 — /solve challenge artifact (closes contract from solve-reasoning.md Phase 5: 'Store in the caller's challenge artifact: /solve: .runs/solve-challenge.json'). Counts {critic_rounds, round_1_type_a_count, round_2_type_a_count} read by solve.1 VERIFY for archival-existence cross-check. Manually enrolled to canonical (Slice 3.2 pattern); written via canonical writer with {skill, run_id, written_at} stamping."
+    },
+    {
+      "path": ".runs/solve-critic-round1.json",
+      "consumers": [
+        "state-registry:resolve.5d",
+        "state-registry:change.3",
+        "state-registry:solve.1"
+      ],
+      "writers": [
+        ".claude/scripts/lib/write-gate-artifact.sh"
+      ],
+      "scope": "transient-cross-skill",
+      "rationale": "#1331 round-1 critic archive (sidecar outside .runs/agent-traces/ to bypass trace-write-guard). Vector 5 (within-run-round1-concern-unaddressed) needs round-1 concerns by stable concern_id; solve-critic round-2 overwrites the live trace, so this sidecar preserves the audit-trail source for cross-rounds verification. Read by verify-resolve-challenge.py (resolve.5d), verify-change-solve.py (change.3), and verify-recurrence-guard.py (solve.1). Manually enrolled to canonical (Slice 3.2 pattern)."
+    },
+    {
       "path": ".runs/solve-trace.json",
       "consumers": [
         "state-registry:resolve.5",

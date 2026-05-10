@@ -79,14 +79,60 @@ step or guard artifact absent from the prior commit (R2-A2). Empty dossier
     --skill solve
   ```
 
+- **Write solve challenge artifact** (`.runs/solve-challenge.json`) — closes
+  the contract from `solve-reasoning.md` Phase 5 ("Store in the caller's
+  challenge artifact: /solve: .runs/solve-challenge.json"). Counts come from
+  the live solve-critic.json (round-2 if it ran) and the round-1 sidecar
+  archive (`.runs/solve-critic-round1.json` per #1331). For light mode or
+  full mode without critic, all counts are 0:
+
+  ```bash
+  PAYLOAD=$(python3 -c "
+  import json, os
+  sc_path = '.runs/agent-traces/solve-critic.json'
+  critic_rounds = 0
+  r1_count = 0
+  r2_count = 0
+  if os.path.exists(sc_path):
+      try:
+          sc = json.load(open(sc_path))
+          critic_rounds = sc.get('round', 0)
+          if critic_rounds == 2:
+              # round-1 counts come from the archived sidecar
+              arc_path = '.runs/solve-critic-round1.json'
+              if os.path.exists(arc_path):
+                  arc = json.load(open(arc_path))
+                  r1_count = arc.get('type_a_count', 0)
+              r2_count = sc.get('type_a_count', 0)
+          elif critic_rounds == 1:
+              r1_count = sc.get('type_a_count', 0)
+      except Exception:
+          pass
+  challenge = {
+      'critic_rounds': critic_rounds,
+      'round_1_type_a_count': r1_count,
+      # always emit; 0 when critic_rounds <= 1 — registry contract
+      'round_2_type_a_count': r2_count,
+      # /solve does not maintain a separate challenges[] array; counts only
+      'concerns': []
+  }
+  print(json.dumps(challenge))
+  ")
+  bash .claude/scripts/lib/write-gate-artifact.sh \
+    --path .runs/solve-challenge.json \
+    --payload "$PAYLOAD" \
+    --skill solve
+  ```
+
 **POSTCONDITIONS:**
 - Solution analysis completed per solve-reasoning.md
 - Output formatted per solve-reasoning.md Phase 6 (full mode) or Step 5 (light mode)
 - `.runs/solve-trace.json` exists with required fields and `run_id` matching `solve-context.json`
+- `.runs/solve-challenge.json` exists with `critic_rounds`, `round_1_type_a_count`, `round_2_type_a_count`, `concerns`
 
 **VERIFY:**
 ```bash
-python3 .claude/scripts/verify-recurrence-guard.py --require-phase-3-gaps --require-run-id --skill solve  # .runs/solve-trace.json
+python3 .claude/scripts/verify-recurrence-guard.py --require-phase-3-gaps --require-run-id --skill solve && python3 -c "import json,os; d=json.load(open('.runs/solve-challenge.json')); assert isinstance(d.get('critic_rounds'), int), 'critic_rounds missing or not int'; assert isinstance(d.get('round_1_type_a_count'), int), 'round_1_type_a_count missing or not int'; assert isinstance(d.get('round_2_type_a_count'), int), 'round_2_type_a_count missing or not int'; assert isinstance(d.get('concerns'), list), 'concerns missing or not list'; cr=d.get('critic_rounds',0); arc='.runs/solve-critic-round1.json'; assert cr!=2 or (os.path.exists(arc) and json.load(open(arc)).get('round')==1), '#1331 sidecar archive missing or wrong round'"  # .runs/solve-trace.json, .runs/solve-challenge.json, .runs/solve-critic-round1.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

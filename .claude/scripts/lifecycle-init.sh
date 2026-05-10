@@ -287,6 +287,16 @@ STALE_ARTIFACTS=(
   # #1198: backstop for state-99 identity assertion — UNION sweep in Slice 5b
   # will preserve this; for the hotfix window, ensure prior-skill artifact is gone.
   "$PROJECT_DIR/.runs/observation-enforcement.json"
+  # #1331: solve-critic round-1 archive sidecar (outside .runs/agent-traces/,
+  # so the directory wipe does not catch it). Without this entry, a stale
+  # archive from a prior /resolve|/change|/solve run silently satisfies
+  # verify-*.py runtime postconditions on the next run.
+  "$PROJECT_DIR/.runs/solve-critic-round1.json"
+  # #1331: /solve challenge artifact (closes contract from solve-reasoning.md
+  # Phase 5). Cross-skill transient — lifecycle is bound to the active
+  # /solve run; cleared at the start of each new skill run so stale prior-run
+  # data does not leak into the next solve.1 VERIFY.
+  "$PROJECT_DIR/.runs/solve-challenge.json"
 )
 
 # --- Slice 5b: UNION with registry-derived transient-cross-skill artifacts ---

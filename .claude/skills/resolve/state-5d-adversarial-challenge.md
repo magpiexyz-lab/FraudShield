@@ -51,8 +51,31 @@ block from above (when `pattern_hints` non-empty) as additional instructions in
 the critic prompt.
 
 The solve-critic writes its trace to `.runs/agent-traces/solve-critic.json`.
-If round 2 is needed (TYPE A count > 0), re-spawn solve-critic with round 2
-instructions; the agent overwrites the trace with `round: 2`.
+If round 2 is needed (TYPE A count > 0):
+
+1. **Archive the round-1 trace** via the canonical writer (sidecar path is
+   outside `.runs/agent-traces/` so trace-write-guard does not block it;
+   registered in `.claude/patterns/gate-readable-artifacts-canonical.json`):
+   ```bash
+   bash .claude/scripts/lib/write-gate-artifact.sh \
+     --path .runs/solve-critic-round1.json \
+     --payload "$(cat .runs/agent-traces/solve-critic.json)" \
+     --skill resolve
+   ```
+   The archive remains as the audit-trail source for vector 5
+   (`within-run-round1-concern-unaddressed`). `lifecycle-init.sh` wipes
+   `.runs/solve-critic-round1.json` on each new skill run so a stale archive
+   cannot satisfy the runtime postcondition in `verify-resolve-challenge.py`
+   for a future run.
+
+2. **Re-spawn solve-critic** with round 2 instructions. The round-2 spawn
+   prompt MUST include `round_1_concerns` (the full `concerns[]` array from
+   the archived round-1 trace, with stable `concern_id` values) under a
+   `## Round 1 Concerns to Cross-Check` header — see
+   `.claude/agents/solve-critic.md` "Round 2 Prompt Contract".
+
+The agent overwrites the live trace at `.runs/agent-traces/solve-critic.json`
+with `round: 2` and updated counts; the round-1 archive is preserved.
 
 Critic output mapping to report sections:
 - **TYPE A round 1** -> revision to `fix_plan` (already applied)
