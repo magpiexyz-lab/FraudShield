@@ -167,4 +167,5 @@ if echo "$COMMAND_CANONICAL" | grep -qE "$ALLOWED_REGEX"; then
   exit 0
 fi
 
+# friction-skip: trivial-fast-path — input absent or non-applicable
 exit 0

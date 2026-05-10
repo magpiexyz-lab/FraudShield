@@ -23,6 +23,7 @@ FILE_PATH=$(read_payload_field "tool_input.file_path")
 
 # Only fire when file_path contains "resolve-learnings"
 if [[ "$FILE_PATH" != *"resolve-learnings"* ]]; then
+  # friction-skip: trivial-fast-path — input absent or non-applicable
   exit 0
 fi
 
@@ -30,6 +31,7 @@ extract_write_content
 
 # Skip if content is empty (can't validate)
 if [[ -z "$CONTENT" ]]; then
+  # friction-skip: trivial-fast-path — input absent or non-applicable
   exit 0
 fi
 
@@ -43,6 +45,7 @@ try:
     d = json.loads(content)
 except json.JSONDecodeError:
     print("PARSE_ERROR")
+    # friction-skip: post-validation — exit follows authoritative decision (allow-list match, deny path, or successful validation)
     sys.exit(0)
 
 def require_list(key):

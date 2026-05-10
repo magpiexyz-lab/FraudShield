@@ -102,6 +102,7 @@ for var in assignments:
     pat = r"open\(\s*" + re.escape(var) + r"\s*,[^)]*[\x27\x22][wa][\x27\x22\+b]*"
     if re.search(pat, cmd):
         print("DENY")
+        # friction-skip: post-validation — exit follows authoritative decision (allow-list match, deny path, or successful validation)
         sys.exit(0)
 ' 2>/dev/null || true)
 if [[ "$INDIRECT_CHECK" == "DENY" ]]; then
@@ -195,4 +196,5 @@ if echo "$NORM" | awk -v r="$PHASE_A_REGEX" '
   emit_finding "Phase A file write must go through write-phase-a-repair.sh; direct shell writes are blocked"
 fi
 
+# friction-skip: trivial-fast-path — input absent or non-applicable
 exit 0

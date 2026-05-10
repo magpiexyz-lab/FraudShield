@@ -78,6 +78,7 @@ for var in assignments:
     pat = r"open\(\s*" + re.escape(var) + r"\s*,[^)]*[\x27\x22][wa][\x27\x22\+b]*"
     if re.search(pat, cmd):
         print("DENY")
+        # friction-skip: post-validation — exit follows authoritative decision (allow-list match, deny path, or successful validation)
         sys.exit(0)
 ' 2>/dev/null || true)
 if [[ "$INDIRECT_CHECK" == "DENY" ]]; then

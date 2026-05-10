@@ -18,6 +18,7 @@ set -euo pipefail
 # the env var on the Bash invocation itself, so the env var is visible to
 # the hook process. Tests can also set it before invoking the hook.
 if [[ "${BRANCH_CHECKOUT_PROPAGATION_GATE_SKIP:-0}" == "1" ]]; then
+  # friction-skip: trivial-fast-path — input absent or non-applicable
   exit 0
 fi
 
@@ -30,6 +31,7 @@ COMMAND=$(read_payload_field "tool_input.command")
 # Quick filter — no `git checkout -b` literal anywhere → not our concern.
 # Match: `git checkout -b <name>` (with arbitrary whitespace).
 if ! printf '%s' "$COMMAND" | grep -qE 'git[[:space:]]+checkout[[:space:]]+-b[[:space:]]'; then
+  # friction-skip: trivial-fast-path — input absent or non-applicable
   exit 0
 fi
 
@@ -76,6 +78,7 @@ except Exception:
     sys.exit(1)
 for tok in a:
     if 'update-context-branch.sh' in tok:
+        # friction-skip: post-validation — exit follows authoritative decision (allow-list match, deny path, or successful validation)
         sys.exit(0)
 sys.exit(1)
 " 2>/dev/null; then

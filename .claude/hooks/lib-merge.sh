@@ -20,7 +20,14 @@ exec_merge_gate() {
 
   local checks
   checks=$(read_agent_registry_field "$registry_field")
-  [[ -z "$checks" ]] && exit 0
+  if [[ -z "$checks" ]]; then
+    # #1349 fix: empty checks were silently exiting 0 — masking misconfigured
+    # registry fields and untracked migrations. Friction-log so unconfigured
+    # gates are observable. Fail-open per Constraint 19 (registry absence is
+    # structural, not adversarial).
+    _write_hook_friction "lib-merge.exec_merge_gate: empty checks for registry_field='$registry_field' gate='$gate_name' — failing open (registry may be uninitialized or field renamed)."
+    exit 0
+  fi
 
   run_merge_gate "$file_pattern" "$checks" "$gate_name"
 }
@@ -43,6 +50,7 @@ run_merge_gate() {
 
   # Only fire when file_path matches the pattern
   if [[ "$file_path" != *"$file_pattern"* ]]; then
+    # friction-skip: trivial-fast-path — file_path doesn't match this gate's pattern.
     exit 0
   fi
 
@@ -50,6 +58,7 @@ run_merge_gate() {
 
   # Skip if content is empty
   if [[ -z "$CONTENT" ]]; then
+    # friction-skip: trivial-fast-path — empty Write/Edit content has no JSON to validate.
     exit 0
   fi
 
@@ -58,6 +67,7 @@ run_merge_gate() {
 
   handle_validation "$validation" "$gate_name" "Merge JSON must match source agent traces."
 
+  # friction-skip: post-validation — handle_validation already exited on FAIL/PARSE_ERROR.
   exit 0
 }
 
@@ -83,6 +93,7 @@ try:
     merge = json.loads(content)
 except json.JSONDecodeError:
     print('PARSE_ERROR')
+    # friction-skip: post-validation — PARSE_ERROR is a stdout signal consumed by handle_validation.
     sys.exit(0)
 
 traces_dir = os.environ.get('CLAUDE_PROJECT_DIR', '.') + '/.runs/agent-traces'

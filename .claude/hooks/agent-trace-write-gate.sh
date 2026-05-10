@@ -58,7 +58,8 @@ Path attempted: $FILE_PATH"
 
 case "$MODE" in
   warn)
-    # Soft signal — emit to stderr, allow the write.
+    # Soft signal — friction-log + emit to stderr, allow the write.
+    _write_hook_friction "$MSG"
     echo "WARN: $MSG" >&2
     exit 0
     ;;

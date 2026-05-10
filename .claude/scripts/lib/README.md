@@ -525,6 +525,51 @@ fix_template: |
   + path-strip + sha-strip rules fold variants into a single signature.
 ```
 
+### PreToolUse hook silent-bypass paired enforcement (Issues #1349 + #1350)
+```yaml
+id: hook-silent-bypass-paired-enforcement
+maturity: stable
+anti_pattern: false
+composite_identity:
+  root_cause_class: hook-defensive-exit-0-silently-bypasses-enforcement
+  divergence_pattern: fail-open-without-friction-log-or-justification-trail
+  stack_scope: scripts/lib/linter
+composite_identity_hash: 5d4494d74598
+symptom_keywords: [hook, exit-0, silent-bypass, friction-log, fail-open, defensive-skip, manifest-bypass, solve_depth, trace-validation]
+confidence_score: 0.85
+occurrence_count: 2
+linked_issues: [1349, 1350]
+first_seen: 2026-05-07
+last_seen: 2026-05-07
+graduated_to: null
+prevention_mechanism: |
+  Two coherence rules + two manifest categories:
+    - hook_silent_skip_friction_pairing scans .claude/hooks/*.sh for any
+      `exit 0` / `sys.exit(0)` and requires either a _write_hook_friction
+      / deny / handle_validation call within 10 preceding lines OR a
+      `# friction-skip: <reason>` pragma annotation.
+    - hook_bypass_manifest_completeness validates that every entry in
+      bypass-manifests (gate-readable-canonical-exemptions.json,
+      adversarial-merge-trace-skip.json) declares category + justification.
+  Hook code change: silent-skip paths now either friction-log (Constraint
+  19 fail-open) OR fail-closed unless the manifest declares the skip
+  (Mechanism A — adversarial-merge-gate change-challenge light-mode).
+fix_template: |
+  When a PreToolUse hook needs to early-exit, classify the exit:
+    1. trivial-fast-path: hook's domain is structurally absent (no FILE_PATH,
+       no COMMAND, no skill context). Annotate:
+         # friction-skip: trivial-fast-path — <one-sentence why>
+    2. post-validation: exit follows handle_validation, deny(), or an
+       authoritative manifest decision. Annotate:
+         # friction-skip: post-validation — <one-sentence why>
+    3. silent-bypass: hook's enforcement *would* apply but is being skipped
+       (mode=warn, manifest missing, unknown env-var value). Either:
+         (a) _write_hook_friction "<msg>" before exit 0   # Constraint 19 fail-open
+         (b) Replace with deny() gated by an exemption manifest  # Mechanism A
+  Never leave bare `exit 0` — the linter rule
+  hook_silent_skip_friction_pairing fails CI under --strict-aoc.
+```
+
 ---
 
 ## Existing helpers (no Stack Knowledge — single-caller or in-flux)

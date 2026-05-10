@@ -14,6 +14,7 @@ SIGNAL="$PROJECT_DIR/.runs/pipeline-phase.json"
 
 # --- CRITICAL: no signal file → no enforcement ---
 if [[ ! -f "$SIGNAL" ]]; then
+  # friction-skip: trivial-fast-path — input absent or non-applicable
   exit 0
 fi
 
@@ -37,6 +38,7 @@ except Exception:
 
 # Fail-open if signal file is malformed
 if [[ -z "$PHASE" ]]; then
+  # friction-skip: trivial-fast-path — input absent or non-applicable
   exit 0
 fi
 
@@ -81,11 +83,13 @@ if [[ "$TOOL_NAME" == "Bash" ]]; then
   if [[ ! -f "$_INVOCATION_HELPER" ]]; then
     # Helper missing — fall back to legacy grep so we do not over-block.
     if ! printf '%s' "$COMMAND" | grep -qE 'bash\s+\S*advance-state\.sh\s'; then
+      # friction-skip: trivial-fast-path — input absent or non-applicable
       exit 0
     fi
     parse_advance_state_args
   else
     if ! printf '%s' "$COMMAND" | python3 "$_INVOCATION_HELPER"; then
+      # friction-skip: trivial-fast-path — input absent or non-applicable
       exit 0
     fi
     SKILL=$(printf '%s' "$COMMAND" | python3 "$_INVOCATION_HELPER" --print-skill)
@@ -93,11 +97,13 @@ if [[ "$TOOL_NAME" == "Bash" ]]; then
   fi
 
   if [[ -z "$SKILL" || -z "$STATE_ID" ]]; then
+    # friction-skip: trivial-fast-path — input absent or non-applicable
     exit 0
   fi
 
   # Need state_range values for range check
   if [[ -z "$RANGE_MIN" || -z "$RANGE_MAX" ]]; then
+    # friction-skip: trivial-fast-path — input absent or non-applicable
     exit 0
   fi
 
@@ -105,6 +111,7 @@ if [[ "$TOOL_NAME" == "Bash" ]]; then
   # so we use the registry key order as canonical sequence.
   REGISTRY="$PROJECT_DIR/.claude/patterns/state-registry.json"
   if [[ ! -f "$REGISTRY" ]]; then
+    # friction-skip: trivial-fast-path — input absent or non-applicable
     exit 0
   fi
 
@@ -118,6 +125,7 @@ try:
     rmax = str($RANGE_MAX) if '$RANGE_MAX'.isdigit() else '$RANGE_MAX'
     if state not in skill_states or rmin not in skill_states or rmax not in skill_states:
         print('OK')
+        # friction-skip: post-validation — exit follows authoritative decision (allow-list match, deny path, or successful validation)
         sys.exit(0)
     si = skill_states.index(state)
     lo = skill_states.index(rmin)

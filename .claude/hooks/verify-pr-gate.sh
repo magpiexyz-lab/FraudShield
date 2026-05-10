@@ -11,6 +11,7 @@ COMMAND=$(read_payload_field "tool_input.command")
 
 # If the command doesn't contain `gh pr create`, allow it
 if [[ "$COMMAND" != *"gh pr create"* ]]; then
+  # friction-skip: trivial-fast-path — input absent or non-applicable
   exit 0
 fi
 
@@ -143,9 +144,11 @@ import sys, os, json, glob
 
 content = open('$plan').read()
 if not content.startswith('---'):
+    # friction-skip: post-validation — SKIP signal — caller decides next action based on stdout
     print('SKIP'); sys.exit(0)
 parts = content.split('---', 2)
 if len(parts) < 3:
+    # friction-skip: post-validation — SKIP signal — caller decides next action based on stdout
     print('SKIP'); sys.exit(0)
 
 try:
@@ -155,6 +158,7 @@ except ImportError:
     import re
     fm_text = parts[1]
     if 'acceptance_criteria:' not in fm_text:
+        # friction-skip: post-validation — SKIP signal — caller decides next action based on stdout
         print('SKIP'); sys.exit(0)
     acs = []
     for m in re.finditer(r'-\s*id:\s*(\S+)\s*\n\s*behavior:.*?\n\s*verify_method:\s*(\S+)(?:\s*\n\s*test_file:\s*(\S+))?', fm_text):
@@ -163,13 +167,16 @@ except ImportError:
         acs.append(ac)
     fm = {'acceptance_criteria': acs if acs else None}
 except Exception:
+    # friction-skip: post-validation — SKIP signal — caller decides next action based on stdout
     print('SKIP'); sys.exit(0)
 
 if not fm or not isinstance(fm, dict):
+    # friction-skip: post-validation — SKIP signal — caller decides next action based on stdout
     print('SKIP'); sys.exit(0)
 
 acs = fm.get('acceptance_criteria', None)
 if not acs:
+    # friction-skip: post-validation — SKIP signal — caller decides next action based on stdout
     print('SKIP'); sys.exit(0)
 
 traces_dir = os.path.join('$project_dir', '.runs/agent-traces')
@@ -229,6 +236,7 @@ else:
 # files; check lists come from skill.yaml observation config.
 SKILL=$(detect_skill_for_branch "$BRANCH")
 if [[ -z "$SKILL" ]]; then
+  # friction-skip: post-validation — exit follows authoritative decision (allow-list match, deny path, or successful validation)
   exit 0  # Not skill-driven — allow PR
 fi
 

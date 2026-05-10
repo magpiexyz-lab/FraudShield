@@ -50,6 +50,8 @@ STRICT_AOC_TYPES = {
     "ledger_ownership",
     "consumer_coverage",
     "frontmatter_artifact_consistency",
+    "hook_bypass_manifest_completeness",
+    "hook_silent_skip_friction_pairing",
 }
 
 
@@ -238,6 +240,50 @@ class TestSyntheticFixtures(unittest.TestCase):
         NOT be flagged — pairing is structurally satisfied."""
         rc, stdout = self._run_fixture(
             "branch_checkout_propagation_clean", "--json"
+        )
+        payload = json.loads(stdout)
+        self.assertEqual(payload["summary"]["cross_file_contradiction"], 0)
+
+    # --- #1349 + #1350: hook_bypass_manifest_completeness ---------------
+
+    def test_hook_bypass_manifest_completeness_violation_emits_finding(self):
+        """An exemption entry missing the required `category` field should
+        be flagged. The manifest entries[i] coordinate appears in the
+        finding. Closes #1349 silent-fail-open class for canonical-writer
+        exemptions."""
+        rc, stdout = self._run_fixture("hook_bypass_manifest_completeness_violation")
+        self.assertIn("CROSS_FILE_CONTRADICTION", stdout)
+        self.assertIn("fixture-hbmc-violation", stdout)
+        self.assertIn("category", stdout)
+
+    def test_hook_bypass_manifest_completeness_clean_no_findings(self):
+        """An exemption entry with all required fields populated AND
+        category in valid_categories should NOT be flagged."""
+        rc, stdout = self._run_fixture(
+            "hook_bypass_manifest_completeness_clean", "--json"
+        )
+        payload = json.loads(stdout)
+        self.assertEqual(payload["summary"]["cross_file_contradiction"], 0)
+
+    # --- #1349 + #1350: hook_silent_skip_friction_pairing ---------------
+
+    def test_hook_silent_skip_friction_pairing_violation_emits_finding(self):
+        """A bare `exit 0` with no preceding friction call within the
+        lookback window AND no `# friction-skip:` pragma on this or the
+        directly preceding line should be flagged. Closes the silent-bypass
+        class introduced by #1349/#1350 (defensive exit 0 without audit)."""
+        rc, stdout = self._run_fixture("hook_silent_skip_friction_pairing_violation")
+        self.assertIn("CROSS_FILE_CONTRADICTION", stdout)
+        self.assertIn("fixture-hssfp-violation", stdout)
+        self.assertIn("synthetic-hook.sh", stdout)
+        self.assertIn("unfrictioned silent skip", stdout)
+
+    def test_hook_silent_skip_friction_pairing_clean_no_findings(self):
+        """`exit 0` paired with EITHER (a) `_write_hook_friction` within
+        the lookback window OR (b) `# friction-skip:` pragma on the same
+        or directly preceding line should NOT be flagged."""
+        rc, stdout = self._run_fixture(
+            "hook_silent_skip_friction_pairing_clean", "--json"
         )
         payload = json.loads(stdout)
         self.assertEqual(payload["summary"]["cross_file_contradiction"], 0)

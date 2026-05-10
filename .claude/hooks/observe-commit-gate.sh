@@ -15,6 +15,7 @@ COMMAND=$(read_payload_field "tool_input.command")
 
 # If the command doesn't contain `git commit`, allow it
 if [[ "$COMMAND" != *"git commit"* ]]; then
+  # friction-skip: trivial-fast-path — input absent or non-applicable
   exit 0
 fi
 
@@ -25,17 +26,20 @@ SKILL=$(detect_active_skill_for_branch "$BRANCH")
 
 # No skill context for this branch → non-skill branch, allow
 if [[ -z "$SKILL" ]]; then
+  # friction-skip: trivial-fast-path — input absent or non-applicable
   exit 0
 fi
 
 # Check if this skill uses commit-gate enforcement
 GATE_MECH=$(get_observation_gate "$SKILL" "gate_mechanism")
 if [[ "$GATE_MECH" != "commit-pr-gate" ]]; then
+  # friction-skip: post-validation — exit follows authoritative decision (allow-list match, deny path, or successful validation)
   exit 0  # postcondition-only skills don't need commit gate
 fi
 
 # Allow WIP commits (only enforce on final commits)
 if [[ "$COMMAND" != *"Fix #"* ]] && [[ "$COMMAND" != *"Fix \#"* ]] && [[ "$COMMAND" != *"Automated review-fix"* ]]; then
+  # friction-skip: trivial-fast-path — input absent or non-applicable
   exit 0
 fi
 
@@ -43,6 +47,7 @@ PROJECT_DIR="${CLAUDE_PROJECT_DIR:-.}"
 
 # If verify-report.md exists, verify ran — observation handled in epilogue
 if [[ -f "$PROJECT_DIR/.runs/verify-report.md" ]]; then
+  # friction-skip: trivial-fast-path — input absent or non-applicable
   exit 0
 fi
 

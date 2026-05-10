@@ -21,11 +21,13 @@ _INVOCATION_HELPER="$_PROJECT_DIR_GATE/.claude/scripts/lib/check-advance-state-i
 if [[ ! -f "$_INVOCATION_HELPER" ]]; then
   # Helper missing — fall back to the legacy grep so we do not over-block.
   if ! printf '%s' "$COMMAND" | grep -qE 'bash\s+\S*advance-state\.sh\s'; then
+    # friction-skip: trivial-fast-path — input absent or non-applicable
     exit 0
   fi
   parse_advance_state_args
 else
   if ! printf '%s' "$COMMAND" | python3 "$_INVOCATION_HELPER"; then
+    # friction-skip: trivial-fast-path — input absent or non-applicable
     exit 0
   fi
   SKILL=$(printf '%s' "$COMMAND" | python3 "$_INVOCATION_HELPER" --print-skill)
@@ -33,6 +35,10 @@ else
 fi
 
 if [[ -z "$SKILL" || -z "$STATE_ID" ]]; then
+  # #1349 fix: empty SKILL/STATE means parse helper succeeded but produced
+  # empty fields — a silent fail-open vs malformed input. Friction-log so
+  # the parse-failure is observable. Fail-open per Constraint 19.
+  _write_hook_friction "state-completion-gate: empty SKILL='$SKILL' / STATE_ID='$STATE_ID' after parse — failing open. COMMAND prefix: ${COMMAND:0:120}"
   exit 0
 fi
 
@@ -221,6 +227,7 @@ for line in out.split('\n'):
     # args[0] separately below.
     for i, a in enumerate(args):
         if a == '--path' and i + 1 < len(args) and args[i+1] in defer:
+            # friction-skip: post-validation — exit follows authoritative decision (allow-list match, deny path, or successful validation)
             print('1'); sys.exit(0)
 # Also handle bash <writer> --path ... shape
 for line in out.split('\n'):
@@ -236,6 +243,7 @@ for line in out.split('\n'):
     if not args or not args[0].endswith('write-gate-artifact.sh'): continue
     for i, a in enumerate(args):
         if a == '--path' and i + 1 < len(args) and args[i+1] in defer:
+            # friction-skip: post-validation — exit follows authoritative decision (allow-list match, deny path, or successful validation)
             print('1'); sys.exit(0)
 print('0')
 " <<< "$_DECOMP_OUT" 2>/dev/null || echo "0")
@@ -303,6 +311,7 @@ SANCTIONED_COVERAGE_PROVIDERS = frozenset({
 manifest = json.load(open('$_SCG_MANIFEST'))
 declared = set(manifest.get('agents', {}).keys())
 if not declared:
+    # friction-skip: post-validation — exit follows authoritative decision (allow-list match, deny path, or successful validation)
     sys.exit(0)  # No agents declared in manifest
 
 # Get current run_id to filter stale spawn records from prior runs
@@ -450,6 +459,7 @@ fixer = 'security-fixer' if state == '4' else 'quality-fixer'
 trace_path = os.path.join(project_dir, '.runs', 'agent-traces', fixer + '.json')
 
 if not os.path.isfile(merge_path):
+    # friction-skip: post-validation — exit follows authoritative decision (allow-list match, deny path, or successful validation)
     sys.exit(0)  # Merge file missing — upstream postcondition catches it
 
 try:
@@ -461,6 +471,7 @@ except Exception as e:
 # (a) Scope-skip exemption: agents were not supposed to spawn this run.
 expected_no_agents = 'no-security-agents' if state == '4' else 'no-quality-agents'
 if m.get('source') == expected_no_agents:
+    # friction-skip: post-validation — exit follows authoritative decision (allow-list match, deny path, or successful validation)
     sys.exit(0)
 
 # (b) Audit-skip exemption: fixer_skipped + lead-skipped trace.
@@ -480,6 +491,7 @@ if m.get('fixer_skipped') is True:
     if t.get('upstream_evidence_path') != expected_evidence:
         print(fixer + ': trace upstream_evidence_path=' + repr(t.get('upstream_evidence_path')) + ' does not reference ' + expected_evidence)
         sys.exit(1)
+    # friction-skip: post-validation — exit follows authoritative decision (allow-list match, deny path, or successful validation)
     sys.exit(0)  # Audit-skip exemption satisfied
 
 # Normal path: fixer trace MUST exist.
@@ -541,4 +553,5 @@ except Exception:
     pass
 " 2>/dev/null || true
 fi
+# friction-skip: trivial-fast-path — input absent or non-applicable
 exit 0

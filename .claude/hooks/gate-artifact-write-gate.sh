@@ -37,13 +37,20 @@ parse_payload
 FILE_PATH=$(read_payload_field "tool_input.file_path")
 
 # Fast-path: no path → allow.
+# friction-skip: trivial-fast-path — no FILE_PATH means no Write/Edit target to gate.
 [ -z "$FILE_PATH" ] && exit 0
 
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-.}"
 MANIFEST_PATH="$PROJECT_DIR/.claude/patterns/gate-readable-artifacts-canonical.json"
 
-# Manifest missing → fail-open (don't block writes if the manifest itself is gone).
-[ ! -f "$MANIFEST_PATH" ] && exit 0
+# #1349 fix: Manifest missing → fail-open (Constraint 19: gate-readable manifest
+# is auto-derived from state-registry.json by derive-graim-manifest.py; its
+# absence is structural, not adversarial). Friction-log so missing-manifest is
+# observable in hook-friction.jsonl retrospectively.
+if [ ! -f "$MANIFEST_PATH" ]; then
+  _write_hook_friction "gate-artifact-write-gate: manifest $MANIFEST_PATH absent — failing open (Constraint 19). FILE_PATH=$FILE_PATH"
+  exit 0
+fi
 
 # Normalize FILE_PATH to repo-relative (strip $PROJECT_DIR prefix if present).
 TARGET_REL="${FILE_PATH#"$PROJECT_DIR"/}"
@@ -61,7 +68,8 @@ except Exception:
 " 2>/dev/null || echo "0")
 
 if [ "$IS_GATE_READABLE" != "1" ]; then
-  exit 0  # not a gate-readable artifact
+  # friction-skip: post-validation — manifest loaded successfully, target authoritatively NOT a gate-readable canonical path.
+  exit 0
 fi
 
 # At this point, the Write/Edit target IS a gate-readable artifact. Apply mode.
@@ -79,6 +87,9 @@ case "$MODE" in
     deny "$MSG_DENY"
     ;;
   *)
+    # #1349 fix: unknown MODE was a silent fail-open (only stderr WARN).
+    # Friction-log so misconfigured env-var values are observable.
+    _write_hook_friction "gate-artifact-write-gate: unknown MODE=$MODE for $TARGET_REL — defaulting to allow (typo or rollback signal). Set GATE_ARTIFACT_WRITE_GATE_MODE=warn|deny."
     echo "WARN: gate-artifact-write-gate.sh — unknown MODE=$MODE; defaulting to allow" >&2
     exit 0
     ;;

@@ -29,12 +29,14 @@ shopt -s nullglob
 CTX_FILES=("$PROJECT_DIR"/.runs/*-context.json)
 shopt -u nullglob
 if [[ ${#CTX_FILES[@]} -eq 0 ]]; then
+  # friction-skip: trivial-fast-path — input absent or non-applicable
   exit 0
 fi
 
 extract_write_content
 
 if [[ -z "$CONTENT" ]]; then
+  # friction-skip: trivial-fast-path — input absent or non-applicable
   exit 0
 fi
 
@@ -51,10 +53,12 @@ try:
     d = json.loads(content)
 except (json.JSONDecodeError, ValueError):
     print("PARSE_ERROR")
+    # friction-skip: post-validation — exit follows authoritative decision (allow-list match, deny path, or successful validation)
     sys.exit(0)
 
 if not isinstance(d, dict):
     print("PARSE_ERROR")
+    # friction-skip: post-validation — exit follows authoritative decision (allow-list match, deny path, or successful validation)
     sys.exit(0)
 
 errors = []
@@ -82,6 +86,7 @@ elif is_agent_trace:
             print("FAIL:" + "; ".join(errors))
         else:
             print("OK")
+        # friction-skip: post-validation — exit follows authoritative decision (allow-list match, deny path, or successful validation)
         sys.exit(0)
 
     # Determine agent category from filename

@@ -337,6 +337,57 @@
         "convention_doc": { "type": "string" }
       }
     },
+    "rule_hook_bypass_manifest_completeness": {
+      "description": "#1349 + #1350: every entry in declared bypass manifests must have ALL required_fields populated, with category in valid_categories and non-empty justification.",
+      "type": "object",
+      "required": ["id", "type", "severity", "description", "manifests"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string"},
+        "type": {"const": "hook_bypass_manifest_completeness"},
+        "severity": {"$ref": "#/definitions/severity"},
+        "description": {"type": "string"},
+        "_comment": {"type": "string"},
+        "_transitional_note": {"type": "string"},
+        "convention_doc": {"type": "string"},
+        "manifests": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["path", "entries_field", "required_fields", "valid_categories"],
+            "additionalProperties": false,
+            "properties": {
+              "path": {"type": "string"},
+              "entries_field": {"type": "string"},
+              "required_fields": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+              "valid_categories": {"type": "array", "items": {"type": "string"}, "minItems": 1}
+            }
+          }
+        }
+      }
+    },
+    "rule_hook_silent_skip_friction_pairing": {
+      "description": "#1349 + #1350: every `exit 0` / `sys.exit(0)` in a PreToolUse hook must be paired with a friction-log call within `lookback_lines` preceding lines, OR carry a `# friction-skip: <reason>` pragma on the same or directly preceding line.",
+      "type": "object",
+      "required": ["id", "type", "severity", "description", "scan_glob", "exit_pattern", "friction_call_pattern", "pragma"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string"},
+        "type": {"const": "hook_silent_skip_friction_pairing"},
+        "severity": {"$ref": "#/definitions/severity"},
+        "description": {"type": "string"},
+        "_comment": {"type": "string"},
+        "_transitional_note": {"type": "string"},
+        "convention_doc": {"type": "string"},
+        "scan_glob": {"type": "string"},
+        "exclude_paths": {"type": "array", "items": {"type": "string"}},
+        "exit_pattern": {"type": "string"},
+        "friction_call_pattern": {"type": "string"},
+        "lookback_lines": {"type": "integer", "minimum": 1, "default": 10},
+        "pragma": {"type": "string"}
+      }
+    },
     "rule_lib_helper_stack_knowledge_required": {
       "description": "#1300 — every public function in lib/*.py with >= caller_threshold production callers must have a Stack Knowledge entry in lib/README.md whose stack_scope is module-precise (scripts/lib/<module>), OR the helper module must declare a not-reusable pragma at the top. Closes the gap left by `lib-readme-stack-knowledge-required` (must_contain_section), which only guards heading presence — not per-helper coverage.",
       "type": "object",
@@ -436,6 +487,8 @@
           { "$ref": "#/definitions/rule_validator_inventory_completeness" },
           { "$ref": "#/definitions/rule_state_defer_verify_pairing" },
           { "$ref": "#/definitions/rule_branch_checkout_propagation_pairing" },
+          { "$ref": "#/definitions/rule_hook_bypass_manifest_completeness" },
+          { "$ref": "#/definitions/rule_hook_silent_skip_friction_pairing" },
           { "$ref": "#/definitions/rule_lib_helper_stack_knowledge_required" }
         ]
       }

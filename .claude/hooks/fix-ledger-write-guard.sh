@@ -147,6 +147,7 @@ fi
 
 ALLOWED_REGEX_RENDERER='(^|[[:space:]]|&&|;|\|)[[:space:]]*python3?[[:space:]]+[./]*\.?claude/scripts/render-fix-log\.py'
 if echo "$COMMAND_CANONICAL" | grep -qE "$ALLOWED_REGEX_RENDERER"; then
+  # friction-skip: trivial-fast-path — input absent or non-applicable
   exit 0
 fi
 
@@ -156,4 +157,5 @@ fi
 # blocking a STATE 5 echo, update the state file to use the lead-fix path
 # (state-5-e2e-tests.md was migrated in PR5).
 
+# friction-skip: trivial-fast-path — input absent or non-applicable
 exit 0

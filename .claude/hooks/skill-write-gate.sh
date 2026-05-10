@@ -19,6 +19,7 @@ BRANCH=$(get_branch)
 ACTIVE_SKILL=$(detect_active_skill_for_branch "$BRANCH")
 
 if [[ -z "$ACTIVE_SKILL" ]]; then
+  # friction-skip: trivial-fast-path — input absent or non-applicable
   exit 0
 fi
 
@@ -26,6 +27,7 @@ fi
 GATE_SCRIPT="$PROJECT_DIR/.claude/skills/$ACTIVE_SKILL/gates/write.sh"
 
 if [[ ! -f "$GATE_SCRIPT" ]]; then
+  # friction-skip: post-validation — exit follows authoritative decision (allow-list match, deny path, or successful validation)
   exit 0  # No write gate for this skill
 fi
 
@@ -37,4 +39,5 @@ GATE_OUTPUT=$(bash "$GATE_SCRIPT" 2>&1) || {
   exit 2
 }
 
+# friction-skip: trivial-fast-path — input absent or non-applicable
 exit 0

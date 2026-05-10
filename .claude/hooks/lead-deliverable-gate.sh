@@ -38,6 +38,7 @@ parse_payload
 
 PROMPT=$(extract_prompt)
 if [[ -z "$PROMPT" ]]; then
+  # friction-skip: trivial-fast-path — input absent or non-applicable
   exit 0
 fi
 
@@ -45,6 +46,7 @@ PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null |
 MANIFEST="$PROJECT_DIR/.claude/patterns/lead-only-artifacts.json"
 if [[ ! -f "$MANIFEST" ]]; then
   # Manifest absent → no policy to enforce → allow.
+  # friction-skip: trivial-fast-path — input absent or non-applicable
   exit 0
 fi
 
@@ -62,6 +64,7 @@ except Exception as e:
 " 2>/dev/null || true)
 
 if [[ -z "$PATHS" ]]; then
+  # friction-skip: trivial-fast-path — input absent or non-applicable
   exit 0
 fi
 
@@ -75,6 +78,7 @@ while IFS= read -r path; do
 done <<< "$PATHS"
 
 if [[ -z "$VIOLATION" ]]; then
+  # friction-skip: trivial-fast-path — input absent or non-applicable
   exit 0
 fi
 
@@ -98,6 +102,7 @@ Closes #1152."
 case "$MODE" in
   warn)
     echo "WARN: $MSG" >&2
+    # friction-skip: trivial-fast-path — input absent or non-applicable
     exit 0
     ;;
   deny)

@@ -73,6 +73,7 @@ WT_REAL=$(python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$CL
 
 # Allow if either lexical or realpath form is inside the worktree root.
 if [[ "$ABS_PATH" == "$CLAUDE_PROJECT_DIR"/* || "$ABS_REAL" == "$WT_REAL"/* ]]; then
+  # friction-skip: trivial-fast-path — input absent or non-applicable
   exit 0
 fi
 

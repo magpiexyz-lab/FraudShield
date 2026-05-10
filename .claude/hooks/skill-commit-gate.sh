@@ -17,6 +17,7 @@ COMMAND=$(read_payload_field "tool_input.command")
 
 # If the command doesn't contain `git commit`, allow it
 if [[ "$COMMAND" != *"git commit"* ]]; then
+  # friction-skip: trivial-fast-path — input absent or non-applicable
   exit 0
 fi
 
@@ -27,6 +28,7 @@ PROJECT_DIR="${CLAUDE_PROJECT_DIR:-.}"
 ACTIVE_SKILL=$(detect_active_skill_for_branch "$BRANCH")
 
 if [[ -z "$ACTIVE_SKILL" ]]; then
+  # friction-skip: trivial-fast-path — input absent or non-applicable
   exit 0
 fi
 
@@ -35,6 +37,7 @@ MANIFEST=$(resolve_framework_manifest "$ACTIVE_SKILL")
 
 if [[ ! -f "$MANIFEST" ]]; then
   # No manifest = no active skill lifecycle — allow
+  # friction-skip: trivial-fast-path — input absent or non-applicable
   exit 0
 fi
 
@@ -42,6 +45,7 @@ fi
 # /upgrade commits are allowed here — observation enforced by observe-commit-gate.sh
 # (matches old change-commit-gate.sh behavior)
 if [[ "$ACTIVE_SKILL" == "upgrade" ]]; then
+  # friction-skip: trivial-fast-path — input absent or non-applicable
   exit 0
 fi
 

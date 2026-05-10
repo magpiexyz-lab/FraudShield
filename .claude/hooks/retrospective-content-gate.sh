@@ -19,12 +19,14 @@ parse_payload
 
 FILE_PATH=$(read_payload_field "tool_input.file_path")
 if [[ -z "$FILE_PATH" ]]; then
+  # friction-skip: trivial-fast-path — input absent or non-applicable
   exit 0
 fi
 
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}"
 MANIFEST="$PROJECT_DIR/.claude/patterns/lead-only-artifacts.json"
 if [[ ! -f "$MANIFEST" ]]; then
+  # friction-skip: trivial-fast-path — input absent or non-applicable
   exit 0
 fi
 
@@ -48,6 +50,7 @@ unset FILE_PATH_ENV MANIFEST_ENV
 
 if [[ -z "$EXECUTOR_FIELD" ]]; then
   # Not a lead-only artifact → allow.
+  # friction-skip: trivial-fast-path — input absent or non-applicable
   exit 0
 fi
 
@@ -68,6 +71,7 @@ FIELD_PRESENT_PATTERN="\"$EXECUTOR_FIELD\"[[:space:]]*:"
 if [[ "$TOOL_NAME" == "Write" ]]; then
   CONTENT=$(read_payload_field "tool_input.content")
   if echo "$CONTENT" | grep -qE "$CHECK_PATTERN"; then
+    # friction-skip: trivial-fast-path — input absent or non-applicable
     exit 0
   fi
   VIOLATION="Write to $FILE_PATH lacks $EXECUTOR_FIELD=\"lead\""
@@ -77,6 +81,7 @@ elif [[ "$TOOL_NAME" == "Edit" ]]; then
   # Allow when the edit doesn't touch the field at all
   if ! echo "$OLD_STRING" | grep -qE "$FIELD_PRESENT_PATTERN" && \
      ! echo "$NEW_STRING" | grep -qE "$FIELD_PRESENT_PATTERN"; then
+    # friction-skip: trivial-fast-path — input absent or non-applicable
     exit 0
   fi
   # Edit touches the field — check both directions:
@@ -88,14 +93,17 @@ elif [[ "$TOOL_NAME" == "Edit" ]]; then
   NEW_HAS_LEAD=$(echo "$NEW_STRING" | grep -qE "$CHECK_PATTERN" && echo y || echo n)
   NEW_HAS_FIELD=$(echo "$NEW_STRING" | grep -qE "$FIELD_PRESENT_PATTERN" && echo y || echo n)
   if [[ "$NEW_HAS_LEAD" == "y" ]]; then
+    # friction-skip: post-validation — exit follows authoritative decision (allow-list match, deny path, or successful validation)
     exit 0  # post-edit content correctly stamps "lead"
   fi
   if [[ "$NEW_HAS_FIELD" == "n" && "$OLD_HAS_LEAD" == "n" ]]; then
+    # friction-skip: post-validation — exit follows authoritative decision (allow-list match, deny path, or successful validation)
     exit 0  # edit doesn't introduce a wrong value
   fi
   VIOLATION="Edit on $FILE_PATH would leave $EXECUTOR_FIELD without value \"lead\" (tampering or removal)"
 else
   # Other tools (e.g. NotebookEdit) — out of scope for this gate
+  # friction-skip: trivial-fast-path — input absent or non-applicable
   exit 0
 fi
 
@@ -114,6 +122,8 @@ Closes #1152."
 
 case "$MODE" in
   warn)
+    # Soft signal — friction-log + emit to stderr, allow the write.
+    _write_hook_friction "$MSG"
     echo "WARN: $MSG" >&2
     exit 0
     ;;

@@ -94,6 +94,7 @@ for var in assignments:
     pat = r"open\(\s*" + re.escape(var) + r"\s*,[^)]*[\x27\x22][wa][\x27\x22\+b]*"
     if re.search(pat, cmd):
         print("DENY")
+        # friction-skip: post-validation — exit follows authoritative decision (allow-list match, deny path, or successful validation)
         sys.exit(0)
 ' 2>/dev/null || true)
 if [[ "$INDIRECT_CHECK" == "DENY" ]]; then
@@ -220,6 +221,7 @@ for seg in segments:
     if script_idx == -1:
         continue
     if '--reason' in seg[script_idx + 1:]:
+        # friction-skip: post-validation — exit follows authoritative decision (allow-list match, deny path, or successful validation)
         sys.exit(0)
 sys.exit(1)
 " 2>/dev/null
@@ -234,6 +236,7 @@ if echo "$COMMAND_CANONICAL" | grep -qE "$ALLOWED_REGEX"; then
   # script's own argument check). #1249: shlex-tokenizing helper handles
   # multi-line / quoted reason values that the prior bash regex could not.
   if _check_reason_token "write-recovery-trace.sh" "$COMMAND_CANONICAL"; then
+    # friction-skip: trivial-fast-path — input absent or non-applicable
     exit 0
   else
     deny "Agent trace write guard: write-recovery-trace.sh invocation lacks --reason (required by issue #963 contract)."
@@ -258,12 +261,14 @@ fi
 # it only stamps recovery_validated:true on existing traces).
 ALLOWED_REGEX_VALIDATE='(^|[[:space:]]|&&|;|\|)[[:space:]]*bash[[:space:]]+[./]*\.?claude/scripts/validate-recovery\.sh[[:space:]]'
 if echo "$COMMAND_CANONICAL" | grep -qE "$ALLOWED_REGEX_VALIDATE"; then
+  # friction-skip: trivial-fast-path — input absent or non-applicable
   exit 0
 fi
 
 # Allow the legacy-trace migrator (read-modify-write, no new traces created)
 ALLOWED_REGEX_MIGRATE='(^|[[:space:]]|&&|;|\|)[[:space:]]*python3?[[:space:]]+[./]*\.?claude/scripts/migrate-legacy-traces\.py'
 if echo "$COMMAND_CANONICAL" | grep -qE "$ALLOWED_REGEX_MIGRATE"; then
+  # friction-skip: trivial-fast-path — input absent or non-applicable
   exit 0
 fi
 
@@ -272,6 +277,7 @@ fi
 # block that tripped the open-for-write regex below).
 ALLOWED_REGEX_MERGE_DESIGN_CRITIC='(^|[[:space:]]|&&|;|\|)[[:space:]]*python3?[[:space:]]+[./]*\.?claude/scripts/merge-design-critic-traces\.py'
 if echo "$COMMAND_CANONICAL" | grep -qE "$ALLOWED_REGEX_MERGE_DESIGN_CRITIC"; then
+  # friction-skip: trivial-fast-path — input absent or non-applicable
   exit 0
 fi
 
@@ -281,6 +287,7 @@ fi
 # #1045 resolution for design-critic).
 ALLOWED_REGEX_MERGE_SCAFFOLD_PAGES='(^|[[:space:]]|&&|;|\|)[[:space:]]*python3?[[:space:]]+[./]*\.?claude/scripts/merge-scaffold-pages-traces\.py'
 if echo "$COMMAND_CANONICAL" | grep -qE "$ALLOWED_REGEX_MERGE_SCAFFOLD_PAGES"; then
+  # friction-skip: trivial-fast-path — input absent or non-applicable
   exit 0
 fi
 
@@ -289,6 +296,7 @@ fi
 # the #1045 resolution for design-critic).
 ALLOWED_REGEX_MERGE_DESIGN_CONSISTENCY_CHECKER='(^|[[:space:]]|&&|;|\|)[[:space:]]*python3?[[:space:]]+[./]*\.?claude/scripts/merge-design-consistency-checker-traces\.py'
 if echo "$COMMAND_CANONICAL" | grep -qE "$ALLOWED_REGEX_MERGE_DESIGN_CONSISTENCY_CHECKER"; then
+  # friction-skip: trivial-fast-path — input absent or non-applicable
   exit 0
 fi
 
@@ -298,6 +306,7 @@ fi
 ALLOWED_REGEX_WRITE_AGENT_TRACE='(^|[[:space:]]|&&|;|\|)[[:space:]]*bash[[:space:]]+[./]*\.?claude/scripts/write-agent-trace\.sh[[:space:]]'
 if echo "$COMMAND_CANONICAL" | grep -qE "$ALLOWED_REGEX_WRITE_AGENT_TRACE"; then
   if echo "$COMMAND_CANONICAL" | grep -qE 'write-agent-trace\.sh[^&|;]*--json'; then
+    # friction-skip: trivial-fast-path — input absent or non-applicable
     exit 0
   else
     deny "Agent trace write guard: write-agent-trace.sh invocation lacks --json '<...>' (required AOC v1.1)."
@@ -313,6 +322,7 @@ fi
 ALLOWED_REGEX_AUGMENT_TRACE='(^|[[:space:]]|&&|;|\|)[[:space:]]*python3?[[:space:]]+[./]*\.?claude/scripts/augment-trace\.py'
 if echo "$COMMAND_CANONICAL" | grep -qE "$ALLOWED_REGEX_AUGMENT_TRACE"; then
   if echo "$COMMAND_CANONICAL" | grep -qE 'augment-trace\.py[^&|;]*--field'; then
+    # friction-skip: trivial-fast-path — input absent or non-applicable
     exit 0
   else
     deny "Agent trace write guard: augment-trace.py invocation lacks --field <key>=<value> (required: at least one whitelisted descriptive field to augment)."
@@ -330,6 +340,7 @@ ALLOWED_REGEX_SKIPPED_FIXER='(^|[[:space:]]|&&|;|\|)[[:space:]]*bash[[:space:]]+
 if echo "$COMMAND_CANONICAL" | grep -qE "$ALLOWED_REGEX_SKIPPED_FIXER"; then
   if echo "$COMMAND_CANONICAL" | grep -qE 'write-skipped-fixer-trace\.sh[^&|;]*--reason' \
      && echo "$COMMAND_CANONICAL" | grep -qE 'write-skipped-fixer-trace\.sh[^&|;]*--upstream-merge-path'; then
+    # friction-skip: trivial-fast-path — input absent or non-applicable
     exit 0
   else
     deny "Agent trace write guard: write-skipped-fixer-trace.sh invocation lacks --reason and/or --upstream-merge-path (both required AOC v1.2; closes #1250)."

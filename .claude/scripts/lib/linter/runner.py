@@ -3600,6 +3600,117 @@ def main() -> int:
         return out
 
 
+    def check_hook_bypass_manifest_completeness(rule):
+        """#1349 + #1350: every entry in declared bypass manifests must have
+        ALL required_fields populated, with category in valid_categories.
+        Mirrors the validator_inventory_completeness skip_validators
+        schema-validation pattern.
+        """
+        findings = []
+        manifests = rule.get("manifests", [])
+        for mdef in manifests:
+            mpath = mdef.get("path", "")
+            entries_field = mdef.get("entries_field", "")
+            required_fields = mdef.get("required_fields", [])
+            valid_categories = set(mdef.get("valid_categories", []))
+            full = os.path.join(REPO_ROOT, mpath)
+            if not os.path.isfile(full):
+                findings.append(_emit_finding(rule, f"manifest missing: {mpath}"))
+                continue
+            try:
+                m = json.load(open(full))
+            except (OSError, json.JSONDecodeError) as e:
+                findings.append(_emit_finding(rule, f"manifest parse error ({mpath}): {e}"))
+                continue
+            entries = m.get(entries_field, [])
+            if not isinstance(entries, list):
+                findings.append(_emit_finding(rule,
+                    f"{mpath}: top-level field '{entries_field}' must be an "
+                    f"array, got {type(entries).__name__}"))
+                continue
+            for i, entry in enumerate(entries):
+                if not isinstance(entry, dict):
+                    findings.append(_emit_finding(rule,
+                        f"{mpath}.{entries_field}[{i}]: must be an object, "
+                        f"got {type(entry).__name__}"))
+                    continue
+                for fname in required_fields:
+                    val = entry.get(fname)
+                    if val is None or (isinstance(val, str) and not val.strip()):
+                        findings.append(_emit_finding(rule,
+                            f"{mpath}.{entries_field}[{i}]: required field "
+                            f"'{fname}' missing or empty"))
+                if "category" in required_fields:
+                    cat = entry.get("category")
+                    if cat is not None and cat not in valid_categories:
+                        findings.append(_emit_finding(rule,
+                            f"{mpath}.{entries_field}[{i}]: category={cat!r} "
+                            f"not in valid_categories={sorted(valid_categories)}"))
+        return findings
+
+
+    def check_hook_silent_skip_friction_pairing(rule):
+        """#1349 + #1350: every `exit 0` / `sys.exit(0)` in a PreToolUse hook
+        must be paired with a friction-log call within lookback_lines preceding
+        lines, OR carry a `# friction-skip: <reason>` pragma on same/preceding
+        line. Modeled on check_branch_checkout_propagation_pairing
+        (line-by-line scan with window) and check_bash_hook_write_operator_binding
+        (pragma suppression).
+        """
+        findings = []
+        rid = rule.get("id", "<unknown>")
+        scan_glob = rule.get("scan_glob", "")
+        exclude_paths = set(rule.get("exclude_paths", []))
+        exit_pattern = rule.get("exit_pattern", "")
+        friction_call_pattern = rule.get("friction_call_pattern", "")
+        lookback = rule.get("lookback_lines", 10)
+        pragma = rule.get("pragma", "# friction-skip:")
+        try:
+            exit_re = re.compile(exit_pattern)
+        except re.error as exc:
+            return [f"  [{rid}] invalid exit_pattern regex: {exc}"]
+        try:
+            friction_re = re.compile(friction_call_pattern)
+        except re.error as exc:
+            return [f"  [{rid}] invalid friction_call_pattern regex: {exc}"]
+        files = sorted(glob.glob(os.path.join(REPO_ROOT, scan_glob)))
+        for full in files:
+            rel = os.path.relpath(full, REPO_ROOT)
+            if rel in exclude_paths:
+                continue
+            try:
+                with open(full, encoding="utf-8") as f:
+                    text = f.read()
+            except OSError:
+                continue
+            lines = text.split("\n")
+            for i, line in enumerate(lines):
+                # Skip pure comment lines as match candidates so a comment
+                # mentioning "exit 0" doesn't false-match.
+                if line.lstrip().startswith("#"):
+                    continue
+                if not exit_re.search(line):
+                    continue
+                # Pragma on same line.
+                if pragma in line:
+                    continue
+                # Pragma on directly preceding line.
+                if i > 0 and pragma in lines[i - 1]:
+                    continue
+                # Friction-call within lookback window (preceding `lookback`
+                # lines, NOT including the exit line itself).
+                start = max(0, i - lookback)
+                window = "\n".join(lines[start:i])
+                if friction_re.search(window):
+                    continue
+                findings.append(_emit_finding(rule,
+                    f"{rel}:{i+1}: `{line.strip()}` is an unfrictioned silent "
+                    f"skip — add a `_write_hook_friction \"...\"` call within "
+                    f"{lookback} preceding lines OR annotate with "
+                    f"`{pragma} <reason>` on this or the prior line"))
+        return findings
+
+
     # ---------------------------------------------------------------------------
     # Cross-file rule dispatch — registry-driven with type + field validation.
     #
@@ -3696,6 +3807,21 @@ def main() -> int:
             {"enumeration_glob", "consumption_patterns", "authoritative_source", "pragma"},
             {"caller_threshold", "excluded_basenames", "allowed_extensions"},
             True,  # is_strict_aoc — block at lifecycle-finalize.sh:289 even under --warn-only
+        ),
+        # #1349 + #1350 — silent-bypass class prevention. Both block under
+        # --strict-aoc to prevent regression: a hook landing with an
+        # unfrictioned silent exit 0 fails lifecycle-finalize.sh:289.
+        "hook_bypass_manifest_completeness": (
+            check_hook_bypass_manifest_completeness,
+            {"manifests"},
+            set(),
+            True,  # is_strict_aoc — manifests are runtime-load-bearing
+        ),
+        "hook_silent_skip_friction_pairing": (
+            check_hook_silent_skip_friction_pairing,
+            {"scan_glob", "exit_pattern", "friction_call_pattern", "pragma"},
+            {"exclude_paths", "lookback_lines"},
+            True,  # is_strict_aoc — silent-bypass is the bug class itself
         ),
     }
     META_KEYS = {"id", "type", "severity", "description", "_transitional_note", "_comment", "convention_doc"}

@@ -23,6 +23,7 @@ shopt -s nullglob
 CTX_FILES=("$PROJECT_DIR"/.runs/*-context.json)
 shopt -u nullglob
 if [[ ${#CTX_FILES[@]} -eq 0 ]]; then
+  # friction-skip: trivial-fast-path — input absent or non-applicable
   exit 0
 fi
 
@@ -117,6 +118,7 @@ with open(os.environ['_SAG_DEGRADED_LOG'], 'a') as f:
     f.write(json.dumps(entry) + '\n')
 " 2>/dev/null || true
     unset _SAG_SUBAGENT_TYPE _SAG_SOURCE_SKILL _SAG_SOURCE_RUN_ID
+    # friction-skip: trivial-fast-path — input absent or non-applicable
     exit 0
   fi
 
@@ -169,6 +171,7 @@ entry = {
 with open('$_SAG_DEGRADED_LOG', 'a') as f:
     f.write(json.dumps(entry) + '\n')
 " 2>/dev/null || true
+  # friction-skip: trivial-fast-path — input absent or non-applicable
   exit 0
 fi
 
@@ -177,6 +180,7 @@ MANIFEST=$(resolve_framework_manifest "$ACTIVE_SKILL")
 
 if [[ ! -f "$MANIFEST" ]]; then
   # No manifest = no active skill lifecycle — allow
+  # friction-skip: trivial-fast-path — input absent or non-applicable
   exit 0
 fi
 
@@ -191,6 +195,7 @@ unset _SAG_MANIFEST _SAG_AGENT
 
 if [[ "$AGENT_IN_MANIFEST" != "yes" ]]; then
   # Agent not declared in manifest — allow (manifest is authoritative in v2)
+  # friction-skip: trivial-fast-path — input absent or non-applicable
   exit 0
 fi
 
@@ -375,4 +380,5 @@ with open('$_SAG_SPAWN_LOG', 'a') as f:
     f.write(json.dumps(entry) + '\n')
 " 2>/dev/null || true
 
+# friction-skip: trivial-fast-path — input absent or non-applicable
 exit 0

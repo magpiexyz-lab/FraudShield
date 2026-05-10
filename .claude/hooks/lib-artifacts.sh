@@ -157,11 +157,13 @@ prompt = sys.stdin.read()
 m = re.search(r'CLAIMED_SHARED_START\n(.*?)CLAIMED_SHARED_END', prompt, re.DOTALL)
 if not m:
     print('OK')
+    # friction-skip: post-validation — exit follows authoritative decision (allow-list match, deny path, or successful validation)
     sys.exit(0)
 files = [f.strip() for f in m.group(1).strip().split('\n') if f.strip()]
 claims_path = os.path.join('${PROJECT_DIR}', '.runs', 'design-claims.json')
 if not os.path.exists(claims_path):
     print('NO_CLAIMS_FILE')
+    # friction-skip: post-validation — exit follows authoritative decision (allow-list match, deny path, or successful validation)
     sys.exit(0)
 claims = json.load(open(claims_path)).get('claims', {})
 invalid = [f for f in files if f not in claims]

@@ -517,6 +517,38 @@
         ".claude/patterns/template-coherence-rules.json"
       ],
       "description": "#1261 — JSON variant of the .md rule. Same scan logic but for .claude/**/*.json files. Split into two entries because Python glob.glob does not support brace expansion (.{md,json} matches zero files), so the rule type is registered twice with single-extension globs. The rule's own definition file is excluded via exclude_globs to prevent self-matching."
+    },
+    {
+      "id": "hook-bypass-manifest-completeness",
+      "type": "hook_bypass_manifest_completeness",
+      "severity": "block",
+      "manifests": [
+        {
+          "path": ".claude/patterns/gate-readable-canonical-exemptions.json",
+          "entries_field": "exemptions",
+          "required_fields": ["path", "category", "justification"],
+          "valid_categories": ["structural-bootstrap", "derive-pending", "legacy-migration"]
+        },
+        {
+          "path": ".claude/patterns/adversarial-merge-trace-skip.json",
+          "entries_field": "skip_entries",
+          "required_fields": ["category", "solve_depth_value", "justification"],
+          "valid_categories": ["light_mode_skip", "recovery_skip", "audit_only_skip"]
+        }
+      ],
+      "description": "#1349 + #1350 — every entry in the bypass-manifests must declare both a category (from the per-manifest valid_categories enum) AND a non-empty justification. Closes the silent-fail-open class where a manifest entry without provenance metadata legitimizes any drift. Sibling rule hook-silent-skip-friction-pairing checks the runtime side (every silent exit must friction-log or pragma)."
+    },
+    {
+      "id": "hook-silent-skip-friction-pairing",
+      "type": "hook_silent_skip_friction_pairing",
+      "severity": "block",
+      "scan_glob": ".claude/hooks/*.sh",
+      "exclude_paths": [".claude/hooks/lib-core.sh"],
+      "exit_pattern": "(^[\\t ]*exit[\\t ]+0\\b)|(\\b(?:&&|\\|\\|)[\\t ]*exit[\\t ]+0\\b)|(\\bsys\\.exit\\(0\\))",
+      "friction_call_pattern": "(_write_hook_friction|deny[\\t ]|deny_errors[\\t ]|handle_validation[\\t ])",
+      "lookback_lines": 10,
+      "pragma": "# friction-skip:",
+      "description": "#1349 + #1350 — every `exit 0` / `sys.exit(0)` in a PreToolUse hook must EITHER (a) be preceded within 10 lines by a friction-log call (_write_hook_friction / deny / deny_errors / handle_validation) OR (b) carry a `# friction-skip: <reason>` pragma on the same line or the directly preceding line. Closes Issues #1349 + #1350 silent-bypass class. Regex covers all forms: bare `exit 0`, `[[ ... ]] && exit 0`, `... || exit 0`, and Python `sys.exit(0)`. lib-core.sh excluded because handle_validation:170 IS the canonical fail-open implementation (PARSE_ERROR → exit 0)."
     }
   ]
 }
