@@ -240,6 +240,36 @@ def _candidates_from_agent_recoveries(rid: str) -> list[dict]:
     return out
 
 
+def _candidates_from_trace_overwrites(rid: str) -> list[dict]:
+    """5th candidate source (#1335): trace-overwrite candidates from
+    detect-trace-overwrites.py.
+
+    Runs the detector first (idempotent, fail-open), then merges its
+    candidates here. The detector flags 2+ spawns of the same agent within
+    a single run_id when the agent is NOT in
+    .claude/patterns/sanctioned-respawn-flows.json — OR when sanctioned but
+    its precondition (e.g., solve-critic round-2 requires the round-1
+    sidecar to exist with round=1) is unmet.
+    """
+    import subprocess
+    try:
+        subprocess.run(
+            ["python3", ".claude/scripts/detect-trace-overwrites.py"],
+            check=False,
+            capture_output=True,
+        )
+    except Exception:
+        pass
+    path = ".runs/trace-overwrite-candidates.json"
+    if not os.path.isfile(path):
+        return []
+    try:
+        data = json.load(open(path))
+    except Exception:
+        return []
+    return data.get("candidates", [])
+
+
 def main() -> int:
     rid = _active_run_id()
     candidates: list[dict] = []
@@ -247,6 +277,7 @@ def main() -> int:
     candidates.extend(_candidates_from_template_edits(rid))
     candidates.extend(_candidates_from_coherence_findings(rid))
     candidates.extend(_candidates_from_agent_recoveries(rid))
+    candidates.extend(_candidates_from_trace_overwrites(rid))
 
     # Sort: high → medium → low, then by candidate_id for stability
     order = {"high": 0, "medium": 1, "low": 2}
