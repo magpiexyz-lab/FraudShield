@@ -287,11 +287,6 @@ STALE_ARTIFACTS=(
   # #1198: backstop for state-99 identity assertion — UNION sweep in Slice 5b
   # will preserve this; for the hotfix window, ensure prior-skill artifact is gone.
   "$PROJECT_DIR/.runs/observation-enforcement.json"
-  # #1331: solve-critic round-1 archive sidecar (outside .runs/agent-traces/,
-  # so the directory wipe at line ~393 does not catch it). Without this entry,
-  # a stale archive from a prior /resolve|/change|/solve run silently satisfies
-  # verify-resolve-challenge.py's runtime postcondition on the next run.
-  "$PROJECT_DIR/.runs/solve-critic-round1.json"
 )
 
 # --- Slice 5b: UNION with registry-derived transient-cross-skill artifacts ---
