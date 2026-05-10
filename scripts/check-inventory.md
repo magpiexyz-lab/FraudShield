@@ -1,10 +1,10 @@
 # Check Inventory
 
 Scannable reference listing all automated checks by name, grouped by validator.
-86 active checks consolidated into 82 inventory rows.
+87 active checks consolidated into 83 inventory rows.
 Checks 3 and 7 are archetype-aware — they read `required_experiment_fields` and `excluded_stacks` from archetype frontmatter.
 
-Last updated: 2026-04-26
+Last updated: 2026-05-10
 
 ## Validation philosophy
 
@@ -113,6 +113,7 @@ better enforced by the scoped LLM review (`scripts/scoped-review-prompt.md`).
 | Warn on gate-keeper prompts missing Verify criteria | Gate-keeper spawn instructions must include explicit `Verify:` criteria — prompts without verification instructions get a WARN (non-blocking) | #18 |
 | Forbid bash 4+ parameter expansion in shell files | Hook + script files must not use `${var^^}` / `${var,,}` (bash 4+) — fails silently on macOS default bash 3.2; use `tr` instead (recurrence guard for #1141) | #25 |
 | Require shadcn-primitive filter on `@/components/` extraction | Skill/agent files that regex-extract `@/components/` imports must reference `@/components/ui/` or `@/components/magicui/` as a filter — otherwise auto-generated shadcn primitives get bundled into thin-wrapper / claim-candidate sets (recurrence guard for #1154) | #26 |
+| Require clientIpFromHeaders helper for rate-limit examples | Stack-file code blocks under `.claude/stacks/**/*.md` that read `headers.get("x-forwarded-for")` must do so inside a code block that also defines `function clientIpFromHeaders` (the canonical helper). All call sites must use the helper instead — Vercel's proxy appends the verified client IP as the LAST XFF entry; raw reads let attackers rotate prefix to bypass per-IP rate caps (recurrence guard for #1361) | #27 |
 
 ## Cross-validator overlaps
 

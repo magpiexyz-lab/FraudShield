@@ -115,7 +115,7 @@ NEXT_PUBLIC_SITE_URL=https://your-domain.com
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getStripe } from "@/lib/stripe";
-import { rateLimit } from "@/lib/rate-limit";
+import { rateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
 
 const checkoutSchema = z.object({
   // TODO: Replace z.string() with z.enum([...]) listing valid plan values for this project
@@ -123,7 +123,7 @@ const checkoutSchema = z.object({
 });
 
 export async function POST(request: Request) {
-  const ip = request.headers.get("x-forwarded-for") ?? "unknown";
+  const ip = clientIpFromHeaders(request.headers);
   const { success } = rateLimit(ip, { limit: 10, windowMs: 60_000 });
   if (!success) {
     return NextResponse.json({ error: "Too many requests" }, { status: 429 });
@@ -195,10 +195,10 @@ import { NextResponse } from "next/server";
 import { getStripe } from "@/lib/stripe";
 import { createServiceRoleClient } from "@/lib/supabase-server";
 import { trackServerEvent } from "@/lib/analytics-server";
-import { rateLimit } from "@/lib/rate-limit";
+import { rateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
 
 export async function POST(request: Request) {
-  const ip = request.headers.get("x-forwarded-for") ?? "unknown";
+  const ip = clientIpFromHeaders(request.headers);
   const { success } = rateLimit(ip, { limit: 30, windowMs: 60_000 });
   if (!success) {
     return NextResponse.json({ error: "Too many requests" }, { status: 429 });

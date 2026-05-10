@@ -358,6 +358,36 @@ if [[ -z "${SKIP_PII_FAKEDOOR_GUARD:-}" ]] && [[ -f "$PII_GUARD" ]]; then
   fi
 fi
 
+# --- Step 4.6 prelude: derive SKILL_TYPE early ---
+# Issue #1356: SKILL_TYPE was previously derived AFTER Step 4.6 (in the
+# delivery preamble at Step 5), so Step 4.6's RMG v2 gate could not consult
+# it. Derive once here and consume from both Step 4.6 (gate) and Step 5
+# (delivery skip). Fail-closed on read error: empty SKILL_TYPE falls through
+# to existing gates so a malformed frontmatter does not silently bypass.
+#
+# Contract: any new gate that enforces SKILL_TYPE-sensitive constraints
+# (defect-only checks, code-writing-only checks) MUST consult $SKILL_TYPE
+# and branch on `analysis-only`. /solve --defect emits forward-looking
+# recurrence guards; the next /resolve cycle materializes the artifact.
+SKILL_TYPE=""
+SKILL_CMD_FILE="$PROJECT_DIR/.claude/commands/$SKILL.md"
+if [[ -f "$SKILL_CMD_FILE" ]]; then
+  SKILL_TYPE=$(python3 -c "
+import sys, re
+try:
+    txt = open(sys.argv[1]).read()
+    m = re.match(r'---\n(.*?)\n---', txt, re.DOTALL)
+    if m:
+        for line in m.group(1).splitlines():
+            k, _, v = line.partition(':')
+            if k.strip() == 'type':
+                print(v.strip().strip('\"\\''))
+                break
+except Exception:
+    pass
+" "$SKILL_CMD_FILE" 2>/dev/null || echo "")
+fi
+
 # --- Step 4.6: RMG v2 typed-guard artifact existence + advisory recurrence detector ---
 # Runs only when .runs/solve-trace.json exists AND prevention_analysis.problem_type
 # == "defect". Two responsibilities:
@@ -370,6 +400,13 @@ fi
 #      `unguardability_rationale` is present and non-trivial. Failure BLOCKS
 #      delivery. This is the layer that turned recurrence_guard from a
 #      documented intent into an enforced artifact.
+#
+#   1b. Issue #1356: when SKILL_TYPE=analysis-only, pass --analysis-only to the
+#       verifier. The flag skips path 1 (artifact-in-diff) because analysis-only
+#       skills (e.g. /solve --defect) emit forward-looking guards — the
+#       artifact is materialized by the NEXT /resolve cycle, not this one.
+#       The kind=none rationale check (path 2) STILL runs unconditionally so
+#       analysis-only skills cannot ship `kind=none` without a real rationale.
 #
 #   2. Best-effort: invoke the recurrence-detector (Phase B) in advisory mode.
 #      Wrapped in `set +e` — any non-zero exit logs a warning and is ignored
@@ -396,9 +433,19 @@ except Exception:
     if [[ -z "$MERGE_BASE_REF" ]]; then
       MERGE_BASE_REF=$(git -C "$PROJECT_DIR" merge-base origin/main HEAD 2>/dev/null || echo "main")
     fi
+    RMG_FLAGS=()
+    if [[ "$SKILL_TYPE" == "analysis-only" ]]; then
+      RMG_FLAGS+=(--analysis-only)
+      echo "INFO: Step 4.6 invoking RMG v2 verifier with --analysis-only ($SKILL is analysis-only; forward-looking guard accepted, kind=none rationale still enforced)" >&2
+    fi
+    # Defensive expansion: bash 3.2 set -u errors on `"${arr[@]}"` when arr is
+    # empty. Use `"${arr[@]+...}"` form (consistent with check-observation-
+    # artifacts.sh:390 precedent) so an empty RMG_FLAGS expands to nothing
+    # without tripping unbound-variable.
     if ! python3 "$PROJECT_DIR/.claude/scripts/verify-rmg-guard-artifact-in-diff.py" \
           --trace "$SOLVE_TRACE" \
-          --merge-base "$MERGE_BASE_REF" >&2; then
+          --merge-base "$MERGE_BASE_REF" \
+          "${RMG_FLAGS[@]+"${RMG_FLAGS[@]}"}" >&2; then
       echo "BLOCK: RMG v2 typed-guard artifact check failed at lifecycle-finalize Step 4.6." >&2
       echo "Re-run: python3 .claude/scripts/verify-rmg-guard-artifact-in-diff.py --trace .runs/solve-trace.json --merge-base \$(git merge-base origin/main HEAD)" >&2
       exit 1
@@ -460,30 +507,11 @@ PR_TITLE="$PROJECT_DIR/.runs/pr-title.txt"
 PR_BODY="$PROJECT_DIR/.runs/pr-body.md"
 SKIP_FLAG="$PROJECT_DIR/.runs/delivery-skip.flag"
 
-# Skill-type gate — read `type:` from .claude/commands/<skill>.md frontmatter.
-# Analysis-only skills MUST never ship code even if stale delivery artifacts are
-# present (see observation #1004). Fail-closed: on read error, treat as unknown
-# (proceed to existing gates) so a malformed frontmatter does not block
-# legitimate code-writing skills.
-SKILL_TYPE=""
-SKILL_CMD_FILE="$PROJECT_DIR/.claude/commands/$SKILL.md"
-if [[ -f "$SKILL_CMD_FILE" ]]; then
-  SKILL_TYPE=$(python3 -c "
-import sys, re
-try:
-    txt = open(sys.argv[1]).read()
-    m = re.match(r'---\n(.*?)\n---', txt, re.DOTALL)
-    if m:
-        for line in m.group(1).splitlines():
-            k, _, v = line.partition(':')
-            if k.strip() == 'type':
-                print(v.strip().strip('\"\\''))
-                break
-except Exception:
-    pass
-" "$SKILL_CMD_FILE" 2>/dev/null || echo "")
-fi
-
+# SKILL_TYPE was already derived at the Step 4.6 prelude above. Reuse it here.
+# Skill-type gate — analysis-only skills MUST never ship code even if stale
+# delivery artifacts are present (see observation #1004). Fail-closed: on read
+# error SKILL_TYPE is empty, falling through to existing gates so a malformed
+# frontmatter does not block legitimate code-writing skills.
 if [[ "$SKILL_TYPE" == "analysis-only" ]]; then
   echo "INFO: $SKILL is analysis-only — skipping delivery (stale delivery artifacts ignored)" >&2
   DELIVERY_STATUS="skipped-analysis-only"

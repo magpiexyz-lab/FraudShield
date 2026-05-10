@@ -684,6 +684,46 @@ UTC is the right anchor because `now()` returns UTC `timestamptz` and dedupe is 
 - `maturity: canonical`
 - `anti_pattern: true`
 
+### When a table uses share/invite tokens for anonymous access, do NOT add `USING (TRUE)` SELECT policies
+
+```yaml
+id: supabase-rls-using-true-token-authed
+maturity: raw
+anti_pattern: false
+composite_identity:
+  root_cause_class: rls-policy-overly-permissive-on-token-authed-table
+  divergence_pattern: USING-true-instead-of-service-role-client
+  stack_scope: database/supabase
+composite_identity_hash: 05e3bdde373d
+symptom_keywords: [supabase, rls, USING-true, share-token, intake_forms, token-auth, anon-select, row-enumeration]
+fix_template: |
+  Drop the `USING (TRUE)` SELECT policy. Use `createServiceRoleClient()` in
+  the API route to bypass RLS for the token lookup; validate token length +
+  match + expiry + status in app code. See "Two server-side modes" section.
+prevention_mechanism: stack-knowledge-anti-pattern-guidance
+confidence_score: 0.9
+occurrence_count: 1
+linked_issues: [1346]
+first_seen: 2026-05-10
+last_seen: 2026-05-10
+graduated_to: null
+```
+
+A `USING (TRUE)` SELECT policy grants unrestricted read access to every row in the table — defeating RLS. The `intake_forms` policy removed during PR-E1 (security-fixer fix_id `security-fixer:verify-2026-05-07T20:02:24Z:0`) was added under the mistaken intuition that "anonymous users need to fetch by token, so RLS must allow public SELECT." The correct pattern is the **service-role client + token validation** flow already documented at [`### Two server-side modes: cookie-authed vs token-authed`](#two-server-side-modes-cookie-authed-vs-token-authed): the route handler imports `createServiceRoleClient()` (RLS bypassed), validates the token in application code (length, equality, expiry, status), and returns 404 on miss. RLS stays restrictive; the token is the authorization.
+
+```sql
+-- WRONG — opens row enumeration / token-bypass attacks. An attacker can scan
+-- IDs (or any indexed column) without ever knowing a valid token.
+CREATE POLICY "intake_forms_public_read" ON intake_forms
+  FOR SELECT USING (TRUE);
+
+-- RIGHT — keep RLS restrictive (no SELECT policy for anon at all). API route
+-- handles the lookup via createServiceRoleClient() with token validation
+-- (see "Two server-side modes" section above for the canonical pattern).
+```
+
+The same warning applies to `WITH CHECK (TRUE)` on INSERT policies — see the existing Security bullet (`Never use WITH CHECK (true) on INSERT policies`) in the Security section. Both forms grant unconditional access.
+
 ### When `npm run dev` fails with `TypeError: Failed to fetch` in demo mode
 Client-side Supabase needs `NEXT_PUBLIC_DEMO_MODE=true` in addition to server-side `DEMO_MODE=true`. Always set both together:
 

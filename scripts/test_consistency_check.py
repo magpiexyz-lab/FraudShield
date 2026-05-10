@@ -431,3 +431,71 @@ class TestCheck24DemoServerStartupDrift:
         assert result.returncode == 1
         assert "rogue-procedure.md" in result.stdout
         assert "not in Check 24 registry" in result.stdout
+
+
+class TestCheck27ClientIpHelper:
+    """Stack-file rate-limit examples must use clientIpFromHeaders helper.
+
+    Recurrence guard for #1361: Vercel proxy appends the verified client IP as
+    the LAST X-Forwarded-For entry. A raw `headers.get("x-forwarded-for")`
+    read used as a rate-limit key lets attackers rotate the header prefix to
+    bypass the per-IP cap. The canonical fix is the `clientIpFromHeaders`
+    helper exported from `src/lib/rate-limit`.
+
+    These tests are also the fail-closed guard against deletion of Check 27
+    itself: if a future maintainer removes the check from
+    consistency-check.sh, both tests fail in CI (`pytest scripts/`).
+    """
+
+    def test_blocks_raw_xff_in_stack_file(self, tmp_path):
+        # Minimum scaffold so consistency-check.sh's earlier checks pass and
+        # we exercise Check 27 specifically. Need a code-writing skill so the
+        # CODE_WRITING_SKILLS array is non-empty (bash set -u).
+        (tmp_path / ".claude" / "commands").mkdir(parents=True)
+        write_file(
+            str(tmp_path / ".claude" / "commands" / "test.md"),
+            "---\ntype: code-writing\n---\nFollow patterns/verify.md.\n",
+        )
+        # Stack file with raw XFF read in a code block, no helper definition.
+        write_file(
+            str(tmp_path / ".claude" / "stacks" / "hosting" / "test-host.md"),
+            (
+                "# Test host\n\n"
+                "```ts\n"
+                'import { rateLimit } from "@/lib/rate-limit";\n'
+                'const ip = request.headers.get("x-forwarded-for") ?? "unknown";\n'
+                "const { success } = rateLimit(ip);\n"
+                "```\n"
+            ),
+        )
+        result = run_consistency_check(tmp_path)
+        assert result.returncode == 1
+        assert "Check 27" in result.stdout
+        assert "clientIpFromHeaders" in result.stdout
+
+    def test_passes_when_helper_defined_in_same_block(self, tmp_path):
+        (tmp_path / ".claude" / "commands").mkdir(parents=True)
+        write_file(
+            str(tmp_path / ".claude" / "commands" / "test.md"),
+            "---\ntype: code-writing\n---\nFollow patterns/verify.md.\n",
+        )
+        # Stack file where the SAME code block contains both the helper
+        # definition (function clientIpFromHeaders) and the literal XFF read.
+        # This is the canonical helper-definition pattern shipped by
+        # vercel.md and is allowed.
+        write_file(
+            str(tmp_path / ".claude" / "stacks" / "hosting" / "test-host.md"),
+            (
+                "# Test host\n\n"
+                "```ts\n"
+                "export function clientIpFromHeaders(headers: Headers): string {\n"
+                '  const xff = headers.get("x-forwarded-for");\n'
+                '  return xff?.split(",").at(-1)?.trim() ?? "unknown";\n'
+                "}\n"
+                "```\n"
+            ),
+        )
+        result = run_consistency_check(tmp_path)
+        assert result.returncode == 0
+        assert "Check 27" in result.stdout
+        assert "PASSED" in result.stdout

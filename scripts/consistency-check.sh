@@ -720,6 +720,65 @@ else
   echo "ok"
 fi
 
+# Check 27: rate-limit examples must derive client IP via clientIpFromHeaders helper
+# (recurrence guard for #1361 — Vercel proxy appends verified client IP as LAST
+# X-Forwarded-For entry; raw header read lets attackers rotate prefix to bypass
+# per-IP cap.) Scans .claude/stacks/**/*.md fenced TS/JS code blocks for the
+# anti-pattern `headers.get("x-forwarded-for")` and FAILs unless the SAME code
+# block also contains `function clientIpFromHeaders` (the helper definition
+# itself, by design, contains the literal — and is the one canonical location).
+# Only TS/JS code blocks are scanned: YAML/bash/sql/sh blocks may legitimately
+# quote the literal in prose (Stack Knowledge fix_template fields, anti-pattern
+# warnings) without it being executable code.
+echo -n "Check 27: rate-limit clientIpFromHeaders helper (#1361)... "
+XFF_VIOLATIONS=""
+while IFS= read -r f; do
+  [ -z "$f" ] && continue
+  # Walk fenced TS/JS code blocks. Per-block flags: in_ts_block (set on the
+  # opening ```ts / ```typescript / ```tsx / ```js / ```javascript / ```jsx),
+  # helper_defined (set on `function clientIpFromHeaders`), xff_seen (set on
+  # `headers.get("x-forwarded-for")`). On end-of-block (closing ```), if
+  # xff_seen && !helper_defined: violation. Non-TS/JS blocks are skipped.
+  block_violations=$(awk -v file="$f" '
+    /^[[:space:]]*```[[:space:]]*(ts|typescript|tsx|js|javascript|jsx)[[:space:]]*$/ {
+      in_ts_block = 1; xff_seen = 0; helper_defined = 0; lines = 0
+      next
+    }
+    /^[[:space:]]*```[[:space:]]*$/ {
+      if (in_ts_block) {
+        if (xff_seen && !helper_defined) {
+          for (i = 0; i < lines; i++) print file ":" line_nums[i] ": raw headers.get(\"x-forwarded-for\") in TS/JS code block; use clientIpFromHeaders(headers) helper from src/lib/rate-limit (#1361)"
+        }
+        in_ts_block = 0; xff_seen = 0; helper_defined = 0; lines = 0
+      }
+      next
+    }
+    /^[[:space:]]*```/ {
+      # Non-TS opening fence — ignore until closing fence resets state above.
+      next
+    }
+    in_ts_block && /headers\.get\("x-forwarded-for"\)/ {
+      xff_seen = 1
+      line_nums[lines++] = NR
+    }
+    in_ts_block && /function clientIpFromHeaders/ {
+      helper_defined = 1
+    }
+  ' "$f")
+  if [ -n "$block_violations" ]; then
+    XFF_VIOLATIONS+="$block_violations"$'\n'
+  fi
+done <<< "$(find .claude/stacks -type f -name '*.md' 2>/dev/null)"
+if [ -n "$XFF_VIOLATIONS" ]; then
+  echo ""
+  echo "  FAIL: stack-file rate-limit examples must use clientIpFromHeaders helper (Vercel last-XFF-entry semantics):"
+  printf '%s' "$XFF_VIOLATIONS" | sed 's/^/    /'
+  echo "  Fix: import { clientIpFromHeaders } from \"@/lib/rate-limit\"; const ip = clientIpFromHeaders(request.headers);"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "ok"
+fi
+
 echo ""
 if [ "$WARNINGS" -gt 0 ]; then
   echo "WARNINGS: $WARNINGS weak postcondition(s) detected (non-blocking)."

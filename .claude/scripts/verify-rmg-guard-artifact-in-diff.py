@@ -6,11 +6,16 @@ through the RMG v2 parser (Phase A), and:
 
   * For `kind in {test, lint, hook, invariant}`: asserts the `artifact` path
     is either modified in the PR diff (`git diff <merge_base>...HEAD --name-only`)
-    or present in the working tree on disk. If neither, fails.
+    or present in the working tree on disk. If neither, fails. Skipped under
+    `--analysis-only` because analysis-only skills (e.g. /solve --defect)
+    emit forward-looking guards whose artifact is materialized by the next
+    /resolve cycle (#1356).
   * For `kind == "none"`: asserts `unguardability_rationale` is present and
     answers BOTH (a) why no executable check expresses the invariant, AND
     (b) which observation/human-review/monitoring process catches the next
-    instance. (Heuristic: hint A and hint B regexes both match.)
+    instance. (Heuristic: hint A and hint B regexes both match.) ALWAYS
+    enforced — the rationale check is independent of SKILL_TYPE and must
+    not be bypassed for analysis-only skills.
   * For `kind == "legacy_freetext"`: only reachable when the emergency
     escape hatch `RMG_V2_TOLERANT=1` is set. Logs a warning and exits 0.
     Default (escape hatch off) makes free-text fail at parse time (exit 1).
@@ -24,9 +29,13 @@ This script lives at finalize time, post-build pre-PR, NOT in
 CLI:
   --trace PATH         path to solve-trace.json (default: .runs/solve-trace.json)
   --merge-base REF     git ref to compare HEAD against (default: origin/main)
+  --analysis-only      skip the artifact-in-diff/disk check for kinds
+                       test/lint/hook/invariant (issue #1356). The
+                       kind=none rationale check still runs unconditionally.
 
 Exit codes:
-  0  pass (also: kind=legacy_freetext under RMG_V2_TOLERANT=1 escape hatch)
+  0  pass (also: kind=legacy_freetext under RMG_V2_TOLERANT=1 escape hatch;
+     also: analysis-only skip for typed-artifact kinds)
   1  parse failure (default for legacy free-text post-cutover)
   2  artifact missing from PR diff and working tree
   3  unguardability_rationale missing or insufficient (kind=none)
@@ -85,6 +94,16 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--trace", default=".runs/solve-trace.json")
     parser.add_argument("--merge-base", default="origin/main")
+    parser.add_argument(
+        "--analysis-only",
+        action="store_true",
+        help=(
+            "Skip the artifact-in-diff/disk check for typed kinds "
+            "(test/lint/hook/invariant). kind=none rationale check is "
+            "preserved. Used by lifecycle-finalize.sh Step 4.6 when "
+            "SKILL_TYPE=analysis-only (issue #1356)."
+        ),
+    )
     args = parser.parse_args(argv)
 
     project_dir = Path(os.environ.get("PROJECT_DIR") or os.getcwd()).resolve()
@@ -164,6 +183,19 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 2
+
+    if args.analysis_only:
+        # Analysis-only skills (e.g. /solve --defect) emit forward-looking
+        # guards: the artifact is materialized by the next /resolve cycle,
+        # not the current cycle. Skip the artifact presence check (path 1)
+        # while preserving the kind=none rationale check above (path 2).
+        # Issue #1356.
+        print(
+            f"PASS: kind={kind} artifact={artifact!r} accepted under "
+            f"--analysis-only (forward-looking guard; next /resolve "
+            f"materializes the artifact)"
+        )
+        return 0
 
     diff_files = _git_diff_files(args.merge_base, project_dir)
     if _artifact_present(artifact, diff_files, project_dir):

@@ -186,14 +186,29 @@ export function rateLimit(
   entry.count++;
   return { success: true, remaining: limit - entry.count };
 }
+
+// Vercel's proxy appends the verified client IP as the LAST entry in the
+// X-Forwarded-For chain. Entries BEFORE the last one are forwarded from the
+// client (or upstream proxies) and are NOT trusted — an attacker can supply
+// arbitrary `X-Forwarded-For: <random>` to inject a unique-per-request key,
+// bypassing per-IP rate caps. Always derive the rate-limit key via this
+// helper, never via the raw header value. (Issue #1361 / CVSS-medium.)
+export function clientIpFromHeaders(headers: Headers): string {
+  const xff = headers.get("x-forwarded-for");
+  if (xff) {
+    const last = xff.split(",").at(-1)?.trim();
+    if (last) return last;
+  }
+  return headers.get("x-real-ip") ?? "unknown";
+}
 ```
 
 **Usage in route handlers:**
 ```ts
-import { rateLimit } from "@/lib/rate-limit";
+import { rateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
 
 // At the top of the handler:
-const ip = request.headers.get("x-forwarded-for") ?? "unknown";
+const ip = clientIpFromHeaders(request.headers);
 const { success } = rateLimit(ip, { limit: 10, windowMs: 60_000 });
 if (!success) {
   return NextResponse.json({ error: "Too many requests" }, { status: 429 });
@@ -217,7 +232,7 @@ Update each site to `await` the call, and propagate `async` up to the route hand
 ```ts
 // BEFORE (synchronous — works against in-memory Map)
 export async function POST(request: Request) {
-  const ip = request.headers.get("x-forwarded-for") ?? "unknown";
+  const ip = clientIpFromHeaders(request.headers);
   const { success } = rateLimit(ip, { limit: 10, windowMs: 60_000 });
   if (!success) return NextResponse.json({ error: "Too many requests" }, { status: 429 });
   // ...
@@ -225,7 +240,7 @@ export async function POST(request: Request) {
 
 // AFTER (async — required against Upstash Redis sliding-window)
 export async function POST(request: Request) {
-  const ip = request.headers.get("x-forwarded-for") ?? "unknown";
+  const ip = clientIpFromHeaders(request.headers);
   const { success } = await rateLimit(ip, { limit: 10, windowMs: 60_000 });
   if (!success) return NextResponse.json({ error: "Too many requests" }, { status: 429 });
   // ...
@@ -248,7 +263,9 @@ After the upgrade, remove the `// TODO: Upgrade to Upstash Redis for cross-insta
 When experiment.yaml behaviors involve an AI/LLM provider (e.g., `external/anthropic`, `external/openai`), apply rate limiting to all API routes that call the provider — not just auth and payment routes. Use a lower limit than standard routes (suggested default: 5 req/min/IP) since each request can generate significant inference costs. Adjust the limit based on the specific integration's cost profile and expected usage patterns.
 
 ```ts
-const ip = request.headers.get("x-forwarded-for") ?? "unknown";
+import { rateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
+
+const ip = clientIpFromHeaders(request.headers);
 const { success } = rateLimit(ip, { limit: 5, windowMs: 60_000 });
 if (!success) return NextResponse.json({ error: "Too many requests" }, { status: 429 });
 ```
@@ -260,7 +277,7 @@ Session-keyed limits (keyed on a user's session_id cookie or auth subject) give 
 ```ts
 // 1. IP floor — prevents session rotation abuse. Sized higher than the session
 //    limit (e.g., 3x) to allow legitimate multi-session use from shared NAT.
-const ip = request.headers.get("x-forwarded-for") ?? "unknown";
+const ip = clientIpFromHeaders(request.headers);
 const ipCheck = rateLimit(ip, { limit: 30, windowMs: 60_000 });
 if (!ipCheck.success) {
   return NextResponse.json({ error: "Too many requests" }, { status: 429 });
@@ -298,6 +315,37 @@ Add a `vercel.json` with baseline security headers. These apply to all responses
 
 - **CSP intentionally omitted** — Content-Security-Policy breaks inline styles from UI libraries (shadcn, Tailwind) and analytics scripts (PostHog). Add CSP when ready for strict content security.
 - Bootstrap should create `vercel.json` with these headers if it doesn't already exist. If `vercel.json` exists (e.g., for rewrites), merge the `headers` array.
+
+## Stack Knowledge
+
+### When implementing rate limiting on Vercel, derive the IP key from the LAST X-Forwarded-For entry, never the raw header
+
+```yaml
+id: vercel-rate-limit-raw-xff-bypass
+maturity: raw
+anti_pattern: false
+composite_identity:
+  root_cause_class: rate-limit-key-bound-to-attacker-controllable-xff
+  divergence_pattern: raw-xff-as-rate-limit-key
+  stack_scope: hosting/vercel
+composite_identity_hash: b989da182fc7
+symptom_keywords: [vercel, rate-limit, x-forwarded-for, xff, ip-spoofing, rate-limit-bypass, cvss-medium]
+fix_template: |
+  Use the `clientIpFromHeaders(headers)` helper exported from
+  `src/lib/rate-limit.ts`. The helper splits XFF on commas and returns the
+  LAST entry trimmed (Vercel's proxy-verified client IP), falling back to
+  `x-real-ip` then `"unknown"`. Never use raw `headers.get("x-forwarded-for")`
+  as a rate-limit key — attackers can append arbitrary prefix entries.
+prevention_mechanism: consistency-check.sh Check 27 (forbids raw XFF reads in stack-file code blocks outside the helper definition); pytest scripts/test_consistency_check.py::TestCheck27ClientIpHelper (fail-closed against Check 27 deletion)
+confidence_score: 0.9
+occurrence_count: 1
+linked_issues: [1361]
+first_seen: 2026-05-10
+last_seen: 2026-05-10
+graduated_to: null
+```
+
+Vercel's proxy appends the verified client IP as the LAST comma-separated entry in `X-Forwarded-For`. Entries before it are forwarded from the client (or upstream proxies) and are NOT trusted. Reading the entire header (or `.split(",")[0]`) and using it as the rate-limit key lets an attacker rotate `X-Forwarded-For: <random>` per request to mint unique keys, bypassing the per-IP cap entirely. The same pattern applies on Railway and other reverse-proxy hosts. The canonical fix is the `clientIpFromHeaders` helper; all rate-limited route handlers (auth, payment, AI/LLM) import and use it.
 
 ## Patterns
 - Production deploys are manual — re-run `/deploy` or use `npx vercel deploy --prod`
