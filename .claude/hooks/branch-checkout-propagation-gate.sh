@@ -26,6 +26,7 @@ source "$(dirname "$0")/lib.sh"
 parse_payload
 
 COMMAND=$(read_payload_field "tool_input.command")
+# friction-skip: trivial-fast-path — empty Bash COMMAND has no chain to analyze.
 [[ -z "$COMMAND" ]] && exit 0
 
 # Quick filter — no `git checkout -b` literal anywhere → not our concern.
@@ -41,7 +42,12 @@ DECOMPOSER="$PROJECT_DIR/.claude/scripts/lib/decompose-bash-chain.py"
 # If decomposer missing, fail OPEN — avoid blocking unrelated work.
 # (Decomposer was added by PR #1339; if for some reason it's not present
 # in this checkout, the gate cannot reliably analyze the chain.)
-[[ ! -f "$DECOMPOSER" ]] && exit 0
+# #1349 follow-up: friction-log so missing-decomposer is observable in
+# retrospectives (was a silent fail-open until regex fix in fix/1349-1350-followup).
+if [[ ! -f "$DECOMPOSER" ]]; then
+  _write_hook_friction "branch-checkout-propagation-gate: decomposer $DECOMPOSER absent — failing open. Gate cannot analyze the chain."
+  exit 0
+fi
 
 # Decompose chain — fail-CLOSED on parse error (mirror state-completion-gate).
 DECOMP_OUT=$(printf '%s' "$COMMAND" | python3 "$DECOMPOSER" 2>&1)

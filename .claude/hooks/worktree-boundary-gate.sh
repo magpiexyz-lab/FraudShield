@@ -43,6 +43,7 @@ if [[ -z "$FILE_PATH" ]]; then
 fi
 
 # Defensive: if neither field is present, the hook has nothing to validate.
+# friction-skip: trivial-fast-path — neither file_path nor notebook_path provided.
 [[ -z "$FILE_PATH" ]] && exit 0
 
 # 2. Lexical allowlist fast-path. Zero git invocation for the common case.
@@ -57,10 +58,12 @@ GIT_DIR=$(git rev-parse --git-dir 2>/dev/null || true)
 GIT_COMMON_DIR=$(git rev-parse --git-common-dir 2>/dev/null || true)
 
 # Not in a git repo → NO-OP.
+# friction-skip: trivial-fast-path — outside any git repo, hook does not apply.
 [[ -z "$GIT_DIR" || -z "$GIT_COMMON_DIR" ]] && exit 0
 
 # Primary worktree (or non-worktree) → NO-OP. The hook only enforces in
 # non-primary worktrees, where the boundary defect originates.
+# friction-skip: post-validation — primary worktree authoritatively determined; boundary check does not apply.
 [[ "$GIT_DIR" == "$GIT_COMMON_DIR" ]] && exit 0
 
 # 4. In a non-primary worktree. Validate FILE_PATH against worktree root.

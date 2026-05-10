@@ -179,8 +179,10 @@ fi
 MANIFEST=$(resolve_framework_manifest "$ACTIVE_SKILL")
 
 if [[ ! -f "$MANIFEST" ]]; then
-  # No manifest = no active skill lifecycle — allow
-  # friction-skip: trivial-fast-path — input absent or non-applicable
+  # No manifest = no active skill lifecycle — allow.
+  # #1349 follow-up: a missing manifest where one is expected is a silent
+  # fail-open. Friction-log so config drift is observable in retrospectives.
+  _write_hook_friction "skill-agent-gate: manifest $MANIFEST absent for active skill '$ACTIVE_SKILL' — failing open."
   exit 0
 fi
 

@@ -271,12 +271,21 @@ class TestSyntheticFixtures(unittest.TestCase):
         """A bare `exit 0` with no preceding friction call within the
         lookback window AND no `# friction-skip:` pragma on this or the
         directly preceding line should be flagged. Closes the silent-bypass
-        class introduced by #1349/#1350 (defensive exit 0 without audit)."""
+        class introduced by #1349/#1350 (defensive exit 0 without audit).
+
+        Regression: also asserts `[[ X ]] && exit 0` and `[[ X ]] || exit 0`
+        chain forms are flagged. The original regex required \\b before
+        &&/|| which silently failed when the preceding char was non-word
+        (e.g., `]` or space) — see #1349/#1350 follow-up.
+        """
         rc, stdout = self._run_fixture("hook_silent_skip_friction_pairing_violation")
         self.assertIn("CROSS_FILE_CONTRADICTION", stdout)
         self.assertIn("fixture-hssfp-violation", stdout)
         self.assertIn("synthetic-hook.sh", stdout)
         self.assertIn("unfrictioned silent skip", stdout)
+        # Regex regression: && and || chain forms must each be flagged.
+        self.assertIn("&& exit 0", stdout)
+        self.assertIn("|| exit 0", stdout)
 
     def test_hook_silent_skip_friction_pairing_clean_no_findings(self):
         """`exit 0` paired with EITHER (a) `_write_hook_friction` within

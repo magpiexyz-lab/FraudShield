@@ -36,9 +36,11 @@ except Exception:
     print('SIGNAL_SKILL=')
 " 2>/dev/null)"
 
-# Fail-open if signal file is malformed
+# Fail-open if signal file is malformed.
+# #1349 follow-up: empty PHASE means signal-file parse failed silently.
+# Friction-log so the parse-failure is observable in retrospectives.
 if [[ -z "$PHASE" ]]; then
-  # friction-skip: trivial-fast-path — input absent or non-applicable
+  _write_hook_friction "phase-boundary-gate: empty PHASE after parse — signal file $SIGNAL malformed or absent; failing open."
   exit 0
 fi
 

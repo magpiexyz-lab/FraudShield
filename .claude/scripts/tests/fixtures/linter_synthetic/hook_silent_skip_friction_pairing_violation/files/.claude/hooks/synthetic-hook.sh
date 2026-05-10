@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Synthetic test fixture for hook_silent_skip_friction_pairing rule.
-# This hook contains an unfrictioned, un-pragma'd `exit 0` that the rule
-# must flag.
+# This hook contains multiple unfrictioned, un-pragma'd `exit 0` forms
+# that the rule must flag — covers regex coverage regression test for
+# the && / || chain forms (#1349 follow-up: original regex required
+# \b before && which fails on `]] && exit 0`).
 set -euo pipefail
 
 source "$(dirname "$0")/lib.sh"
@@ -12,7 +14,12 @@ if [[ -z "$FILE_PATH" ]]; then
   exit 0
 fi
 
-# This is the violation: a bare `exit 0` with no preceding friction call
-# within the lookback window AND no `# friction-skip:` pragma on this or
-# the directly preceding line.
+# Form 1: bare `exit 0` with no preceding friction call AND no pragma.
 exit 0
+
+# Form 2: `]] && exit 0` (regex regression — must match even when char
+# before && is non-word).
+[[ -z "$X" ]] && exit 0
+
+# Form 3: `]] || exit 0` (same regex regression).
+[[ -z "$X" ]] || exit 0
