@@ -485,6 +485,38 @@
         "branch-checkout-propagation-gate.sh"
       ],
       "description": "#1328 — every `git checkout -b` (markdown fenced bash block or shell-script segment) MUST be paired with `update-context-branch.sh` in the same chain. Without same-turn propagation, .runs/*-context.json's `branch` field stays stale and resolve_active_identity filters out the active context. The runtime hook branch-checkout-propagation-gate.sh enforces this at PreToolUse; this lint catches new template authoring before merge."
+    },
+    {
+      "id": "coherence-rule-claim-must-cite-rule-id-md",
+      "type": "claim_must_cite_existing_rule_id",
+      "severity": "warn",
+      "scan_globs": [".claude/**/*.md"],
+      "claim_patterns": [
+        "coherence (linter )?rule (pins|binds)\\b"
+      ],
+      "citation_pattern": "`([a-z][a-z0-9-]+)`|rule_id:\\s*([a-z][a-z0-9-]+)",
+      "window_chars": 200,
+      "allowed_rule_ids_source": ".claude/patterns/template-coherence-rules.json#rules[*].id",
+      "exclude_globs": [
+        ".claude/patterns/template-coherence-rules.json"
+      ],
+      "description": "#1261 — Catches false claims that a coherence-rule is pinning multiple files together. Scans .claude/**/*.md for trigger phrases (see claim_patterns) and requires a co-occurring backtick-quoted rule id (or rule_id label) within window_chars that resolves to a real entry in rules[*].id. Severity warn during rollout; promote to block after 1-2 cycles confirm zero false positives. The single regex pattern matches both 'pins them' and 'pins all three' via the (pins|binds) alternation + \\b word boundary, addressing round-1 critic concern 6b7984313ed1. The rule's own definition file is excluded via exclude_globs to prevent self-matching on the claim_patterns array."
+    },
+    {
+      "id": "coherence-rule-claim-must-cite-rule-id-json",
+      "type": "claim_must_cite_existing_rule_id",
+      "severity": "warn",
+      "scan_globs": [".claude/**/*.json"],
+      "claim_patterns": [
+        "coherence (linter )?rule (pins|binds)\\b"
+      ],
+      "citation_pattern": "`([a-z][a-z0-9-]+)`|rule_id:\\s*([a-z][a-z0-9-]+)",
+      "window_chars": 200,
+      "allowed_rule_ids_source": ".claude/patterns/template-coherence-rules.json#rules[*].id",
+      "exclude_globs": [
+        ".claude/patterns/template-coherence-rules.json"
+      ],
+      "description": "#1261 — JSON variant of the .md rule. Same scan logic but for .claude/**/*.json files. Split into two entries because Python glob.glob does not support brace expansion (.{md,json} matches zero files), so the rule type is registered twice with single-extension globs. The rule's own definition file is excluded via exclude_globs to prevent self-matching."
     }
   ]
 }

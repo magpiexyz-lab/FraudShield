@@ -3490,6 +3490,116 @@ def main() -> int:
         return _fnmatch.fnmatch(rel_path, pattern)
 
 
+    def check_claim_must_cite_existing_rule_id(rule):
+        """#1261 — Catch false coherence-rule claims.
+
+        Scans files matching `scan_globs` for trigger phrases (e.g.,
+        'coherence rule pins X') and requires a co-occurring rule_id citation
+        within `window_chars` that resolves to an existing entry in
+        `allowed_rule_ids_source` (default: `template-coherence-rules.json`
+        rules[*].id).
+
+        Rule shape:
+          {
+            "id": "<rule_id>",
+            "type": "claim_must_cite_existing_rule_id",
+            "severity": "warn",  # permanent during rollout per round-2 critic
+            "scan_globs": [".claude/**/*.md"],
+            "claim_patterns": ["coherence (linter )?rule (pins|binds)\\\\b", ...],
+            "citation_pattern": "`([a-z][a-z0-9-]+)`|rule_id:\\\\s*([a-z][a-z0-9-]+)",
+            "window_chars": 200,
+            "allowed_rule_ids_source": ".claude/patterns/template-coherence-rules.json#rules[*].id"
+          }
+
+        Why this rule exists:
+        - The original false claim 'coherence rule pins them' / 'coherence
+          linter rule pins all three to match' (in scaffold-images-spec.json)
+          declared a non-existent coherence rule.
+        - This rule catches the antipattern's recurrence: any future prose
+          asserting a coherence rule pins X without a backtick-quoted rule_id
+          (or `rule_id: <id>` label) that resolves to a real rules[*].id
+          will fire as a warning.
+
+        Conservative semantics:
+        - Trigger pattern match is broad (`pins\\b` / `binds\\b`); citation_pattern
+          is also broad (any `[a-z][a-z0-9-]+` backtick-quoted token).
+        - Citation candidates are validated against the canonical source list
+          (ID resolution); unresolved candidates fail.
+        - severity=warn permanent because legitimate prose discussing
+          coherence-rule architecture can use the trigger phrasing without
+          intent to claim a specific rule. Promote to block once 1-2 cycles
+          confirm zero false-positives.
+        """
+        out = []
+        rid = rule.get("id", "<unknown>")
+        scan_globs = rule.get("scan_globs") or []
+        claim_patterns_raw = rule.get("claim_patterns") or []
+        citation_pattern_raw = rule.get("citation_pattern") or r"`([a-z][a-z0-9-]+)`|rule_id:\s*([a-z][a-z0-9-]+)"
+        window_chars = int(rule.get("window_chars") or 200)
+        allowed_source = rule.get("allowed_rule_ids_source") or ".claude/patterns/template-coherence-rules.json#rules[*].id"
+        exclude_globs = rule.get("exclude_globs") or []
+
+        if not scan_globs or not claim_patterns_raw:
+            return out
+
+        try:
+            claim_compiled = [re.compile(p) for p in claim_patterns_raw]
+            citation_compiled = re.compile(citation_pattern_raw)
+        except re.error as e:
+            out.append(f"  [{rid}] invalid regex: {e}")
+            return out
+
+        # Resolve allowed rule ids from canonical source
+        src_path = allowed_source.split("#")[0]
+        src_full = os.path.join(REPO_ROOT, src_path)
+        allowed_ids = set()
+        try:
+            canonical = json.load(open(src_full))
+            for r in canonical.get("rules", []):
+                if isinstance(r, dict) and r.get("id"):
+                    allowed_ids.add(r["id"])
+        except Exception as e:
+            out.append(f"  [{rid}] cannot read allowed_rule_ids_source {src_path}: {e}")
+            return out
+
+        import fnmatch as _fnmatch
+        def _excluded(rel_path):
+            for g in exclude_globs:
+                if _fnmatch.fnmatch(rel_path, g):
+                    return True
+            return False
+
+        id_re = re.compile(r"^[a-z][a-z0-9-]+$")
+        for glob_pat in scan_globs:
+            full_glob = os.path.join(REPO_ROOT, glob_pat)
+            for fpath in sorted(glob.glob(full_glob, recursive=True)):
+                rel = os.path.relpath(fpath, REPO_ROOT)
+                if _excluded(rel):
+                    continue
+                try:
+                    text = open(fpath, encoding="utf-8").read()
+                except (OSError, UnicodeDecodeError):
+                    continue
+                for cp in claim_compiled:
+                    for m in cp.finditer(text):
+                        start = max(0, m.start() - window_chars)
+                        end = min(len(text), m.end() + window_chars)
+                        window = text[start:end]
+                        cited_ids = set()
+                        for cit_match in citation_compiled.finditer(window):
+                            for g in cit_match.groups():
+                                if g and id_re.fullmatch(g):
+                                    cited_ids.add(g)
+                        if not cited_ids or not (cited_ids & allowed_ids):
+                            ln = text.count("\n", 0, m.start()) + 1
+                            out.append(
+                                f"  [{rid}] {rel}:{ln} claim '{m.group(0)}' has no citation resolving "
+                                f"to an existing rule (citations found: {sorted(cited_ids) or 'none'}; "
+                                f"allowed: see {allowed_source})"
+                            )
+        return out
+
+
     # ---------------------------------------------------------------------------
     # Cross-file rule dispatch — registry-driven with type + field validation.
     #
@@ -3529,6 +3639,11 @@ def main() -> int:
         "boundary_kind_required":           (check_boundary_kind_required,           {"enforced_artifacts"},                                   {"agent_files_glob", "skill_files_glob"},                     False),
         "gate_artifact_discovery":          (check_gate_artifact_discovery,          {"manifest_path"},                                        {"registry_path", "hooks_glob"},                              False),
         "must_contain_section":             (check_must_contain_section,             {"applies_to_glob", "required_section", "trigger_pattern_any"}, {"exclude_glob"},                                       False),
+        # #1261 — catches false coherence-rule claims (e.g. "coherence rule
+        # pins all three" without a co-occurring rule_id citation that resolves
+        # to a real rules[*].id). Severity warn permanent (round-2 critic
+        # concern 8b25a61dd0e6: trigger pattern is intentionally broad).
+        "claim_must_cite_existing_rule_id": (check_claim_must_cite_existing_rule_id, {"scan_globs", "claim_patterns"}, {"citation_pattern", "window_chars", "allowed_rule_ids_source", "exclude_globs"}, False),
         "bash_hook_write_operator_binding": (check_bash_hook_write_operator_binding, {"manifest_path", "scan_glob"},                                 {"pragma"},                                                   False),
         "markdown_cross_file_line_reference": (check_markdown_cross_file_line_reference, {"target_glob"},                                            {"pragma"},                                                   False),
         # AOC v1.2 PR6 — F7 + F8 lints.
