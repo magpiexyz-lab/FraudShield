@@ -136,7 +136,7 @@ see https://docs.retellai.com/features/secure-webhook.
 - SDK `verify()` signature verification is mandatory on all webhook routes — without it, any caller can send arbitrary payloads
 - Redact phone numbers and PII from all log output
 - Remove internal service names from error responses returned to callers
-- Add rate limiting to webhook routes
+- Do NOT rate-limit signed webhook routes — Retell signs webhooks with the API key + retries on failures. A rate limiter would block legitimate retries and silently drop call-completion / agent-end events. The SDK `verify()` check IS the security boundary (issue #1378). See `.claude/stacks/payment/stripe.md` → "Do not rate-limit signed webhook endpoints" for the universal pattern.
 
 ## CLI Provisioning
 No CLI available — credentials must be obtained via the Retell AI dashboard at https://www.retellai.com.

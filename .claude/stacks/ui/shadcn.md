@@ -674,6 +674,80 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 The `-mx-6 px-6` bleed the scroll region to the page edge while keeping content gutters aligned. `[scrollbar-width:none]` + `[&::-webkit-scrollbar]:hidden` removes the visible scrollbar (preserves scrollability via touch/trackpad). `md:overflow-visible md:px-0` restores normal layout on desktop where the list fits naturally. Without this wrapper, ancestor `overflow-x-hidden` clips off-viewport tabs with no scroll affordance (fix #1073).
 
+### When scaffolding custom `role="radio"` clusters, use roving tabindex + Arrow/Home/End keyboard nav
+
+Custom `<button role="radio">` clusters (e.g., a state-picker card grid, claimant-type cards, plan-tier toggles) MUST implement the WAI-ARIA radiogroup keyboard contract. Without it, every option ships with `tabIndex=0` (so Tab stops on every radio), and Arrow keys do nothing — failing WCAG 2.1.2 (No Keyboard Trap) AND the WAI-ARIA radiogroup contract. axe-core, scaffold-pages, and visual-implementer all assume this contract; native `<input type="radio">` gets it for free, but custom button clusters do not.
+
+The contract:
+
+- Container has `role="radiogroup"` AND `aria-label` (or `aria-labelledby` referencing visible text) — see "When labeling a radiogroup" entry below for the labelling contract.
+- Each option `<button role="radio" aria-checked={active}>`.
+- **Roving tabindex**: exactly ONE option per group has `tabIndex=0` (the selected option; or option 0 when nothing is selected); siblings are `tabIndex=-1`. This is the "roving" focus pattern — only one option is in the natural tab order at any time.
+- `onKeyDown` handler maps: `ArrowRight` / `ArrowDown` → next (wrap to first after last); `ArrowLeft` / `ArrowUp` → previous (wrap to last after first); `Home` → first; `End` → last.
+- Arrow keys ALSO select (matches native `<input type="radio">` semantics), and the handler MUST move DOM focus to the new option (this is what makes it "roving").
+
+Reference implementation (paste into your component file alongside the radio cluster):
+
+```tsx
+function handleRadioGroupKey<T extends string>(
+  event: KeyboardEvent<HTMLElement>,
+  values: ReadonlyArray<T>,
+  current: T | null,
+  onChange: (v: T) => void,
+): void {
+  const last = values.length - 1;
+  if (last < 0) return;
+  const currentIdx = current === null ? 0 : Math.max(0, values.indexOf(current));
+  let nextIdx: number | null = null;
+  switch (event.key) {
+    case "ArrowRight":
+    case "ArrowDown": nextIdx = currentIdx === last ? 0 : currentIdx + 1; break;
+    case "ArrowLeft":
+    case "ArrowUp":   nextIdx = currentIdx === 0 ? last : currentIdx - 1; break;
+    case "Home":      nextIdx = 0; break;
+    case "End":       nextIdx = last; break;
+    default: return;
+  }
+  if (nextIdx === null) return;
+  event.preventDefault();
+  onChange(values[nextIdx]);
+  const container = (event.currentTarget as HTMLElement).parentElement;
+  (container?.children[nextIdx] as HTMLElement | undefined)?.focus();
+}
+
+function rovingTabIndex<T extends string>(
+  values: ReadonlyArray<T>,
+  current: T | null,
+  index: number,
+): 0 | -1 {
+  if (current === null) return index === 0 ? 0 : -1;
+  return values[index] === current ? 0 : -1;
+}
+```
+
+Usage at the call site:
+
+```tsx
+<div role="radiogroup" aria-label="Delivery preference">
+  {OPTIONS.map((value, index) => (
+    <button
+      key={value}
+      role="radio"
+      aria-checked={current === value}
+      tabIndex={rovingTabIndex(OPTIONS, current, index)}
+      onClick={() => setCurrent(value)}
+      onKeyDown={(e) => handleRadioGroupKey(e, OPTIONS, current, setCurrent)}
+    >
+      {labels[value]}
+    </button>
+  ))}
+</div>
+```
+
+Applies to every custom button cluster that semantically behaves as a radio group. For text-only / linear option lists, prefer the shadcn `<RadioGroup>` primitive (which implements the contract internally).
+
+Agents that scaffold these clusters MUST apply the contract: see `.claude/agents/scaffold-pages.md` and `.claude/agents/visual-implementer.md` — both reference this entry when generating role=radio component code.
+
 ### When labeling a radiogroup, use aria-label on the group — not a bare shadcn Label
 shadcn `<Label>` renders an HTML `<label>` element. A `<label>` requires a `htmlFor` pointing to a *labelable* element. `<RadioGroup>` renders `<div role="radiogroup">` — a div is NOT a labelable element — so a floating `<Label>` placed visually above a `<RadioGroup>` creates a dangling label: it has no programmatic association with any control, and screen readers announce the group with no name. axe-core fires `label` (WCAG 1.3.1 Info and Relationships).
 

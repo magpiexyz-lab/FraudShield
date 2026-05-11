@@ -359,8 +359,13 @@ import pg from "pg";
 import { readdir, readFile } from "fs/promises";
 import { join } from "path";
 
-// `@next/env` is a CommonJS module; named-import fails under Node 22 ESM.
-// Default-import + destructure is the canonical CJS-interop shape.
+// .mjs (raw Node ESM) requires DEFAULT-import + destructure for @next/env. The
+// named-import form fails here under Node 22 with `SyntaxError: Named export
+// 'loadEnvConfig' not found` because Node's CJS named-export detection does not
+// surface this package's exports. .ts files loaded by Playwright/jest/tsx
+// (CJS-transpile via pirates) require the OPPOSITE shape — see the
+// "CJS-interop with @next/env" Stack Knowledge entry in the analytics stack
+// file for the per-loader contract and an empirical verification snippet.
 const { loadEnvConfig } = nextEnv;
 
 loadEnvConfig(process.cwd());

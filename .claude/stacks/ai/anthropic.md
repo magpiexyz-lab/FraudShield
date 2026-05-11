@@ -238,6 +238,81 @@ const message = await ask({
 - Validate and sanitize all user-provided content before including it in prompts
 - Set `max_tokens` on every call to prevent runaway costs — choose the minimum sufficient for the task
 - For user-facing features, consider adding application-level rate limiting on the API route that calls `ask()`/`stream()`
+- **Cap combined prompt+history size at the API route boundary (issue #1377)** — see `## Stack Knowledge > When an API route forwards multi-turn conversation history, cap with MAX_HISTORY_TURNS + MAX_PROMPT_CHARS` for the canonical pattern. Anonymous routes that grow conversation history unboundedly are vulnerable to cost amplification: an attacker can construct multi-turn sessions and then submit a large message, driving up inference costs with each request. This is separate from per-session rate limiting (apply both)
+
+## Stack Knowledge
+
+### When an API route forwards multi-turn conversation history, cap with MAX_HISTORY_TURNS + MAX_PROMPT_CHARS at the route boundary
+
+API routes that accept multi-turn conversation history and forward it to `ask()` / `stream()` (spec-builder turns, chat completions, document-summarization with context) allow cost amplification attacks: an anonymous user can grow history indefinitely across requests, then submit a large message — the combined prompt forwarded to Anthropic can reach 80 kB+ per call, driving up inference cost with each request. Per-session rate limiting alone does not prevent this; the per-request payload is the dimension that grows.
+
+Apply two complementary guards at the route boundary BEFORE calling `ask()` / `stream()`:
+
+1. **Depth cap** (`MAX_HISTORY_TURNS`) — limit the number of history turns included. Suggested default: 16 turns. Slice from the end to keep recency.
+2. **Byte cap** (`MAX_PROMPT_CHARS`) — compute the combined character count of system prompt + history messages + current user message. If it exceeds `MAX_PROMPT_CHARS`, reject with HTTP 413. Suggested default: 24,000 characters (≈6,000 tokens for English).
+
+```typescript
+import type { MessageParam } from "@anthropic-ai/sdk/resources/messages";
+
+const MAX_HISTORY_TURNS = 16;
+const MAX_PROMPT_CHARS = 24_000;
+
+// Compute char length of a message block (text | array of content blocks).
+// Anthropic SDK message.content can be `string` OR
+// `Array<TextBlockParam | ImageBlockParam | ToolUseBlockParam | ToolResultBlockParam>`.
+// A naive `typeof === "string"` check silently bypasses the cap for array-shaped
+// content (the default shape in modern SDK usage with tools / images).
+function contentLen(content: string | unknown[]): number {
+  if (typeof content === "string") return content.length;
+  if (!Array.isArray(content)) return 0;
+  return content.reduce<number>((sum, block) => {
+    if (block && typeof block === "object" && "type" in block) {
+      // Text block — count text length verbatim
+      if ((block as { type: string }).type === "text" && "text" in block) {
+        return sum + ((block as { text?: string }).text?.length ?? 0);
+      }
+      // Tool-use / tool-result / image blocks — count serialized JSON length as an
+      // approximation (the SDK forwards these blocks verbatim to the API, and their
+      // size IS the prompt-cost dimension).
+      return sum + JSON.stringify(block).length;
+    }
+    return sum;
+  }, 0);
+}
+
+export async function POST(request: Request) {
+  const { systemPrompt, history, userMessage } = await request.json() as {
+    systemPrompt?: string | unknown[];
+    history: MessageParam[];
+    userMessage: string;
+  };
+
+  // Depth cap (slice from end to keep recency)
+  const truncatedHistory = history.slice(-MAX_HISTORY_TURNS);
+
+  // Byte cap — system prompt (string OR array) + history blocks + user message
+  const systemLen = typeof systemPrompt === "string"
+    ? systemPrompt.length
+    : Array.isArray(systemPrompt)
+      ? contentLen(systemPrompt)
+      : 0;
+  const historyLen = truncatedHistory.reduce(
+    (sum, m) => sum + contentLen(m.content as string | unknown[]),
+    0,
+  );
+  const combinedChars = systemLen + historyLen + userMessage.length;
+
+  if (combinedChars > MAX_PROMPT_CHARS) {
+    return NextResponse.json({ error: "Conversation too long" }, { status: 413 });
+  }
+
+  // ... call ask() / stream() with truncatedHistory + userMessage ...
+}
+```
+
+Apply to EVERY API route that forwards conversation history to the AI SDK: spec-builder turns, chat completions, document-summarization with context. The exact constant values can be tuned per-route (a research-summarization route may need 50,000 chars; a chat assistant may need only 12,000) — pick the minimum that supports the legitimate use case.
+
+This pattern is route-level (not library-level): the cap depends on the route's purpose, so the `ai.ts` library exports stay agnostic. Combine with per-session rate limiting (separate concern — that handles request frequency; this handles per-request payload).
 
 ## Demo Mode
 When `DEMO_MODE=true`, all calls return `[demo response]` without hitting the API. This enables visual review and CI builds without credentials.

@@ -195,15 +195,14 @@ import { NextResponse } from "next/server";
 import { getStripe } from "@/lib/stripe";
 import { createServiceRoleClient } from "@/lib/supabase-server";
 import { trackServerEvent } from "@/lib/analytics-server";
-import { rateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
 
+// NOTE: No rate limiting on the webhook endpoint.
+// Stripe retries failed events (network errors, 500s, timeouts) on a schedule —
+// a rate limiter would block legitimate retries and silently drop payment events.
+// The actual security defense is stripe.webhooks.constructEvent(), which rejects
+// any request without a valid STRIPE_WEBHOOK_SECRET-signed stripe-signature header.
+// See the "Do not rate-limit signed webhooks" Stack Knowledge entry below.
 export async function POST(request: Request) {
-  const ip = clientIpFromHeaders(request.headers);
-  const { success } = rateLimit(ip, { limit: 30, windowMs: 60_000 });
-  if (!success) {
-    return NextResponse.json({ error: "Too many requests" }, { status: 429 });
-  }
-  // TODO: Upgrade to Upstash Redis for cross-instance rate limiting
   const body = await request.text();
   const signature = request.headers.get("stripe-signature");
 
@@ -276,7 +275,7 @@ create policy "service role writes stripe events"
 The primary key on `stripe_event_id` is what makes the INSERT+catch-23505 pattern atomic — PostgreSQL rejects the second insert with `23505` (`unique_violation`) inside the same transaction window as the first.
 
 Notes:
-- Rate limiting: the template includes an in-memory burst limiter with a higher limit (30/min vs 10/min for checkout) since webhooks may receive bursts from Stripe. See the hosting stack file and the checkout route notes above.
+- No rate limiting: the webhook endpoint deliberately omits the in-memory burst limiter that the checkout route uses (10/min). Stripe delivers webhook events at-least-once and retries failed deliveries (network errors, 500s, timeouts) on a schedule — a rate limiter would block legitimate retries and silently drop payment events (`pay_success` would never fire for affected sessions). The cryptographic security boundary is `stripe.webhooks.constructEvent()` with `STRIPE_WEBHOOK_SECRET`; volume-based abuse protection belongs at the CDN/WAF layer if needed at all. See the "Do not rate-limit signed webhook endpoints — signature verification is the defense" Stack Knowledge entry below.
 - Reads the raw request body (do NOT parse JSON before verification)
 - Verifies the webhook signature using `STRIPE_WEBHOOK_SECRET`
 - Handles `checkout.session.completed` event: should update payment status (see TODO in template) and fires `pay_success` server-side via `trackServerEvent()` with all required experiment/EVENTS.yaml properties (`plan`, `amount_cents`, `provider`)
@@ -313,6 +312,37 @@ The server-side `getStripe()` factory in `src/lib/stripe.ts` already throws when
 - See experiment/EVENTS.yaml for the full property spec for both events
 
 ## Stack Knowledge
+
+### Do not rate-limit signed webhook endpoints — signature verification is the defense
+
+Stripe (and every other signed-webhook provider — Twilio, Retell, GitHub Apps, etc.) delivers events at-least-once and retries failed deliveries (network errors, 500s, timeouts) on a schedule. A rate limiter on the webhook route blocks legitimate provider retries: the route returns 429 to a retry, Stripe marks the delivery as failed, eventually gives up, and the corresponding payment event silently never fires (`pay_success` is lost, downstream provisioning runs forever-pending).
+
+The cryptographic security boundary is `stripe.webhooks.constructEvent(body, signature, STRIPE_WEBHOOK_SECRET)`. An attacker without the secret cannot forge a valid signature — the route already rejects unsigned/invalid requests at the signature check with 400. Adding a rate limiter on top adds zero security and actively harms reliability.
+
+```typescript
+// WRONG — rate-limit on signed webhook silently drops Stripe retries:
+import { rateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
+
+export async function POST(request: Request) {
+  const ip = clientIpFromHeaders(request.headers);
+  const { success } = rateLimit(ip, { limit: 30, windowMs: 60_000 });
+  if (!success) return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+  // ... signature verification ...
+}
+
+// CORRECT — no rate limit; signature verification IS the auth layer:
+export async function POST(request: Request) {
+  const body = await request.text();
+  const signature = request.headers.get("stripe-signature");
+  if (!signature) return NextResponse.json({ error: "Bad request" }, { status: 400 });
+  const event = getStripe().webhooks.constructEvent(body, signature, process.env.STRIPE_WEBHOOK_SECRET!);
+  // ... process event ...
+}
+```
+
+Applies universally to every signed-webhook stack: `stripe.webhooks.constructEvent()`, Twilio's `X-Twilio-Signature` HMAC-SHA1 verification, Retell's API-key-signed webhooks, GitHub App webhook signatures, etc. Volume-based abuse protection at the CDN/WAF layer is a separate question — Cloudflare/Vercel WAF can drop egregious traffic before it hits the route. Application-level rate limiting on the signed-webhook handler is the anti-pattern.
+
+The atomicity defense (preventing duplicate side-effects from at-least-once delivery) is the `INSERT + catch PG 23505` idempotency guard documented in the next entry — that's the right shape for handling replays, not rate limiting.
 
 ### When deduplicating Stripe webhook replays, use INSERT + catch PG `23505` (already baked into the template)
 Stripe delivers at-least-once, so webhook replays are expected. The route template above uses the correct pattern: `INSERT INTO stripe_events(stripe_event_id)` and catch PostgreSQL error code `23505` (unique_violation) as a successful no-op. **Do NOT rewrite this as a SELECT-then-INSERT check** — that is a Time-of-Check-Time-of-Use (TOCTOU) race: two concurrent deliveries of the same event ID can both pass the SELECT and both INSERT, causing duplicate side-effects (double payment processing, double `trackServerEvent("pay_success")`). The INSERT + catch-`23505` pattern is atomic at the database level via the `PRIMARY KEY` on `stripe_event_id`; keep it.

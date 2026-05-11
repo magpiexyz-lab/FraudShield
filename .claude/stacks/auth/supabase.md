@@ -1087,6 +1087,124 @@ If a user declines to share their Google account email during OAuth consent — 
 
 The specific copy and styling come from the project's design system — what matters is that the banner (a) names the failure mode in plain language, (b) offers at least two recovery paths, and (c) uses a `role="alert"` region so screen readers announce it on arrival. Applies to any OAuth provider that can return this error (`stack.auth_providers: [google, apple, ...]`).
 
+### When implementing an anonymous-to-authenticated resource claim, verify anon_session_id
+
+```yaml
+id: anon-to-authed-claim-session-verification
+maturity: stable
+anti_pattern: false
+composite_identity:
+  root_cause_class: horizontal-privilege-escalation-via-unverified-claim
+  divergence_pattern: claim-routes-trust-row-id-without-session-binding
+  stack_scope: auth/supabase
+composite_identity_hash: 8e3c39f0f7a5
+symptom_keywords: [anonymous, claim, anon_session_id, idor, horizontal-privilege-escalation, finalize, draft, adopt, sessionStorage]
+fix_template: |
+  Three legs are required. Skipping ANY leg leaves the IDOR open.
+
+  Leg 1 — Schema: add an `anon_session_id text` column on the resource table.
+  See database/supabase.md migration patterns for the canonical migration shape.
+
+      -- supabase/migrations/<N>_<resource>_anon_session_id.sql
+      alter table <resource> add column anon_session_id text;
+
+  Leg 2 — Anonymous-create route + client wiring:
+  Client generates a cryptographically-random session ID once per resource and
+  stores it in sessionStorage (tab-scoped, NOT a cookie — cookies forward
+  automatically and a future authed user could collide). Client includes the
+  value in the create POST body. Server (service-role client, since the row is
+  unowned at create time) writes the value to the resource row.
+
+      // Client — at the point of resource creation:
+      let anonSessionId = sessionStorage.getItem("anon_session_id");
+      if (!anonSessionId) {
+        anonSessionId = crypto.randomUUID();
+        sessionStorage.setItem("anon_session_id", anonSessionId);
+      }
+      await fetch("/api/<resource>", {
+        method: "POST",
+        body: JSON.stringify({ ...payload, anon_session_id: anonSessionId }),
+      });
+
+      // Server — /api/<resource> create handler (service-role for unowned rows):
+      const supabase = createServiceRoleClient();
+      const { data, error } = await supabase
+        .from("<resource>")
+        .insert({ ...validated, anon_session_id: body.anon_session_id, user_id: null })
+        .select("id")
+        .single();
+
+  Leg 3 — Authenticated-claim route:
+  Client forwards the stored sessionStorage value (must be read at the point of
+  user action, NOT auto-forwarded by the browser). Server validates with
+  crypto.timingSafeEqual. ALL rejection branches collapse to a uniform 404
+  response so attackers cannot enumerate resource IDs.
+
+      // Client — at the point of claim action (e.g., signup-then-claim):
+      const anonSessionId = sessionStorage.getItem("anon_session_id");
+      await fetch("/api/<resource>/finalize", {
+        method: "POST",
+        body: JSON.stringify({ id: resourceId, anon_session_id: anonSessionId }),
+      });
+
+      // Server — /api/<resource>/finalize handler:
+      import { timingSafeEqual } from "crypto";
+      const supabase = await createServerSupabaseClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+      const { data: row } = await createServiceRoleClient()
+        .from("<resource>")
+        .select("anon_session_id, user_id")
+        .eq("id", body.id)
+        .single();
+
+      const provided = Buffer.from(body.anon_session_id ?? "");
+      const stored = Buffer.from(row?.anon_session_id ?? "");
+      // Uniform 404 on every rejection branch — denies enumeration oracle.
+      if (
+        !row ||
+        row.user_id !== null ||                   // already claimed
+        provided.length === 0 ||                  // missing session id
+        provided.length !== stored.length ||
+        !timingSafeEqual(provided, stored)        // wrong session id
+      ) {
+        return NextResponse.json({ error: "Not found" }, { status: 404 });
+      }
+
+      await createServiceRoleClient()
+        .from("<resource>")
+        .update({ user_id: user.id })
+        .eq("id", body.id);
+
+  Applies to any anonymous-to-authenticated ownership transfer: spec finalize,
+  draft claim, session adoption, anonymous cart checkout. Cross-reference
+  behavior.anonymous_allowed schema field (.claude/templates/experiment-yaml.md
+  per #1126) — anonymous_allowed: true marks the create-route's page as public;
+  the claim flow described here gates the OWNERSHIP transition.
+prevention_mechanism: stack-knowledge-three-leg-pattern + uniform-404-rejection-collapses-enumeration-oracle
+confidence_score: 0.9
+occurrence_count: 1
+linked_issues: [1376]
+first_seen: 2026-05-11
+last_seen: 2026-05-11
+graduated_to: null
+```
+
+Anonymous flows that create resources (specs, drafts, sessions, carts) and let
+authenticated users later claim them are vulnerable to horizontal privilege
+escalation when the claim route trusts the row ID alone. Without `anon_session_id`
+verification, any authenticated user can claim any anonymous resource by
+submitting its UUID. Three failure shapes commonly seen during /verify on
+anon→authed flows: (1) missing the column (Leg 1) — claim succeeds for everyone;
+(2) missing the create-route write (Leg 2) — column exists but stays NULL,
+claim either always passes or always fails depending on the comparison logic;
+(3) differentiated rejection branches (403 for wrong session vs 404 for not
+found vs 409 for already-claimed) — the response codes themselves leak resource
+existence to enumeration attacks. Original incident: issue #1376, discovered
+during /resolve open-issues round on a project with spec finalize + draft claim
+flows.
+
 ### When a project extends /auth/callback to persist user_metadata to the database
 Validate `user_metadata` fields with zod before any database write. The shipped `/auth/callback` template (above) only exchanges the PKCE code and redirects — it does NOT persist `user_metadata`. If a project adds a code path in the callback that reads `user_metadata` (e.g., to mirror signup into a `profiles` or `practices` table), the values cannot be trusted. An attacker can supply arbitrary values (e.g., a 50KB string in a name field) via a direct Supabase API call, bypassing UI form limits entirely. This is an A1 (OWASP) validation-bypass.
 

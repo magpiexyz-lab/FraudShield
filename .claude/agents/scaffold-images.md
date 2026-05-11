@@ -129,6 +129,19 @@ This is the load-bearing evidence for the `source-rate-limited` and `model-unava
 
 Non-fixer role (image generation is authorship, not remediation): `no_fixes_claimed: True` is required. If this agent is respawned from design-critic Step 5.5 Priority 2 to regenerate a specific slot, the resulting change IS a fix — in that case set `no_fixes_claimed` to `False` and add `fixes: [{file: 'public/images/<slot>.webp', type: 'image-regen', module: '<slot>', reason: '<visual-defect>'}]` to the `trace` dict before passing to the writer. The centralized writer (AOC v1.1) stamps `agent`, `timestamp`, `status:"completed"`, `provenance:"self"`, `partial:false`, `run_id`, `skill`, `spawn_sha`, and `spawn_index` from active identity + spawn-log.
 
+## Image Manifest Schema (issue #1388)
+
+When writing `.runs/image-manifest.json`, include the `fallback_reason` field whenever any image slot fell back to a non-AI source. The enum is shared with the bootstrap state-8 preflight check (`.claude/skills/bootstrap/state-8-preflight.md`):
+
+| Value | When to record |
+|-------|----------------|
+| `"sandbox_denied"` | The Claude Code sandbox blocked a credential read or fal API call |
+| `"user_skipped"` | User explicitly opted out at preflight |
+| `"fal_key_missing"` | `FAL_KEY` was absent and user did not provide one |
+| `"fal_api_error"` | fal API call returned non-2xx during a generation attempt (cite `.runs/fal-api-errors.jsonl` row) |
+
+The field is OMITTED when all slots succeeded with their declared production_method. Without `fallback_reason`, observer cannot distinguish "sandbox blocked us" from "user opted out" — both look like `image_gen_status: "skipped"` and recur silently.
+
 ## Output Contract
 
 ```

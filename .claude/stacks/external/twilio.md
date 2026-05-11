@@ -120,7 +120,7 @@ TWILIO_PHONE_NUMBER=+1234567890           # Twilio phone number for outbound SMS
 - HMAC-SHA1 signature verification is mandatory on all webhook routes — without it, any caller can spoof Twilio callbacks
 - XML-escape all dynamic strings in TwiML to prevent TwiML injection (characters like `<`, `>`, `&`, `"` can inject arbitrary TwiML verbs)
 - Validate that dynamic URL values belong to an expected domain before inserting them into TwiML `<Stream>` or `<Redirect>` elements
-- Add rate limiting to webhook routes (60 req/min/IP recommended)
+- Do NOT rate-limit signed webhook routes — Twilio signs every request with HMAC-SHA1 over the body + URL and retries failed deliveries on a schedule. A rate limiter would block legitimate retries and silently drop SMS/voice callback events. The signature check IS the security boundary (issue #1378). See `.claude/stacks/payment/stripe.md` → "Do not rate-limit signed webhook endpoints" for the universal pattern.
 - Never log raw request bodies — they may contain PII (phone numbers, caller names)
 
 ## CLI Provisioning

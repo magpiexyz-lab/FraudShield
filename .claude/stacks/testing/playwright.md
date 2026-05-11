@@ -45,10 +45,11 @@ npx playwright install chromium
 
 ### `playwright.config.ts` — Playwright configuration
 ```ts
-// `@next/env` is a CommonJS module; named-import fails under Node 22 ESM.
-// Default-import + destructure is the canonical CJS-interop shape.
-import nextEnv from "@next/env";
-const { loadEnvConfig } = nextEnv;
+// @next/env loadEnvConfig: shape depends on loader. .ts (Playwright pirates +
+// CJS-transpile) requires NAMED-import; .mjs (raw Node ESM) requires
+// default-import + destructure. See "CJS-interop with @next/env" Stack
+// Knowledge entry in stacks/analytics/posthog.md for the per-loader contract.
+import { loadEnvConfig } from "@next/env";
 loadEnvConfig(process.cwd());
 
 import { execSync } from "child_process";
@@ -749,10 +750,11 @@ When `assumes` dependencies are not met (e.g., no `auth/supabase` or `database/s
 
 ### `playwright.config.ts` — Simplified (no global setup/teardown)
 ```ts
-// `@next/env` is a CommonJS module; named-import fails under Node 22 ESM.
-// Default-import + destructure is the canonical CJS-interop shape.
-import nextEnv from "@next/env";
-const { loadEnvConfig } = nextEnv;
+// @next/env loadEnvConfig: shape depends on loader. .ts (Playwright pirates +
+// CJS-transpile) requires NAMED-import; .mjs (raw Node ESM) requires
+// default-import + destructure. See "CJS-interop with @next/env" Stack
+// Knowledge entry in stacks/analytics/posthog.md for the per-loader contract.
+import { loadEnvConfig } from "@next/env";
 loadEnvConfig(process.cwd());
 
 import { defineConfig, devices } from "@playwright/test";

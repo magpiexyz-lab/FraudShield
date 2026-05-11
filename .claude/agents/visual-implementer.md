@@ -44,6 +44,8 @@ At Step 4 (GREEN), also apply frontend-design guidelines — visual quality is b
 ### Additional Constraint
 
 - Do NOT skip Step 0 (visual capability loading)
+- **Accessibility — custom role="radio" clusters (#1380):** when implementing a custom `<button role="radio">` cluster (state pickers, claimant cards, plan-tier toggles), apply the WAI-ARIA radiogroup keyboard contract: container has `role="radiogroup"` + `aria-label`; ONE option has `tabIndex=0` (selected), siblings `tabIndex=-1`; `onKeyDown` handles `ArrowRight`/`ArrowDown` → next (wrap), `ArrowLeft`/`ArrowUp` → previous (wrap), `Home` → first, `End` → last — Arrow keys ALSO select and move DOM focus (roving-tabindex). Reference implementation (handleRadioGroupKey + rovingTabIndex helpers): `.claude/stacks/ui/shadcn.md` → "When scaffolding custom `role="radio"` clusters". For text-only option lists, prefer shadcn `<RadioGroup>` which implements the contract internally.
+- **Accessibility — skip-link target (#1380):** when the layout includes a `<main id="main-content">` element targeted by a skip-nav anchor, the `<main>` MUST carry `tabIndex={-1}`. Without it, activating the skip link does not move focus (fails WCAG 2.4.1). See `.claude/stacks/framework/nextjs.md` → "Root layout — skip-nav link".
 
 ## Output Contract
 

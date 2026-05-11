@@ -54,7 +54,7 @@ For system or scheduled behaviors, add `actor` and `trigger` (no `pages` needed 
 - Behaviors must be observable and measurable (map to analytics events or database state)
 - Use concrete user actions, not abstract concepts ("clicks the CTA" not "shows interest")
 - Behaviors replace the traditional `features` list — each behavior IS a feature requirement
-- Each behavior must have 1-3 `tests` entries — verifiable assertions about the behavior
+- Each behavior must have 1-5 `tests` entries — verifiable assertions about the behavior (validator-enforced at `scripts/validate-experiment.py` — search for the `b_tests` length check; matches the inline schema comment in the example block above)
 - System/cron behaviors should be derived from monetize or operational hypotheses
 - **Web-app + actor:user (default): `pages` field is REQUIRED.** If you cannot infer which page(s) a behavior interacts with, halt and ask the user — do not guess. Behaviors without `pages` cause 404 traps after deploy (#1024).
 

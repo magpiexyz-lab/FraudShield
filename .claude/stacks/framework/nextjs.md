@@ -273,12 +273,16 @@ import { RetainTracker } from "@/components/RetainTracker";
 </a>
 {/* Only when stack.auth is present — scaffold-wire Step 5c adds this: */}
 <NavBar />
-<main id="main-content">{children}</main>
+{/* tabIndex={-1} makes the wrapper programmatically focusable so the skip-link
+    anchor moves focus here on activation. Without it, Tab from the link cycles
+    back to the link (WCAG 2.4.1 Bypass Blocks fails). -1 keeps the wrapper
+    out of the natural tab order; mouse clicks still focus actual descendants. */}
+<main id="main-content" tabIndex={-1}>{children}</main>
 {/* Only when stack.analytics is present — scaffold-wire Step 5c adds this: */}
 <RetainTracker />
 ```
 
-Both additions (the `<a>` skip link and `id="main-content"` on `<main>`) are required for WCAG 2.4.1 to pass. Without the skip link, keyboard-only users must tab through every nav item on every page; without the matching `id`, the skip link has nowhere to jump.
+ALL THREE additions are required for WCAG 2.4.1 to pass: (1) the `<a href="#main-content">` skip link before the first nav block, (2) `id="main-content"` on the `<main>` wrapper, AND (3) `tabIndex={-1}` on the same `<main>`. Without the skip link, keyboard-only users must tab through every nav item on every page; without the matching `id`, the skip link has nowhere to jump; without `tabIndex={-1}`, the link's target is not programmatically focusable — activating the skip link does not move focus and Tab cycles back to the link.
 
 ### Multi-nav layouts — unique `aria-label` on each `<nav>`; decorative logos `alt=""`
 
@@ -346,9 +350,11 @@ import { RetainTracker } from "@/components/RetainTracker";
 import { NavBar } from "@/components/nav-bar";
 
 // Inside the <body> tag — see the Accessibility section above for the full
-// skip-nav link + <main id="main-content"> pattern that applies unconditionally:
+// skip-nav link + <main id="main-content" tabIndex={-1}> pattern that applies
+// unconditionally. The tabIndex={-1} is REQUIRED for WCAG 2.4.1 (skip-link
+// target must be programmatically focusable).
 <NavBar />           {/* Only when stack.auth is present — scaffold-wire Step 5c */}
-<main id="main-content">{children}</main>
+<main id="main-content" tabIndex={-1}>{children}</main>
 <RetainTracker />    {/* Only when stack.analytics is present — scaffold-wire Step 5c */}
 ```
 
@@ -560,7 +566,7 @@ This applies to every form handler in auth pages (signup, login, password reset)
 See the "Multi-nav layouts" entry under `## Accessibility` above. Two `<nav>` elements on the same page require unique `aria-label` values; a logo image adjacent to visible brand text requires `alt=""` + `aria-hidden` so the brand name is not announced twice.
 
 ### When keyboard accessibility scan reports missing skip-navigation link (WCAG 2.4.1)
-See the "Root layout — skip-nav link" entry under `## Accessibility` above. The layout must include a visually-hidden `<a href="#main-content">` anchor before the first visible navigation block, and `<main>` must carry `id="main-content"`. Both are required — the anchor alone without the matching id fails.
+See the "Root layout — skip-nav link" entry under `## Accessibility` above. The layout must include a visually-hidden `<a href="#main-content">` anchor before the first visible navigation block, and `<main>` must carry BOTH `id="main-content"` AND `tabIndex={-1}`. All three are required — the anchor alone, or anchor+id without tabIndex, BOTH fail. Without tabIndex={-1}, the `<main>` wrapper is not programmatically focusable; activating the skip-link anchor does not move focus and Tab cycles back to the link (issue #1380).
 
 ### `src/app/not-found.tsx` must export a `metadata` object
 The 404 page has no `<title>` without an explicit `metadata` export, which fails a11y / SEO audits. Add a static `metadata` export at the top of `src/app/not-found.tsx`:

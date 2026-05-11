@@ -138,7 +138,11 @@ hyp_ids_with_behavior = set(b.get('hypothesis_id') for b in behaviors)
 pending_ids = set(h['id'] for h in pending)
 q_behavior = round(len(pending_ids & hyp_ids_with_behavior) / max(len(pending_ids), 1), 3)
 
-q_metric = round(sum(1 for h in hypotheses if h.get('metric', {}).get('formula') and h.get('metric', {}).get('threshold') is not None) / max(len(hypotheses), 1), 3)
+# q_metric counts ONLY pending hypotheses — per Issue #1117 schema, resolved
+# hypotheses carry `evidence:` (desk-research validated), not `metric:`. Dividing
+# by len(hypotheses) under-counts on Level 3 specs that include resolved
+# research dimensions (#1384).
+q_metric = round(sum(1 for h in pending if h.get('metric', {}).get('formula') and h.get('metric', {}).get('threshold') is not None) / max(len(pending), 1), 3)
 
 q_variant = 1.0  # validated by Step 7c spot-check; default 1.0 if no variants
 

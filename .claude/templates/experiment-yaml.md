@@ -63,7 +63,7 @@ Each behavior is a user-observable capability tied to a hypothesis. Schema:
   given: <string>              # Required. Pre-condition.
   when: <string>               # Required. User/system action.
   then: <string>               # Required. Post-condition.
-  tests: [<string>...]         # Required. Acceptance criteria.
+  tests: [<string>...]         # Required. Acceptance criteria. 1-5 entries (validator-enforced — see scripts/validate-experiment.py b_tests length check).
   level: 1 | 2 | 3             # Required. Behavior level.
   actor: user | system | cron  # Optional. Default `user`.
   trigger: <string>            # Optional. Required when actor != user.

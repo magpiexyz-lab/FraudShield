@@ -33,7 +33,11 @@ npm install posthog-js
 
 ### `src/lib/analytics.ts`
 ```ts
-import posthog from "posthog-js";
+// posthog-js is loaded LAZILY via dynamic import inside init(). Static top-level
+// import would pin the SDK (~60 kB gz) to every page's First Load JS via the
+// analytics.ts → events.ts → page.tsx import chain. Events fired before the SDK
+// finishes loading are queued in `pending[]` and replayed once init() resolves.
+// Public API stays synchronous; callers don't await.
 
 const PROJECT_NAME = "TODO"; // Replaced by bootstrap with experiment.yaml `name`
 const PROJECT_OWNER = "TODO"; // Replaced by bootstrap with experiment.yaml `owner`
@@ -64,49 +68,114 @@ function warnOnce() {
   );
 }
 
-let initialized = false;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let posthog: any = null;
+type PendingCall = (client: unknown) => void;
+const pending: PendingCall[] = [];
+type Status = "idle" | "loading" | "ready" | "failed";
+let status: Status = "idle";
 
-function init() {
-  if (initialized || typeof window === "undefined") return;
+function flushPending() {
+  if (!posthog) return;
+  while (pending.length > 0) {
+    const call = pending.shift();
+    if (call) {
+      try { call(posthog); } catch { /* per-event isolation */ }
+    }
+  }
+}
+
+function init(): void {
+  if (status !== "idle") return;
+  if (typeof window === "undefined") return;
   if (isMisconfigured) {
     if (isDeployedHost && process.env.NEXT_PUBLIC_VERCEL_ENV !== "preview") warnOnce();
     return;
   }
-  posthog.init(POSTHOG_KEY, {
-    api_host: POSTHOG_HOST,
-    capture_pageview: false,
-    capture_exceptions: true,
-  });
-  initialized = true;
+  status = "loading";
+  // SDK is chunk-split by webpack — does NOT pin to First Load JS. The Test Blocking
+  // section below shows preview-gated init flags that must live inside this options
+  // object (NOT a top-level posthog.init call) since the call site is now lazy.
+  const isPreviewOrDev = process.env.NEXT_PUBLIC_VERCEL_ENV !== "production";
+  import("posthog-js")
+    .then((mod) => {
+      posthog = mod.default;
+      posthog.init(POSTHOG_KEY, {
+        api_host: POSTHOG_HOST,
+        capture_pageview: false,
+        capture_exceptions: true,
+        ...(isPreviewOrDev && {
+          disable_compression: true, // Force XHR transport (Playwright cannot intercept sendBeacon)
+          request_batching: false,   // Force immediate per-event XHR (batching delays events past assertion time)
+        }),
+      });
+      status = "ready";
+      flushPending();
+    })
+    .catch((err) => {
+      status = "failed";
+      pending.length = 0;
+      // Loud-fail: a load failure (offline, CDN block, ad-blocker) means the
+      // $exception channel that capture_exceptions: true would have used is
+      // ALSO unavailable — operators must see the failure here or it stays silent.
+      console.error("[analytics] posthog-js failed to load — events will be dropped:", err);
+    });
+}
+
+// Test marker (sessionStorage) lives inside track() rather than per-wrapper.
+// Keeps the deterministic assertion target available even when callers use
+// the bare `track(name, props)` API (no typed wrapper). See `## Stack Knowledge
+// > Testing analytics events deterministically (Playwright)` for usage.
+function writeTestMarker(event: string, properties: Record<string, unknown>) {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.setItem(
+      `analytics:${event}`,
+      JSON.stringify({ timestamp: Date.now(), properties })
+    );
+  } catch { /* sessionStorage unavailable (e.g., private mode in some browsers) */ }
 }
 
 export function track(event: string, properties?: Record<string, unknown>) {
   init();
-  if (isMisconfigured) return;
-  posthog.capture(event, {
-    ...properties,
-    project_name: PROJECT_NAME,
-    project_owner: PROJECT_OWNER,
-  });
+  if (isMisconfigured || status === "failed") return;
+  const enriched = { ...properties, project_name: PROJECT_NAME, project_owner: PROJECT_OWNER };
+  writeTestMarker(event, enriched);
+  if (status === "ready" && posthog) {
+    posthog.capture(event, enriched);
+    return;
+  }
+  pending.push((client: unknown) => (client as { capture: (e: string, p: unknown) => void }).capture(event, enriched));
 }
 
 export function identify(userId: string, traits?: Record<string, unknown>) {
   init();
-  if (isMisconfigured) return;
-  posthog.identify(userId, traits);
+  if (isMisconfigured || status === "failed") return;
+  if (status === "ready" && posthog) {
+    posthog.identify(userId, traits);
+    return;
+  }
+  pending.push((client: unknown) => (client as { identify: (id: string, t?: unknown) => void }).identify(userId, traits));
 }
 
 export function reset() {
   init();
-  if (isMisconfigured) return;
-  posthog.reset();
+  if (isMisconfigured || status === "failed") return;
+  if (status === "ready" && posthog) {
+    posthog.reset();
+    return;
+  }
+  pending.push((client: unknown) => (client as { reset: () => void }).reset());
 }
 ```
 
 Notes:
 - `init()` is lazy — safe to import server-side, PostHog only initializes on first client-side call
+- The SDK itself is also lazily LOADED (not just lazily INITIALIZED) — `import("posthog-js")` produces a separate webpack chunk and does NOT pin posthog-js to every page's First Load JS. Events fired during the load window queue in `pending[]` and replay on resolve.
+- Load-failure semantics: when `import("posthog-js")` rejects (offline, CDN block, ad-blocker), `status` becomes `"failed"`, the queue is dropped, and all subsequent `track()`/`identify()`/`reset()` calls short-circuit — operators see the load failure via the `console.error` in the `.catch()` handler. Note that this also kills the `$exception` channel that `capture_exceptions: true` would otherwise use for runtime exception reporting.
 - `capture_pageview: false` because pages fire explicit events via `events.ts`
-- `capture_exceptions: true` sends unhandled JS errors and promise rejections to PostHog as `$exception` events — provides post-deploy error visibility without additional error tracking setup
+- `capture_exceptions: true` sends unhandled JS errors and promise rejections to PostHog as `$exception` events — provides post-deploy error visibility without additional error tracking setup, but only when the SDK successfully loaded (see load-failure semantics above)
+- The `writeTestMarker()` call inside `track()` records a deterministic sessionStorage entry per event — Playwright tests assert on these markers (see `## Stack Knowledge > Testing analytics events deterministically (Playwright)`) without racing the network. This works whether callers use the bare `track()` or a typed wrapper from `events.ts`.
 - Bootstrap replaces `PROJECT_NAME` and `PROJECT_OWNER` with actual experiment.yaml values
 - `POSTHOG_HOST` is `/ingest` on the client (proxied via Next.js rewrites to avoid ad blockers) and `https://us.i.posthog.com` on the server (direct, not affected by ad blockers). `POSTHOG_KEY` defaults to the **placeholder** `phc_TEAM_KEY`, which **must be replaced** before deploy — either by editing the constant directly (fork-once workflow) or by setting `NEXT_PUBLIC_POSTHOG_KEY` in your hosting platform's environment variables (per-project override). The placeholder being still present at deploy time is a misconfiguration; see `## Production Observability` for the three-layer fail-loud mechanism that catches it. PostHog `phc_` keys are publishable (write-only, safe for client-side embedding — same class as Stripe `pk_test_`).
 - Global properties are placed after the spread so they can't be overridden by callers
@@ -277,10 +346,13 @@ scaffold-libs emits this file verbatim into the project root when `stack.analyti
 import nextEnv from "@next/env";
 import fs from "node:fs";
 
-// `@next/env` is a CommonJS module; under Node 22 ESM the named-import form
-// (`import { loadEnvConfig } from ...`) fails with `SyntaxError: Named export
-// 'loadEnvConfig' not found`. Default-import + destructure is the canonical
-// CJS-interop shape and works on older Node versions too.
+// .mjs (raw Node ESM) requires DEFAULT-import + destructure for @next/env. The
+// named-import form (`import { loadEnvConfig } from ...`) fails under Node 22
+// raw ESM with `SyntaxError: Named export 'loadEnvConfig' not found` because
+// Node's CJS named-export detection does not surface this package's exports.
+// .ts files loaded by Playwright/jest/tsx (CJS-transpile via pirates) require
+// the OPPOSITE shape — see "CJS-interop with @next/env" Stack Knowledge entry
+// below for the per-loader contract.
 const { loadEnvConfig } = nextEnv;
 
 // Load .env.local / .env so local `npm run build` invocations see the same
@@ -495,9 +567,12 @@ When running E2E tests, block analytics requests to prevent test data from pollu
 ```
 This matches the proxied PostHog ingestion endpoint (`/ingest/*`). Playwright's `page.route()` uses this pattern to intercept and abort analytics requests. See the testing stack file's `blockAnalytics` helper for usage.
 
-**sendBeacon + batching limitations:** PostHog JS uses `navigator.sendBeacon()` by default (which Playwright's `page.route()` cannot intercept) and batches multiple events into a single XHR after a threshold (which delays event emission past a test's assertion window). Both behaviors must be disabled for reliable Playwright interception. When the testing stack is present, bootstrap should emit `posthog.init()` with the testing flags **gated on `NEXT_PUBLIC_VERCEL_ENV !== "production"`** so they fire in preview/dev (where tests run) but NOT in real production deploys (where compressed transport + batching is the optimal choice):
+**sendBeacon + batching limitations:** PostHog JS uses `navigator.sendBeacon()` by default (which Playwright's `page.route()` cannot intercept) and batches multiple events into a single XHR after a threshold (which delays event emission past a test's assertion window). Both behaviors must be disabled for reliable Playwright interception. The canonical `analytics.ts` template above ALREADY includes the `disable_compression: true` + `request_batching: false` flags inside the lazy `init()` `.then()` callback, gated on `NEXT_PUBLIC_VERCEL_ENV !== "production"` so they fire in preview/dev (where tests run) but NOT in real production deploys.
+
+The relevant block from `analytics.ts` (canonical — do not duplicate; this is the live source):
 
 ```ts
+// (inside the import("posthog-js").then() callback in analytics.ts above)
 const isPreviewOrDev = process.env.NEXT_PUBLIC_VERCEL_ENV !== "production";
 posthog.init(POSTHOG_KEY, {
   api_host: POSTHOG_HOST,
@@ -599,26 +674,26 @@ await Promise.all([
 
 PostHog's JS client batches events, debounces via `_flushTimer`, falls back to `navigator.sendBeacon()` on page unload (uncatchable by Playwright after navigation), and skips network entirely under DNT / opt-out. The `disable_compression: true` + `request_batching: false` flags in `## Test Blocking` above mitigate batching but cannot eliminate the fundamental race between "the action that triggered the event" and "the network actually being made". CI machines under load lose the race.
 
-The assertion target should be "**the typed wrapper for `<event>` was called**" — a synchronous client-code observation that doesn't go through PostHog's network layer at all. Add a deterministic marker inside the typed event wrapper:
+The assertion target should be "**the `track()` call for `<event>` was made**" — a synchronous client-code observation that doesn't go through PostHog's network layer at all. The canonical `analytics.ts` (above) writes a sessionStorage marker inside `track()` itself, so EVERY event automatically gets a deterministic marker — whether the call site is the bare `track()` API or a typed wrapper from `events.ts`.
+
+The marker shape (written by `track()` in analytics.ts):
 
 ```ts
-// src/lib/events.ts (typed wrapper layer)
-import { posthog } from "@/lib/analytics";
+// Inside track() — already part of the canonical analytics.ts template:
+sessionStorage.setItem(
+  `analytics:${event}`,
+  JSON.stringify({ timestamp: Date.now(), properties: enriched })
+);
+```
+
+A typed wrapper that calls `track()` inherits the marker:
+
+```ts
+// src/lib/events.ts (typed wrapper layer) — no marker code needed; track() handles it.
+import { track } from "@/lib/analytics";
 
 export function trackWelcomeEmailSent(props: { variant: string }) {
-  // 1. Synchronous marker for deterministic test assertions — no network involved.
-  if (typeof window !== "undefined") {
-    try {
-      sessionStorage.setItem(
-        `analytics:welcome_email_sent`,
-        JSON.stringify({ timestamp: Date.now(), properties: props }),
-      );
-    } catch {
-      /* sessionStorage unavailable (e.g., private mode in some browsers) */
-    }
-  }
-  // 2. Real PostHog call — async, may flake, but tests don't observe it.
-  posthog.capture("welcome_email_sent", props);
+  track("welcome_email_sent", props);  // marker written automatically
 }
 ```
 
@@ -639,7 +714,7 @@ test("signup fires welcome_email_sent", async ({ page }) => {
 });
 ```
 
-The marker is wrapper-level — a typed wrapper that fires the event MUST also write the marker. Bootstrap's `analytics-events.ts` template (when `stack.testing` is present) generates wrappers in this shape automatically; bare `posthog.capture()` calls don't get markers and therefore can't be tested this way.
+The marker is library-level (inside `track()`) rather than wrapper-level. This means: (a) bare `track(name, props)` calls also get markers (no requirement to use a typed wrapper); (b) the marker survives the lazy-load window — `track()` writes the marker BEFORE queueing the call into `pending[]`, so tests asserting on markers don't depend on `posthog-js` having loaded yet.
 
 ### Missing PostHog key produces silent no-op without `## Production Observability` safeguard
 
@@ -675,47 +750,68 @@ graduated_to: null
 
 When the generated `analytics.ts` / `analytics-server.ts` is deployed with `NEXT_PUBLIC_POSTHOG_KEY` unset OR set to empty string, the original `?? "phc_TEAM_KEY"` fallback masked the misconfiguration entirely — every `track()` call silently dropped, the entire client-side funnel invisible until someone manually opened DevTools. The fix replaces the silent fallback with a positive `isMisconfigured` check that fires loudly at three layers (build, runtime, post-deploy verification). All layers are designed for both fork workflows: env override (per-project) and source-level placeholder replacement (fork-once). Original incident: issue #1170, discovered during `/distribute` STATE 6 manual ad-launch verification.
 
-### Named import of @next/env fails on Node 22 ESM (CJS-interop regression)
+### CJS-interop with @next/env: shape depends on loader (.mjs raw ESM vs .ts CJS-transpile)
 
 ```yaml
-id: nextenv-cjs-named-import-esm-regression
+id: nextenv-cjs-interop-loader-conditional
 maturity: stable
 anti_pattern: false
 composite_identity:
-  root_cause_class: esm-cjs-interop-named-import-regression
-  divergence_pattern: named-import-of-cjs-only-export
+  root_cause_class: esm-cjs-interop-loader-conditional-shape
+  divergence_pattern: single-shape-applied-uniformly-across-loaders
   stack_scope: analytics/posthog
-composite_identity_hash: 8e15eba7d860
-symptom_keywords: [next-env, loadEnvConfig, esm, cjs, prebuild, named-import, node22]
+composite_identity_hash: e74f81cb2f1d
+symptom_keywords: [next-env, loadEnvConfig, esm, cjs, prebuild, mjs, ts, named-import, default-import, node22]
 fix_template: |
-  When emitting a .mjs/.ts script that imports loadEnvConfig from `@next/env`,
-  use default-import + destructure (CJS-interop):
+  @next/env publishes as CommonJS only. The correct CJS-interop shape DEPENDS
+  on the host loader — there is no single canonical shape:
+
+  .ts files loaded by Playwright/jest/tsx (CJS-transpile via pirates / @swc-node
+  / etc.) → NAMED-import works; default-import + destructure FAILS with
+  `TypeError: Cannot destructure property 'loadEnvConfig' of '_env.default' as
+  it is undefined` because the TS interop wrapper produces `{default: undefined}`.
+
+      import { loadEnvConfig } from "@next/env";
+
+  .mjs files loaded as raw Node ESM (`node script.mjs`) → DEFAULT-import +
+  destructure works; named-import FAILS with `SyntaxError: Named export
+  'loadEnvConfig' not found` because Node's CJS named-export detection does not
+  surface this package's exports.
 
       import nextEnv from "@next/env";
       const { loadEnvConfig } = nextEnv;
 
-  The named-import form (`import { loadEnvConfig } from "@next/env"`) fails
-  under Node 22 ESM with `SyntaxError: Named export 'loadEnvConfig' not found.
-  The requested module '@next/env' is a CommonJS module...`. Affects every
-  fresh bootstrap whose archetype emits prebuild scripts (analytics/posthog,
-  database/supabase auto-migrate.mjs, testing/playwright config).
-prevention_mechanism: validate-semantics-check-11-hardcoded-provider-names + stack-file-comment-pinning-cjs-interop-shape
-confidence_score: 0.9
-occurrence_count: 1
-linked_issues: [1325]
+  Empirical verification (run on your machine to confirm shapes for your
+  installed @next/env version):
+
+      cd /tmp && mkdir t && cd t && npm init -y && npm install @next/env
+      # named in .mjs (expect SyntaxError):
+      printf 'import { loadEnvConfig } from "@next/env";\nconsole.log(loadEnvConfig);\n' > a.mjs && node a.mjs
+      # default+destructure in .mjs (expect function):
+      printf 'import nextEnv from "@next/env";\nconsole.log(nextEnv.loadEnvConfig);\n' > b.mjs && node b.mjs
+
+  Affects: scripts/check-analytics-env.mjs (DEFAULT+destructure),
+  scripts/auto-migrate.mjs (DEFAULT+destructure), playwright.config.ts (NAMED).
+prevention_mechanism: stack-file-comment-pinning-loader-conditional-shape + per-file inline reminders cross-referencing this entry
+confidence_score: 0.95
+occurrence_count: 2
+linked_issues: [1325, 1382]
 first_seen: 2026-05-07
-last_seen: 2026-05-07
+last_seen: 2026-05-11
 graduated_to: null
 ```
 
-The `@next/env` package is published as CommonJS only; under Node 22 ESM, the
-named-import form fails at module load. The default-import + destructure shape
-is the canonical CJS-interop idiom and works on all Node versions. Bootstrap
-emits this shape in three places: `scripts/check-analytics-env.mjs` (analytics
-prebuild), `scripts/auto-migrate.mjs` (database prebuild), and
-`playwright.config.ts` (testing config — both with-auth and no-auth fallback).
-Original incident: issue #1325, discovered during `/bootstrap` self-check on a
-fresh project.
+The `@next/env` package is published as CommonJS only. Earlier guidance (issue
+#1325) prescribed default-import + destructure as the universal canonical shape;
+issue #1382 empirically demonstrated this is FALSE for .ts contexts — there the
+TS-emitted CJS interop wrapper produces `{default: undefined}` and the
+destructure throws TypeError. The shape is loader-conditional: `.mjs` files keep
+default-import + destructure (raw Node ESM); `.ts` files (Playwright config) use
+named-import (TS-transpiled CJS-interop). Three template files distribute these
+shapes: `scripts/check-analytics-env.mjs` (analytics prebuild — .mjs default),
+`scripts/auto-migrate.mjs` (database prebuild — .mjs default),
+`playwright.config.ts` (testing config — .ts named, both with-auth and no-auth
+fallback).
 
 ## PR Instructions
 - `NEXT_PUBLIC_POSTHOG_KEY` MUST be set in the hosting platform's environment OR the source-level `phc_TEAM_KEY` placeholder must be replaced with the team's real key (see `## Environment Variables` and `## Production Observability`). Otherwise the prebuild script will fail the production build.
