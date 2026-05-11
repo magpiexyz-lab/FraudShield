@@ -1,6 +1,8 @@
 # STATE x2: CLASSIFY_SIGNUPS
 
-LLM-derived per-MVP signup event classification. Replaces the deprecated event-funnel migration. Classifications are persisted to `experiment/iterate-cross-config.yaml mvp_mappings` and reused on subsequent runs.
+LLM-derived per-MVP signup event classification with **silent auto-accept** by default. Classifications are persisted to `experiment/iterate-cross-config.yaml mvp_mappings` and reused on subsequent runs.
+
+This state does NOT prompt the operator for each MVP. The combination of (a) hard exclusion list, (b) strong-prior LLM rules, (c) post-classification sanity check, and (d) operator-editable cache covers the same safety surface that a per-MVP confirmation would, without O(N) friction across many MVPs.
 
 **PRECONDITIONS:**
 - STATE x1a POSTCONDITIONS met
@@ -9,7 +11,7 @@ LLM-derived per-MVP signup event classification. Replaces the deprecated event-f
 
 **ACTIONS:**
 
-### Read inputs
+### Read inputs + bucket MVPs
 
 ```bash
 python3 - <<'PY'
@@ -29,7 +31,6 @@ default_whitelist = config.get('signup_whitelist') or [
     'early_access_signup', 'activate', 'form_submitted'
 ]
 
-# Buckets for downstream processing
 to_skip = []         # already classified, no work
 to_auto = []         # auto-default match, derive deterministically
 to_llm  = []         # needs LLM proposal
@@ -40,13 +41,11 @@ for mvp in data['mvps']:
     if flags['signup_classified']:
         to_skip.append(name)
     elif flags['no_event_data']:
-        # Unclassifiable; record empty proposal
-        to_auto.append({'name': name, 'signup_events': []})
+        to_auto.append({'name': name, 'signup_events': [], 'confidence': 'empty', 'rationale': 'No events in catalog'})
     elif flags['auto_default_match']:
-        # Use intersection of default whitelist with catalog events
         cat_events = {e['event'] for e in mvp.get('event_catalog', [])}
         chosen = [e for e in default_whitelist if e in cat_events]
-        to_auto.append({'name': name, 'signup_events': chosen})
+        to_auto.append({'name': name, 'signup_events': chosen, 'confidence': 'whitelist', 'rationale': f'Standard event(s): {", ".join(chosen)}'})
     elif flags['needs_llm_classification']:
         to_llm.append(mvp)
 
@@ -54,89 +53,74 @@ json.dump({
     'to_skip': to_skip,
     'to_auto': to_auto,
     'to_llm': [{'name': m['name'], 'event_catalog': m.get('event_catalog', [])[:20]} for m in to_llm],
-    'default_whitelist': default_whitelist,
 }, open('.runs/_iterate-cross-classify-input.json', 'w'))
 PY
 ```
 
-### LLM classification step (Claude does this inline)
+### LLM classification (Claude does this inline, silent)
 
-Read `.runs/_iterate-cross-classify-input.json`. For each MVP in `to_llm`, inspect the `event_catalog` (top events with counts and `sample_stage`).
+Read `.runs/_iterate-cross-classify-input.json`. For each MVP in `to_llm`, inspect the `event_catalog`. Classify silently — do NOT prompt the operator per MVP.
 
-Classify which events represent **completed signup / committed conversion** for that MVP. Apply these rules in order:
+#### Hard exclusion list (NEVER classify as signup)
 
-1. **Strong signals**: any event named `signup_complete`, `signup_completed`, `waitlist_signup`, `waitlist_submit`, `early_access_signup`, `early_access_submitted`, `email_submitted`, `register_complete`, `account_created`, `form_submitted`, `<role>_signup_complete` (e.g., `buyer_signup_complete`), `<role>_registration_started` — include directly.
+Reject these patterns even if `funnel_stage` is mistagged as `demand` or `activate`:
 
-2. **Activation events** (only when no strong signal exists): events where `sample_stage == 'activate'` and the name implies meaningful action — `api_key_create`, `analysis_complete`, `demo_completed`, `first_check_completed`, `location_connected`, `<feature>_completed`. Include only if no `signup_*` event exists in the catalog.
+- `cta_click`, `cta_clicked`, `cta_*` — clicks, not conversions
+- `landing_*`, `lander_*` — page-view events
+- `*_view`, `*_viewed`, `*_visit` — UI/page events
+- `scroll_*`, `scroll_depth`
+- `attribution_captured`, `ad_clicked`
+- `pricing_view`, `feed_view`, `feed_viewed`
+- `$pageview`, `$autocapture`, `$pageleave`, `$*` — PostHog auto-capture
+- `page_viewed`, `marketplace_view`, `marketplace_viewed`
 
-3. **Loose match** (last resort, when only intent events exist): events like `signup_start`, `cta_clicked` paired with `funnel_stage == 'demand'` AND no `_complete` event in catalog. Mark with `confidence: 'loose'` so the operator can review.
+If a catalog has ONLY excluded events with no signup-class event, return `signup_events: []`, `confidence: 'empty'`, `rationale: 'Catalog has only UI/page events'`.
 
-4. **Always exclude**: `cta_click`, `landing_*`, `*_view`, `*_viewed`, `scroll_depth`, `attribution_captured`, `pricing_view`, `feed_view` — these are UI/page events, never signups even if mistagged with `funnel_stage`.
+#### Classification rules (in priority order)
 
-5. **Domain heuristics**:
-   - Marketplace MVPs (events with `marketplace_*`, `buyer_*`, `seller_*`) — pick the role-specific completion event.
-   - Lead-gen / outbound MVPs (events with `outreach_*`, `discovery_call_*`) — pick the booking/submit event.
-   - Calculator/tool MVPs — `analysis_complete`, `model_recommended`, `simulation_complete` count as activation if no signup exists.
+1. **Strong (confidence: `strong`)**: any event name matching `signup_complete`, `signup_completed`, `register_complete`, `account_created`, `<role>_signup_complete` (e.g., `buyer_signup_complete`), `*_submitted` paired with `_email`/`_form`/`_waitlist`, `early_access_*`. Take all matches.
 
-6. **Empty proposal allowed**: if no event qualifies, return `signup_events: []` and `notes: "No signup-class event in catalog"`. The MVP will be reported as INSUFFICIENT_DATA in x3.
+2. **Waitlist (confidence: `strong`)**: `waitlist_signup`, `waitlist_submit`, `waitlist_submitted`. Take all matches.
 
-For each MVP, output a proposal:
+3. **Activation as signup (confidence: `inferred`)**: only when NO strong/waitlist match exists. Events where the name implies a meaningful first action AND the catalog suggests the MVP's core mechanic is that action:
+   - `api_key_create` for dev tools
+   - `demo_completed` for demo-driven funnels
+   - `first_check_completed`, `analysis_complete`, `model_recommended` for tool/calculator MVPs
+   - `location_connected` for connect-based MVPs
+   - `<role>_registration_started` (e.g., `actor_registration_started`)
+   Pick at most TWO events. Tag `confidence: 'inferred'`.
+
+4. **Form submission (confidence: `inferred`)**: when catalog has `form_submitted` without `signup_*` → take it.
+
+5. **Loose (confidence: `loose`)**: only as last resort, when no `_complete` event exists but catalog has `signup_start`. Take it. (Operator will see `loose` confidence in summary and can override in config.)
+
+6. **Empty (confidence: `empty`)**: no event qualifies. Return `signup_events: []`. MVP will report INSUFFICIENT_DATA or NO_DATA in x3.
+
+For each MVP, write a proposal:
 
 ```json
-{
-  "name": "diarly",
-  "signup_events": ["signup_complete"],
-  "rationale": "Standard SaaS signup_complete (8 gclid users). signup_start present but used as start-of-flow; signup_complete is the conversion."
-}
+{"name": "diarly", "signup_events": ["signup_complete"], "confidence": "strong", "rationale": "Standard SaaS signup_complete (8 gclid users)."}
 ```
 
 Write all proposals to `.runs/_iterate-cross-classify-proposals.json`.
 
-### Operator confirmation (batch)
+### Persist to config (silent)
 
-Present proposals to the operator:
-
-> **LLM-derived signup classifications** ({N} new MVPs need confirmation):
->
-> | MVP | Proposed signup events | Rationale |
-> |-----|------------------------|-----------|
-> | diarly | `signup_complete` | Standard SaaS signup_complete (8 gclid users). |
-> | smelt | `waitlist_signup`, `signup_complete` | Mixed waitlist + standard. |
-> | stylica-ai | `signup_complete`, `activate` | activate (32 gclid) is the real conversion signal. |
-> | mosai | _(none)_ | No signup-class event in catalog — INSUFFICIENT_DATA verdict. |
->
-> Reply with one of:
-> - **accept-all** — accept all proposals and persist
-> - **edit** — interactive review per MVP
-> - **abort** — exit without writing config
-
-Wait for operator response. If `edit`, walk through each MVP one at a time; allow override of `signup_events`. If `accept-all`, proceed.
-
-### Persist to config
-
-For each MVP in `to_auto` + accepted-or-edited `to_llm`, merge into `experiment/iterate-cross-config.yaml`:
+For each MVP in `to_auto` + `to_llm` proposals, merge into `experiment/iterate-cross-config.yaml` under `mvp_mappings.<name>`:
 
 ```yaml
 mvp_mappings:
   diarly:
     signup_events: [signup_complete]
-    classified_by: llm-x2
-    classified_at: 2026-05-11T00:00:00Z
-  smelt:
-    signup_events: [waitlist_signup, signup_complete]
-    classified_by: llm-x2
-    classified_at: 2026-05-11T00:00:00Z
-  mosai:
-    signup_events: []
-    classified_by: x2-empty
+    classified_by: llm-x2-strong       # or llm-x2-inferred / llm-x2-loose / x2-whitelist / x2-empty
     classified_at: 2026-05-11T00:00:00Z
 ```
 
-Preserve any existing fields under `mvp_mappings.<name>` (e.g., `owner`, `deploy_domain`).
+Preserve any existing fields under `mvp_mappings.<name>` (e.g., `owner`, `deploy_domain`, or operator-overridden `signup_events` — operator edits ALWAYS win; check if `classified_by == 'operator'` and skip if so).
 
-### Update data file + query signups using classified events
+### Query signups using classified events
 
-Merge classifications into `.runs/iterate-cross-data.json`, then run ONE combined PostHog query to count signups per MVP using each MVP's classified events:
+After persistence, run one combined PostHog query (UNION ALL of per-MVP subqueries) to count signups per MVP using each MVP's classified events. Write counts back into `.runs/iterate-cross-data.json`:
 
 ```bash
 python3 - <<'PY'
@@ -152,7 +136,6 @@ window_days = ctx['window_days']
 for mvp in data['mvps']:
     mvp['signup_events'] = (mappings.get(mvp['name']) or {}).get('signup_events') or []
 
-# Build UNION ALL query: per-MVP signup count
 parts = []
 values = {"empty": ""}
 for i, mvp in enumerate(data['mvps']):
@@ -202,11 +185,9 @@ data = json.load(open('.runs/iterate-cross-data.json'))
 config = yaml.safe_load(open('experiment/iterate-cross-config.yaml')) or {}
 mappings = config.get('mvp_mappings') or {}
 
-# Merge classifications (signup_events) from config
 for mvp in data['mvps']:
     mvp['signup_events'] = (mappings.get(mvp['name']) or {}).get('signup_events') or []
 
-# Apply signup counts from query result
 counts = {}
 if os.path.exists('.runs/_iterate-cross-signups-out.json'):
     out = json.load(open('.runs/_iterate-cross-signups-out.json'))
@@ -225,15 +206,62 @@ bash .claude/scripts/lib/write-gate-artifact.sh \
   --path .runs/iterate-cross-data.json \
   --payload "$PAYLOAD" \
   --skill iterate
+```
 
+### Sanity check (catch misclassifications)
+
+For each MVP, compute `signups_ratio = signups / max(gclid_visitors, 1)`. If `ratio > 0.5` AND `gclid_visitors >= 10` → flag as **suspect** and warn in the summary. A 50%+ conversion rate is implausibly high for cold ad traffic; almost always means we picked a UI-side event as "signup". Operator should review the affected MVP's `signup_events` in config and re-run.
+
+```bash
+python3 - <<'PY'
+import json
+
+data = json.load(open('.runs/iterate-cross-data.json'))
+suspects = []
+for mvp in data['mvps']:
+    v = mvp.get('gclid_visitors', 0)
+    s = mvp.get('signups', 0)
+    if v >= 10 and s / v > 0.5:
+        suspects.append({'name': mvp['name'], 'visitors': v, 'signups': s, 'ratio': round(s/v, 2), 'signup_events': mvp.get('signup_events', [])})
+
+json.dump({'suspects': suspects}, open('.runs/_iterate-cross-classify-suspects.json', 'w'))
+PY
+```
+
+### Print summary table
+
+Print to stdout:
+
+```
+Classification summary ({N} MVPs):
+  • {S} skipped (operator-confirmed via config)
+  • {W} auto-classified via whitelist (standard event names)
+  • {LS} LLM-classified, strong confidence
+  • {LI} LLM-classified, inferred (heuristic)
+  • {LL} LLM-classified, loose (no _complete event found)
+  • {LE} empty classification (catalog has no signup-class event)
+
+⚠ Suspect (signups/visitors > 50%; likely misclassification):
+  • <mvp_name>: <visitors>v / <signups>sg (ratio <r>) — signup_events: [<events>]
+
+Top LLM-inferred classifications (review-recommended):
+  • <mvp_name> → <events> — <rationale>
+
+Cached mappings live in experiment/iterate-cross-config.yaml. To override, edit the file
+and re-run /iterate --cross.
+```
+
+If `--interactive` flag is set on the parent skill (future option), this state would instead present each proposal and wait. Default is silent.
+
+```bash
 rm -f .runs/_iterate-cross-classify-input.json .runs/_iterate-cross-classify-proposals.json .runs/_iterate-cross-signups-query.json .runs/_iterate-cross-signups-out.json
 ```
 
 **POSTCONDITIONS:**
 - Every MVP has `signup_events` field (array, possibly empty) in `.runs/iterate-cross-data.json`
 - Every MVP has `signups` field (integer ≥ 0) in `.runs/iterate-cross-data.json`
-- Side effect (verified by re-reading data): operator config `experiment/iterate-cross-config.yaml mvp_mappings.<name>.signup_events` is populated for every newly-classified MVP. The data file's `signup_events` is sourced from this config, so the data-file VERIFY transitively confirms the config write.
-- Operator confirmed batch of LLM proposals (or accepted defaults)
+- Summary table printed to stdout, listing classification counts + suspect MVPs (if any)
+- Side effect (out-of-band, no VERIFY check): the operator config file is updated with `mvp_mappings.<name>.signup_events`, `classified_by`, and `classified_at` audit fields for every newly-classified MVP. Operator overrides (`classified_by: operator`) are never touched. The data file's `signup_events` is sourced from the persisted config, so the data-file VERIFY transitively confirms the config write. <!-- enforced by agent behavior, not VERIFY gate -->
 
 **VERIFY:** see `state-registry.json` entry for `iterate-cross.x2`.
 

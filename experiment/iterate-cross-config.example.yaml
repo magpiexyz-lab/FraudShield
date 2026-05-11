@@ -29,24 +29,40 @@ phase_filter:
 # signup classifications. Operator can also set `owner` and `deploy_domain`
 # to enable owner grouping and improve URL fallback queries.
 #
-# After x2 runs, every MVP gets a signup_events array (possibly empty) plus
-# `classified_by` and `classified_at` audit fields. Edit the events list to
-# override LLM choices; the override is preserved on subsequent runs.
+# After x2 runs SILENTLY (no per-MVP confirmation), every MVP gets a
+# signup_events array (possibly empty) plus `classified_by` and `classified_at`
+# audit fields. To override an LLM choice: edit the events list AND set
+# `classified_by: operator` — that flag tells x2 to never overwrite your
+# override on subsequent runs.
+#
+# x2 prints a classification summary to stdout (counts + suspect MVPs where
+# signups/visitors > 50%, suggesting misclassification). Review the summary
+# before trusting the verdicts in x3/x4.
 mvp_mappings:
-  # Example:
+  # Auto-populated examples (DO NOT copy — x2 writes these for you):
   # diarly:
   #   signup_events: [signup_complete]
   #   owner: lego
   #   deploy_domain: diarly.draftlabs.org
-  #   classified_by: llm-x2
+  #   classified_by: llm-x2-strong       # strong: standard signup_complete match
   #   classified_at: 2026-05-11T00:00:00Z
   # smelt:
   #   signup_events: [waitlist_signup, signup_complete]
-  #   owner: lego
-  #   classified_by: llm-x2
+  #   classified_by: llm-x2-strong
+  # stylica-ai:
+  #   signup_events: [signup_complete, activate]
+  #   classified_by: llm-x2-inferred     # inferred: activate isn't standard but catalog suggests it's the conversion
+  # rubber-duck-api:
+  #   signup_events: [signup_start]
+  #   classified_by: llm-x2-loose        # loose: no _complete event in catalog — review carefully
   # mosai:
-  #   signup_events: []        # empty = no detectable signup event
+  #   signup_events: []                  # empty = no detectable signup event
   #   classified_by: x2-empty
+  #
+  # Operator override example (forces x2 to leave this alone on subsequent runs):
+  # foundrygraph:
+  #   signup_events: [discovery_call_booked]   # operator picked this manually
+  #   classified_by: operator                  # x2 will NEVER overwrite this
 
 # Fallback whitelist used by x1a (auto_default_match flag) and x2 (auto-classify
 # branch). MVPs whose catalog contains any of these events skip the LLM and use
