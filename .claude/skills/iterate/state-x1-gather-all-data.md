@@ -93,20 +93,21 @@ for row in raw['results']:
         'sample_stage': stage if stage else None,
     })
 
-# Build per-MVP records
+# Build per-MVP records. IMPORTANT: gclid_visitors comes directly from x0's
+# discovery query (count(DISTINCT distinct_id) WHERE gclid IS NOT NULL grouped
+# by project). Do NOT recompute by summing per-event gclid_users — that
+# double-counts users who fire multiple events and over-counts MVPs that emit
+# multiple landing-event names (e.g., during a migration: visit_landing +
+# landing_view both present).
 mvp_records = []
 for m in ctx['mvps']:
     name = m['name']
     catalog = sorted(catalog_by_mvp.get(name, []), key=lambda e: -e['gclid_users'])
-    gclid_visitors = sum(e['gclid_users'] for e in catalog if e['event'] in ('visit_landing', 'landing_view', 'landing_viewed', 'landing_visit', 'page_viewed', 'lander_view', '$pageview'))
-    if gclid_visitors == 0:
-        # Fall back to max gclid_users across events (the "broadest" event with gclid)
-        gclid_visitors = max((e['gclid_users'] for e in catalog), default=0)
     total_events = sum(e['event_count'] for e in catalog)
     mvp_records.append({
         'name': name,
         'owner': m.get('owner'),
-        'gclid_visitors': gclid_visitors,
+        'gclid_visitors': m.get('gclid_visitors', 0),  # authoritative count from x0 discovery
         'total_events_count': total_events,
         'first_seen': m.get('first_seen'),
         'last_seen': m.get('last_seen'),
