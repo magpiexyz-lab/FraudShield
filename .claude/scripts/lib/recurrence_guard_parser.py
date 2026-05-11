@@ -19,8 +19,10 @@ typed dicts or `None`), so soak protection has no real surface area
 (see RMG v2 first-principles cutover analysis).
 
 Public surface:
-    parse(value)               -> dict canonical guard
-    RecurrenceGuardParseError  -> raised when input is invalid (and tolerant=False)
+    parse(value)                 -> dict canonical guard
+    parse_falsification(value)   -> dict canonical falsification block
+    RecurrenceGuardParseError    -> raised when guard is invalid (tolerant=False)
+    FalsificationParseError      -> raised when falsification is invalid
 
 The canonical guard shape is::
 
@@ -29,6 +31,15 @@ The canonical guard shape is::
       "artifact": "<path-or-rule-id>" | None,
       "rationale": "<≤200ch>",
       "unguardability_rationale": "<≥80ch>"   # only when kind == "none"
+    }
+
+The canonical falsification shape is::
+
+    {
+      "prediction":          "<≥40ch: signal H predicts to observe>",
+      "opposite_prediction": "<≥40ch: signal ¬H would predict instead>",
+      "observable_signal":   "<≥40ch: actual observation cited from evidence>",
+      "strength":            "high" | "low" | "untestable"
     }
 """
 
@@ -42,6 +53,15 @@ KIND_VALUES = ("test", "lint", "hook", "invariant", "none")
 LEGACY_KIND = "legacy_freetext"
 RATIONALE_MAX = 200
 UNGUARDABILITY_MIN = 80
+
+# Falsification schema constants. Each text field must be at least this long
+# so trivial placeholders ("yes", "see code") are rejected at parse time.
+FALSIFICATION_TEXT_MIN = 40
+FALSIFICATION_STRENGTH_VALUES = ("high", "low", "untestable")
+# token-Jaccard threshold above which prediction and opposite_prediction are
+# treated as tautological (same observable, opposite framing). Tuned to 0.8;
+# adjust here if soak data shows persistent false-positives on terse text.
+FALSIFICATION_JACCARD_TAUTOLOGY = 0.8
 
 _LIGHT_BULLET_RE = re.compile(
     r"^\s*-\s*kind=([a-z]+)\s*\|\s*artifact=([^|]+?)\s*\|\s*rationale=([^|]{1,%d})\s*$"
@@ -186,3 +206,96 @@ def parse(value: Any) -> dict:
     raise RecurrenceGuardParseError(
         f"unsupported recurrence_guard type {type(value).__name__}", value
     )
+
+
+# ---------------------------------------------------------------------------
+# Falsification block — sibling of recurrence_guard. Lives alongside it inside
+# prevention_analysis. Validated at STATE 5 VERIFY when problem_type=defect.
+# ---------------------------------------------------------------------------
+
+
+class FalsificationParseError(ValueError):
+    """Raised when a falsification block is missing required fields or fails
+    structural checks (length, strength enum, tautology overlap)."""
+
+    def __init__(self, message: str, raw_value: Any) -> None:
+        super().__init__(message)
+        self.raw_value = raw_value
+
+
+_TOKEN_SPLIT_RE = re.compile(r"[A-Za-z0-9]+")
+
+
+def _tokenize(text: str) -> set[str]:
+    return {t.lower() for t in _TOKEN_SPLIT_RE.findall(text) if len(t) > 2}
+
+
+def _token_jaccard(a: str, b: str) -> float:
+    ta, tb = _tokenize(a), _tokenize(b)
+    if not ta or not tb:
+        return 0.0
+    return len(ta & tb) / len(ta | tb)
+
+
+def parse_falsification(value: Any) -> dict:
+    """Validate and canonicalize a `falsification` block.
+
+    Required fields: prediction, opposite_prediction, observable_signal, strength.
+    Each text field ≥ FALSIFICATION_TEXT_MIN chars.
+    `strength` must be one of FALSIFICATION_STRENGTH_VALUES.
+    `prediction` vs `opposite_prediction` must have token-Jaccard
+    < FALSIFICATION_JACCARD_TAUTOLOGY (else circular framing).
+
+    Raises FalsificationParseError on any violation.
+    """
+    if value is None:
+        raise FalsificationParseError("falsification is null", value)
+    if not isinstance(value, dict):
+        raise FalsificationParseError(
+            f"falsification must be a dict, got {type(value).__name__}", value
+        )
+
+    for field in ("prediction", "opposite_prediction", "observable_signal", "strength"):
+        if field not in value:
+            raise FalsificationParseError(f"falsification missing {field!r}", value)
+
+    prediction = str(value.get("prediction", "")).strip()
+    opposite = str(value.get("opposite_prediction", "")).strip()
+    signal = str(value.get("observable_signal", "")).strip()
+    strength = str(value.get("strength", "")).strip().lower()
+
+    if strength not in FALSIFICATION_STRENGTH_VALUES:
+        raise FalsificationParseError(
+            f"strength={strength!r} must be one of {FALSIFICATION_STRENGTH_VALUES}",
+            value,
+        )
+
+    for name, text in (
+        ("prediction", prediction),
+        ("opposite_prediction", opposite),
+        ("observable_signal", signal),
+    ):
+        if len(text) < FALSIFICATION_TEXT_MIN:
+            raise FalsificationParseError(
+                f"{name} length {len(text)} < {FALSIFICATION_TEXT_MIN} chars "
+                "(forces a concrete, non-trivial claim)",
+                value,
+            )
+
+    overlap = _token_jaccard(prediction, opposite)
+    if overlap >= FALSIFICATION_JACCARD_TAUTOLOGY:
+        raise FalsificationParseError(
+            f"prediction and opposite_prediction overlap (token-Jaccard="
+            f"{overlap:.2f} >= {FALSIFICATION_JACCARD_TAUTOLOGY}) — likely "
+            "tautological / circular framing. ¬H must predict a structurally "
+            "distinct observable, not just the negation of H's prediction.",
+            value,
+        )
+
+    return {
+        "prediction": prediction,
+        "opposite_prediction": opposite,
+        "observable_signal": signal,
+        "strength": strength,
+        "jaccard_score": round(overlap, 3),
+    }

@@ -18,7 +18,12 @@ import os
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "lib"))
-from recurrence_guard_parser import RecurrenceGuardParseError, parse  # noqa: E402
+from recurrence_guard_parser import (  # noqa: E402
+    FalsificationParseError,
+    RecurrenceGuardParseError,
+    parse,
+    parse_falsification,
+)
 
 ctx = json.load(open(".runs/change-context.json"))
 sd = ctx.get("solve_depth")
@@ -65,6 +70,34 @@ if pt == "Fix":
                 "recurrence_guard fails RMG v2 parser: %s (raw=%r)"
                 % (exc, getattr(exc, "raw_value", guard))
             )
+
+    # Falsification Gate — /change Fix branch sets problem_type=defect inside
+    # prevention_analysis via solve-reasoning Phase 4. FALSIFICATION_SOAK=1
+    # downgrades to warning during soak window (mirrors RMG_V2_TOLERANT).
+    if pa.get("problem_type") == "defect":
+        soak = os.environ.get("FALSIFICATION_SOAK", "0") in ("1", "true", "True")
+        falsi = pa.get("falsification")
+        if falsi is None:
+            msg = (
+                "prevention_analysis.falsification required when "
+                "problem_type=defect (Falsification Gate)"
+            )
+            if soak:
+                print("WARN (FALSIFICATION_SOAK=1): %s" % msg, file=sys.stderr)
+            else:
+                raise AssertionError(msg)
+        else:
+            try:
+                parse_falsification(falsi)
+            except FalsificationParseError as exc:
+                msg = "falsification fails parser: %s (raw=%r)" % (
+                    exc,
+                    getattr(exc, "raw_value", falsi),
+                )
+                if soak:
+                    print("WARN (FALSIFICATION_SOAK=1): %s" % msg, file=sys.stderr)
+                else:
+                    raise AssertionError(msg)
 
 cc = json.load(open(".runs/change-challenge.json"))
 assert isinstance(cc.get("critic_rounds"), int), "critic_rounds missing or not int"

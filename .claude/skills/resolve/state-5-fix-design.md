@@ -95,8 +95,21 @@ or flag for Phase 5 critic (full).
 
 If template universality fails: iterate once.
 
+**Falsification authoring** (Falsification Gate — required for every defect run,
+all `recurrence_guard.kind` values including `none`):
+Per fix or cluster, author a `falsification` block inside `prevention_analysis`.
+This forces a falsifiable claim — what observable signal would ¬H produce that
+H wouldn't? The block is independent of `recurrence_guard.kind` because the
+mechanism is reasoning discipline, not test coverage. Even prose-only fixes
+(kind=none) require the textual `prediction / opposite_prediction /
+observable_signal / strength` quartet. Schema: see
+`.claude/patterns/solve-reasoning.md` "Falsification Schema". solve-critic
+vector 7 (`falsification-weak`) will challenge weak or circular framing in
+STATE 5d; structural overlap (token-Jaccard ≥ 0.8 between `prediction` and
+`opposite_prediction`) is rejected at parse time.
+
 Record: `root_cause`, `fix_plan` (per-file changes), `proposed_checks` (if any
-from prevention_analysis.recurrence_guard).
+from prevention_analysis.recurrence_guard), `falsification` (see above).
 
 - **Write solve trace artifact** (`.runs/solve-trace.json`) using the contract from solve-reasoning.md:
   ```bash
@@ -124,6 +137,17 @@ from prevention_analysis.recurrence_guard).
           'scope': {
               'all_covered': True,
               'instance_count': 0
+          },
+          # Falsification Gate (required when problem_type=='defect', any kind).
+          # Parsed by .claude/scripts/lib/recurrence_guard_parser.parse_falsification.
+          # Schema: prediction / opposite_prediction / observable_signal each
+          # ≥40 chars; strength in {high, low, untestable}; token-Jaccard
+          # between prediction and opposite_prediction must be < 0.8.
+          'falsification': {
+              'prediction': '<≥40 chars: signal H predicts to observe — specific to root cause>',
+              'opposite_prediction': '<≥40 chars: signal ¬H would predict instead — structurally distinct>',
+              'observable_signal': '<≥40 chars: actual observation cited from reproduction/evidence>',
+              'strength': '<high|low|untestable>'
           }
       },
       # RMG v2 Phase C: Prior-Failure Response. One entry per Phase 1a dossier
@@ -152,7 +176,7 @@ from prevention_analysis.recurrence_guard).
 
 **VERIFY:**
 ```bash
-python3 .claude/scripts/verify-recurrence-guard.py --require-prevention  # .runs/solve-trace.json
+python3 .claude/scripts/verify-recurrence-guard.py --require-prevention --require-falsification  # .runs/solve-trace.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

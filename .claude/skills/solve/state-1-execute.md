@@ -64,7 +64,17 @@ step or guard artifact absent from the prior commit (R2-A2). Empty dossier
           #    "rationale": "<≤200ch>",
           #    "unguardability_rationale": "<≥80ch, only when kind == 'none'>"}
           'recurrence_guard': None,
-          'scope': {'all_covered': True, 'instance_count': 0}
+          'scope': {'all_covered': True, 'instance_count': 0},
+          # Falsification Gate (required when problem_type=='defect', any kind).
+          # Parsed by .claude/scripts/lib/recurrence_guard_parser.parse_falsification.
+          # Schema: 3 text fields each ≥40 chars; strength in {high,low,untestable};
+          # prediction vs opposite_prediction token-Jaccard < 0.8 (no tautology).
+          'falsification': {
+              'prediction': '<≥40 chars: signal H predicts to observe>',
+              'opposite_prediction': '<≥40 chars: signal ¬H would predict instead>',
+              'observable_signal': '<≥40 chars: actual observation cited from evidence>',
+              'strength': '<high|low|untestable>'
+          }
       }
       # RMG v2 Phase C: Prior-Failure Response. One entry per Phase 1a
       # dossier entry; each entry cites a concrete delta step or guard
@@ -132,7 +142,7 @@ step or guard artifact absent from the prior commit (R2-A2). Empty dossier
 
 **VERIFY:**
 ```bash
-python3 .claude/scripts/verify-recurrence-guard.py --require-phase-3-gaps --require-run-id --skill solve && python3 -c "import json,os; d=json.load(open('.runs/solve-challenge.json')); assert isinstance(d.get('critic_rounds'), int), 'critic_rounds missing or not int'; assert isinstance(d.get('round_1_type_a_count'), int), 'round_1_type_a_count missing or not int'; assert isinstance(d.get('round_2_type_a_count'), int), 'round_2_type_a_count missing or not int'; assert isinstance(d.get('concerns'), list), 'concerns missing or not list'; cr=d.get('critic_rounds',0); arc='.runs/solve-critic-round1.json'; assert cr!=2 or (os.path.exists(arc) and json.load(open(arc)).get('round')==1), '#1331 sidecar archive missing or wrong round'"  # .runs/solve-trace.json, .runs/solve-challenge.json, .runs/solve-critic-round1.json
+python3 .claude/scripts/verify-recurrence-guard.py --require-phase-3-gaps --require-run-id --require-falsification --skill solve && python3 -c "import json,os; d=json.load(open('.runs/solve-challenge.json')); assert isinstance(d.get('critic_rounds'), int), 'critic_rounds missing or not int'; assert isinstance(d.get('round_1_type_a_count'), int), 'round_1_type_a_count missing or not int'; assert isinstance(d.get('round_2_type_a_count'), int), 'round_2_type_a_count missing or not int'; assert isinstance(d.get('concerns'), list), 'concerns missing or not list'; cr=d.get('critic_rounds',0); arc='.runs/solve-critic-round1.json'; assert cr!=2 or (os.path.exists(arc) and json.load(open(arc)).get('round')==1), '#1331 sidecar archive missing or wrong round'"  # .runs/solve-trace.json, .runs/solve-challenge.json, .runs/solve-critic-round1.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

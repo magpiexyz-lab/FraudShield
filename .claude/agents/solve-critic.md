@@ -63,11 +63,12 @@ Classify prevention concerns using the same TYPE A/B/C taxonomy:
 - Unguarded recurrence where a guard is feasible → TYPE A (`unguarded-recurrence`)
 - Uncovered instances → TYPE A (`uncovered-instances`)
 
-### RMG v2 Vectors (when problem_type = defect)
+### RMG v2 + Falsification Vectors (when problem_type = defect)
 
-When the spawn prompt includes a Prior-Failure Dossier (Phase 1a + Phase 4b
-from solve-reasoning) and a designer-emitted `prior_failure_response[]`, apply
-three additional vectors. Each fires as TYPE A.
+Vectors 4–6 (RMG v2) fire when the spawn prompt includes a Prior-Failure
+Dossier (Phase 1a + Phase 4b from solve-reasoning) and a designer-emitted
+`prior_failure_response[]`. Vector 7 (Falsification Gate) fires unconditionally
+whenever `problem_type == "defect"`. Each fires as TYPE A.
 
 4. **`cross-run-prior-failure-unaddressed`** — for every Phase-1a dossier
    entry, the designer must have a matching `prior_failure_response` entry
@@ -96,6 +97,39 @@ three additional vectors. Each fires as TYPE A.
    `kind=lint` (pointing at a markdown coherence-rule) over `kind=none`
    for prose-only fixes.
 
+7. **`falsification-weak`** — Falsification Gate. Fires whenever
+   `prevention_analysis.problem_type == "defect"`. Three TYPE A triggers
+   (any one is enough):
+
+     (a) **Missing or empty** — `prevention_analysis.falsification` is
+         absent, or any of the four required fields (`prediction`,
+         `opposite_prediction`, `observable_signal`, `strength`) is empty
+         or shorter than 40 chars. Parser would reject this at STATE 5
+         VERIFY, but if STATE 5 ran under `FALSIFICATION_SOAK=1`, the
+         critic must catch it here.
+
+     (b) **Self-marked weak** — `strength != "high"`. Designer flagged
+         the prediction as `low` (consistent with H but doesn't exclude
+         ¬H) or `untestable`. Critic confirms or escalates: did the
+         designer actually try to find a distinguishing signal, or
+         settle for "untestable" too quickly? If truly untestable, H
+         should be downgraded from "root cause" to "workaround" in the
+         output — flag if the output still calls it a root cause.
+
+     (c) **Circular / tautological framing** — `prediction` and
+         `opposite_prediction` share too many tokens (parser rejects at
+         Jaccard ≥ 0.8; critic also rejects when the two predictions
+         differ only by negation rather than describing structurally
+         different worlds). Generic predictions like "the fix will
+         work" / "the symptom won't appear" trigger this — those are
+         derivable from "any fix works", not from H specifically.
+
+   For (c), the canonical test: if H were a *different* root cause that
+   also produces the same surface symptom, would the `opposite_prediction`
+   still describe an observably different world from `prediction`? If no,
+   the framing is tautological. Compute `concern_id` via
+   `concern_id_for(category="falsification-weak", description="<text>")`.
+
 ### Concern IDs and Categories (RMG v2)
 
 Each concern carries a stable `concern_id` (12-char sha1 of
@@ -103,8 +137,8 @@ Each concern carries a stable `concern_id` (12-char sha1 of
 from:
 
 `cross-run-prior-failure-unaddressed | within-run-round1-concern-unaddressed |
-unguardability-rationale-weak | symptom-only | unguarded-recurrence |
-uncovered-instances | other`
+unguardability-rationale-weak | falsification-weak | symptom-only |
+unguarded-recurrence | uncovered-instances | other`
 
 Compute `concern_id` via `.claude/scripts/lib/concern_id.py`:
 
@@ -133,7 +167,7 @@ For each concern: type, description, evidence, and (for TYPE A) suggested fix.
 
 **Type**: A | B | C
 **ID**: <12-char concern_id from concern_id_for(category, description)>
-**Category**: <one of: cross-run-prior-failure-unaddressed | within-run-round1-concern-unaddressed | unguardability-rationale-weak | symptom-only | unguarded-recurrence | uncovered-instances | other>
+**Category**: <one of: cross-run-prior-failure-unaddressed | within-run-round1-concern-unaddressed | unguardability-rationale-weak | falsification-weak | symptom-only | unguarded-recurrence | uncovered-instances | other>
 **Description**: <what is wrong>
 **Evidence**: <file:line or reasoning chain>
 **Addressed-by**: <round 2 only: cite the step # or artifact in the round-2 design that addresses the matching round-1 concern_id>

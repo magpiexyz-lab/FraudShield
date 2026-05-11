@@ -117,7 +117,18 @@ if preliminary_type == 'Fix':
         #    "rationale": "<≤200ch>",
         #    "unguardability_rationale": "<≥80ch, only when kind == 'none'>"}
         'recurrence_guard': None,
-        'scope': {'all_covered': True, 'instance_count': 0}
+        'scope': {'all_covered': True, 'instance_count': 0},
+        # Falsification Gate (required when problem_type=='defect', any kind).
+        # Parsed by .claude/scripts/lib/recurrence_guard_parser.parse_falsification.
+        # Schema: prediction / opposite_prediction / observable_signal each
+        # ≥40 chars; strength in {high, low, untestable}; token-Jaccard
+        # between prediction and opposite_prediction must be < 0.8.
+        'falsification': {
+            'prediction': '<≥40 chars: signal H predicts to observe>',
+            'opposite_prediction': '<≥40 chars: signal ¬H would predict instead>',
+            'observable_signal': '<≥40 chars: actual observation cited from evidence>',
+            'strength': '<high|low|untestable>'
+        }
     }
     # RMG v2 Phase C: Prior-Failure Response. One entry per Phase 1a dossier
     # entry; each cites a concrete delta absent from the prior commit (R2-A2).

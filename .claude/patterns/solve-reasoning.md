@@ -52,6 +52,13 @@ If `problem_type = "defect"`:
    or explain why prevention is not feasible.
 6. "Are there other instances of this same problem beyond the reported one?"
    The solution must cover all known instances, not just the trigger case.
+7. **Falsification**: "What observable signal does H predict that ¬H would NOT
+   predict? Cite the actual observation supporting H over ¬H."
+   The prediction and the ¬H prediction must be *structurally distinct*, not
+   just "X" vs "not X". If no observable signal can be specified that
+   distinguishes H from any other hypothesis, mark `strength = "untestable"`
+   and downgrade H from "root cause" to "workaround" in Step 5's output.
+   Emit the `falsification` block (see Falsification Schema below).
 
 If any answer reveals a gap: revise Step 3. Same one-revision-pass-max rule.
 
@@ -79,6 +86,10 @@ If any answer reveals a gap: revise Step 3. Same one-revision-pass-max rule.
   - light-mode bullet — `- kind=<test|lint|hook|invariant> | artifact=<path|null> | rationale=<≤200ch>`
   - full-mode JSON (required when kind=none) — see Full Mode "Recurrence guard" block
 - **Scope**: [all instances covered | N known instances, all addressed]
+- **Falsification**: emit the typed `falsification` block — see Falsification
+  Schema below. Required regardless of `recurrence_guard.kind` (including
+  `kind=none`). Signals that ¬H would predict instead of H — the lead must
+  cite the observation that distinguishes the two.
 ```
 
 ---
@@ -219,7 +230,9 @@ Using the constraint space from Phase 2 and self-answered gaps from Phase 3:
      cover all known instances.
    - Output: `prevention_analysis` — root_cause_addressed (bool),
      recurrence_risk (none|guarded|unguarded), recurrence_guard (typed object — see
-     **Recurrence-Guard Schema** below), scope (all_covered bool, instance_count int).
+     **Recurrence-Guard Schema** below), scope (all_covered bool, instance_count int),
+     falsification (typed object — see **Falsification Schema** below; required for
+     all defect runs regardless of recurrence_guard.kind).
 
    #### Recurrence-Guard Schema (RMG v2 — required when `recurrence_risk != "none"`)
 
@@ -262,6 +275,47 @@ Using the constraint space from Phase 2 and self-answered gaps from Phase 3:
    emergencies — when set, the parser returns `kind="legacy_freetext"`
    and the lifecycle-finalize gate logs a warning instead of blocking.
    Default off: no in-tree writer emits free-text post-Phase-A.
+
+   #### Falsification Schema (Falsification Gate — required when `problem_type = "defect"`)
+
+   `falsification` is a typed object parsed by
+   `.claude/scripts/lib/recurrence_guard_parser.parse_falsification`.
+   Required for every defect run regardless of `recurrence_guard.kind`
+   (including `kind="none"` prose-only fixes — the textual block forces
+   a falsifiable claim even when no executable guard is possible).
+
+   **Schema (dict, only shape accepted):**
+
+   ```json
+   {
+     "prediction":          "<≥40 chars: signal H predicts to observe>",
+     "opposite_prediction": "<≥40 chars: signal ¬H would predict instead>",
+     "observable_signal":   "<≥40 chars: actual observation cited from evidence>",
+     "strength":            "high | low | untestable"
+   }
+   ```
+
+   - **`prediction`**: the observable signal H predicts. Must be specific to
+     the root-cause hypothesis — generic predictions like "the fix works" or
+     "the symptom disappears" fail the gate because they are derivable from
+     "any fix works", not from H specifically.
+   - **`opposite_prediction`**: the signal ¬H would predict instead. Must be
+     *structurally distinct* from `prediction`, not just its negation. The
+     parser rejects token-Jaccard ≥ 0.8 between the two (tautological
+     framing). The point is to force the designer to name a different world.
+   - **`observable_signal`**: the actual observation cited from the
+     reproduction artifact, code trace, or existing evidence — what we
+     measured that matches H over ¬H.
+   - **`strength`**:
+     - `high` — observable signal directly supports H over ¬H
+     - `low`  — signal is consistent with H but does not exclude ¬H
+     - `untestable` — no observable signal distinguishes H from ¬H; downgrade
+       H from "root cause" to "workaround" in the output
+
+   Enforcement: STATE 5 VERIFY runs `verify-recurrence-guard.py
+   --require-falsification`. The flag honors `FALSIFICATION_SOAK=1` to warn
+   instead of fail during the soak window. solve-critic vector 7
+   (`falsification-weak`) challenges weak / circular blocks in Phase 5.
 
 Output:
 - **1 recommended solution** with ordered implementation checklist
@@ -397,6 +451,8 @@ Present the final output:
   below, OR a single light-mode bullet `- kind=<token> | artifact=<path|null> |
   rationale=<≤200ch>` when kind != none]
 - **Scope**: [N instances identified, all covered | single instance, no others found]
+- **Falsification**: [typed object — required regardless of recurrence_guard.kind.
+  JSON block below.]
 
 ### Recurrence guard (full-mode JSON; emit when kind=none or for clarity)
 
@@ -406,6 +462,17 @@ Present the final output:
   "artifact": "<path-or-rule-id-or-null>",
   "rationale": "<≤200 chars>",
   "unguardability_rationale": "<required when kind=none; ≥80 chars covering (a) why no executable check expresses the invariant, (b) which review/observability/monitoring process catches the next instance>"
+}
+```
+
+### Falsification (full-mode JSON; required when problem_type = defect)
+
+```json
+{
+  "prediction": "<≥40 chars: signal H predicts to observe — specific to the root-cause hypothesis>",
+  "opposite_prediction": "<≥40 chars: signal ¬H would predict instead — structurally distinct from prediction (token-Jaccard < 0.8)>",
+  "observable_signal": "<≥40 chars: actual observation cited from reproduction artifact / code trace / evidence>",
+  "strength": "high | low | untestable"
 }
 ```
 

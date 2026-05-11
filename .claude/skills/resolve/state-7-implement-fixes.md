@@ -31,6 +31,38 @@ For each issue in severity order (HIGH first):
    (AOC v1 R2 — `aoc-fix-ledger-ownership` allows only canonical writers).
 
 1. Implement the fix per the approved fix plan from Step 5
+1.4. **Post-fix guard execution** (Falsification Gate — only when
+    `prevention_analysis.problem_type == "defect"` in `.runs/solve-trace.json`):
+    Read `prevention_analysis.recurrence_guard.kind` and `.artifact` for the
+    current fix/cluster, then run the appropriate check:
+
+    - `kind ∈ {test, hook, invariant}` → execute the guard at the artifact
+      path. Assert it reports green (the fix should have made it pass).
+      If it fails red → fix introduced regression beyond stated symptom →
+      revert via Step 4's existing `git checkout --` mechanism; log as
+      "falsification-failed" in the fix-ledger description.
+    - `kind == "lint"` → run the lint rule against the changed files:
+      ```bash
+      bash .claude/scripts/verify-linter.sh --json \
+        --cache .runs/.linter-cache --rules <artifact>
+      ```
+      Assert exit 0 (zero hits on post-fix state). If hits → revert.
+    - `kind == "none"` → no executable step here; the textual falsification
+      block was already validated at STATE 5 VERIFY (Falsification Gate)
+      and challenged by solve-critic vector 7 in STATE 5d.
+
+    Append per-fix result to `.runs/resolve-falsification.json` via
+    `write-gate-artifact.sh`:
+    ```json
+    {"issue": <N>, "kind": "<...>", "artifact": "<...>",
+     "post_fix_green": true, "executed_at": "<iso>"}
+    ```
+
+    Backward compat: silently skip this step when `falsification` block is
+    absent from solve-trace.json (covers soak-window runs and non-defect
+    fixes). Once soak closes, missing falsification is caught upstream by
+    STATE 5 VERIFY.
+
 1b. After each fix, log it via the canonical writer (AOC v1 R2):
     ```bash
     python3 .claude/scripts/write-fix-ledger.py --lead-fix --skill resolve \

@@ -11,10 +11,14 @@ parses `prevention_analysis.recurrence_guard` via
 intentional during the soak window).
 
 Optional flags:
-  --require-prevention   assert prevention_analysis is present (resolve)
-  --require-phase-3-gaps assert phase_3_gaps is present and non-empty in full mode (solve)
-  --require-run-id       assert solve-trace run_id matches a sibling context.json
-  --context-path PATH    explicit context json (default: auto-detect by skill)
+  --require-prevention    assert prevention_analysis is present (resolve)
+  --require-phase-3-gaps  assert phase_3_gaps is present and non-empty in full mode (solve)
+  --require-run-id        assert solve-trace run_id matches a sibling context.json
+  --require-falsification assert prevention_analysis.falsification is present and
+                          parses under recurrence_guard_parser.parse_falsification
+                          when problem_type=defect. Honors FALSIFICATION_SOAK=1
+                          (warn instead of fail) during the soak window.
+  --context-path PATH     explicit context json (default: auto-detect by skill)
   --skill {resolve,solve,change}  influences default context-path
 """
 
@@ -29,7 +33,12 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / ".claude" / "scripts" / "lib"))
 
-from recurrence_guard_parser import RecurrenceGuardParseError, parse  # noqa: E402
+from recurrence_guard_parser import (  # noqa: E402
+    FalsificationParseError,
+    RecurrenceGuardParseError,
+    parse,
+    parse_falsification,
+)
 
 REQUIRED_TRACE_FIELDS = (
     "mode",
@@ -55,6 +64,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--require-prevention", action="store_true")
     parser.add_argument("--require-phase-3-gaps", action="store_true")
     parser.add_argument("--require-run-id", action="store_true")
+    parser.add_argument("--require-falsification", action="store_true")
     parser.add_argument("--context-path")
     parser.add_argument("--skill", choices=("resolve", "solve", "change"))
     args = parser.parse_args(argv)
@@ -140,6 +150,40 @@ def main(argv: list[str] | None = None) -> int:
                     file=sys.stderr,
                 )
                 return 1
+
+    # Falsification Gate (sibling of recurrence_guard inside prevention_analysis).
+    # Fires only when problem_type=defect to keep non-defect runs unaffected.
+    # FALSIFICATION_SOAK=1 downgrades failures to stderr warnings during the
+    # soak window — mirrors the RMG_V2_TOLERANT precedent.
+    if args.require_falsification and isinstance(pa, dict):
+        problem_type = pa.get("problem_type")
+        if problem_type == "defect":
+            soak = os.environ.get("FALSIFICATION_SOAK", "0") in ("1", "true", "True")
+            falsi = pa.get("falsification")
+            if falsi is None:
+                msg = (
+                    "VERIFY FAIL: prevention_analysis.falsification required "
+                    "when problem_type=defect (Falsification Gate). See "
+                    ".claude/patterns/solve-reasoning.md 'Falsification Schema'."
+                )
+                if soak:
+                    print(f"WARN (FALSIFICATION_SOAK=1): {msg}", file=sys.stderr)
+                else:
+                    print(msg, file=sys.stderr)
+                    return 1
+            else:
+                try:
+                    parse_falsification(falsi)
+                except FalsificationParseError as exc:
+                    msg = (
+                        f"VERIFY FAIL: falsification rejected: {exc} "
+                        f"(raw={getattr(exc, 'raw_value', falsi)!r})"
+                    )
+                    if soak:
+                        print(f"WARN (FALSIFICATION_SOAK=1): {msg}", file=sys.stderr)
+                    else:
+                        print(msg, file=sys.stderr)
+                        return 1
 
     # #1331 runtime guard: when /solve full-mode runs round 2, the orchestrator
     # must have archived round-1 to the sidecar. Read solve-critic.json.round
