@@ -62,6 +62,11 @@ FALSIFICATION_STRENGTH_VALUES = ("high", "low", "untestable")
 # treated as tautological (same observable, opposite framing). Tuned to 0.8;
 # adjust here if soak data shows persistent false-positives on terse text.
 FALSIFICATION_JACCARD_TAUTOLOGY = 0.8
+# Reject text that looks like a template placeholder. The state-file templates
+# embed strings like `<≥40 chars: signal H predicts to observe>`. Length and
+# Jaccard checks alone let those literals through (~60 chars, distinct tokens
+# per field). This pattern catches them — leads must replace the brackets.
+_FALSIFICATION_PLACEHOLDER_RE = re.compile(r"^\s*<.+>\s*$", re.DOTALL)
 
 _LIGHT_BULLET_RE = re.compile(
     r"^\s*-\s*kind=([a-z]+)\s*\|\s*artifact=([^|]+?)\s*\|\s*rationale=([^|]{1,%d})\s*$"
@@ -279,6 +284,14 @@ def parse_falsification(value: Any) -> dict:
             raise FalsificationParseError(
                 f"{name} length {len(text)} < {FALSIFICATION_TEXT_MIN} chars "
                 "(forces a concrete, non-trivial claim)",
+                value,
+            )
+        if _FALSIFICATION_PLACEHOLDER_RE.match(text):
+            raise FalsificationParseError(
+                f"{name} looks like a template placeholder (wrapped in <...>). "
+                "Replace the brackets with a concrete claim — leaving the "
+                "state-file template literal in the trace is not a valid "
+                "falsification.",
                 value,
             )
 

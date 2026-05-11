@@ -28,7 +28,28 @@ import argparse
 import json
 import os
 import sys
+from datetime import date
 from pathlib import Path
+
+# Falsification Gate soak window. Until this date inclusive, missing or invalid
+# `falsification` blocks are reported as stderr warnings instead of hard
+# failures, so in-flight worktrees and prior solve-trace.json files (written
+# before the gate landed) don't block downstream skill advancement.
+# Set FALSIFICATION_SOAK=0 to opt out of soak (strict immediately).
+# Set FALSIFICATION_SOAK=1 to force soak past the deadline (emergency).
+# After 2026-05-18, default flips to strict; remove this block once flipped.
+_FALSIFICATION_SOAK_DEADLINE = date(2026, 5, 18)
+
+
+def _falsification_soak_active() -> bool:
+    """Soak active iff env explicitly opts in OR (env unset AND before deadline)."""
+    env = os.environ.get("FALSIFICATION_SOAK")
+    if env in ("1", "true", "True"):
+        return True
+    if env in ("0", "false", "False"):
+        return False
+    # Env unset → soak default-on until deadline (R1 mitigation from plan).
+    return date.today() <= _FALSIFICATION_SOAK_DEADLINE
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / ".claude" / "scripts" / "lib"))
@@ -153,12 +174,12 @@ def main(argv: list[str] | None = None) -> int:
 
     # Falsification Gate (sibling of recurrence_guard inside prevention_analysis).
     # Fires only when problem_type=defect to keep non-defect runs unaffected.
-    # FALSIFICATION_SOAK=1 downgrades failures to stderr warnings during the
-    # soak window — mirrors the RMG_V2_TOLERANT precedent.
+    # Soak (warn instead of fail) is active by default until
+    # _FALSIFICATION_SOAK_DEADLINE; env overrides via FALSIFICATION_SOAK=0|1.
     if args.require_falsification and isinstance(pa, dict):
         problem_type = pa.get("problem_type")
         if problem_type == "defect":
-            soak = os.environ.get("FALSIFICATION_SOAK", "0") in ("1", "true", "True")
+            soak = _falsification_soak_active()
             falsi = pa.get("falsification")
             if falsi is None:
                 msg = (
@@ -167,7 +188,7 @@ def main(argv: list[str] | None = None) -> int:
                     ".claude/patterns/solve-reasoning.md 'Falsification Schema'."
                 )
                 if soak:
-                    print(f"WARN (FALSIFICATION_SOAK=1): {msg}", file=sys.stderr)
+                    print(f"WARN (falsification-soak): {msg}", file=sys.stderr)
                 else:
                     print(msg, file=sys.stderr)
                     return 1

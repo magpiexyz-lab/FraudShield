@@ -338,6 +338,26 @@ class FalsificationParserTests(unittest.TestCase):
         result = parse_falsification(v)
         self.assertEqual(result["strength"], "high")
 
+    def test_placeholder_template_rejected(self):
+        # Verbatim state-5-fix-design.md template strings — leads who fail to
+        # replace the placeholders must NOT pass the gate.
+        v = {
+            "prediction": "<≥40 chars: signal H predicts to observe — specific to root cause>",
+            "opposite_prediction": "<≥40 chars: signal ¬H would predict instead — structurally distinct>",
+            "observable_signal": "<≥40 chars: actual observation cited from reproduction/evidence>",
+            "strength": "high",
+        }
+        with self.assertRaises(FalsificationParseError) as ctx:
+            parse_falsification(v)
+        self.assertIn("placeholder", str(ctx.exception))
+
+    def test_placeholder_single_field_rejected(self):
+        # Even one unreplaced placeholder among three real fields → reject.
+        v = self._valid()
+        v["observable_signal"] = "<≥40 chars: actual observation cited from evidence>"
+        with self.assertRaises(FalsificationParseError):
+            parse_falsification(v)
+
 
 if __name__ == "__main__":
     unittest.main()

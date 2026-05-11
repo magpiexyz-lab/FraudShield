@@ -16,6 +16,7 @@ Checks:
 import json
 import os
 import sys
+from datetime import date
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "lib"))
 from recurrence_guard_parser import (  # noqa: E402
@@ -24,6 +25,21 @@ from recurrence_guard_parser import (  # noqa: E402
     parse,
     parse_falsification,
 )
+
+# Falsification Gate soak window — mirrors verify-recurrence-guard.py.
+# Default-on until 2026-05-18 so in-flight /change Fix runs and worktrees
+# with pre-gate solve-trace.json files are not blocked. Env overrides via
+# FALSIFICATION_SOAK=0|1. Remove this block when flipping to strict.
+_FALSIFICATION_SOAK_DEADLINE = date(2026, 5, 18)
+
+
+def _falsification_soak_active() -> bool:
+    env = os.environ.get("FALSIFICATION_SOAK")
+    if env in ("1", "true", "True"):
+        return True
+    if env in ("0", "false", "False"):
+        return False
+    return date.today() <= _FALSIFICATION_SOAK_DEADLINE
 
 ctx = json.load(open(".runs/change-context.json"))
 sd = ctx.get("solve_depth")
@@ -72,10 +88,10 @@ if pt == "Fix":
             )
 
     # Falsification Gate — /change Fix branch sets problem_type=defect inside
-    # prevention_analysis via solve-reasoning Phase 4. FALSIFICATION_SOAK=1
-    # downgrades to warning during soak window (mirrors RMG_V2_TOLERANT).
+    # prevention_analysis via solve-reasoning Phase 4. Soak default-on until
+    # _FALSIFICATION_SOAK_DEADLINE; env overrides via FALSIFICATION_SOAK=0|1.
     if pa.get("problem_type") == "defect":
-        soak = os.environ.get("FALSIFICATION_SOAK", "0") in ("1", "true", "True")
+        soak = _falsification_soak_active()
         falsi = pa.get("falsification")
         if falsi is None:
             msg = (
@@ -83,7 +99,7 @@ if pt == "Fix":
                 "problem_type=defect (Falsification Gate)"
             )
             if soak:
-                print("WARN (FALSIFICATION_SOAK=1): %s" % msg, file=sys.stderr)
+                print("WARN (falsification-soak): %s" % msg, file=sys.stderr)
             else:
                 raise AssertionError(msg)
         else:
@@ -95,7 +111,7 @@ if pt == "Fix":
                     getattr(exc, "raw_value", falsi),
                 )
                 if soak:
-                    print("WARN (FALSIFICATION_SOAK=1): %s" % msg, file=sys.stderr)
+                    print("WARN (falsification-soak): %s" % msg, file=sys.stderr)
                 else:
                     raise AssertionError(msg)
 
