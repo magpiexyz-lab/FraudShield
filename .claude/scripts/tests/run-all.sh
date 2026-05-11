@@ -8,6 +8,8 @@ cd "$(dirname "$0")/../../.."
 SUITES=(
   ".claude/scripts/tests/test_trace_schema.py"
   ".claude/scripts/tests/test_resolve_active_identity.py"
+  ".claude/scripts/tests/test_detect_skill_for_branch.py"
+  ".claude/scripts/tests/test_command_head_match.py"
   ".claude/scripts/tests/test_write_recovery.py"
   ".claude/scripts/tests/test_forgery_surface.py"
   ".claude/scripts/tests/test_validate_recovery.py"

@@ -98,6 +98,17 @@ check_skill_completion() {
 # Args: <branch> <include_completed>
 #   include_completed="true"  → return any matching context (active or completed)
 #   include_completed="false" → skip contexts with completed: true
+#
+# Parent-preference (issue #1347): when include_completed="true" and BOTH a
+# top-level parent and an embedded child match the branch (both completed:true
+# at PR-creation time, child newer by timestamp), prefer the top-level parent
+# (parent == null) so verify-pr-gate.sh dispatches against the parent's
+# observation: config instead of the embedded child's. Active variant
+# (include_completed="false") is intentionally unchanged: the 3 active
+# callers (skill-write-gate, skill-commit-gate, observe-commit-gate)
+# dispatch to per-skill gate scripts and must keep child-preference during
+# in-flight embed. Orphan-child fallback (parent context absent on disk)
+# preserves pre-fix behavior via a second pass with best_ts reset.
 _detect_skill_for_branch_impl() {
   local branch="$1"
   local include_completed="$2"
@@ -109,6 +120,9 @@ project = '$project_dir'
 include_completed = ('$include_completed' == 'true')
 best_skill = ''
 best_ts = ''
+# Pass 1: prefer top-level (parent:null) contexts when include_completed=true.
+# Active variant (include_completed=false) is unchanged — preserves child
+# detection during in-flight embed for write/commit gate dispatch.
 for f in glob.glob(os.path.join(project, '.runs', '*-context.json')):
     if 'epilogue-context' in f:
         continue
@@ -118,12 +132,33 @@ for f in glob.glob(os.path.join(project, '.runs', '*-context.json')):
             continue
         if not include_completed and d.get('completed'):
             continue
+        if include_completed and d.get('parent'):
+            continue
         ts = d.get('timestamp', '')
         if ts > best_ts:
             best_ts = ts
             best_skill = d.get('skill', '')
     except:
         continue
+# Pass 2 (orphan-child fallback, #1347): only fires on the PR-gate path
+# when no top-level match exists. Reset accumulators so a malformed pass-1
+# entry does not block a legitimate pass-2 candidate.
+if include_completed and not best_skill:
+    best_ts = ''
+    best_skill = ''
+    for f in glob.glob(os.path.join(project, '.runs', '*-context.json')):
+        if 'epilogue-context' in f:
+            continue
+        try:
+            d = json.load(open(f))
+            if d.get('branch') != branch:
+                continue
+            ts = d.get('timestamp', '')
+            if ts > best_ts:
+                best_ts = ts
+                best_skill = d.get('skill', '')
+        except:
+            continue
 print(best_skill)
 " 2>/dev/null || echo ""
 }
@@ -141,6 +176,10 @@ detect_active_skill_for_branch() {
 # Like detect_active_skill_for_branch but does NOT filter completed contexts.
 # Use for PR gates where the skill has already finished all states and
 # advance-state.sh has set completed: true before PR creation.
+# When both a parent and an embedded child match the branch (e.g. a
+# completed verify embedded inside a completed change), this resolves to
+# the top-level parent so the parent's PR-gate config applies (#1347).
+# Falls back to most-recent context when no top-level match exists.
 # Returns "" if no matching context found.
 # Usage: SKILL=$(detect_skill_for_branch "$BRANCH")
 detect_skill_for_branch() {

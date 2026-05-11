@@ -15,8 +15,11 @@ parse_payload
 
 COMMAND=$(read_payload_field "tool_input.command")
 
-# If the command doesn't contain `git commit`, allow it
-if [[ "$COMMAND" != *"git commit"* ]]; then
+# Match `git commit` only as an actual command head — anchored at start
+# of $COMMAND or after a shell separator (;, &, |), with whitespace-
+# tolerant token boundaries. See #1366 for the bare-substring false-
+# positive class this regex closes.
+if [[ ! "$COMMAND" =~ (^|[;\&\|])[[:space:]]*git[[:space:]]+commit([[:space:]]|$) ]]; then
   # friction-skip: trivial-fast-path — input absent or non-applicable
   exit 0
 fi

@@ -9,8 +9,11 @@ parse_payload
 
 COMMAND=$(read_payload_field "tool_input.command")
 
-# If the command doesn't contain `gh pr create`, allow it
-if [[ "$COMMAND" != *"gh pr create"* ]]; then
+# Match `gh pr create` only as an actual command head — anchored at start
+# of $COMMAND or after a shell separator (;, &, |), with whitespace-
+# tolerant token boundaries. Bare substring (#1366) false-fires on grep
+# patterns, heredoc prose, JSON literals, and env-var assignments.
+if [[ ! "$COMMAND" =~ (^|[;\&\|])[[:space:]]*gh[[:space:]]+pr[[:space:]]+create([[:space:]]|$) ]]; then
   # friction-skip: trivial-fast-path — input absent or non-applicable
   exit 0
 fi
