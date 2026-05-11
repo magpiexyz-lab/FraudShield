@@ -2,6 +2,14 @@
 
 Lightweight per-MVP integrity check. Tags MVPs that need LLM signup classification in STATE x2.
 
+## Archetype Gate
+
+This state operates on PostHog event data, which is archetype-agnostic. Every archetype (web-app, service, cli) reports through the same PostHog ingestion path; the integrity flags (`signup_classified`, `auto_default_match`, `low_traffic`, `no_event_data`, `needs_llm_classification`) apply uniformly with no archetype-specific branching.
+
+REF: [.claude/patterns/archetype-behavior-check.md](../../patterns/archetype-behavior-check.md) — row "primary unit"
+
+> [primary-unit] web-app: page | service: endpoint | cli: command
+
 **PRECONDITIONS:**
 - STATE x1 POSTCONDITIONS met
 - `.runs/iterate-cross-data.json` exists with `event_catalog` per MVP
