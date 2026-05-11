@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests for .claude/scripts/lib/iterate_cross_verdicts.py.
+"""Tests for .claude/scripts/lib/iterate_cross_verdicts.py (PostHog-only).
 
 Run:
   python3 -m pytest .claude/scripts/tests/test_iterate_cross_verdicts.py -v
@@ -19,13 +19,11 @@ from iterate_cross_verdicts import (  # noqa: E402
     VERDICT_ENUM,
     VERDICT_GO,
     VERDICT_INSUFFICIENT,
+    VERDICT_NO_DATA,
     VERDICT_NO_GO,
-    VERDICT_NOT_DEPLOYED,
-    VERDICT_STD_VIOL,
-    VERDICT_TRACKING,
+    VERDICT_WEAK,
     action_line,
     compute_headline_verdict,
-    compute_legacy_traction_score,
     emit_telegram,
     main,
     parse_debug_prompts,
@@ -35,133 +33,124 @@ from iterate_cross_verdicts import (  # noqa: E402
 THRESHOLDS = DEFAULT_CONFIG["thresholds"]
 
 
-def mvp(name="m", owner="alice", campaign="m-search-v1", clicks=0, signups=0, ctr=0.0, spend=0.0):
+def mvp(name="m", owner="alice", visitors=0, signups=0, signup_events=None):
+    """Build a PostHog-only MVP record matching state-x2's data.json schema."""
     return {
         "name": name,
         "owner": owner,
-        "campaign_name": campaign,
-        "google_ads": {"clicks": clicks, "ctr": ctr, "spend": spend},
-        "tracking": {"signups": signups, "gclid_visitor_count": signups, "total_events_count": 100},
+        "gclid_visitors": visitors,
+        "signups": signups,
+        "signup_events": signup_events or ["signup_complete"],
+        "total_events_count": 100,
+        "event_catalog": [],
     }
 
 
+# ---------- Verdict precedence ----------
+
 def test_go_with_3_signups():
-    score = compute_headline_verdict(mvp(clicks=40, signups=3), {}, THRESHOLDS)
+    score = compute_headline_verdict(mvp(visitors=40, signups=3), {}, THRESHOLDS)
     assert score["headline_verdict"] == VERDICT_GO
-    assert score["clicks_needed"] == 0
+    assert score["visitors_needed"] == 0
 
 
 def test_go_with_more_than_3_signups():
-    score = compute_headline_verdict(mvp(clicks=34, signups=6), {}, THRESHOLDS)
+    score = compute_headline_verdict(mvp(visitors=34, signups=6), {}, THRESHOLDS)
     assert score["headline_verdict"] == VERDICT_GO
 
 
-def test_no_go_at_clicks_floor_with_zero_signups():
-    score = compute_headline_verdict(mvp(clicks=50, signups=0), {}, THRESHOLDS)
+def test_no_go_at_floor_with_zero_signups():
+    score = compute_headline_verdict(mvp(visitors=50, signups=0), {}, THRESHOLDS)
     assert score["headline_verdict"] == VERDICT_NO_GO
 
 
-def test_no_go_above_floor_with_below_threshold_signups():
-    score = compute_headline_verdict(mvp(clicks=107, signups=1), {}, THRESHOLDS)
-    assert score["headline_verdict"] == VERDICT_NO_GO
+def test_weak_above_floor_with_some_but_not_enough_signups():
+    """≥50 visitors with 0<signups<3 → WEAK (between NO_GO and GO)."""
+    score = compute_headline_verdict(mvp(visitors=107, signups=1), {}, THRESHOLDS)
+    assert score["headline_verdict"] == VERDICT_WEAK
+
+
+def test_weak_with_two_signups_at_high_volume():
+    score = compute_headline_verdict(mvp(visitors=200, signups=2), {}, THRESHOLDS)
+    assert score["headline_verdict"] == VERDICT_WEAK
 
 
 def test_insufficient_data_below_floor():
-    score = compute_headline_verdict(mvp(clicks=20, signups=1), {}, THRESHOLDS)
+    score = compute_headline_verdict(mvp(visitors=20, signups=1), {}, THRESHOLDS)
     assert score["headline_verdict"] == VERDICT_INSUFFICIENT
-    assert score["clicks_needed"] == 30
+    assert score["visitors_needed"] == 30
 
 
-def test_insufficient_zero_clicks():
-    score = compute_headline_verdict(mvp(clicks=0, signups=0), {}, THRESHOLDS)
+def test_insufficient_zero_visitors():
+    score = compute_headline_verdict(mvp(visitors=0, signups=0), {}, THRESHOLDS)
     assert score["headline_verdict"] == VERDICT_INSUFFICIENT
-    assert score["clicks_needed"] == 50
+    assert score["visitors_needed"] == 50
 
 
-def test_standard_violation_takes_precedence_over_signups():
-    # Even with 5 signups, bid strategy violation wins.
+def test_no_data_takes_precedence_over_signups():
+    """no_event_data flag wins even with signups (shouldn't happen but defensive)."""
     score = compute_headline_verdict(
-        mvp(clicks=80, signups=5),
-        {"bid_strategy_violation": True},
+        mvp(visitors=80, signups=5),
+        {"no_event_data": True},
         THRESHOLDS,
     )
-    assert score["headline_verdict"] == VERDICT_STD_VIOL
+    assert score["headline_verdict"] == VERDICT_NO_DATA
 
 
-def test_tracking_broken_takes_precedence_over_clicks_floor():
+def test_no_data_takes_precedence_over_no_go():
     score = compute_headline_verdict(
-        mvp(clicks=154, signups=0),
-        {"tracking_broken": True},
+        mvp(visitors=154, signups=0),
+        {"no_event_data": True},
         THRESHOLDS,
     )
-    assert score["headline_verdict"] == VERDICT_TRACKING
+    assert score["headline_verdict"] == VERDICT_NO_DATA
 
 
-def test_not_deployed_takes_precedence_over_no_go():
-    score = compute_headline_verdict(
-        mvp(clicks=40, signups=0),
-        {"not_deployed": True},
-        THRESHOLDS,
-    )
-    assert score["headline_verdict"] == VERDICT_NOT_DEPLOYED
-
-
-def test_precedence_violation_over_tracking():
-    # Both flags set: STANDARD_VIOLATION wins (rule 1 before rule 2).
-    score = compute_headline_verdict(
-        mvp(clicks=10, signups=0),
-        {"bid_strategy_violation": True, "tracking_broken": True},
-        THRESHOLDS,
-    )
-    assert score["headline_verdict"] == VERDICT_STD_VIOL
-
-
-def test_soft_warning_conversion_misconfigured_does_not_change_verdict():
-    score = compute_headline_verdict(
-        mvp(clicks=40, signups=3),
-        {"subaccount_conversion_misconfigured": True},
-        THRESHOLDS,
-    )
+def test_visitors_needed_zero_for_go():
+    score = compute_headline_verdict(mvp(visitors=10, signups=3), {}, THRESHOLDS)
     assert score["headline_verdict"] == VERDICT_GO
-    assert "subaccount_conversion_misconfigured" in score["soft_warnings"]
+    assert score["visitors_needed"] == 0
 
 
-def test_clicks_needed_zero_for_go():
-    score = compute_headline_verdict(mvp(clicks=10, signups=3), {}, THRESHOLDS)
-    assert score["headline_verdict"] == VERDICT_GO
-    assert score["clicks_needed"] == 0
-
-
-def test_clicks_needed_only_set_for_insufficient():
-    score = compute_headline_verdict(mvp(clicks=50, signups=0), {}, THRESHOLDS)
+def test_visitors_needed_zero_for_no_go():
+    score = compute_headline_verdict(mvp(visitors=50, signups=0), {}, THRESHOLDS)
     assert score["headline_verdict"] == VERDICT_NO_GO
-    assert score["clicks_needed"] == 0
+    assert score["visitors_needed"] == 0
 
 
-def test_metrics_cpa_when_signups_present():
-    score = compute_headline_verdict(mvp(clicks=80, signups=4, spend=100.0), {}, THRESHOLDS)
-    assert score["metrics"]["cpa"] == 25.0
+def test_visitors_needed_zero_for_weak():
+    score = compute_headline_verdict(mvp(visitors=80, signups=1), {}, THRESHOLDS)
+    assert score["headline_verdict"] == VERDICT_WEAK
+    assert score["visitors_needed"] == 0
 
 
-def test_metrics_cpa_none_when_zero_signups():
-    score = compute_headline_verdict(mvp(clicks=50, signups=0, spend=72.68), {}, THRESHOLDS)
-    assert score["metrics"]["cpa"] is None
+def test_metrics_conv_rate_when_visitors_present():
+    score = compute_headline_verdict(mvp(visitors=80, signups=4), {}, THRESHOLDS)
+    assert score["metrics"]["conv_rate"] == 0.05
 
 
-def test_metrics_conv_rate_zero_when_zero_clicks():
-    score = compute_headline_verdict(mvp(clicks=0, signups=0), {}, THRESHOLDS)
+def test_metrics_conv_rate_zero_when_zero_visitors():
+    score = compute_headline_verdict(mvp(visitors=0, signups=0), {}, THRESHOLDS)
     assert score["metrics"]["conv_rate"] == 0.0
+
+
+def test_signup_events_carried_through():
+    score = compute_headline_verdict(
+        mvp(visitors=40, signups=3, signup_events=["signup_complete", "waitlist_signup"]),
+        {},
+        THRESHOLDS,
+    )
+    assert score["signup_events"] == ["signup_complete", "waitlist_signup"]
 
 
 def test_verdict_enum_consistency():
     """Each verdict path returns a value in the registry-asserted enum."""
     cases = [
-        (mvp(clicks=10, signups=3), {}, VERDICT_GO),
-        (mvp(clicks=50, signups=0), {}, VERDICT_NO_GO),
-        (mvp(clicks=10, signups=0), {}, VERDICT_INSUFFICIENT),
-        (mvp(clicks=10, signups=0), {"bid_strategy_violation": True}, VERDICT_STD_VIOL),
-        (mvp(clicks=10, signups=0), {"tracking_broken": True}, VERDICT_TRACKING),
-        (mvp(clicks=10, signups=0), {"not_deployed": True}, VERDICT_NOT_DEPLOYED),
+        (mvp(visitors=10, signups=3), {}, VERDICT_GO),
+        (mvp(visitors=50, signups=0), {}, VERDICT_NO_GO),
+        (mvp(visitors=80, signups=1), {}, VERDICT_WEAK),
+        (mvp(visitors=10, signups=0), {}, VERDICT_INSUFFICIENT),
+        (mvp(visitors=10, signups=0), {"no_event_data": True}, VERDICT_NO_DATA),
     ]
     for m, issues, expected in cases:
         score = compute_headline_verdict(m, issues, THRESHOLDS)
@@ -169,44 +158,69 @@ def test_verdict_enum_consistency():
         assert score["headline_verdict"] in VERDICT_ENUM
 
 
+# ---------- Telegram emission ----------
+
 def test_telegram_block_per_owner():
     scores = [
-        compute_headline_verdict(mvp(name="a", owner="alice", clicks=80, signups=5), {}, THRESHOLDS),
-        compute_headline_verdict(mvp(name="b", owner="bob", clicks=20, signups=0), {}, THRESHOLDS),
+        compute_headline_verdict(mvp(name="a", owner="alice", visitors=80, signups=5), {}, THRESHOLDS),
+        compute_headline_verdict(mvp(name="b", owner="bob", visitors=20, signups=0), {}, THRESHOLDS),
     ]
-    text = emit_telegram(scores, {})
+    text = emit_telegram(scores, {}, visitors_floor=50)
     assert "alice" in text
     assert "bob" in text
     # Two blocks separated by ---
     assert text.count("---") >= 1
 
 
+def test_telegram_unassigned_when_no_owner():
+    scores = [
+        compute_headline_verdict(mvp(name="a", owner=None, visitors=80, signups=5), {}, THRESHOLDS),
+    ]
+    text = emit_telegram(scores, {}, visitors_floor=50)
+    assert "unassigned" in text
+
+
 def test_telegram_block_under_4096():
     scores = [
-        compute_headline_verdict(mvp(name=f"mvp_{i}", owner="alice", clicks=10, signups=0), {}, THRESHOLDS)
+        compute_headline_verdict(mvp(name=f"mvp_{i}", owner="alice", visitors=10, signups=0), {}, THRESHOLDS)
         for i in range(50)
     ]
-    text = emit_telegram(scores, {})
-    # Single block (all alice's), must be ≤ 4000 chars (we cap at 3990 + truncation note).
+    text = emit_telegram(scores, {}, visitors_floor=50)
+    # Single block (all alice's), must be ≤ 4096 (we cap at 3990 + truncation note).
     assert len(text) <= 4096
 
 
-def test_telegram_includes_debug_prompt_when_tracking_broken():
+def test_telegram_includes_debug_prompt_when_no_data():
     scores = [
         compute_headline_verdict(
-            mvp(name="x", owner="alice", clicks=100, signups=0),
-            {"tracking_broken": True},
+            mvp(name="x", owner="alice", visitors=100, signups=0),
+            {"no_event_data": True},
             THRESHOLDS,
         )
     ]
-    debug_prompts = {"TRACKING_BROKEN": "Run this prompt to fix tracking..."}
-    text = emit_telegram(scores, debug_prompts)
+    debug_prompts = {"NO_DATA": "Run this prompt to fix tracking..."}
+    text = emit_telegram(scores, debug_prompts, visitors_floor=50)
     assert "Run this prompt to fix tracking" in text
 
 
-def test_action_line_formats_clicks_needed():
-    line = action_line(VERDICT_INSUFFICIENT, "smelt-search-v1", clicks_needed=9)
-    assert "9 more clicks" in line
+def test_telegram_universal_rule_uses_visitors_floor():
+    scores = [
+        compute_headline_verdict(mvp(name="a", visitors=10, signups=0), {}, THRESHOLDS),
+    ]
+    text = emit_telegram(scores, {}, visitors_floor=50)
+    # Should reference the actual threshold, not "50 visitors" by accident
+    assert "<50 visitors" in text or "≥50 visitors" in text
+
+
+def test_action_line_formats_visitors_needed():
+    line = action_line(VERDICT_INSUFFICIENT, "smelt", signups=0, visitors_needed=9, visitors_floor=50)
+    assert "9 more visitors" in line
+    assert "50" in line
+
+
+def test_action_line_weak_mentions_signups():
+    line = action_line(VERDICT_WEAK, "statistica", signups=2, visitors_needed=0, visitors_floor=50)
+    assert "2 signups" in line
 
 
 def test_parse_debug_prompts_extracts_sections():
@@ -214,49 +228,22 @@ def test_parse_debug_prompts_extracts_sections():
 
 Some intro text.
 
-## TRACKING_BROKEN
+## NO_DATA
 
-Body of tracking broken prompt.
+Body of no_data prompt.
 Multi-line OK.
 
-## NOT_DEPLOYED
+## WEAK
 
-Body of not deployed prompt.
+Body of weak prompt.
 """
     parsed = parse_debug_prompts(md)
-    assert "TRACKING_BROKEN" in parsed
-    assert "NOT_DEPLOYED" in parsed
-    assert "tracking broken prompt" in parsed["TRACKING_BROKEN"]
+    assert "NO_DATA" in parsed
+    assert "WEAK" in parsed
+    assert "no_data prompt" in parsed["NO_DATA"]
 
 
-def test_legacy_traction_score_with_quality_score():
-    m = {
-        "posthog": {"demand": 4},
-        "google_ads": {"ctr": 0.05, "spend": 100.0, "quality_score": 7},
-    }
-    score = compute_legacy_traction_score(m)
-    # conversion=100, ctr=100, cost=50, qs=70 → 0.45*100 + 0.25*100 + 0.20*50 + 0.10*70 = 87
-    assert score is not None
-    assert 80 <= score <= 95
-
-
-def test_legacy_traction_score_qs_fallback():
-    m = {
-        "posthog": {"demand": 1},
-        "google_ads": {"ctr": 0.025, "spend": 50.0, "quality_score": 0},
-    }
-    score = compute_legacy_traction_score(m)
-    # conversion=25, ctr=50, cost=0, qs_fallback weights → 0.50*25 + 0.30*50 + 0.20*0 = 27.5
-    assert score is not None
-
-
-def test_legacy_traction_score_zero_data():
-    m = {"posthog": {}, "google_ads": {}}
-    score = compute_legacy_traction_score(m)
-    # No clicks/spend/conv/QS → conversion=0, ctr=0, cost=100 (since denominator=1), qs=0
-    # qs=0 falls into qs_fallback: 0.50*0 + 0.30*0 + 0.20*100 = 20.0
-    assert score is not None
-
+# ---------- main() integration ----------
 
 def test_main_requires_output_or_emit_telegram():
     """main() should error if neither --output nor --emit-telegram is given."""
@@ -270,45 +257,43 @@ def test_main_requires_output_or_emit_telegram():
     assert "must specify at least one" in err.getvalue()
 
 
-def test_main_legacy_score_attaches_field():
-    """When --legacy-score is set, legacy_traction_score is populated."""
+def test_main_writes_output_from_data_and_issues():
+    """main() reads data + issues, applies verdict, writes scores.json."""
     import json as _json
     import tempfile
 
     data = {
         "mvps": [
             {
-                "name": "m",
-                "owner": "alice",
-                "campaign_name": "m-search",
-                "google_ads": {"clicks": 80, "ctr": 0.05, "spend": 100.0, "quality_score": 7},
-                "posthog": {"demand": 4, "activate": 2, "reach": 80},
-                "tracking": {"signups": 4, "gclid_visitor_count": 80, "total_events_count": 200},
+                "name": "diarly",
+                "owner": "lego",
+                "gclid_visitors": 100,
+                "signups": 8,
+                "signup_events": ["signup_complete"],
+                "total_events_count": 745,
+                "event_catalog": [],
             }
         ]
     }
-    issues = {"mvps": [{"name": "m"}]}
+    issues = {"mvps": [{"name": "diarly", "no_event_data": False}]}
 
     with tempfile.TemporaryDirectory() as td:
         data_path = os.path.join(td, "data.json")
         issues_path = os.path.join(td, "issues.json")
         out_path = os.path.join(td, "scores.json")
-
         _json.dump(data, open(data_path, "w"))
         _json.dump(issues, open(issues_path, "w"))
 
-        rc = main(
-            [
-                "--data", data_path,
-                "--issues", issues_path,
-                "--config", "/nonexistent.yaml",
-                "--output", out_path,
-                "--legacy-score",
-            ]
-        )
+        rc = main([
+            "--data", data_path,
+            "--issues", issues_path,
+            "--config", "/nonexistent.yaml",
+            "--output", out_path,
+        ])
         assert rc == 0
         result = _json.load(open(out_path))
-        assert result["mvps"][0]["legacy_traction_score"] is not None
+        assert result["mvps"][0]["headline_verdict"] == VERDICT_GO
+        assert result["mvps"][0]["metrics"]["conv_rate"] == 0.08
 
 
 def test_main_scores_input_skips_recomputation():
@@ -317,17 +302,16 @@ def test_main_scores_input_skips_recomputation():
     import tempfile
 
     pre_scores = {
-        "thresholds": {"signups_go": 3, "clicks_floor": 50},
+        "thresholds": {"signups_go": 3, "visitors_floor": 50},
+        "window_days": 90,
         "mvps": [
             {
                 "name": "m",
                 "owner": "alice",
-                "campaign_name": "m-search",
                 "headline_verdict": "GO",
-                "clicks_needed": 0,
-                "soft_warnings": [],
-                "metrics": {"clicks": 80, "signups": 5, "ctr": 0.05, "spend": 100.0, "cpa": 20.0, "conv_rate": 0.0625},
-                "legacy_traction_score": None,
+                "visitors_needed": 0,
+                "metrics": {"gclid_visitors": 80, "signups": 5, "conv_rate": 0.0625},
+                "signup_events": ["signup_complete"],
             }
         ],
     }
@@ -337,20 +321,49 @@ def test_main_scores_input_skips_recomputation():
         _json.dump(pre_scores, open(scores_path, "w"))
 
         # Pass non-existent data/issues paths — the script must NOT touch them.
-        rc = main(
-            [
-                "--data", "/nonexistent-data.json",
-                "--issues", "/nonexistent-issues.json",
-                "--scores", scores_path,
-                "--config", "/nonexistent.yaml",
-                "--debug-prompts", "/nonexistent-prompts.md",
-                "--emit-telegram", telegram_path,
-            ]
-        )
+        rc = main([
+            "--data", "/nonexistent-data.json",
+            "--issues", "/nonexistent-issues.json",
+            "--scores", scores_path,
+            "--config", "/nonexistent.yaml",
+            "--debug-prompts", "/nonexistent-prompts.md",
+            "--emit-telegram", telegram_path,
+        ])
         assert rc == 0
         text = open(telegram_path).read()
         assert "alice" in text
         assert "GO" in text
+
+
+def test_main_emits_visitors_floor_in_universal_rule():
+    """Telegram artifact's universal rule references the configured visitors_floor."""
+    import json as _json
+    import tempfile
+
+    data = {"mvps": [{"name": "m", "owner": "alice", "gclid_visitors": 10, "signups": 0, "signup_events": []}]}
+    issues = {"mvps": [{"name": "m"}]}
+    config_yaml = "thresholds:\n  signups_go: 3\n  visitors_floor: 100\n"
+
+    with tempfile.TemporaryDirectory() as td:
+        data_path = os.path.join(td, "data.json")
+        issues_path = os.path.join(td, "issues.json")
+        cfg_path = os.path.join(td, "config.yaml")
+        tg_path = os.path.join(td, "telegram.txt")
+
+        _json.dump(data, open(data_path, "w"))
+        _json.dump(issues, open(issues_path, "w"))
+        open(cfg_path, "w").write(config_yaml)
+
+        rc = main([
+            "--data", data_path,
+            "--issues", issues_path,
+            "--config", cfg_path,
+            "--output", os.path.join(td, "scores.json"),
+            "--emit-telegram", tg_path,
+        ])
+        assert rc == 0
+        text = open(tg_path).read()
+        assert "100" in text  # The custom visitors_floor
 
 
 # Self-runner so this file works without pytest installed.

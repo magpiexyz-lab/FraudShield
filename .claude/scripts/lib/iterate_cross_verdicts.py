@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """iterate_cross_verdicts.py — Pure-Python verdict computation for /iterate --cross.
 
-Reads:
-  - .runs/iterate-cross-data.json     (gathered by state-x1)
+PostHog-only. Reads:
+  - .runs/iterate-cross-data.json     (gathered by state-x1, signups added in x2)
   - .runs/iterate-cross-data-issues.json (computed by state-x1a)
   - experiment/iterate-cross-config.yaml  (operator config; falls back to defaults)
 
@@ -11,12 +11,11 @@ Writes:
   - .runs/iterate-cross-telegram.txt  (optional; --emit-telegram)
 
 Verdict precedence (first match wins):
-  1. STANDARD_VIOLATION  (issues.bid_strategy_violation)
-  2. TRACKING_BROKEN     (issues.tracking_broken)
-  3. NOT_DEPLOYED        (issues.not_deployed)
-  4. GO                  (signups >= signups_go)
-  5. NO_GO               (clicks >= clicks_floor AND signups < signups_go)
-  6. INSUFFICIENT_DATA   (default)
+  1. NO_DATA            (issues.no_event_data)
+  2. GO                 (signups >= signups_go)
+  3. NO_GO              (gclid_visitors >= visitors_floor AND signups == 0)
+  4. WEAK               (gclid_visitors >= visitors_floor AND 0 < signups < signups_go)
+  5. INSUFFICIENT_DATA  (default; visitors_needed = visitors_floor - gclid_visitors)
 """
 
 from __future__ import annotations
@@ -34,43 +33,37 @@ DEFAULT_CONFIG = {
         "waitlist_submit",
         "early_access_signup",
         "activate",
-    ],
-    "conversion_action_whitelist": [
-        "Sign-up",
-        "Sign-ups",
-        "MVP Signup",
-        "Submit lead form",
-        "Account creation",
-        "Lead form",
+        "form_submitted",
     ],
     "mvp_mappings": {},
     "thresholds": {
         "signups_go": 3,
-        "clicks_floor": 50,
-        "click_window_days": 7,
+        "visitors_floor": 50,
     },
+    "window_days": 90,
 }
 
 VERDICT_GO = "GO"
+VERDICT_WEAK = "WEAK"
 VERDICT_NO_GO = "NO_GO"
 VERDICT_INSUFFICIENT = "INSUFFICIENT_DATA"
-VERDICT_STD_VIOL = "STANDARD_VIOLATION"
-VERDICT_TRACKING = "TRACKING_BROKEN"
-VERDICT_NOT_DEPLOYED = "NOT_DEPLOYED"
+VERDICT_NO_DATA = "NO_DATA"
 
 VERDICT_ENUM = {
     VERDICT_GO,
+    VERDICT_WEAK,
     VERDICT_NO_GO,
     VERDICT_INSUFFICIENT,
-    VERDICT_STD_VIOL,
-    VERDICT_TRACKING,
-    VERDICT_NOT_DEPLOYED,
+    VERDICT_NO_DATA,
 }
 
 
 def load_config(path: str | None) -> dict:
     """Load YAML config; deep-merge with defaults so partial configs work."""
-    config = {k: (dict(v) if isinstance(v, dict) else list(v) if isinstance(v, list) else v) for k, v in DEFAULT_CONFIG.items()}
+    config = {
+        k: (dict(v) if isinstance(v, dict) else list(v) if isinstance(v, list) else v)
+        for k, v in DEFAULT_CONFIG.items()
+    }
     if path and os.path.exists(path):
         try:
             import yaml
@@ -86,62 +79,48 @@ def load_config(path: str | None) -> dict:
                     config[key] = merged
                 else:
                     config[key] = user_config[key]
+        # Preserve user-supplied mvp_mappings (deep merge isn't appropriate; user controls)
+        if "mvp_mappings" in user_config:
+            config["mvp_mappings"] = user_config["mvp_mappings"] or {}
     return config
 
 
 def compute_headline_verdict(mvp: dict, issues: dict, thresholds: dict) -> dict:
     """Apply precedence rules and return the score record for one MVP."""
-    soft_warnings = []
-    if issues.get("subaccount_conversion_misconfigured"):
-        soft_warnings.append("subaccount_conversion_misconfigured")
-    if issues.get("bid_strategy_unknown"):
-        soft_warnings.append("bid_strategy_unknown")
-    if issues.get("subaccount_conversion_unknown"):
-        soft_warnings.append("subaccount_conversion_unknown")
+    visitors = mvp.get("gclid_visitors", 0)
+    signups = mvp.get("signups", 0)
+    signup_events = mvp.get("signup_events") or []
 
-    if issues.get("bid_strategy_violation"):
-        verdict = VERDICT_STD_VIOL
-    elif issues.get("tracking_broken"):
-        verdict = VERDICT_TRACKING
-    elif issues.get("not_deployed"):
-        verdict = VERDICT_NOT_DEPLOYED
+    if issues.get("no_event_data"):
+        verdict = VERDICT_NO_DATA
+    elif signups >= thresholds["signups_go"]:
+        verdict = VERDICT_GO
+    elif visitors >= thresholds["visitors_floor"] and signups == 0:
+        verdict = VERDICT_NO_GO
+    elif visitors >= thresholds["visitors_floor"]:
+        verdict = VERDICT_WEAK
     else:
-        signups = (mvp.get("tracking") or {}).get("signups", 0)
-        clicks = (mvp.get("google_ads") or {}).get("clicks", 0)
-        if signups >= thresholds["signups_go"]:
-            verdict = VERDICT_GO
-        elif clicks >= thresholds["clicks_floor"]:
-            verdict = VERDICT_NO_GO
-        else:
-            verdict = VERDICT_INSUFFICIENT
+        verdict = VERDICT_INSUFFICIENT
 
-    clicks = (mvp.get("google_ads") or {}).get("clicks", 0)
-    signups = (mvp.get("tracking") or {}).get("signups", 0)
-    spend = (mvp.get("google_ads") or {}).get("spend", 0)
-    ctr = (mvp.get("google_ads") or {}).get("ctr", 0)
-
-    clicks_needed = (
-        max(0, thresholds["clicks_floor"] - clicks)
+    visitors_needed = (
+        max(0, thresholds["visitors_floor"] - visitors)
         if verdict == VERDICT_INSUFFICIENT
         else 0
     )
 
+    conv_rate = (signups / visitors) if visitors > 0 else 0.0
+
     return {
         "name": mvp.get("name"),
         "owner": mvp.get("owner"),
-        "campaign_name": mvp.get("campaign_name"),
         "headline_verdict": verdict,
-        "clicks_needed": clicks_needed,
-        "soft_warnings": soft_warnings,
+        "visitors_needed": visitors_needed,
         "metrics": {
-            "clicks": clicks,
+            "gclid_visitors": visitors,
             "signups": signups,
-            "ctr": ctr,
-            "spend": spend,
-            "cpa": (spend / signups) if signups > 0 else None,
-            "conv_rate": (signups / clicks) if clicks > 0 else 0.0,
+            "conv_rate": round(conv_rate, 4),
         },
-        "legacy_traction_score": None,
+        "signup_events": signup_events,
     }
 
 
@@ -164,47 +143,60 @@ def parse_debug_prompts(content: str) -> dict:
 
 
 ACTION_TEMPLATES = {
-    VERDICT_GO: "Promote {campaign} to Phase 2 (run /iterate default mode for the deeper analysis).",
-    VERDICT_NO_GO: "Stop {campaign}; document hypothesis rejection in retro.",
-    VERDICT_INSUFFICIENT: "Keep running {campaign} until {clicks_needed} more clicks (target: 50+).",
-    VERDICT_STD_VIOL: "Switch {campaign} bid strategy to Manual CPC and reset budget; re-launch under Phase 1 standard.",
-    VERDICT_TRACKING: "Debug PostHog gclid capture for {campaign}. Run Claude Code in the MVP repo with the TRACKING_BROKEN prompt below.",
-    VERDICT_NOT_DEPLOYED: "Confirm {campaign} deploy URL is live and PostHog snippet loads. Run Claude Code with the NOT_DEPLOYED prompt below.",
+    VERDICT_GO: "Promote {name} to Phase 2 (run /iterate default mode for the deeper analysis).",
+    VERDICT_WEAK: "{name}: above visitors floor but only {signups} signups. Investigate landing-page friction or extend campaign window before deciding.",
+    VERDICT_NO_GO: "Stop {name}; document hypothesis rejection in retro.",
+    VERDICT_INSUFFICIENT: "Keep {name} running until {visitors_needed} more visitors arrive (target: {visitors_floor}+).",
+    VERDICT_NO_DATA: "Debug PostHog tracking for {name}. Run Claude Code in the MVP repo with the NO_DATA prompt below.",
 }
 
 
-def action_line(verdict: str, campaign: str, clicks_needed: int) -> str:
+def action_line(verdict: str, name: str, signups: int, visitors_needed: int, visitors_floor: int) -> str:
     template = ACTION_TEMPLATES.get(verdict, "Unknown verdict.")
-    return template.format(campaign=campaign, clicks_needed=clicks_needed)
+    return template.format(
+        name=name,
+        signups=signups,
+        visitors_needed=visitors_needed,
+        visitors_floor=visitors_floor,
+    )
 
 
-def emit_telegram(scores: list, debug_prompts: dict) -> str:
-    """Group by owner; one block per owner; each block ≤ 4000 chars."""
+def emit_telegram(scores: list, debug_prompts: dict, visitors_floor: int) -> str:
+    """Group by owner; one block per owner; each block ≤ 4000 chars.
+
+    If no MVP has owner set, all MVPs are grouped under 'unassigned'.
+    """
     by_owner: dict = {}
     for s in scores:
-        owner = s.get("owner") or "unknown"
+        owner = s.get("owner") or "unassigned"
         by_owner.setdefault(owner, []).append(s)
 
     blocks = []
     for owner in sorted(by_owner):
         owner_scores = by_owner[owner]
-        lines = [f"*Phase 1 Manual CPC update — {owner}*", ""]
-        # Append debug prompts only when needed (avoid bloating every block).
+        lines = [f"*Phase 1 cross-MVP update — {owner}*", ""]
         needed_prompts: set = set()
         for s in owner_scores:
             verdict = s["headline_verdict"]
-            campaign = s.get("campaign_name") or s.get("name") or "(unknown)"
+            name = s.get("name") or "(unknown)"
             metrics = s["metrics"]
-            action = action_line(verdict, campaign, s["clicks_needed"])
-            line_metrics = f"({metrics['clicks']} clicks / {metrics['signups']} signups)"
-            lines.append(f"• {campaign} {line_metrics} → {verdict}")
+            action = action_line(
+                verdict,
+                name,
+                metrics["signups"],
+                s["visitors_needed"],
+                visitors_floor,
+            )
+            line_metrics = f"({metrics['gclid_visitors']} visitors / {metrics['signups']} signups)"
+            lines.append(f"• {name} {line_metrics} → {verdict}")
             lines.append(f"  Action: {action}")
-            if verdict in (VERDICT_TRACKING, VERDICT_NOT_DEPLOYED):
+            if verdict == VERDICT_NO_DATA:
                 needed_prompts.add(verdict)
         lines.append("")
-        lines.append("Universal rule (all owners):")
-        lines.append("• <50 clicks → keep the campaign running")
-        lines.append("• ≥50 clicks → can stop (no need to spend full $140)")
+        lines.append("Universal rule:")
+        lines.append(f"• <{visitors_floor} visitors → keep running")
+        lines.append(f"• ≥{visitors_floor} visitors with 0 signups → stop")
+        lines.append(f"• ≥3 signups → promote to Phase 2")
 
         for prompt_name in sorted(needed_prompts):
             body = debug_prompts.get(prompt_name)
@@ -221,61 +213,16 @@ def emit_telegram(scores: list, debug_prompts: dict) -> str:
     return "\n\n---\n\n".join(blocks)
 
 
-def compute_legacy_traction_score(mvp: dict) -> float | None:
-    """Phase 1 weighted Traction Score (deprecated; gated behind --legacy-score).
-
-    Formula (from the pre-3/50 version of state-x3-compute-scores.md):
-      conversion_signal = min(demand_users * 25, 100)
-      ctr_signal        = min((ctr / industry_avg_ctr) * 50, 100)
-      cost_signal       = max(100 - (spend / max(demand_users, 1) / 50 * 100), 0)
-      qs_signal         = quality_score * 10
-      score = 0.45*conv + 0.25*ctr + 0.20*cost + 0.10*qs       (when QS > 0)
-            = 0.50*conv + 0.30*ctr + 0.20*cost                  (QS fallback)
-
-    Returns None if input data is too sparse to compute meaningfully.
-    """
-    posthog = mvp.get("posthog") or {}
-    google_ads = mvp.get("google_ads") or {}
-
-    demand_users = posthog.get("demand", 0)
-    ctr = google_ads.get("ctr", 0) or 0
-    spend = google_ads.get("spend", 0) or 0
-    quality_score = google_ads.get("quality_score", 0) or 0
-
-    industry_avg_ctr = 0.025
-
-    conversion_signal = min(demand_users * 25, 100)
-    ctr_signal = min((ctr / industry_avg_ctr) * 50, 100) if industry_avg_ctr > 0 else 0
-    cost_signal = max(100 - (spend / max(demand_users, 1) / 50 * 100), 0)
-    qs_signal = quality_score * 10
-
-    if quality_score > 0:
-        score = (
-            conversion_signal * 0.45
-            + ctr_signal * 0.25
-            + cost_signal * 0.20
-            + qs_signal * 0.10
-        )
-    else:
-        score = (
-            conversion_signal * 0.50
-            + ctr_signal * 0.30
-            + cost_signal * 0.20
-        )
-
-    return round(score, 2)
-
-
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Compute headline verdicts and/or emit Telegram artifact for /iterate --cross.",
     )
-    parser.add_argument("--data", default=".runs/iterate-cross-data.json", help="Input: gathered data from x1")
-    parser.add_argument("--issues", default=".runs/iterate-cross-data-issues.json", help="Input: issue flags from x1a")
+    parser.add_argument("--data", default=".runs/iterate-cross-data.json", help="Input: data + signups from x2")
+    parser.add_argument("--issues", default=".runs/iterate-cross-data-issues.json", help="Input: integrity flags from x1a")
     parser.add_argument(
         "--scores",
         default=None,
-        help="Optional input: pre-computed scores file. If provided, skip recomputation from --data/--issues (used by x4 to avoid clobbering x3's output).",
+        help="Optional input: pre-computed scores file. If provided, skip recomputation (used by x4 to avoid clobbering x3 output).",
     )
     parser.add_argument("--config", default="experiment/iterate-cross-config.yaml")
     parser.add_argument(
@@ -285,11 +232,6 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--debug-prompts", default=".claude/patterns/iterate-cross-debug-prompts.md")
     parser.add_argument("--emit-telegram", default=None, help="Output: write Telegram-ready text here.")
-    parser.add_argument(
-        "--legacy-score",
-        action="store_true",
-        help="Also compute the deprecated Phase 1 Traction Score per MVP and attach as legacy_traction_score.",
-    )
     args = parser.parse_args(argv)
 
     if not args.output and not args.emit_telegram:
@@ -298,6 +240,7 @@ def main(argv: list[str] | None = None) -> int:
 
     config = load_config(args.config)
     thresholds = config["thresholds"]
+    window_days = config.get("window_days", 90)
 
     if args.scores and os.path.exists(args.scores):
         score_data = json.load(open(args.scores))
@@ -307,18 +250,12 @@ def main(argv: list[str] | None = None) -> int:
         issues_data = json.load(open(args.issues))
         issues_by_name = {m["name"]: m for m in issues_data.get("mvps", [])}
 
-        # Build a quick lookup from name → mvp for legacy_score (needs full mvp record)
-        mvp_by_name = {m["name"]: m for m in data.get("mvps", [])}
-
         scores = []
         for mvp in data.get("mvps", []):
             issues = issues_by_name.get(mvp["name"], {})
-            score = compute_headline_verdict(mvp, issues, thresholds)
-            if args.legacy_score:
-                score["legacy_traction_score"] = compute_legacy_traction_score(mvp)
-            scores.append(score)
+            scores.append(compute_headline_verdict(mvp, issues, thresholds))
 
-    output = {"thresholds": thresholds, "mvps": scores}
+    output = {"thresholds": thresholds, "window_days": window_days, "mvps": scores}
 
     if args.output:
         json.dump(output, open(args.output, "w"), indent=2)
@@ -328,7 +265,7 @@ def main(argv: list[str] | None = None) -> int:
         debug_prompts = {}
         if args.debug_prompts and os.path.exists(args.debug_prompts):
             debug_prompts = parse_debug_prompts(open(args.debug_prompts).read())
-        text = emit_telegram(scores, debug_prompts)
+        text = emit_telegram(scores, debug_prompts, thresholds["visitors_floor"])
         with open(args.emit_telegram, "w") as f:
             f.write(text)
         print(f"Wrote {args.emit_telegram}")

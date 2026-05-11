@@ -808,63 +808,70 @@ Key decisions:
 }
 ```
 
-## Cross-MVP Health & Signup Queries (for /iterate --cross)
+## Cross-MVP Queries (for /iterate --cross)
 
-Used by STATE x1 of `/iterate --cross` to detect tracking-broken MVPs and pre-compute signups for the 3/50 verdict rule.
+PostHog-only — no Google Ads dependency. The cross-skill uses three query patterns: discovery, per-MVP event catalog, per-MVP signup count.
 
-### Combined `gclid_visitor_count` + `total_events_count`
+**Critical filter rules:**
 
-One query per MVP. Returns total events for the deploy domain in the time window AND the subset that have a Google Ads gclid.
+- Use `properties.$session_entry_gclid IS NOT NULL` to identify Google Ads traffic — NOT `utm_source = 'google'`. Some campaign final URLs only get auto-tagged with `gclid` (no explicit `utm_source`), so the utm_source filter undercounts.
+- Use `count(DISTINCT distinct_id)` everywhere — events double-fire and we want unique users.
+- Always parameterize values via `{name}` — never interpolate user-supplied strings into the query.
+
+### Discovery query (used by STATE x0)
+
+Returns all PostHog projects with gclid traffic in the window. Project key falls back to extracted host when `project_name` global property isn't set.
 
 ```bash
-curl -s -X POST "$POSTHOG_API_HOST/api/projects/$POSTHOG_PROJECT_ID/query/" \
-  -H "Content-Type: application/json" \
+curl -s -X POST "https://us.i.posthog.com/api/projects/$POSTHOG_PROJECT_ID/query/" \
   -H "Authorization: Bearer $POSTHOG_API_KEY" \
+  -H "Content-Type: application/json" \
   -d '{
     "query": {
       "kind": "HogQLQuery",
-      "query": "SELECT count(*) AS total_events_count, countIf(properties.$session_entry_gclid IS NOT NULL AND properties.$session_entry_gclid != '\'''\'') AS gclid_visitor_count FROM events WHERE properties.$current_url LIKE {url_pattern} AND timestamp >= {start_date}",
-      "values": {
-        "url_pattern": "%pettracker.vercel.app%",
-        "start_date": "2026-04-20T00:00:00Z"
-      }
+      "query": "SELECT coalesce(properties.project_name, splitByChar(\".\", domain(properties.$current_url))[1]) AS mvp_key, max(properties.utm_campaign) AS sample_utm_campaign, count(DISTINCT distinct_id) AS gclid_visitors, min(timestamp) AS first_seen, max(timestamp) AS last_seen FROM events WHERE properties.$session_entry_gclid IS NOT NULL AND properties.$session_entry_gclid != {empty} AND timestamp >= now() - INTERVAL 90 DAY GROUP BY mvp_key HAVING gclid_visitors > 0 ORDER BY gclid_visitors DESC LIMIT 200",
+      "values": {"empty": ""}
     }
   }'
 ```
 
-**Interpretation by /iterate --cross:**
+### Per-MVP event catalog (used by STATE x1)
 
-| `clicks` (Google Ads) | `total_events_count` | `gclid_visitor_count` | Verdict |
-|---|---|---|---|
-| > 0 | == 0 | (any) | `not_deployed` (PostHog snippet absent or domain not deployed) |
-| > 0 | > 0 | == 0 | `tracking_broken` (frontend doesn't capture gclid) |
-| > 0 | > 0 | > 0 | healthy — proceed to signup count |
+For each discovered MVP, list its events with counts and `funnel_stage` hint. Builds the input for the LLM signup classifier in x2.
 
-### Signups (whitelist-based, gclid-filtered)
+The skill packs N MVPs into a single UNION ALL query (one round-trip). Per-MVP subquery:
 
-Counts distinct users who fired any event in the operator's `signup_whitelist` AND have a session_entry_gclid (i.e., came from Google Ads). This is the input to the 3/50 rule (`signups >= 3` → GO).
-
-```bash
-curl -s -X POST "$POSTHOG_API_HOST/api/projects/$POSTHOG_PROJECT_ID/query/" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $POSTHOG_API_KEY" \
-  -d '{
-    "query": {
-      "kind": "HogQLQuery",
-      "query": "SELECT count(DISTINCT distinct_id) AS signups FROM events WHERE event IN {events} AND properties.$session_entry_gclid IS NOT NULL AND properties.$current_url LIKE {url_pattern} AND timestamp >= {start_date}",
-      "values": {
-        "events": ["signup_complete","waitlist_signup","waitlist_submit","early_access_signup","activate"],
-        "url_pattern": "%pettracker.vercel.app%",
-        "start_date": "2026-04-20T00:00:00Z"
-      }
-    }
-  }'
+```sql
+SELECT {p_name} AS mvp_key,
+       event AS event_name,
+       max(toString(properties.funnel_stage)) AS sample_stage,
+       count(*) AS event_count,
+       count(DISTINCT distinct_id) AS unique_users,
+       count(DISTINCT IF(properties.$session_entry_gclid IS NOT NULL AND properties.$session_entry_gclid != {empty}, distinct_id, NULL)) AS gclid_users
+FROM events
+WHERE timestamp >= now() - INTERVAL {window_days} DAY
+  AND (properties.project_name = {p_name} OR properties.$current_url LIKE {p_url_pat})
+  AND event NOT LIKE '$%'
+GROUP BY event_name
+HAVING gclid_users > 0 OR unique_users >= 5
 ```
 
-The `events` whitelist comes from `experiment/iterate-cross-config.yaml` (see `experiment/iterate-cross-config.example.yaml`). Default is shown above.
+### Per-MVP signup count (used by STATE x2)
+
+After x2's LLM classifies signup_events per MVP, query gclid-filtered distinct user count for each MVP's specific events. Per-MVP subquery (combined into UNION ALL):
+
+```sql
+SELECT {p_name} AS mvp_key,
+       count(DISTINCT IF(event = {sg1} OR event = {sg2}, distinct_id, NULL)) AS signups
+FROM events
+WHERE properties.$session_entry_gclid IS NOT NULL
+  AND properties.$session_entry_gclid != {empty}
+  AND timestamp >= now() - INTERVAL {window_days} DAY
+  AND (properties.project_name = {p_name} OR properties.$current_url LIKE {p_url_pat})
+```
 
 ### Notes
 
-- `$session_entry_gclid` is auto-populated by recent versions of `posthog-js` when session properties are enabled (default in `posthog-js@1.130.0+`). For older PostHog deployments lacking this property, fall back to `properties.gclid IS NOT NULL` filtered to the landing event only.
-- All queries use parameterized `values` — never concatenate user-supplied strings into the HogQL.
-- Time window matches the campaign's `--click_window_days` (default 7) ending at `now()`.
+- `$session_entry_gclid` is auto-populated by `posthog-js@1.130.0+` when session properties are enabled (default). For older deployments, fall back to `properties.gclid IS NOT NULL` filtered to the landing event only.
+- HogQL `IN [array]` inside `count(DISTINCT IF(... , distinct_id, NULL))` triggers a `Nested type Array(String) cannot be inside Nullable type` error. Workaround: use `(event = {sg1} OR event = {sg2} OR ...)` instead of `event IN {sg_list}`.
+- The `event NOT LIKE '$%'` filter excludes PostHog auto-capture events (`$pageview`, `$autocapture`, etc.) from the catalog — they're never signups and they crowd out the meaningful events.

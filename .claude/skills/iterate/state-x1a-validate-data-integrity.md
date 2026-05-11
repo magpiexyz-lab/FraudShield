@@ -1,172 +1,84 @@
 # STATE x1a: VALIDATE_DATA_INTEGRITY
 
-## Archetype Gate
-
-This state validates Google Ads + PostHog data quality for cross-MVP comparison. Cross-MVP analytics applies to **all archetypes** but the data sources differ:
-
-REF: [.claude/patterns/archetype-behavior-check.md](../../patterns/archetype-behavior-check.md) — row "primary unit"
-
-> [primary-unit] web-app: page | service: endpoint | cli: command
-
-For all archetypes, this state operates on Google Ads campaign data + PostHog event data — both are archetype-agnostic. The bid_strategy_violation, tracking_broken, not_deployed, name_mapping checks apply uniformly. No archetype-specific branching in this state.
+Lightweight per-MVP integrity check. Tags MVPs that need LLM signup classification in STATE x2.
 
 **PRECONDITIONS:**
 - STATE x1 POSTCONDITIONS met
-- `.runs/iterate-cross-data.json` exists with extended schema (per-MVP `google_ads.bid_strategy_type`, `tracking.gclid_visitor_count`, `tracking.total_events_count`, `tracking.signups`, `subaccount_default_conversion_action`)
-- `experiment/iterate-cross-config.yaml` exists OR defaults will be used (notice already emitted by x1)
+- `.runs/iterate-cross-data.json` exists with `event_catalog` per MVP
+- `experiment/iterate-cross-config.yaml` exists OR defaults will be used (notice already emitted by x0)
 
 **ACTIONS:**
 
-This state is **pure compute** — no network calls. Idempotent. Safe to re-run after editing the operator config without re-running x1.
+This state is **pure compute** — no network calls. Idempotent. Safe to re-run after editing the operator config.
 
-### Read inputs
+### Read inputs + compute flags
 
 ```bash
-python3 -c "
-import json, os, sys, yaml
+python3 - <<'PY'
+import json, os, sys
+
+try:
+    import yaml
+except ImportError:
+    yaml = None
 
 data = json.load(open('.runs/iterate-cross-data.json'))
 
+config = {}
 config_path = 'experiment/iterate-cross-config.yaml'
-if os.path.exists(config_path):
+if yaml and os.path.exists(config_path):
     config = yaml.safe_load(open(config_path)) or {}
-else:
-    config = {}
 
-# Defaults (must mirror x1's defaults for consistency)
-defaults = {
-    'signup_whitelist': ['signup_complete','waitlist_signup','waitlist_submit','early_access_signup','activate'],
-    'conversion_action_whitelist': ['Sign-up','MVP Signup','Submit lead form','Sign-ups'],
-    'mvp_mappings': {},
-    'thresholds': {'signups_go': 3, 'clicks_floor': 50, 'click_window_days': 7},
-}
-for key, default_value in defaults.items():
-    config.setdefault(key, default_value)
-"
+mvp_mappings = config.get('mvp_mappings') or {}
+default_signup_whitelist = config.get('signup_whitelist') or [
+    'signup_complete', 'waitlist_signup', 'waitlist_submit',
+    'early_access_signup', 'activate', 'form_submitted'
+]
+
+issues = {'mvps': []}
+for mvp in data['mvps']:
+    name = mvp['name']
+    catalog = mvp.get('event_catalog') or []
+    catalog_events = {e['event'] for e in catalog}
+
+    mapping = mvp_mappings.get(name) or {}
+    classified_signup_events = mapping.get('signup_events') or []
+
+    # Flag 1: signup_classified — operator config has signup_events for this MVP
+    signup_classified = bool(classified_signup_events)
+
+    # Flag 2: auto_default_match — catalog contains any event from the default whitelist
+    auto_default_match = bool(catalog_events & set(default_signup_whitelist))
+
+    # Flag 3: low_traffic — fewer than 5 gclid visitors (can't reach 3-signup GO threshold)
+    low_traffic = mvp.get('gclid_visitors', 0) < 5
+
+    # Flag 4: no_event_data — catalog empty (likely tracking not capturing PostHog events)
+    no_event_data = len(catalog) == 0
+
+    # Flag 5: needs_llm_classification — not classified AND no obvious default match
+    needs_llm = (not signup_classified) and (not auto_default_match) and (not no_event_data)
+
+    issues['mvps'].append({
+        'name': name,
+        'signup_classified': signup_classified,
+        'auto_default_match': auto_default_match,
+        'low_traffic': low_traffic,
+        'no_event_data': no_event_data,
+        'needs_llm_classification': needs_llm,
+    })
+
+print(json.dumps(issues))
+PY
 ```
 
-### Compute issue flags per MVP
-
-For each MVP in `data['mvps']`, compute the following five flags. Each flag is `true` / `false`. An MVP can have multiple flags simultaneously.
-
-#### 1. `bid_strategy_violation`
-
-```
-bid_strategy_violation = (mvp.google_ads.bid_strategy_type != 'manual_cpc')
-                         AND (mvp.google_ads.bid_strategy_unknown != true)
-```
-
-If `bid_strategy_unknown` is true, set `bid_strategy_violation: false` and `bid_strategy_unknown: true` separately (this is a data-quality issue, not a violation).
-
-#### 2. `tracking_broken`
-
-```
-tracking_broken = (mvp.google_ads.clicks > 0)
-                 AND (mvp.tracking.gclid_visitor_count == 0)
-                 AND (mvp.tracking.total_events_count > 0)
-```
-
-The MVP is firing PostHog events but none have a gclid. Frontend gclid capture is broken.
-
-#### 3. `not_deployed`
-
-```
-not_deployed = (mvp.google_ads.clicks > 0)
-              AND (mvp.tracking.total_events_count == 0)
-```
-
-PostHog has zero events for this domain in the time window — the MVP is either not deployed or has no PostHog snippet. Distinct from `tracking_broken`.
-
-#### 4. `subaccount_conversion_misconfigured`
-
-```
-default_action = mvp.subaccount_default_conversion_action
-matches_whitelist = any(default_action.lower() == w.lower() for w in config.conversion_action_whitelist)
-                    OR any(w.lower() in default_action.lower() for w in config.conversion_action_whitelist)
-subaccount_conversion_misconfigured = (default_action is not None) AND (not matches_whitelist)
-```
-
-Soft warn — doesn't exclude from scoring. Sub-account default conversion action is not in the operator's whitelist (e.g., it's "Page view" instead of "Sign-up").
-
-If `default_action is None` (couldn't read), set `subaccount_conversion_unknown: true` and don't flag as misconfigured.
-
-#### 5. `name_mapping_low_confidence`
-
-For each MVP, compute fuzzy match between `campaign_name` and `name`:
-
-```python
-import difflib
-
-def normalize(s):
-    return s.lower().replace('-search-v1', '').replace('_search_v1', '').replace('-search-v2', '').replace('_search_v2', '').replace('-manual', '').strip()
-
-confidence = difflib.SequenceMatcher(None, normalize(mvp['campaign_name']), normalize(mvp['name'])).ratio()
-
-# Override from config takes precedence
-if mvp['campaign_name'] in config['mvp_mappings']:
-    confidence = 1.0  # operator confirmed
-    mapping_source = 'operator_override'
-else:
-    mapping_source = 'auto_fuzzy'
-
-name_mapping_low_confidence = (confidence < 0.85) AND (mapping_source == 'auto_fuzzy')
-```
-
-### Interactive low-confidence mapping confirmation
-
-If any MVP has `name_mapping_low_confidence: true`, present a confirmation table to the user:
-
-> The following MVPs have low-confidence campaign-to-project_name mapping. Please confirm or override:
->
-> | Campaign name | Best PostHog match | Confidence | Alternatives |
-> |---|---|---|---|
-> | autodropship-search-v1 | dropship-ops | 0.62 | dropship-ai (0.28), autodrop (0.10) |
-> | ... |
->
-> For each row, choose: **accept** the suggested match, **override** with a different project_name, or **abort**.
-
-Wait for user input. For each accepted/overridden mapping:
-1. Update the MVP's `name_mapping_low_confidence: false` and `mapping_source: 'operator_override'`
-2. Persist to `experiment/iterate-cross-config.yaml` under `mvp_mappings`:
-
-```yaml
-mvp_mappings:
-  autodropship-search-v1:
-    posthog_project_name: dropship-ops
-```
-
-Re-running x1a after this point will treat the mapping as confirmed (confidence forced to 1.0).
-
-### Decide skip_migration per MVP
-
-For each MVP, set `skip_migration: true` if `tracking_broken` OR `not_deployed`. STATE x2 reads this flag and skips event-name migration for these MVPs (their event pool is empty by definition).
-
-### Write issues file
+Capture the output and write via the standard helper:
 
 ```bash
-PAYLOAD=$(python3 -c "
-import json
-
-issues = {
-    'mvps': [
-        # For each MVP:
-        # {
-        #     'name': 'pettracker',
-        #     'bid_strategy_violation': false,
-        #     'bid_strategy_unknown': false,
-        #     'tracking_broken': false,
-        #     'not_deployed': false,
-        #     'subaccount_conversion_misconfigured': false,
-        #     'subaccount_conversion_unknown': false,
-        #     'name_mapping_low_confidence': false,
-        #     'mapping_source': 'auto_fuzzy',  # or 'operator_override'
-        #     'mapping_confidence': 1.0,
-        #     'skip_migration': false
-        # }
-    ]
-}
-print(json.dumps(issues))
-")
+PAYLOAD=$(python3 - <<'PY'
+# (same script as above; print json.dumps(issues))
+PY
+)
 bash .claude/scripts/lib/write-gate-artifact.sh \
   --path .runs/iterate-cross-data-issues.json \
   --payload "$PAYLOAD" \
@@ -178,22 +90,20 @@ bash .claude/scripts/lib/write-gate-artifact.sh \
 Print a concise summary:
 
 > Data integrity check: {N} MVPs validated.
-> - {bv_count} bid_strategy_violation (excluded from ranking; operator must switch bid strategy)
-> - {tb_count} tracking_broken (excluded; debug PostHog gclid capture)
-> - {nd_count} not_deployed (excluded; deploy or fix PostHog snippet)
-> - {cm_count} subaccount_conversion_misconfigured (soft warn; still scored)
-> - {nm_count} name_mapping_low_confidence (resolved interactively or via config)
+> - {sc_count} signup_classified (operator config provides signup_events; skip LLM)
+> - {ad_count} auto_default_match (catalog has known signup event; classify by default whitelist)
+> - {llm_count} needs_llm_classification (no obvious signup event; LLM proposes in x2)
+> - {lt_count} low_traffic (<5 gclid visitors; verdict will be INSUFFICIENT_DATA regardless)
+> - {ne_count} no_event_data (no events found; likely tracking not deployed)
 
 **POSTCONDITIONS:**
-- Every MVP has all five issue flags computed (boolean fields)
-- Low-confidence mappings confirmed by user and persisted to config
-- `skip_migration` flag set on tracking_broken / not_deployed MVPs
+- Every MVP has all five flags computed (booleans)
 - `.runs/iterate-cross-data-issues.json` exists with required schema
 
 **VERIFY:** see `state-registry.json` entry for `iterate-cross.x1a`.
 
 ```bash
-python3 -c "import json; d=json.load(open('.runs/iterate-cross-data-issues.json')); ms=d.get('mvps',[]); assert isinstance(ms, list) and len(ms)>0, 'mvps empty'; req=['bid_strategy_violation','tracking_broken','not_deployed','subaccount_conversion_misconfigured','name_mapping_low_confidence','skip_migration']; bad=[m.get('name','?') for m in ms if any(k not in m for k in req)]; assert not bad, 'MVPs missing issue flags: %s' % bad"
+python3 -c "import json; d=json.load(open('.runs/iterate-cross-data-issues.json')); ms=d.get('mvps',[]); assert isinstance(ms, list) and len(ms)>0, 'mvps empty'; req=['signup_classified','auto_default_match','low_traffic','no_event_data','needs_llm_classification']; bad=[m.get('name','?') for m in ms if any(k not in m for k in req)]; assert not bad, 'MVPs missing flags: %s' % bad"
 ```
 <!-- VERIFY=true: real assertion lives in state-registry.json; this line is the per-Rule-13 placeholder -->
 
@@ -202,4 +112,4 @@ python3 -c "import json; d=json.load(open('.runs/iterate-cross-data-issues.json'
 bash .claude/scripts/advance-state.sh iterate-cross x1a
 ```
 
-**NEXT:** Read [state-x2-migrate-events.md](state-x2-migrate-events.md) to continue.
+**NEXT:** Read [state-x2-classify-signups.md](state-x2-classify-signups.md) to continue.

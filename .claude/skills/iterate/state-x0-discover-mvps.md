@@ -1,90 +1,131 @@
 # STATE x0: DISCOVER_MVPS
 
+PostHog-based MVP discovery. No Google Ads / Chrome MCP dependency.
+
 **PRECONDITIONS:**
-- Team Lead has Chrome open and is logged into Google Ads MCC
+- `~/.posthog/personal-api-key` exists and has scope `query:read` and `project:read`
 
 **ACTIONS:**
 
-### Verify Chrome MCP availability
+### Read PostHog credentials
 
-Use ToolSearch to check for Chrome MCP tools:
+```bash
+POSTHOG_API_KEY=$(cat ~/.posthog/personal-api-key 2>/dev/null)
 ```
-ToolSearch: query="claude-in-chrome", max_results=5
+
+If the file does not exist, STOP:
+> "PostHog personal API key not found at `~/.posthog/personal-api-key`."
+> "Create one at https://us.posthog.com/settings/user-api-keys (scope: Query Read, Project Read), then save it:"
+> "```"
+> "mkdir -p ~/.posthog && echo 'phx_YOUR_KEY' > ~/.posthog/personal-api-key"
+> "```"
+> "Then re-run `/iterate --cross`."
+
+### Discover PostHog project ID
+
+```bash
+POSTHOG_PROJECT_ID=$(curl -s "https://us.i.posthog.com/api/projects/" \
+  -H "Authorization: Bearer $POSTHOG_API_KEY" | python3 -c "import sys,json; print(json.load(sys.stdin)['results'][0]['id'])")
 ```
 
-If no `mcp__claude-in-chrome__*` tools are returned, STOP and show the setup guide:
+If this fails (key lacks `project:read` scope, network error, etc.), report the error and STOP. If the team has multiple PostHog projects and the wrong one is auto-picked, the operator can override via `experiment/iterate-cross-config.yaml` `posthog_project_id`.
 
-1. Read `.claude/patterns/chrome-mcp-setup-guide.md`
-2. Present the full guide to the user
-3. End with: "After completing the setup, re-run `/iterate --cross`."
+### Read operator config (with safe defaults)
 
-### Open Google Ads MCC
+Read `experiment/iterate-cross-config.yaml`. If missing, use inline defaults and emit a one-time notice:
 
-1. Use Chrome MCP to navigate to `https://ads.google.com`
-2. Verify login state -- if a login prompt is shown, tell the user:
-   > "Please log into Google Ads in Chrome, then re-run `/iterate --cross`."
-   > STOP.
-3. Confirm this is an MCC (Manager Account) -- the page should show multiple sub-accounts. If it's a single account, STOP:
-   > "Cross-MVP evaluation requires an MCC (Manager Account) with multiple sub-accounts. You appear to be in a single account. Switch to your MCC, then re-run `/iterate --cross`."
+```yaml
+window_days: 90              # how far back to look
+phase_filter:
+  utm_campaign_like: ""      # empty = all gclid traffic; e.g. "%-search-v%" = Phase 1 Manual CPC convention
+  fallback_all_gclid: true   # if utm_campaign_like has no matches for an MVP, count all gclid traffic
+mvp_mappings: {}             # per-MVP overrides (signup_events, owner, deploy_domain)
+thresholds:
+  signups_go: 3
+  visitors_floor: 50
+```
 
-### List campaigns across sub-accounts
+If `posthog_project_id` is set in the config, use it instead of auto-discovery.
 
-1. Navigate to **All campaigns** view at the MCC level (or each sub-account's Campaigns page)
-2. For each sub-account, extract all campaigns:
-   - Campaign name
-   - Final URL (landing page URL) -- from the campaign's Ads tab or Settings
-   - Status (Active / Paused / Ended)
-   - Start date and end date (if available)
-   - Total spend (if visible at this level)
-   - **Sub-account name** (e.g., "Lee MVP", "Lego's MVP Account") and **sub-account ID** (the 10-digit ocid)
-   - **Owner** — derive from the sub-account name. Convention: lowercase first word, strip "MVP"/"Account"/"'s" tokens. Examples: "Lee MVP" → `lee`; "Lego's MVP Account" → `lego`; "Radlin's MVP Account" → `radlin`; "Lew's MVP Account" → `lew`. If ambiguous, ask the Team Lead.
-3. Compile a full list of campaigns across all sub-accounts
+If `phase_filter.utm_campaign_like` is set, x0 surfaces both:
+- "Phase 1 candidates": projects where utm_campaign matches the pattern
+- "All-gclid candidates": projects with any gclid traffic (broader view)
 
-### Filter eligible campaigns
+### Discover MVPs from PostHog
 
-Only keep campaigns that meet these criteria:
-- Status is **Ended**, OR
-- Campaign has been running for **>= 7 days** (based on start date)
+Query distinct project identifiers (project_name when set, else extracted host) with gclid traffic in the time window:
 
-Exclude:
-- Campaigns still running with < 7 days elapsed
-- Campaigns with no Final URL (cannot match to an MVP)
+```bash
+WINDOW_DAYS=$(python3 -c "
+import yaml, os
+cfg = {}
+if os.path.exists('experiment/iterate-cross-config.yaml'):
+    cfg = yaml.safe_load(open('experiment/iterate-cross-config.yaml')) or {}
+print(cfg.get('window_days', 90))
+")
 
-### Extract MVP identifiers
+cat > /tmp/iterate-cross-discover.json <<JSON
+{
+  "query": {
+    "kind": "HogQLQuery",
+    "query": "SELECT coalesce(properties.project_name, splitByChar('.', domain(properties.\$current_url))[1]) AS mvp_key, max(properties.utm_campaign) AS sample_utm_campaign, count(DISTINCT distinct_id) AS gclid_visitors, min(timestamp) AS first_seen, max(timestamp) AS last_seen FROM events WHERE properties.\$session_entry_gclid IS NOT NULL AND properties.\$session_entry_gclid != {empty} AND timestamp >= now() - INTERVAL ${WINDOW_DAYS} DAY GROUP BY mvp_key HAVING gclid_visitors > 0 ORDER BY gclid_visitors DESC LIMIT 200",
+    "values": {"empty": ""}
+  }
+}
+JSON
 
-For each eligible campaign:
-- Parse the Final URL to extract the domain (e.g., `https://pettracker.vercel.app/` → `pettracker.vercel.app`)
-- Use the domain as the MVP identifier
-- If multiple campaigns share the same domain, group them under one MVP (sum metrics later)
+curl -s -X POST "https://us.i.posthog.com/api/projects/$POSTHOG_PROJECT_ID/query/" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $POSTHOG_API_KEY" \
+  --data @/tmp/iterate-cross-discover.json > .runs/_iterate-cross-discover.json
+```
 
-### Confirm with Team Lead
+Parse results into MVP records. Each MVP gets:
+- `name` — `mvp_key` from query (project_name OR domain prefix)
+- `gclid_visitors` — visitor count in window
+- `first_seen`, `last_seen` — ISO timestamps
+- `sample_utm_campaign` — one example utm_campaign value (informational)
+- `owner` — read from `mvp_mappings.<name>.owner` if set, else null
+- `deploy_domain` — from `mvp_mappings.<name>.deploy_domain` if set, else null
+- `phase_match` — true if `sample_utm_campaign` matches `phase_filter.utm_campaign_like` (or `phase_filter.utm_campaign_like` is empty)
+
+### Apply phase filter
+
+If `phase_filter.utm_campaign_like` is set AND `phase_filter.fallback_all_gclid` is false: keep only MVPs with `phase_match: true`.
+Else: keep all discovered MVPs.
+
+### Confirm with operator
 
 Present the discovered MVPs:
-> "Found **N** eligible MVPs from Google Ads MCC:
+> "Found **N** MVPs with Google Ads gclid traffic in the last {window_days} days:
 >
-> | # | Owner | MVP | Domain | Campaign | Status | Days Running |
-> |---|-------|-----|--------|----------|--------|-------------|
-> | 1 | {owner} | {name} | {domain} | {campaign_name} | {status} | {days} |
+> | # | MVP | Owner | Visitors | Window | utm_campaign sample |
+> |---|-----|-------|----------|--------|---------------------|
+> | 1 | {name} | {owner or '—'} | {visitors} | {first_seen}→{last_seen} | {sample_utm_campaign or '(no utm)'} |
 > | ... |
 >
 > Proceed with evaluation of all N MVPs?"
 
-Wait for Team Lead confirmation. If they want to exclude or add MVPs, adjust the list accordingly.
+Wait for confirmation. If the operator wants to exclude/add MVPs, adjust the list.
 
 ### Merge cross-specific fields into context
 
 ```bash
-# Write extra JSON to temp file (avoids shell quoting issues with campaign names)
 python3 -c "
 import json
 
 mvps = [
-    # Populate from discovered data:
-    # {'name': 'pettracker', 'owner': 'lee', 'subaccount_name': 'Lee MVP', 'subaccount_id': '896-346-8125', 'domain': 'pettracker.vercel.app', 'campaign_name': '...', 'campaign_id': '...', 'status': '...', 'days_running': 7, 'final_url': 'https://...'}
+    # Populate from discovered + operator-confirmed list:
+    # {'name': 'pettracker', 'owner': 'lee', 'gclid_visitors': 60,
+    #  'first_seen': '2026-04-08T...', 'last_seen': '2026-05-06T...',
+    #  'sample_utm_campaign': 'pettracker-search-v1',
+    #  'deploy_domain': None, 'phase_match': True}
 ]
 
 extra = {
     'mode': 'cross',
+    'posthog_project_id': '$POSTHOG_PROJECT_ID',
+    'window_days': $WINDOW_DAYS,
     'mvp_count': len(mvps),
     'mvps': mvps,
     'completed_states': ['x0']
@@ -92,22 +133,20 @@ extra = {
 json.dump(extra, open('.runs/_iterate-cross-extra.json', 'w'))
 "
 bash .claude/scripts/init-context.sh iterate-cross "@.runs/_iterate-cross-extra.json"
-rm -f .runs/_iterate-cross-extra.json
+rm -f .runs/_iterate-cross-extra.json .runs/_iterate-cross-discover.json /tmp/iterate-cross-discover.json
 ```
 
-Replace the `mvps` list with actual data collected from Chrome MCP. The base fields (`skill`, `branch`, `timestamp`, `run_id`) are already set by lifecycle-init.sh.
+The base fields (`skill`, `branch`, `timestamp`, `run_id`) are already set by lifecycle-init.sh.
 
 **POSTCONDITIONS:**
-- Chrome MCP tools verified available
-- MCC dashboard accessed, campaigns listed
-- Eligible MVPs filtered (Ended or >= 7 days)
-- Team Lead confirmed the MVP list
-- `.runs/iterate-cross-context.json` exists with MVP list — every MVP has `owner`, `subaccount_name`, `subaccount_id`
+- PostHog API key + project ID resolved
+- MVPs discovered and operator-confirmed
+- `.runs/iterate-cross-context.json` exists with `mvps` array — every MVP has `name`, `gclid_visitors`, `first_seen`, `last_seen`
 
 **VERIFY:** see `state-registry.json` entry for `iterate-cross.x0`.
 
 ```bash
-python3 -c "import json; d=json.load(open('.runs/iterate-cross-context.json')); ms=d.get('mvps',[]); assert isinstance(ms, list) and len(ms)>0, 'mvps empty'; bad=[m.get('name','?') for m in ms if not m.get('owner') or not m.get('subaccount_name')]; assert not bad, 'MVPs missing owner/subaccount_name: %s' % bad"
+python3 -c "import json; d=json.load(open('.runs/iterate-cross-context.json')); ms=d.get('mvps',[]); assert isinstance(ms, list) and len(ms)>0, 'mvps empty'; bad=[m.get('name','?') for m in ms if not m.get('name') or 'gclid_visitors' not in m]; assert not bad, 'MVPs missing required fields: %s' % bad"
 ```
 <!-- VERIFY=true: real assertion lives in state-registry.json; this line is the per-Rule-13 placeholder -->
 
@@ -116,4 +155,4 @@ python3 -c "import json; d=json.load(open('.runs/iterate-cross-context.json')); 
 bash .claude/scripts/advance-state.sh iterate-cross x0
 ```
 
-**NEXT:** Read [state-x1-gather-all-data.md](state-x1-gather-all-data.md) to continue. (After x1 gathers data, [state-x1a-validate-data-integrity.md](state-x1a-validate-data-integrity.md) validates it before x2.)
+**NEXT:** Read [state-x1-gather-all-data.md](state-x1-gather-all-data.md) to continue.

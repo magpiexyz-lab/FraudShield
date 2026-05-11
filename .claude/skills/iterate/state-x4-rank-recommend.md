@@ -1,10 +1,11 @@
 # STATE x4: RANK_AND_RECOMMEND
 
+PostHog-only report. No Google Ads spend / CTR / QS columns.
+
 **PRECONDITIONS:**
-- Headline verdicts computed (STATE x3 POSTCONDITIONS met)
+- STATE x3 POSTCONDITIONS met
 - `.runs/iterate-cross-scores.json` exists with `headline_verdict` per MVP
 - `.runs/iterate-cross-data.json` exists (raw metrics)
-- `.runs/iterate-cross-data-issues.json` exists (issue flags for soft warnings)
 
 **ACTIONS:**
 
@@ -13,22 +14,20 @@
 ```bash
 SCORES=.runs/iterate-cross-scores.json
 DATA=.runs/iterate-cross-data.json
-ISSUES=.runs/iterate-cross-data-issues.json
 DEBUG_PROMPTS=.claude/patterns/iterate-cross-debug-prompts.md
 ```
 
-Read all four. Build a per-MVP record by joining scores + data + issues on `name`. Read debug prompt templates from `iterate-cross-debug-prompts.md` for inline use in Section B.
+Read all three. Build a per-MVP record by joining scores + data on `name`.
 
 ### Sort MVPs by verdict precedence
 
-Sort MVPs into this order (group, then sort within group):
+Sort MVPs into this order:
 
-1. `GO` — sort by `signups` desc, then `clicks` asc (most efficient first)
-2. `INSUFFICIENT_DATA` — sort by `clicks` desc (closest to floor first)
-3. `NO_GO` — sort by `clicks` desc
-4. `TRACKING_BROKEN` — sort by `clicks` desc
-5. `NOT_DEPLOYED` — sort by `clicks` desc
-6. `STANDARD_VIOLATION` — sort by `clicks` desc
+1. `GO` — sort by `signups` desc, then `gclid_visitors` asc (most efficient first)
+2. `WEAK` — sort by `signups` desc, then `gclid_visitors` desc
+3. `INSUFFICIENT_DATA` — sort by `gclid_visitors` desc (closest to floor first)
+4. `NO_GO` — sort by `gclid_visitors` desc
+5. `NO_DATA` — alphabetical
 
 This keeps the most-actionable verdicts at the top.
 
@@ -36,30 +35,29 @@ This keeps the most-actionable verdicts at the top.
 
 ### Section A — Per-MVP table
 
-Print to stdout:
+Print to stdout. Window comes from `.runs/iterate-cross-scores.json window_days`:
 
 ```
 ╔═══════════════════════════════════════════════════════════════════════════════╗
-║  Phase 1 Cross-MVP Evaluation — {date}  |  {N} MVPs  |  {window} days       ║
+║  Cross-MVP Evaluation — {date}  |  {N} MVPs  |  {window_days}d window        ║
 ╠═══════════════════════════════════════════════════════════════════════════════╣
-║ Verdict      │ Owner   │ MVP / Campaign            │ Clicks │ Signups │ Conv% ║
-║──────────────┼─────────┼───────────────────────────┼────────┼─────────┼───────║
-║ ✅ GO         │ {owner} │ {campaign} → {project}    │  {c}   │   {s}   │ {r}% ║
-║ ⏳ INSUF…     │ {owner} │ {campaign}                │  {c}   │   {s}   │  --  ║
-║ ❌ NO_GO      │ {owner} │ {campaign}                │  {c}   │   {s}   │ {r}% ║
-║ ❓ TRACK…     │ {owner} │ {campaign}                │  {c}   │   {s}   │  --  ║
-║ ❓ NOT_DEP…   │ {owner} │ {campaign}                │  {c}   │   {s}   │  --  ║
-║ 🚫 STD_VIOL   │ {owner} │ {campaign}                │  {c}   │   --    │  --  ║
+║ Verdict      │ MVP                │ Visitors │ Signups │ Conv% │ Signup events ║
+║──────────────┼────────────────────┼──────────┼─────────┼───────┼───────────────║
+║ ✅ GO         │ {name}             │   {v}    │   {s}   │ {r}%  │ {events}      ║
+║ ⚠️ WEAK       │ {name}             │   {v}    │   {s}   │ {r}%  │ {events}      ║
+║ ⏳ INSUF      │ {name}             │   {v}    │   {s}   │  --   │ {events}      ║
+║ ❌ NO_GO      │ {name}             │   {v}    │   {s}   │ {r}%  │ {events}      ║
+║ ❓ NO_DATA    │ {name}             │   --     │   --    │  --   │ —             ║
 ╚═══════════════════════════════════════════════════════════════════════════════╝
 ```
 
-Soft warnings (e.g., `subaccount_conversion_misconfigured`) appear as a footnote line below the table.
+Show the operator at the bottom: total visitors, total signups, blended conv%, count by verdict.
 
 ---
 
-### Section B — Per-owner action items
+### Section B — Owner grouping (only when owner present)
 
-Group MVPs by `owner`. For each owner, print a block:
+If any MVP in scores has `owner != null`, group MVPs by owner. For each owner, print a block:
 
 ```
 ─── {owner} ───
@@ -69,40 +67,22 @@ Group MVPs by `owner`. For each owner, print a block:
 ...
 ```
 
-Action templates per verdict (read from `.claude/patterns/iterate-cross-debug-prompts.md`):
+Action templates per verdict (keep brief; debug prompts come from `iterate-cross-debug-prompts.md` for `NO_DATA`):
 
-- **GO** → "Promote {campaign} to Phase 2 with `/iterate` (default mode)."
-- **NO_GO** → "Stop {campaign}. Confirm rejection in retro."
-- **INSUFFICIENT_DATA** → "Keep running {campaign} until 50+ clicks (need {clicks_needed} more). No need to spend full $140."
-- **STANDARD_VIOLATION** → "Switch {campaign} bid strategy to Manual CPC and reset budget. Re-launch under Phase 1 standard before re-evaluating."
-- **TRACKING_BROKEN** → "Debug PostHog gclid capture. Run Claude Code in the MVP repo with this prompt: {inline TRACKING_BROKEN debug prompt}"
-- **NOT_DEPLOYED** → "Confirm deploy URL is live + PostHog snippet loads. Run Claude Code with this prompt: {inline NOT_DEPLOYED debug prompt}"
-- **CONVERSION_MISCONFIGURED** (soft warn) → "Sub-account default conversion is `{action}`, not in the sign-up whitelist. Update Account Goals → Default conversion to a sign-up event."
+- **GO** → "Promote {name} to Phase 2 with `/iterate` (default mode)."
+- **WEAK** → "Investigate {name}: above visitors floor but only {signups} signups. Check landing-page friction or extend campaign window."
+- **NO_GO** → "Stop {name}. Confirm rejection in retro."
+- **INSUFFICIENT_DATA** → "Keep {name} running until {visitors_needed} more visitors arrive (target: 50+)."
+- **NO_DATA** → "Debug PostHog tracking. Run Claude Code in the MVP repo with this prompt: {inline NO_DATA debug prompt}"
 
-Inline the appropriate debug prompt verbatim in the action item so the owner can copy-paste it directly.
+If NO MVP has an owner set, skip Section B and emit a notice:
+> No `mvp_mappings.<name>.owner` set in `experiment/iterate-cross-config.yaml`. Add owner to enable per-owner action grouping.
 
 ---
 
 ### Section C — Telegram-ready artifact
 
-Write `.runs/iterate-cross-telegram.txt`. Format: one block per owner, separated by `---`. Each block ≤4000 chars (Telegram cap is 4096 but leave headroom).
-
-Block template:
-
-```
-*Phase 1 Manual CPC update — {owner}*
-
-For your campaigns:
-{compact list of campaigns + verdicts + 1-line action}
-
-Universal rule (all owners):
-• <50 clicks → keep the campaign running
-• ≥50 clicks → can stop (no need to spend full $140)
-```
-
-If a single owner's block exceeds 4000 chars (e.g., Radlin with many TRACKING_BROKEN debug prompts), split it into multiple sub-blocks at clean boundaries.
-
-Generation:
+Write `.runs/iterate-cross-telegram.txt`. Format: one block per owner (or single "unassigned" block), separated by `---`. Each block ≤4000 chars.
 
 ```bash
 python3 .claude/scripts/lib/iterate_cross_verdicts.py \
@@ -116,12 +96,11 @@ python3 .claude/scripts/lib/iterate_cross_verdicts.py \
 ### Summary line
 
 Print to stdout:
-
-> Cross-MVP evaluation complete. Output: per-MVP table (above), per-owner action items (above), Telegram blocks (`.runs/iterate-cross-telegram.txt`).
+> Cross-MVP evaluation complete. Output: per-MVP table (above), owner action items (above), Telegram blocks (`.runs/iterate-cross-telegram.txt`).
 
 **POSTCONDITIONS:**
 - Per-MVP ranking table presented (Section A)
-- Per-owner action items with inline debug prompts presented (Section B)
+- Per-owner action items presented (Section B) OR notice emitted if no owner mapping
 - `.runs/iterate-cross-telegram.txt` exists with one block per owner
 
 **VERIFY:** see `state-registry.json` entry for `iterate-cross.x4`.

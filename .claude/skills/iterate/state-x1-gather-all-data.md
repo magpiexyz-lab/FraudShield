@@ -1,276 +1,148 @@
-# STATE x1: GATHER_ALL_DATA
+# STATE x1: GATHER_DATA
+
+PostHog-only data gather. No Google Ads metrics (spend, CTR, QS, impressions).
 
 **PRECONDITIONS:**
 - MVP list confirmed (STATE x0 POSTCONDITIONS met)
-- `.runs/iterate-cross-context.json` exists with `mvps` array (each MVP has `name`, `domain`, `owner`, `campaign_name`, `final_url`, `subaccount_name`, `subaccount_id`)
+- `.runs/iterate-cross-context.json` exists with `mvps` array, `posthog_project_id`, `window_days`
 
 **ACTIONS:**
 
 ### Read context
 
-Read `.runs/iterate-cross-context.json` and extract the `mvps` array.
-
-### Read operator config (with safe defaults)
-
-Read `experiment/iterate-cross-config.yaml` from the operator's repo root if it exists. If missing, use these inline defaults and emit a one-time notice:
-
-```yaml
-signup_whitelist:
-  - signup_complete
-  - waitlist_signup
-  - waitlist_submit
-  - early_access_signup
-  - activate
-conversion_action_whitelist:
-  - "Sign-up"
-  - "MVP Signup"
-  - "Submit lead form"
-  - "Sign-ups"
-mvp_mappings: {}
-thresholds:
-  signups_go: 3
-  clicks_floor: 50
-  click_window_days: 7
+```bash
+POSTHOG_API_KEY=$(cat ~/.posthog/personal-api-key)
+POSTHOG_PROJECT_ID=$(python3 -c "import json; print(json.load(open('.runs/iterate-cross-context.json'))['posthog_project_id'])")
+WINDOW_DAYS=$(python3 -c "import json; print(json.load(open('.runs/iterate-cross-context.json'))['window_days'])")
 ```
 
-If config is missing, write a notice exactly once:
-> "No `experiment/iterate-cross-config.yaml` found. Using defaults. See `experiment/iterate-cross-config.example.yaml` for the schema."
+### Build per-MVP event catalog query
 
-### Gather Google Ads data (Chrome MCP)
+For each MVP, query the top events with counts. Catalog feeds STATE x2 (signup classification) and STATE x3 (signup count using mvp_mappings).
 
-For each MVP's campaign in Google Ads MCC:
-
-1. Navigate to the campaign's **Overview** or **Campaigns** tab
-2. Record core metrics:
-   - **Impressions**: total impressions
-   - **Clicks**: total clicks
-   - **CTR**: click-through rate (clicks / impressions)
-   - **Avg CPC**: average cost per click
-   - **Total spend**: total cost
-3. Read **Bid strategy type**:
-   - First try: locate the **Bid strategy** column in the campaigns table (may need to add via "Columns" → enable "Bid strategy")
-   - Fallback: click into the campaign → **Settings** → **Bidding**. Read the bidding strategy.
-   - Record `bid_strategy_type` as one of: `manual_cpc`, `maximize_clicks`, `target_cpa`, `target_roas`, `maximize_conversions`, `enhanced_cpc`, `unknown`
-   - If neither approach succeeds, set `bid_strategy_type: "unknown"` and `bid_strategy_unknown: true`
-4. Navigate to the campaign's **Keywords** tab
-5. Record **Quality Score**:
-   - Read the Quality Score column for each keyword
-   - Filter: only keywords with >= 10 impressions
-   - Compute the average Quality Score across qualifying keywords
-   - If no keywords have >= 10 impressions, set `quality_score: 0`
-6. Check for **Impression Share** (if visible in the columns):
-   - Record Search Impression Share if available
-   - If not visible, set `impression_share: null`
-
-### Pull sub-account default conversion action (Chrome MCP)
-
-For each unique sub-account across the MVPs:
-
-1. Switch to the sub-account in Google Ads
-2. Navigate to **Tools & Settings** → **Conversions** → **Goals** (or **Summary**)
-3. Find the conversion goal labeled **Account default** (or the highest-priority **Primary** action)
-4. Record:
-   - `subaccount_default_conversion_action`: the action's name (e.g., `"Sign-up"`, `"Page view"`, `"Qualified lead"`)
-   - `subaccount_conversion_status`: `"active"` | `"misconfigured"` | `"inactive"` (if visible from the row's Status column)
-
-Cache the per-sub-account result and apply to all MVPs in that sub-account.
-
-### Read PostHog API key
+The query uses **one round-trip** with UNION ALL of per-MVP subqueries. Build via Python to handle dynamic mvp list cleanly:
 
 ```bash
-POSTHOG_API_KEY=$(cat ~/.posthog/personal-api-key 2>/dev/null)
-```
+python3 - <<'PY'
+import json
+ctx = json.load(open('.runs/iterate-cross-context.json'))
+mvps = ctx['mvps']
+window_days = ctx['window_days']
 
-If the file does not exist, STOP:
-> "PostHog personal API key not found at `~/.posthog/personal-api-key`."
-> "Create one at PostHog > Settings > Personal API Keys (scope: Query Read), then save it:"
-> "```"
-> "mkdir -p ~/.posthog && echo 'phx_YOUR_KEY' > ~/.posthog/personal-api-key"
-> "```"
-> "Then re-run `/iterate --cross`."
+parts = []
+values = {"empty": ""}
+for i, m in enumerate(mvps):
+    pj = f"pj_{i}"
+    url_pat = f"url_{i}"
+    values[pj] = m['name']
+    # URL pattern uses deploy_domain if set, else best-guess from project name
+    domain_hint = m.get('deploy_domain') or m['name']
+    values[url_pat] = f"%{domain_hint}%"
 
-### Discover PostHog project ID
+    subq = (
+        f"SELECT {{{pj}}} AS mvp_key, "
+        f"event AS event_name, "
+        f"max(toString(properties.funnel_stage)) AS sample_stage, "
+        f"count(*) AS event_count, "
+        f"count(DISTINCT distinct_id) AS unique_users, "
+        f"count(DISTINCT IF(properties.$session_entry_gclid IS NOT NULL AND properties.$session_entry_gclid != {{empty}}, distinct_id, NULL)) AS gclid_users "
+        f"FROM events "
+        f"WHERE timestamp >= now() - INTERVAL {window_days} DAY "
+        f"AND (properties.project_name = {{{pj}}} OR properties.$current_url LIKE {{{url_pat}}}) "
+        f"AND event NOT LIKE '$%' "
+        f"GROUP BY event_name "
+        f"HAVING gclid_users > 0 OR unique_users >= 5"
+    )
+    parts.append(subq)
 
-```bash
-POSTHOG_PROJECT_ID=$(curl -s "https://us.i.posthog.com/api/projects/" \
-  -H "Authorization: Bearer $POSTHOG_API_KEY" | python3 -c "import sys,json; print(json.load(sys.stdin)['results'][0]['id'])")
-```
+query = " UNION ALL ".join(parts)
+body = {"query": {"kind": "HogQLQuery", "query": query, "values": values}}
+json.dump(body, open('.runs/_iterate-cross-catalog-query.json', 'w'))
+PY
 
-If this fails, report the error and STOP.
-
-### Query PostHog funnel-stage data for each MVP
-
-For each MVP, query funnel stage counts using HogQL. Try `project_name` match first, then fallback to URL domain match.
-
-**Primary query** (new MVPs with `project_name` property):
-
-```bash
 curl -s -X POST "https://us.i.posthog.com/api/projects/$POSTHOG_PROJECT_ID/query/" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $POSTHOG_API_KEY" \
-  -d '{
-    "query": {
-      "kind": "HogQLQuery",
-      "query": "SELECT properties.funnel_stage as stage, count(DISTINCT distinct_id) as unique_users FROM events WHERE properties.project_name = {project_name} AND properties.utm_source = {utm_source} AND timestamp >= {start_date} GROUP BY stage",
-      "values": {
-        "project_name": "<mvp_name>",
-        "utm_source": "google",
-        "start_date": "<campaign_start_date ISO>"
-      }
-    }
-  }'
+  --data @.runs/_iterate-cross-catalog-query.json > .runs/_iterate-cross-catalog-raw.json
 ```
 
-**Fallback query** (old MVPs without `project_name` -- use `$current_url` domain match):
+If the API returns an error (e.g., query too large because of many MVPs), split into batches of ≤20 MVPs and concatenate.
 
-If the primary query returns empty results, try:
-
-```bash
-curl -s -X POST "https://us.i.posthog.com/api/projects/$POSTHOG_PROJECT_ID/query/" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $POSTHOG_API_KEY" \
-  -d '{
-    "query": {
-      "kind": "HogQLQuery",
-      "query": "SELECT properties.funnel_stage as stage, count(DISTINCT distinct_id) as unique_users FROM events WHERE properties.$current_url LIKE {url_pattern} AND properties.utm_source = {utm_source} AND timestamp >= {start_date} GROUP BY stage",
-      "values": {
-        "url_pattern": "%<deploy_domain>%",
-        "utm_source": "google",
-        "start_date": "<campaign_start_date ISO>"
-      }
-    }
-  }'
-```
-
-**Important:** Always use parameterized `values` for all user-supplied inputs. Never use string interpolation.
-
-### Query PostHog tracking-health metrics per MVP
-
-For each MVP, run two additional queries to detect tracking issues. See the "Cross-MVP Health & Signup Queries" section in `.claude/stacks/analytics/posthog.md` for templates.
-
-**Combined gclid + total events** (one query):
+### Aggregate per-MVP totals + event catalog
 
 ```bash
-curl -s -X POST "https://us.i.posthog.com/api/projects/$POSTHOG_PROJECT_ID/query/" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $POSTHOG_API_KEY" \
-  -d '{
-    "query": {
-      "kind": "HogQLQuery",
-      "query": "SELECT count(*) AS total_events_count, countIf(properties.$session_entry_gclid IS NOT NULL AND properties.$session_entry_gclid != '\'''\'') AS gclid_visitor_count FROM events WHERE properties.$current_url LIKE {url_pattern} AND timestamp >= {start_date}",
-      "values": {
-        "url_pattern": "%<deploy_domain>%",
-        "start_date": "<campaign_start_date ISO>"
-      }
-    }
-  }'
-```
-
-Record per MVP:
-- `total_events_count`: integer (any event firing for the deploy domain in the time window)
-- `gclid_visitor_count`: integer (events with `$session_entry_gclid` set)
-
-If `$session_entry_gclid` is unavailable in the team's PostHog project (older PostHog deployments), fall back to: `countIf(properties.gclid IS NOT NULL)`.
-
-### Pre-compute signups (whitelist-based) per MVP
-
-For each MVP, count distinct users who fired any event in `signup_whitelist` (from operator config) AND have a gclid:
-
-```bash
-curl -s -X POST "https://us.i.posthog.com/api/projects/$POSTHOG_PROJECT_ID/query/" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $POSTHOG_API_KEY" \
-  -d '{
-    "query": {
-      "kind": "HogQLQuery",
-      "query": "SELECT count(DISTINCT distinct_id) AS signups FROM events WHERE event IN {events} AND properties.$session_entry_gclid IS NOT NULL AND properties.$current_url LIKE {url_pattern} AND timestamp >= {start_date}",
-      "values": {
-        "events": ["signup_complete","waitlist_signup","waitlist_submit","early_access_signup","activate"],
-        "url_pattern": "%<deploy_domain>%",
-        "start_date": "<campaign_start_date ISO>"
-      }
-    }
-  }'
-```
-
-Replace the `events` array with the operator's `signup_whitelist` from config. Record `signups` per MVP — this drives the 3/50 verdict in STATE x3.
-
-### Map PostHog funnel results to funnel stages
-
-For each MVP, map the funnel-stage query results to the standard funnel stages:
-- `reach`, `demand`, `activate`, `monetize`, `retain`. Missing stages → 0.
-
-Track whether each MVP had `funnel_stage` data (for STATE x2 migration decision):
-- `has_funnel_stage: true` if the primary query returned funnel_stage results
-- `has_funnel_stage: false` if only fallback query worked or no funnel_stage in results
-
-### Write data file
-
-```bash
-PAYLOAD=$(python3 -c "
+python3 - <<'PY'
 import json
 
-data = {
-    'mvps': [
-        # For each MVP:
-        # {
-        #     'name': 'pettracker',
-        #     'owner': 'lee',
-        #     'campaign_name': 'pettracker-search-v1',
-        #     'subaccount_name': 'Lee MVP',
-        #     'deploy_url': 'https://pettracker.vercel.app',
-        #     'google_ads': {
-        #         'impressions': 1200,
-        #         'clicks': 42,
-        #         'ctr': 0.035,
-        #         'cpc': 2.38,
-        #         'spend': 100.00,
-        #         'quality_score': 7,
-        #         'impression_share': null,
-        #         'bid_strategy_type': 'manual_cpc',
-        #         'bid_strategy_unknown': false
-        #     },
-        #     'posthog': {
-        #         'reach': 42,
-        #         'demand': 4,
-        #         'activate': 3,
-        #         'monetize': 0,
-        #         'retain': 0
-        #     },
-        #     'tracking': {
-        #         'gclid_visitor_count': 38,
-        #         'total_events_count': 412,
-        #         'signups': 4
-        #     },
-        #     'subaccount_default_conversion_action': 'Sign-up',
-        #     'subaccount_conversion_status': 'active',
-        #     'has_funnel_stage': true,
-        #     'data_source': 'project_name'  # or 'url_fallback'
-        # }
-    ]
-}
-print(json.dumps(data))
-")
+ctx = json.load(open('.runs/iterate-cross-context.json'))
+raw = json.load(open('.runs/_iterate-cross-catalog-raw.json'))
+if 'results' not in raw:
+    raise SystemExit(f"PostHog error: {json.dumps(raw)[:400]}")
+
+# Map mvp_key -> list of {event, users, gclid_users, stage, count}
+catalog_by_mvp = {}
+for row in raw['results']:
+    mvp_key, event_name, stage, event_count, unique_users, gclid_users = row
+    if mvp_key not in catalog_by_mvp:
+        catalog_by_mvp[mvp_key] = []
+    catalog_by_mvp[mvp_key].append({
+        'event': event_name,
+        'event_count': event_count,
+        'unique_users': unique_users,
+        'gclid_users': gclid_users,
+        'sample_stage': stage if stage else None,
+    })
+
+# Build per-MVP records
+mvp_records = []
+for m in ctx['mvps']:
+    name = m['name']
+    catalog = sorted(catalog_by_mvp.get(name, []), key=lambda e: -e['gclid_users'])
+    gclid_visitors = sum(e['gclid_users'] for e in catalog if e['event'] in ('visit_landing', 'landing_view', 'landing_viewed', 'landing_visit', 'page_viewed', 'lander_view', '$pageview'))
+    if gclid_visitors == 0:
+        # Fall back to max gclid_users across events (the "broadest" event with gclid)
+        gclid_visitors = max((e['gclid_users'] for e in catalog), default=0)
+    total_events = sum(e['event_count'] for e in catalog)
+    mvp_records.append({
+        'name': name,
+        'owner': m.get('owner'),
+        'gclid_visitors': gclid_visitors,
+        'total_events_count': total_events,
+        'first_seen': m.get('first_seen'),
+        'last_seen': m.get('last_seen'),
+        'sample_utm_campaign': m.get('sample_utm_campaign'),
+        'event_catalog': catalog[:30],   # top 30 events by gclid_users
+    })
+
+bash_payload = json.dumps({'mvps': mvp_records})
+print(bash_payload)
+PY
+```
+
+Capture the JSON output and write the data file via the standard helper:
+
+```bash
+PAYLOAD=$(python3 - <<'PY'
+# (same script as above; print json.dumps result)
+PY
+)
 bash .claude/scripts/lib/write-gate-artifact.sh \
   --path .runs/iterate-cross-data.json \
   --payload "$PAYLOAD" \
   --skill iterate
+
+rm -f .runs/_iterate-cross-catalog-query.json .runs/_iterate-cross-catalog-raw.json
 ```
 
-Replace placeholder data with actual values from Google Ads and PostHog.
-
 **POSTCONDITIONS:**
-- Google Ads data collected for every MVP including `bid_strategy_type`
-- PostHog funnel-stage data collected for every MVP
-- Tracking-health metrics (`gclid_visitor_count`, `total_events_count`) collected per MVP
-- `signups` (whitelist-based, gclid-filtered) pre-computed per MVP
-- Sub-account default conversion action recorded per MVP
-- `.runs/iterate-cross-data.json` exists with complete extended schema
+- Per-MVP `gclid_visitors` and `total_events_count` recorded
+- Per-MVP `event_catalog` (≤30 events) recorded with stage hints
+- `.runs/iterate-cross-data.json` exists with required schema
 
 **VERIFY:** see `state-registry.json` entry for `iterate-cross.x1`.
 
 ```bash
-python3 -c "import json; d=json.load(open('.runs/iterate-cross-data.json')); ms=d.get('mvps',[]); assert isinstance(ms, list) and len(ms)>0, 'mvps empty'; m=ms[0]; assert m.get('name'), 'first mvp name empty'; ga=m.get('google_ads',{}); assert 'impressions' in ga and 'clicks' in ga and 'spend' in ga and 'bid_strategy_type' in ga, 'google_ads missing keys'; ph=m.get('posthog',{}); assert 'reach' in ph and 'demand' in ph, 'posthog missing funnel stages'; tr=m.get('tracking',{}); assert 'gclid_visitor_count' in tr and 'total_events_count' in tr and 'signups' in tr, 'tracking missing keys'"
+python3 -c "import json; d=json.load(open('.runs/iterate-cross-data.json')); ms=d.get('mvps',[]); assert isinstance(ms, list) and len(ms)>0, 'mvps empty'; m=ms[0]; assert m.get('name') and 'gclid_visitors' in m and 'total_events_count' in m and 'event_catalog' in m, 'missing required fields on first MVP'"
 ```
 <!-- VERIFY=true: real assertion lives in state-registry.json; this line is the per-Rule-13 placeholder -->
 

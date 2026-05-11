@@ -1,52 +1,74 @@
-# iterate-cross-config.yaml — Operator config for /iterate --cross
+# iterate-cross-config.yaml — Operator config for /iterate --cross (PostHog-only)
 #
-# Lives at the operator's MCC repository root (NOT in template).
-# Consumed by STATE x1 (signup query, sub-account conversion validation)
-# and STATE x1a (mapping confirmation persistence).
-#
+# Lives at the operator's repository root. Consumed by every state in /iterate --cross.
 # Copy this file to `experiment/iterate-cross-config.yaml` and adjust as needed.
 # Missing files fall back to the inline defaults shown here.
 #
-# Schema is loose — unknown keys are ignored. Numeric thresholds may be tuned
-# per team but should be justified by first-principles statistics (see plan
-# /Users/.claude/plans/7-logical-tulip.md for the 3/50 rule derivation).
+# Schema is loose — unknown keys are ignored.
 
-# Events that count as "signup completion" for the GO verdict (signups >= 3).
-# Use distinct_id deduplication. Add new event names as MVPs evolve.
+# How far back to query PostHog. Default 90 days catches most Phase 1 campaigns
+# (which run for 7 days each). Increase for retrospective batch evaluations.
+window_days: 90
+
+# Optional override. If unset, x0 auto-discovers via PostHog /api/projects/.
+# Set this when your PostHog account has multiple projects and the wrong one
+# is auto-picked.
+# posthog_project_id: 12345
+
+# Phase filter. Controls which MVPs are surfaced for evaluation.
+phase_filter:
+  # Glob/LIKE pattern for utm_campaign. Empty string = no filter (show all gclid
+  # traffic). Use "%-search-v%" to filter to Phase 1 Manual CPC convention.
+  utm_campaign_like: ""
+  # When utm_campaign_like is set: still include MVPs WITHOUT the matching UTM
+  # if they have other gclid traffic (covers MVPs whose final URL didn't include
+  # explicit utm tagging). Set to false for strict matching.
+  fallback_all_gclid: true
+
+# Per-MVP overrides. Auto-populated by /iterate --cross x2 with LLM-derived
+# signup classifications. Operator can also set `owner` and `deploy_domain`
+# to enable owner grouping and improve URL fallback queries.
+#
+# After x2 runs, every MVP gets a signup_events array (possibly empty) plus
+# `classified_by` and `classified_at` audit fields. Edit the events list to
+# override LLM choices; the override is preserved on subsequent runs.
+mvp_mappings:
+  # Example:
+  # diarly:
+  #   signup_events: [signup_complete]
+  #   owner: lego
+  #   deploy_domain: diarly.draftlabs.org
+  #   classified_by: llm-x2
+  #   classified_at: 2026-05-11T00:00:00Z
+  # smelt:
+  #   signup_events: [waitlist_signup, signup_complete]
+  #   owner: lego
+  #   classified_by: llm-x2
+  # mosai:
+  #   signup_events: []        # empty = no detectable signup event
+  #   classified_by: x2-empty
+
+# Fallback whitelist used by x1a (auto_default_match flag) and x2 (auto-classify
+# branch). MVPs whose catalog contains any of these events skip the LLM and use
+# the matching events directly. Add new event names as your MVPs evolve.
 signup_whitelist:
   - signup_complete
+  - signup_completed
   - waitlist_signup
   - waitlist_submit
+  - waitlist_submitted
   - early_access_signup
+  - early_access_submitted
+  - email_submitted
+  - form_submitted
+  - register_complete
+  - account_created
   - activate
 
-# Acceptable values for a sub-account's "Account default" conversion action.
-# /iterate --cross x1a flags any sub-account whose default action is NOT in
-# this list as `subaccount_conversion_misconfigured` (soft warn).
-# Match is case-insensitive substring match.
-conversion_action_whitelist:
-  - "Sign-up"
-  - "Sign-ups"
-  - "MVP Signup"
-  - "Submit lead form"
-  - "Account creation"
-  - "Lead form"
-
-# Operator-confirmed mapping from Google Ads campaign name → PostHog project_name.
-# Auto-populated by /iterate --cross x1a when the user confirms a low-confidence
-# fuzzy match. Once persisted here, future runs treat the mapping as confirmed.
-#
-# Example:
-#   autodropship-search-v1:
-#     posthog_project_name: dropship-ops
-#     deploy_domain: dropship-ops.example.com  # optional; for URL fallback queries
-mvp_mappings: {}
-
-# Phase 1 thresholds. The defaults reflect first-principles Bernoulli noise floor:
-#   - At p=5%, P(signups >= 3 | n=50) ≈ 73%, so 50 clicks comfortably distinguishes
-#     signal from noise when 3+ signups appear.
-#   - At p=5%, P(signups < 3 | n=50) ≈ 27%, so we tolerate ambiguity below the floor.
+# Phase 1 thresholds. The defaults reflect Bernoulli noise floor:
+#   At p=5%, P(signups >= 3 | n=50) ≈ 73%, so 50 visitors comfortably
+#   distinguishes signal from noise when 3+ signups appear.
 thresholds:
   signups_go: 3        # Headline GO when distinct gclid signups >= this
-  clicks_floor: 50     # Headline NO_GO if clicks >= this AND signups < signups_go
-  click_window_days: 7 # Time window for HogQL queries (relative to now)
+  visitors_floor: 50   # NO_GO if visitors >= this AND signups == 0;
+                       # WEAK if visitors >= this AND 0 < signups < signups_go
