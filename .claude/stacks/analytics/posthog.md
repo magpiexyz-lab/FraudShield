@@ -39,7 +39,7 @@ npm install posthog-js
 // finishes loading are queued in `pending[]` and replayed once init() resolves.
 // Public API stays synchronous; callers don't await.
 
-const PROJECT_NAME = "TODO"; // Replaced by bootstrap with experiment.yaml `name`
+const PROJECT_NAME = "TODO"; // Replaced by bootstrap with kebab-case experiment.yaml `name` (^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$, enforced by /bootstrap state-3 — see .claude/scripts/lib/validate_experiment_yaml.py). Must NEVER be edited at runtime; identity stability across deploys depends on this constant being immutable for an MVP's lifetime.
 const PROJECT_OWNER = "TODO"; // Replaced by bootstrap with experiment.yaml `owner`
 const POSTHOG_KEY = process.env.NEXT_PUBLIC_POSTHOG_KEY ?? "phc_TEAM_KEY";
 const POSTHOG_HOST = "/ingest";
@@ -184,7 +184,7 @@ Notes:
 ```ts
 import { PostHog } from "posthog-node";
 
-const PROJECT_NAME = "TODO"; // Replaced by bootstrap with experiment.yaml `name`
+const PROJECT_NAME = "TODO"; // Replaced by bootstrap with kebab-case experiment.yaml `name` (^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$, enforced by /bootstrap state-3 — see .claude/scripts/lib/validate_experiment_yaml.py). Must NEVER be edited at runtime; identity stability across deploys depends on this constant being immutable for an MVP's lifetime.
 const PROJECT_OWNER = "TODO"; // Replaced by bootstrap with experiment.yaml `owner`
 export const POSTHOG_KEY = process.env.POSTHOG_SERVER_KEY ?? process.env.NEXT_PUBLIC_POSTHOG_KEY ?? "phc_TEAM_KEY";
 export const POSTHOG_HOST = "https://us.i.posthog.com";

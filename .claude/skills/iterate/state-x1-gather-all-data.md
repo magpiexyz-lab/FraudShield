@@ -117,6 +117,11 @@ for m in ctx['mvps']:
         'last_seen': m.get('last_seen'),
         'sample_utm_campaign': m.get('sample_utm_campaign'),
         'event_catalog': catalog[:30],   # top 30 events by gclid_users
+        # Preserve x0's orphan flag through to x1a so the MISSING_PROJECT_NAME
+        # verdict precedence fires correctly. Without this, orphan MVPs (events
+        # with NULL project_name) silently collapse into NO_DATA instead of
+        # surfacing as a tracking-misconfiguration verdict.
+        'orphan': bool(m.get('orphan')),
     })
 
 bash_payload = json.dumps({'mvps': mvp_records})

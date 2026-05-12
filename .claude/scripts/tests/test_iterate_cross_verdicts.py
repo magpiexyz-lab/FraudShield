@@ -19,6 +19,7 @@ from iterate_cross_verdicts import (  # noqa: E402
     VERDICT_ENUM,
     VERDICT_GO,
     VERDICT_INSUFFICIENT,
+    VERDICT_MISSING_PROJECT_NAME,
     VERDICT_NO_DATA,
     VERDICT_NO_GO,
     VERDICT_WEAK,
@@ -104,6 +105,50 @@ def test_no_data_takes_precedence_over_no_go():
         THRESHOLDS,
     )
     assert score["headline_verdict"] == VERDICT_NO_DATA
+
+
+def test_missing_project_name_takes_precedence_over_no_data():
+    """missing_project_name is precedence rule 0 — wins over every other flag.
+
+    Orphan MVPs (events with NULL project_name) have empty event_catalog by
+    definition (catalog query filters by project_name), so no_event_data is
+    also true. The verdict must surface the ROOT cause (tracking gap) not
+    the SYMPTOM (no catalog).
+    """
+    score = compute_headline_verdict(
+        mvp(visitors=20, signups=0),
+        {"missing_project_name": True, "no_event_data": True},
+        THRESHOLDS,
+    )
+    assert score["headline_verdict"] == VERDICT_MISSING_PROJECT_NAME
+
+
+def test_missing_project_name_takes_precedence_over_go():
+    """Even with a high signup count, MISSING_PROJECT_NAME wins — the data is
+    suspect when identity is missing (signups attributed to wrong MVP, etc.).
+    """
+    score = compute_headline_verdict(
+        mvp(visitors=200, signups=20),
+        {"missing_project_name": True},
+        THRESHOLDS,
+    )
+    assert score["headline_verdict"] == VERDICT_MISSING_PROJECT_NAME
+
+
+def test_missing_project_name_falsy_falls_through_to_normal_precedence():
+    """When missing_project_name is False/absent, the GO/WEAK/etc. logic runs normally."""
+    score = compute_headline_verdict(
+        mvp(visitors=100, signups=5),
+        {"missing_project_name": False},
+        THRESHOLDS,
+    )
+    assert score["headline_verdict"] == VERDICT_GO
+
+
+def test_missing_project_name_in_verdict_enum():
+    """Defense-in-depth: the new verdict must be in the enum so x3 VERIFY
+    accepts it as a legal output and downstream consumers don't choke."""
+    assert VERDICT_MISSING_PROJECT_NAME in VERDICT_ENUM
 
 
 def test_visitors_needed_zero_for_go():

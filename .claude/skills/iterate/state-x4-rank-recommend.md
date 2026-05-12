@@ -23,13 +23,14 @@ Read all three. Build a per-MVP record by joining scores + data on `name`.
 
 Sort MVPs into this order:
 
+0. `MISSING_PROJECT_NAME` — sort by `gclid_visitors` desc (biggest leaks first; these block all downstream analysis until tracking is fixed, so they go at the top)
 1. `GO` — sort by `signups` desc, then `gclid_visitors` asc (most efficient first)
 2. `WEAK` — sort by `signups` desc, then `gclid_visitors` desc
 3. `INSUFFICIENT_DATA` — sort by `gclid_visitors` desc (closest to floor first)
 4. `NO_GO` — sort by `gclid_visitors` desc
 5. `NO_DATA` — alphabetical
 
-This keeps the most-actionable verdicts at the top.
+This keeps the most-actionable verdicts at the top. MISSING_PROJECT_NAME outranks everything else because the data underneath is suspect — the operator must fix tracking before any product decision is trustworthy.
 
 ---
 
@@ -43,6 +44,7 @@ Print to stdout. Window comes from `.runs/iterate-cross-scores.json window_days`
 ╠═══════════════════════════════════════════════════════════════════════════════╣
 ║ Verdict      │ MVP                │ Visitors │ Signups │ Conv% │ Signup events ║
 ║──────────────┼────────────────────┼──────────┼─────────┼───────┼───────────────║
+║ 🚨 MISSING   │ {host_or_name}     │   {v}    │   --    │  --   │ —             ║
 ║ ✅ GO         │ {name}             │   {v}    │   {s}   │ {r}%  │ {events}      ║
 ║ ⚠️ WEAK       │ {name}             │   {v}    │   {s}   │ {r}%  │ {events}      ║
 ║ ⏳ INSUF      │ {name}             │   {v}    │   {s}   │  --   │ {events}      ║
