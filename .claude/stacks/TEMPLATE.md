@@ -197,6 +197,24 @@ VARIABLE_NAME=description-or-example
      first_seen: YYYY-MM-DD
      last_seen: YYYY-MM-DD
      graduated_to: null                 # Phase 2: pointer if promoted
+
+     # OPTIONAL — added M3 (PR #1397 retro). Project-agnostic bash command
+     # that empirically reproduces the root cause. /resolve STATE 3 Step 0
+     # runs this first to check if the issue still exists post-package-upgrade.
+     # Trinary exit contract:
+     #   exit 0 → bug PRESENT (proceed with reproduction)
+     #   exit 1 → bug ABSENT (close issue as Stale; refresh SK entry)
+     #   exit 2 → preconditions not met (skip; e.g., package not in this stack)
+     #   exit other → snippet broken (treat as "unable to verify")
+     # Project-agnostic requirements: NO user-specific paths (/Users/, /home/);
+     # use mktemp -d for ephemeral working dirs; runnable from repo root.
+     # Required when /resolve STATE 9 emits an entry whose underlying fix had
+     # reproduction.method ∈ {exec, validator-fed} (the snippet IS the evidence
+     # captured at STATE 3). Optional for cite/grep tier reproductions.
+     verification_snippet: |
+       # exit 0 = bug present (default contract)
+       cd "$(mktemp -d)" && npm init -y >/dev/null && npm install <pkg> 2>/dev/null
+       node -e "<minimal repro>" && exit 0 || exit 1
      ```
 
      One one-paragraph prose summary for humans SHOULD follow each fenced

@@ -49,7 +49,16 @@ REQUIRED_FIELDS = {
     "graduated_to",
 }
 
-OPTIONAL_FIELDS = {"anti_pattern"}
+OPTIONAL_FIELDS = {"anti_pattern", "verification_snippet"}
+# verification_snippet — added M3 (PR #1397 retro): a project-agnostic bash
+# command that empirically reproduces the root cause described by this entry.
+# /resolve STATE 3 Step 0 runs the snippet first to check if the issue still
+# exists post-package-upgrade. Trinary exit contract:
+#   exit 0 → bug PRESENT (proceed with reproduction)
+#   exit 1 → bug ABSENT (close issue as Stale; refresh SK entry)
+#   exit 2 → preconditions not met (skip; e.g., package not in this stack)
+#   exit other → snippet broken (treat as "unable to verify"; do NOT auto-fix)
+# See .claude/stacks/TEMPLATE.md for the canonical schema documentation.
 
 MATURITY_VALUES = {"raw", "stable", "canonical"}
 

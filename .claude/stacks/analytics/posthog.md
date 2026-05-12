@@ -799,6 +799,25 @@ linked_issues: [1325, 1382]
 first_seen: 2026-05-07
 last_seen: 2026-05-11
 graduated_to: null
+verification_snippet: |
+  # exit 0 = bug present (default+destructure required for .mjs raw Node ESM)
+  # exit 1 = bug absent (Node CJS named-export detection now surfaces @next/env exports)
+  # exit 2 = preconditions not met (npm/node not available)
+  set -e
+  command -v npm >/dev/null && command -v node >/dev/null || exit 2
+  T=$(mktemp -d)
+  cd "$T"
+  npm init -y >/dev/null 2>&1
+  npm install @next/env >/dev/null 2>&1
+  # Test the .mjs raw-ESM path: named import should FAIL (bug present)
+  printf 'import { loadEnvConfig } from "@next/env";\nconsole.log(typeof loadEnvConfig);\n' > a.mjs
+  if node a.mjs >/dev/null 2>&1; then
+    # Named import succeeded → Node has fixed named-export detection → bug ABSENT
+    exit 1
+  else
+    # Named import failed (the documented bug) → bug still PRESENT
+    exit 0
+  fi
 ```
 
 The `@next/env` package is published as CommonJS only. Earlier guidance (issue

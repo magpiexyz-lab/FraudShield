@@ -744,6 +744,18 @@
       "rationale": "Read by state-99 VERIFY across all skills; carries gate verdict (#1198 smoking-gun)."
     },
     {
+      "path": ".runs/observation-evidence.json",
+      "consumers": [
+        "observation-phase.md (Step 4 — observer reads envelope)",
+        "compliance-audit.py:check_lead_deliverable_compliance"
+      ],
+      "writers": [
+        ".claude/scripts/write-observation-evidence.py"
+      ],
+      "scope": "transient-cross-skill",
+      "rationale": "AOC v1.2 (closes #1259): unified observer evidence envelope. Observer reads ONLY this artifact in Step 4; the envelope schema is the input contract. Promoted from gate-readable-artifacts-pending-review.json (was 'no_reader' / 'exempt (telemetry-only)') because it now has TWO real consumers: observer (via prompt) and compliance-audit (sibling-required for retrospective-result.json). Direct Write/Edit blocked by gate-artifact-write-gate.sh — must go through write-observation-evidence.py which routes through write-gate-artifact.sh canonical writer."
+    },
+    {
       "path": ".runs/observe-context.json",
       "consumers": [
         "state-registry:observe.0"
@@ -760,18 +772,6 @@
       "writers": [],
       "scope": "transient-cross-skill",
       "rationale": "Read by VERIFY blocks in skills: observe."
-    },
-    {
-      "path": ".runs/observation-evidence.json",
-      "consumers": [
-        "observation-phase.md (Step 4 — observer reads envelope)",
-        "compliance-audit.py:check_lead_deliverable_compliance"
-      ],
-      "writers": [
-        ".claude/scripts/write-observation-evidence.py"
-      ],
-      "scope": "transient-cross-skill",
-      "rationale": "AOC v1.2 (closes #1259): unified observer evidence envelope. Observer reads ONLY this artifact in Step 4; the envelope schema is the input contract. Promoted from gate-readable-artifacts-pending-review.json (was 'no_reader' / 'exempt (telemetry-only)') because it now has TWO real consumers: observer (via prompt) and compliance-audit (sibling-required for retrospective-result.json). Direct Write/Edit blocked by gate-artifact-write-gate.sh — must go through write-observation-evidence.py which routes through write-gate-artifact.sh canonical writer."
     },
     {
       "path": ".runs/observe-result.json",
@@ -932,6 +932,17 @@
       "rationale": "Read by VERIFY blocks in skills: resolve."
     },
     {
+      "path": ".runs/resolve-tier-floors.json",
+      "consumers": [
+        "state-registry:resolve.5b"
+      ],
+      "writers": [
+        ".claude/scripts/resolve-tier-floors.py"
+      ],
+      "scope": "transient-cross-skill",
+      "rationale": "Tier-floor classifier output (M2 — PR #1397 retro). Cross-checks reproduction.method against file-class minimum tiers; warn-mode in M2 launch, deny-mode in follow-up PR."
+    },
+    {
       "path": ".runs/resolve-triage.json",
       "consumers": [
         "state-registry:resolve.2"
@@ -1065,16 +1076,6 @@
       "rationale": "Read by VERIFY blocks in skills: verify."
     },
     {
-      "path": ".runs/solve-context.json",
-      "consumers": [
-        "state-registry:solve.1",
-        "state-registry:solve.2"
-      ],
-      "writers": [],
-      "scope": "transient-cross-skill",
-      "rationale": "Read by VERIFY blocks in skills: solve."
-    },
-    {
       "path": ".runs/solve-challenge.json",
       "consumers": [
         "state-registry:solve.1"
@@ -1084,6 +1085,16 @@
       ],
       "scope": "transient-cross-skill",
       "rationale": "#1331 — /solve challenge artifact (closes contract from solve-reasoning.md Phase 5: 'Store in the caller's challenge artifact: /solve: .runs/solve-challenge.json'). Counts {critic_rounds, round_1_type_a_count, round_2_type_a_count} read by solve.1 VERIFY for archival-existence cross-check. Manually enrolled to canonical (Slice 3.2 pattern); written via canonical writer with {skill, run_id, written_at} stamping."
+    },
+    {
+      "path": ".runs/solve-context.json",
+      "consumers": [
+        "state-registry:solve.1",
+        "state-registry:solve.2"
+      ],
+      "writers": [],
+      "scope": "transient-cross-skill",
+      "rationale": "Read by VERIFY blocks in skills: solve."
     },
     {
       "path": ".runs/solve-critic-round1.json",

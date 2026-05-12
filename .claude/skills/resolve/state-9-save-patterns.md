@@ -74,6 +74,25 @@ For each unique-hash entry (skip when `gh_failed=true` — already in
   `.claude/stacks/<stack_scope>.md`. Create the section at end-of-file if
   absent. Each entry's composite_identity_hash MUST match a fresh
   `compute_hash(composite_identity)` — the PR validator rejects drift.
+  **verification_snippet (M3 — required when reproduction.method ∈ {exec, validator-fed}):**
+  read the linked issue's reproduction record from `.runs/resolve-reproduction.json`.
+  When the `reproduction` tier is `exec` or `validator-fed`, the `evidence` field
+  contains the actual reproduction command. Promote it into the SK entry's
+  `verification_snippet` field, wrapping in the trinary exit contract:
+  ```yaml
+  verification_snippet: |
+    # exit 0 = bug present (root cause reproducible today)
+    # exit 1 = bug absent (root cause has been independently fixed; refresh entry)
+    # exit 2 = preconditions not met (skip; package not in this stack)
+    <the literal command from reproduction.evidence, adapted for project-agnostic
+     execution from any repo root — replace any user-specific paths with
+     mktemp -d, replace literal /tmp/X with $(mktemp -d), etc.>
+  ```
+  For `cite` and `grep` tier reproductions, leave `verification_snippet` field
+  unset (those tiers have no executable artifact). See `.claude/stacks/TEMPLATE.md`
+  schema for the full contract + example. The snippet enables future /resolve
+  runs to short-circuit when the underlying bug has been resolved by a package
+  upgrade — see `state-3-reproduce.md` Step 0 for the consumer side.
 - **Downstream** (`REPO != "magpiexyz-lab/mvp-template"`, no existing upstream):
   file a new upstream issue:
   ```bash

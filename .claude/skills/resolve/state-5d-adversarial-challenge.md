@@ -96,7 +96,7 @@ Present a diagnosis report for all actionable issues:
 
 **Root cause:** <1-2 sentences>
 **Divergence point:** <file:line>
-**Reproduction:** validator-confirmed (<error>) | simulation-only
+**Reproduction:** <cite | grep | exec | validator-fed> + evidence: <one-line summary>  (legacy `validator-confirmed`/`simulation-only` accepted with deprecation warning during one release cycle)
 **Blast radius:** N files affected (M confirmed, K potential)
 **Fix plan:**
 - <file>: <what changes>

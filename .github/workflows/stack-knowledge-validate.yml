@@ -38,3 +38,9 @@ jobs:
 
       - name: Convergence config validate
         run: python3 scripts/validate-convergence-config.py
+
+      - name: Install shellcheck
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+
+      - name: Lint verification_snippet fields (M3 — issue #1397 retro)
+        run: python3 scripts/lint-verification-snippets.py

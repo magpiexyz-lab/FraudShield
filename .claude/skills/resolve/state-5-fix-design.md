@@ -184,4 +184,4 @@ python3 .claude/scripts/verify-recurrence-guard.py --require-prevention --requir
 bash .claude/scripts/advance-state.sh resolve 5
 ```
 
-**NEXT:** Read [state-5d-adversarial-challenge.md](state-5d-adversarial-challenge.md) to continue.
+**NEXT:** Read [state-5b-tier-floors.md](state-5b-tier-floors.md) to continue.
