@@ -53,7 +53,7 @@ If `phase_filter.utm_campaign_like` is set, x0 surfaces both:
 
 ### Discover MVPs from PostHog
 
-Query distinct project identifiers (project_name when set, else extracted host) with gclid traffic in the time window:
+Query distinct `project_name` values with gclid traffic in the time window. `project_name` is the canonical MVP identifier (set verbatim from `experiment.yaml.name` by `/bootstrap` STATE 3 — see `.claude/scripts/lib/validate_experiment_yaml.py`). Events without `project_name` are orphaned and surfaced separately for triage:
 
 ```bash
 WINDOW_DAYS=$(python3 -c "
@@ -68,7 +68,7 @@ cat > /tmp/iterate-cross-discover.json <<JSON
 {
   "query": {
     "kind": "HogQLQuery",
-    "query": "SELECT coalesce(properties.project_name, splitByChar('.', domain(properties.\$current_url))[1]) AS mvp_key, max(properties.utm_campaign) AS sample_utm_campaign, count(DISTINCT distinct_id) AS gclid_visitors, min(timestamp) AS first_seen, max(timestamp) AS last_seen FROM events WHERE properties.\$session_entry_gclid IS NOT NULL AND properties.\$session_entry_gclid != {empty} AND timestamp >= now() - INTERVAL ${WINDOW_DAYS} DAY GROUP BY mvp_key HAVING gclid_visitors > 0 ORDER BY gclid_visitors DESC LIMIT 200",
+    "query": "SELECT properties.project_name AS mvp_key, max(properties.utm_campaign) AS sample_utm_campaign, count(DISTINCT distinct_id) AS gclid_visitors, min(timestamp) AS first_seen, max(timestamp) AS last_seen FROM events WHERE properties.\$session_entry_gclid IS NOT NULL AND properties.\$session_entry_gclid != {empty} AND properties.project_name IS NOT NULL AND properties.project_name != {empty} AND timestamp >= now() - INTERVAL ${WINDOW_DAYS} DAY GROUP BY mvp_key HAVING gclid_visitors > 0 ORDER BY gclid_visitors DESC LIMIT 200",
     "values": {"empty": ""}
   }
 }
@@ -80,14 +80,55 @@ curl -s -X POST "https://us.i.posthog.com/api/projects/$POSTHOG_PROJECT_ID/query
   --data @/tmp/iterate-cross-discover.json > .runs/_iterate-cross-discover.json
 ```
 
+Parallel sibling query — count gclid events with NULL/empty `project_name`. These get surfaced in the operator confirmation message; they are NOT auto-keyed by URL anymore (the previous `splitByChar(domain($current_url))[1]` fallback created cross-pollution between similarly-named MVPs):
+
+```bash
+cat > /tmp/iterate-cross-orphan.json <<JSON
+{
+  "query": {
+    "kind": "HogQLQuery",
+    "query": "SELECT splitByChar('.', domain(coalesce(properties.\$current_url, '')))[1] AS host_prefix, count(DISTINCT distinct_id) AS gclid_visitors FROM events WHERE properties.\$session_entry_gclid IS NOT NULL AND properties.\$session_entry_gclid != {empty} AND (properties.project_name IS NULL OR properties.project_name = {empty}) AND timestamp >= now() - INTERVAL ${WINDOW_DAYS} DAY GROUP BY host_prefix HAVING gclid_visitors > 0 ORDER BY gclid_visitors DESC LIMIT 50",
+    "values": {"empty": ""}
+  }
+}
+JSON
+
+curl -s -X POST "https://us.i.posthog.com/api/projects/$POSTHOG_PROJECT_ID/query/" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $POSTHOG_API_KEY" \
+  --data @/tmp/iterate-cross-orphan.json > .runs/_iterate-cross-orphan.json
+```
+
 Parse results into MVP records. Each MVP gets:
-- `name` — `mvp_key` from query (project_name OR domain prefix)
+- `name` — `mvp_key` from query (always equals `properties.project_name` — never URL-derived)
 - `gclid_visitors` — visitor count in window
 - `first_seen`, `last_seen` — ISO timestamps
 - `sample_utm_campaign` — one example utm_campaign value (informational)
 - `owner` — read from `mvp_mappings.<name>.owner` if set, else null
-- `deploy_domain` — from `mvp_mappings.<name>.deploy_domain` if set, else null
+- `deploy_domain` — from `mvp_mappings.<name>.deploy_domain` if set, else null (informational; no longer used for query filtering)
 - `phase_match` — true if `sample_utm_campaign` matches `phase_filter.utm_campaign_like` (or `phase_filter.utm_campaign_like` is empty)
+- `orphan` — always `false` for entries from this discovery query (orphan entries are handled separately, see next step)
+
+Add one synthetic MVP record per orphan host:
+- `name` — `__orphan_<host_prefix>__` (sentinel form; double-underscore prefix avoids collision with kebab-case MVP names)
+- `gclid_visitors` — from orphan query
+- `orphan` — `true`
+- All other fields null
+
+These orphan records propagate the `missing_project_name` flag through x1a → verdict pipeline so the operator can see which deploys are missing tracking.
+
+### Merge aliases (legacy duplicate-key dedup)
+
+Before applying the phase filter, merge MVPs that the operator has declared as aliases of each other. This handles MVPs created before /bootstrap state-3 enforced kebab-case (a `split-share-neon` deploy and a `splitshare` deploy reporting under two different `project_name` values for the same product).
+
+```bash
+python3 .claude/scripts/lib/iterate_cross_classify.py merge-aliases \
+  --discovery .runs/_iterate-cross-discover.json \
+  --config experiment/iterate-cross-config.yaml \
+  --output .runs/_iterate-cross-discover.json
+```
+
+The script reads `mvp_aliases:` from the config, sums visitor counts into the canonical record, takes min/max of timestamps, and preserves the canonical's other fields. Aliases referenced in config but absent from PostHog discovery are silently ignored (config can lag the data). Conflicting aliases (one alias key listed under two canonicals) exit non-zero. The script is idempotent.
 
 ### Apply phase filter
 
@@ -97,16 +138,22 @@ Else: keep all discovered MVPs.
 ### Confirm with operator
 
 Present the discovered MVPs:
-> "Found **N** MVPs with Google Ads gclid traffic in the last {window_days} days:
+> "Found **N** MVPs with Google Ads gclid traffic in the last {window_days} days
+> (M alias pairs merged via `mvp_aliases`, K orphan hosts have gclid events but no `project_name` — see warning below):
 >
 > | # | MVP | Owner | Visitors | Window | utm_campaign sample |
 > |---|-----|-------|----------|--------|---------------------|
 > | 1 | {name} | {owner or '—'} | {visitors} | {first_seen}→{last_seen} | {sample_utm_campaign or '(no utm)'} |
 > | ... |
 >
+> ⚠ Orphan hosts (no `project_name` — fix tracking in those deploys):
+> | Host prefix | Visitors |
+> |-------------|----------|
+> | {host_prefix} | {visitors} |
+>
 > Proceed with evaluation of all N MVPs?"
 
-Wait for confirmation. If the operator wants to exclude/add MVPs, adjust the list.
+Wait for confirmation. If the operator wants to exclude/add MVPs, adjust the list. Orphan rows are surfaced for visibility but they do flow through to x1a → MISSING_PROJECT_NAME verdict (operator does not need to ack each one).
 
 ### Merge cross-specific fields into context
 
@@ -133,7 +180,7 @@ extra = {
 json.dump(extra, open('.runs/_iterate-cross-extra.json', 'w'))
 "
 bash .claude/scripts/init-context.sh iterate-cross "@.runs/_iterate-cross-extra.json"
-rm -f .runs/_iterate-cross-extra.json .runs/_iterate-cross-discover.json /tmp/iterate-cross-discover.json
+rm -f .runs/_iterate-cross-extra.json .runs/_iterate-cross-discover.json .runs/_iterate-cross-orphan.json /tmp/iterate-cross-discover.json /tmp/iterate-cross-orphan.json
 ```
 
 The base fields (`skill`, `branch`, `timestamp`, `run_id`) are already set by lifecycle-init.sh.

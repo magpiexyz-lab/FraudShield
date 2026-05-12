@@ -99,14 +99,16 @@ window_days = ctx['window_days']
 parts = []
 values = {"empty": ""}
 for i, mvp in enumerate(data['mvps']):
+    # Orphan MVPs (no project_name) cannot be queried by project_name. They
+    # default to 0 signups and flow through x3 as MISSING_PROJECT_NAME.
+    if mvp.get('orphan'):
+        continue
     mapping = mappings.get(mvp['name']) or {}
     signup_events = mapping.get('signup_events') or []
     if not signup_events:
         continue
     pj = f"pj_{i}"
-    url = f"url_{i}"
     values[pj] = mvp['name']
-    values[url] = f"%{mapping.get('deploy_domain') or mvp['name']}%"
 
     sg_conds = []
     for j, sg in enumerate(signup_events):
@@ -115,13 +117,16 @@ for i, mvp in enumerate(data['mvps']):
         sg_conds.append(f"event = {{{k}}}")
     sg_expr = "(" + " OR ".join(sg_conds) + ")"
 
+    # Filter SOLELY by properties.project_name (canonical MVP identifier
+    # enforced at /bootstrap state-3). The previous OR-LIKE branch on
+    # $current_url double-counted signups across similarly-named MVPs.
     parts.append(
         f"SELECT {{{pj}}} AS mvp_key, "
         f"count(DISTINCT IF({sg_expr}, distinct_id, NULL)) AS signups "
         f"FROM events "
         f"WHERE properties.$session_entry_gclid IS NOT NULL AND properties.$session_entry_gclid != {{empty}} "
         f"AND timestamp >= now() - INTERVAL {window_days} DAY "
-        f"AND (properties.project_name = {{{pj}}} OR properties.$current_url LIKE {{{url}}})"
+        f"AND properties.project_name = {{{pj}}}"
     )
 
 if parts:

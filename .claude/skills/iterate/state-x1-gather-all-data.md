@@ -32,13 +32,17 @@ window_days = ctx['window_days']
 parts = []
 values = {"empty": ""}
 for i, m in enumerate(mvps):
+    # Skip orphan synthetic MVPs (no project_name → nothing to catalog by project_name).
+    # They flow through x1a → MISSING_PROJECT_NAME verdict in x3 with empty catalog.
+    if m.get('orphan'):
+        continue
     pj = f"pj_{i}"
-    url_pat = f"url_{i}"
     values[pj] = m['name']
-    # URL pattern uses deploy_domain if set, else best-guess from project name
-    domain_hint = m.get('deploy_domain') or m['name']
-    values[url_pat] = f"%{domain_hint}%"
 
+    # Filter SOLELY by properties.project_name. The previous OR-LIKE branch on
+    # $current_url cross-polluted similarly-named MVPs (e.g. rubberduck vs
+    # rubber-duck-api). project_name is now the canonical MVP identifier —
+    # enforced at /bootstrap state-3 by validate_experiment_yaml.py.
     subq = (
         f"SELECT {{{pj}}} AS mvp_key, "
         f"event AS event_name, "
@@ -48,7 +52,7 @@ for i, m in enumerate(mvps):
         f"count(DISTINCT IF(properties.$session_entry_gclid IS NOT NULL AND properties.$session_entry_gclid != {{empty}}, distinct_id, NULL)) AS gclid_users "
         f"FROM events "
         f"WHERE timestamp >= now() - INTERVAL {window_days} DAY "
-        f"AND (properties.project_name = {{{pj}}} OR properties.$current_url LIKE {{{url_pat}}}) "
+        f"AND properties.project_name = {{{pj}}} "
         f"AND event NOT LIKE '$%' "
         f"GROUP BY event_name "
         f"HAVING gclid_users > 0 OR unique_users >= 5"

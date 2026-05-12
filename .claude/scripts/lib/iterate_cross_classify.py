@@ -78,6 +78,184 @@ def filter_signup_events(events: list[str]) -> tuple[list[str], list[str]]:
     return kept, removed
 
 
+def merge_mvp_aliases(
+    discovery_rows: list[list],
+    aliases: dict[str, list[str]],
+) -> tuple[list[list], list[dict]]:
+    """Merge aliased MVP rows into their canonical entry.
+
+    Used by /iterate --cross state-x0 to dedup legacy duplicates — MVPs that
+    were created before /bootstrap state-3 enforced kebab-case naming, so the
+    same product exists in PostHog under two `project_name` values (e.g.
+    `splitshare` and `split-share-neon`). The canonical form is named in
+    `experiment/iterate-cross-config.yaml::mvp_aliases.<canonical>: [alias_a,
+    alias_b, ...]`.
+
+    Input rows follow the PostHog discovery query shape:
+        [mvp_key, sample_utm_campaign, gclid_visitors, first_seen, last_seen]
+
+    Merge semantics per canonical key:
+    - gclid_visitors = sum of canonical row + all matched alias rows
+    - first_seen = min, last_seen = max (across canonical + aliases)
+    - sample_utm_campaign = pick from the row with the highest gclid_visitors
+      (preserves the strongest signal for downstream filtering)
+
+    Returns (merged_rows, audit). `audit` is a list of:
+        {canonical, absorbed_aliases, absorbed_visitors, total_visitors}
+    for the operator confirmation message.
+
+    Rules:
+    - Aliases referenced in config but absent from discovery are silently
+      ignored (config can lag the data).
+    - If a canonical key is absent from discovery but at least one alias is
+      present, the canonical record is synthesized from the highest-visitor
+      alias (so the merged row is still attributed to the canonical name).
+    - If the SAME alias is listed under TWO different canonical keys, the
+      function raises ValueError — that is a config-side mistake that should
+      surface loudly, not be silently resolved.
+
+    Idempotent: applying the merge to already-merged input is a no-op
+    (aliases removed in the first pass aren't present in the input the
+    second time).
+    """
+    if not aliases:
+        return list(discovery_rows), []
+
+    # Detect alias collisions across canonicals — fail loudly.
+    reverse: dict[str, str] = {}
+    for canonical, alias_list in aliases.items():
+        for alias in (alias_list or []):
+            if alias in reverse and reverse[alias] != canonical:
+                raise ValueError(
+                    f"merge_mvp_aliases: alias {alias!r} listed under both "
+                    f"{reverse[alias]!r} and {canonical!r} — pick one canonical."
+                )
+            reverse[alias] = canonical
+
+    # Index rows by mvp_key
+    by_key: dict[str, list] = {}
+    for row in discovery_rows:
+        if not row:
+            continue
+        by_key[row[0]] = row
+
+    merged: dict[str, list] = {}
+    audit: list[dict] = []
+
+    # First pass: copy non-alias canonical rows through.
+    aliased_keys = set(reverse.keys())
+    canonical_keys = set(aliases.keys())
+    for key, row in by_key.items():
+        if key in aliased_keys:
+            continue  # handled in pass 2
+        merged[key] = list(row)
+
+    # Second pass: collapse aliases into canonicals.
+    for canonical, alias_list in aliases.items():
+        sources: list[list] = []
+        canonical_row = by_key.get(canonical)
+        if canonical_row is not None:
+            sources.append(canonical_row)
+        for alias in (alias_list or []):
+            alias_row = by_key.get(alias)
+            if alias_row is not None:
+                sources.append(alias_row)
+
+        if not sources:
+            continue  # no rows touched — config refers to MVPs not in data
+
+        # gclid_visitors = sum
+        total_visitors = sum((r[2] or 0) for r in sources)
+        # sample_utm_campaign = winner by visitor count
+        winner = max(sources, key=lambda r: (r[2] or 0))
+        sample_utm = winner[1]
+        # first_seen = min, last_seen = max (handle None safely; strings sort by ISO)
+        first_seens = [r[3] for r in sources if r[3]]
+        last_seens = [r[4] for r in sources if r[4]]
+        first_seen = min(first_seens) if first_seens else None
+        last_seen = max(last_seens) if last_seens else None
+
+        merged[canonical] = [
+            canonical, sample_utm, total_visitors, first_seen, last_seen
+        ]
+        absorbed = [a for a in (alias_list or []) if a in by_key]
+        if absorbed or canonical_row is not None:
+            audit.append({
+                "canonical": canonical,
+                "absorbed_aliases": absorbed,
+                "absorbed_visitors": sum(
+                    (by_key[a][2] or 0) for a in absorbed
+                ),
+                "total_visitors": total_visitors,
+            })
+
+    # Preserve discovery order: canonical rows in original position, aliases
+    # already absorbed. Synthesized canonicals (absent from discovery but
+    # present via alias) are appended at the end.
+    ordered: list[list] = []
+    seen: set[str] = set()
+    for row in discovery_rows:
+        if not row:
+            continue
+        key = row[0]
+        canon = reverse.get(key, key)
+        if canon in seen:
+            continue
+        if canon in merged:
+            ordered.append(merged[canon])
+            seen.add(canon)
+    # Append any synthesized canonicals not seen during ordering pass.
+    for canon in canonical_keys:
+        if canon in merged and canon not in seen:
+            ordered.append(merged[canon])
+            seen.add(canon)
+
+    return ordered, audit
+
+
+def cmd_merge_aliases(args: argparse.Namespace) -> int:
+    """CLI subcommand: read discovery JSON + config, write merged discovery.
+
+    Idempotent and safe to overwrite the same path (read entire input first).
+    """
+    if not os.path.exists(args.discovery):
+        print(f"ERROR: discovery file not found: {args.discovery}",
+              file=sys.stderr)
+        return 1
+    with open(args.discovery) as fh:
+        raw = json.load(fh)
+    rows = raw.get("results") or []
+
+    config = load_yaml(args.config)
+    aliases = (config or {}).get("mvp_aliases") or {}
+
+    try:
+        merged_rows, audit = merge_mvp_aliases(rows, aliases)
+    except ValueError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+
+    raw["results"] = merged_rows
+    # Stamp a small audit field so x0 can render the operator message.
+    raw["alias_merge_audit"] = audit
+
+    out_path = args.output
+    os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
+    tmp = out_path + ".tmp"
+    with open(tmp, "w") as fh:
+        json.dump(raw, fh, indent=2)
+    os.replace(tmp, out_path)
+
+    pairs = sum(1 for a in audit if a["absorbed_aliases"])
+    n_before = len(rows)
+    n_after = len(merged_rows)
+    print(
+        f"merge-aliases: {n_before} → {n_after} rows; "
+        f"{pairs} canonical(s) absorbed alias data → {out_path}"
+    )
+    return 0
+
+
 def load_yaml(path: str) -> dict:
     try:
         import yaml
@@ -376,6 +554,17 @@ def main(argv: list[str] | None = None) -> int:
     p_final.add_argument("--strict-sanity", action="store_true",
                          help="Exit non-zero if any suspect MVP detected (default: warn only).")
     p_final.set_defaults(func=cmd_finalize)
+
+    p_merge = sub.add_parser(
+        "merge-aliases",
+        help="Merge MVP rows declared as aliases in iterate-cross-config.yaml into canonicals.",
+    )
+    p_merge.add_argument("--discovery", default=".runs/_iterate-cross-discover.json",
+                         help="PostHog discovery output (read; safe to also be the --output path)")
+    p_merge.add_argument("--config", default="experiment/iterate-cross-config.yaml")
+    p_merge.add_argument("--output", default=".runs/_iterate-cross-discover.json",
+                         help="Where to write the merged discovery (idempotent overwrite OK)")
+    p_merge.set_defaults(func=cmd_merge_aliases)
 
     args = parser.parse_args(argv)
     return args.func(args)

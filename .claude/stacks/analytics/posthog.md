@@ -933,9 +933,15 @@ PostHog-only — no Google Ads dependency. The cross-skill uses three query patt
 - Use `count(DISTINCT distinct_id)` everywhere — events double-fire and we want unique users.
 - Always parameterize values via `{name}` — never interpolate user-supplied strings into the query.
 
+### MVP identity rule
+
+**Every cross-MVP HogQL query MUST key by `properties.project_name` exclusively.** No URL fallback — not `$current_url LIKE`, not `splitByChar(domain($current_url))[1]`. `project_name` is the canonical MVP identifier (substituted verbatim from `experiment.yaml.name` at /bootstrap state-3, enforced as kebab-case by `validate_experiment_yaml.py`). URL-based filtering double-counts events between similarly-named MVPs (e.g. `rubberduck` events bleeding into `rubber-duck-api` because both URLs contain `rubberduck`).
+
+Legacy duplicates (MVPs created before kebab-case enforcement) are merged via `mvp_aliases:` in `experiment/iterate-cross-config.yaml`, applied in state-x0 after discovery — never during query time.
+
 ### Discovery query (used by STATE x0)
 
-Returns all PostHog projects with gclid traffic in the window. Project key falls back to extracted host when `project_name` global property isn't set.
+Returns one row per `project_name` with gclid traffic in the window. Rows with NULL/empty `project_name` are surfaced separately as orphan hosts (operator-actionable: fix tracking in those deploys).
 
 ```bash
 curl -s -X POST "https://us.i.posthog.com/api/projects/$POSTHOG_PROJECT_ID/query/" \
@@ -944,7 +950,7 @@ curl -s -X POST "https://us.i.posthog.com/api/projects/$POSTHOG_PROJECT_ID/query
   -d '{
     "query": {
       "kind": "HogQLQuery",
-      "query": "SELECT coalesce(properties.project_name, splitByChar(\".\", domain(properties.$current_url))[1]) AS mvp_key, max(properties.utm_campaign) AS sample_utm_campaign, count(DISTINCT distinct_id) AS gclid_visitors, min(timestamp) AS first_seen, max(timestamp) AS last_seen FROM events WHERE properties.$session_entry_gclid IS NOT NULL AND properties.$session_entry_gclid != {empty} AND timestamp >= now() - INTERVAL 90 DAY GROUP BY mvp_key HAVING gclid_visitors > 0 ORDER BY gclid_visitors DESC LIMIT 200",
+      "query": "SELECT properties.project_name AS mvp_key, max(properties.utm_campaign) AS sample_utm_campaign, count(DISTINCT distinct_id) AS gclid_visitors, min(timestamp) AS first_seen, max(timestamp) AS last_seen FROM events WHERE properties.$session_entry_gclid IS NOT NULL AND properties.$session_entry_gclid != {empty} AND properties.project_name IS NOT NULL AND properties.project_name != {empty} AND timestamp >= now() - INTERVAL 90 DAY GROUP BY mvp_key HAVING gclid_visitors > 0 ORDER BY gclid_visitors DESC LIMIT 200",
       "values": {"empty": ""}
     }
   }'
@@ -965,7 +971,7 @@ SELECT {p_name} AS mvp_key,
        count(DISTINCT IF(properties.$session_entry_gclid IS NOT NULL AND properties.$session_entry_gclid != {empty}, distinct_id, NULL)) AS gclid_users
 FROM events
 WHERE timestamp >= now() - INTERVAL {window_days} DAY
-  AND (properties.project_name = {p_name} OR properties.$current_url LIKE {p_url_pat})
+  AND properties.project_name = {p_name}
   AND event NOT LIKE '$%'
 GROUP BY event_name
 HAVING gclid_users > 0 OR unique_users >= 5
@@ -982,7 +988,7 @@ FROM events
 WHERE properties.$session_entry_gclid IS NOT NULL
   AND properties.$session_entry_gclid != {empty}
   AND timestamp >= now() - INTERVAL {window_days} DAY
-  AND (properties.project_name = {p_name} OR properties.$current_url LIKE {p_url_pat})
+  AND properties.project_name = {p_name}
 ```
 
 ### Notes

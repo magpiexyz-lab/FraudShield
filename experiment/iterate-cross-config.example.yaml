@@ -64,6 +64,28 @@ mvp_mappings:
   #   signup_events: [discovery_call_booked]   # operator picked this manually
   #   classified_by: operator                  # x2 will NEVER overwrite this
 
+# Legacy duplicate-key dedup. Merges multiple PostHog project_name values
+# into a single canonical MVP record BEFORE x1 catalogs events. Use this only
+# for historical data — new MVPs should be named correctly at bootstrap time
+# (kebab-case enforced by /bootstrap state-3, see validate_experiment_yaml.py).
+#
+# Format: <canonical_key>: [<alias_1>, <alias_2>, ...]
+#
+# Merge semantics (per canonical):
+# - gclid_visitors = sum of canonical + aliases
+# - first_seen = min, last_seen = max
+# - sample_utm_campaign = picked from the row with the highest gclid_visitors
+# - All other fields kept from canonical
+#
+# Idempotent: re-running iterate-cross with the same aliases is a no-op after
+# the first merge. Conflicting aliases (same alias listed under two canonicals)
+# raise an error.
+mvp_aliases: {}
+  # Example (legacy duplicates from before kebab-case enforcement):
+  # splitshare: [split-share-neon]
+  # agent-shield: [agentshield]
+  # rubber-duck-api: [rubberduck]
+
 # Fallback whitelist used by x1a (auto_default_match flag) and x2 (auto-classify
 # branch). MVPs whose catalog contains any of these events skip the LLM and use
 # the matching events directly. Add new event names as your MVPs evolve.

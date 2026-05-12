@@ -4,7 +4,7 @@ Lightweight per-MVP integrity check. Tags MVPs that need LLM signup classificati
 
 ## Archetype Gate
 
-This state operates on PostHog event data, which is archetype-agnostic. Every archetype (web-app, service, cli) reports through the same PostHog ingestion path; the integrity flags (`signup_classified`, `auto_default_match`, `low_traffic`, `no_event_data`, `needs_llm_classification`) apply uniformly with no archetype-specific branching.
+This state operates on PostHog event data, which is archetype-agnostic. Every archetype (web-app, service, cli) reports through the same PostHog ingestion path; the integrity flags (`missing_project_name`, `signup_classified`, `auto_default_match`, `low_traffic`, `no_event_data`, `needs_llm_classification`) apply uniformly with no archetype-specific branching.
 
 REF: [.claude/patterns/archetype-behavior-check.md](../../patterns/archetype-behavior-check.md) — row "primary unit"
 
@@ -52,6 +52,12 @@ for mvp in data['mvps']:
     mapping = mvp_mappings.get(name) or {}
     classified_signup_events = mapping.get('signup_events') or []
 
+    # Flag 0: missing_project_name — discovery row had NULL/empty project_name
+    # (set in x0 as the `orphan: true` flag on synthetic MVP records).
+    # Tracking is missing PROJECT_NAME injection — likely a bootstrap regression
+    # or pre-standardization MVP. Highest verdict precedence in x3.
+    missing_project_name = bool(mvp.get('orphan'))
+
     # Flag 1: signup_classified — operator config has signup_events for this MVP
     signup_classified = bool(classified_signup_events)
 
@@ -64,11 +70,18 @@ for mvp in data['mvps']:
     # Flag 4: no_event_data — catalog empty (likely tracking not capturing PostHog events)
     no_event_data = len(catalog) == 0
 
-    # Flag 5: needs_llm_classification — not classified AND no obvious default match
-    needs_llm = (not signup_classified) and (not auto_default_match) and (not no_event_data)
+    # Flag 5: needs_llm_classification — not classified AND no obvious default match.
+    # Orphan MVPs are excluded; their verdict is fixed at MISSING_PROJECT_NAME.
+    needs_llm = (
+        (not signup_classified)
+        and (not auto_default_match)
+        and (not no_event_data)
+        and (not missing_project_name)
+    )
 
     issues['mvps'].append({
         'name': name,
+        'missing_project_name': missing_project_name,
         'signup_classified': signup_classified,
         'auto_default_match': auto_default_match,
         'low_traffic': low_traffic,
@@ -105,13 +118,13 @@ Print a concise summary:
 > - {ne_count} no_event_data (no events found; likely tracking not deployed)
 
 **POSTCONDITIONS:**
-- Every MVP has all five flags computed (booleans)
+- Every MVP has all six flags computed (booleans): `missing_project_name`, `signup_classified`, `auto_default_match`, `low_traffic`, `no_event_data`, `needs_llm_classification`
 - `.runs/iterate-cross-data-issues.json` exists with required schema
 
 **VERIFY:** see `state-registry.json` entry for `iterate-cross.x1a`.
 
 ```bash
-python3 -c "import json; d=json.load(open('.runs/iterate-cross-data-issues.json')); ms=d.get('mvps',[]); assert isinstance(ms, list) and len(ms)>0, 'mvps empty'; req=['signup_classified','auto_default_match','low_traffic','no_event_data','needs_llm_classification']; bad=[m.get('name','?') for m in ms if any(k not in m for k in req)]; assert not bad, 'MVPs missing flags: %s' % bad"
+python3 -c "import json; d=json.load(open('.runs/iterate-cross-data-issues.json')); ms=d.get('mvps',[]); assert isinstance(ms, list) and len(ms)>0, 'mvps empty'; req=['missing_project_name','signup_classified','auto_default_match','low_traffic','no_event_data','needs_llm_classification']; bad=[m.get('name','?') for m in ms if any(k not in m for k in req)]; assert not bad, 'MVPs missing flags: %s' % bad"
 ```
 <!-- VERIFY=true: real assertion lives in state-registry.json; this line is the per-Rule-13 placeholder -->
 

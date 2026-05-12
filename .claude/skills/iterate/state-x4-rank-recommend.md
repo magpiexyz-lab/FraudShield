@@ -74,6 +74,7 @@ Action templates per verdict (keep brief; debug prompts come from `iterate-cross
 - **NO_GO** → "Stop {name}. Confirm rejection in retro."
 - **INSUFFICIENT_DATA** → "Keep {name} running until {visitors_needed} more visitors arrive (target: 50+)."
 - **NO_DATA** → "Debug PostHog tracking. Run Claude Code in the MVP repo with this prompt: {inline NO_DATA debug prompt}"
+- **MISSING_PROJECT_NAME** → "Fix {name} tracking: PostHog events arrived without `project_name`. Check `src/lib/analytics.ts` PROJECT_NAME constant — it must equal experiment.yaml.name (kebab-case enforced by /bootstrap state-3). Re-run /verify after fixing."
 
 If NO MVP has an owner set, skip Section B and emit a notice:
 > No `mvp_mappings.<name>.owner` set in `experiment/iterate-cross-config.yaml`. Add owner to enable per-owner action grouping.

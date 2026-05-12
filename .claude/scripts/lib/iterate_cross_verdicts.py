@@ -48,6 +48,7 @@ VERDICT_WEAK = "WEAK"
 VERDICT_NO_GO = "NO_GO"
 VERDICT_INSUFFICIENT = "INSUFFICIENT_DATA"
 VERDICT_NO_DATA = "NO_DATA"
+VERDICT_MISSING_PROJECT_NAME = "MISSING_PROJECT_NAME"
 
 VERDICT_ENUM = {
     VERDICT_GO,
@@ -55,6 +56,7 @@ VERDICT_ENUM = {
     VERDICT_NO_GO,
     VERDICT_INSUFFICIENT,
     VERDICT_NO_DATA,
+    VERDICT_MISSING_PROJECT_NAME,
 }
 
 
@@ -86,12 +88,23 @@ def load_config(path: str | None) -> dict:
 
 
 def compute_headline_verdict(mvp: dict, issues: dict, thresholds: dict) -> dict:
-    """Apply precedence rules and return the score record for one MVP."""
+    """Apply precedence rules and return the score record for one MVP.
+
+    Precedence (first match wins):
+      0. missing_project_name → MISSING_PROJECT_NAME (orphan event stream — fix tracking)
+      1. no_event_data → NO_DATA
+      2. signups >= signups_go → GO
+      3. visitors >= visitors_floor AND signups == 0 → NO_GO
+      4. visitors >= visitors_floor AND 0 < signups < signups_go → WEAK
+      5. (default) → INSUFFICIENT_DATA
+    """
     visitors = mvp.get("gclid_visitors", 0)
     signups = mvp.get("signups", 0)
     signup_events = mvp.get("signup_events") or []
 
-    if issues.get("no_event_data"):
+    if issues.get("missing_project_name"):
+        verdict = VERDICT_MISSING_PROJECT_NAME
+    elif issues.get("no_event_data"):
         verdict = VERDICT_NO_DATA
     elif signups >= thresholds["signups_go"]:
         verdict = VERDICT_GO
@@ -148,6 +161,7 @@ ACTION_TEMPLATES = {
     VERDICT_NO_GO: "Stop {name}; document hypothesis rejection in retro.",
     VERDICT_INSUFFICIENT: "Keep {name} running until {visitors_needed} more visitors arrive (target: {visitors_floor}+).",
     VERDICT_NO_DATA: "Debug PostHog tracking for {name}. Run Claude Code in the MVP repo with the NO_DATA prompt below.",
+    VERDICT_MISSING_PROJECT_NAME: "Fix {name} tracking: PostHog events arrived without `project_name`. Check `src/lib/analytics.ts` PROJECT_NAME constant — it must equal experiment.yaml.name (kebab-case). Re-run /verify in the MVP repo after fixing.",
 }
 
 

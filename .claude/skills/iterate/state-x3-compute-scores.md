@@ -15,6 +15,7 @@ For each MVP, apply rules in order. The first matching rule sets `headline_verdi
 
 | Order | Condition | Verdict | Notes |
 |---|---|---|---|
+| 0 | `missing_project_name == true` | `MISSING_PROJECT_NAME` | Orphan event stream (gclid events with no `project_name` property). Tracking misconfiguration — fix `src/lib/analytics.ts` PROJECT_NAME constant. Highest precedence because identity is upstream of every other signal. |
 | 1 | `no_event_data == true` | `NO_DATA` | Discovered MVP but no PostHog events found. Likely tracking not deployed. |
 | 2 | `signups >= thresholds.signups_go` (default 3) | `GO` | Sufficient signal. Eligible for Phase 2 promotion. |
 | 3 | `gclid_visitors >= thresholds.visitors_floor` (default 50) AND `signups == 0` | `NO_GO` | Past data-floor with zero conversion. Reject. |
@@ -64,14 +65,14 @@ Print to stdout:
 > Verdicts: {GO} GO · {WEAK} WEAK · {NO_GO} NO_GO · {INSUF} INSUFFICIENT · {NO_DATA} NO_DATA
 
 **POSTCONDITIONS:**
-- Every MVP has `headline_verdict` (one of: GO, WEAK, NO_GO, INSUFFICIENT_DATA, NO_DATA)
+- Every MVP has `headline_verdict` (one of: MISSING_PROJECT_NAME, NO_DATA, GO, NO_GO, WEAK, INSUFFICIENT_DATA)
 - INSUFFICIENT_DATA MVPs have `visitors_needed` set
 - `.runs/iterate-cross-scores.json` exists with the schema above
 
 **VERIFY:** see `state-registry.json` entry for `iterate-cross.x3`.
 
 ```bash
-python3 -c "import json; d=json.load(open('.runs/iterate-cross-scores.json')); ms=d.get('mvps',[]); assert isinstance(ms, list) and len(ms)>0, 'mvps empty'; allowed={'GO','WEAK','NO_GO','INSUFFICIENT_DATA','NO_DATA'}; bad=[m.get('name','?') for m in ms if m.get('headline_verdict') not in allowed]; assert not bad, 'MVPs with invalid headline_verdict: %s' % bad"
+python3 -c "import json; d=json.load(open('.runs/iterate-cross-scores.json')); ms=d.get('mvps',[]); assert isinstance(ms, list) and len(ms)>0, 'mvps empty'; allowed={'GO','WEAK','NO_GO','INSUFFICIENT_DATA','NO_DATA','MISSING_PROJECT_NAME'}; bad=[m.get('name','?') for m in ms if m.get('headline_verdict') not in allowed]; assert not bad, 'MVPs with invalid headline_verdict: %s' % bad"
 ```
 <!-- VERIFY=true: real assertion lives in state-registry.json; this line is the per-Rule-13 placeholder -->
 
