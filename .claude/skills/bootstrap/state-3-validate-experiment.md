@@ -16,7 +16,7 @@
 - If the archetype requires pages (web-app): verify `golden_path` includes at least one entry with `page: landing`
 - If the archetype requires `endpoints` (service): verify `endpoints` is a non-empty list
 - If the archetype requires `commands` (cli): verify `commands` is a non-empty list
-- Verify `name` is lowercase with hyphens only (no spaces, no uppercase)
+- Verify `name` is canonical kebab-case (regex `^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$`) by running `python3 .claude/scripts/lib/validate_experiment_yaml.py`. If it exits non-zero, STOP and surface its stderr to the user (it prints a kebab-case suggestion). This script ALSO writes `.runs/bootstrap-validation-trace.json` — the `experiment_valid` flag in the trace is now sourced from this real check, not from agent self-report.
 - For each category in the archetype's `excluded_stacks` list: if that category is present in experiment.yaml `stack`, stop and tell the user: "The `<archetype>` archetype excludes `<category>`. Remove `<category>: <value>` from your experiment.yaml `stack` section, or switch to a different archetype."
 - For each category in the archetype's `required_stacks` list: verify the category is present in experiment.yaml `stack`. Per-service categories (`framework`, `hosting`, `ui`, `testing`) map to `stack.services[]` keys (`runtime` for framework, others by name). Shared categories (`database`, `auth`, `analytics`, `payment`, `email`) map to `stack.<category>`. If a required category is missing, stop and tell the user: "The `<archetype>` archetype requires `<category>`. Add it to your experiment.yaml `stack` section — shared categories go at the top level (e.g., `database: supabase`), per-service categories go under `stack.services[]` (e.g., `hosting: vercel` under a service entry)."
 - Validate stack dependencies per `patterns/stack-dependency-validation.md` — read the Dependency Matrix, Compatibility Constraints, and Error Message Templates sections. Use the canonical error messages from that file for all stop messages. Key checks: payment requires auth+database; email requires auth+database; auth_providers requires auth; playwright incompatible with service/cli.
@@ -36,26 +36,11 @@
   - `pain_points` must have exactly 3 items per variant
   - If any validation fails: stop and list the specific errors
 
-- **Write validation trace artifact** (`.runs/bootstrap-validation-trace.json`):
-  ```bash
-  PAYLOAD=$(python3 -c "
-  import json
-  trace = {
-      'experiment_valid': True,
-      'checks_passed': ['name', 'hypothesis', 'behaviors', 'golden_path', 'stack'],
-      'warnings': []  # any non-blocking warnings
-  }
-  print(json.dumps(trace))
-  ")
-  bash .claude/scripts/lib/write-gate-artifact.sh \
-    --path .runs/bootstrap-validation-trace.json \
-    --payload "$PAYLOAD" \
-    --skill bootstrap
-  ```
+- **Validation trace artifact** (`.runs/bootstrap-validation-trace.json`) — written by `validate_experiment_yaml.py` above. The script always writes the trace (both success and failure paths) so VERIFY can audit a real outcome. Only after that script exits 0 (plus the agent-driven semantic checks above pass) should you proceed.
 
 **POSTCONDITIONS:**
 - All required fields present and non-empty <!-- enforced by agent behavior, not VERIFY gate -->
-- `name` matches `^[a-z][a-z0-9-]*$` <!-- enforced by agent behavior, not VERIFY gate -->
+- `name` matches `^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$` (canonical kebab-case) <!-- enforced by validate_experiment_yaml.py + VERIFY regex check -->
 - No TODO values remain <!-- enforced by agent behavior, not VERIFY gate -->
 - Archetype-specific fields validated <!-- enforced by agent behavior, not VERIFY gate -->
 - Stack dependency rules satisfied (payment->auth+db, email->auth+db, playwright->web-app only) <!-- enforced by agent behavior, not VERIFY gate -->
@@ -65,7 +50,7 @@
 
 **VERIFY:**
 ```bash
-python3 -c "import json; d=json.load(open('.runs/bootstrap-validation-trace.json')); assert d.get('experiment_valid') is True, 'experiment_valid is %s' % d.get('experiment_valid')"
+python3 -c "import json,yaml,re; t=json.load(open('.runs/bootstrap-validation-trace.json')); assert t.get('experiment_valid') is True, 'experiment_valid=%s checks_failed=%s' % (t.get('experiment_valid'), t.get('checks_failed')); d=yaml.safe_load(open('experiment/experiment.yaml')); n=d.get('name',''); assert re.match(r'^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$', n), 'experiment.yaml.name must be canonical kebab-case, got %r' % n"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

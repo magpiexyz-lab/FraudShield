@@ -60,7 +60,7 @@
     "0": "test -f .runs/bootstrap-context.json && git branch --show-current | grep -q 'feat/bootstrap'",
     "1": "test -f experiment/experiment.yaml && grep -q 'name:' experiment/experiment.yaml && test -f experiment/EVENTS.yaml && grep -q 'events:' experiment/EVENTS.yaml",
     "2": "python3 -c \"import json; d=json.load(open('.runs/bootstrap-archetype-trace.json')); assert d.get('archetype'), 'archetype field empty'\"",
-    "3": "python3 -c \"import json; d=json.load(open('.runs/bootstrap-validation-trace.json')); assert d.get('experiment_valid') is True, 'experiment_valid is %s' % d.get('experiment_valid')\"",
+    "3": "python3 -c \"import json,yaml,re; t=json.load(open('.runs/bootstrap-validation-trace.json')); assert t.get('experiment_valid') is True, 'experiment_valid=%s checks_failed=%s' % (t.get('experiment_valid'), t.get('checks_failed')); d=yaml.safe_load(open('experiment/experiment.yaml')); n=d.get('name',''); assert re.match(r'^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$', n), 'experiment.yaml.name must be canonical kebab-case, got %r' % n\"",
     "3a": {
       "verify": "python3 -c \"import json; d=json.load(open('.runs/gate-verdicts/bg1.json')); assert d.get('verdict')=='PASS', 'BG1 verdict is %s' % d.get('verdict'); assert d.get('timestamp','')!='', 'timestamp empty'; assert d.get('branch','')!='', 'branch empty'\"",
       "artifact": ".runs/gate-verdicts/bg1.json",

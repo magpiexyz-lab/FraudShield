@@ -13,7 +13,9 @@ detected by `verify-linter.sh` (see `.claude/patterns/template-coherence-rules.j
 ## Top-level structure
 
 ```yaml
-name: <string>             # Project slug (lowercase, hyphenated)
+name: <string>             # Canonical kebab-case slug — MUST match ^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$
+                           # (lowercase, hyphenated, no consecutive/leading/trailing hyphens).
+                           # Used verbatim as PostHog project_name. /bootstrap STOPs if non-compliant.
 owner: <string>            # Team or user owning the experiment
 type: web-app | service | cli   # Archetype (default: web-app)
 level: 1 | 2 | 3           # Product depth (1: landing only, 2: + signup, 3: + payments)
@@ -40,7 +42,20 @@ deploy: {...}
 
 ### `name` (required, string)
 
-Lowercase project slug, used in analytics distinct-id and PR titles.
+Canonical kebab-case slug matching `^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$`. Used
+verbatim as the PostHog `project_name` super property (`src/lib/analytics.ts`
+constant), in PR titles, and as the cross-MVP analysis key.
+
+**Enforcement**: `/bootstrap` STATE 3 runs `.claude/scripts/lib/validate_experiment_yaml.py`,
+which programmatically rejects non-canonical names (mixed case, spaces,
+underscores, consecutive/leading/trailing hyphens) and prints a kebab-case
+suggestion. The bootstrap STATE 3 VERIFY also reasserts the regex against
+`experiment.yaml` directly as defense-in-depth.
+
+Why strict: divergent name forms (e.g. `splitshare` vs `split-share-neon`)
+produce different `project_name` values in PostHog, fragmenting cross-MVP
+analysis. The strict format is the only way to keep MVP identity stable
+across re-bootstraps, re-deploys, and team handoffs.
 
 ### `owner` (required, string)
 
