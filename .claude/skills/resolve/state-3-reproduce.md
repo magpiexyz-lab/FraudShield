@@ -44,61 +44,61 @@ For each actionable issue (after user approval of triage):
 **Step 0 — Stack Knowledge verification_snippet pre-check (M3 — short-circuit
 when upstream fix already exists):**
 
-Before doing the full reproduction, derive a *preliminary* `composite_identity`
-from the issue body keywords (root_cause_class, divergence_pattern, stack_scope)
-and compute its hash via `compute_hash` from `scripts/lib/stack_knowledge_parser.py`.
-Search all SK entries (across `.claude/stacks/**/*.md` + `.claude/scripts/lib/README.md`)
-for a matching `composite_identity_hash`. If a match exists AND the matched entry
-has a `verification_snippet`, run it and branch on the trinary exit code:
+Before doing the full reproduction, run the snippet pre-check helper. It
+scopes by **cited file path** (deterministic from the issue body) — NOT by
+composite_identity_hash (which would require the consumer to reproduce the
+producer's free-form derivation, an LLM-paraphrasing failure mode). For
+each SK entry under the same stack scope that has a `verification_snippet`,
+the helper runs the snippet (with a per-snippet 60s timeout, configurable
+via `RESOLVE_SNIPPET_TIMEOUT`) and aggregates a trinary verdict.
 
 ```bash
-PRELIM_HASH=$(python3 -c "
-import sys
-sys.path.insert(0, 'scripts/lib')
-from stack_knowledge_parser import compute_hash
-ci = {
-    'root_cause_class': '<derived from issue body>',
-    'divergence_pattern': '<derived from issue body>',
-    'stack_scope': '<derived from issue title / cited file path>',
-}
-print(compute_hash(ci))
+ISSUE_NUMBER=<N>                                       # e.g. 1389
+CITED_FILE=<repo-relative-path>                        # e.g. .claude/stacks/analytics/posthog.md
+                                                       # (extract from issue body's "**Stack File**:" line
+                                                       #  or first .claude/stacks/<...> path mentioned)
+
+python3 .claude/scripts/resolve-snippet-precheck.py \
+  --issue "$ISSUE_NUMBER" \
+  --cited-file "$CITED_FILE"
+
+# Output artifact: .runs/resolve-snippet-precheck-<ISSUE_NUMBER>.json
+# Read the .verdict field and branch:
+
+VERDICT=$(python3 -c "
+import json
+print(json.load(open(f'.runs/resolve-snippet-precheck-{$ISSUE_NUMBER}.json')).get('verdict', 'inconclusive'))
 ")
 
-# Find the matching SK entry
-MATCH=$(python3 -c "
-import sys, glob, yaml, re
-sys.path.insert(0, 'scripts/lib')
-from stack_knowledge_parser import iter_stack_knowledge_files, parse_stack_knowledge_file
-for sf in iter_stack_knowledge_files():
-    for entry in parse_stack_knowledge_file(sf):
-        if entry.get('composite_identity_hash') == '$PRELIM_HASH':
-            snip = entry.get('verification_snippet')
-            if snip:
-                print(sf, '||', entry.get('id'), '||', snip)
-                sys.exit(0)
-")
+case "$VERDICT" in
+  proceed)
+    echo "[STATE 3 Step 0] snippet present — bug confirmed today; proceed with reproduction"
+    ;;
+  close_as_stale)
+    echo "[STATE 3 Step 0] snippet exit 1 — root cause appears upstream-fixed; closing as Stale"
+    gh issue comment "$ISSUE_NUMBER" --body "STATE 3 Step 0 ran the verification_snippet from the matching SK entry. Exit 1 = bug ABSENT (root cause appears resolved by an upstream change). Closing as Stale; reopen if still reproducible on your environment.
 
-if [ -n "$MATCH" ]; then
-    SNIPPET=$(echo "$MATCH" | awk -F '\\|\\|' '{print $3}' | sed 's/^ *//')
-    bash -c "$SNIPPET"
-    case $? in
-        0) echo "[STATE 3 Step 0] verification_snippet exit 0 — bug present; proceed with reproduction" ;;
-        1) echo "[STATE 3 Step 0] verification_snippet exit 1 — bug ABSENT; closing issue as Stale"
-           gh issue comment "<N>" --body "verification_snippet from SK entry exits 1 — root cause appears resolved by upstream change. Closing as Stale; reopen if still reproducible on your environment."
-           gh issue close "<N>"
-           # Skip this issue, continue with next
-           continue
-           ;;
-        2) echo "[STATE 3 Step 0] verification_snippet exit 2 — preconditions not met; proceed with normal reproduction" ;;
-        *) echo "[STATE 3 Step 0] WARNING: verification_snippet exit $? — snippet broken; flag for SK maintenance" >&2 ;;
-    esac
-fi
+Snippet output recorded at .runs/resolve-snippet-precheck-${ISSUE_NUMBER}.json"
+    gh issue close "$ISSUE_NUMBER"
+    # Remove this issue from the actionable list; continue with the next
+    continue
+    ;;
+  inconclusive|*)
+    echo "[STATE 3 Step 0] no matching snippet OR all returned preconditions_not_met/broken; proceed with normal reproduction"
+    ;;
+esac
 ```
 
-If no SK match or no verification_snippet, proceed with the standard
-reproduction flow below. This step is purely an optimization — when an
-upstream package fix has resolved the root cause, /resolve closes the
-issue automatically without re-running the full STATE 3 → STATE 5d cycle.
+The helper script:
+- Derives stack_scope from the cited file path (`.claude/stacks/<category>/<file>.md` → `<category>/<file>`)
+- Iterates all SK entries (via `iter_stack_knowledge_files()`) and matches those whose own file IS the cited file OR whose `stack_scope` field matches the derived scope
+- For each matching entry with a `verification_snippet`, runs `bash -c "$snippet"` with a 60s timeout and captures exit code + stdout/stderr excerpt
+- Aggregates: `proceed` if any snippet exit 0; `close_as_stale` if any exit 1 AND none exit 0; `inconclusive` otherwise
+
+This is purely an optimization — when an upstream package fix has resolved
+the root cause, /resolve closes the issue automatically without re-running
+the full STATE 3 → STATE 5d cycle. When no SK entry matches or no snippets
+return a definitive verdict, the standard reproduction flow runs normally.
 
 Reproduce the issue by tracing through the template as if you were Claude
 executing the skill:

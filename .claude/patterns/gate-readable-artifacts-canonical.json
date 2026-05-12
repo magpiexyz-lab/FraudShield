@@ -932,6 +932,17 @@
       "rationale": "Read by VERIFY blocks in skills: resolve."
     },
     {
+      "path": ".runs/resolve-snippet-precheck-*.json",
+      "consumers": [
+        "state-3-reproduce.md (Step 0 prose)"
+      ],
+      "writers": [
+        ".claude/scripts/resolve-snippet-precheck.py"
+      ],
+      "scope": "transient-per-issue",
+      "rationale": "Per-issue verification_snippet pre-check verdict (M5 — fixes M3 consumer's hand-wave hash derivation). Wildcard <issue> in path because one artifact per issue."
+    },
+    {
       "path": ".runs/resolve-tier-floors.json",
       "consumers": [
         "state-registry:resolve.5b"
