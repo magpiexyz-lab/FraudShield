@@ -14,6 +14,7 @@ SUITES=(
   ".claude/scripts/tests/test_forgery_surface.py"
   ".claude/scripts/tests/test_validate_recovery.py"
   ".claude/scripts/tests/test_migrate_legacy_traces.py"
+  ".claude/scripts/tests/test_lifecycle_init_mode_promotion.py"
   ".claude/scripts/tests/test_hard_gate_predicates.py"
   ".claude/scripts/tests/test_agent_trace_write_guard.py"
   ".claude/scripts/tests/test_trace_write_guard.py"

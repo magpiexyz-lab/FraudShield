@@ -233,6 +233,20 @@ if "modes" in data and extra_str:
 if "modes" in data and "active_mode" not in data and "default" in data["modes"]:
     data["active_mode"] = "default"
 
+# --- Step 3.5: Promote allowlisted mode-level keys to manifest root ---
+# Some flags (e.g., skip_experiment_validation) vary by mode. Lift them onto
+# the manifest root so single-read consumers (Step 3b validation gate et al.)
+# stay mode-agnostic. The allowlist is explicit — generic promotion would
+# clobber `states`/`trigger`, which have different semantics under
+# `modes[<mode>]`. Mode-level explicit value (even false) overrides top-level.
+PROMOTABLE_MODE_KEYS = {"skip_experiment_validation"}
+if "modes" in data and "active_mode" in data:
+    mode_cfg = data["modes"].get(data["active_mode"]) or {}
+    if isinstance(mode_cfg, dict):
+        for k in PROMOTABLE_MODE_KEYS:
+            if k in mode_cfg:
+                data[k] = mode_cfg[k]
+
 # --- Write manifest ---
 with open(manifest_path, "w") as f:
     json.dump(data, f, indent=2)
