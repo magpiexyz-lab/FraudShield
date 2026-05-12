@@ -84,7 +84,10 @@ def _is_valid_suppression_reason(reason: str) -> bool:
 
 
 def _mode() -> str:
-    return os.environ.get("RETROSPECTIVE_COMPLETENESS_MODE", "warn").lower()
+    # #1393 (a) phase-2: default flipped warn → deny. The retrospective gate
+    # is narrow (fires only on the silent-skip bug pattern); soak provides no
+    # decision-quality data here. Revert path: one-line override via env var.
+    return os.environ.get("RETROSPECTIVE_COMPLETENESS_MODE", "deny").lower()
 
 
 def main() -> int:
@@ -100,11 +103,19 @@ def main() -> int:
         return 0
 
     if not os.path.isfile(PENDING_PATH):
-        print(
-            f"validate-retrospective-completeness: SKIP (no {PENDING_PATH}; "
-            "enumerate-pending-retrospective-findings.py was not run)"
+        # #1393 (a) phase-3: SKIP → FAIL on missing pending-findings.json.
+        # The pre-check in check-observation-artifacts.sh now rejects this
+        # state upstream when MODE=deny (the new default), so this path is
+        # structurally unreachable in normal flow. Promoting SKIP → FAIL
+        # removes dead code AND defends against future callers that invoke
+        # the validator directly without going through check-observation-artifacts.sh.
+        msg = (
+            f"validate-retrospective-completeness: FAIL (no {PENDING_PATH}; "
+            "enumerate-pending-retrospective-findings.py was not run during "
+            "Step 5a — silent-skip class #1385)"
         )
-        return 0
+        print(msg, file=sys.stderr)
+        return 0 if mode == "warn" else 1
 
     try:
         pending_doc = json.load(open(PENDING_PATH))

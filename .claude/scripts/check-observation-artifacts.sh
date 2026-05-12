@@ -343,28 +343,34 @@ if [[ ${#MISSING[@]} -gt 0 ]]; then
   PASS="false"
 fi
 
-# ── Retrospective-completeness gate (#1276) ──
+# ── Retrospective-completeness gate (#1276 + #1393) ──
 # Runs AFTER observation-phase Step 5a has written retrospective-result.json
 # (contrast: lifecycle-finalize.sh Step 1 runs BEFORE observation, so the
 # validator must be wired here, not there). Fail-mode: when validator returns
 # non-zero AND RETROSPECTIVE_COMPLETENESS_MODE=deny, add to MISSING so the
 # observation-enforcement.json `pass` field flips to false and state-99 VERIFY
-# blocks. Default MODE=warn during rollout — only logs to stderr.
+# blocks.
 #
-# #1393 (a) phase-1: enumeration must-run pre-check (warn-mode-only).
-# When scope=full|process AND retrospective-result.json exists, the
-# pending-findings.json MUST also exist (i.e., enumerate-pending-retrospective-findings.py
-# was actually invoked). Absence means Step 5a silently skipped the
-# enumeration sub-step, which is the silent-skip class #1385 identified.
-# Phase-1 warn-only: appends to MISSING when MODE=deny (default still warn),
-# logs to stderr otherwise. Phase-2 (PR-3) flips default to deny. Phase-3
-# (PR-4) promotes the validator's own SKIP path to FAIL.
+# #1393 (a) phase-1 (PR #1402, merged): added the enumeration-must-run
+# pre-check (when retrospective-result.json exists, pending-findings.json
+# must too — otherwise Step 5a silently skipped enumeration, the #1385 bug).
+#
+# #1393 (a) phase-2 + phase-3 (this PR): flip default MODE warn → deny
+# AND promote validator's SKIP→FAIL. First-principles analysis: the gate is
+# narrow (fires only on the bug pattern), no legitimate flows produce the
+# {retrospective-result.json present, pending-findings.json absent} state,
+# and the validator's SKIP path is now structurally unreachable in normal
+# flow because the pre-check upstream rejects missing pending-findings
+# before the validator runs. So both phases ship together — soak provides
+# no decision-quality data here, only "bug occurrence frequency" data,
+# which is orthogonal to the FP-risk variable the soak was supposed to
+# measure. Revert is one-line if real false positives surface.
 if [[ "$SCOPE" == "full" || "$SCOPE" == "process" ]] \
    && [[ -f "$RUNS_DIR/retrospective-result.json" ]] \
    && [[ ! -f "$RUNS_DIR/retrospective-pending-findings.json" ]]; then
-  echo "WARN: retrospective-result.json exists but retrospective-pending-findings.json is absent — enumerate-pending-retrospective-findings.py was not invoked during Step 5a (#1393 phase-1)" >&2
-  if [[ "${RETROSPECTIVE_COMPLETENESS_MODE:-warn}" == "deny" ]]; then
-    MISSING+=("retrospective-pending-findings.json (#1393 phase-1 — enumeration step was skipped during Step 5a)")
+  echo "WARN: retrospective-result.json exists but retrospective-pending-findings.json is absent — enumerate-pending-retrospective-findings.py was not invoked during Step 5a (#1393)" >&2
+  if [[ "${RETROSPECTIVE_COMPLETENESS_MODE:-deny}" == "deny" ]]; then
+    MISSING+=("retrospective-pending-findings.json (#1393 — enumeration step was skipped during Step 5a)")
     PASS="false"
   fi
 fi
@@ -375,7 +381,7 @@ if [[ "$SCOPE" == "full" || "$SCOPE" == "process" ]] \
   RC_RC="${RC_RC:-0}"
   if [[ "$RC_RC" -ne 0 ]]; then
     echo "$RC_OUT" >&2
-    if [[ "${RETROSPECTIVE_COMPLETENESS_MODE:-warn}" == "deny" ]]; then
+    if [[ "${RETROSPECTIVE_COMPLETENESS_MODE:-deny}" == "deny" ]]; then
       MISSING+=("retrospective-completeness (#1276 — pending findings without disposition)")
       PASS="false"
     fi
