@@ -1,5 +1,6 @@
 {
   "$comment": "GRAIM v2 — gate-readable artifacts that MUST carry {skill, run_id, written_at}. Auto-derived from state-registry.json VERIFY blocks. DO NOT EDIT MANUALLY — re-run derive-graim-manifest.py.",
+  "$jsonl_carveout": "#1393 r3 Item 2 — `.jsonl` telemetry is a known non-canonical class. The regex carve-out at derive-graim-manifest.py:RE_RUNS_JSON (negative lookahead `(?![a-zA-Z0-9])`) is load-bearing — see that file's module docstring. New telemetry: pick `.jsonl` extension, document per-line schema in writer docstring, do NOT register here. Enforced by template-coherence-rules.json rule `derive-graim-manifest-carveout-pin`.",
   "version": "1.0",
   "generated_at": "2026-04-30T11:14:14Z",
   "generator": ".claude/scripts/derive-graim-manifest.py",

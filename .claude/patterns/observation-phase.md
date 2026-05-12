@@ -548,6 +548,7 @@ integration_point for the validator (per `hard-block-validators-integration-requ
 with `minimum_integration_count: 2`, #1307).
 
 #### Write result
+<!-- sanctioned-manual-write: .runs/retrospective-result.json -->
 
 The lead writes `.runs/retrospective-result.json` DIRECTLY via the Write tool
 (NOT as a deliverable to a spawned Agent). The required top-level field

@@ -6,6 +6,20 @@ Inputs from environment variables (avoids shell-quoting injection — R2.1 fix):
   HOOK_FRICTION_REASON       deny() message
   HOOK_FRICTION_TOOL_NAME    Bash | Edit | Write | ...
   HOOK_FRICTION_BLOCKED_CMD  first 200 chars of tool_input (sanitized)
+  HOOK_FRICTION_ACTION_TYPE  classification token (#1393, #1379 G-class):
+                              "block"                    — hook denied (exit 2)
+                              "warn-mode-bypass"         — hook MODE=warn fired
+                              "manual-write-sanctioned"  — lead Write of an
+                                                            artifact declared
+                                                            sanctioned via
+                                                            procedure marker
+                              "manual-write-deviation"   — lead Write outside
+                                                            any sanctioned-marker
+                                                            declaration (default
+                                                            when no marker)
+                             Defaults to "block" (legacy hooks that don't pass
+                             the env var still classify as block; safer-default
+                             per round-2 plan caveat re: bootstrap-phase-a-write-guard.sh).
 
 Reads run_id and skill from the active context file (.runs/<skill>-context.json,
 same scheme used by scan-template-edits.sh and aggregate-hook-friction.py).
@@ -42,14 +56,30 @@ def _active_context():
     return best or {}
 
 
+VALID_ACTION_TYPES = {
+    "block",
+    "warn-mode-bypass",
+    "manual-write-sanctioned",
+    "manual-write-deviation",
+}
+
+
 def main():
     try:
         ctx = _active_context()
+        # #1393 + #1379 r3 — action_type discriminator. Default to "block" so
+        # legacy hooks that don't set the env var classify as block (safer
+        # default; avoids dilution of the deviation signal — round-2 plan caveat
+        # re: bootstrap-phase-a-write-guard.sh which currently doesn't set it).
+        action_type = os.environ.get("HOOK_FRICTION_ACTION_TYPE", "block")
+        if action_type not in VALID_ACTION_TYPES:
+            action_type = "block"
         row = {
             "hook": os.environ.get("HOOK_FRICTION_HOOK", "unknown"),
             "tool_name": os.environ.get("HOOK_FRICTION_TOOL_NAME", ""),
             "blocked_command": os.environ.get("HOOK_FRICTION_BLOCKED_CMD", "")[:200],
             "reason": os.environ.get("HOOK_FRICTION_REASON", "")[:500],
+            "action_type": action_type,
             "run_id": ctx.get("run_id", ""),
             "skill": ctx.get("skill", ""),
             "timestamp": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),

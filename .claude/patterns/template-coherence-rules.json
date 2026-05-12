@@ -559,6 +559,27 @@
       "description": "#1381 D1 — every agent in .claude/patterns/agent-registry.json hard_gates whose name starts with 'design-' must have allow_predicates ⊇ design-critic's. Catches the next sibling drift: when a new design-* agent is added to hard_gates and forgets to mirror design-critic's predicate set (e.g., design-consistency-checker missed pass_lead_synthesized during state-3a Stage 0 lead-synthesized aggregate rollout)."
     },
     {
+      "id": "audit-tag-verb-recognized",
+      "type": "audit_tag_verb_recognized",
+      "severity": "warn",
+      "registry_path": ".claude/patterns/audit-verb-registry.json",
+      "scan_globs": ["experiment/experiment.yaml", ".claude/templates/experiment-yaml.md"],
+      "description": "#1393 r3 Item 3 — every [audit:<verb>=<value>] tag in experiment.yaml (or the template doc) must use a verb declared in audit-verb-registry.json. Producer = human; consumer = lead + AST scanner. New verbs added by PR to the registry. Severity=warn during soak — #1387 forthcoming, expect verb additions."
+    },
+    {
+      "id": "derive-graim-manifest-carveout-pin",
+      "type": "derive_graim_manifest_carveout_pin",
+      "severity": "block",
+      "description": "#1393 r3 Item 2 — pin the .jsonl carve-out at derive-graim-manifest.py. Asserts (a) the module docstring declares the carve-out AND (b) RE_RUNS_JSON regex still uses the negative lookahead `(?![a-zA-Z0-9])` that excludes .jsonl. Either change alone is a regression vector for hook-friction.jsonl + consistency-soak-telemetry.jsonl + every future .jsonl telemetry that depends on the carve-out."
+    },
+    {
+      "id": "hook-friction-action-type-markers",
+      "type": "hook_friction_action_type_classify",
+      "severity": "warn",
+      "scan_globs": [".claude/patterns/*.md", ".claude/skills/**/state-*.md"],
+      "description": "#1393 r3 Item 1 — scan procedure docs for <!-- sanctioned-manual-write: <path> --> markers. Validates each marker references a real .runs/*.json path and the host file actually contains write instructions for it (no stale markers). The classifier set seeded here drives future hooks/writers to classify Write tool calls as manual-write-sanctioned vs manual-write-deviation (default). Severity=warn during soak — new mechanism, classifier consumers will land incrementally."
+    },
+    {
       "id": "derive-pages-consumer-reconciliation",
       "type": "consumer_coverage",
       "severity": "block",

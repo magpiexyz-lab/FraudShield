@@ -14,6 +14,23 @@ GRAIM v2 (Gate-Readable Artifact Identity Manifest, version 2) classifies every
    - `inline_md_read` — read inside skill/pattern .md files → human review needed
    - `no_reader`   — written but never read by any consumer → exempt (telemetry-only)
 
+## `.jsonl` telemetry carve-out (#1393 r3 Item 2 — load-bearing pin)
+
+**`.jsonl` telemetry is a known non-canonical class.** Append-only event logs
+with extension `.jsonl` (hook-friction.jsonl, fix-ledger.jsonl, bootstrap-execution-trace.jsonl,
+consistency-soak-telemetry.jsonl, etc.) are intentionally NOT registered as
+gate-readable artifacts. The regex carve-out at `RE_RUNS_JSON` below (negative
+lookahead `(?![a-zA-Z0-9])` prevents `.jsonl` from matching) is the single
+enforcement point and is **load-bearing** — do NOT include `.jsonl` in the
+regex character class.
+
+New telemetry: pick the `.jsonl` extension, document the per-line schema in the
+writer's docstring, and do NOT register in `gate-readable-artifacts-canonical.json`.
+
+The recurrence guard `derive_graim_manifest_carveout_pin` (template-coherence-rules.json)
+asserts this docstring declaration and the regex stay paired. If you remove the
+carve-out from the regex, the rule will fail at lifecycle-finalize.
+
 Outputs (Slice 0 deliverables):
 - .claude/patterns/gate-readable-artifacts-canonical.json
 - .claude/patterns/gate-readable-artifacts-pending-review.json
@@ -443,6 +460,14 @@ def write_canonical(canonical: dict[str, dict], all_writers: dict[str, set[str]]
             "GRAIM v2 — gate-readable artifacts that MUST carry "
             "{skill, run_id, written_at}. Auto-derived from state-registry.json "
             "VERIFY blocks. DO NOT EDIT MANUALLY — re-run derive-graim-manifest.py."
+        ),
+        "$jsonl_carveout": (
+            "#1393 r3 Item 2 — `.jsonl` telemetry is a known non-canonical class. "
+            "The regex carve-out at derive-graim-manifest.py:RE_RUNS_JSON "
+            "(negative lookahead `(?![a-zA-Z0-9])`) is load-bearing — see that "
+            "file's module docstring. New telemetry: pick `.jsonl` extension, "
+            "document per-line schema in writer docstring, do NOT register here. "
+            "Enforced by template-coherence-rules.json rule `derive-graim-manifest-carveout-pin`."
         ),
         "version": "1.0",
         "generated_at": _utc_iso8601(),

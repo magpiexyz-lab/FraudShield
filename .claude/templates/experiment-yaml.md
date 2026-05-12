@@ -64,6 +64,11 @@ Each behavior is a user-observable capability tied to a hypothesis. Schema:
   when: <string>               # Required. User/system action.
   then: <string>               # Required. Post-condition.
   tests: [<string>...]         # Required. Acceptance criteria. 1-5 entries (validator-enforced — see scripts/validate-experiment.py b_tests length check).
+                               # #1393 r3 Item 3 — `tests[]` strings may include inline audit tags of the form
+                               # `[audit:<verb>=<value>]`. Verb must appear in .claude/patterns/audit-verb-registry.json
+                               # (initial set: api-fetch, seo, event). Producer = human; consumer = lead + AST scanner
+                               # via the audit_tag_verb_recognized and (forthcoming #1387) audit_tag_claim_matches_ast rules.
+                               # Example: "User sees portfolio cards [audit:api-fetch=/api/portfolio] [audit:event=portfolio_viewed]"
   level: 1 | 2 | 3             # Required. Behavior level.
   actor: user | system | cron  # Optional. Default `user`.
   trigger: <string>            # Optional. Required when actor != user.

@@ -68,7 +68,7 @@ except Exception:
     if [ "$MODE" = "deny" ]; then
       deny "$MSG"
     else
-      _write_hook_friction "[warn-mode] $MSG"
+      _write_hook_friction "[warn-mode] $MSG" "warn-mode-bypass"
       exit 0
     fi
   fi
@@ -154,7 +154,7 @@ except Exception:
     if [ "$MODE" = "deny" ]; then
       deny "$MSG"
     else
-      _write_hook_friction "[warn-mode] $MSG"
+      _write_hook_friction "[warn-mode] $MSG" "warn-mode-bypass"
       exit 0
     fi
   fi

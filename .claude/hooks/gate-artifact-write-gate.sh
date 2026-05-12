@@ -78,8 +78,9 @@ MSG_DENY="DENIED: direct Write/Edit on gate-readable .runs path '$TARGET_REL' is
 
 case "$MODE" in
   warn)
-    # Friction log only; allow the write.
-    _write_hook_friction "$MSG_WARN"
+    # Friction log only; allow the write. #1393: classify as warn-mode-bypass
+    # so deviation-tracking consumers can distinguish from block.
+    _write_hook_friction "$MSG_WARN" "warn-mode-bypass"
     exit 0
     ;;
   deny)

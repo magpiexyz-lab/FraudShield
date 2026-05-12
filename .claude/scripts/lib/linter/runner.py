@@ -1830,6 +1830,210 @@ def main() -> int:
         return findings
 
 
+    def check_audit_tag_claim_matches_ast(rule):
+        """#1393 r3 Item 4 — for [audit:api-fetch=<path>] tags in experiment.yaml,
+        assert generated page source actually contains a fetch('<path>') call
+        (or compatible). Mirrors internal_href_validity rule's structural pattern."""
+        findings = []
+        registry_path = os.path.join(REPO_ROOT, rule.get("registry_path", ".claude/patterns/audit-verb-registry.json"))
+        scaffold_glob = rule.get("scaffold_glob", "src/app/**/page.tsx")
+        experiment_path = os.path.join(REPO_ROOT, rule.get("experiment_path", "experiment/experiment.yaml"))
+        try:
+            registry = json.load(open(registry_path))
+        except (OSError, json.JSONDecodeError):
+            return findings  # registry missing → handler skips (audit_tag_verb_recognized covers presence)
+        ast_verbs = {
+            v: m.get("value_type")
+            for v, m in (registry.get("verbs") or {}).items()
+            if m.get("consumer") == "ast-scanner"
+        }
+        if not ast_verbs:
+            return findings
+        if not os.path.isfile(experiment_path):
+            return findings  # No experiment.yaml at scan time = nothing to check
+        try:
+            experiment_content = open(experiment_path).read()
+        except OSError:
+            return findings
+        # Collect (verb, value) pairs from experiment.yaml
+        tag_re = re.compile(r"\[audit:([a-zA-Z0-9_-]+)=([^\]]+)\]")
+        claims = []
+        for m in tag_re.finditer(experiment_content):
+            verb, value = m.group(1), m.group(2).strip()
+            if verb in ast_verbs:
+                claims.append((verb, value))
+        if not claims:
+            return findings
+        # Aggregate source from scaffolded pages
+        source_blob = []
+        for fp in glob.glob(os.path.join(REPO_ROOT, scaffold_glob), recursive=True):
+            try:
+                source_blob.append(open(fp).read())
+            except OSError:
+                pass
+        combined = "\n".join(source_blob)
+        for verb, value in claims:
+            if verb == "api-fetch":
+                # Require either fetch('<value>'), fetch("<value>"), or `<value>` in source
+                needles = [f"fetch('{value}')", f'fetch("{value}")', f"fetch(`{value}`)"]
+                if not any(n in combined for n in needles):
+                    findings.append(_emit_finding(
+                        rule,
+                        f"experiment.yaml [audit:api-fetch={value}] but no matching fetch() call in {scaffold_glob}"
+                    ))
+            elif verb == "event":
+                needles = [f"trackEvent('{value}'", f'trackEvent("{value}"', f"'{value}'", f'"{value}"']
+                if not any(n in combined for n in needles):
+                    findings.append(_emit_finding(
+                        rule,
+                        f"experiment.yaml [audit:event={value}] but no matching trackEvent() call in {scaffold_glob}"
+                    ))
+        return findings
+
+
+    def check_cardinality_consistency_across_pipeline_steps(rule):
+        """#1393 r3 Item 4 — for paired pipeline-step artifacts (prepass + merger
+        per #1257 / PR #1357), assert partition.size and csi.length agree."""
+        findings = []
+        pairs = rule.get("pairs", [])
+        for pair in pairs:
+            a_path = os.path.join(REPO_ROOT, pair["a_path"])
+            b_path = os.path.join(REPO_ROOT, pair["b_path"])
+            a_field = pair["a_field"]  # e.g., "partition.size"
+            b_field = pair["b_field"]  # e.g., "csi.length"
+            if not (os.path.isfile(a_path) and os.path.isfile(b_path)):
+                continue  # paired artifacts only exist after a run; skip pre-run
+            try:
+                a = json.load(open(a_path))
+                b = json.load(open(b_path))
+            except (OSError, json.JSONDecodeError):
+                continue
+
+            def _get(d, dotted):
+                cur = d
+                for k in dotted.split("."):
+                    if isinstance(cur, dict):
+                        cur = cur.get(k)
+                    elif k == "length" and isinstance(cur, list):
+                        cur = len(cur)
+                    elif k == "size" and isinstance(cur, list):
+                        cur = len(cur)
+                    else:
+                        return None
+                return cur
+
+            a_val = _get(a, a_field)
+            b_val = _get(b, b_field)
+            if a_val is None or b_val is None:
+                continue
+            if a_val != b_val:
+                findings.append(_emit_finding(
+                    rule,
+                    f"cardinality drift: {pair['a_path']}.{a_field}={a_val} != {pair['b_path']}.{b_field}={b_val}"
+                ))
+        return findings
+
+
+    def check_audit_tag_verb_recognized(rule):
+        """#1393 r3 Item 3 — every `[audit:<verb>=<value>]` tag in experiment.yaml
+        (or experiment-yaml.md docs) must use a verb declared in audit-verb-registry.json."""
+        findings = []
+        registry_path = os.path.join(REPO_ROOT, rule.get("registry_path", ".claude/patterns/audit-verb-registry.json"))
+        scan_globs = rule.get("scan_globs", ["experiment/experiment.yaml", ".claude/templates/experiment-yaml.md"])
+        if not os.path.isfile(registry_path):
+            findings.append(_emit_finding(rule, f"registry missing: {registry_path}"))
+            return findings
+        try:
+            registry = json.load(open(registry_path))
+        except (OSError, json.JSONDecodeError) as e:
+            findings.append(_emit_finding(rule, f"cannot parse registry: {e}"))
+            return findings
+        allowed = set((registry.get("verbs") or {}).keys())
+        tag_re = re.compile(r"\[audit:([a-zA-Z0-9_-]+)=")
+        for g in scan_globs:
+            for fp in glob.glob(os.path.join(REPO_ROOT, g), recursive=True):
+                try:
+                    content = open(fp).read()
+                except OSError:
+                    continue
+                for m in tag_re.finditer(content):
+                    verb = m.group(1)
+                    if verb not in allowed:
+                        rel = os.path.relpath(fp, REPO_ROOT)
+                        findings.append(_emit_finding(
+                            rule,
+                            f"{rel}: [audit:{verb}=...] uses unrecognized verb. "
+                            f"Allowed verbs: {sorted(allowed)}. "
+                            f"Add an entry to .claude/patterns/audit-verb-registry.json to extend."
+                        ))
+        return findings
+
+
+    def check_derive_graim_manifest_carveout_pin(rule):
+        """#1393 r3 Item 2 — pin the .jsonl carve-out. Assert (a) the docstring
+        of derive-graim-manifest.py declares the carve-out, AND (b) the
+        RE_RUNS_JSON regex still uses the negative lookahead that excludes .jsonl.
+        Either change alone is a regression vector."""
+        findings = []
+        script_path = os.path.join(REPO_ROOT, ".claude/scripts/derive-graim-manifest.py")
+        if not os.path.isfile(script_path):
+            findings.append(_emit_finding(rule, f"missing: {script_path}"))
+            return findings
+        try:
+            content = open(script_path).read()
+        except OSError as e:
+            findings.append(_emit_finding(rule, f"cannot read: {e}"))
+            return findings
+        if ".jsonl` telemetry is a known non-canonical class" not in content:
+            findings.append(_emit_finding(
+                rule,
+                "derive-graim-manifest.py docstring missing the `.jsonl carve-out` declaration. "
+                "DO NOT remove the docstring section without simultaneously updating the regex."
+            ))
+        if r"(?![a-zA-Z0-9])" not in content:
+            findings.append(_emit_finding(
+                rule,
+                "derive-graim-manifest.py RE_RUNS_JSON missing the negative lookahead `(?![a-zA-Z0-9])` "
+                "that excludes .jsonl. This is the single enforcement point — DO NOT remove without "
+                "updating the docstring AND the gate-readable-artifacts-canonical.json header."
+            ))
+        return findings
+
+
+    def check_hook_friction_action_type_classify(rule):
+        """#1393 r3 Item 1 — scan procedure docs for sanctioned-manual-write
+        markers (HTML-comment form: <!-- sanctioned-manual-write: <path> -->).
+        Validates that every marker points to a path matching the canonical
+        artifact pattern (.runs/*.json) AND that the host file actually
+        contains lead-write instructions for that path (no stale markers).
+
+        Output: enumerates the sanctioned-artifact set as a friction record
+        if any host file declares a marker for a path it doesn't actually
+        write. Future hooks/writers will consume this set to classify
+        Write tool calls as manual-write-sanctioned vs manual-write-deviation."""
+        findings = []
+        scan_globs = rule.get("scan_globs", [".claude/patterns/*.md", ".claude/skills/**/state-*.md"])
+        marker_re = re.compile(r"<!--\s*sanctioned-manual-write:\s*(.runs/[a-zA-Z0-9_./-]+\.json)\s*-->")
+        for g in scan_globs:
+            for fp in glob.glob(os.path.join(REPO_ROOT, g), recursive=True):
+                try:
+                    content = open(fp).read()
+                except OSError:
+                    continue
+                for m in marker_re.finditer(content):
+                    path = m.group(1)
+                    # Stale-marker check: host file should reference the path
+                    # as a write target somewhere (Write tool / write-gate-artifact.sh
+                    # / direct mention in a write context).
+                    if path not in content[m.end():] and path not in content[:m.start()]:
+                        rel = os.path.relpath(fp, REPO_ROOT)
+                        findings.append(_emit_finding(
+                            rule,
+                            f"{rel}: sanctioned-manual-write marker for {path} but file has no write reference (stale marker)"
+                        ))
+        return findings
+
+
     def check_verify_d_values_against_stamped_artifact(rule):
         """#1379 G1: state-registry.json VERIFY blocks must NOT iterate
         raw `d.values()` on a payload whose path is a gate-stamped artifact
@@ -3874,6 +4078,16 @@ def main() -> int:
         "stage_0_detector_mode_aware":      (check_stage_0_detector_mode_aware,      {"scan_glob"},                                            {"trigger_pattern", "mode_check_pattern"},                    True),
         # #1379 G1 — state-registry VERIFY blocks using d.values() against gate-stamped artifacts must use unstamped_values(d).
         "verify_d_values_against_stamped_artifact": (check_verify_d_values_against_stamped_artifact, set(),                                {"registry_path", "manifest_path"},                            False),
+        # #1393 r3 Item 1 — sanctioned-manual-write markers in procedure docs.
+        "hook_friction_action_type_classify": (check_hook_friction_action_type_classify, set(),                                          {"scan_globs"},                                                False),
+        # #1393 r3 Item 2 — pin the .jsonl telemetry carve-out (docstring + regex paired).
+        "derive_graim_manifest_carveout_pin": (check_derive_graim_manifest_carveout_pin, set(),                                          set(),                                                         True),
+        # #1393 r3 Item 3 — every [audit:VERB=...] tag must use a registered verb.
+        "audit_tag_verb_recognized":          (check_audit_tag_verb_recognized,         set(),                                          {"registry_path", "scan_globs"},                               False),
+        # #1393 r3 Item 4 — audit-tag claims must have matching AST evidence.
+        "audit_tag_claim_matches_ast":        (check_audit_tag_claim_matches_ast,       set(),                                          {"registry_path", "experiment_path", "scaffold_glob"},         False),
+        # #1393 r3 Item 4 — pipeline-step cardinality consistency (prepass+merger per #1257).
+        "cardinality_consistency_across_pipeline_steps": (check_cardinality_consistency_across_pipeline_steps, {"pairs"},                set(),                                                         False),
         "frontmatter_artifact_consistency": (check_frontmatter_artifact_consistency, {"schema_path", "writer"},                                {"consumers"},                                                True),
         "internal_href_validity":           (check_internal_href_validity,           set(),                                                    {"scaffold_glob", "route_owner_hints"},                       False),
         "pages_no_payload_type_exports":    (check_pages_no_payload_type_exports,    {"scope_glob"},                                           {"path_excludes", "filename_excludes", "suffix_pattern", "types_source_path"}, True),

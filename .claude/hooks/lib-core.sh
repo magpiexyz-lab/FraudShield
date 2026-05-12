@@ -46,6 +46,11 @@ _write_hook_friction() {
   ( # subshell isolates errexit and any side-effect failures
     set +e
     local msg="$1"
+    # #1393 + #1379 r3 — optional action_type classifier (defaults to "block"
+    # in append-hook-friction.py when env var unset). Callers in warn-mode
+    # paths pass "warn-mode-bypass"; future post-emit lead-write observers
+    # pass "manual-write-sanctioned" or "manual-write-deviation".
+    local action_type="${2:-}"
     local hook_basename
     # `$0` is the hook script path Claude Code spawned (e.g.,
     # /.../.claude/hooks/fix-ledger-write-guard.sh). It is set at process
@@ -65,6 +70,7 @@ _write_hook_friction() {
     HOOK_FRICTION_REASON="$msg" \
     HOOK_FRICTION_TOOL_NAME="$tool_name" \
     HOOK_FRICTION_BLOCKED_CMD="$blocked_cmd" \
+    HOOK_FRICTION_ACTION_TYPE="$action_type" \
     python3 "${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/append-hook-friction.py" 2>/dev/null
   ) 2>/dev/null || true
 }

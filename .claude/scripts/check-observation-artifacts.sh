@@ -350,6 +350,25 @@ fi
 # non-zero AND RETROSPECTIVE_COMPLETENESS_MODE=deny, add to MISSING so the
 # observation-enforcement.json `pass` field flips to false and state-99 VERIFY
 # blocks. Default MODE=warn during rollout — only logs to stderr.
+#
+# #1393 (a) phase-1: enumeration must-run pre-check (warn-mode-only).
+# When scope=full|process AND retrospective-result.json exists, the
+# pending-findings.json MUST also exist (i.e., enumerate-pending-retrospective-findings.py
+# was actually invoked). Absence means Step 5a silently skipped the
+# enumeration sub-step, which is the silent-skip class #1385 identified.
+# Phase-1 warn-only: appends to MISSING when MODE=deny (default still warn),
+# logs to stderr otherwise. Phase-2 (PR-3) flips default to deny. Phase-3
+# (PR-4) promotes the validator's own SKIP path to FAIL.
+if [[ "$SCOPE" == "full" || "$SCOPE" == "process" ]] \
+   && [[ -f "$RUNS_DIR/retrospective-result.json" ]] \
+   && [[ ! -f "$RUNS_DIR/retrospective-pending-findings.json" ]]; then
+  echo "WARN: retrospective-result.json exists but retrospective-pending-findings.json is absent — enumerate-pending-retrospective-findings.py was not invoked during Step 5a (#1393 phase-1)" >&2
+  if [[ "${RETROSPECTIVE_COMPLETENESS_MODE:-warn}" == "deny" ]]; then
+    MISSING+=("retrospective-pending-findings.json (#1393 phase-1 — enumeration step was skipped during Step 5a)")
+    PASS="false"
+  fi
+fi
+
 if [[ "$SCOPE" == "full" || "$SCOPE" == "process" ]] \
    && [[ -f "$RUNS_DIR/retrospective-pending-findings.json" ]]; then
   RC_OUT=$(python3 "${PROJECT_DIR}/.claude/scripts/validate-retrospective-completeness.py" 2>&1) || RC_RC=$?
