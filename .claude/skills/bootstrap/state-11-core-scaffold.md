@@ -23,7 +23,6 @@ The lead (not a subagent) creates:
 - Error boundary (`src/app/error.tsx`)
 - Favicon (`src/app/icon.tsx`) -- monogram of project name initial in primary color, 128x128, using `ImageResponse` from `next/og`. Uses a system font (sans-serif) -- do NOT fetch Google Fonts in Satori context. Read primary color from `globals.css` `--primary` token or hardcode the derived value.
 - OG image (`src/app/opengraph-image.tsx`) -- 1200x630 branded card with project name centered on primary-color gradient background. Uses `ImageResponse` from `next/og` with system font.
-- Sitemap (`src/app/sitemap.ts`) -- Next.js built-in sitemap generation from golden_path pages
 - Robots (`src/app/robots.ts`) -- Next.js built-in robots.txt, allow all crawlers for MVP
 - llms.txt (`public/llms.txt`) -- static AI-readable product summary per messaging.md Section E
 - Variant routing files (if `variants` in experiment.yaml): `src/lib/variants.ts`, `src/app/page.tsx`, `src/app/v/[variant]/page.tsx`
@@ -61,7 +60,7 @@ fi
 echo "state-11 build self-check passed."
 
 bash .claude/scripts/archive-gate-verdict.sh phase-a-sentinel
-CORE_FILES='["src/app/layout.tsx","src/app/not-found.tsx","src/app/error.tsx","src/app/icon.tsx","src/app/opengraph-image.tsx","src/app/sitemap.ts","src/app/robots.ts","public/llms.txt"'
+CORE_FILES='["src/app/layout.tsx","src/app/not-found.tsx","src/app/error.tsx","src/app/icon.tsx","src/app/opengraph-image.tsx","src/app/robots.ts","public/llms.txt"'
 if grep -q '^variants:' experiment/experiment.yaml 2>/dev/null; then
   CORE_FILES+=',"src/lib/variants.ts","src/app/page.tsx","src/app/v/[variant]/page.tsx"'
 fi
@@ -91,11 +90,12 @@ VERIFY Phase A before proceeding (**web-app only** — service and cli archetype
 - `test -f src/app/error.tsx`
 - `test -f src/app/icon.tsx`
 - `test -f src/app/opengraph-image.tsx`
-- `test -f src/app/sitemap.ts`
 - `test -f src/app/robots.ts`
 - `test -f public/llms.txt`
 - `test -f .runs/gate-verdicts/phase-a-sentinel.json`
 - If `variants` is present in experiment.yaml: `test -f src/lib/variants.ts && test -f src/app/page.tsx && test -f "src/app/v/[variant]/page.tsx"`
+
+> **Sitemap.ts authorship moved to state-11c post-fan-out (#1387)**: previously listed here as a Phase A file. Moving it allows the emitter to consume `dynamic_public_pages()` for fixture-slug enumeration of dynamic-segment routes, which requires Phase B2 fixtures to exist. State-11c post-fan-out writes `src/app/sitemap.ts`.
 
 **POSTCONDITIONS:**
 - Phase A sentinel written (web-app) or skipped (service/cli)

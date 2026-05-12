@@ -13,6 +13,45 @@ Pages import from `src/lib/events.ts` (created by scaffold-libs in Phase B1).
 scaffold-libs completes and writes its manifest before scaffold-pages launches in Phase B2.
 The `src/lib/events.ts` file exists when this agent runs — import typed wrappers directly.
 
+## Input Contract (#1387)
+
+State-11c writes a page-keyed behavior contract to `.runs/scaffold-pages-contracts.json` before fan-out, derived from `experiment.yaml.behaviors[*].tests[*]` directive tokens of the form `[audit:<kind>=<arg>]<prose>`. Each scaffold-pages agent MUST read its own slice via direct key access (NOT via `d.values()` — the artifact is stamped with identity fields):
+
+```bash
+python3 -c "import json; print(json.dumps(json.load(open('.runs/scaffold-pages-contracts.json')).get('<page-slug>', [])))"
+```
+
+Contract entries directly drive page implementation:
+- `{"kind": "api-fetch", "arg": "/api/x"}` — the page MUST contain `fetch('/api/x', ...)` whose response is consumed (NOT discarded into ignored const, NOT replaced by `.catch(() => <literal>)` synthesizing static fallback).
+- `{"kind": "ai-conversation"}` — the page MUST contain at least one `fetch('/api/...')` AND use `useState`/`useReducer`/`useChat` for turn state.
+- `{"kind": "event", "arg": "<event>"}` — the page MUST call `track<Event>(...)` from `src/lib/events.ts` on the appropriate trigger (verb name `event` per audit-verb-registry.json — NOT `event-emit`).
+- `{"kind": "sitemap-instance", "arg": "<route>/<segment>"}` — the lead-emitted sitemap.ts MUST iterate over `<segment>` (handled in state-11c post-fan-out — NOT a per-page agent concern).
+- `{"kind": "render"}` — trivially satisfied by page existence.
+- `{"kind": "untagged"}` — soft warning only (backward compat for legacy experiment.yaml tests; Group A's audit-verb registry will tighten in a follow-up).
+
+Post-fan-out, state-11c runs `behavior_contract_auditor.py` against this contract. Uncovered tagged entries BLOCK PR creation. Layer 4b runtime check (behavior-verifier B7 in `/verify`) catches AST-undetectable stubs — the load-bearing trustworthy verification.
+
+## Self-Check Score Schema (#1387)
+
+The agent's trace JSON file (written via `write-agent-trace.sh`) MUST emit `self_check_score` as a typed sub-object OR `self_check_score_explicit_none: true` + `self_check_score_explicit_none_reason: <enum>`.
+
+```python
+"self_check_score": {
+    "visual_coherence": 9,         # int 0-10 per Utility Self-Check dimension
+    "information_hierarchy": 9,
+    "interaction_completeness": 9,
+    "layout_purpose": 9,
+    "component_quality": 9,
+    "functional_animation": 9,
+},
+# XOR alternative (rerun-recovery or phase-a-authored only):
+# "self_check_score_explicit_none": True,
+# "self_check_score_explicit_none_reason": "agent-skipped-self-check"
+#   | "phase-a-authored" | "rerun-recovery" | "other",
+```
+
+The score sub-object enables design-critic Stage 0 fast-path to consume the agent's self-reports as structured data (not prose). Validator: `.claude/scripts/validate-self-check-score-schema.py` (env `SELF_CHECK_SCORE_SCHEMA_MODE`, default `warn`). Warn-default mode in this PR; flips to fail after rollout per AOC v1.2 invariants.
+
 ## Archetype Gate
 
 > REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
@@ -27,7 +66,7 @@ The `src/lib/events.ts` file exists when this agent runs — import typed wrappe
 - **Error boundary**: user-friendly message and retry button
 
 #### SEO baseline (Step 3b, web-app only)
-- Generate `src/app/sitemap.ts` — export a default function returning `MetadataRoute.Sitemap` with URLs derived from `derive_scope_pages(experiment)` (call `python3 .claude/scripts/lib/derive_pages.py scope < experiment/experiment.yaml`). Each page in the canonical set maps to a URL path. This includes pages declared in `behavior.pages` that are not on the golden_path (e.g., admin, dashboard, public invoice page).
+- **Sitemap (`src/app/sitemap.ts`) is authored by the LEAD post-fan-out (#1387)** — NOT by this agent. State-11c post-fan-out invokes the sitemap emitter, which consumes both `derive_scope_pages(experiment)` (static slugs) and `dynamic_public_pages(experiment)` (concrete fixture-slug instances declared via `behaviors[*].dynamic_segments`). Authorship moved from Phase A so fixture data declared in experiment.yaml can be consumed after Phase B2 fan-out completes. See `.claude/skills/bootstrap/state-11c-page-scaffold.md` "Post-fan-out: sitemap.ts authorship" section.
 - Generate `src/app/robots.ts` — export a default function returning `MetadataRoute.Robots` allowing all crawlers (`{ rules: { userAgent: '*', allow: '/' } }`)
 - Generate `public/llms.txt` — content per messaging.md Section E (display name, meta description, behaviors list)
 - Ensure layout.tsx `metadata` export uses messaging.md Section E derivation: `title` = meta title, `description` = meta description, `openGraph` = `{ title, description }`

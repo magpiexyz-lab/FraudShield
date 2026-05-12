@@ -421,6 +421,145 @@ def derive_landing_for_design_critic(
     }
 
 
+def dynamic_public_pages(
+    experiment: dict[str, Any],
+    repo_root: str = ".",
+) -> list[dict[str, Any]]:
+    """Enumerate concrete URL instances for dynamic-segment public pages (#1387).
+
+    For each behavior with ``anonymous_allowed=true`` AND a declared
+    ``dynamic_segments`` map of ``{segment_name: [value, ...]}``, expand
+    into concrete entries the sitemap.ts emitter can iterate.
+
+    Schema (experiment.yaml):
+        behaviors:
+          - id: b-13
+            pages: [portfolio-detail]
+            anonymous_allowed: true
+            dynamic_segments:
+              slug: [harborline-internal-orders, northwind-tutoring-marketplace,
+                     tinroof-photo-orders-refunded]
+
+    Returns: list of dicts sorted by (page, segment, value):
+        [
+          {
+            "page": "portfolio-detail",
+            "segment": "slug",
+            "value": "harborline-internal-orders",
+            "route_pattern": "/portfolio/[slug]",  # from filesystem scan or None
+            "concrete_url": "/portfolio/harborline-internal-orders",  # or None when no route_pattern
+          },
+          ...
+        ]
+
+    The route_pattern is derived by matching the behavior's pages against
+    discovered dynamic routes (filesystem scan via
+    ``derive_page_set_for_design_critic``). When no matching dynamic
+    route exists for the declared segment, the entry still appears with
+    ``route_pattern=None``; sitemap emitter MUST skip those entries
+    (warn-only — auditor surfaces them as findings).
+
+    Warning emission (#1387 round-2 caveat 2c8be80f0b5b): when a
+    behavior has ``anonymous_allowed=true`` AND its pages include any
+    discovered dynamic route BUT it has no ``dynamic_segments``
+    declaration, emit stderr warning. state-11c audit (F2) treats this
+    warning as a BLOCK, not a soft warning.
+
+    Empty list when no behavior declares dynamic_segments. Filesystem-
+    independent failure mode: when repo_root has no src/app/ tree, the
+    route_pattern lookup short-circuits to None for all entries.
+    """
+    # Discover dynamic routes from filesystem (once, shared across behaviors).
+    try:
+        discovered = derive_page_set_for_design_critic(experiment, repo_root)
+    except Exception:
+        discovered = []
+
+    # Map: page-slug-prefix -> {route_pattern, segments}
+    # (e.g., portfolio -> {route_pattern: "/portfolio/[slug]", segments: ["slug"]})
+    # We index by the static prefix of the discovered entry's name (before
+    # the first "-") so behaviors that declare pages: [portfolio-detail]
+    # can match a discovered "portfolio-slug" route via static prefix
+    # "portfolio".
+    prefix_to_route: dict[str, dict[str, Any]] = {}
+    for entry in discovered:
+        segments = entry.get("dynamic_segments") or []
+        if not segments:
+            continue
+        name = entry.get("name") or ""
+        prefix = name.split("-", 1)[0] if "-" in name else name
+        prefix_to_route.setdefault(prefix, {
+            "route_pattern": entry.get("route_pattern"),
+            "segments": segments,
+            "name": name,
+        })
+
+    out: list[dict[str, Any]] = []
+    for behavior in (experiment.get("behaviors") or []):
+        if not isinstance(behavior, dict):
+            continue
+        if behavior.get("anonymous_allowed") is not True:
+            continue
+        pages = behavior.get("pages") or []
+        dyn_segments = behavior.get("dynamic_segments")
+
+        # Determine eligibility for the missing-declaration warning.
+        eligible_dynamic_pages: list[str] = []
+        for page in pages:
+            if not page:
+                continue
+            # A page is "eligible" iff its static prefix maps to a discovered
+            # dynamic route. Without filesystem state we cannot detect this;
+            # in that case eligible list is empty (no warning emitted).
+            prefix = page.split("-", 1)[0] if "-" in page else page
+            if prefix in prefix_to_route:
+                eligible_dynamic_pages.append(page)
+
+        if not dyn_segments:
+            for page in eligible_dynamic_pages:
+                sys.stderr.write(
+                    f"WARN: derive_pages — behavior with anonymous_allowed=true "
+                    f"and dynamic-segment page '{page}' lacks dynamic_segments "
+                    f"declaration (#1387). State-11c audit blocks on this.\n"
+                )
+            continue
+
+        if not isinstance(dyn_segments, dict):
+            sys.stderr.write(
+                f"WARN: derive_pages — dynamic_segments must be a dict "
+                f"{{segment: [value...]}}, got {type(dyn_segments).__name__}\n"
+            )
+            continue
+
+        for page in pages:
+            if not page:
+                continue
+            prefix = page.split("-", 1)[0] if "-" in page else page
+            route_info = prefix_to_route.get(prefix)
+            route_pattern = route_info.get("route_pattern") if route_info else None
+
+            for segment, values in dyn_segments.items():
+                if not isinstance(values, list):
+                    continue
+                for value in values:
+                    if not value:
+                        continue
+                    if route_pattern and f"[{segment}]" in route_pattern:
+                        concrete_url = route_pattern.replace(f"[{segment}]", str(value))
+                    else:
+                        concrete_url = None
+                    out.append({
+                        "page": page,
+                        "segment": segment,
+                        "value": str(value),
+                        "route_pattern": route_pattern,
+                        "concrete_url": concrete_url,
+                    })
+
+    out.sort(key=lambda e: (e["page"], e["segment"], e["value"]))
+    return out
+
+
 def _grep_image_patterns(file_path: str) -> list[str]:
     """Return the subset of _IMAGE_PATTERNS that match in the file, or []."""
     if not os.path.isfile(file_path):
@@ -651,9 +790,11 @@ def main() -> None:
         "funnel",
         "public_paths",
         "design_critic_pages",
+        "dynamic_public_pages",
     ):
         sys.stderr.write(
-            "usage: derive_pages.py {scope|validation|funnel|public_paths|design_critic_pages} "
+            "usage: derive_pages.py "
+            "{scope|validation|funnel|public_paths|design_critic_pages|dynamic_public_pages} "
             "[< experiment.yaml]\n"
         )
         sys.exit(2)
@@ -673,6 +814,10 @@ def main() -> None:
         # name='portfolio-slug' which does NOT exist as a literal directory.
         # source_files[] contains the actual repo-relative .tsx paths.
         result = derive_page_set_for_design_critic(experiment)
+    elif sys.argv[1] == "dynamic_public_pages":
+        # #1387: enumerate concrete URL instances for dynamic-segment public
+        # pages (sitemap.ts emitter consumer + post-fan-out audit input).
+        result = dynamic_public_pages(experiment)
     else:
         result = derive_funnel_steps(experiment)
 

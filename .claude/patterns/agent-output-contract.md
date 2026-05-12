@@ -128,6 +128,41 @@ The observation-phase Step 2 evidence collector reads this field across
 all scaffold-* traces; entries whose `file` matches a template path get
 auto-filed as [observe] issues via `file-retrospective-finding.py`.
 
+#### self_check_score (scaffold-pages agent — #1387 contract)
+
+`scaffold-pages` traces MUST emit one of:
+
+  - `self_check_score: {visual_coherence, information_hierarchy, interaction_completeness, layout_purpose, component_quality, functional_animation}`
+    (six integers, each 0-10) — the agent's structured self-rating across the
+    Utility Self-Check dimensions in `.claude/agents/scaffold-pages.md`.
+
+  - `self_check_score_explicit_none: true` AND
+    `self_check_score_explicit_none_reason: <enum>` where the reason is one of
+    `agent-skipped-self-check`, `phase-a-authored`, `rerun-recovery`, `other`.
+
+This enables design-critic Stage 0 fast-path and the post-fan-out behavior
+contract auditor (#1387) to consume structured quality data instead of prose
+that disappears after the conversation. The reason enum on the explicit-none
+escape (Round 2 caveat `01ee7d036710`) prevents agents from silently using
+`explicit_none` as a stub — every escape must declare *why*.
+
+The hard-block validator is invocable directly:
+
+```bash
+python3 .claude/scripts/validate-self-check-score-schema.py
+```
+
+Mode is governed by `SELF_CHECK_SCORE_SCHEMA_MODE` (default `warn` during
+rollout; flips to `fail` after the soak window per AOC v1.2 invariants).
+Pre-cutoff traces (run_id timestamp < `MIGRATION_CUTOFF_ISO` in
+`.claude/scripts/lib/schema_version_gate.py`) skip entirely;
+`migrate-legacy-traces.py` self-heals legacy traces with
+`self_check_score_explicit_none=true` + `rerun-recovery` reason. The
+validator is wired into bootstrap state-registry state 11c. It MUST stay
+referenced in this file (per the `hard-block-validators-integration-required`
+coherence rule with `minimum_integration_count: 2`) so a single-file edit
+to state-registry.json cannot silently dereference it.
+
 #### Count-summary agents
 
 Scanner and adversarial agents do not report a single qualitative `result`;

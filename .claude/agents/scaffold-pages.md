@@ -95,6 +95,16 @@ python3 scripts/init-trace.py scaffold-pages "scaffold-pages-<page-slug>.json"
 
 This registers your presence so the orchestrator can detect incomplete work. Use a page-specific trace filename when multiple scaffold-pages agents run in parallel.
 
+## Input Contract (#1387)
+
+Read `.runs/scaffold-pages-contracts.json[<page-slug>]` for the structured behavior contract derived from `experiment.yaml.behaviors[*].tests[*]` directive tokens. State-11c's `behavior_contract_auditor.py` will run post-fan-out against this contract; uncovered tagged entries BLOCK PR creation.
+
+```bash
+python3 -c "import json; print(json.dumps(json.load(open('.runs/scaffold-pages-contracts.json')).get('<page-slug>', [])))"
+```
+
+Direct key access is safe against stamped identity fields. Do NOT iterate `d.values()` — use the python3 one-liner above for your slice.
+
 ## Output Contract
 
 ```
@@ -132,6 +142,20 @@ trace = {
     # explicitly attest none. See .claude/patterns/agent-output-contract.md.
     "template_recommendations": [],  # [{file, section, recommendation, fix_template}, ...]
     "template_recommendations_explicit_none": True,  # set False when non-empty
+    # #1387 contract: declare self_check_score as typed sub-object OR
+    # explicit_none with reason. Validator: validate-self-check-score-schema.py.
+    # Warn-default mode in this PR; flips to fail after rollout per AOC v1.2.
+    "self_check_score": {
+        "visual_coherence": 10,        # integer 0-10 (replace with your actual self-score)
+        "information_hierarchy": 10,
+        "interaction_completeness": 10,
+        "layout_purpose": 10,
+        "component_quality": 10,
+        "functional_animation": 10,
+    },
+    # XOR alternative when you genuinely cannot score (rerun-recovery, phase-a-authored):
+    #   "self_check_score_explicit_none": True,
+    #   "self_check_score_explicit_none_reason": "agent-skipped-self-check",
     "files_created": ["<list all files created or modified>"],
     "page": PAGE_SLUG,
 }

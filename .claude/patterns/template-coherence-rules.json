@@ -22,6 +22,7 @@
         ".claude/procedures/wire.md",
         ".claude/procedures/ux-journeyer.md",
         ".claude/procedures/behavior-verifier.md",
+        ".claude/agents/behavior-verifier.md",
         ".claude/agents/ux-journeyer.md",
         ".claude/agents/accessibility-scanner.md",
         ".claude/stacks/testing/playwright.md",
@@ -405,7 +406,8 @@
         ".claude/scripts/validate-step55-evidence.py",
         ".claude/scripts/validate-image-spec-compliance.py",
         ".claude/scripts/validate-scaffold-recommendations-schema.py",
-        ".claude/scripts/validate-observer-evidence-coverage.py"
+        ".claude/scripts/validate-observer-evidence-coverage.py",
+        ".claude/scripts/validate-self-check-score-schema.py"
       ],
       "integration_points": [
         {
@@ -605,6 +607,17 @@
       "trigger_pattern": "Stage 0:.*all-pages-fast-path|ALL_PAGES_FAST_PATH",
       "mode_check_pattern": "bootstrap-verify",
       "description": "#1381 D3 — any state file containing a Stage 0 all-pages-fast-path detector MUST also contain a bootstrap-verify mode skip predicate. Otherwise, during /bootstrap pre-commit, state-16 implementer commits create BOUNDARY_KIND=diff with PR_RELEVANT=0 (test commits don't touch UI), inappropriately firing the fast-path and zero-reviewing the entire scaffolded UI surface."
+    },
+    {
+      "id": "self-check-score-schema-coherence",
+      "type": "consumer_coverage",
+      "severity": "warn",
+      "canonical_source": ".claude/scripts/validate-self-check-score-schema.py",
+      "consumers": [
+        ".claude/agents/scaffold-pages.md",
+        ".claude/procedures/scaffold-pages.md"
+      ],
+      "description": "#1387: the self_check_score field (typed sub-object + explicit_none escape with reason enum) must be documented in scaffold-pages.md agent prompt AND procedure file when the validator exists. Both must coexist or both be absent; drift signals incomplete rollout of AOC v1.2 schema. Severity=warn during rollout (warn-default mode); flips to block after the validator hits fail-mode."
     }
   ]
 }

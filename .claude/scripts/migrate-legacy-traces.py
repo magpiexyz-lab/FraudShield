@@ -288,17 +288,65 @@ def stamp_self_degraded_recovery(trace, agent_name, trace_path):
     return True
 
 
+def _self_heal_self_check_score(trace, trace_path):
+    """Self-heal pre-cutoff scaffold-pages traces missing self_check_score (#1387).
+
+    The new AOC v1.2 self_check_score field was introduced in PR #1387
+    (issue #1387 FM3). Pre-cutoff scaffold-pages traces — written before
+    the schema_version=2 cutoff (2026-05-04T05:25:30Z per
+    schema_version_gate.py) — lack the field. This self-heal backfills
+    self_check_score_explicit_none=true with rerun-recovery reason so
+    validate-self-check-score-schema.py passes idempotently.
+
+    Post-cutoff traces MUST emit either self_check_score or
+    self_check_score_explicit_none from the agent. We do NOT self-heal
+    those; the validator is the gate.
+
+    Idempotent. Returns True iff trace was modified.
+    """
+    basename = os.path.basename(trace_path)
+    if "scaffold-pages-" not in basename:
+        return False
+    if "self_check_score" in trace or "self_check_score_explicit_none" in trace:
+        return False
+    # Pre-cutoff check via schema_version_gate
+    try:
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), "lib"))
+        from schema_version_gate import required_schema_version  # type: ignore
+    except ImportError:
+        # schema_version_gate unavailable — be conservative and self-heal
+        # (better than crashing the migration; validator is still the gate
+        # for new traces).
+        required_schema_version = lambda _rid: 1  # noqa: E731
+    rid = trace.get("run_id") or ""
+    try:
+        version = required_schema_version(rid)
+    except Exception:
+        version = 1
+    if version >= 2:
+        return False  # post-cutoff: validator catches missing field, do not self-heal
+    trace["self_check_score_explicit_none"] = True
+    trace["self_check_score_explicit_none_reason"] = "rerun-recovery"
+    return True
+
+
 def derive_fields(trace, agent_name, trace_path, unresolved_log):
     """Derive missing v2 + AOC v1 fields. Returns (updated_trace, changed).
 
     Idempotency (AOC v1): a trace is fully-migrated iff BOTH provenance AND
     result are present. Old traces with provenance but no result are
     re-visited to backfill result.
-    """
-    if trace.get("provenance") is not None and trace.get("result") is not None:
-        return trace, False
 
-    changed = False
+    #1387: self_check_score self-heal runs BEFORE the provenance+result
+    short-circuit so traces that already have those fields still get the
+    self_check_score backfill on a single pass.
+    """
+    self_check_healed = _self_heal_self_check_score(trace, trace_path)
+
+    if trace.get("provenance") is not None and trace.get("result") is not None:
+        return trace, self_check_healed
+
+    changed = self_check_healed
 
     # v2: provenance backfill
     if trace.get("provenance") is None:

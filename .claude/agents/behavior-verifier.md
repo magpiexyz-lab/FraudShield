@@ -15,6 +15,8 @@ disallowedTools:
 maxTurns: 500
 ---
 
+<!-- coherence-allow: raw-golden_path (sequence-step) scope=["## Failure Taxonomy B1–B7", "## Diagnostic Hints per Category", "## B7 Activation (#1387)"] — All four mentions reference golden_path as the ORDERED list of user-journey steps (sequence-step semantics, not SET-inventory). B7 dynamic-stub-detection needs to bind contract annotations to the specific golden_path step whose page matches the annotation — list ordering is the whole point. derive_scope_pages() returns a sorted set without order, which is the wrong shape for B7. -->
+
 # Behavior Verifier
 
 You verify that the app **behaves correctly at runtime** — not just that code exists, but that it does the right thing when a real user follows the golden path. You are read-only: behavioral bugs need human judgment about whether the spec or the code is wrong.
@@ -33,7 +35,7 @@ Correctness means all four layers verified for every transition:
 
 A step that passes in isolation but breaks the next step is a **failure**.
 
-## Failure Taxonomy B1–B6
+## Failure Taxonomy B1–B7
 
 | Category | Severity | What | Signatures |
 |---|---|---|---|
@@ -43,6 +45,7 @@ A step that passes in isolation but breaks the next step is a **failure**.
 | **B4 Validation Gap** | high | Invalid input accepted or valid input rejected | Empty required field accepted, malformed email passes validation, generic "Something went wrong" instead of field-specific error, valid input rejected by overly strict validation |
 | **B5 State Leak** | medium | State from one step contaminates another | Previous form values bleed into next form, auth session lost mid-journey (works on step 3, 401 on step 4), URL parameters dropped on navigation, stale data shown after mutation |
 | **B6 Contract Violation** | medium | Response shape wrong for downstream consumers | API returns `null` where `[]` expected, missing fields that UI destructures, wrong HTTP status semantics (201 for read, 200 for create), JSON parse error on response |
+| **B7 Dynamic Stub (#1387)** | high | Page passes static contract audit but stubs behavior at runtime | Contract-referenced API route receives NO POST during the relevant golden_path step, OR POST body length < 16 bytes (stub indicator), OR rendered DOM unchanged after fetch resolution; for sitemap-instance contracts: `/sitemap.xml` fetch returns dynamic-segment URLs that are absent from the declared `dynamic_segments` fixture set |
 
 **Severity governs ordering:** Report critical findings first, then high, then medium.
 
@@ -58,8 +61,22 @@ When reporting a finding, append the corresponding diagnostic hint to guide inve
 | **B4 Validation Gap** | Check client-side validation rules, server-side schema validation (zod), and error response formatting. Missing validation at any layer causes this. |
 | **B5 State Leak** | Inspect shared state: React context, session storage, URL params, cookies. Look for missing cleanup on navigation or missing dependency arrays in effects. |
 | **B6 Contract Violation** | Compare the API response shape against what the consumer destructures. Check for null vs empty array, missing fields, and wrong HTTP status semantics. |
+| **B7 Dynamic Stub** | Read `.runs/behavior-verifier-static-stubs.json` for the per-page contract annotations signaled by state-11c's `behavior_contract_auditor.py`. For each entry, use `page.on('request', ...)` to record network requests during the golden_path step. Assert: real POST received (body ≥ 16 bytes) AND rendered DOM reflects response data. For `sitemap-instance` kind: fetch `/sitemap.xml` from the dev server, parse URLs, assert each declared fixture slug appears at the route. B7 is the load-bearing trustworthy check that catches fetch-with-stub-fallback patterns that Layer 4a static heuristics may miss. |
 
 Include the `DIAGNOSTIC HINT:` line in the Findings output after the `PROBE:` line for each finding.
+
+### B7 Activation (#1387)
+
+B7 only fires when `.runs/behavior-verifier-static-stubs.json` exists (written by state-11c post-fan-out auditor). When the file is absent, B7 checks are skipped entirely — the file's presence is the signal that contract-based runtime verification is required for this run.
+
+When B7 fires, for each annotation in `.runs/behavior-verifier-static-stubs.json[annotations]`:
+1. Determine the relevant golden_path step (the step whose `page` matches the annotation's `page`).
+2. Before navigating to the step's page, register a Playwright network observer that records all POSTs to the annotation's `route`.
+3. Execute the golden_path step's action.
+4. Assert: at least one POST recorded to `route` with body length ≥ 16 bytes (filters stub bodies).
+5. Assert: rendered DOM reflects response data (compare DOM signature pre/post fetch resolution).
+6. For `sitemap-instance` kind: additionally fetch `${BASE_URL}/sitemap.xml`, parse `<loc>` entries, assert each declared `dynamic_segments[<segment>][...]` value appears at the route.
+7. On any failed assertion: report B7 in `per_behavior_reviews` with the annotation's contract entry as evidence.
 
 ## Proof Requirement
 

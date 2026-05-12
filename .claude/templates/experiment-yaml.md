@@ -80,10 +80,21 @@ Each behavior is a user-observable capability tied to a hypothesis. Schema:
   then: <string>               # Required. Post-condition.
   tests: [<string>...]         # Required. Acceptance criteria. 1-5 entries (validator-enforced — see scripts/validate-experiment.py b_tests length check).
                                # #1393 r3 Item 3 — `tests[]` strings may include inline audit tags of the form
-                               # `[audit:<verb>=<value>]`. Verb must appear in .claude/patterns/audit-verb-registry.json
-                               # (initial set: api-fetch, seo, event). Producer = human; consumer = lead + AST scanner
-                               # via the audit_tag_verb_recognized and (forthcoming #1387) audit_tag_claim_matches_ast rules.
-                               # Example: "User sees portfolio cards [audit:api-fetch=/api/portfolio] [audit:event=portfolio_viewed]"
+                               # `[audit:<verb>=<value>]`. Verb must appear in .claude/patterns/audit-verb-registry.json.
+                               # Current verbs (post #1387):
+                               #   - api-fetch=<path>          : AST asserts fetch('<path>') in page .tsx
+                               #   - sitemap-instance=<route>/<segment> : sitemap.ts iterates over <segment>
+                               #   - event=<event-key>         : AST asserts track<Event>(...) call
+                               #   - ai-conversation           : AST asserts fetch('/api/...') + useState/useReducer
+                               #   - render                    : trivial; page existence (already enforced upstream)
+                               #   - seo=<free-text>           : free-text, lead review only
+                               # Producer = human; consumer = lead + AST scanner via the audit_tag_verb_recognized
+                               # and audit_tag_claim_matches_ast (#1387 behavior_contract_auditor.py) rules.
+                               # Example:
+                               #   tests:
+                               #     - "User sees portfolio cards [audit:api-fetch=/api/portfolio] [audit:event=portfolio_viewed]"
+                               #     - "[audit:sitemap-instance=portfolio/slug] each fixture slug appears in sitemap"
+                               #     - "[audit:ai-conversation] multi-turn AI surface for spec builder"
   level: 1 | 2 | 3             # Required. Behavior level.
   actor: user | system | cron  # Optional. Default `user`.
   trigger: <string>            # Optional. Required when actor != user.
@@ -101,6 +112,20 @@ Each behavior is a user-observable capability tied to a hypothesis. Schema:
                                # anonymous_allowed=true (fail-secure
                                # intersection). Default false enforces
                                # default-deny: absence keeps a page auth-gated.
+  dynamic_segments:            # Optional. #1387: declares concrete fixture slug
+                               # values for dynamic-segment pages (e.g.,
+                               # src/app/portfolio/[slug]/page.tsx). Required when
+                               # anonymous_allowed=true AND any page in `pages`
+                               # maps to a dynamic-segment file path — without
+                               # this, sitemap.ts cannot enumerate the URL
+                               # instances and SEO indexability is broken.
+                               # Schema: { <segment-name>: [<slug>, ...] }
+                               # Consumed by .claude/scripts/lib/derive_pages.py
+                               # dynamic_public_pages() + state-11c post-fan-out
+                               # sitemap.ts emitter.
+                               # Example:
+                               #   dynamic_segments:
+                               #     slug: [harborline-internal-orders, northwind-tutoring-marketplace]
 
   # Archetype-conditional REQUIRED fields:
   pages: [<page>...]           # web-app + actor: user → REQUIRED, non-empty

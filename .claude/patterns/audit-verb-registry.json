@@ -17,6 +17,21 @@
       "value_type": "event-key",
       "consumer": "ast-scanner",
       "description": "Page or behavior declares it fires this analytics event. AST scanner asserts a matching trackEvent('<key>') or equivalent call exists in source. Example: [audit:event=signup_started]"
+    },
+    "sitemap-instance": {
+      "value_type": "path",
+      "consumer": "ast-scanner",
+      "description": "#1387: page declares dynamic-segment URL instances must appear in sitemap.ts. Value format: '<route-prefix>/<segment-name>' (e.g., portfolio/slug). AST scanner asserts src/app/sitemap.ts iterates over <segment-name>. Behavior-verifier B7 in /verify additionally validates each declared dynamic_segments[<segment>][...] value appears in /sitemap.xml. Example: [audit:sitemap-instance=portfolio/slug]"
+    },
+    "ai-conversation": {
+      "value_type": "none",
+      "consumer": "ast-scanner",
+      "description": "#1387: page declares a multi-turn AI conversation surface. AST scanner asserts the page contains BOTH a fetch('/api/...') call (any internal API route) AND useState/useReducer/useChat for turn state. Behavior-verifier B7 validates the API route receives real POSTs with non-stub bodies at runtime. Example: [audit:ai-conversation]"
+    },
+    "render": {
+      "value_type": "none",
+      "consumer": "lead",
+      "description": "#1387: trivial 'page must render' claim. AST scanner skips (page existence is already checked at state-11c). Reserved for human-readable test prose. Example: [audit:render] page renders for known slug"
     }
   }
 }

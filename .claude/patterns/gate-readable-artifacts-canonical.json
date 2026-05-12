@@ -573,7 +573,41 @@
       ],
       "writers": [],
       "scope": "transient-cross-skill",
-      "rationale": "Gate verdict file consumed by VERIFY block; persisted across skills."
+      "rationale": "Gate verdict file consumed by VERIFY block; persisted across skills. Read-only consumed by .claude/scripts/lib/behavior_contract_auditor.py for the Phase A exemption check (#1187)."
+    },
+    {
+      "path": ".runs/scaffold-pages-contracts.json",
+      "consumers": [
+        ".claude/agents/scaffold-pages.md (per-page direct key access)",
+        ".claude/scripts/lib/behavior_contract_auditor.py (iterates via unstamped_items)"
+      ],
+      "writers": [
+        ".claude/scripts/lib/write-gate-artifact.sh"
+      ],
+      "scope": "transient-cross-skill",
+      "rationale": "#1387: pre-fan-out behavior contract derived from experiment.yaml.behaviors[*].tests directive tokens. Identity-stamped via canonical writer. Consumers MUST use unstamped_items() from verify_helpers.py (per template-coherence-rules.json verify-d-values-against-stamped-artifact rule)."
+    },
+    {
+      "path": ".runs/behavior-implementation-audit.json",
+      "consumers": [
+        "state-registry:bootstrap.11c"
+      ],
+      "writers": [
+        ".claude/scripts/lib/write-gate-artifact.sh"
+      ],
+      "scope": "transient-cross-skill",
+      "rationale": "#1387: post-fan-out static audit verdict consumed by state-11c VERIFY (via verify-state-11c-behavior-audit.py). uncovered_count > 0 blocks PR creation. Identity-stamped."
+    },
+    {
+      "path": ".runs/behavior-verifier-static-stubs.json",
+      "consumers": [
+        ".claude/agents/behavior-verifier.md (B7 runtime check)"
+      ],
+      "writers": [
+        ".claude/scripts/lib/write-gate-artifact.sh"
+      ],
+      "scope": "transient-cross-skill",
+      "rationale": "#1387: runtime check annotations signaled by Layer 4a auditor; consumed by behavior-verifier B7 dynamic-stub-detection in /verify. Load-bearing trustworthy check for fetch-with-stub-fallback patterns."
     },
     {
       "path": ".runs/graduation-result.json",

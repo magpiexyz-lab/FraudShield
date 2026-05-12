@@ -325,6 +325,11 @@
       "agent": "design-consistency-checker",
       "allow_predicates": ["pass_clean", "pass_after_fixes", "pass_self_pass_or_fail", "validated_fallback", "legacy_pass_no_recovery", "aggregate_ok", "pass_lead_synthesized", "pass_lead_orchestrated"],
       "_note": "#1275 / Group A: design-consistency-checker may be lead-orchestrated re-spawned after a shared-component fix lands (state-3a Stage 1b → state-3c flow). #1257: aggregate_ok added so the page-batched lead-merge aggregate (provenance=lead-merge + contributing_spawn_indexes) is accepted by the gate. #1381 D1: pass_lead_synthesized added for parity with design-critic — state-3a Stage 0 all-pages-fast-path writes a lead-synthesized aggregate for BOTH design agents; design-critic accepts it via this predicate, design-consistency-checker must too."
+    },
+    {
+      "agent": "design-page-contract",
+      "allow_predicates": ["pass_clean", "pass_after_fixes", "pass_self_pass_or_fail", "validated_fallback", "aggregate_ok", "legacy_pass_no_recovery", "pass_lead_synthesized", "pass_lead_orchestrated"],
+      "_note": "#1387: post-fan-out behavior-contract audit. Same lifecycle position as design-critic / design-consistency-checker (consumes scaffold-pages output, produces verdict for state-11c VERIFY). Executor is lead-orchestrated Python (.claude/scripts/lib/behavior_contract_auditor.py), not a spawned subagent — the verdict artifact .runs/behavior-implementation-audit.json is consumed by .claude/scripts/verify-state-11c-behavior-audit.py at state-registry:bootstrap.11c. allow_predicates superset of design-critic via design-agents-hard-gate-parity linter rule (template-coherence-rules.json design-agents-hard-gate-parity)."
     }
   ],
   "_legacy_hard_gates_v1": [

@@ -572,6 +572,57 @@ fix_template: |
 
 ---
 
+### unstamped_values / unstamped_items — safe iteration of canonical-writer artifacts
+```yaml
+id: unstamped-iteration-canonical-artifact
+maturity: stable
+anti_pattern: false
+composite_identity:
+  root_cause_class: iterate-stamped-artifact-trips-on-identity-metadata
+  divergence_pattern: raw-d-values-against-stamped-artifact
+  stack_scope: scripts/lib/verify_helpers
+composite_identity_hash: 3de199778a99
+symptom_keywords: [canonical-writer, identity-stamps, GRAIM, d.values, d.items, iteration, verify, behavior-contract, auditor]
+confidence_score: 0.90
+occurrence_count: 2
+linked_issues: [1379, 1381, 1387]
+first_seen: 2026-05-04
+last_seen: 2026-05-12
+graduated_to: null
+prevention_mechanism: |
+  verify_helpers.unstamped_values(d) / unstamped_items(d) filter out the
+  31-field STAMPED_FIELDS union (skill, run_id, written_at, agent,
+  timestamp, status, provenance, etc.) stamped by the four canonical
+  trace writers. Use these from VERIFY blocks AND from any consumer
+  that iterates a page/page or page/contract-keyed dict written via
+  write-gate-artifact.sh. Raw d.values() leaks identity strings into
+  assertions ("pass_self_pass_or_fail" string treated as a check value).
+fix_template: |
+  When consuming a canonical-writer .runs/*.json artifact whose top-level
+  shape is {<key>: <payload>, ..., <stamped-identity-fields>}:
+
+    # Wrong (will trip on stamped identity strings):
+    for v in d.values():
+        ...
+
+    # Right:
+    sys.path.insert(0, '.claude/scripts/lib')
+    from verify_helpers import unstamped_items, unstamped_values
+    for k, v in unstamped_items(d):
+        ...
+
+  STAMPED_FIELDS is the union across all four canonical writers
+  (write-gate-artifact.sh, write-agent-trace.sh, write-recovery-trace.sh,
+  write-skipped-fixer-trace.sh). The coherence rule
+  verify-d-values-against-stamped-artifact catches state-registry VERIFY
+  drift; this same defense applies to any Python consumer.
+
+  Callers:
+    - state-registry:bootstrap.13a (unstamped_values for design-validated check)
+    - .claude/scripts/lib/behavior_contract_auditor.py (#1387 unstamped_items
+      for per-page contract iteration)
+```
+
 ## Existing helpers (no Stack Knowledge — single-caller or in-flux)
 
 These helpers are below the `lib_helper_stack_knowledge_required` rule's `caller_threshold: 2` (per narrow consumption_patterns excluding tests/), so they don't yet need a Stack Knowledge entry. Add an entry only when the helper crosses 2+ production callers.
