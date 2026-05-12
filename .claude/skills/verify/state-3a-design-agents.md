@@ -42,23 +42,43 @@ lead-synthesized aggregate.
 **Trigger** (lead-side, no agents):
 
 ```bash
-# Compute boundary kind first (matches the existing pre-flight 1a logic).
-if [ "$(git rev-parse HEAD 2>/dev/null)" = "$(git merge-base HEAD main 2>/dev/null)" ]; then
-  BOUNDARY_KIND="full-tree"
-else
-  BOUNDARY_KIND="diff"
-fi
+# #1381 D3 — Stage 0 must NOT fire during bootstrap-verify. Bootstrap state-16
+# spawns implementer agents that commit test files BEFORE /verify runs (state-16
+# line 17, 45). This creates BOUNDARY_KIND="diff" with PR_RELEVANT=0 (test
+# commits don't touch UI; the 100+ scaffolded UI files are uncommitted in the
+# working tree), which would inappropriately fire the all-pages-fast-path and
+# zero-design-review the entire bootstrap surface. Skip Stage 0 when the parent
+# skill is bootstrap — the working tree IS the surface to review.
+MODE=$(python3 -c "
+import json
+try:
+    print(json.load(open('.runs/verify-context.json')).get('mode', ''))
+except Exception:
+    print('')
+" 2>/dev/null)
 
-ALL_PAGES_FAST_PATH=false
-if [ "$BOUNDARY_KIND" = "diff" ]; then
-  PR_RELEVANT=$(git diff --name-only $(git merge-base HEAD main)...HEAD \
-    | grep -E '^(src/lib|src/components|src/app)/' \
-    | grep -v -E '^src/components/(ui|magicui)/' \
-    | grep -v -E '^src/app/api/' \
-    | grep -v -E '\.test\.[jt]sx?$' \
-    | wc -l | tr -d ' ')
-  if [ "$PR_RELEVANT" = "0" ]; then
-    ALL_PAGES_FAST_PATH=true
+if [ "$MODE" = "bootstrap-verify" ]; then
+  echo "Stage 0 skipped: mode=bootstrap-verify (working tree is the surface; uncommitted scaffolded UI files would not appear in PR diff)"
+  ALL_PAGES_FAST_PATH=false
+else
+  # Compute boundary kind first (matches the existing pre-flight 1a logic).
+  if [ "$(git rev-parse HEAD 2>/dev/null)" = "$(git merge-base HEAD main 2>/dev/null)" ]; then
+    BOUNDARY_KIND="full-tree"
+  else
+    BOUNDARY_KIND="diff"
+  fi
+
+  ALL_PAGES_FAST_PATH=false
+  if [ "$BOUNDARY_KIND" = "diff" ]; then
+    PR_RELEVANT=$(git diff --name-only $(git merge-base HEAD main)...HEAD \
+      | grep -E '^(src/lib|src/components|src/app)/' \
+      | grep -v -E '^src/components/(ui|magicui)/' \
+      | grep -v -E '^src/app/api/' \
+      | grep -v -E '\.test\.[jt]sx?$' \
+      | wc -l | tr -d ' ')
+    if [ "$PR_RELEVANT" = "0" ]; then
+      ALL_PAGES_FAST_PATH=true
+    fi
   fi
 fi
 ```
@@ -68,7 +88,9 @@ The detector excludes:
 - `src/components/ui/**` and `src/components/magicui/**` — shadcn primitives (matches the existing thin-wrapper exclusion at the pre-flight step 2's import filter; not in design-review scope)
 - `src/app/api/**` — API routes (matches the existing fallback_boundary exclusion in pre-flight step 5a; not visual)
 
-The detector ONLY fires when `BOUNDARY_KIND="diff"`. In `full-tree` mode (no commits on the feature branch yet — typical at /bootstrap pre-commit), the detector is skipped: there is no PR diff to interpret.
+The detector ONLY fires when `BOUNDARY_KIND="diff"` AND `MODE != "bootstrap-verify"`.
+- `full-tree` mode (no commits on the feature branch yet): no PR diff to interpret, detector is skipped.
+- `bootstrap-verify` mode (#1381 D3): state-16 implementer commits create a non-empty diff that excludes the uncommitted scaffolded UI; detector is skipped so the working tree gets full design review.
 
 **On trigger** (write artifacts, skip pre-flight + Stage 1 + Stage 1b + Stage 1c):
 

@@ -100,7 +100,7 @@
       "lifecycle": "transient-cross-skill"
     },
     "13": "python3 -c \"import json; d=json.load(open('.runs/bootstrap-build-result.json')); assert d['exit_code']==0, 'build exit_code=%d' % d['exit_code']\"",
-    "13a": "python3 -c \"import json; d=json.load(open('.runs/bootstrap-design-validated.json')); assert all(v in (True, 'skipped') for v in d.values()), f'failed checks: {d}'\"",
+    "13a": "python3 -c \"import sys, json; sys.path.insert(0, '.claude/scripts/lib'); from verify_helpers import unstamped_values; d=json.load(open('.runs/bootstrap-design-validated.json')); assert all(v in (True, 'skipped') for v in unstamped_values(d)), f'failed checks: {d}'\"",
     "13b": "grep -q 'phase2-wire' .runs/current-plan.md",
     "13c": {
       "verify": "python3 -c \"import json; d=json.load(open('.runs/gate-verdicts/bg2.json')); assert d.get('verdict')=='PASS', 'BG2 verdict is %s' % d.get('verdict'); assert d.get('timestamp','')!='', 'timestamp empty'\"",

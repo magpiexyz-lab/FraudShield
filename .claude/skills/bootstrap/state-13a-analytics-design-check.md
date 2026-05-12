@@ -72,7 +72,7 @@ bash .claude/scripts/lib/write-gate-artifact.sh \
 
 **VERIFY:**
 ```bash
-python3 -c "import json; d=json.load(open('.runs/bootstrap-design-validated.json')); assert all(v in (True, 'skipped') for v in d.values()), f'failed checks: {d}'"
+python3 -c "import sys, json; sys.path.insert(0, '.claude/scripts/lib'); from verify_helpers import unstamped_values; d=json.load(open('.runs/bootstrap-design-validated.json')); assert all(v in (True, 'skipped') for v in unstamped_values(d)), f'failed checks: {d}'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

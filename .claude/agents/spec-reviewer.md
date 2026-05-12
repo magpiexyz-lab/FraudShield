@@ -74,7 +74,7 @@ First, validate the archetype-required field is present and non-empty:
 If the required field is absent or empty, report FAIL: "`<archetype>` archetype requires `<field>` in experiment.yaml with ≥1 entry."
 
 Then verify file existence per archetype:
-- **web-app**: enumerate pages via `python3 .claude/scripts/lib/derive_pages.py scope < experiment/experiment.yaml` (canonical SET inventory from `derive_scope_pages()` — unions `golden_path[*].page`, `behaviors[*].pages`, and auth-derived pages). For each page returned, verify `src/app/<page>/page.tsx` exists. Missing file is a FAIL.
+- **web-app**: enumerate pages via `python3 .claude/scripts/lib/derive_pages.py design_critic_pages < experiment/experiment.yaml`. **DO NOT** use the `scope` subcommand here — `scope` returns disambiguated names (e.g., a dynamic route at `src/app/portfolio/[slug]/page.tsx` is returned as `portfolio-slug`, which does NOT exist as a literal directory). The `design_critic_pages` subcommand returns `list[dict]` with `name`, `route_pattern`, `source_files`, etc.; iterate `source_files[]` and assert each `.tsx` path exists on disk (#1379 G3). Example dynamic-route case: `{name: 'portfolio-slug', source_files: ['src/app/portfolio/[slug]/page.tsx']}` — the source file IS the canonical answer, NOT a synthesized `src/app/portfolio-slug/page.tsx` path. Missing file is a FAIL.
 - **service**: verify each `endpoints` entry has a corresponding route file.
 - **cli**: verify each `commands` entry has a corresponding command file.
 

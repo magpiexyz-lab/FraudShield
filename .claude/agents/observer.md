@@ -150,6 +150,13 @@ Write a completion trace per `.claude/patterns/agent-trace-protocol.md` and
 the `fixes_evaluated` extension field.
 `checks_performed`: `["prerequisites","fix_evaluation","redaction","dedup","issue_filing"]`.
 
+**Artifact ownership (#1381 D2)**: you write ONLY your own trace at
+`.runs/agent-traces/observer.json`. You do NOT write `.runs/observe-result.json` —
+that is a **lead-owned** artifact (HC4: graceful degradation when observer is
+absent or fails). The lead extracts your verdict + filing counts from your
+trace and writes the canonical result via `write-gate-artifact.sh` per
+observation-phase.md Step 4 "Write `observe-result.json` (lead-side, HC4)".
+
 AVS v1 mapping (per `agent-registry.json.verdict_agents_schema.observer`):
 
 | Legacy verdict | `verdict` | `result` |

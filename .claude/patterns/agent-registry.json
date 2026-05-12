@@ -31,7 +31,9 @@
     },
     "ux-journeyer": {
       "allowed_verdicts": ["pass", "fail", "blocked"],
-      "allowed_results": ["clean", "fixed", "partial", "none"]
+      "allowed_results": ["clean", "fixed", "partial", "none"],
+      "required_structured_fields": ["fixes_applied"],
+      "_fixes_applied_note": "#1379 G2: fixes_applied is an int COUNT (not a list[dict]). The file list goes in `fixes[]`. Schema drift bug: agents/ux-journeyer.md documents the field as a count, but verify-design-critic-post-fix-respawn.py used to iterate it expecting list[dict] and crashed with 'int' object is not iterable. Iteration removed; field role pinned here for downstream consumers."
     },
     "security-fixer": {
       "allowed_verdicts": ["pass", "fail", "blocked"],
@@ -321,8 +323,8 @@
     },
     {
       "agent": "design-consistency-checker",
-      "allow_predicates": ["pass_clean", "pass_self_pass_or_fail", "validated_fallback", "legacy_pass_no_recovery", "aggregate_ok", "pass_lead_orchestrated"],
-      "_note": "#1275 / Group A: design-consistency-checker may be lead-orchestrated re-spawned after a shared-component fix lands (state-3a Stage 1b → state-3c flow). #1257: aggregate_ok added so the page-batched lead-merge aggregate (provenance=lead-merge + contributing_spawn_indexes) is accepted by the gate."
+      "allow_predicates": ["pass_clean", "pass_after_fixes", "pass_self_pass_or_fail", "validated_fallback", "legacy_pass_no_recovery", "aggregate_ok", "pass_lead_synthesized", "pass_lead_orchestrated"],
+      "_note": "#1275 / Group A: design-consistency-checker may be lead-orchestrated re-spawned after a shared-component fix lands (state-3a Stage 1b → state-3c flow). #1257: aggregate_ok added so the page-batched lead-merge aggregate (provenance=lead-merge + contributing_spawn_indexes) is accepted by the gate. #1381 D1: pass_lead_synthesized added for parity with design-critic — state-3a Stage 0 all-pages-fast-path writes a lead-synthesized aggregate for BOTH design agents; design-critic accepts it via this predicate, design-consistency-checker must too."
     }
   ],
   "_legacy_hard_gates_v1": [

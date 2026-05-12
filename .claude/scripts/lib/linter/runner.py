@@ -1830,6 +1830,134 @@ def main() -> int:
         return findings
 
 
+    def check_verify_d_values_against_stamped_artifact(rule):
+        """#1379 G1: state-registry.json VERIFY blocks must NOT iterate
+        raw `d.values()` on a payload whose path is a gate-stamped artifact
+        (registered in gate-readable-artifacts-canonical.json). The 3+
+        stamped identity fields (skill, run_id, written_at, etc.) leak into
+        the iteration and trip assertions like `all(v in (True, 'skipped'))`.
+
+        Fix is to call `unstamped_values(d)` from .claude/scripts/lib/verify_helpers.py
+        instead — see issue #1379 Gap 1."""
+        findings = []
+        registry_path = os.path.join(REPO_ROOT, rule.get("registry_path", ".claude/patterns/state-registry.json"))
+        manifest_path = os.path.join(REPO_ROOT, rule.get("manifest_path", ".claude/patterns/gate-readable-artifacts-canonical.json"))
+        if not os.path.isfile(registry_path):
+            findings.append(_emit_finding(rule, f"registry missing: {registry_path}"))
+            return findings
+        if not os.path.isfile(manifest_path):
+            findings.append(_emit_finding(rule, f"manifest missing: {manifest_path}"))
+            return findings
+        try:
+            reg_text = open(registry_path).read()
+            reg = json.loads(reg_text)
+            manifest = json.load(open(manifest_path))
+        except (OSError, json.JSONDecodeError) as e:
+            findings.append(_emit_finding(rule, f"cannot parse: {e}"))
+            return findings
+        # Collect gate-stamped paths from manifest (anything that goes through
+        # write-gate-artifact.sh per the GRAIM v2 canonical entries).
+        stamped_paths = set()
+        for entry in manifest.get("artifacts", []) or []:
+            p = entry.get("path") or ""
+            if p:
+                stamped_paths.add(p)
+        # Walk every VERIFY string in the registry. Match against `d.values()`
+        # paired with a gate-stamped path. The state-registry uses single-string
+        # VERIFY values (top-level) or dicts with a "verify" key (transient/cross-skill).
+        states = reg.get("states", {}) if "states" in reg else reg
+        # The registry schema mostly stores per-skill maps of state_id -> verify.
+        # Walk all leaf strings that look like a python -c expression.
+        def _walk(obj, path):
+            if isinstance(obj, dict):
+                for k, v in obj.items():
+                    _walk(v, path + [str(k)])
+            elif isinstance(obj, list):
+                for i, v in enumerate(obj):
+                    _walk(v, path + [str(i)])
+            elif isinstance(obj, str):
+                if "d.values()" not in obj:
+                    return
+                if "unstamped_values" in obj:
+                    return  # already migrated
+                # Identify which gate-stamped path this VERIFY references
+                for sp in stamped_paths:
+                    if sp in obj:
+                        findings.append(_emit_finding(
+                            rule,
+                            f"state-registry path {'/'.join(path)}: VERIFY iterates raw d.values() against gate-stamped artifact {sp} — use unstamped_values(d) from .claude/scripts/lib/verify_helpers.py to skip {{skill, run_id, written_at, ...}} stamps"
+                        ))
+                        break
+        _walk(reg, [])
+        return findings
+
+
+    def check_stage_0_detector_mode_aware(rule):
+        """#1381 D3: every state file containing a "Stage 0" all-pages-fast-path
+        detector MUST pair it with a bootstrap-verify mode skip (otherwise the
+        detector fires inappropriately during bootstrap pre-commit). Semantic
+        check, not heading-presence — must find both the Stage 0 trigger AND a
+        skip predicate referencing verify-context.json.mode == "bootstrap-verify"
+        within the same file."""
+        findings = []
+        scan_glob = rule.get("scan_glob", "")
+        trigger_re = re.compile(rule.get("trigger_pattern", r"Stage 0"))
+        mode_check_re = re.compile(rule.get("mode_check_pattern", r"bootstrap-verify"))
+        for fp in glob.glob(os.path.join(REPO_ROOT, scan_glob), recursive=True):
+            try:
+                content = open(fp).read()
+            except OSError:
+                continue
+            if not trigger_re.search(content):
+                continue
+            if not mode_check_re.search(content):
+                rel = os.path.relpath(fp, REPO_ROOT)
+                findings.append(_emit_finding(
+                    rule,
+                    f"{rel}: contains Stage 0 trigger but no bootstrap-verify mode skip predicate (#1381 D3 — detector fires inappropriately during bootstrap pre-commit because state-16 implementer commits create BOUNDARY_KIND=diff with PR_RELEVANT=0)"
+                ))
+        return findings
+
+
+    def check_agent_registry_predicate_parity(rule):
+        """#1381 D1: assert every agent in agent-registry.json hard_gates whose name
+        starts with family_prefix has allow_predicates ⊇ baseline_agent's. Catches
+        next sibling drift (e.g., adding design-quality-checker without parity)."""
+        findings = []
+        prefix = rule.get("family_prefix", "")
+        baseline_name = rule.get("baseline_agent", "")
+        reg_path = os.path.join(REPO_ROOT, ".claude/patterns/agent-registry.json")
+        if not os.path.isfile(reg_path):
+            findings.append(_emit_finding(rule, f"registry missing: {reg_path}"))
+            return findings
+        try:
+            reg = json.load(open(reg_path))
+        except (OSError, json.JSONDecodeError) as e:
+            findings.append(_emit_finding(rule, f"cannot parse registry: {e}"))
+            return findings
+        hard_gates = reg.get("hard_gates", []) or []
+        baseline_preds = None
+        for entry in hard_gates:
+            if entry.get("agent") == baseline_name:
+                baseline_preds = set(entry.get("allow_predicates", []))
+                break
+        if baseline_preds is None:
+            findings.append(_emit_finding(rule, f"baseline_agent {baseline_name!r} not found in hard_gates"))
+            return findings
+        for entry in hard_gates:
+            name = entry.get("agent", "")
+            if name == baseline_name or not name.startswith(prefix):
+                continue
+            preds = set(entry.get("allow_predicates", []))
+            missing = baseline_preds - preds
+            if missing:
+                findings.append(_emit_finding(
+                    rule,
+                    f"{name}: allow_predicates missing {sorted(missing)} (parity with {baseline_name})"
+                ))
+        return findings
+
+
     def check_frontmatter_artifact_consistency(rule):
         """AOC v1.1 R4 (closes #1056): a verify-report.md frontmatter schema declares
         fields and consumers; the writer at schema_path.writer must emit every
@@ -3740,6 +3868,12 @@ def main() -> int:
         # initially (severity=warn during soak). Flips True in chore/canonical-writer-migration-deny.
         "gate_artifact_writer_enforcement": (check_gate_artifact_writer_enforcement, {"manifest_path"},                                        {"allowed_writers", "scan_corpus"},                            False),
         "consumer_coverage":                (check_consumer_coverage,                {"canonical_source", "consumers"},                        set(),                                                        True),
+        # #1381 D1 — parity check across an agent family in hard_gates.
+        "agent_registry_predicate_parity":  (check_agent_registry_predicate_parity,  {"family_prefix", "baseline_agent"},                      set(),                                                        True),
+        # #1381 D3 — Stage 0 detector must pair its trigger with a bootstrap-verify mode skip.
+        "stage_0_detector_mode_aware":      (check_stage_0_detector_mode_aware,      {"scan_glob"},                                            {"trigger_pattern", "mode_check_pattern"},                    True),
+        # #1379 G1 — state-registry VERIFY blocks using d.values() against gate-stamped artifacts must use unstamped_values(d).
+        "verify_d_values_against_stamped_artifact": (check_verify_d_values_against_stamped_artifact, set(),                                {"registry_path", "manifest_path"},                            False),
         "frontmatter_artifact_consistency": (check_frontmatter_artifact_consistency, {"schema_path", "writer"},                                {"consumers"},                                                True),
         "internal_href_validity":           (check_internal_href_validity,           set(),                                                    {"scaffold_glob", "route_owner_hints"},                       False),
         "pages_no_payload_type_exports":    (check_pages_no_payload_type_exports,    {"scope_glob"},                                           {"path_excludes", "filename_excludes", "suffix_pattern", "types_source_path"}, True),

@@ -303,6 +303,39 @@ else:
    scaffold-* template_recommendations[]). Default MODE=warn during rollout;
    becomes blocking after 1-2 real cycles confirm zero false positives.
 
+### Write `observe-result.json` (lead-side, HC4)
+<!-- sanctioned-manual-write: .runs/observe-result.json -->
+
+#1381 D2: the non-fast-path Step 4 must explicitly write `.runs/observe-result.json`
+once the observer agent returns. The lead owns this artifact — the observer
+agent writes its own trace at `.runs/agent-traces/observer.json` and files
+GitHub issues, but does NOT write `observe-result.json` (HC4 — graceful
+degradation when observer fails or is skipped; check-observation-artifacts.sh
+asserts the file exists in state-99 epilogue, so the procedure cannot leave
+this implicit).
+
+After the observer returns successfully (and evidence coverage validates),
+the lead extracts the observer's verdict + filing counts from the trace and
+writes the canonical result via `write-gate-artifact.sh` (NO direct Write):
+
+```bash
+PAYLOAD=$(python3 -c "
+import json, datetime
+t = json.load(open('.runs/agent-traces/observer.json'))
+print(json.dumps({
+    'skill': '<active skill>',
+    'timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+    'friction_detected': t.get('friction_detected', False),
+    'observations_filed': t.get('observations_filed', 0),
+    'verdict': t.get('verdict', 'clean'),
+}))
+")
+bash .claude/scripts/lib/write-gate-artifact.sh \
+  --path .runs/observe-result.json \
+  --payload "$PAYLOAD" \
+  --skill <active-skill>
+```
+
 If observer spawning fails, retry once with reduced scope (pass only fix-log
 summaries, omit full diffs). If it still fails, the lead agent must perform
 inline evaluation of fix-log entries using the 3-condition test (Step 6) —

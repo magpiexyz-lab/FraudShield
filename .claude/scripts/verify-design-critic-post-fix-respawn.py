@@ -112,7 +112,15 @@ def _ledger_lead_fix_files(ledger_path: str, run_id: str) -> set[str]:
 
 
 def _ux_journeyer_ui_files(traces_dir: str) -> set[str]:
-    """Return .tsx/.jsx files ux-journeyer modified."""
+    """Return .tsx/.jsx files ux-journeyer modified.
+
+    #1379 G2: only iterate `fixes` (list[dict] of fix records). The legacy
+    `fixes_applied` iteration was a schema drift — ux-journeyer.md documents
+    `fixes_applied` as an integer count, not a list. Crash when an agent
+    obeyed the documented schema: `'int' object is not iterable`. The `fixes`
+    field already enumerates file paths; the `fixes_applied` iteration was
+    redundant.
+    """
     path = os.path.join(traces_dir, "ux-journeyer.json")
     data = _load_json(path)
     if not data:
@@ -120,11 +128,6 @@ def _ux_journeyer_ui_files(traces_dir: str) -> set[str]:
     out: set[str] = set()
     for fix in data.get("fixes", []) or []:
         fp = fix.get("file") if isinstance(fix, dict) else None
-        if isinstance(fp, str) and (fp.endswith(".tsx") or fp.endswith(".jsx")):
-            out.add(fp)
-    for fp in data.get("fixes_applied", []) or []:
-        if isinstance(fp, dict):
-            fp = fp.get("file")
         if isinstance(fp, str) and (fp.endswith(".tsx") or fp.endswith(".jsx")):
             out.add(fp)
     return out

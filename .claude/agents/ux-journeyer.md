@@ -179,7 +179,7 @@ trace = {
     "dead_ends": <D>,
     "golden_path_steps": <G>,
     "coverage_pct": <P>,
-    "fixes_applied": <F>,
+    "fixes_applied": <F>,  // int (count). Issue #1379 G2: this is a COUNT, not a list[dict]. The file list is in `fixes[]` above. Schema enforced via verdict_agents_schema.required_structured_fields.
     "unresolved_dead_ends": <UDE>,
     "per_step_reviews": [
         # One entry per golden_path step. Required when scope is full or visual.

@@ -549,6 +549,41 @@
       "lookback_lines": 10,
       "pragma": "# friction-skip:",
       "description": "#1349 + #1350 — every `exit 0` / `sys.exit(0)` in a PreToolUse hook must EITHER (a) be preceded within 10 lines by a friction-log call (_write_hook_friction / deny / deny_errors / handle_validation) OR (b) carry a `# friction-skip: <reason>` pragma on the same line or the directly preceding line. Closes Issues #1349 + #1350 silent-bypass class. Regex covers all forms: bare `exit 0`, `[[ ... ]] && exit 0`, `... || exit 0`, and Python `sys.exit(0)`. lib-core.sh excluded because handle_validation:170 IS the canonical fail-open implementation (PARSE_ERROR → exit 0)."
+    },
+    {
+      "id": "design-agents-hard-gate-parity",
+      "type": "agent_registry_predicate_parity",
+      "severity": "block",
+      "family_prefix": "design-",
+      "baseline_agent": "design-critic",
+      "description": "#1381 D1 — every agent in .claude/patterns/agent-registry.json hard_gates whose name starts with 'design-' must have allow_predicates ⊇ design-critic's. Catches the next sibling drift: when a new design-* agent is added to hard_gates and forgets to mirror design-critic's predicate set (e.g., design-consistency-checker missed pass_lead_synthesized during state-3a Stage 0 lead-synthesized aggregate rollout)."
+    },
+    {
+      "id": "derive-pages-consumer-reconciliation",
+      "type": "consumer_coverage",
+      "severity": "block",
+      "canonical_source": ".claude/scripts/lib/derive_pages.py",
+      "consumers": [
+        ".claude/agents/spec-reviewer.md"
+      ],
+      "description": "#1379 G3 — consumers of derive_pages.py that perform page-existence checks must reference design_critic_pages (the disambiguation-aware subcommand) NOT raw scope (which returns disambiguated names not mapping to literal directories for dynamic routes). consumer_coverage matches by content presence; ensures the consumer file mentions derive_pages.py + design_critic_pages."
+    },
+    {
+      "id": "verify-d-values-against-stamped-artifact",
+      "type": "verify_d_values_against_stamped_artifact",
+      "severity": "warn",
+      "registry_path": ".claude/patterns/state-registry.json",
+      "manifest_path": ".claude/patterns/gate-readable-artifacts-canonical.json",
+      "description": "#1379 G1 — state-registry.json VERIFY blocks must not iterate raw d.values() against gate-stamped artifacts. The 3+ identity stamps ({skill, run_id, written_at}) leak into the iteration and break assertions. Use unstamped_values(d) from .claude/scripts/lib/verify_helpers.py instead. Severity=warn during soak — STAMPED_FIELDS union may need adjustment after observing the next lifecycle-finalize cycle."
+    },
+    {
+      "id": "stage-0-detectors-mode-aware",
+      "type": "stage_0_detector_mode_aware",
+      "severity": "block",
+      "scan_glob": ".claude/skills/**/state-3a-*.md",
+      "trigger_pattern": "Stage 0:.*all-pages-fast-path|ALL_PAGES_FAST_PATH",
+      "mode_check_pattern": "bootstrap-verify",
+      "description": "#1381 D3 — any state file containing a Stage 0 all-pages-fast-path detector MUST also contain a bootstrap-verify mode skip predicate. Otherwise, during /bootstrap pre-commit, state-16 implementer commits create BOUNDARY_KIND=diff with PR_RELEVANT=0 (test commits don't touch UI), inappropriately firing the fast-path and zero-reviewing the entire scaffolded UI surface."
     }
   ]
 }

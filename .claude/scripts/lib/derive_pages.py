@@ -650,9 +650,11 @@ def main() -> None:
         "validation",
         "funnel",
         "public_paths",
+        "design_critic_pages",
     ):
         sys.stderr.write(
-            "usage: derive_pages.py {scope|validation|funnel|public_paths} [< experiment.yaml]\n"
+            "usage: derive_pages.py {scope|validation|funnel|public_paths|design_critic_pages} "
+            "[< experiment.yaml]\n"
         )
         sys.exit(2)
 
@@ -663,6 +665,14 @@ def main() -> None:
         result = derive_validation_pages(experiment)
     elif sys.argv[1] == "public_paths":
         result = derive_public_paths(experiment)
+    elif sys.argv[1] == "design_critic_pages":
+        # #1379 G3: spec-reviewer S2 page-existence check must use this output
+        # (returns list[dict] with name + source_files) instead of `scope`
+        # (returns disambiguated names). Dynamic routes like
+        # src/app/portfolio/[slug]/page.tsx are returned as
+        # name='portfolio-slug' which does NOT exist as a literal directory.
+        # source_files[] contains the actual repo-relative .tsx paths.
+        result = derive_page_set_for_design_critic(experiment)
     else:
         result = derive_funnel_steps(experiment)
 
