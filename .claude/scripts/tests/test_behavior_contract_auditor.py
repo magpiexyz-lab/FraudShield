@@ -67,14 +67,61 @@ class TestStubCatchDetection(unittest.TestCase):
         src = "fetch('/api/x').catch(() => 'fallback')"
         self.assertTrue(_has_stub_catch(src, "/api/x"))
 
-    def test_catch_returns_identifier_not_caught(self):
-        # KNOWN LIMITATION: identifier-returning catches escape the heuristic.
-        # Layer 4b runtime check (behavior-verifier B7) catches these.
+    def test_catch_returns_identifier_caught_when_empty_params(self):
+        # Empty-param catch returning identifier — caught by layer (b)
+        # (issue #1387 follow-up: previously this was the load-bearing
+        # gap that the regex missed entirely).
         src = "const STUB = {}; fetch('/api/x').catch(() => STUB)"
+        self.assertTrue(_has_stub_catch(src, "/api/x"))
+
+    def test_catch_returns_function_call_caught_when_empty_params(self):
+        # The specific failure pattern from the #1387 issue body.
+        src = "fetch('/api/x').catch(() => synthesize_stub_spec_id())"
+        self.assertTrue(_has_stub_catch(src, "/api/x"))
+
+    def test_catch_with_err_param_returning_derived_NOT_flagged(self):
+        # Parameterized catch with err returning derived data — legitimate
+        # error handling (the layer (b) check requires EMPTY params).
+        src = "fetch('/api/x').catch(err => err.message)"
         self.assertFalse(_has_stub_catch(src, "/api/x"))
 
     def test_no_catch_no_detection(self):
         src = "fetch('/api/x').then(r => r.json())"
+        self.assertFalse(_has_stub_catch(src, "/api/x"))
+
+    def test_trycatch_block_wrapping_fetch_with_no_throw_caught(self):
+        # The issue #1387 likely failure pattern: try/catch around fetch
+        # where catch synthesizes a stub instead of re-raising.
+        src = """
+        async function postSpec(data) {
+          try {
+            const r = await fetch('/api/x', { method: 'POST', body: data });
+            return await r.json();
+          } catch {
+            return { spec_id: synthesize_stub_id() };
+          }
+        }
+        """
+        self.assertTrue(_has_stub_catch(src, "/api/x"))
+
+    def test_trycatch_block_with_throw_NOT_flagged(self):
+        # Try/catch that re-raises is legitimate error handling.
+        src = """
+        async function postSpec(data) {
+          try {
+            const r = await fetch('/api/x', { method: 'POST', body: data });
+            return await r.json();
+          } catch (err) {
+            console.error('failed', err);
+            throw err;
+          }
+        }
+        """
+        self.assertFalse(_has_stub_catch(src, "/api/x"))
+
+    def test_fetch_without_try_wrap_NOT_flagged_by_trycatch_layer(self):
+        # Bare fetch with no surrounding try block — layer (c) MUST NOT fire.
+        src = "const data = await fetch('/api/x').then(r => r.json());"
         self.assertFalse(_has_stub_catch(src, "/api/x"))
 
 

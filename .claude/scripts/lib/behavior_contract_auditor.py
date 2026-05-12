@@ -139,8 +139,7 @@ def _fetch_unreachable(source: str, route: str) -> bool:
 
 
 # Detect .catch(() => <literal>) or .catch(() => (<literal>)) pattern that
-# synthesizes stub data. This is a heuristic — a real AST check would be
-# more reliable. The `\(?\s*` allows the common JS idiom where returning
+# synthesizes stub data. The `\(?\s*` allows the common JS idiom where returning
 # an object literal from an arrow function requires wrapping in parens:
 # .catch(() => ({ messages: [] }))
 _CATCH_LITERAL_RE = re.compile(
@@ -148,22 +147,151 @@ _CATCH_LITERAL_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Detect .catch(() => <non-block-expression>) where the catch arrow has
+# EMPTY parameters. Empty params mean the error value is discarded — so
+# any non-block return is by definition NOT derived from the fetch
+# failure. This catches function-call stubs (`.catch(() => synthesize_stub())`)
+# and identifier stubs (`.catch(() => MOCK_DATA)`) that the literal-only
+# regex above misses. Block form `=> {` is excluded here because blocks
+# may legitimately re-raise via `throw` — we handle blocks separately.
+_CATCH_EMPTY_PARAM_EXPR_RE = re.compile(
+    r"""\.\s*catch\s*\(\s*\(\s*\)\s*=>\s*[^{;\s]""",
+)
+
+
+def _trycatch_no_throw_around_fetch(source: str, fetch_start: int, fetch_end: int) -> bool:
+    """Detect fetch(route) inside `try { ... } catch (e?) { <no throw> ... }`.
+
+    Returns True when the fetch sits inside a `try` block whose paired
+    `catch` arm contains no `throw` (i.e., swallows the error). This
+    catches the issue-body pattern:
+
+        try {
+          const r = await fetch('/api/x', ...);
+          return await r.json();
+        } catch {
+          return { spec_id: synthesize_stub_id() };  // graceful fallback
+        }
+
+    Uses brace tracking rather than regex because `[^}]*` cannot handle
+    nested braces inside the catch body. Conservative: requires the
+    `try` keyword to appear within 400 chars before the fetch, and the
+    matching `} catch` to appear within 800 chars after.
+    """
+    before = source[max(0, fetch_start - 400):fetch_start]
+    # Walk backward to find the most recent unmatched `try {`.
+    # Strategy: scan tokens left-to-right and track brace depth + try state.
+    depth_before = 0
+    try_at_depth: list[int] = []  # depths at which a `try {` opened
+    i = 0
+    while i < len(before):
+        if before[i:i+4] == 'try ' or before[i:i+5] == 'try\n' or before[i:i+5] == 'try\t' or before[i:i+4] == 'try{':
+            # Find the opening brace of the try block.
+            j = i + 3
+            while j < len(before) and before[j] not in '{':
+                j += 1
+            if j < len(before) and before[j] == '{':
+                try_at_depth.append(depth_before)
+                depth_before += 1
+                i = j + 1
+                continue
+        ch = before[i]
+        if ch == '{':
+            depth_before += 1
+        elif ch == '}':
+            depth_before -= 1
+            # If a try block just closed (its depth went out), pop it.
+            if try_at_depth and depth_before == try_at_depth[-1]:
+                try_at_depth.pop()
+        i += 1
+
+    # If no unclosed `try {` precedes the fetch, no try-wrap.
+    if not try_at_depth:
+        return False
+
+    # The fetch is inside a try block. Now walk forward to find the
+    # matching `}` that closes that try, followed by `catch`.
+    after = source[fetch_end:fetch_end + 800]
+    depth = depth_before  # current nesting depth (post-fetch)
+    target_depth = try_at_depth[-1]  # depth at which the enclosing try { opened
+    i = 0
+    catch_start = None
+    while i < len(after):
+        ch = after[i]
+        if ch == '{':
+            depth += 1
+        elif ch == '}':
+            depth -= 1
+            if depth == target_depth:
+                # The try block just closed. Look for `catch` (with
+                # optional space/newline).
+                rest = after[i+1:i+30].lstrip()
+                if rest.startswith('catch'):
+                    catch_start = i + 1 + after[i+1:].index('catch')
+                    break
+                else:
+                    return False  # try without catch — irrelevant
+        i += 1
+    if catch_start is None:
+        return False
+
+    # Find the catch body opening `{`.
+    j = catch_start + 5
+    while j < len(after) and after[j] != '{':
+        j += 1
+    if j >= len(after):
+        return False
+    # Track the catch body to its closing brace.
+    body_depth = 1
+    k = j + 1
+    while k < len(after) and body_depth > 0:
+        if after[k] == '{':
+            body_depth += 1
+        elif after[k] == '}':
+            body_depth -= 1
+        k += 1
+    catch_body = after[j:k]
+    # The catch swallows the error iff there is no `throw` keyword.
+    # Heuristic: substring search (more sophisticated AST would tokenize).
+    return 'throw' not in catch_body
+
 
 def _has_stub_catch(source: str, route: str) -> bool:
-    """Heuristic: fetch(route) followed within ~400 chars by .catch(() => LITERAL).
+    """Detect stub-fallback patterns wrapping fetch(route).
 
-    LITERAL is detected by examining the first non-whitespace char after `=>`
-    (optionally inside parens): `{`, `[`, `"`, `'`, or a digit. Identifier-
-    returning catches (which might legitimately return fetched fallback data)
-    are NOT flagged — Layer 4b runtime check (behavior-verifier B7) catches
-    those.
+    Three detection layers (heuristic — AST upgrade is follow-up):
+
+      (a) .catch(<params>) => LITERAL — existing literal-return detection.
+          Catches `.catch(() => ({}))`, `.catch(() => [])`, etc.
+
+      (b) .catch(() => EXPR) with empty params and non-block return —
+          empty params mean the error is discarded, so any non-block
+          return is a stub by definition. Catches the function-call form
+          `.catch(() => synthesize_stub_id())` and identifier form
+          `.catch(() => MOCK_DATA)` that (a) misses.
+
+      (c) try { fetch(...) ... } catch { <no throw> } — wrap the fetch
+          in a try block whose paired catch arm swallows the error.
+          Catches the issue-body pattern that has no `.catch()` chain.
+
+    Parameterized non-empty-arg cases (`.catch(err => ...)`) are NOT
+    detected here — they may legitimately derive the return value from
+    `err`. Layer 4b runtime check (behavior-verifier B7) is the
+    load-bearing trustworthy check for those.
     """
     fetch_pat = re.compile(
         r"""fetch\s*\(\s*['"`]""" + re.escape(route) + r"""['"`]"""
     )
     for fmatch in fetch_pat.finditer(source):
         window = source[fmatch.end():fmatch.end() + 400]
+        # (a) literal-return catch
         if _CATCH_LITERAL_RE.search(window):
+            return True
+        # (b) empty-param non-block catch
+        if _CATCH_EMPTY_PARAM_EXPR_RE.search(window):
+            return True
+        # (c) try/catch wrap with no throw
+        if _trycatch_no_throw_around_fetch(source, fmatch.start(), fmatch.end()):
             return True
     return False
 
