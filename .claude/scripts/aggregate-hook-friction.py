@@ -167,10 +167,26 @@ def _try_auto_file(group_key: tuple, info: dict, run_id: str) -> bool:
         return False
 
 
+# #1393 r3 — closed enum mirroring append-hook-friction.py VALID_ACTION_TYPES.
+# Rows missing the field (legacy / pre-PR-1402 entries) classify as "block".
+VALID_ACTION_TYPES = (
+    "block",
+    "warn-mode-bypass",
+    "manual-write-sanctioned",
+    "manual-write-deviation",
+)
+
+
 def main():
     rid = _active_run_id()
     summary = defaultdict(lambda: {"count": 0, "sample_reasons": [], "_seen": set()})
     normalized = defaultdict(lambda: {"count": 0, "sample_raw_reasons": [], "_seen_raw": set()})
+    # #1393 r3 — surface action_type discrimination at the consumer layer so
+    # observer + compliance-audit can distinguish deviations from sanctioned
+    # writes / warn-mode bypasses / blocks. Without this, the action_type
+    # field in raw .jsonl rows is invisible to downstream consumers — the
+    # framework declared a channel but no consumer can read the discriminator.
+    action_type_counts = {at: 0 for at in VALID_ACTION_TYPES}
     path = '.runs/hook-friction.jsonl'
     out_path = '.runs/hook-friction-summary.json'
 
@@ -178,7 +194,11 @@ def main():
         try:
             os.makedirs('.runs', exist_ok=True)
             with open(out_path, 'w') as f:
-                json.dump({"run_id": rid, "hooks": {}, "total": 0, "normalized_groups": {}}, f, indent=2)
+                json.dump({
+                    "run_id": rid, "hooks": {}, "total": 0,
+                    "normalized_groups": {},
+                    "action_type_counts": action_type_counts,
+                }, f, indent=2)
         except Exception:
             pass
         return 0
@@ -197,6 +217,11 @@ def main():
                     continue
                 h = e.get('hook', 'unknown')
                 r = (e.get('reason') or '')[:300]
+                # #1393 r3 — classify by action_type (legacy missing → "block").
+                at = e.get('action_type') or 'block'
+                if at not in VALID_ACTION_TYPES:
+                    at = 'block'
+                action_type_counts[at] += 1
                 summary[h]["count"] += 1
                 if r and r not in summary[h]["_seen"] and len(summary[h]["sample_reasons"]) < 3:
                     summary[h]["sample_reasons"].append(r)
@@ -212,7 +237,12 @@ def main():
     except Exception:
         pass
 
-    out = {"run_id": rid, "hooks": {}, "total": 0, "normalized_groups": {}}
+    out = {
+        "run_id": rid, "hooks": {}, "total": 0,
+        "normalized_groups": {},
+        # #1393 r3 — top-level breakdown so consumers don't need to re-parse raw .jsonl.
+        "action_type_counts": action_type_counts,
+    }
     for h, v in summary.items():
         out["hooks"][h] = {"count": v["count"], "sample_reasons": v["sample_reasons"]}
         out["total"] += v["count"]

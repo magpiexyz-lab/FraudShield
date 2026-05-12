@@ -175,7 +175,7 @@ the following exist with content, they appear in this list:
 - `.runs/observer-diffs.txt` (always when present + non-empty)
 - `.runs/fix-log.md` (always when present + non-empty)
 - `.runs/hook-friction.jsonl` (when has rows for active run_id)
-- `.runs/hook-friction-summary.json` (when present, especially `normalized_groups`)
+- `.runs/hook-friction-summary.json` (when present, especially `normalized_groups` and `action_type_counts` — the latter breaks rows down by `{block, warn-mode-bypass, manual-write-sanctioned, manual-write-deviation}` per #1393 r3; non-zero `manual-write-deviation` counts indicate lead bypassed canonical writers outside any sanctioned procedure marker)
 - Plus the synthetic marker `"scaffold-template-recommendations"` when any
   scaffold-* trace has non-empty `template_recommendations[]`
 
