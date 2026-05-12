@@ -46,7 +46,7 @@ fi
 # Reject malformed input (kept as defense-in-depth; the helper's tokenization
 # normally guarantees well-formed values, but a future caller could still pass
 # garbage args).
-if ! [[ "$SKILL" =~ ^[a-z][a-z0-9_-]*$ && "$STATE_ID" =~ ^[0-9]+[a-z]?$ ]]; then
+if ! [[ "$SKILL" =~ ^[a-z][a-z0-9_-]*$ && "$STATE_ID" =~ ^[a-z]?[0-9]+[a-z]?$ ]]; then
   deny "State completion gate: malformed args SKILL='$SKILL' STATE_ID='$STATE_ID'. Run advance-state.sh with one skill/state per Bash call (do not chain with &&)."
 fi
 
