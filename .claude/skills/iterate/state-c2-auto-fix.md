@@ -190,6 +190,7 @@ INNER JOIN events AS reach
   AND reach.properties.funnel_stage = 'reach'
   AND reach.properties.gclid IS NOT NULL
   AND reach.properties.gclid != ''
+  AND length(toString(reach.properties.gclid)) > 30
 WHERE demand.properties.project_name = {project_name}
   AND demand.properties.funnel_stage = 'demand'
   AND demand.timestamp > {last_import_at}
@@ -197,6 +198,8 @@ GROUP BY gclid
 ```
 
 Note: gclid is captured on the reach event (landing page), not on the demand event (signup). The join by distinct_id links "which user clicked the ad" to "which user converted."
+
+**gclid length filter** — `length(...) > 30` excludes operator manual-test traffic that produces synthetic gclids like `test123` or short numeric IDs (see `.claude/patterns/iterate-cross-debug-prompts.md` NO_DATA step 6 for the test convention). Real Google Ads gclids are 60-120 char base64-url strings. Without this filter, the offline-conversion CSV exported below would include fake gclids and either fail Google Ads validation or pollute the campaign conversion data. Same convention applied in `state-x0`, `state-x1`, and `state-x2` — keep in sync.
 
 If query returns 0 rows → log "No new conversions with gclid since last import" → skip to Write fixes artifact.
 

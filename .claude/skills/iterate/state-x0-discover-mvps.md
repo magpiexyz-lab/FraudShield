@@ -53,7 +53,9 @@ If `phase_filter.utm_campaign_like` is set, x0 surfaces both:
 
 ### Discover MVPs from PostHog
 
-Query distinct `project_name` values with gclid traffic in the time window. `project_name` is the canonical MVP identifier (set verbatim from `experiment.yaml.name` by `/bootstrap` STATE 3 — see `.claude/scripts/lib/validate_experiment_yaml.py`). Events without `project_name` are orphaned and surfaced separately for triage:
+Query distinct `project_name` values with gclid traffic in the time window. `project_name` is the canonical MVP identifier (set verbatim from `experiment.yaml.name` by `/bootstrap` STATE 3 — see `.claude/scripts/lib/validate_experiment_yaml.py`). Events without `project_name` are orphaned and surfaced separately for triage.
+
+**gclid length filter (`length(...) > 30`)** — real Google Ads gclids are 60-120 char base64-url strings. Short sentinels like `test123` or 10-digit numbers come from operator manual debug traffic (see `.claude/patterns/iterate-cross-debug-prompts.md` NO_DATA step 6) and must be excluded from cross-MVP analytics. **Do not extend the test gclid length above 30 chars without updating this filter** — the convention is enforced consumer-side here, in `state-x1-gather-all-data.md`, in `state-x2-classify-signups.md`, and in `state-c2-auto-fix.md` (offline conversion import).
 
 ```bash
 WINDOW_DAYS=$(python3 -c "
@@ -68,7 +70,7 @@ cat > /tmp/iterate-cross-discover.json <<JSON
 {
   "query": {
     "kind": "HogQLQuery",
-    "query": "SELECT properties.project_name AS mvp_key, max(properties.utm_campaign) AS sample_utm_campaign, count(DISTINCT distinct_id) AS gclid_visitors, min(timestamp) AS first_seen, max(timestamp) AS last_seen FROM events WHERE properties.\$session_entry_gclid IS NOT NULL AND properties.\$session_entry_gclid != {empty} AND properties.project_name IS NOT NULL AND properties.project_name != {empty} AND timestamp >= now() - INTERVAL ${WINDOW_DAYS} DAY GROUP BY mvp_key HAVING gclid_visitors > 0 ORDER BY gclid_visitors DESC LIMIT 200",
+    "query": "SELECT properties.project_name AS mvp_key, max(properties.utm_campaign) AS sample_utm_campaign, count(DISTINCT distinct_id) AS gclid_visitors, min(timestamp) AS first_seen, max(timestamp) AS last_seen FROM events WHERE properties.\$session_entry_gclid IS NOT NULL AND properties.\$session_entry_gclid != {empty} AND length(toString(properties.\$session_entry_gclid)) > 30 AND properties.project_name IS NOT NULL AND properties.project_name != {empty} AND timestamp >= now() - INTERVAL ${WINDOW_DAYS} DAY GROUP BY mvp_key HAVING gclid_visitors > 0 ORDER BY gclid_visitors DESC LIMIT 200",
     "values": {"empty": ""}
   }
 }
@@ -87,7 +89,7 @@ cat > /tmp/iterate-cross-orphan.json <<JSON
 {
   "query": {
     "kind": "HogQLQuery",
-    "query": "SELECT splitByChar('.', domain(coalesce(properties.\$current_url, '')))[1] AS host_prefix, count(DISTINCT distinct_id) AS gclid_visitors FROM events WHERE properties.\$session_entry_gclid IS NOT NULL AND properties.\$session_entry_gclid != {empty} AND (properties.project_name IS NULL OR properties.project_name = {empty}) AND timestamp >= now() - INTERVAL ${WINDOW_DAYS} DAY GROUP BY host_prefix HAVING gclid_visitors > 0 ORDER BY gclid_visitors DESC LIMIT 50",
+    "query": "SELECT splitByChar('.', domain(coalesce(properties.\$current_url, '')))[1] AS host_prefix, count(DISTINCT distinct_id) AS gclid_visitors FROM events WHERE properties.\$session_entry_gclid IS NOT NULL AND properties.\$session_entry_gclid != {empty} AND length(toString(properties.\$session_entry_gclid)) > 30 AND (properties.project_name IS NULL OR properties.project_name = {empty}) AND timestamp >= now() - INTERVAL ${WINDOW_DAYS} DAY GROUP BY host_prefix HAVING gclid_visitors > 0 ORDER BY gclid_visitors DESC LIMIT 50",
     "values": {"empty": ""}
   }
 }

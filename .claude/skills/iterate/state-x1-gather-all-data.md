@@ -43,13 +43,19 @@ for i, m in enumerate(mvps):
     # $current_url cross-polluted similarly-named MVPs (e.g. rubberduck vs
     # rubber-duck-api). project_name is now the canonical MVP identifier —
     # enforced at /bootstrap state-3 by validate_experiment_yaml.py.
+    #
+    # gclid length filter: length(...) > 30 excludes operator manual-test traffic
+    # (e.g. `?gclid=test123` from .claude/patterns/iterate-cross-debug-prompts.md
+    # NO_DATA step 6). Real Google Ads gclids are 60-120 char base64; short
+    # sentinels (test123, 10-digit timestamps, framework_audit_*) are filtered.
+    # Same convention applied in state-x0/state-x2/state-c2 — keep in sync.
     subq = (
         f"SELECT {{{pj}}} AS mvp_key, "
         f"event AS event_name, "
         f"max(toString(properties.funnel_stage)) AS sample_stage, "
         f"count(*) AS event_count, "
         f"count(DISTINCT distinct_id) AS unique_users, "
-        f"count(DISTINCT IF(properties.$session_entry_gclid IS NOT NULL AND properties.$session_entry_gclid != {{empty}}, distinct_id, NULL)) AS gclid_users "
+        f"count(DISTINCT IF(properties.$session_entry_gclid IS NOT NULL AND properties.$session_entry_gclid != {{empty}} AND length(toString(properties.$session_entry_gclid)) > 30, distinct_id, NULL)) AS gclid_users "
         f"FROM events "
         f"WHERE timestamp >= now() - INTERVAL {window_days} DAY "
         f"AND properties.project_name = {{{pj}}} "

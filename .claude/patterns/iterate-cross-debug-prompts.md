@@ -19,6 +19,8 @@ Verify in order:
 5. Verify the PostHog event has `project_name` set as a global property. If not, the cross-MVP query won't group this MVP under its expected name. Compare against `.claude/stacks/analytics/posthog.md` for the expected init pattern.
 6. When you append `?gclid=test123` to the URL and reload, does the frontend capture `gclid` into the PostHog event properties for the `$pageview` event? Does `gclid` persist across the session via `$session_entry_gclid`?
 
+   > **Test-gclid convention — keep length under 30 chars.** `/iterate --cross` filters out events whose `$session_entry_gclid` is shorter than 30 characters to exclude manual-test traffic from production cross-MVP analytics. Real Google Ads gclids are 60-120 chars (base64-url), so short sentinels like `test123` are safe and won't pollute future verdicts. **Do not extend the test gclid to a long string that mimics Google's format** — that would bypass the filter and silently inflate cross-MVP signup/visitor counts. The filter is enforced in `state-x0/x1/x2/c2` of the iterate skill.
+
 Report which step failed and what the root cause is. Then propose the minimum fix — don't apply it yet, I'll review first.
 
 ---

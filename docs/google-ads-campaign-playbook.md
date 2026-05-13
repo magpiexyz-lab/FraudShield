@@ -142,7 +142,7 @@ Open your deployed MVP in a browser and check:
 
 | # | Check | How to Verify |
 |---|-------|--------------|
-| 21 | gclid capture | Visit `your-url.com/?gclid=test123`, open PostHog, check `visit_landing` event has `gclid: test123` |
+| 21 | gclid capture | Visit `your-url.com/?gclid=test123`, open PostHog, check `visit_landing` event has `gclid: test123`. **Note**: keep the test gclid under 30 chars — `/iterate --cross` filters out short gclids from cross-MVP analytics so this manual check never pollutes verdicts. See `.claude/patterns/iterate-cross-debug-prompts.md` for the full convention. |
 | 22 | UTM capture | Visit `your-url.com/?utm_source=google&utm_medium=cpc`, check event has UTM properties |
 | 23 | Signup event fires | Complete signup flow, check `signup_complete` event fires in PostHog with `funnel_stage: demand` |
 | 24 | gclid-to-signup link | Do #21 and #23 in one session -- verify the same `distinct_id` appears on both events (this is how `/iterate --check` joins them for gclid import) |

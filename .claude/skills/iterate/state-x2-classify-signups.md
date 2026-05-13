@@ -120,11 +120,19 @@ for i, mvp in enumerate(data['mvps']):
     # Filter SOLELY by properties.project_name (canonical MVP identifier
     # enforced at /bootstrap state-3). The previous OR-LIKE branch on
     # $current_url double-counted signups across similarly-named MVPs.
+    #
+    # gclid length filter: length(...) > 30 excludes operator manual-test
+    # traffic that triggers signup events with synthetic gclids (e.g.
+    # `?gclid=test123` from debug-prompts.md NO_DATA step 6 — when manual
+    # testing also walks through the signup funnel, the signup event gets
+    # tagged with the fake gclid and inflates real conversion counts).
+    # Real Google gclids are 60-120 chars; this filter keeps only them.
+    # Same convention applied in state-x0/state-x1/state-c2 — keep in sync.
     parts.append(
         f"SELECT {{{pj}}} AS mvp_key, "
         f"count(DISTINCT IF({sg_expr}, distinct_id, NULL)) AS signups "
         f"FROM events "
-        f"WHERE properties.$session_entry_gclid IS NOT NULL AND properties.$session_entry_gclid != {{empty}} "
+        f"WHERE properties.$session_entry_gclid IS NOT NULL AND properties.$session_entry_gclid != {{empty}} AND length(toString(properties.$session_entry_gclid)) > 30 "
         f"AND timestamp >= now() - INTERVAL {window_days} DAY "
         f"AND properties.project_name = {{{pj}}}"
     )
