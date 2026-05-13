@@ -3,12 +3,19 @@
 
 Reads .runs/consistency-soak-telemetry.jsonl (raw-fields records appended by
 merge-design-consistency-checker-traces.py on every multi-batch run) and
-applies the 3-tuple closure criterion documented in PR #1357 + step55-evidence-rollout.md:
+applies the closure criterion documented in step55-evidence-rollout.md:
 
   * provenance == "lead-merge"
   * contributing_spawn_indexes_count >= 2
+  * contributing_spawn_indexes_count >= partition_size  (full batch coverage)
   * pages_reviewed_total >= 12
   * status == "completed"
+
+The 4th clause (`csi_count >= partition_size`) closes the asymmetric-defense gap:
+state-3b VERIFY gates partial-spawn at pipeline-time, but the merger emits
+telemetry BEFORE VERIFY runs, so partial-spawn records persist on disk. Without
+this clause, an 18-page project where batch 3 never spawned would still show
+csi_count=2, pages=12, status=completed and falsely attest.
 
 The predicate is evaluated at READ time (NOT precomputed at WRITE time) so future
 criterion changes (e.g., raising the page threshold) do NOT strand existing records.
@@ -36,12 +43,31 @@ DEFAULT_TELEMETRY = ".runs/consistency-soak-telemetry.jsonl"
 def is_attesting(rec: dict[str, Any]) -> bool:
     """Apply the #1257 closure criterion at READ time.
 
-    The criterion mirrors PR #1357 body verbatim — see step55-evidence-rollout.md
-    section "#1257 Attestation Telemetry" for the canonical declaration."""
+    Full attestation requires (a) the multi-batch path ran (provenance, csi>=2),
+    (b) the project was non-trivial (pages>=12), (c) the merger completed, AND
+    (d) full batch coverage (csi_count >= partition_size).
+
+    The 4th clause closes the asymmetric-defense gap exposed during /solve --defect
+    post-merge audit: state-3b VERIFY gates partial-spawn at pipeline-time, but the
+    merger emits telemetry BEFORE VERIFY runs, so partial-spawn records persist on
+    disk. Without the read-time `csi_count >= partition_size` check, an 18-page
+    project where batch 3 silently never spawned would still show
+    `csi_count=2, pages_reviewed_total=12, status=completed` and falsely attest.
+
+    The criterion is applied at READ time (NOT precomputed at write time) so future
+    changes do not strand existing records — see step55-evidence-rollout.md
+    `## #1257 Attestation Telemetry` for the canonical declaration."""
+    # `(rec.get(k) or 0)` handles both missing key and explicit null value;
+    # `rec.get(k, 0)` would propagate a json-null and TypeError on `>=` (mirrors
+    # the R2 critic isinstance-guard defensive pattern).
+    csi_count = rec.get("contributing_spawn_indexes_count") or 0
+    partition_size = rec.get("partition_size") or 0
+    pages = rec.get("pages_reviewed_total") or 0
     return (
         rec.get("provenance") == "lead-merge"
-        and rec.get("contributing_spawn_indexes_count", 0) >= 2
-        and rec.get("pages_reviewed_total", 0) >= 12
+        and csi_count >= 2
+        and csi_count >= partition_size
+        and pages >= 12
         and rec.get("status") == "completed"
     )
 

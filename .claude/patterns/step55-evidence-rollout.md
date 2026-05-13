@@ -219,14 +219,32 @@ python3 .claude/scripts/check-1257-attestation.py
 Argparse `--telemetry-path <path>` overrides the default
 `.runs/consistency-soak-telemetry.jsonl`.
 
-### Closure criterion (verbatim from PR #1357)
+### Closure criterion
 
 ```
 provenance == "lead-merge"
 AND contributing_spawn_indexes_count >= 2
+AND contributing_spawn_indexes_count >= partition_size   # full batch coverage
 AND pages_reviewed_total >= 12
 AND status == "completed"
 ```
+
+The original PR #1357 body documented the 3-tuple (lead-merge / csi>=2 /
+pages>=12 / status=completed). The 4th clause `csi_count >= partition_size`
+was added by post-merge first-principles audit of PR #1412 because the
+3-tuple alone admitted a partial-spawn false-positive:
+
+- State-3b VERIFY catches partial-spawn at pipeline-time
+  (`assert len(csi) >= len(partition)`).
+- The merger writes telemetry BEFORE state-3b VERIFY runs.
+- A partial-spawn run thus leaves an `status="completed"` record on disk
+  (merger hardcodes status because the merger itself completed).
+- Without the 4th clause, the helper could later read this stranded record
+  and falsely declare `ATTESTED`.
+
+The 4th clause closes the asymmetric-defense gap by mirroring state-3b
+VERIFY's gate-time check at READ-time. Symmetry between gate-time and
+audit-time predicates is a strong first-principles design signal.
 
 ### Manual closure (NOT auto-close)
 
