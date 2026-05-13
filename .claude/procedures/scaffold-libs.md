@@ -16,14 +16,14 @@
 
 ## Instructions
 
-Create ONLY the `src/lib/` files (and the route-protection file when `stack.auth` is present — `src/middleware.ts` on Next.js 16.x, `src/proxy.ts` on Next.js 17+; see Step 3 below) from each stack file's "Files to Create" section. Skip files outside these paths — pages are owned by scaffold-pages, infrastructure routes and components by scaffold-wire.
+Create ONLY the `src/lib/` files (and the route-protection file `src/proxy.ts` when `stack.auth` is present — see Step 3 below) from each stack file's "Files to Create" section. Skip files outside these paths — pages are owned by scaffold-pages, infrastructure routes and components by scaffold-wire.
 
 1. **Analytics library** (if `stack.analytics` is present): create from the analytics stack file.
 
 2. **Database clients** (if `stack.database` is present): create from the database stack file.
 
 3. **Auth files** (if `stack.auth` is present): create from the auth stack file using the correct conditional path:
-   - The route-protection filename is `src/middleware.ts` on Next.js 16.x (today's template default after `npm install next`) or `src/proxy.ts` on Next.js 17+. Detect the installed Next.js major version from `node_modules/next/package.json` (e.g. `node -p "require('./node_modules/next/package.json').version"` → parse); write `src/middleware.ts` + `export async function middleware(...)` when major < 17, else write `src/proxy.ts` + `export async function proxy(...)`. The `config` export is identical regardless of filename. **Why the version threshold flipped from 16 to 17**: Next.js 16.x deprecated the middleware.ts filename in favour of proxy.ts but the proxy.ts registration is incomplete — auth-gated routes silently bypass redirect, a security regression (#1120). Stay on middleware.ts until Next.js 17 ships and proxy.ts registration is wired through. See `.claude/stacks/framework/nextjs.md` Stack Knowledge entry "Next.js 16.x: scaffold src/middleware.ts".
+   - The route-protection filename is `src/proxy.ts` on Next.js 16+ (today's template default after `npm install next`). The Next.js 16+ filename↔export-name invariant requires the file `src/proxy.ts` paired with `export async function proxy(request: NextRequest)` — renaming only one (file but not export, or vice versa) produces an empty middleware-manifest and silent non-registration of the proxy (this was the symptom #1120 originally reported on 16.2.4, since superseded by empirical 16.2.6 verification — see `.claude/stacks/framework/nextjs.md` Stack Knowledge entry "Next.js 16+: scaffold src/proxy.ts + filename↔export-name invariant"). The `config` export is identical regardless of filename. For pre-existing projects already on `src/middleware.ts`, the legacy filename continues to work on Next.js 16+ but emits a deprecation warning — migrate via `git mv src/middleware.ts src/proxy.ts` and rename the exported function in the same commit.
    - **publicPaths derivation (Issue #1126)**: After writing the route-protection file from the auth stack template, replace the hardcoded `publicPaths` array literal with the canonical set computed from experiment.yaml:
      ```bash
      PUBLIC_PATHS=$(python3 .claude/scripts/lib/derive_pages.py public_paths < experiment/experiment.yaml)

@@ -535,14 +535,38 @@ When `stack.auth: supabase`, the auto-scaffolded OAuth callback handler at `src/
 
 Per OWASP guidance, when an allowlist of redirect destinations is feasible (e.g., a small set of known internal paths), prefer that over scheme validation. The `startsWith("/") && !startsWith("//")` form is the minimum guard; an allowlist is the strongest.
 
-### Next.js 16.x: scaffold `src/middleware.ts` + `middleware()` (today's working default). Next.js 17+: `src/proxy.ts` + `proxy()`
-**Today (Next.js 16.x — the template default after `npm install next`):** scaffold `src/middleware.ts` with `export async function middleware(request: NextRequest)`. Despite Next.js 16's deprecation of the `middleware.ts` filename, **the `proxy.ts` registration is incomplete on Next.js 16.x** — following the deprecated `proxy.ts` + `proxy()` prescription verbatim produces an empty `.next/server/middleware-manifest.json` after `npm run build`, and auth-gated routes are reachable without redirect (a security regression). Issue #1120 reproduced this on 16.2.4 with auth + DEMO_MODE. The deprecation warning on `npm run dev` / `npm run build` is the lesser evil compared to a non-functioning auth gate.
+### Next.js 16+: scaffold `src/proxy.ts` + `proxy()` (filename↔export-name invariant) — supersedes #1120
 
-**Future (Next.js 17+):** when Next.js 17 ships and proxy.ts registration is fully wired, scaffold `src/proxy.ts` with `export async function proxy(request: NextRequest)` instead. The function name must match the filename. Track upstream (`nextjs.org/docs/messages/middleware-to-proxy`); when 17.x is the resolved version after `npm install next`, re-evaluate via `/upgrade`.
+**Today (Next.js 16+ — the template default after `npm install next`):** scaffold `src/proxy.ts` with `export async function proxy(request: NextRequest)`. Next.js 16+ enforces a **filename↔export-name invariant**: the file MUST be named `src/proxy.ts` AND the exported function MUST be named `proxy`. Renaming only one (file but not export, or vice versa) produces an empty `.next/server/middleware-manifest.json` after `npm run build` and silent non-registration of the proxy — auth-gated routes are reachable without redirect (a security regression). This is the symptom #1120 originally reported on 16.2.4 (closed with the conclusion "proxy.ts registration is incomplete on 16"); empirical verification on 16.2.6 shows the actual root cause was the filename↔export mismatch, not a registration gap.
 
-**Version-conditional scaffold:** `scaffold-libs` reads the major version from `node_modules/next/package.json`. Major < 17 → `src/middleware.ts` + `middleware()`; major >= 17 → `src/proxy.ts` + `proxy()`. The `config` export is identical regardless of filename.
+**Empirical verification (run on the installed Next.js version to confirm registration works):**
 
-**Runtime consumers** (ux-journeyer, CLAUDE.md references) probe `src/middleware.ts` first (today's default) and fall back to `src/proxy.ts` for projects already migrated to Next.js 17+. When migrating: `git mv src/middleware.ts src/proxy.ts` AND rename the exported function from `middleware` to `proxy` (and any test imports referencing it by name).
+```bash
+cd /tmp && mkdir t && cd t && npm init -y && npm install next@16 react react-dom @types/react @types/react-dom typescript
+mkdir -p src/app/protected
+cat > src/proxy.ts <<'EOF'
+import { NextResponse, type NextRequest } from "next/server";
+export async function proxy(request: NextRequest) {
+  if (request.nextUrl.pathname.startsWith("/protected"))
+    return NextResponse.redirect(new URL("/login", request.url));
+  return NextResponse.next();
+}
+export const config = { matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\..*).*)"] };
+EOF
+# (minimal src/app/{layout,page,protected/page}.tsx omitted for brevity)
+npm run build
+# expect output line: "ƒ Proxy (Middleware)"
+# expect file: .next/server/middleware.js (compiled proxy)
+# expect file: .next/server/functions-config-manifest.json with "/_middleware" entry whose matchers[0].originalSource matches src/proxy.ts config.matcher
+```
+
+If the empirical test fails on a future Next.js patch release, file a new observation against this Stack Knowledge entry — do NOT revert to `src/middleware.ts` without verifying the rename pairing first.
+
+**Scaffold rule:** always write `src/proxy.ts` + `export async function proxy(...)` on Next.js 16+. The `config` export is unchanged.
+
+**Migration (already-bootstrapped projects on `src/middleware.ts`):** the legacy filename continues to work on Next.js 16+ but emits a deprecation warning at build time. Migrate via `git mv src/middleware.ts src/proxy.ts` AND rename the exported function from `middleware` to `proxy` (and any test imports referencing it by name) IN THE SAME COMMIT — the invariant rejects partial renames.
+
+**Runtime consumers** (ux-journeyer, etc.) probe `src/proxy.ts` first (today's default) and fall back to `src/middleware.ts` for projects still on the legacy filename.
 
 ### When configuring tsconfig.json, always exclude `.runs/` to prevent LSP diagnostic noise
 The `.runs/` directory is a scratch/gitignored workspace for skill execution artifacts (JSON traces, design-critic screenshot `.js` scripts, transient merge files). TypeScript's language server picks these files up by default because `tsconfig.json` has no `exclude` for `.runs/`. This produces false-positive LSP diagnostics on files that are not part of the build. Add `.runs` to the `exclude` array in the bootstrap `tsconfig.json` template:
@@ -738,17 +762,17 @@ import { Menu, ToggleLeft } from "lucide-react";
 
 The supabase auth-stack `nav-bar.tsx` template already uses `aria-label="Open menu"` for the hamburger SheetTrigger — this entry documents the underlying pattern so downstream icon buttons (settings toggles, table actions, modal close) inherit the same convention.
 
-### When auth middleware redirects to /login during demo mode
-When a Next.js project uses `src/middleware.ts` for auth-based redirects AND supports demo mode, an unauthenticated request to a protected route still redirects to `/login` even with `DEMO_MODE=true` set — blocking all demo traffic. The demo client returns a fake session object, but middleware runs **server-side, before any client SDK is instantiated**, so the demo session is invisible to the middleware function. The only working short-circuit is an `process.env.DEMO_MODE === "true"` check at the top of the middleware function.
+### When auth proxy redirects to /login during demo mode
+When a Next.js project uses `src/proxy.ts` for auth-based redirects AND supports demo mode, an unauthenticated request to a protected route still redirects to `/login` even with `DEMO_MODE=true` set — blocking all demo traffic. The demo client returns a fake session object, but the proxy runs **server-side, before any client SDK is instantiated**, so the demo session is invisible to the proxy function. The only working short-circuit is an `process.env.DEMO_MODE === "true"` check at the top of the proxy function.
 
 ```ts
-// src/middleware.ts
+// src/proxy.ts
 import { NextRequest, NextResponse } from "next/server";
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   // Demo mode (server env): skip auth redirect — no real session exists.
   // DEMO_MODE is the canonical server-side flag; NEXT_PUBLIC_DEMO_MODE is
-  // the client-side counterpart and is not visible to middleware (which
+  // the client-side counterpart and is not visible to the proxy (which
   // runs in the Edge / server runtime).
   if (process.env.DEMO_MODE === "true") return NextResponse.next();
   // ... existing auth logic

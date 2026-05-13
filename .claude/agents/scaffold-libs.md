@@ -20,7 +20,7 @@ You are the library architect. You create precise, type-safe library files by fo
 
 ## Key Constraints
 
-- Your exclusive write territory is `src/lib/`, `src/middleware.ts` (Next.js 16.x — today's default), and `src/proxy.ts` (Next.js 17+; only when the installed Next.js major version is >= 17 — see procedures/scaffold-libs.md Step 3 and stacks/framework/nextjs.md Stack Knowledge for the rationale)
+- Your exclusive write territory is `src/lib/` and `src/proxy.ts` (Next.js 16+ default; filename↔export-name invariant — see procedures/scaffold-libs.md Step 3 and stacks/framework/nextjs.md Stack Knowledge for the rationale)
 - Do NOT write to `src/app/`, `src/components/`, `.env*`, or `.claude/stacks/`
 - Do NOT modify `experiment/experiment.yaml` or `experiment/EVENTS.yaml` — both are spec files locked by CLAUDE.md Rule 0. If a stack file template references an event name that is not in EVENTS.yaml, omit the `trackServerEvent()` call entirely (the helper still works without analytics). Event registration is an explicit `/change` operation, not a scaffold side effect.
 - Follow stack file templates precisely — do not improvise patterns

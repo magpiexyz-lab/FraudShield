@@ -7,6 +7,9 @@ via the patterns-dir fallback in `lifecycle-next.sh` → `find_state_file`.
 **PRECONDITIONS:**
 - All manifest states (non-epilogue) completed — chain-check enforced by
   `state-completion-gate.sh` before `advance-state.sh <skill> 99` is allowed.
+  See `.claude/patterns/state-completion-gate.md` for the chain-vs-sequential
+  contract — chained edits + `advance-state.sh` in a single Bash invocation
+  will DENY because the hook runs VERIFY *before* the chain executes.
 - `.runs/<skill>-context.json` exists.
 - This skill is NOT an embed (embeds auto-skip `"99"` via
   `embed_skip_epilogue` context flag — see `lifecycle-init.sh --embed`).

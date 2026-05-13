@@ -36,17 +36,6 @@ npm install @supabase/supabase-js @supabase/ssr pg
 import { createBrowserClient } from "@supabase/ssr";
 
 function createDemoClient() {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const chainable = (terminal: unknown): any =>
-    new Proxy(() => terminal, {
-      get: (_, prop) => {
-        if (prop === "then") return (resolve: (v: unknown) => void) => resolve(terminal);
-        if (prop === "single") return () => chainable({ data: null, error: null });
-        if (prop === "maybeSingle") return () => chainable({ data: null, error: null });
-        return chainable(terminal);
-      },
-      apply: () => chainable(terminal),
-    });
   // Demo seed data: 3 generic rows for populated UI in demo mode.
   // Pages render real-looking data instead of empty states.
   const DEMO_SEED_DATA = [
@@ -54,7 +43,34 @@ function createDemoClient() {
     { id: "demo-2", name: "Sample Item 2", status: "active", created_at: new Date(Date.now() - 86400000 * 1).toISOString(), user_id: "demo-user-id" },
     { id: "demo-3", name: "Sample Item 3", status: "pending", created_at: new Date().toISOString(), user_id: "demo-user-id" },
   ];
-  const query = () => chainable({ data: DEMO_SEED_DATA, error: null });
+  // CANONICAL chainable factory — keep this body in sync with src/lib/supabase-server.ts
+  // (the only other live copy). See `## Stack Knowledge > Canonical chainable factory`
+  // for the contract. ctx tracks mutation state across the chain so
+  // `.from('x').insert(payload).select().single()` returns a synthesized row
+  // instead of null — the canonical API-route pattern (issue #1396).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const chainable = (terminal: unknown, ctx: { hasMutation?: boolean; payload?: unknown } = {}): any =>
+    new Proxy(() => terminal, {
+      get: (_, prop) => {
+        if (prop === "then") return (resolve: (v: unknown) => void) => resolve(terminal);
+        if (prop === "insert" || prop === "update" || prop === "upsert") {
+          return (payload: unknown) => chainable(terminal, { hasMutation: true, payload });
+        }
+        if (prop === "select") {
+          // Reset terminal to seed data but PRESERVE ctx so .insert(p).select().single() carries hasMutation through.
+          return () => chainable({ data: DEMO_SEED_DATA, error: null }, ctx);
+        }
+        if (prop === "single" || prop === "maybeSingle") {
+          if (ctx.hasMutation) {
+            const row = { id: `demo-${Date.now()}`, created_at: new Date().toISOString(), ...(ctx.payload as object) };
+            return () => chainable({ data: row, error: null });
+          }
+          return () => chainable({ data: null, error: null });
+        }
+        return chainable(terminal, ctx);
+      },
+      apply: () => chainable(terminal, ctx),
+    });
   const demoUser = {
     id: "demo-user-id",
     email: "demo@example.com",
@@ -64,13 +80,9 @@ function createDemoClient() {
     created_at: new Date().toISOString(),
   };
   return {
-    from: () => ({
-      select: query,
-      insert: query,
-      update: query,
-      delete: query,
-      upsert: query,
-    }),
+    // .from() returns the mutation-aware chainable directly so .insert/.update/.upsert
+    // flow through the proxy's get handler (issue #1396).
+    from: () => chainable({ data: DEMO_SEED_DATA, error: null }, {}),
     auth: new Proxy(
       {
         getUser: () =>
@@ -163,23 +175,40 @@ import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 
 function createDemoClient() {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const chainable = (terminal: unknown): any =>
-    new Proxy(() => terminal, {
-      get: (_, prop) => {
-        if (prop === "then") return (resolve: (v: unknown) => void) => resolve(terminal);
-        if (prop === "single") return () => chainable({ data: null, error: null });
-        if (prop === "maybeSingle") return () => chainable({ data: null, error: null });
-        return chainable(terminal);
-      },
-      apply: () => chainable(terminal),
-    });
+  // Demo seed data: 3 generic rows for populated UI in demo mode.
   const DEMO_SEED_DATA = [
     { id: "demo-1", name: "Sample Item 1", status: "active", created_at: new Date(Date.now() - 86400000 * 3).toISOString(), user_id: "demo-user-id" },
     { id: "demo-2", name: "Sample Item 2", status: "active", created_at: new Date(Date.now() - 86400000 * 1).toISOString(), user_id: "demo-user-id" },
     { id: "demo-3", name: "Sample Item 3", status: "pending", created_at: new Date().toISOString(), user_id: "demo-user-id" },
   ];
-  const query = () => chainable({ data: DEMO_SEED_DATA, error: null });
+  // CANONICAL chainable factory — keep this body in sync with src/lib/supabase.ts
+  // (the only other live copy). See `## Stack Knowledge > Canonical chainable factory`
+  // for the contract. ctx tracks mutation state across the chain so
+  // `.from('x').insert(payload).select().single()` returns a synthesized row
+  // instead of null — the canonical API-route pattern (issue #1396).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const chainable = (terminal: unknown, ctx: { hasMutation?: boolean; payload?: unknown } = {}): any =>
+    new Proxy(() => terminal, {
+      get: (_, prop) => {
+        if (prop === "then") return (resolve: (v: unknown) => void) => resolve(terminal);
+        if (prop === "insert" || prop === "update" || prop === "upsert") {
+          return (payload: unknown) => chainable(terminal, { hasMutation: true, payload });
+        }
+        if (prop === "select") {
+          // Reset terminal to seed data but PRESERVE ctx so .insert(p).select().single() carries hasMutation through.
+          return () => chainable({ data: DEMO_SEED_DATA, error: null }, ctx);
+        }
+        if (prop === "single" || prop === "maybeSingle") {
+          if (ctx.hasMutation) {
+            const row = { id: `demo-${Date.now()}`, created_at: new Date().toISOString(), ...(ctx.payload as object) };
+            return () => chainable({ data: row, error: null });
+          }
+          return () => chainable({ data: null, error: null });
+        }
+        return chainable(terminal, ctx);
+      },
+      apply: () => chainable(terminal, ctx),
+    });
   const demoUser = {
     id: "demo-user-id",
     email: "demo@example.com",
@@ -189,13 +218,7 @@ function createDemoClient() {
     created_at: new Date().toISOString(),
   };
   return {
-    from: () => ({
-      select: query,
-      insert: query,
-      update: query,
-      delete: query,
-      upsert: query,
-    }),
+    from: () => chainable({ data: DEMO_SEED_DATA, error: null }, {}),
     auth: new Proxy(
       {
         getUser: () =>
@@ -656,8 +679,54 @@ The demo client (`createDemoClient()`) returns `DEMO_SEED_DATA` — 3 generic ro
 
 **Mitigation for page authors:** When rendering data from Supabase queries, use optional chaining or defaults for schema-specific fields: `row.amount ?? 0`, `row.description ?? ""`. The generic fields (`id`, `name`, `status`, `created_at`) are always present in demo data.
 
-### Single-row queries return null in demo mode
-The chainable proxy's `.single()` and `.maybeSingle()` methods both return `{ data: null, error: null }` — not a row from `DEMO_SEED_DATA`. Pages that call `.from("table").select().eq(...).single()` or `.maybeSingle()` and expect a non-null result should handle the null case (loading state or fallback UI). For `.maybeSingle()`, this matches real Supabase behavior when zero rows match the filter; for `.single()`, real Supabase returns a `PGRST116` error on zero rows while the demo client returns `error:null` (a pre-existing simplification — pages that branch on `error.code === "PGRST116"` will not exercise that branch in demo mode).
+### Single-row queries return null in demo mode (read paths)
+The chainable proxy's `.single()` and `.maybeSingle()` methods return `{ data: null, error: null }` on read chains (`.from("table").select().eq(...).single()`) — not a row from `DEMO_SEED_DATA`. Pages that read by-id and expect a non-null result should handle the null case (loading state or fallback UI). For `.maybeSingle()`, this matches real Supabase behavior when zero rows match the filter; for `.single()`, real Supabase returns a `PGRST116` error on zero rows while the demo client returns `error:null` (a pre-existing simplification — pages that branch on `error.code === "PGRST116"` will not exercise that branch in demo mode).
+
+### Mutation chains synthesize a row in demo mode (write paths) — issue #1396
+
+When the chain is a mutation (`.from("table").insert(payload).select().single()` or `.update(payload)`/`.upsert(payload)`), `.single()` and `.maybeSingle()` return `{ data: <synthesized row>, error: null }`. The synthesized row is `{ id: \`demo-${Date.now()}\`, created_at: <iso>, ...payload }`. This unblocks the canonical API-route pattern:
+
+```ts
+const { data, error } = await supabase.from("orders").insert(payload).select().single();
+if (error || !data) return NextResponse.json({ error: "failed" }, { status: 500 });
+await trackServerEvent("result_view", userId, { ... });
+return NextResponse.json(data);
+```
+
+Before this fix, DEMO_MODE returned `{data: null}` on every insert chain → the `!data` guard fired, the route returned 500, `trackServerEvent` was never reached, and every mutation-path funnel event was missing in `/verify`'s behavior-verifier walks. The mutation-aware factory in `## Stack Knowledge > Canonical chainable factory (mutation-aware)` keeps read-path nulls (preserves #1178's `.maybeSingle` contract) while round-tripping the inserted payload on write chains.
+
+### Canonical chainable factory (mutation-aware)
+
+The chainable factory shape MUST be identical between `src/lib/supabase.ts` (browser) and `src/lib/supabase-server.ts` (server). Both copies carry the `// CANONICAL chainable factory — keep this body in sync with src/lib/supabase-server.ts` (or `supabase.ts`) marker comment. Auth-only clients (`src/lib/supabase-auth.ts`, `src/lib/supabase-auth-server.ts` — only emitted when `stack.database` is NOT supabase) do NOT carry a chainable factory: those clients only mock `auth.*` methods, never `.from()`.
+
+The two live copies share this body:
+
+```ts
+const chainable = (terminal: unknown, ctx: { hasMutation?: boolean; payload?: unknown } = {}): any =>
+  new Proxy(() => terminal, {
+    get: (_, prop) => {
+      if (prop === "then") return (resolve: (v: unknown) => void) => resolve(terminal);
+      if (prop === "insert" || prop === "update" || prop === "upsert") {
+        return (payload: unknown) => chainable(terminal, { hasMutation: true, payload });
+      }
+      if (prop === "select") {
+        // Reset terminal to seed data, preserve ctx so insert(p).select().single() carries hasMutation through.
+        return () => chainable({ data: DEMO_SEED_DATA, error: null }, ctx);
+      }
+      if (prop === "single" || prop === "maybeSingle") {
+        if (ctx.hasMutation) {
+          const row = { id: `demo-${Date.now()}`, created_at: new Date().toISOString(), ...(ctx.payload as object) };
+          return () => chainable({ data: row, error: null });
+        }
+        return () => chainable({ data: null, error: null });
+      }
+      return chainable(terminal, ctx);
+    },
+    apply: () => chainable(terminal, ctx),
+  });
+```
+
+When updating the factory (e.g., adding a new chained terminal method like `.csv()` or `.geojson()`), update BOTH copies in the same PR. Drift between the two breaks DEMO_MODE behavior in either client-only or server-only routes.
 
 ### When migrations declare CREATE [UNIQUE] INDEX on (timestamptz_col::date), wrap in `AT TIME ZONE 'UTC'` to keep the expression IMMUTABLE
 
@@ -797,10 +866,10 @@ fix_template: |
 prevention_mechanism: TEMPLATE.md canonical proxy pattern teaches both handlers; consolidated Stack Knowledge entry above documents both methods. Recurrence guard is documentation-quality only.
 confidence_score: 0.7
 occurrence_count: 1
-linked_issues: [1178]
+linked_issues: [1178, 1396]
 first_seen: 2026-04-30
-last_seen: 2026-04-30
-graduated_to: null
+last_seen: 2026-05-13
+graduated_to: "## Stack Knowledge > Canonical chainable factory (mutation-aware)"
 ```
 
 When the demo-client chainable proxy intercepts only `.single()` and not its
@@ -808,8 +877,10 @@ sibling `.maybeSingle()` (or analogous paired terminals — `.csv()/.geojson()`,
 etc., when their semantics align), pages calling the unintercepted method fall
 through to the array terminal and render 404 / broken state in DEMO_MODE. The
 fix is to add an explicit handler for the missing method; the prevention is to
-keep TEMPLATE.md's canonical proxy pattern teaching both handlers so future
-stack authors copy the both-aliases form.
+keep the canonical mutation-aware factory teaching both handlers so future
+stack authors copy the both-aliases form. Superseded by the mutation-aware
+canonical factory (#1396) which handles both methods + mutation-state
+synthesis in one shape.
 
 ```yaml
 id: supabase-error-leak-api-route
