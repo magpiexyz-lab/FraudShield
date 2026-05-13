@@ -174,6 +174,39 @@ def main() -> int:
         f"(batches={len(siblings)}, pages={pages_reviewed_total}, verdict={verdict}, "
         f"inconsistent_count={inconsistent_count})"
     )
+
+    # 9. Best-effort telemetry append for multi-batch attestation observability (#1257).
+    # Raw-fields record (no precomputed `attesting` flag — helper computes the closure
+    # criterion at READ time). Skipped on single-batch path and when run_id is absent
+    # (manual / integration-test runs without skill context).
+    prepass_p = ".runs/consistency-check-prepass.json"
+    prepass_data = None
+    if os.path.exists(prepass_p):
+        try:
+            with open(prepass_p) as pf:
+                prepass_data = json.load(pf)
+        except (OSError, json.JSONDecodeError):
+            prepass_data = None
+    partition = prepass_data.get("partition") if prepass_data else None
+    partition_size = len(partition) if isinstance(partition, list) else 0
+    if partition_size > 1 and run_id:
+        record = {
+            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "run_id": run_id,
+            "provenance": "lead-merge",
+            "partition_size": partition_size,
+            "contributing_spawn_indexes_count": len(contributing),
+            "contributing_spawn_indexes": sorted(set(contributing)),
+            "pages_reviewed_total": pages_reviewed_total,
+            "verdict": verdict,
+            "status": "completed",
+        }
+        try:
+            os.makedirs(".runs", exist_ok=True)
+            with open(".runs/consistency-soak-telemetry.jsonl", "a") as tf:
+                tf.write(json.dumps(record) + "\n")
+        except OSError:
+            pass  # telemetry must not break merger
     return 0
 
 

@@ -318,6 +318,17 @@
       "rationale": "Read by VERIFY blocks in skills: change."
     },
     {
+      "path": ".runs/consistency-check-prepass.json",
+      "consumers": [
+        "state-registry:verify.3b"
+      ],
+      "writers": [
+        ".claude/scripts/run-consistency-static-prepass.py"
+      ],
+      "scope": "transient-cross-skill",
+      "rationale": "Read by state-3b VERIFY partition-cardinality assertion (#1257) and by merge-design-consistency-checker-traces.py for telemetry emission. Written by run-consistency-static-prepass.py via write-gate-artifact.sh."
+    },
+    {
       "path": ".runs/consistency-scan-result.json",
       "consumers": [
         "state-registry:change.10"

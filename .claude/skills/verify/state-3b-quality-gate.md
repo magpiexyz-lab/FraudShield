@@ -290,7 +290,11 @@ if needs_dc and os.path.exists(dcc_path) and not os.path.exists('.runs/all-pages
         csi=dcc.get('contributing_spawn_indexes',[])
         assert isinstance(csi,list) and len(csi)>0, 'design-consistency-checker.json provenance=lead-merge but contributing_spawn_indexes empty/missing (#1257)'
         siblings=sorted(glob.glob('.runs/agent-traces/design-consistency-checker-batch*.json'))
-        assert len(siblings)>=len(csi), 'expected '+str(len(csi))+' per-batch sibling traces, got '+str(len(siblings))+' (#1257)'" && python3 .claude/scripts/validate-step55-evidence.py
+        assert len(siblings)>=len(csi), 'expected '+str(len(csi))+' per-batch sibling traces, got '+str(len(siblings))+' (#1257)'
+        pp_p='.runs/consistency-check-prepass.json'
+        _pp=json.load(open(pp_p)) if os.path.exists(pp_p) else None
+        _pt=_pp.get('partition') if _pp else None
+        assert (not isinstance(_pt,list)) or len(_pt)<=1 or len(csi)>=len(_pt), 'partition expected '+str(len(_pt))+' batches; csi='+str(len(csi))+' (#1257 partition-cardinality)'" && python3 .claude/scripts/validate-step55-evidence.py
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

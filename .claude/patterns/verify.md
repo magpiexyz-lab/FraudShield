@@ -252,6 +252,15 @@ Re-spawn the agent with a reduced scope prompt:
 > traces into a `provenance="lead-merge"` aggregate accepted by the
 > existing `aggregate_ok` predicate. This paragraph remains for context
 > with prior commits (PR #1296 / #1309).
+>
+> **Attestation telemetry (post-#1357 hardening):** the merger appends
+> raw-fields records to `.runs/consistency-soak-telemetry.jsonl` on every
+> multi-batch run. Closure-check helper:
+> `python3 .claude/scripts/check-1257-attestation.py` (exits 0 ATTESTED /
+> 1 NOT ATTESTED). State-3b VERIFY adds a partition-cardinality assertion
+> (`len(csi) >= len(partition)` when multi-batch) to catch partial-spawn
+> drift the existing `siblings >= csi` check cannot detect. See
+> `step55-evidence-rollout.md ## #1257 Attestation Telemetry`.
 
 #### Tier 3 — Non-critical agents
 

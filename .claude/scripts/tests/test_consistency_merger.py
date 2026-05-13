@@ -30,7 +30,14 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 MERGER = REPO_ROOT / ".claude" / "scripts" / "merge-design-consistency-checker-traces.py"
 
 
-def _setup_run(tmp: Path, *, run_id: str, batches: list[dict], spawn_log: list[dict] | None = None) -> Path:
+def _setup_run(
+    tmp: Path,
+    *,
+    run_id: str,
+    batches: list[dict],
+    spawn_log: list[dict] | None = None,
+    prepass: dict | None = None,
+) -> Path:
     """Build a tmpdir with .runs/agent-traces/design-consistency-checker-batch*.json siblings."""
     traces_dir = tmp / ".runs" / "agent-traces"
     traces_dir.mkdir(parents=True)
@@ -49,6 +56,10 @@ def _setup_run(tmp: Path, *, run_id: str, batches: list[dict], spawn_log: list[d
     with open(tmp / ".runs" / "agent-spawn-log.jsonl", "w") as f:
         for rec in spawn_log:
             f.write(json.dumps(rec) + "\n")
+    # Optional prepass artifact (consumed by merger telemetry-append path; #1257)
+    if prepass is not None:
+        with open(tmp / ".runs" / "consistency-check-prepass.json", "w") as f:
+            json.dump(prepass, f)
     # Symlink .claude/scripts/lib so the merger can import design_critic_trace_selector
     (tmp / ".claude" / "scripts").mkdir(parents=True)
     os.symlink(REPO_ROOT / ".claude" / "scripts" / "lib", tmp / ".claude" / "scripts" / "lib")
@@ -232,6 +243,104 @@ class TestMergerErrors(unittest.TestCase):
             os.symlink(REPO_ROOT / ".claude" / "scripts" / "lib", tmp / ".claude" / "scripts" / "lib")
             rc, _, err = _run_merger(tmp)
             self.assertEqual(rc, 2)
+
+
+class TestMergerTelemetry(unittest.TestCase):
+    """#1257 hardening — best-effort telemetry append for multi-batch attestation
+    observability. Multi-batch only; raw-fields record (no precomputed `attesting`)."""
+
+    REQUIRED_FIELDS = {
+        "timestamp", "run_id", "provenance", "partition_size",
+        "contributing_spawn_indexes_count", "contributing_spawn_indexes",
+        "pages_reviewed_total", "verdict", "status",
+    }
+
+    def _read_telemetry(self, tmp: Path) -> list[dict]:
+        path = tmp / ".runs" / "consistency-soak-telemetry.jsonl"
+        if not path.exists():
+            return []
+        return [json.loads(l) for l in path.read_text().splitlines() if l.strip()]
+
+    def test_telemetry_emitted_on_multi_batch(self):
+        with TemporaryDirectory() as td:
+            tmp = Path(td)
+            _setup_run(
+                tmp,
+                run_id="r-multi",
+                batches=[
+                    {"agent": "design-consistency-checker", "verdict": "pass",
+                     "inconsistencies": [], "pages_reviewed": ["p1", "p2"]},
+                    {"agent": "design-consistency-checker", "verdict": "pass",
+                     "inconsistencies": [], "pages_reviewed": ["p3"]},
+                ],
+                prepass={
+                    "partition": [
+                        {"batch_id": "batch1", "pages": ["p1", "p2"]},
+                        {"batch_id": "batch2", "pages": ["p3"]},
+                    ],
+                },
+            )
+            rc, _, err = _run_merger(tmp)
+            self.assertEqual(rc, 0, err)
+            records = self._read_telemetry(tmp)
+            self.assertEqual(len(records), 1, f"expected 1 telemetry record, got {len(records)}")
+            rec = records[0]
+            self.assertEqual(set(rec.keys()), self.REQUIRED_FIELDS,
+                             f"telemetry schema drift: {set(rec.keys())}")
+            self.assertNotIn("attesting", rec,
+                             "telemetry must NOT precompute attesting flag (#1257 R2/8cf178ea45ab)")
+            self.assertEqual(rec["provenance"], "lead-merge")
+            self.assertEqual(rec["partition_size"], 2)
+            self.assertEqual(rec["contributing_spawn_indexes_count"], 2)
+            self.assertEqual(rec["pages_reviewed_total"], 3)
+            self.assertEqual(rec["verdict"], "pass")
+            self.assertEqual(rec["status"], "completed")
+            self.assertEqual(rec["run_id"], "r-multi")
+
+    def test_telemetry_not_emitted_on_single_batch(self):
+        with TemporaryDirectory() as td:
+            tmp = Path(td)
+            _setup_run(
+                tmp,
+                run_id="r-single",
+                batches=[
+                    {"agent": "design-consistency-checker", "verdict": "pass",
+                     "inconsistencies": [], "pages_reviewed": ["p1"]},
+                ],
+                prepass={"partition": [{"batch_id": "single", "pages": ["p1"]}]},
+            )
+            rc, _, err = _run_merger(tmp)
+            self.assertEqual(rc, 0, err)
+            self.assertFalse(
+                (tmp / ".runs" / "consistency-soak-telemetry.jsonl").exists(),
+                "telemetry must NOT be emitted on single-batch (partition_size<=1 guard)",
+            )
+
+    def test_telemetry_skipped_when_no_run_id(self):
+        with TemporaryDirectory() as td:
+            tmp = Path(td)
+            _setup_run(
+                tmp,
+                run_id="",  # empty run_id → telemetry write should skip silently
+                batches=[
+                    {"agent": "design-consistency-checker", "verdict": "pass",
+                     "inconsistencies": [], "pages_reviewed": ["p1"]},
+                    {"agent": "design-consistency-checker", "verdict": "pass",
+                     "inconsistencies": [], "pages_reviewed": ["p2"]},
+                ],
+                prepass={
+                    "partition": [
+                        {"batch_id": "batch1", "pages": ["p1"]},
+                        {"batch_id": "batch2", "pages": ["p2"]},
+                    ],
+                },
+            )
+            rc, _, err = _run_merger(tmp)
+            self.assertEqual(rc, 0, err)
+            self.assertFalse(
+                (tmp / ".runs" / "consistency-soak-telemetry.jsonl").exists(),
+                "telemetry must NOT be emitted when run_id is empty",
+            )
 
 
 if __name__ == "__main__":

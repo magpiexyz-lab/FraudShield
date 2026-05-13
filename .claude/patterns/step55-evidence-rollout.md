@@ -175,6 +175,84 @@ that fix as a #844-class anti-pattern; #1257 now closes on production
 attestation (first observed `provenance=lead-merge` aggregate trace
 from a real /verify run on a >8-page web-app), not on test ship.
 
+## #1257 Attestation Telemetry
+
+The page-batched merger (`merge-design-consistency-checker-traces.py`)
+emits one raw-fields telemetry record to
+`.runs/consistency-soak-telemetry.jsonl` on every multi-batch run
+(`partition_size > 1`). Single-batch runs are skipped — single-batch
+projects do not exercise the architecture under attestation. Telemetry
+emission is best-effort: any `OSError` is swallowed so writer failure
+cannot break the merger.
+
+### Record schema
+
+```json
+{
+  "timestamp": "<ISO 8601>",
+  "run_id": "<verify-... | change-... | bootstrap-...>",
+  "provenance": "lead-merge",
+  "partition_size": <int>,
+  "contributing_spawn_indexes_count": <int>,
+  "contributing_spawn_indexes": [<int>, ...],
+  "pages_reviewed_total": <int>,
+  "verdict": "pass | fail",
+  "status": "completed"
+}
+```
+
+The record stores **raw fields only — no precomputed `attesting` flag**.
+The closure criterion is applied at READ time by
+`check-1257-attestation.py` so future criterion changes (e.g., raising
+the page threshold) do not strand existing records (R2 critic concern
+`8cf178ea45ab`).
+
+### Closure-check helper
+
+```bash
+python3 .claude/scripts/check-1257-attestation.py
+# exit 0 + stdout "ATTESTED: <record>"  — at least one record satisfies the criterion
+# exit 1 + stderr "NOT ATTESTED: ..."   — telemetry exists but no record attests
+# exit 1 + stderr "no telemetry yet"    — telemetry file absent or empty
+```
+
+Argparse `--telemetry-path <path>` overrides the default
+`.runs/consistency-soak-telemetry.jsonl`.
+
+### Closure criterion (verbatim from PR #1357)
+
+```
+provenance == "lead-merge"
+AND contributing_spawn_indexes_count >= 2
+AND pages_reviewed_total >= 12
+AND status == "completed"
+```
+
+### Manual closure (NOT auto-close)
+
+Operator runs `gh issue close 1257` after the helper returns `ATTESTED`.
+Auto-close from a runtime path is intentionally not implemented:
+(a) any compromised `/verify` run could otherwise close architectural
+issues; (b) `gh` CLI auth in template scripts adds blast radius;
+(c) `step55-evidence-rollout` precedent keeps closure decisions manual.
+
+### Iteration over stamped artifacts
+
+`.runs/consistency-soak-telemetry.jsonl` is a `.jsonl` file, explicitly
+excluded from GRAIM canonical classification by
+`derive-graim-manifest.py:52` `RE_RUNS_JSON` negative lookahead
+`(?![a-zA-Z0-9])`. No registration is possible or required.
+
+The companion JSON artifact `.runs/consistency-check-prepass.json`
+(read by the new state-3b VERIFY assertion and by the merger) IS
+canonical and goes through `write-gate-artifact.sh`, which stamps
+3 fields (`skill`, `run_id`, `written_at`). The VERIFY assertion and
+merger both use **explicit key access** (`prepass.get('partition')`)
+to avoid iterating over the stamp fields. For future iterators that
+must traverse the prepass payload, use
+`.claude/scripts/lib/verify_helpers.py:unstamped_values()` to filter
+the stamp fields out (Group A coherence guidance).
+
 ## Producer Contract (scaffold-images Step 5b)
 
 After the schema-version birthplace move (`.claude/procedures/scaffold-images.md`
