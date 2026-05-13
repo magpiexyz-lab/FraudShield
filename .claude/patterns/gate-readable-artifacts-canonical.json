@@ -859,6 +859,19 @@
       "rationale": "Read by VERIFY blocks in skills: resolve, verify."
     },
     {
+      "path": ".runs/prior-failure-dossier.json",
+      "consumers": [
+        "state-registry:change.3",
+        "state-registry:resolve.5",
+        "state-registry:solve.1"
+      ],
+      "writers": [
+        ".claude/scripts/lib/dossier_builder.py"
+      ],
+      "scope": "transient-cross-skill",
+      "rationale": "RMG v2 Phase 1a Prior-Failure Dossier (Issue #1415). Read by VERIFY blocks in skills: resolve, solve, change. Written by .claude/scripts/lib/dossier_builder.build_dossier() via canonical writer in each skill's Step-0 bash block."
+    },
+    {
       "path": ".runs/pipeline-phase.json",
       "consumers": [
         ".claude/hooks/phase-boundary-gate.sh"

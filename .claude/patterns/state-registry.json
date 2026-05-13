@@ -150,7 +150,7 @@
       ]
     },
     "3": {
-      "verify": "python3 .claude/scripts/verify-change-solve.py  # change-context.json, solve-trace.json, change-challenge.json",
+      "verify": "python3 .claude/scripts/verify-change-solve.py && python3 -c \"import json; json.load(open('.runs/prior-failure-dossier.json'))\"  # change-context.json, solve-trace.json, change-challenge.json, prior-failure-dossier.json",
       "calls": [
         {
           "path": "patterns/solve-reasoning.md",
@@ -257,7 +257,7 @@
     "3b": "python3 -c \"import json; d=json.load(open('.runs/resolve-causal-analysis.json')); assert d.get('analysis_complete')==True or d.get('halted')==True, 'analysis or halt not complete'; assert d.get('causal_unavailable')==True or isinstance(d.get('divergence_points_analyzed'), list), 'missing divergence_points_analyzed'\"",
     "4": "python3 -c \"import json; ctx=json.load(open('.runs/resolve-context.json')); assert isinstance(ctx.get('blast_radius'), list), 'blast_radius missing'; assert all(isinstance(f, str) for f in ctx['blast_radius']), 'blast_radius items must be strings'\"",
     "4b": "python3 -c \"import json; d=json.load(open('.runs/resolve-clusters.json')); cs=d.get('clusters',[]); assert isinstance(cs, list), 'clusters not a list'; assert isinstance(d.get('uncorrelated'), list), 'uncorrelated not a list'; [c.get('root_cause') or (_ for _ in ()).throw(AssertionError('cluster missing root_cause')) for c in cs]\"",
-    "5": "python3 .claude/scripts/verify-recurrence-guard.py --require-prevention --require-falsification  # .runs/solve-trace.json",
+    "5": "python3 .claude/scripts/verify-recurrence-guard.py --require-prevention --require-falsification --require-dossier --skill resolve && python3 -c \"import json; json.load(open('.runs/prior-failure-dossier.json'))\"  # .runs/solve-trace.json, .runs/prior-failure-dossier.json",
     "5b": "test -f .runs/resolve-tier-floors.json && python3 -c \"import json; d=json.load(open('.runs/resolve-tier-floors.json')); assert 'violations' in d, 'violations field missing'; assert 'passes' in d, 'passes field missing'; print(f'tier-floors: mode={d.get(\\\"mode\\\")}, violations={len(d.get(\\\"violations\\\",[]))}, passes={len(d.get(\\\"passes\\\",[]))}')\"  # .runs/resolve-tier-floors.json",
     "5d": "python3 .claude/scripts/verify-resolve-challenge.py  # resolve-challenge.json, resolve-challenger.json, solve-critic.json",
     "6": "git branch --show-current | grep -q 'fix/resolve'",
@@ -427,7 +427,7 @@
   "solve": {
     "0": "test -f .runs/solve-context.json",
     "1": {
-      "verify": "python3 .claude/scripts/verify-recurrence-guard.py --require-phase-3-gaps --require-run-id --require-falsification --skill solve && python3 -c \"import json,os; d=json.load(open('.runs/solve-challenge.json')); assert isinstance(d.get('critic_rounds'), int), 'critic_rounds missing or not int'; assert isinstance(d.get('round_1_type_a_count'), int), 'round_1_type_a_count missing or not int'; assert isinstance(d.get('round_2_type_a_count'), int), 'round_2_type_a_count missing or not int'; assert isinstance(d.get('concerns'), list), 'concerns missing or not list'; cr=d.get('critic_rounds',0); arc='.runs/solve-critic-round1.json'; assert cr!=2 or (os.path.exists(arc) and json.load(open(arc)).get('round')==1), '#1331 sidecar archive missing or wrong round'\"  # .runs/solve-trace.json, .runs/solve-challenge.json, .runs/solve-critic-round1.json",
+      "verify": "python3 .claude/scripts/verify-recurrence-guard.py --require-phase-3-gaps --require-run-id --require-falsification --require-dossier --skill solve && python3 -c \"import json,os; d=json.load(open('.runs/solve-challenge.json')); assert isinstance(d.get('critic_rounds'), int), 'critic_rounds missing or not int'; assert isinstance(d.get('round_1_type_a_count'), int), 'round_1_type_a_count missing or not int'; assert isinstance(d.get('round_2_type_a_count'), int), 'round_2_type_a_count missing or not int'; assert isinstance(d.get('concerns'), list), 'concerns missing or not list'; cr=d.get('critic_rounds',0); arc='.runs/solve-critic-round1.json'; assert cr!=2 or (os.path.exists(arc) and json.load(open(arc)).get('round')==1), '#1331 sidecar archive missing or wrong round'\" && python3 -c \"import json; json.load(open('.runs/prior-failure-dossier.json'))\"  # .runs/solve-trace.json, .runs/solve-challenge.json, .runs/solve-critic-round1.json, .runs/prior-failure-dossier.json",
       "artifact": ".runs/solve-challenge.json",
       "lifecycle": "transient-cross-skill"
     },

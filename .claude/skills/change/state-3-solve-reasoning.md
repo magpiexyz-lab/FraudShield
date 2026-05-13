@@ -67,6 +67,37 @@ The dossier flows transparently into Phase 4b — the designer must emit a
 `prior_failure_response[]` for every dossier entry citing a concrete delta
 step or guard artifact absent from the prior commit (R2-A2).
 
+### Step 0 — Build Prior-Failure Dossier (when `preliminary_type == "Fix"`; Issue #1415)
+
+`state-registry.json` `change.3` VERIFY asserts `.runs/prior-failure-dossier.json`
+exists when `preliminary_type=Fix`. Build before invoking Light/Full mode below:
+
+```bash
+PT=$(python3 -c "import json; print(json.load(open('.runs/change-context.json')).get('preliminary_type',''))")
+if [ "$PT" = "Fix" ]; then
+  # $ARGUMENTS is the canonical symptom source per "RMG v2 Phase 1a Dossier"
+  # prose above. Pass via env var to avoid shell-quoting traps inside python -c.
+  DOSSIER=$(CHANGE_ARGS="$ARGUMENTS" python3 -c "
+import json, os, sys
+sys.path.insert(0, '.claude/scripts/lib')
+from dossier_builder import build_dossier
+from symptom_canonicalizer import canonicalize_symptom
+expl = json.load(open('.runs/exploration-trace.json'))
+files = sorted(expl.get('affected_files', []))
+symptom = canonicalize_symptom(os.environ.get('CHANGE_ARGS',''))
+d = build_dossier(divergence_files=files, symptom_signature=symptom, project_dir='.')
+print(json.dumps(d))
+")
+  bash .claude/scripts/lib/write-gate-artifact.sh \
+    --path .runs/prior-failure-dossier.json \
+    --payload "$DOSSIER" \
+    --skill change
+fi
+```
+
+For non-Fix `preliminary_type`, the dossier is not built (Phase 1a is skipped —
+see `solve-reasoning.md` "Caller conventions").
+
 ### Light mode path
 
 CALL: `.claude/patterns/solve-reasoning.md` — execute light mode (Steps 1-5).
@@ -180,7 +211,7 @@ json.dump({'critic_rounds': 0, 'round_1_type_a_count': 0, 'round_2_type_a_count'
 
 **VERIFY:**
 ```bash
-python3 .claude/scripts/verify-change-solve.py  # change-context.json, solve-trace.json, change-challenge.json
+python3 .claude/scripts/verify-change-solve.py && python3 -c "import json; json.load(open('.runs/prior-failure-dossier.json'))"  # change-context.json, solve-trace.json, change-challenge.json, prior-failure-dossier.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

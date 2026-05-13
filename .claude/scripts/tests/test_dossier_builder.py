@@ -176,7 +176,11 @@ class DossierShapeTests(unittest.TestCase):
             project_dir=self.tmp,
             since_days=3650,
         )
-        self.assertEqual(d, {"phase_1a": [], "phase_4b": []})
+        self.assertEqual(d, {
+            "phase_1a": [],
+            "phase_4b": [],
+            "_meta": {"divergence_files": ["foo/bar.ts"], "symptom_signature": "x"},
+        })
 
 
 class DefaultsTests(unittest.TestCase):

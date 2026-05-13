@@ -24,6 +24,10 @@ from recurrence_guard_parser import (  # noqa: E402
     parse,
     parse_falsification,
 )
+from dossier_verify import (  # noqa: E402
+    DossierVerifyError,
+    assert_dossier_loaded,
+)
 
 ctx = json.load(open(".runs/change-context.json"))
 sd = ctx.get("solve_depth")
@@ -86,6 +90,28 @@ if pt == "Fix":
                 "falsification fails parser: %s (raw=%r)"
                 % (exc, getattr(exc, "raw_value", falsi))
             )
+
+        # Dossier Gate (Issue #1415): /change Fix path must build the
+        # Prior-Failure Dossier and emit prior_failure_response. Evidence
+        # comes from exploration-trace.json (NOT change-context.json — the
+        # latter only carries affected_areas count).
+        expl_path = ".runs/exploration-trace.json"
+        evidence: list[str] = []
+        if os.path.isfile(expl_path):
+            try:
+                evidence = sorted(
+                    json.load(open(expl_path)).get("affected_files", [])
+                )
+            except (OSError, json.JSONDecodeError):
+                pass
+        try:
+            assert_dossier_loaded(
+                st,
+                problem_type=pa.get("problem_type"),
+                divergence_files_evidence=evidence,
+            )
+        except DossierVerifyError as exc:
+            raise AssertionError(str(exc))
 
 cc = json.load(open(".runs/change-challenge.json"))
 assert isinstance(cc.get("critic_rounds"), int), "critic_rounds missing or not int"

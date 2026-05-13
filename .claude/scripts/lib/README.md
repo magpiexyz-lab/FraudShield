@@ -452,6 +452,94 @@ fix_template: |
   (RMG_V2_TOLERANT=1) is the emergency escape hatch only.
 ```
 
+### Prior-Failure Dossier builder (RMG v2 Phase 1a Recall layer)
+```yaml
+id: prior-failure-dossier-builder
+maturity: stable
+anti_pattern: false
+composite_identity:
+  root_cause_class: phase-1a-prior-failure-recall-from-fix-ledger
+  divergence_pattern: in-memory-builder-with-no-disk-persistence
+  stack_scope: scripts/lib/dossier_builder
+composite_identity_hash: e41dcf239e5d
+symptom_keywords: [dossier, prior-failure, phase-1a, RMG, fix-ledger, recurrence-candidates, anchoring-resistance]
+confidence_score: 0.85
+occurrence_count: 1
+linked_issues: [1415, 1331, 1300]
+first_seen: 2026-04-15
+last_seen: 2026-05-13
+graduated_to: null
+prevention_mechanism: |
+  dossier_builder.build_dossier reads .runs/fix-ledger.jsonl +
+  .runs/recurrence-candidates.jsonl and returns a two-phase dossier
+  (phase_1a withholds failure_mode/what_was_missed for designer anchoring
+  resistance; phase_4b adds them for cross-check). The _meta.divergence_files
+  field carries the caller's input file set forward to dossier_verify's
+  no-empty-bypass check (Issue #1415).
+fix_template: |
+  When a skill state needs Phase 1a Prior-Failure recall (resolve.5, solve.1,
+  change.3 Fix path), invoke:
+
+    from lib.dossier_builder import build_dossier
+    d = build_dossier(
+        divergence_files=<caller's affected files>,
+        symptom_signature=canonicalize_symptom(<problem statement>),
+        project_dir='.',
+    )
+
+  Always write the returned dict to .runs/prior-failure-dossier.json via
+  the canonical writer (write-gate-artifact.sh --path
+  .runs/prior-failure-dossier.json) so state-registry VERIFY can assert
+  presence. Empty divergence_files produces an empty dossier; that is legal
+  for fresh projects but is flagged by dossier_verify when the caller
+  supplied non-empty evidence — closes the empty-input bypass loophole.
+```
+
+### dossier verification (Phase 1a coverage gate; Issue #1415)
+```yaml
+id: dossier-verify-phase-1a-coverage-gate
+maturity: stable
+anti_pattern: false
+composite_identity:
+  root_cause_class: verify-coverage-asymmetry-phase-1a-dossier
+  divergence_pattern: prose-prescribes-step-but-registry-verify-does-not-enforce
+  stack_scope: scripts/lib/dossier_verify
+composite_identity_hash: 02c8ff2ff7b5
+symptom_keywords: [dossier, prior-failure, phase-1a, RMG, verify-coverage, prose-only, registry-asymmetry, prior_failure_response]
+confidence_score: 0.90
+occurrence_count: 1
+linked_issues: [1415]
+first_seen: 2026-05-13
+last_seen: 2026-05-13
+graduated_to: null
+prevention_mechanism: |
+  dossier_verify.assert_dossier_loaded is the single source of truth for the
+  Phase 1a Prior-Failure Dossier coverage gate. Called from
+  verify-recurrence-guard.py (--require-dossier) and verify-change-solve.py
+  (inline import) so resolve.5, solve.1, change.3 share one contract. The
+  helper asserts .runs/prior-failure-dossier.json exists, prior_failure_response
+  is a list, _meta.divergence_files non-empty when caller has evidence, and
+  response count >= dossier phase_1a count.
+fix_template: |
+  When adding a state-registry.json VERIFY gate for a Phase 1a artifact (or
+  any solve-reasoning sub-phase that produces a `.runs/X.json` file via lead
+  prose), factor the assertion into a shared helper, NOT inline VERIFY string:
+
+    from lib.dossier_verify import assert_dossier_loaded, DossierVerifyError
+    try:
+        assert_dossier_loaded(trace, problem_type=pa.get("problem_type"),
+                              divergence_files_evidence=evidence)
+    except DossierVerifyError as exc:
+        print(f"VERIFY FAIL: {exc}", file=sys.stderr); return 1
+
+  Then append `&& python3 -c "import json; json.load(open('.runs/X.json'))"`
+  to the state-registry.json VERIFY string BEFORE the `#` comment so
+  derive-graim-manifest.py auto-registers the path (AND-regex requires both
+  `json.load(open(` and the literal in the same string). Always `make
+  sync-verify` after editing state-registry.json. Empty-input bypass MUST be
+  closed via a `_meta.divergence_files` cross-check.
+```
+
 ### AOC v1.2 source-identity validator (canonical writer post-completion)
 ```yaml
 id: source-identity-validator-aoc-v12

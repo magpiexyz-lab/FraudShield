@@ -18,6 +18,11 @@ Optional flags:
                           parses under recurrence_guard_parser.parse_falsification
                           when problem_type=defect. Strict: missing or invalid
                           falsification returns exit 1 immediately.
+  --require-dossier       assert .runs/prior-failure-dossier.json exists and
+                          solve-trace.json.prior_failure_response is populated
+                          when problem_type=defect. Closes the Phase 1a coverage
+                          gap (Issue #1415). For --skill resolve, divergence
+                          evidence is sourced from .runs/resolve-reproduction.json.
   --context-path PATH     explicit context json (default: auto-detect by skill)
   --skill {resolve,solve,change}  influences default context-path
 """
@@ -38,6 +43,10 @@ from recurrence_guard_parser import (  # noqa: E402
     RecurrenceGuardParseError,
     parse,
     parse_falsification,
+)
+from dossier_verify import (  # noqa: E402
+    DossierVerifyError,
+    assert_dossier_loaded,
 )
 
 REQUIRED_TRACE_FIELDS = (
@@ -65,6 +74,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--require-phase-3-gaps", action="store_true")
     parser.add_argument("--require-run-id", action="store_true")
     parser.add_argument("--require-falsification", action="store_true")
+    parser.add_argument("--require-dossier", action="store_true")
     parser.add_argument("--context-path")
     parser.add_argument("--skill", choices=("resolve", "solve", "change"))
     args = parser.parse_args(argv)
@@ -173,6 +183,35 @@ def main(argv: list[str] | None = None) -> int:
                     file=sys.stderr,
                 )
                 return 1
+
+    # Dossier Gate (Issue #1415): assert .runs/prior-failure-dossier.json
+    # exists and solve-trace.json.prior_failure_response is populated when
+    # problem_type=defect. Closes the Phase 1a verify-coverage asymmetry.
+    if args.require_dossier and isinstance(pa, dict):
+        evidence: list[str] = []
+        if args.skill == "resolve":
+            repro_path = ".runs/resolve-reproduction.json"
+            if os.path.isfile(repro_path):
+                try:
+                    repro = _load(repro_path)
+                    # divergence_point is the string "<file>:<line>" per
+                    # state-3-reproduce.md schema — split on first ':'.
+                    evidence = sorted({
+                        (r.get("divergence_point", "") or "").split(":", 1)[0]
+                        for r in repro.get("reproductions", [])
+                        if r.get("divergence_point")
+                    } - {""})
+                except (OSError, json.JSONDecodeError, AttributeError):
+                    pass
+        try:
+            assert_dossier_loaded(
+                trace,
+                problem_type=pa.get("problem_type"),
+                divergence_files_evidence=evidence,
+            )
+        except DossierVerifyError as exc:
+            print(f"VERIFY FAIL: {exc}", file=sys.stderr)
+            return 1
 
     # #1331 runtime guard: when /solve full-mode runs round 2, the orchestrator
     # must have archived round-1 to the sidecar. Read solve-critic.json.round

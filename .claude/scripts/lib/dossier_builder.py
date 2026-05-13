@@ -282,7 +282,14 @@ def build_dossier(
         phase_1a.append(slim)
         phase_4b.append(full)
 
-    return {"phase_1a": phase_1a, "phase_4b": phase_4b}
+    return {
+        "phase_1a": phase_1a,
+        "phase_4b": phase_4b,
+        "_meta": {
+            "divergence_files": sorted(file_set),
+            "symptom_signature": symptom_signature,
+        },
+    }
 
 
 __all__ = ["build_dossier", "DOSSIER_WINDOW_DAYS_DEFAULT"]

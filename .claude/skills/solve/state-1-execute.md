@@ -37,6 +37,38 @@ The dossier flows transparently into Phase 4b — the designer must emit a
 step or guard artifact absent from the prior commit (R2-A2). Empty dossier
 → Phase 4b is a no-op.
 
+- **Step 0 — Build Prior-Failure Dossier** (Issue #1415). `state-registry.json`
+  `solve.1` VERIFY asserts `.runs/prior-failure-dossier.json` exists. For
+  `problem_type=defect` runs, build via the dossier helper; for non-defect
+  runs, write an empty-shape dossier so the file exists (helper's no-op path
+  keeps fresh-project legitimacy):
+
+  ```bash
+  # $ARGUMENTS is the canonical problem source from state-0. Prefer ctx field
+  # when set (state-0 may persist it); fall back to env-var pass for runs where
+  # state-0 only kept it in working memory.
+  DOSSIER=$(SOLVE_ARGS="$ARGUMENTS" python3 -c "
+  import json, os, re, sys
+  sys.path.insert(0, '.claude/scripts/lib')
+  from dossier_builder import build_dossier
+  from symptom_canonicalizer import canonicalize_symptom
+  ctx = json.load(open('.runs/solve-context.json'))
+  if ctx.get('problem_type') != 'defect':
+      print(json.dumps({'phase_1a': [], 'phase_4b': [], '_meta': {'divergence_files': [], 'symptom_signature': ''}}))
+      sys.exit(0)
+  problem = ctx.get('problem_statement') or os.environ.get('SOLVE_ARGS','')
+  # Heuristic: extract file paths referenced in the problem statement
+  files = sorted({f for f in re.findall(r'[A-Za-z0-9_./-]+\.[A-Za-z]{1,4}', problem) if '/' in f})
+  symptom = canonicalize_symptom(problem)
+  d = build_dossier(divergence_files=files, symptom_signature=symptom, project_dir='.')
+  print(json.dumps(d))
+  ")
+  bash .claude/scripts/lib/write-gate-artifact.sh \
+    --path .runs/prior-failure-dossier.json \
+    --payload "$DOSSIER" \
+    --skill solve
+  ```
+
 - **Write solve trace artifact** (`.runs/solve-trace.json`) using the contract from solve-reasoning.md:
   ```bash
   PAYLOAD=$(python3 -c "
@@ -142,7 +174,7 @@ step or guard artifact absent from the prior commit (R2-A2). Empty dossier
 
 **VERIFY:**
 ```bash
-python3 .claude/scripts/verify-recurrence-guard.py --require-phase-3-gaps --require-run-id --require-falsification --skill solve && python3 -c "import json,os; d=json.load(open('.runs/solve-challenge.json')); assert isinstance(d.get('critic_rounds'), int), 'critic_rounds missing or not int'; assert isinstance(d.get('round_1_type_a_count'), int), 'round_1_type_a_count missing or not int'; assert isinstance(d.get('round_2_type_a_count'), int), 'round_2_type_a_count missing or not int'; assert isinstance(d.get('concerns'), list), 'concerns missing or not list'; cr=d.get('critic_rounds',0); arc='.runs/solve-critic-round1.json'; assert cr!=2 or (os.path.exists(arc) and json.load(open(arc)).get('round')==1), '#1331 sidecar archive missing or wrong round'"  # .runs/solve-trace.json, .runs/solve-challenge.json, .runs/solve-critic-round1.json
+python3 .claude/scripts/verify-recurrence-guard.py --require-phase-3-gaps --require-run-id --require-falsification --require-dossier --skill solve && python3 -c "import json,os; d=json.load(open('.runs/solve-challenge.json')); assert isinstance(d.get('critic_rounds'), int), 'critic_rounds missing or not int'; assert isinstance(d.get('round_1_type_a_count'), int), 'round_1_type_a_count missing or not int'; assert isinstance(d.get('round_2_type_a_count'), int), 'round_2_type_a_count missing or not int'; assert isinstance(d.get('concerns'), list), 'concerns missing or not list'; cr=d.get('critic_rounds',0); arc='.runs/solve-critic-round1.json'; assert cr!=2 or (os.path.exists(arc) and json.load(open(arc)).get('round')==1), '#1331 sidecar archive missing or wrong round'" && python3 -c "import json; json.load(open('.runs/prior-failure-dossier.json'))"  # .runs/solve-trace.json, .runs/solve-challenge.json, .runs/solve-critic-round1.json, .runs/prior-failure-dossier.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

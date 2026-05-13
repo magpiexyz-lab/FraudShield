@@ -6,6 +6,40 @@
 
 **ACTIONS:**
 
+#### Step 0 — Build Prior-Failure Dossier (RMG v2 Phase 1a; required, Issue #1415)
+
+`resolve` always handles defects, so this step is mandatory before 5a. Builds
+`.runs/prior-failure-dossier.json` which `state-registry.json` `resolve.5`
+VERIFY asserts must exist — closes the prose-prescribed-but-VERIFY-unenforced
+gap.
+
+```bash
+DOSSIER=$(python3 -c "
+import json, sys
+sys.path.insert(0, '.claude/scripts/lib')
+from dossier_builder import build_dossier
+from symptom_canonicalizer import canonicalize_symptom
+repro = json.load(open('.runs/resolve-reproduction.json'))
+# divergence_point is the string '<file>:<line>' per state-3-reproduce.md schema —
+# split on first ':' to get the file path. Filter empty/missing values.
+files = sorted({(r.get('divergence_point','') or '').split(':',1)[0]
+                for r in repro.get('reproductions',[])
+                if r.get('divergence_point')})
+files = [f for f in files if f]
+symptom = canonicalize_symptom('\n'.join(r.get('actual','') for r in repro.get('reproductions',[])))
+d = build_dossier(divergence_files=files, symptom_signature=symptom, project_dir='.')
+print(json.dumps(d))
+")
+bash .claude/scripts/lib/write-gate-artifact.sh \
+  --path .runs/prior-failure-dossier.json \
+  --payload "$DOSSIER" \
+  --skill resolve
+```
+
+The dossier is consumed by `solve-reasoning.md` Phase 1a (designer-visible
+reveal — minimal fields only) and Phase 4b (full reveal — designer emits
+`prior_failure_response[]`).
+
 #### 5a) Complexity assessment
 
 Determine solve-reasoning depth:
@@ -176,7 +210,7 @@ from prevention_analysis.recurrence_guard), `falsification` (see above).
 
 **VERIFY:**
 ```bash
-python3 .claude/scripts/verify-recurrence-guard.py --require-prevention --require-falsification  # .runs/solve-trace.json
+python3 .claude/scripts/verify-recurrence-guard.py --require-prevention --require-falsification --require-dossier --skill resolve && python3 -c "import json; json.load(open('.runs/prior-failure-dossier.json'))"  # .runs/solve-trace.json, .runs/prior-failure-dossier.json
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

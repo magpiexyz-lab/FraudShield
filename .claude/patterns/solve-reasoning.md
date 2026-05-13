@@ -142,8 +142,10 @@ run reads what prior fix attempts looked like on the same files / symptoms so
 the new design cannot accidentally repeat a failed approach.
 
 Inputs (derive from caller's context):
-- `divergence_files`: file set under repair (resolve: `divergence_point.file`
-  union over reproductions; change/solve: affected files in scope).
+- `divergence_files`: file set under repair (resolve: extract the file part
+  from each `reproductions[*].divergence_point` — schema is the string
+  `<file>:<line>` per state-3-reproduce.md; change/solve: affected files in
+  scope).
 - `symptom_signature`: canonicalized form of `reproductions[*].actual` (resolve)
   or `$ARGUMENTS` summary (solve/change). Canonicalization is performed by
   `.claude/scripts/lib/symptom_canonicalizer.py`.
