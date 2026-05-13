@@ -79,6 +79,13 @@ for mvp in data['mvps']:
         and (not missing_project_name)
     )
 
+    # Flag 6: ga_clicks_without_ph_traffic — GA has paid clicks but PostHog has
+    # zero presence for this MVP (set on ga_only synthetic records produced by
+    # state-x0a's merge step). Strictly stricter than missing_project_name
+    # (which fires when PH SEES the traffic but project_name is NULL). This
+    # surfaces deploys we're paying for but cannot measure at all.
+    ga_clicks_without_ph_traffic = bool(mvp.get('ga_only'))
+
     issues['mvps'].append({
         'name': name,
         'missing_project_name': missing_project_name,
@@ -87,6 +94,7 @@ for mvp in data['mvps']:
         'low_traffic': low_traffic,
         'no_event_data': no_event_data,
         'needs_llm_classification': needs_llm,
+        'ga_clicks_without_ph_traffic': ga_clicks_without_ph_traffic,
     })
 
 print(json.dumps(issues))
@@ -118,13 +126,13 @@ Print a concise summary:
 > - {ne_count} no_event_data (no events found; likely tracking not deployed)
 
 **POSTCONDITIONS:**
-- Every MVP has all six flags computed (booleans): `missing_project_name`, `signup_classified`, `auto_default_match`, `low_traffic`, `no_event_data`, `needs_llm_classification`
+- Every MVP has all seven flags computed (booleans): `missing_project_name`, `signup_classified`, `auto_default_match`, `low_traffic`, `no_event_data`, `needs_llm_classification`, `ga_clicks_without_ph_traffic`
 - `.runs/iterate-cross-data-issues.json` exists with required schema
 
 **VERIFY:** see `state-registry.json` entry for `iterate-cross.x1a`.
 
 ```bash
-python3 -c "import json; d=json.load(open('.runs/iterate-cross-data-issues.json')); ms=d.get('mvps',[]); assert isinstance(ms, list) and len(ms)>0, 'mvps empty'; req=['missing_project_name','signup_classified','auto_default_match','low_traffic','no_event_data','needs_llm_classification']; bad=[m.get('name','?') for m in ms if any(k not in m for k in req)]; assert not bad, 'MVPs missing flags: %s' % bad"
+python3 -c "import json; d=json.load(open('.runs/iterate-cross-data-issues.json')); ms=d.get('mvps',[]); assert isinstance(ms, list) and len(ms)>0, 'mvps empty'; req=['missing_project_name','signup_classified','auto_default_match','low_traffic','no_event_data','needs_llm_classification','ga_clicks_without_ph_traffic']; bad=[m.get('name','?') for m in ms if any(k not in m for k in req)]; assert not bad, 'MVPs missing flags: %s' % bad"
 ```
 <!-- VERIFY=true: real assertion lives in state-registry.json; this line is the per-Rule-13 placeholder -->
 

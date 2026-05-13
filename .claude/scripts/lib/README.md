@@ -758,6 +758,51 @@ fix_template: |
       for per-page contract iteration)
 ```
 
+### canonical name normalizer for iterate-cross MVP identity matching (`match_key`)
+```yaml
+id: iterate-cross-match-key-normalizer
+maturity: stable
+anti_pattern: false
+composite_identity:
+  root_cause_class: mvp-identity-string-comparison-divergence
+  divergence_pattern: hand-coded-name-normalizer-instead-of-helper-call
+  stack_scope: scripts/lib/iterate_cross_classify
+composite_identity_hash: d5047bd0eb7e
+symptom_keywords: [match_key, iterate-cross, mvp-identity, alias-merge, orphan-host, ga-bucket, kebab-case, alphanumeric-normalizer]
+confidence_score: 0.9
+occurrence_count: 1
+linked_issues: []
+first_seen: 2026-05-13
+last_seen: 2026-05-13
+graduated_to: null
+prevention_mechanism: |
+  `iterate_cross_classify.match_key(s)` is the single normalizer for comparing
+  MVP identity strings across three independent surfaces:
+    1. Canonical PostHog `project_name` (kebab-case: `x-predict`).
+    2. Orphan-host URL subdomain (no hyphens: `xpredict.draftlabs.org` → `xpredict`).
+    3. Google Ads campaign name (mixed case + suffixes: `xpredict #2`, `Lumen-Parth`).
+  All three must compare equal when they refer to the same MVP. Strip
+  non-alphanumeric chars and lowercase. Any consumer that hand-rolls a
+  similar normalizer can drift (e.g., kebab-case stripping vs not, owner-suffix
+  removal vs not), splitting one MVP into two records.
+fix_template: |
+  When matching an MVP identity string across surfaces:
+
+    # Wrong — hand-rolled, likely to drift:
+    norm_a = a.lower().replace("-", "").replace("_", "")
+    norm_b = b.lower().replace(" ", "").replace("#", "")
+    if norm_a == norm_b: ...
+
+    # Right — reuse the canonical normalizer:
+    import sys; sys.path.insert(0, '.claude/scripts/lib')
+    from iterate_cross_classify import match_key
+    if match_key(a) == match_key(b): ...
+
+  Callers (production):
+    - state-x0 orphan-overlap merge (`.claude/skills/iterate/state-x0-discover-mvps.md`)
+    - state-x0a GA bucketing (`.claude/scripts/lib/iterate_cross_ga.py`)
+```
+
 ## Existing helpers (no Stack Knowledge — single-caller or in-flux)
 
 These helpers are below the `lib_helper_stack_knowledge_required` rule's `caller_threshold: 2` (per narrow consumption_patterns excluding tests/), so they don't yet need a Stack Knowledge entry. Add an entry only when the helper crosses 2+ production callers.

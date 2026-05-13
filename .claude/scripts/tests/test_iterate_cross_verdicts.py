@@ -17,6 +17,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
 from iterate_cross_verdicts import (  # noqa: E402
     DEFAULT_CONFIG,
     VERDICT_ENUM,
+    VERDICT_GA_NO_PH_TRACKING,
     VERDICT_GO,
     VERDICT_INSUFFICIENT,
     VERDICT_MISSING_PROJECT_NAME,
@@ -34,8 +35,13 @@ from iterate_cross_verdicts import (  # noqa: E402
 THRESHOLDS = DEFAULT_CONFIG["thresholds"]
 
 
-def mvp(name="m", owner="alice", visitors=0, signups=0, signup_events=None):
-    """Build a PostHog-only MVP record matching state-x2's data.json schema."""
+def mvp(name="m", owner="alice", visitors=0, signups=0, signup_events=None,
+        ga_clicks=0, ga_only=False):
+    """Build a PostHog MVP record matching state-x2's data.json schema.
+
+    Set `ga_clicks` to simulate state-x0a having merged Google Ads data.
+    Set `ga_only=True` for a synthetic record (campaign exists in GA but PH has nothing).
+    """
     return {
         "name": name,
         "owner": owner,
@@ -44,6 +50,8 @@ def mvp(name="m", owner="alice", visitors=0, signups=0, signup_events=None):
         "signup_events": signup_events or ["signup_complete"],
         "total_events_count": 100,
         "event_catalog": [],
+        "ga_clicks": ga_clicks,
+        "ga_only": ga_only,
     }
 
 
@@ -151,6 +159,118 @@ def test_missing_project_name_in_verdict_enum():
     assert VERDICT_MISSING_PROJECT_NAME in VERDICT_ENUM
 
 
+# ---------- GA_NO_PH_TRACKING precedence ----------
+
+def test_ga_no_ph_tracking_fires_when_flag_set():
+    """ga_clicks_without_ph_traffic flag → GA_NO_PH_TRACKING verdict."""
+    score = compute_headline_verdict(
+        mvp(visitors=0, signups=0, ga_clicks=58, ga_only=True),
+        {"ga_clicks_without_ph_traffic": True},
+        THRESHOLDS,
+    )
+    assert score["headline_verdict"] == VERDICT_GA_NO_PH_TRACKING
+
+
+def test_ga_no_ph_tracking_yields_to_missing_project_name():
+    """MISSING_PROJECT_NAME (rank 0) outranks GA_NO_PH_TRACKING (rank 1)."""
+    score = compute_headline_verdict(
+        mvp(visitors=0, signups=0, ga_clicks=58),
+        {"missing_project_name": True, "ga_clicks_without_ph_traffic": True},
+        THRESHOLDS,
+    )
+    assert score["headline_verdict"] == VERDICT_MISSING_PROJECT_NAME
+
+
+def test_ga_no_ph_tracking_outranks_no_data():
+    """GA_NO_PH_TRACKING (rank 1) outranks NO_DATA (rank 2). Both can be true
+    for the same ga_only MVP (no PH events → no_event_data) but the stricter
+    diagnosis (GA spend without PH tracking) is the actionable one."""
+    score = compute_headline_verdict(
+        mvp(visitors=0, signups=0, ga_clicks=58),
+        {"ga_clicks_without_ph_traffic": True, "no_event_data": True},
+        THRESHOLDS,
+    )
+    assert score["headline_verdict"] == VERDICT_GA_NO_PH_TRACKING
+
+
+def test_ga_no_ph_tracking_in_verdict_enum():
+    assert VERDICT_GA_NO_PH_TRACKING in VERDICT_ENUM
+
+
+# ---------- GA-as-denominator ----------
+
+def test_ga_clicks_used_as_denominator_when_present():
+    """When mvp.ga_clicks > 0, verdict uses GA-clicks not PH visitors.
+
+    stylica-ai real case: GA 575 / PH 201 / 33 signups. With GA denominator
+    visitor count is 575, ≥50 floor + ≥3 signups → GO (unchanged), but the
+    metrics report the more accurate true_conv_rate.
+    """
+    score = compute_headline_verdict(
+        mvp(visitors=201, signups=33, ga_clicks=575),
+        {},
+        THRESHOLDS,
+    )
+    assert score["headline_verdict"] == VERDICT_GO
+    assert score["metrics"]["denominator_source"] == "ga"
+    assert score["metrics"]["ga_clicks"] == 575
+    assert score["metrics"]["gclid_visitors"] == 201
+    # true_conv_rate = 33/575 = 5.74%, much lower than PH-only 33/201 = 16.4%
+    assert abs(score["metrics"]["true_conv_rate"] - 33 / 575) < 1e-4
+    assert abs(score["metrics"]["capture_rate"] - 201 / 575) < 1e-4
+
+
+def test_ga_clicks_promotes_insuf_to_no_go_at_floor():
+    """mosai real case: PH 44 visitors (below 50 floor → INSUF) but GA 50 clicks
+    (at floor, 0 signups → NO_GO). Workaround surfaces the deserved NO_GO."""
+    score = compute_headline_verdict(
+        mvp(visitors=44, signups=0, ga_clicks=50),
+        {},
+        THRESHOLDS,
+    )
+    assert score["headline_verdict"] == VERDICT_NO_GO
+
+
+def test_falls_back_to_gclid_visitors_when_no_ga_data():
+    """No ga_clicks → denominator_source = 'ph' and capture_rate = None."""
+    score = compute_headline_verdict(
+        mvp(visitors=80, signups=4),
+        {},
+        THRESHOLDS,
+    )
+    assert score["metrics"]["denominator_source"] == "ph"
+    assert score["metrics"]["ga_clicks"] == 0
+    assert score["metrics"]["capture_rate"] is None
+    # When no GA, true_conv_rate falls back to PH-conv_rate.
+    assert score["metrics"]["true_conv_rate"] == 0.05
+
+
+def test_ph_overcount_capture_rate_above_100():
+    """x-predict real case: GA 2055, PH 2545. capture_rate = 124% (PH over-counts)."""
+    score = compute_headline_verdict(
+        mvp(visitors=2545, signups=0, ga_clicks=2055),
+        {},
+        THRESHOLDS,
+    )
+    assert score["metrics"]["capture_rate"] > 1.0
+    # NO_GO still fires (visitors=2055 >= floor, signups=0).
+    assert score["headline_verdict"] == VERDICT_NO_GO
+
+
+def test_ga_only_mvp_with_zero_ph_visitors_no_signups():
+    """ga_only synthetic record with ga_clicks > 0, no flag → INSUFFICIENT_DATA
+    (below floor in this test). Operator gets a normal-shaped record and can
+    inspect ga_only flag for context."""
+    score = compute_headline_verdict(
+        mvp(visitors=0, signups=0, ga_clicks=27, ga_only=True),
+        {},  # no flag set
+        THRESHOLDS,
+    )
+    # 27 < 50 floor, 0 signups → INSUFFICIENT_DATA
+    assert score["headline_verdict"] == VERDICT_INSUFFICIENT
+    assert score["ga_only"] is True
+
+
 def test_visitors_needed_zero_for_go():
     score = compute_headline_verdict(mvp(visitors=10, signups=3), {}, THRESHOLDS)
     assert score["headline_verdict"] == VERDICT_GO
@@ -246,6 +366,46 @@ def test_telegram_includes_debug_prompt_when_no_data():
     debug_prompts = {"NO_DATA": "Run this prompt to fix tracking..."}
     text = emit_telegram(scores, debug_prompts, visitors_floor=50)
     assert "Run this prompt to fix tracking" in text
+
+
+def test_telegram_shows_ga_clicks_when_denominator_is_ga():
+    """When ga_clicks > 0 the visitor line shows GA-clicks AND PH-visit."""
+    scores = [
+        compute_headline_verdict(
+            mvp(name="stylica-ai", visitors=201, signups=33, ga_clicks=575),
+            {},
+            THRESHOLDS,
+        ),
+    ]
+    text = emit_telegram(scores, {}, visitors_floor=50)
+    assert "575 GA-clicks" in text
+    assert "201 PH-visit" in text
+
+
+def test_telegram_emits_capture_warning_when_under_50_percent():
+    """report-pilot real case: GA 49, PH 6 → 12% capture, ⚠ warning."""
+    scores = [
+        compute_headline_verdict(
+            mvp(name="report-pilot", visitors=6, signups=1, ga_clicks=49),
+            {},
+            THRESHOLDS,
+        ),
+    ]
+    text = emit_telegram(scores, {}, visitors_floor=50)
+    assert "PH capturing only" in text
+
+
+def test_telegram_emits_overcount_warning_when_ph_exceeds_ga():
+    """x-predict real case: GA 2055, PH 2545 = 124% → ⚠ overcount."""
+    scores = [
+        compute_headline_verdict(
+            mvp(name="x-predict", visitors=2545, signups=0, ga_clicks=2055),
+            {},
+            THRESHOLDS,
+        ),
+    ]
+    text = emit_telegram(scores, {}, visitors_floor=50)
+    assert "PH-overcount" in text
 
 
 def test_telegram_universal_rule_uses_visitors_floor():

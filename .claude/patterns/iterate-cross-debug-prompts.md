@@ -25,6 +25,24 @@ Report which step failed and what the root cause is. Then propose the minimum fi
 
 ---
 
+## GA_NO_PH_TRACKING
+
+This MVP appears in Google Ads with paid clicks but PostHog has **zero presence** for it — neither canonical events (under any `project_name`) nor orphan events (gclid events with NULL `project_name` whose host matches this MVP). The operator is paying for a deploy that cannot be measured at all.
+
+The campaign's Final URL is visible in the Google Ads UI under "Ads" → click the ad → "Final URL". Open that URL in a browser and verify in order:
+
+1. Does the page load (200 OK) and render real content? If 404/5xx or empty — the deploy is broken; ship the fix or pause the campaign.
+2. In DevTools Network tab, filter for `posthog`. Does ANY request go out within 5 seconds of page load? If no — `analytics.ts` is not imported on this route. The most common cause: the ad's Final URL points to a deep path (e.g. `/repair/adhd-couples`) but `app/layout.tsx`'s analytics import only runs from the root layout — verify the route is actually wrapped by the root layout, not bypassing via a route group.
+3. In DevTools Console, run `window.posthog?.config?.project_name` (or inspect a captured event's `properties.project_name`). What does it print?
+   - `undefined` → analytics.ts isn't loading. Check the import chain back from this page.
+   - A string DIFFERENT from what the operator expects (e.g. PostHog has `myproduct` but `experiment.yaml` says `my-product` kebab-case) → `PROJECT_NAME` constant in `src/lib/analytics.ts` doesn't match `experiment.yaml.name`. Fix the constant. Per /bootstrap state-3 these MUST be kebab-case (`[a-z][a-z0-9]*(?:-[a-z0-9]+)*$`).
+   - The expected name → events are firing under the right project_name. Then the issue is that `/iterate --cross` discovery didn't pick up this MVP because the gclid query filter excluded its traffic. Check the test-gclid convention in the NO_DATA section above — operator manual-test gclids (length ≤ 40 OR prefix not in `Cj/EAI/CIa`) are filtered out by design.
+4. Append `?gclid=test123` to the URL, reload, and check that PostHog captures the event with `properties.project_name` set. If the event arrives but `project_name` is missing, the analytics layer isn't auto-attaching it — verify `src/lib/analytics.ts` `enriched` object includes `project_name: PROJECT_NAME`.
+
+Report which step failed and the minimum fix. Don't apply it yet — operator reviews first. Once fixed, run `/iterate --cross` again; this MVP should move from GA_NO_PH_TRACKING into a normal verdict (GO / WEAK / NO_GO / INSUFFICIENT_DATA based on real signups).
+
+---
+
 ## WEAK
 
 This MVP is above the visitors floor (≥50 gclid visitors) but has fewer than 3 signups. It's not a clear NO_GO (some users converted) but not yet a GO either. The signal is real but thin — investigate before deciding.

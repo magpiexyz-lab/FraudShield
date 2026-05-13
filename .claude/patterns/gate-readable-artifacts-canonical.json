@@ -691,9 +691,21 @@
       "rationale": "Read by VERIFY blocks in skills: iterate."
     },
     {
+      "path": ".runs/_iterate-cross-ga-unmatched.json",
+      "consumers": [
+        "state-registry:iterate-cross.x0a"
+      ],
+      "writers": [
+        ".claude/scripts/lib/iterate_cross_ga.py"
+      ],
+      "scope": "transient-cross-skill",
+      "rationale": "Operator triage file for Google Ads campaigns that bucket logic could not map to an MVP (placeholders like 'Campaign #1'). Written unconditionally by iterate_cross_ga.py merge subcommand so x0a VERIFY can assert presence."
+    },
+    {
       "path": ".runs/iterate-cross-context.json",
       "consumers": [
-        "state-registry:iterate-cross.x0"
+        "state-registry:iterate-cross.x0",
+        "state-registry:iterate-cross.x0a"
       ],
       "writers": [],
       "scope": "transient-cross-skill",

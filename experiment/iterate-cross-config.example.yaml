@@ -106,7 +106,29 @@ signup_whitelist:
 # Phase 1 thresholds. The defaults reflect Bernoulli noise floor:
 #   At p=5%, P(signups >= 3 | n=50) ≈ 73%, so 50 visitors comfortably
 #   distinguishes signal from noise when 3+ signups appear.
+#
+# Note: when state-x0a (Chrome MCP GA scrape) succeeds, `visitors` resolves
+# to `ga_clicks` (Google Ads ground truth) rather than PostHog `gclid_visitors`.
+# This gives an accurate denominator even when 40-65% of clicks bounce before
+# the PostHog SDK loads. Visitor floor unchanged — semantics are the same.
 thresholds:
   signups_go: 3        # Headline GO when distinct gclid signups >= this
   visitors_floor: 50   # NO_GO if visitors >= this AND signups == 0;
                        # WEAK if visitors >= this AND 0 < signups < signups_go
+
+# Google Ads campaign-name → MVP-name overrides used by state-x0a when the
+# automatic bucket logic in iterate_cross_ga.py can't map a campaign to its
+# canonical MVP (typo, abbreviation, or completely different naming). The
+# substring-match-on-match_key default handles most cases (xpredict → x-predict,
+# Lumen-Parth → lumen). Manual overrides are only needed for:
+#   - typos (StaylicaAi-Lew → stylica-ai — campaign mis-typed)
+#   - re-namings (PubCheck_Search_Validation_V1 → verify)
+#   - prefix differences (autodropship-search-v1 → dropship-ops)
+#
+# Key format: lowercase alphanumeric only (use match_key normalization).
+# Value: the canonical MVP key (matches experiment.yaml.name on that deploy).
+ga_campaign_aliases: {}
+  # Example overrides — uncomment as needed:
+  # staylicaai: stylica-ai
+  # pubcheck: verify
+  # autodropship: dropship-ops

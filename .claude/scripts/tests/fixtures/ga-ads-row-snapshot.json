@@ -1,0 +1,15 @@
+{
+  "_about": "Real Google Ads campaigns-table row innerText captured on 2026-05-13 from ads.google.com/aw/campaigns (MVP MCC parent, workspaceId=-638109893). Each entry in `rows` is the `innerText` of one `div[role=\"row\"]` after `.replace(/\\n+/g, '|')` — the same shape the JS scraper at state-x0a-scrape-ga-clicks.md feeds into `parts.split('|')` for position-decoding. Test `test_parse_ga_row_text_against_fixture` asserts the Python parser at iterate_cross_ga.py decodes these correctly. When Google Ads UI changes (column order, new column, removed column), the test fails BEFORE the operator runs /iterate --cross.",
+  "captured_at": "2026-05-13T13:36:00Z",
+  "rows": [
+    "Campaign|Budget|help_outline|Status|help_outline|Optimisation score|help_outline|Account|Campaign type|help_outline|Impr.|help_outline|Interactions|help_outline|Interaction rate|help_outline|Avg. cost|help_outline|Cost|help_outline|Bid strategy type|help_outline|Clicks|help_outline|Conv. rate|help_outline|Conversions|help_outline|Cost / conv.|help_outline|Conv. value / cost",
+    "Total: Campaigns in your current view|help_outline|—|126,006|5,380|Clicks, engagements|4.27%|—|—|5,196|6.78%|365.00|—|—",
+    "expand_more|Drafts in progress:|16",
+    "xpredict|settings|US$20.00/day|—|Lee MVP|896-346-8125|Performance Max|29,453|1,086|Clicks, engagements|3.69%|US$0.08|US$85.27|Maximise conversions|1,082|8.66%|94.00|US$0.08|US$0.91",
+    "xpredict #2|settings|US$10.00/day|—|Lee MVP|896-346-8125|Performance Max|24,146|1,139|Clicks, engagements|4.72%|US$0.16|US$185.70|Maximise conversions|973|18.61%|212.00|US$0.19|US$0.88",
+    "Lumen-Parth|settings|US$20.00/day|—|Parth MVP|949-609-9862|Search|22,440|786|Clicks|3.50%|US$0.10|US$80.95|Maximise clicks|786|0.00%|0.00|US$0.10|US$0.00",
+    "StaylicaAi-Lew|settings|SGD40.00/day|—|Lew's MVP Account|336-270-7252|Search|6,119|575|Clicks|9.40%|SGD0.74|SGD424.90|Manual CPC|575|0.00%|0.00|SGD0.74|SGD0.00",
+    "Hospitica-search-v2|settings|SGD25.00/day|—|Lew's MVP Account|336-270-7252|Search|1,482|95|Clicks|6.41%|SGD4.59|SGD436.03|Manual CPC|95|0.00%|0.00|SGD4.59|SGD0.00",
+    "reset-app-search-v1|settings|US$10.00/day|—|Radlin's MVP Account|198-376-4333|Search|969|58|Clicks|5.99%|US$2.41|US$140.00|Manual CPC|58|0.00%|0.00|US$2.41|US$0.00"
+  ]
+}
