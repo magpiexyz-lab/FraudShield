@@ -134,6 +134,11 @@ def compute_headline_verdict(mvp: dict, issues: dict, thresholds: dict) -> dict:
             "conv_rate": round(conv_rate, 4),
         },
         "signup_events": signup_events,
+        # When state-x0 merged an orphan into this canonical record (high gclid
+        # overlap = same deploy with partial page tracking), partial_tracking_pct
+        # is the fraction of orphan visitors NOT covered by canonical tracking.
+        # state-x4 renders a "⚠ partial tracking" marker on the row when set.
+        "partial_tracking_pct": mvp.get("partial_tracking_pct"),
     }
 
 
@@ -202,7 +207,12 @@ def emit_telegram(scores: list, debug_prompts: dict, visitors_floor: int) -> str
                 visitors_floor,
             )
             line_metrics = f"({metrics['gclid_visitors']} visitors / {metrics['signups']} signups)"
-            lines.append(f"• {name} {line_metrics} → {verdict}")
+            # Partial-tracking suffix when state-x0 merged an orphan into this canonical.
+            pt = s.get("partial_tracking_pct")
+            pt_suffix = ""
+            if isinstance(pt, (int, float)) and pt > 0:
+                pt_suffix = f" ⚠ {round(pt * 100)}% pages w/o project_name"
+            lines.append(f"• {name}{pt_suffix} {line_metrics} → {verdict}")
             lines.append(f"  Action: {action}")
             if verdict == VERDICT_NO_DATA:
                 needed_prompts.add(verdict)

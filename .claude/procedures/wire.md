@@ -100,14 +100,20 @@ Wire conditional components into `src/app/layout.tsx`. The layout was created by
 
 1. **NavBar** (if `stack.auth` is present): Add `import { NavBar } from "@/components/nav-bar";` and render `<NavBar />` as the first child inside `<body>`, before `<main>`.
 2. **RetainTracker** (if `stack.analytics` is present): Create `src/components/RetainTracker.tsx` from the framework stack file's `retain_return` section template. Then add `import { RetainTracker } from "@/components/RetainTracker";` and render `<RetainTracker />` after `</main>`, as the last child inside `<body>`.
+3. **Paid-attribution `<Script>`** (if `stack.analytics: posthog` is present): Add `import Script from "next/script";` (if not already imported for JSON-LD). Render the gclid/utm capture script in the root layout with `id="capture-paid-attribution"` and `strategy="beforeInteractive"` — copy the script body verbatim from framework/nextjs.md "Paid-attribution capture" section. The `beforeInteractive` strategy hoists the script into the document `<head>` automatically, so it executes before React hydration regardless of JSX placement; place it as the first child of `<body>` for readability (no need to introduce an explicit `<head>` JSX block). This script populates `sessionStorage.__ph_gclid` and `__ph_utm_*` which the `loaded` callback in `analytics.ts` later registers as PostHog super-properties — see `.claude/stacks/analytics/posthog.md` "Cross-MVP Queries" notes.
 
-The resulting layout body structure:
+The resulting layout structure:
 ```tsx
-<body>
-  <NavBar />          {/* Only when stack.auth is present */}
-  <main>{children}</main>
-  <RetainTracker />   {/* Only when stack.analytics is present */}
-</body>
+<html lang="en">
+  <body>
+    <Script id="capture-paid-attribution" strategy="beforeInteractive">
+      {`/* gclid/utm sync capture — verbatim from framework/nextjs.md */`}
+    </Script>
+    <NavBar />          {/* Only when stack.auth is present */}
+    <main>{children}</main>
+    <RetainTracker />   {/* Only when stack.analytics is present */}
+  </body>
+</html>
 ```
 
 Layout.tsx MUST remain a server component — do NOT add "use client".

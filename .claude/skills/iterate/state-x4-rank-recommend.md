@@ -53,6 +53,8 @@ Print to stdout. Window comes from `.runs/iterate-cross-scores.json window_days`
 ╚═══════════════════════════════════════════════════════════════════════════════╝
 ```
 
+For any row whose `partial_tracking_pct` is non-null and > 0, append a warning suffix to the MVP cell (e.g., `x-predict ⚠ 14% pages w/o project_name`). This flags canonical rows that absorbed an orphan during state-x0's merge step — same-deploy partial-tracking, NOT a separate broken deploy. The operator action is to find pages on this MVP that don't import analytics.ts or fail to register `project_name`, and fix them so future runs converge on the canonical row.
+
 Show the operator at the bottom: total visitors, total signups, blended conv%, count by verdict.
 
 ---

@@ -213,6 +213,206 @@ def merge_mvp_aliases(
     return ordered, audit
 
 
+def kebab_normalize(s: str) -> str:
+    """Normalize a name to kebab-case (preserves separators).
+
+    Mirrors validate_experiment_yaml.kebab_suggest. Kept for any caller
+    that wants the kebab-formatted form. For ORPHAN HOST MATCHING use
+    `match_key` instead — orphan hosts come from URL domains (e.g.,
+    `xpredict.draftlabs.org` -> `xpredict`) which lose kebab separators.
+    """
+    if not isinstance(s, str):
+        return ""
+    return re.sub(r"[^a-z0-9]+", "-", s.lower()).strip("-")
+
+
+def match_key(s: str) -> str:
+    """Produce a comparable key for canonical name <-> orphan host matching.
+
+    Strips ALL non-alphanumeric characters (including hyphens). This is
+    necessary because orphan host_prefix is the URL subdomain
+    (e.g., `xpredict.draftlabs.org` -> `xpredict`) which never contains
+    hyphens, while canonical project_name follows kebab-case
+    (e.g., `x-predict`). Without this looser match, the two would never
+    correspond and orphan merge could not detect partial-tracking deploys.
+    """
+    if not isinstance(s, str):
+        return ""
+    return re.sub(r"[^a-z0-9]", "", s.lower())
+
+
+def merge_orphan_overlap(
+    discovery_rows: list[list],
+    orphan_rows: list[list],
+    overlap_counts: dict[str, dict],
+    threshold: float = 0.70,
+) -> tuple[list[list], list[list], list[dict]]:
+    """Merge orphan rows into canonical rows when gclid overlap exceeds threshold.
+
+    Inputs:
+      - discovery_rows: PostHog canonical-discovery shape:
+          [mvp_key, sample_utm_campaign, gclid_visitors, first_seen, last_seen]
+        Rows may have a 6th element (`partial_tracking_pct`) if previously merged.
+      - orphan_rows: PostHog orphan-discovery shape:
+          [host_prefix, gclid_visitors]
+      - overlap_counts: dict[canonical_name -> {orphan_host, canonical_gclids,
+          orphan_gclids, overlap}]  (queried serially in state-x0)
+      - threshold: 0.70 default. Merge if `overlap / min(canonical, orphan) >= threshold`.
+
+    Returns (merged_discovery, remaining_orphans, audit).
+      - merged_discovery: canonical rows possibly augmented with
+        `partial_tracking_pct` as 6th element
+      - remaining_orphans: orphan rows whose overlap was below threshold OR
+        had no matching canonical (kept as MISSING_PROJECT_NAME)
+      - audit: per-merge record for the operator report
+
+    Merge semantics for a high-overlap orphan -> canonical:
+      - canonical.gclid_visitors stays as-is (canonical IS the authoritative
+        count; orphan visitors are a subset of canonical via gclid overlap)
+      - canonical row gets `partial_tracking_pct = (orphan_gclids - overlap) /
+        orphan_gclids` (fraction of orphan visitors NOT in canonical -- i.e.,
+        pages where project_name is missing AND distinct from any canonical-
+        tracked page; this is the operator-actionable signal)
+      - orphan row dropped from remaining_orphans
+
+    Low-overlap orphans (< threshold) AND orphans with no matching canonical
+    name pass through as remaining_orphans -> MISSING_PROJECT_NAME verdict.
+
+    Idempotent: re-applying to already-merged input leaves the `partial_tracking_pct`
+    field intact (since orphan row was already removed in the first pass).
+    """
+    merged: list[list] = []
+    remaining: list[list] = []
+    audit: list[dict] = []
+
+    consumed_orphans: set[str] = set()
+    for canonical_row in discovery_rows:
+        if not canonical_row:
+            continue
+        canon_name = canonical_row[0]
+        canon_norm = match_key(canon_name)
+        # Find orphan with matching normalized name
+        matched_orphan = None
+        for orphan_row in orphan_rows:
+            if not orphan_row:
+                continue
+            orphan_host = orphan_row[0]
+            if match_key(orphan_host) == canon_norm:
+                matched_orphan = orphan_row
+                break
+
+        if matched_orphan is None:
+            merged.append(list(canonical_row))
+            continue
+
+        # We have a canonical + matching orphan; check overlap
+        overlap_data = overlap_counts.get(canon_name) or overlap_counts.get(canon_norm)
+        if not overlap_data:
+            # No overlap data available -- conservative: keep separate
+            merged.append(list(canonical_row))
+            continue
+
+        canon_gclids = overlap_data.get("canonical_gclids", 0) or 0
+        orph_gclids = overlap_data.get("orphan_gclids", 0) or 0
+        overlap = overlap_data.get("overlap", 0) or 0
+        base = min(canon_gclids, orph_gclids)
+        if base == 0:
+            merged.append(list(canonical_row))
+            continue
+
+        if overlap / base >= threshold:
+            # Merge: canonical gets partial_tracking_pct appended
+            pct = (orph_gclids - overlap) / orph_gclids if orph_gclids > 0 else 0.0
+            new_row = list(canonical_row)
+            # Append 6th element: partial_tracking_pct. If row already has 6th
+            # element (re-merge), overwrite (idempotent semantics).
+            if len(new_row) >= 6:
+                new_row[5] = round(pct, 4)
+            else:
+                new_row.append(round(pct, 4))
+            merged.append(new_row)
+            consumed_orphans.add(matched_orphan[0])
+            audit.append({
+                "canonical": canon_name,
+                "orphan_host": matched_orphan[0],
+                "canonical_gclids": canon_gclids,
+                "orphan_gclids": orph_gclids,
+                "overlap": overlap,
+                "overlap_pct": round(overlap / base, 4),
+                "partial_tracking_pct": round(pct, 4),
+                "action": "merged",
+            })
+        else:
+            merged.append(list(canonical_row))
+            audit.append({
+                "canonical": canon_name,
+                "orphan_host": matched_orphan[0],
+                "overlap_pct": round(overlap / base, 4) if base else 0,
+                "action": "kept-separate-low-overlap",
+            })
+
+    # Remaining orphans: those not consumed
+    for orphan_row in orphan_rows:
+        if not orphan_row:
+            continue
+        if orphan_row[0] not in consumed_orphans:
+            remaining.append(list(orphan_row))
+
+    return merged, remaining, audit
+
+
+def cmd_merge_orphan_overlap(args: argparse.Namespace) -> int:
+    """CLI subcommand: merge orphan rows into canonicals where gclid overlap >= threshold.
+
+    Reads discovery + orphan + overlap JSON; writes merged discovery (with
+    `partial_tracking_pct` appended on absorbed rows) + remaining orphans.
+    Idempotent.
+    """
+    for path in (args.discovery, args.orphan, args.overlap):
+        if not os.path.exists(path):
+            print(f"ERROR: input file not found: {path}", file=sys.stderr)
+            return 1
+
+    with open(args.discovery) as fh:
+        disc = json.load(fh)
+    with open(args.orphan) as fh:
+        orph = json.load(fh)
+    with open(args.overlap) as fh:
+        overlap = json.load(fh)
+
+    disc_rows = disc.get("results") or []
+    orph_rows = orph.get("results") or []
+    # overlap.json shape: {"by_canonical": {canon_name: {orphan_host, canonical_gclids, orphan_gclids, overlap}}}
+    overlap_data = overlap.get("by_canonical") or {}
+
+    config = load_yaml(args.config)
+    threshold = (config or {}).get("orphan_merge_overlap_threshold", 0.70)
+
+    merged, remaining, audit = merge_orphan_overlap(
+        disc_rows, orph_rows, overlap_data, threshold=threshold
+    )
+
+    disc["results"] = merged
+    disc["orphan_merge_audit"] = audit
+    orph["results"] = remaining
+
+    # Atomic writes
+    for path, data in [(args.discovery, disc), (args.orphan, orph)]:
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        tmp = path + ".tmp"
+        with open(tmp, "w") as fh:
+            json.dump(data, fh, indent=2)
+        os.replace(tmp, path)
+
+    merged_count = sum(1 for a in audit if a["action"] == "merged")
+    print(
+        f"merge-orphan-overlap: {len(disc_rows)} canonical / {len(orph_rows)} orphan -> "
+        f"{len(merged)} canonical / {len(remaining)} orphan; "
+        f"{merged_count} merge(s) at threshold {threshold}"
+    )
+    return 0
+
+
 def cmd_merge_aliases(args: argparse.Namespace) -> int:
     """CLI subcommand: read discovery JSON + config, write merged discovery.
 
@@ -565,6 +765,19 @@ def main(argv: list[str] | None = None) -> int:
     p_merge.add_argument("--output", default=".runs/_iterate-cross-discover.json",
                          help="Where to write the merged discovery (idempotent overwrite OK)")
     p_merge.set_defaults(func=cmd_merge_aliases)
+
+    p_orph = sub.add_parser(
+        "merge-orphan-overlap",
+        help="Merge orphan host rows into canonical rows when gclid overlap >= threshold.",
+    )
+    p_orph.add_argument("--discovery", default=".runs/_iterate-cross-discover.json",
+                        help="Canonical discovery JSON (modified in place with partial_tracking_pct field)")
+    p_orph.add_argument("--orphan", default=".runs/_iterate-cross-orphan.json",
+                        help="Orphan discovery JSON (modified in place; merged orphans removed)")
+    p_orph.add_argument("--overlap", default=".runs/_iterate-cross-overlap.json",
+                        help="Per-canonical overlap counts {by_canonical: {name: {canonical_gclids, orphan_gclids, overlap}}}")
+    p_orph.add_argument("--config", default="experiment/iterate-cross-config.yaml")
+    p_orph.set_defaults(func=cmd_merge_orphan_overlap)
 
     args = parser.parse_args(argv)
     return args.func(args)

@@ -28,6 +28,9 @@ from iterate_cross_classify import (  # noqa: E402
     cmd_prepare,
     filter_signup_events,
     is_excluded,
+    kebab_normalize,
+    match_key,
+    merge_orphan_overlap,
 )
 
 
@@ -492,6 +495,129 @@ def test_finalize_empty_signup_events_yields_zero_signups():
         m = result["mvps"][0]
         assert m["signups"] == 0
         assert m["signup_events"] == []
+
+
+# ---------- Orphan overlap merge (Issue 3) ----------
+
+def test_kebab_normalize_pass_through():
+    assert kebab_normalize("x-predict") == "x-predict"
+    assert kebab_normalize("split-share-neon") == "split-share-neon"
+
+
+def test_kebab_normalize_collapses_non_alphanum():
+    assert kebab_normalize("xpredict") == "xpredict"
+    assert kebab_normalize("StaylicaAi-Lew") == "staylicaai-lew"
+    assert kebab_normalize("foo_bar BAZ.qux") == "foo-bar-baz-qux"
+
+
+def test_kebab_normalize_handles_non_string():
+    assert kebab_normalize(None) == ""  # type: ignore[arg-type]
+    assert kebab_normalize(123) == ""  # type: ignore[arg-type]
+
+
+def test_merge_orphan_high_overlap_merges():
+    """100% overlap (x-predict case) -> merge orphan into canonical."""
+    disc = [["x-predict", "campaign", 2547, "2026-03-31", "2026-05-11"]]
+    orph = [["xpredict", 1184]]
+    overlap = {"x-predict": {"canonical_gclids": 2559, "orphan_gclids": 1196, "overlap": 1196}}
+    merged, remaining, audit = merge_orphan_overlap(disc, orph, overlap, threshold=0.70)
+    assert len(merged) == 1
+    assert merged[0][0] == "x-predict"
+    assert len(merged[0]) == 6, "partial_tracking_pct should be appended"
+    assert merged[0][5] == 0.0, "100% overlap -> 0% partial-tracking gap"
+    assert len(remaining) == 0
+    assert audit[0]["action"] == "merged"
+
+
+def test_merge_orphan_low_overlap_kept_separate():
+    """20% overlap -> keep orphan separate."""
+    disc = [["foo", "campaign", 100, "2026-04-01", "2026-05-01"]]
+    orph = [["foo", 100]]
+    overlap = {"foo": {"canonical_gclids": 100, "orphan_gclids": 100, "overlap": 20}}
+    merged, remaining, audit = merge_orphan_overlap(disc, orph, overlap, threshold=0.70)
+    assert len(merged) == 1
+    assert len(merged[0]) == 5, "no partial_tracking_pct on low-overlap"
+    assert len(remaining) == 1
+    assert audit[0]["action"] == "kept-separate-low-overlap"
+
+
+def test_merge_orphan_partial_tracking_pct_lumen():
+    """Lumen case: 539/629 overlap -> ~14% pages have project_name missing."""
+    disc = [["lumen", None, 532, None, None]]
+    orph = [["lumen", 614]]
+    overlap = {"lumen": {"canonical_gclids": 546, "orphan_gclids": 629, "overlap": 539}}
+    merged, remaining, audit = merge_orphan_overlap(disc, orph, overlap, threshold=0.70)
+    assert len(merged[0]) == 6
+    # partial_tracking_pct = (629 - 539) / 629 ~= 0.143
+    assert 0.13 < merged[0][5] < 0.15
+    assert audit[0]["action"] == "merged"
+
+
+def test_merge_orphan_no_matching_canonical_passes_through():
+    """Orphan with no matching canonical name -> MISSING_PROJECT_NAME."""
+    disc = [["x-predict", None, 2547, None, None]]
+    orph = [["unrelated-mvp", 50]]
+    overlap = {}
+    merged, remaining, audit = merge_orphan_overlap(disc, orph, overlap, threshold=0.70)
+    assert len(merged) == 1
+    assert len(merged[0]) == 5
+    assert len(remaining) == 1
+    assert remaining[0][0] == "unrelated-mvp"
+    assert audit == []
+
+
+def test_merge_orphan_idempotent():
+    """Re-merging already-merged data is a no-op (orphan already consumed)."""
+    disc = [["x-predict", None, 2547, None, None, 0.0]]
+    orph = []  # already removed in previous merge
+    overlap = {"x-predict": {"canonical_gclids": 2559, "orphan_gclids": 1196, "overlap": 1196}}
+    merged, remaining, _ = merge_orphan_overlap(disc, orph, overlap, threshold=0.70)
+    assert len(merged) == 1
+    assert merged[0][5] == 0.0
+    assert len(remaining) == 0
+
+
+def test_match_key_alphanumeric_only():
+    """match_key (used for canonical<->orphan matching) strips all non-alnum."""
+    assert match_key("x-predict") == "xpredict"
+    assert match_key("xpredict") == "xpredict"
+    assert match_key("agent-cost-monitor") == "agentcostmonitor"
+    assert match_key("agentcostmonitor") == "agentcostmonitor"
+    assert match_key("StaylicaAi-Lew") == "staylicaailew"
+    assert match_key(None) == ""  # type: ignore[arg-type]
+
+
+def test_merge_orphan_match_key_handles_hyphen_variant():
+    """Orphan host 'xpredict' MUST match canonical 'x-predict' (URL strips hyphens)."""
+    disc = [["x-predict", None, 2547, None, None]]
+    orph = [["xpredict", 1184]]
+    overlap = {"x-predict": {"canonical_gclids": 2559, "orphan_gclids": 1196, "overlap": 1196}}
+    merged, remaining, audit = merge_orphan_overlap(disc, orph, overlap, threshold=0.70)
+    assert len(merged) == 1
+    assert len(merged[0]) == 6, "partial_tracking_pct must be appended on match"
+    assert len(remaining) == 0
+    assert audit[0]["action"] == "merged"
+
+
+def test_merge_orphan_match_key_handles_agentcostmonitor():
+    """Orphan host 'agentcostmonitor' merges into canonical 'agent-cost-monitor'."""
+    disc = [["agent-cost-monitor", None, 9, None, None]]
+    orph = [["agentcostmonitor", 5]]
+    overlap = {"agent-cost-monitor": {"canonical_gclids": 9, "orphan_gclids": 5, "overlap": 5}}
+    merged, remaining, audit = merge_orphan_overlap(disc, orph, overlap, threshold=0.70)
+    assert len(merged) == 1
+    assert len(remaining) == 0, "match_key collapses hyphens; orphan merged"
+
+
+def test_merge_orphan_no_overlap_data_kept_separate():
+    """Missing overlap entry -> conservative: don't merge."""
+    disc = [["lumen", None, 532, None, None]]
+    orph = [["lumen", 614]]
+    overlap = {}  # no overlap data
+    merged, remaining, audit = merge_orphan_overlap(disc, orph, overlap, threshold=0.70)
+    assert len(merged) == 1
+    assert len(merged[0]) == 5
+    assert len(remaining) == 1
 
 
 # Self-runner

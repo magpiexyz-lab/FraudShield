@@ -87,7 +87,9 @@ Build a UNION ALL query that counts gclid-filtered distinct signups per MVP usin
 
 ```bash
 python3 - <<'PY'
-import json, yaml, os
+import json, yaml, os, sys
+sys.path.insert(0, '.claude/scripts/lib')
+from gclid_filter import PAID_GCLID_FILTER  # single source of truth; see gclid_filter.py
 
 config = yaml.safe_load(open('experiment/iterate-cross-config.yaml')) or {}
 mappings = config.get('mvp_mappings') or {}
@@ -121,18 +123,18 @@ for i, mvp in enumerate(data['mvps']):
     # enforced at /bootstrap state-3). The previous OR-LIKE branch on
     # $current_url double-counted signups across similarly-named MVPs.
     #
-    # gclid length filter: length(...) > 30 excludes operator manual-test
-    # traffic that triggers signup events with synthetic gclids (e.g.
-    # `?gclid=test123` from debug-prompts.md NO_DATA step 6 — when manual
-    # testing also walks through the signup funnel, the signup event gets
-    # tagged with the fake gclid and inflates real conversion counts).
-    # Real Google gclids are 60-120 chars; this filter keeps only them.
-    # Same convention applied in state-x0/state-x1/state-c2 — keep in sync.
+    # Paid-traffic filter (PAID_GCLID_FILTER) is the single source of truth
+    # in .claude/scripts/lib/gclid_filter.py. Excludes operator manual-test
+    # gclids (e.g. analytics-verify-* 32-char strings that slipped past the
+    # old length>30 rule) by combining length>40 AND prefix in Cj/EAI/CIa,
+    # AND coalesces $session_entry_gclid with properties.gclid for legacy
+    # deploys where SDK init lost the race to URL cleanup.
+    # Same filter applied in state-x0/state-x1/state-c2 — keep in sync.
     parts.append(
         f"SELECT {{{pj}}} AS mvp_key, "
         f"count(DISTINCT IF({sg_expr}, distinct_id, NULL)) AS signups "
         f"FROM events "
-        f"WHERE properties.$session_entry_gclid IS NOT NULL AND properties.$session_entry_gclid != {{empty}} AND length(toString(properties.$session_entry_gclid)) > 30 "
+        f"WHERE {PAID_GCLID_FILTER} "
         f"AND timestamp >= now() - INTERVAL {window_days} DAY "
         f"AND properties.project_name = {{{pj}}}"
     )

@@ -189,8 +189,10 @@ INNER JOIN events AS reach
   ON demand.distinct_id = reach.distinct_id
   AND reach.properties.funnel_stage = 'reach'
   AND reach.properties.gclid IS NOT NULL
-  AND reach.properties.gclid != ''
-  AND length(toString(reach.properties.gclid)) > 30
+  AND length(toString(reach.properties.gclid)) > 40
+  AND (startsWith(toString(reach.properties.gclid), 'Cj')
+       OR startsWith(toString(reach.properties.gclid), 'EAI')
+       OR startsWith(toString(reach.properties.gclid), 'CIa'))
 WHERE demand.properties.project_name = {project_name}
   AND demand.properties.funnel_stage = 'demand'
   AND demand.timestamp > {last_import_at}
@@ -199,7 +201,7 @@ GROUP BY gclid
 
 Note: gclid is captured on the reach event (landing page), not on the demand event (signup). The join by distinct_id links "which user clicked the ad" to "which user converted."
 
-**gclid length filter** — `length(...) > 30` excludes operator manual-test traffic that produces synthetic gclids like `test123` or short numeric IDs (see `.claude/patterns/iterate-cross-debug-prompts.md` NO_DATA step 6 for the test convention). Real Google Ads gclids are 60-120 char base64-url strings. Without this filter, the offline-conversion CSV exported below would include fake gclids and either fail Google Ads validation or pollute the campaign conversion data. Same convention applied in `state-x0`, `state-x1`, and `state-x2` — keep in sync.
+**gclid filter (length > 40 AND prefix in `Cj`/`EAI`/`CIa`)** — uses the same rule as `.claude/scripts/lib/gclid_filter.py` `PAID_GCLID_FILTER`, inlined here because c2's JOIN reads `reach.properties.gclid` directly (no `coalesce` fallback; the join condition is already specific to this column). Excludes operator manual-test traffic (e.g. `analytics-verify-2026050720272` 32-char string that slipped past the prior `length>30` rule, `MANUAL_VERIFY_CHECK`, `test123`). Real Google Ads gclids start with `Cj0KCQ`/`CjwKCAjw`/`EAIaIQob` and are 60-120 chars. Without this filter, the offline-conversion CSV would include fake gclids and fail Google Ads validation or pollute the campaign conversion data. Same filter (modulo the `coalesce` fallback) applied in `state-x0`, `state-x1`, and `state-x2` via `gclid_filter.py` — keep in sync.
 
 If query returns 0 rows → log "No new conversions with gclid since last import" → skip to Write fixes artifact.
 

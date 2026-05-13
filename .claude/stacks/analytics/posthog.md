@@ -108,6 +108,31 @@ function init(): void {
           disable_compression: true, // Force XHR transport (Playwright cannot intercept sendBeacon)
           request_batching: false,   // Force immediate per-event XHR (batching delays events past assertion time)
         }),
+        // Read paid-attribution params captured by the synchronous inline
+        // <Script id="capture-paid-attribution"> in src/app/layout.tsx
+        // (see framework/nextjs.md "Paid-attribution capture" section).
+        // That script runs BEFORE React hydration so `?gclid=` is read from
+        // the URL even if Next.js router later strips it via replaceState.
+        // PostHog's own `$session_entry_gclid` capture races URL cleanup and
+        // frequently loses (foundrygraph 0.5%, pingback 14%, report-pilot 24%
+        // in prod). This `properties.gclid` super-property is the reliable
+        // fallback; /iterate --cross uses coalesce(both) so either path works.
+        // Match the rest of analytics.ts (which holds `posthog: any`) — narrower
+        // types here would require importing posthog-js types statically, which
+        // defeats the lazy-import goal.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        loaded: (ph: any) => {
+          try {
+            const g = sessionStorage.getItem("__ph_gclid");
+            if (g) ph.register({ gclid: g });
+            ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"].forEach((k) => {
+              const v = sessionStorage.getItem("__ph_" + k);
+              if (v) ph.register({ [k]: v });
+            });
+          } catch {
+            // sessionStorage unavailable (private mode, sandboxed iframe); skip silently
+          }
+        },
       });
       status = "ready";
       flushPending();
@@ -582,6 +607,10 @@ posthog.init(POSTHOG_KEY, {
     disable_compression: true, // Force XHR transport (Playwright cannot intercept sendBeacon)
     request_batching: false,   // Force immediate per-event XHR (batching delays events past assertion time)
   }),
+  // See canonical analytics.ts above for the loaded callback that registers
+  // gclid + utm_* super-properties read from sessionStorage (populated by
+  // the inline <Script> in layout.tsx — see framework/nextjs.md).
+  loaded: (ph) => { /* gclid/utm super-property registration */ },
 });
 ```
 
@@ -929,7 +958,7 @@ PostHog-only — no Google Ads dependency. The cross-skill uses three query patt
 
 **Critical filter rules:**
 
-- Use `properties.$session_entry_gclid IS NOT NULL` to identify Google Ads traffic — NOT `utm_source = 'google'`. Some campaign final URLs only get auto-tagged with `gclid` (no explicit `utm_source`), so the utm_source filter undercounts.
+- Use the shared paid-traffic filter from `.claude/scripts/lib/gclid_filter.py` (`PAID_GCLID_FILTER`): `coalesce(toString(properties.$session_entry_gclid), toString(properties.gclid)) IS NOT NULL AND length(...) > 40 AND (startsWith(..., 'Cj') OR startsWith(..., 'EAI') OR startsWith(..., 'CIa'))`. This is the single source of truth — all 5 query sites (state-x0/x1/x2/c2, this file's examples) MUST read from it. Do NOT use `utm_source = 'google'` (some campaign final URLs only get auto-tagged with `gclid`, no explicit `utm_source`, so the utm_source filter undercounts).
 - Use `count(DISTINCT distinct_id)` everywhere — events double-fire and we want unique users.
 - Always parameterize values via `{name}` — never interpolate user-supplied strings into the query.
 
@@ -950,7 +979,7 @@ curl -s -X POST "https://us.i.posthog.com/api/projects/$POSTHOG_PROJECT_ID/query
   -d '{
     "query": {
       "kind": "HogQLQuery",
-      "query": "SELECT properties.project_name AS mvp_key, max(properties.utm_campaign) AS sample_utm_campaign, count(DISTINCT distinct_id) AS gclid_visitors, min(timestamp) AS first_seen, max(timestamp) AS last_seen FROM events WHERE properties.$session_entry_gclid IS NOT NULL AND properties.$session_entry_gclid != {empty} AND properties.project_name IS NOT NULL AND properties.project_name != {empty} AND timestamp >= now() - INTERVAL 90 DAY GROUP BY mvp_key HAVING gclid_visitors > 0 ORDER BY gclid_visitors DESC LIMIT 200",
+      "query": "SELECT properties.project_name AS mvp_key, max(properties.utm_campaign) AS sample_utm_campaign, count(DISTINCT distinct_id) AS gclid_visitors, min(timestamp) AS first_seen, max(timestamp) AS last_seen FROM events WHERE coalesce(toString(properties.$session_entry_gclid), toString(properties.gclid)) IS NOT NULL AND length(coalesce(toString(properties.$session_entry_gclid), toString(properties.gclid))) > 40 AND (startsWith(coalesce(toString(properties.$session_entry_gclid), toString(properties.gclid)), 'Cj') OR startsWith(coalesce(toString(properties.$session_entry_gclid), toString(properties.gclid)), 'EAI') OR startsWith(coalesce(toString(properties.$session_entry_gclid), toString(properties.gclid)), 'CIa')) AND properties.project_name IS NOT NULL AND properties.project_name != {empty} AND timestamp >= now() - INTERVAL 90 DAY GROUP BY mvp_key HAVING gclid_visitors > 0 ORDER BY gclid_visitors DESC LIMIT 200",
       "values": {"empty": ""}
     }
   }'
@@ -968,7 +997,7 @@ SELECT {p_name} AS mvp_key,
        max(toString(properties.funnel_stage)) AS sample_stage,
        count(*) AS event_count,
        count(DISTINCT distinct_id) AS unique_users,
-       count(DISTINCT IF(properties.$session_entry_gclid IS NOT NULL AND properties.$session_entry_gclid != {empty}, distinct_id, NULL)) AS gclid_users
+       count(DISTINCT IF(coalesce(toString(properties.$session_entry_gclid), toString(properties.gclid)) IS NOT NULL AND length(coalesce(toString(properties.$session_entry_gclid), toString(properties.gclid))) > 40 AND (startsWith(coalesce(toString(properties.$session_entry_gclid), toString(properties.gclid)), 'Cj') OR startsWith(coalesce(toString(properties.$session_entry_gclid), toString(properties.gclid)), 'EAI') OR startsWith(coalesce(toString(properties.$session_entry_gclid), toString(properties.gclid)), 'CIa')), distinct_id, NULL)) AS gclid_users
 FROM events
 WHERE timestamp >= now() - INTERVAL {window_days} DAY
   AND properties.project_name = {p_name}
@@ -985,14 +1014,17 @@ After x2's LLM classifies signup_events per MVP, query gclid-filtered distinct u
 SELECT {p_name} AS mvp_key,
        count(DISTINCT IF(event = {sg1} OR event = {sg2}, distinct_id, NULL)) AS signups
 FROM events
-WHERE properties.$session_entry_gclid IS NOT NULL
-  AND properties.$session_entry_gclid != {empty}
+WHERE coalesce(toString(properties.$session_entry_gclid), toString(properties.gclid)) IS NOT NULL
+  AND length(coalesce(toString(properties.$session_entry_gclid), toString(properties.gclid))) > 40
+  AND (startsWith(coalesce(toString(properties.$session_entry_gclid), toString(properties.gclid)), 'Cj')
+       OR startsWith(coalesce(toString(properties.$session_entry_gclid), toString(properties.gclid)), 'EAI')
+       OR startsWith(coalesce(toString(properties.$session_entry_gclid), toString(properties.gclid)), 'CIa'))
   AND timestamp >= now() - INTERVAL {window_days} DAY
   AND properties.project_name = {p_name}
 ```
 
 ### Notes
 
-- `$session_entry_gclid` is auto-populated by `posthog-js@1.130.0+` when session properties are enabled (default). For older deployments, fall back to `properties.gclid IS NOT NULL` filtered to the landing event only.
+- Paid-traffic queries should always use `coalesce(toString(properties.$session_entry_gclid), toString(properties.gclid))` as the attribution expression — `$session_entry_gclid` is auto-populated by `posthog-js@1.130.0+` when SDK init wins the race against URL cleanup, but Next.js router can strip `?gclid=` before SDK loads in lazy-import setups. The template's `analytics.ts` mitigates this by also stamping `properties.gclid` as a super property via a `loaded` callback that reads from `sessionStorage` (populated by a synchronous inline `<Script>` in `layout.tsx` — see `framework/nextjs.md` "Paid-attribution capture" section). The `coalesce` ensures both capture paths work; the length+prefix filter (in `gclid_filter.py`) excludes operator manual-test gclids that slip past loose `length>30` rules.
 - HogQL `IN [array]` inside `count(DISTINCT IF(... , distinct_id, NULL))` triggers a `Nested type Array(String) cannot be inside Nullable type` error. Workaround: use `(event = {sg1} OR event = {sg2} OR ...)` instead of `event IN {sg_list}`.
 - The `event NOT LIKE '$%'` filter excludes PostHog auto-capture events (`$pageview`, `$autocapture`, etc.) from the catalog — they're never signups and they crowd out the meaningful events.

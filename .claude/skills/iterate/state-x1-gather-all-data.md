@@ -24,7 +24,9 @@ The query uses **one round-trip** with UNION ALL of per-MVP subqueries. Build vi
 
 ```bash
 python3 - <<'PY'
-import json
+import json, sys
+sys.path.insert(0, '.claude/scripts/lib')
+from gclid_filter import PAID_GCLID_FILTER  # single source of truth; see gclid_filter.py
 ctx = json.load(open('.runs/iterate-cross-context.json'))
 mvps = ctx['mvps']
 window_days = ctx['window_days']
@@ -44,18 +46,15 @@ for i, m in enumerate(mvps):
     # rubber-duck-api). project_name is now the canonical MVP identifier —
     # enforced at /bootstrap state-3 by validate_experiment_yaml.py.
     #
-    # gclid length filter: length(...) > 30 excludes operator manual-test traffic
-    # (e.g. `?gclid=test123` from .claude/patterns/iterate-cross-debug-prompts.md
-    # NO_DATA step 6). Real Google Ads gclids are 60-120 char base64; short
-    # sentinels (test123, 10-digit timestamps, framework_audit_*) are filtered.
-    # Same convention applied in state-x0/state-x2/state-c2 — keep in sync.
+    # Paid-traffic filter (PAID_GCLID_FILTER) lives in .claude/scripts/lib/gclid_filter.py.
+    # Same filter applied in state-x0/state-x2/state-c2 — single source of truth.
     subq = (
         f"SELECT {{{pj}}} AS mvp_key, "
         f"event AS event_name, "
         f"max(toString(properties.funnel_stage)) AS sample_stage, "
         f"count(*) AS event_count, "
         f"count(DISTINCT distinct_id) AS unique_users, "
-        f"count(DISTINCT IF(properties.$session_entry_gclid IS NOT NULL AND properties.$session_entry_gclid != {{empty}} AND length(toString(properties.$session_entry_gclid)) > 30, distinct_id, NULL)) AS gclid_users "
+        f"count(DISTINCT IF({PAID_GCLID_FILTER}, distinct_id, NULL)) AS gclid_users "
         f"FROM events "
         f"WHERE timestamp >= now() - INTERVAL {window_days} DAY "
         f"AND properties.project_name = {{{pj}}} "

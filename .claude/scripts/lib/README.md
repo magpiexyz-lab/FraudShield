@@ -305,6 +305,53 @@ fix_template: |
   field_role_map at lint time.
 ```
 
+### shared paid-traffic gclid filter (cross-MVP attribution single-source-of-truth)
+```yaml
+id: paid-traffic-gclid-filter
+maturity: stable
+anti_pattern: false
+composite_identity:
+  root_cause_class: paid-traffic-gclid-filter-inline-divergence
+  divergence_pattern: hand-coded-gclid-filter-instead-of-helper-call
+  stack_scope: scripts/lib/gclid_filter
+composite_identity_hash: bf2967dd122c
+symptom_keywords: [gclid, paid-traffic, $session_entry_gclid, properties.gclid, posthog, hogql, iterate-cross, attribution, length-filter, prefix-filter]
+confidence_score: 0.9
+occurrence_count: 1
+linked_issues: [1427]
+first_seen: 2026-05-13
+last_seen: 2026-05-13
+graduated_to: null
+prevention_mechanism: |
+  gclid_filter.PAID_GCLID_FILTER is the single HogQL fragment that any
+  /iterate --cross query MUST use to filter for real Google Ads paid traffic.
+  It combines (a) coalesce($session_entry_gclid, properties.gclid) for
+  attribution-path robustness when PostHog SDK init loses the race against
+  Next.js router URL cleanup, and (b) length>40 + prefix in {Cj, EAI, CIa}
+  to exclude operator manual-test gclids (e.g. analytics-verify-* 32-char
+  strings that slipped past the prior length>30 rule).
+fix_template: |
+  When a HogQL query needs to filter for real Google Ads paid traffic, do
+  NOT hand-write `properties.$session_entry_gclid IS NOT NULL AND length...`
+  inline. Import the shared filter:
+
+    # Python f-string contexts (state-x1, state-x2, etc.):
+    import sys; sys.path.insert(0, '.claude/scripts/lib')
+    from gclid_filter import PAID_GCLID_FILTER
+    sql = f"... WHERE {PAID_GCLID_FILTER} ..."
+
+    # Bash contexts (state-x0, state-c2):
+    PAID_GCLID_FILTER=$(python3 -c "import sys; sys.path.insert(0,'.claude/scripts/lib'); from gclid_filter import PAID_GCLID_FILTER; print(PAID_GCLID_FILTER)")
+    cat > /tmp/q.json <<JSON
+    {"query":{"kind":"HogQLQuery","query":"... WHERE $PAID_GCLID_FILTER ..."}}
+    JSON
+
+  The Python-side validator `is_real_gclid(s)` mirrors the SQL rule for
+  unit-testable checks. All 5 historical query sites (state-x0 canonical,
+  state-x0 orphan, state-x1, state-x2, state-c2) already read from this
+  helper. Any new query MUST follow the same pattern.
+```
+
 ### shared selector for per-page design-critic traces (epoch suffix routing)
 ```yaml
 id: design-critic-trace-epoch-selector
