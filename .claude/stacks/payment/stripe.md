@@ -474,6 +474,42 @@ create table pending_gifts (
 
 This pattern is exactly the lookup-token-in-server-table referenced by the customer_email IDOR entry above — gift purchases ARE the canonical anonymous-checkout flow that needs it.
 
+### When checkout session mode is `subscription`, also set `subscription_data.metadata`
+
+Stripe does NOT propagate Session-level `metadata` to the Subscription object created at the end of checkout. If the webhook handler reads `subscription.metadata.user_id` (the canonical pattern for recurring billing) but `subscription_data.metadata` was never set at checkout creation, `user_id` is `undefined` and downstream provisioning fails. On Supabase this surfaces as a UUID column violation when the webhook tries to insert into `subscribers(user_id, ...)`; the fallback path that uses the Stripe customer ID (e.g., `cus_XXX`) orphans the paying customer because no Supabase user matches that string.
+
+The existing template at the top of this file uses `mode: "payment"` (one-time purchases), so this bug is not exercised by the shipped scaffold. It only surfaces when a project switches to `mode: "subscription"`. Always set BOTH `metadata` (Session-level — for ad-platform attribution, which reads from the Session) AND `subscription_data.metadata` (Subscription-level — for the webhook handler, which reads from the Subscription).
+
+```typescript
+const session = await getStripe().checkout.sessions.create({
+  mode: "subscription",
+  // Session-level metadata — ad pixels read THIS (Stripe Session), not the Subscription
+  metadata: {
+    user_id: user.id,
+    plan,
+    amount_cents: String(amount_cents),
+  },
+  // REQUIRED when the webhook reads subscription.metadata.user_id
+  subscription_data: {
+    metadata: {
+      user_id: user.id,
+      plan,
+      amount_cents: String(amount_cents),
+    },
+  },
+  line_items: [{ price: STRIPE_PRICE_ID, quantity: 1 }],
+  success_url: `${siteUrl}/`,
+  cancel_url: `${siteUrl}/`,
+});
+```
+
+Keep BOTH blocks — they serve different consumers:
+
+- **Session metadata** — ad-platform attribution (Meta Conversions API, Google Ads, etc.) reads the Stripe Session object, not the Subscription. Drop this and ad-attribution breaks.
+- **Subscription metadata** — the webhook handler's canonical source for `user_id` when provisioning recurring access. Drop this and the webhook misroutes (orphaned subscriber rows on Supabase, UUID column violation).
+
+When migrating an existing `mode: "payment"` template to `mode: "subscription"`, audit the webhook handler for `subscription.metadata.*` reads BEFORE flipping the mode — if the handler is still reading `session.metadata.*` only, propagation works without `subscription_data.metadata`. The bug surfaces only when consumer (webhook) and producer (checkout) diverge on which object they trust.
+
 ## PR Instructions
 - After merging, set these environment variables in your hosting provider:
   - `STRIPE_SECRET_KEY` — from Stripe Dashboard > Developers > API keys

@@ -17,8 +17,8 @@ if [[ ! -f "$LIBS_MANIFEST" ]]; then
   ERRORS+=("scaffold-libs manifest missing — scaffold-libs must complete before landing agents")
 else
   LIBS_STATUS=$(read_json_field "$LIBS_MANIFEST" "status")
-  if [[ "$LIBS_STATUS" != "complete" ]]; then
-    ERRORS+=("scaffold-libs status is '$LIBS_STATUS', not 'complete' — wait for scaffold-libs to finish")
+  if [[ "$LIBS_STATUS" != "completed" ]]; then
+    ERRORS+=("scaffold-libs status is '$LIBS_STATUS', not 'completed' — wait for scaffold-libs to finish")
   fi
 fi
 

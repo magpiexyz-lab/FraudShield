@@ -49,7 +49,7 @@ Update checkpoint in `.runs/current-plan.md` frontmatter to `awaiting-verify`.
 
 Check off in `.runs/current-plan.md`: `- [x] scaffold-wire completed`
 
-Verify scaffold-wire trace: `test -f .runs/agent-traces/scaffold-wire.json && python3 -c "import json;d=json.load(open('.runs/agent-traces/scaffold-wire.json'));assert d.get('status')=='complete';print('scaffold-wire trace: OK')"`. If trace missing: log "WARN: scaffold-wire did not write trace -- continuing with file-based verification".
+Verify scaffold-wire trace: `test -f .runs/agent-traces/scaffold-wire.json && python3 -c "import json;d=json.load(open('.runs/agent-traces/scaffold-wire.json'));assert d.get('status')=='completed';print('scaffold-wire trace: OK')"`. If trace missing: log "WARN: scaffold-wire did not write trace -- continuing with file-based verification".
 
 - **Write Stack Knowledge hints artifact** (`.runs/bootstrap-state14-stack-knowledge-hints.json`) — active prevention consulted during wire decisions:
   ```bash

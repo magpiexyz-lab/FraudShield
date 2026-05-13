@@ -68,9 +68,19 @@ Exchanges PKCE authorization codes for sessions. Required for email confirmation
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
+// When `stack.analytics` is present: also import the server-analytics helper.
+// Remove this import line and the trackServerEvent block below if stack.analytics is absent.
+import { trackServerEvent } from "@/lib/analytics-server";
 
 // PKCE codes are URL-safe base64, typically 40-200 chars. Cap generously.
 const codeSchema = z.string().min(20).max(512).regex(/^[A-Za-z0-9_-]+$/);
+
+// New-user recency window (ms) for activate-stage event firing. Covers OAuth and
+// magic-link signups (user.created_at is set during the handshake) and
+// prompt-email-confirm signups; skips password-reset and returning magic-link
+// users where user.created_at is older. See Stack Knowledge entry
+// "When stack.analytics is present, fire signup_complete from the callback route".
+const SIGNUP_RECENCY_MS = 60_000;
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
@@ -87,7 +97,18 @@ export async function GET(request: Request) {
   if (parsedCode?.success) {
     const supabase = await createServerSupabaseClient();
     const { error } = await supabase.auth.exchangeCodeForSession(parsedCode.data);
-    if (!error) return NextResponse.redirect(`${origin}${next}`);
+    if (!error) {
+      // When `stack.analytics` is present: fire signup_complete at the callback
+      // chokepoint for OAuth/email-confirm/magic-link signups. Recency filter
+      // skips password-reset and returning magic-link users. Remove the entire
+      // `const { data: { user } } ...` block below when stack.analytics is absent.
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user && Date.now() - new Date(user.created_at).getTime() < SIGNUP_RECENCY_MS) {
+        const provider = (user.app_metadata?.provider as string | undefined) ?? "email";
+        await trackServerEvent("signup_complete", user.id, { provider });
+      }
+      return NextResponse.redirect(`${origin}${next}`);
+    }
   }
   return NextResponse.redirect(`${origin}/login?error=auth`);
 }
@@ -99,7 +120,7 @@ Replace the `createServerSupabaseClient` import (the third `import` line in the 
 // Instead of: import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { createServerAuthClient as createServerSupabaseClient } from "@/lib/supabase-auth-server";
 ```
-This aliasing keeps the rest of the route handler code identical — only that one import changes. The zod import and `codeSchema` constant stay as shown.
+This aliasing keeps the rest of the route handler code identical — only that one import changes. The zod import, `codeSchema` constant, and (when `stack.analytics` is present) the `trackServerEvent` import + activate-stage block stay as shown.
 
 ### `src/app/auth/reset-password/page.tsx` — Reset password page (always created)
 
@@ -746,7 +767,7 @@ When the OAuth flow completes, Supabase redirects to `/auth/callback` with an au
 
 ### Analytics
 - Fire `trackSignupStart({ method: "google" })` (or `"github"`) **before** the OAuth call — the redirect leaves the page, so this must fire first
-- `signup_complete` fires automatically when the user lands back in the app with an active session (wire this in the destination page or via `onAuthStateChange`)
+- `signup_complete` fires server-side from the callback route template above (the shared chokepoint for OAuth, email-confirm, and magic-link signups). The recency filter (`user.created_at < 60s`) skips returning users and password-reset clickers. Destination-page or `onAuthStateChange` wiring is no longer required — the callback route covers all three flows. See `## Stack Knowledge > When stack.analytics is present, fire signup_complete from the callback route` for rationale and edge cases.
 
 ### Enabling a provider
 
@@ -1212,6 +1233,38 @@ if (!parsed.success) {
 ```
 
 Apply this pattern whenever the callback route reads any `user_metadata` field and writes it to a database column. The shipped signup form already constrains values through UI length limits, but any direct Supabase API call bypasses those limits — zod validation on the server is the only defense.
+
+### When stack.analytics is present, fire signup_complete from the callback route for OAuth/email-confirm/magic-link
+
+The auth callback at `src/app/auth/callback/route.ts` is the shared chokepoint for three signup flows that bypass client-side analytics:
+
+1. **OAuth signups** (Google, GitHub, etc.) — the page redirects to the provider before any client-side `trackSignupComplete()` can fire.
+2. **Email-confirmation signups** — Supabase sends a confirmation link; the user lands on `/auth/callback` and the route redirects them. No client-side track call runs.
+3. **Magic-link signups** — same callback path as email-confirmation.
+
+If the activate-stage event (`signup_complete`) only fires from `signup/page.tsx` (which is what the legacy pattern documented), all three flows undercount: the activate-funnel KPI silently misses every OAuth / email-confirm / magic-link signup. Spec-reviewer flags this as a missing canonical event (S3/S4 failure).
+
+The callback route is the right chokepoint to fire the event — it runs server-side for all three flows. Use the canonical event name `signup_complete` (singular, matches `experiment/EVENTS.yaml` and `analytics/posthog.md`).
+
+**Filter by user.created_at recency** to avoid firing for returning users:
+
+```ts
+const { data: { user } } = await supabase.auth.getUser();
+if (user && Date.now() - new Date(user.created_at).getTime() < 60_000) {
+  const provider = (user.app_metadata?.provider as string | undefined) ?? "email";
+  await trackServerEvent("signup_complete", user.id, { provider });
+}
+```
+
+The 60-second recency check:
+- **Catches** OAuth signup (user.created_at is set during the handshake), magic-link signup (same), prompt email-confirm signup (user clicks the confirmation link within seconds).
+- **Skips** password-reset clickers (user.created_at is older), returning magic-link logins (same), and email-confirm clicks made >60s after signup.
+
+**Edge case** — email confirmation with delayed click: if the user delays clicking the confirmation email past 60 seconds, `signup_complete` is missed. For projects where this matters, supplement with destination-page firing via `onAuthStateChange` (legacy pattern) or extend the recency window. The 60s default is tuned for the common case.
+
+**Placement** — keep the `trackServerEvent` block AFTER the `DEMO_MODE` early return AND AFTER `exchangeCodeForSession` success. This matches the convention in `signup/page.tsx` and `login/page.tsx` (DEMO_MODE skips analytics calls). Firing under DEMO_MODE would pollute analytics during local dev / bootstrap demo walks.
+
+**Conditional scaffolding** — when `stack.analytics` is absent, remove the `trackServerEvent` import line AND the entire `const { data: { user } } ...` block (lines 7 lines total in the callback template). Both shared-client and standalone-client variants follow the same pattern; the only diff between them is the `createServerSupabaseClient` import source.
 
 ## PR Instructions
 - Email confirmation is enabled by default in Supabase. The signup form handles this: when `signUp()` returns `session: null`, it shows a "check your email" message instead of redirecting. Users who confirm their email can then log in normally.

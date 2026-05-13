@@ -253,21 +253,6 @@ with open(manifest_path, "w") as f:
     f.write("\n")
 PYEOF
 
-# --- Step 3a-unconditional: Delivery artifact cleanup (runs even in embed mode) ---
-# These files gate delivery in lifecycle-finalize.sh Step 5. A stale copy from a
-# prior code-writing skill MUST NOT survive into a subsequent run (analysis-only
-# or code-writing) where finalize could interpret it as a ship signal. See
-# observation #1004.
-DELIVERY_ARTIFACTS=(
-  "$PROJECT_DIR/.runs/commit-message.txt"
-  "$PROJECT_DIR/.runs/pr-body.md"
-  "$PROJECT_DIR/.runs/pr-title.txt"
-  "$PROJECT_DIR/.runs/delivery-skip.flag"
-)
-for f in "${DELIVERY_ARTIFACTS[@]}"; do
-  rm -f "$f"
-done
-
 # --- Steps 3a-4 skipped in embed mode (parent skill already ran them) ---
 if [[ -z "$EMBED_MODE" ]]; then
 
@@ -279,6 +264,24 @@ if [[ -z "$EMBED_MODE" ]]; then
 # are therefore preserved automatically — the embed never enters this branch.
 # When the embedded skill runs standalone, its own skill_owned_artifacts are
 # preserved by the per-SKILL match in Edit 2 above.
+
+# --- Step 3a-delivery: Delivery artifact cleanup (skipped in embed mode) ---
+# These files gate delivery in lifecycle-finalize.sh Step 5. A stale copy from a
+# prior code-writing skill MUST NOT survive into a subsequent run (analysis-only
+# or code-writing) where finalize could interpret it as a ship signal. See
+# observation #1004. In EMBED_MODE the parent skill has already written its
+# delivery artifacts (e.g., bootstrap state-18 writes commit-message.txt before
+# spawning embedded /verify); deleting them here would force the embed's own
+# state to rewrite or the parent's finalize-rerun would fail (observation #1430).
+DELIVERY_ARTIFACTS=(
+  "$PROJECT_DIR/.runs/commit-message.txt"
+  "$PROJECT_DIR/.runs/pr-body.md"
+  "$PROJECT_DIR/.runs/pr-title.txt"
+  "$PROJECT_DIR/.runs/delivery-skip.flag"
+)
+for f in "${DELIVERY_ARTIFACTS[@]}"; do
+  rm -f "$f"
+done
 
 # --- Step 3a: Clean stale artifacts from prior runs ---
 STALE_ARTIFACTS=(

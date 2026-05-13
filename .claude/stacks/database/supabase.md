@@ -913,6 +913,44 @@ last_seen: 2026-05-01
 graduated_to: null
 ```
 
+### When inserting a record derived from a related-entity lookup, carry user_id explicitly to the insert payload
+
+When an API route reads a parent entity (spec, session, template) and then inserts a child entity derived from it, the `user_id` must be captured from the parent row at query time and included in the INSERT payload. Relying on RLS `WITH CHECK (auth.uid() = user_id)` does NOT auto-populate `user_id` — it only validates the value already present. If `user_id` is omitted from the insert, the INSERT succeeds (no constraint error) but the row has `NULL` for `user_id`. The SELECT-own policy (`USING (auth.uid() = user_id)`) then filters the row out on the very next read, appearing to the client as if the record was never created.
+
+Pattern:
+
+```typescript
+// CORRECT — capture user_id from parent lookup, carry onto child INSERT
+const { data: spec } = await supabase
+  .from("specs")
+  .select("user_id, ...other-fields")
+  .eq("id", specId)
+  .single();
+if (!spec) return NextResponse.json({ error: "Spec not found" }, { status: 404 });
+
+const userId = spec.user_id;  // capture at lookup time
+
+const { data: quote, error } = await supabase
+  .from("quotes")
+  .insert({ spec_id: specId, user_id: userId, ...other-fields })  // carry onto insert
+  .select()
+  .single();
+```
+
+**Wrong** (silent failure):
+
+```typescript
+// WRONG — user_id omitted; INSERT succeeds with NULL but SELECT-own filters it out
+const { data: quote } = await supabase
+  .from("quotes")
+  .insert({ spec_id: specId /* no user_id */ })
+  .select()
+  .single();
+// Client sees quote.id, then GET /api/quotes/<id> returns 404 (RLS filtered).
+```
+
+Applies to any multi-step route that reads entity A and inserts entity B derived from A, where B has a `user_id` column with an `_own` RLS policy. The defect is silent at INSERT time and only surfaces on the next read — making it hard to diagnose without explicit tests for read-after-write across user contexts.
+
 ## PR Instructions
 - When creating migrations, add to the PR body: "After merging, migrations are applied automatically during the next Vercel build (via the `prebuild` script). If not using the Supabase Vercel Integration, CI applies them on merge to `main` (requires CI secrets), or run `make migrate` manually — see Migration Setup in README."
 - For the bootstrap PR, also add: "Run `/deploy` to set up Vercel + Supabase automatically, or manually add the Supabase Vercel Integration at vercel.com/integrations/supabase."

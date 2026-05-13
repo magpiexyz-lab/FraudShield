@@ -185,7 +185,7 @@
       "lifecycle": "transient-intra-skill"
     },
     "10": {
-      "verify": "grep -q 'checkpoint: phase2-step7' .runs/current-plan.md && python3 -c \"import json,glob,os; ts=glob.glob('.runs/agent-traces/implementer-*.json')+glob.glob('.runs/agent-traces/visual-implementer-*.json'); bad=[t for t in ts if json.load(open(t)).get('status')=='complete' and not json.load(open(t)).get('worktree_merged')]; assert not bad,'Unmerged: '+','.join(bad); assert not(len(ts)>=2 and not os.path.exists('.runs/consistency-scan-result.json')),'2+ implementers but no consistency-scan-result.json'\"",
+      "verify": "grep -q 'checkpoint: phase2-step7' .runs/current-plan.md && python3 -c \"import json,glob,os; ts=glob.glob('.runs/agent-traces/implementer-*.json')+glob.glob('.runs/agent-traces/visual-implementer-*.json'); bad=[t for t in ts if json.load(open(t)).get('status')=='completed' and not json.load(open(t)).get('worktree_merged')]; assert not bad,'Unmerged: '+','.join(bad); assert not(len(ts)>=2 and not os.path.exists('.runs/consistency-scan-result.json')),'2+ implementers but no consistency-scan-result.json'\"",
       "artifact": ".runs/agent-traces/implementer-",
       "lifecycle": "transient-cross-skill"
     },
@@ -614,9 +614,9 @@
           "type": "glob_status_check",
           "trace_glob": "implementer-*",
           "status_field": "status",
-          "expected_status": "complete",
+          "expected_status": "completed",
           "min_count": 0,
-          "description": "all implementer traces should have status=complete"
+          "description": "all implementer traces should have status=completed"
         }
       ]
     },

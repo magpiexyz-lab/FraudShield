@@ -776,6 +776,84 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 If the heading element is a distant sibling (or a real heading like `<h3>` higher in the layout), give it an `id` and reference it with `aria-labelledby` on the `<RadioGroup>` instead of `aria-label`. Individual radio options inside the group still use their own `<Label htmlFor="...">` pointing to the radio `<input id="...">` — that pairing is correct because the radio input IS a labelable element.
 
+### When using dl for structured data (stat blocks, label-value pairs)
+
+All direct children of `<dl>` must be `<div>` wrappers containing ONLY `<dt>` and `<dd>` pairs — no sibling `<p>` or bare `<span>` elements. axe-core's `definition-list` rule under WCAG 1.3.1 (Info and Relationships) rejects any non-dt/dd descendants.
+
+Two common failure patterns:
+
+1. **Sibling `<p>` outside `<dd>`** — when adding a sub-label or annotation, putting it as a sibling of the `<dd>` violates the rule:
+
+   ```tsx
+   // WRONG — sibling <p> outside <dd>
+   <dl>
+     <div>
+       <dt>Revenue</dt>
+       <dd>$1.2M</dd>
+       <p className="text-sm text-muted-foreground">YoY +14%</p>
+     </div>
+   </dl>
+
+   // CORRECT — move sub-label inside <dd> as a block-display span
+   <dl>
+     <div>
+       <dt>Revenue</dt>
+       <dd>
+         $1.2M
+         <span className="block text-sm text-muted-foreground">YoY +14%</span>
+       </dd>
+     </div>
+   </dl>
+   ```
+
+2. **No dt/dd at all (decorative spans)** — stat blocks rendered as direct `<dl>` children emitting decorative `<span>` elements:
+
+   ```tsx
+   // WRONG — no <dt>/<dd>, just decorative spans
+   <dl>
+     <span className="stat-label">Revenue</span>
+     <span className="stat-value">$1.2M</span>
+   </dl>
+
+   // CORRECT — replace decorative spans with <dt>/<dd>
+   <dl>
+     <div>
+       <dt className="stat-label">Revenue</dt>
+       <dd className="stat-value">$1.2M</dd>
+     </div>
+   </dl>
+   ```
+
+Applies to every stat grid, key-metric block, and label-value list rendered with `<dl>`. If the structured pattern is genuinely a list of unrelated items rather than label-value pairs, use `<ul>` / `<ol>` instead of `<dl>`.
+
+### When a Button renders a loading state with non-text content, add aria-label
+
+A loading-state `<Button>` that uses `&nbsp;`, a spinner icon, or animated dots as its only visible content has no accessible name — axe-core fires `button-name` (critical, WCAG 4.1.2 Name, Role, Value). Screen readers announce it as an anonymous "button" with no context.
+
+Add `aria-label` describing the action in progress, and wrap the decorative placeholder in `aria-hidden`:
+
+```tsx
+import { Button } from "@/components/ui/button";
+import { Loader } from "lucide-react";
+
+// WRONG — no accessible name
+<Button disabled>
+  &nbsp;
+</Button>
+
+// CORRECT — aria-label names the action; non-text content hidden from a11y tree
+<Button disabled aria-label="Loading account status">
+  <span aria-hidden="true">&nbsp;</span>
+</Button>
+
+// CORRECT — same pattern for spinner icon
+<Button disabled aria-label="Saving changes">
+  <Loader className="h-4 w-4 animate-spin" aria-hidden="true" />
+</Button>
+```
+
+Applies to any loading-state button that substitutes non-text content (spinner, dots, `&nbsp;`) for the normal button label. Common locations: nav bars rendering an auth-status placeholder before client-side hydration, save buttons during form submission, payment buttons during checkout. When the same component is rendered on multiple pages, the violation cascades — fixing it once covers all callsites.
+
 ## Import Example
 ```tsx
 import { Button } from "@/components/ui/button";

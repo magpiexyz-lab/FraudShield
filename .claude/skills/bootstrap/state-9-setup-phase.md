@@ -37,7 +37,7 @@ Update checkpoint in `.runs/current-plan.md` frontmatter to `phase2-design`.
 
 Check off in `.runs/current-plan.md`: `- [x] scaffold-setup completed`
 
-Verify scaffold-setup trace: `test -f .runs/agent-traces/scaffold-setup.json && python3 -c "import json;d=json.load(open('.runs/agent-traces/scaffold-setup.json'));assert d.get('status')=='complete',f'unexpected status: {d.get(\"status\")}';print('scaffold-setup trace: OK')"`. If trace missing: log "WARN: scaffold-setup did not write trace -- continuing with file-based verification".
+Verify scaffold-setup trace: `test -f .runs/agent-traces/scaffold-setup.json && python3 -c "import json;d=json.load(open('.runs/agent-traces/scaffold-setup.json'));assert d.get('status')=='completed',f'unexpected status: {d.get(\"status\")}';print('scaffold-setup trace: OK')"`. If trace missing: log "WARN: scaffold-setup did not write trace -- continuing with file-based verification".
 
 **POSTCONDITIONS:**
 - `package.json` exists with `dependencies`

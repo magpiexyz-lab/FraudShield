@@ -23,7 +23,7 @@ Update checkpoint in `.runs/current-plan.md` frontmatter to `phase2-scaffold`.
 
 Check off in `.runs/current-plan.md`: `- [x] scaffold-init completed`
 
-Verify scaffold-init trace: `test -f .runs/agent-traces/scaffold-init.json && python3 -c "import json;d=json.load(open('.runs/agent-traces/scaffold-init.json'));assert d.get('status')=='complete';print('scaffold-init trace: OK')"`. If trace missing: log "WARN: scaffold-init did not write trace -- continuing with file-based verification".
+Verify scaffold-init trace: `test -f .runs/agent-traces/scaffold-init.json && python3 -c "import json;d=json.load(open('.runs/agent-traces/scaffold-init.json'));assert d.get('status')=='completed';print('scaffold-init trace: OK')"`. If trace missing: log "WARN: scaffold-init did not write trace -- continuing with file-based verification".
 
 **POSTCONDITIONS:**
 - `.runs/current-visual-brief.md` exists

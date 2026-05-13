@@ -28,8 +28,8 @@ If the file does not exist: initial values are `cumulative_spawn_count=1`, `fix_
 **(2) Libs manifest verification + 1-budget retry:**
 
 1. `test -f .runs/agent-traces/scaffold-libs.json`
-2. Read manifest, check `"status": "complete"`; `ls src/lib/*.ts` returns ≥ 1 file.
-3. If manifest is missing or `status != "complete"`:
+2. Read manifest, check `"status": "completed"`; `ls src/lib/*.ts` returns ≥ 1 file.
+3. If manifest is missing or `status != "completed"`:
    - If remaining libs retry budget == 0 → write `b1-verify-result.json` (see (6) below) with `libs.manifest_status='incomplete'` and `type_check.passed=false`. **STOP.**
    - Else → re-spawn `scaffold-libs` ONCE with the same prompt as STATE 11a (`subagent_type: scaffold-libs`, same context files). Increment `cumulative_spawn_count`. After return, re-check the manifest.
    - If retry also fails → write `b1-verify-result.json` with the failure fields. **STOP.**
@@ -48,7 +48,7 @@ If the file does not exist: initial values are `cumulative_spawn_count=1`, `fix_
 **(4) Externals manifest verification:**
 
 1. `test -f .runs/agent-traces/scaffold-externals.json`
-2. Read `"status": "complete"`.
+2. Read `"status": "completed"`.
 3. If manifest is missing or incomplete → write `b1-verify-result.json` with `externals.manifest_status='incomplete'` and `type_check.passed=false`. **STOP.**
 
 **(5) Type-check checkpoint with 2-budget fix loop:**

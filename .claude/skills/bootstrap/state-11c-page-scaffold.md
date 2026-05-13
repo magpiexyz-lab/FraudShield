@@ -17,7 +17,7 @@
 
 Service and cli archetypes skip Phase B2 — proceed to STATE TRACKING to advance state immediately. (Per `patterns/archetype-behavior-check.md`)
 
-Only after B1 manifest verification AND type-check checkpoint pass. Spawn `scaffold-pages` agents for golden_path pages (excluding landing -- handled by scaffold-landing), using the **batching policy** below. The skill-agent-gate hook enforces this ordering: scaffold-pages and scaffold-landing are blocked until `.runs/agent-traces/scaffold-libs.json` exists with status "complete".
+Only after B1 manifest verification AND type-check checkpoint pass. Spawn `scaffold-pages` agents for golden_path pages (excluding landing -- handled by scaffold-landing), using the **batching policy** below. The skill-agent-gate hook enforces this ordering: scaffold-pages and scaffold-landing are blocked until `.runs/agent-traces/scaffold-libs.json` exists with status "completed".
 
 Each agent prompt (single page or batched group):
 - Single-page assignment: "Create page: `<page_name>` at route `<route>`."
@@ -134,7 +134,7 @@ Verify each subagent produced its expected output:
   print('post-fan-out ownership: OK')
   " <<< \"$(python3 .claude/scripts/lib/derive_pages.py scope < experiment/experiment.yaml)\"
   ```
-- Landing subagent reported completion: `test -f .runs/agent-traces/scaffold-landing.json && python3 -c "import json;d=json.load(open('.runs/agent-traces/scaffold-landing.json'));assert d.get('status')=='complete';print('scaffold-landing trace: OK')"`. If trace missing: log "WARN: scaffold-landing did not write trace -- continuing with file-based verification".
+- Landing subagent reported completion: `test -f .runs/agent-traces/scaffold-landing.json && python3 -c "import json;d=json.load(open('.runs/agent-traces/scaffold-landing.json'));assert d.get('status')=='completed';print('scaffold-landing trace: OK')"`. If trace missing: log "WARN: scaffold-landing did not write trace -- continuing with file-based verification".
 
 If any trace is missing or output was truncated: note the gap for STATE 13 to address.
 

@@ -558,6 +558,70 @@ const safeUrl = z.url().refine(
 
 Defense-in-depth: at render time, also gate anchor `href` with a helper `isSafeHref(url)` that re-checks scheme — covers legacy rows that were persisted before the validator landed. This applies to any user-supplied URL field (portfolio links, milestone links, webhook URLs, OAuth redirect URIs). The schema-level `.refine()` is the primary guard; render-time re-check is belt-and-suspenders.
 
+### When server-side fetching user-supplied URLs, use redirect:'manual' and re-validate each hop
+
+Any API route that calls `fetch(user_supplied_url)` with the default `redirect: 'follow'` is vulnerable to SSRF via redirect chain. An attacker submits a valid public URL that redirects to an internal/metadata endpoint (e.g., `http://169.254.169.254/` for AWS instance metadata). Even if the initial URL is validated with `isSafePublicHttpUrl`, the redirected destination is never re-checked — the `fetch` follows the `Location` header silently.
+
+The existing entry "When validating user-supplied URLs with Zod, always chain `.refine()` for scheme" only covers the initial URL at input time. Use `redirect: 'manual'` and explicitly re-validate each hop:
+
+```typescript
+import { isSafePublicHttpUrl } from "@/lib/url-safety";
+
+async function safeFetch(url: string, maxHops = 3): Promise<Response> {
+  let current = url;
+  for (let hop = 0; hop < maxHops; hop++) {
+    const res = await fetch(current, { redirect: "manual" });
+    if (res.status < 300 || res.status >= 400) return res;
+    const next = res.headers.get("location") ?? "";
+    if (!isSafePublicHttpUrl(next)) {
+      throw new Error(`Redirect to unsafe destination: ${next}`);
+    }
+    current = next;
+  }
+  throw new Error("Too many redirects");
+}
+```
+
+Applies to any API route or cron handler that fetches a user-supplied URL server-side (scraping endpoints, link-preview routes, webhook payload delivery, import-from-URL features). The up-front Zod `.refine(isSafePublicHttpUrl)` at the request body level is the first gate; `redirect: 'manual'` re-validation is the second gate that covers the redirect chain.
+
+**Signed-integer CIDR mask bug** — when implementing `isSafePublicHttpUrl`, use unsigned right-shift `>>> 0` when computing bitwise CIDR masks on high-bit IPs (e.g., `169.254.169.254` = `0xA9FEA9FE`). JavaScript's `&` operator returns a signed 32-bit integer; `169.254.169.254 & 0xFFFF0000` produces a negative value and the range check silently passes:
+
+```typescript
+// WRONG — signed comparison silently passes for high-bit IPs
+if ((ip & mask) === (network & mask)) return false;
+
+// CORRECT — coerce to unsigned before comparison
+if (((ip & mask) >>> 0) === ((network & mask) >>> 0)) return false;
+```
+
+### When a nested layout uses Suspense, provide an sr-only h1 during initial paint
+
+When a page-level layout file (e.g., `src/app/<page>/layout.tsx`) wraps its children in a `<Suspense>` boundary, the loading UI is rendered during SSR / initial paint. If that loading UI contains no `<h1>`, axe-core fires `page-has-heading-one` (WCAG 1.3.1 Info and Relationships — every page must have at least one `<h1>`). This only affects nested layouts with Suspense — the root `layout.tsx` template typically does not have this problem because its loading UI (if any) is page-agnostic.
+
+Add an `sr-only` heading to the loading UI that describes the page:
+
+```tsx
+// src/app/product-detail/layout.tsx
+import { Suspense } from "react";
+
+function LoadingFallback() {
+  return (
+    <main>
+      <h1 className="sr-only">Product detail</h1>
+      {/* skeleton / spinner */}
+    </main>
+  );
+}
+
+export default function ProductDetailLayout({ children }: { children: React.ReactNode }) {
+  return <Suspense fallback={<LoadingFallback />}>{children}</Suspense>;
+}
+```
+
+The `sr-only` class keeps the heading out of the visual layout while satisfying the WCAG landmark requirement. The `<main>` wrapper is also required when the nested layout owns the main landmark (i.e., the root layout's `<main>` was repaired to `<div>` to avoid the `landmark-no-duplicate-main` rule — see the paired Stack Knowledge entry "When a page component wraps its content in `<main>`").
+
+Applies to every page-level `layout.tsx` that uses `<Suspense>` to gate dynamic children. If the layout is purely passive (just `{children}` with no boundary), this rule does not apply.
+
 ### When a login page redirects based on a `next` query parameter
 Validate that `next` starts with `/` AND does NOT start with `//` before redirecting. A bare `startsWith("/")` check accepts `?next=//evil.com` because protocol-relative URLs begin with `/` — the browser then resolves `//evil.com` against the current scheme and redirects the authenticated user to an external origin. This is a classic open-redirect (OWASP A1-Broken-Access-Control / A10-Server-Side-Request-Forgery surface).
 
