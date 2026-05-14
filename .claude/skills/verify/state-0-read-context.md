@@ -9,8 +9,8 @@
 > REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
 > web-app/service/cli: read archetype + scope into context for downstream agent gating
 
-1. **Bootstrap consistency check** (standalone mode only):
-   If no `.runs/current-plan.md` exists (standalone `/verify`), assert that the project is bootstrapped AND that `PROJECT_NAME` in `src/lib/analytics.ts` / `analytics-server.ts` (when present) equals `experiment.yaml.name`:
+1. **Bootstrap consistency check** (runs in all modes — standalone, bootstrap-verify, change-verify, and any other skill that embeds /verify):
+   Assert that the project is bootstrapped AND that `PROJECT_NAME` in `src/lib/analytics.ts` / `analytics-server.ts` (when present) equals `experiment.yaml.name`:
    ```bash
    test -f package.json && test -f experiment/experiment.yaml \
      && python3 .claude/scripts/lib/check_project_name.py
@@ -19,7 +19,7 @@
    - Missing files → "No bootstrapped app found. Run `/bootstrap` first to scaffold the project from experiment.yaml."
    - PROJECT_NAME drift → quote `check_project_name.py` stderr verbatim (it names every offending file and the expected value). Fix the constant in `src/lib/analytics.ts` (and `analytics-server.ts` if applicable) to match `experiment.yaml.name`. If the rename was intentional and you instead want to update the yaml, note that changing `experiment.yaml.name` after deploys exist will fork PostHog identity — past data won't roll over to the new name.
 
-   This check is gated to standalone mode because `bootstrap-verify` and `change-verify` reach the same script via `/bootstrap` state-13a (defense-in-depth: state-13a + state-13c gate-keeper both call the script).
+   This check runs unconditionally to cover **all** entry points: /bootstrap state-13a + state-13c gate-keeper enforce at bootstrap time, but `/change-verify`, `/resolve-verify`, `/review-verify`, and any other skill that embeds /verify do **not** reach state-13a. The check is fast (<100ms) and idempotent — defense-in-depth across the lifecycle. (Bootstrap-verify will run this once at /bootstrap state-13a and again here at /verify state-0; the cost is negligible, the safety is significant — same defense-in-depth pattern as state-13a + state-13c gate-keeper.)
 
 2. Ensure trace directory exists (stale traces cleaned by lifecycle-init.sh):
    ```bash
