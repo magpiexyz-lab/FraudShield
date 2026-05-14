@@ -4043,6 +4043,134 @@ def main() -> int:
         return findings
 
 
+    def check_provenance_aware_runs_read(rule):
+        """Flag .runs/ reads in production code that lack runs_reader.* call
+        or a # scope: / pragma annotation. (#1437/#1417 — provenance-blind
+        filter anti-pattern class.)
+
+        Inverted matching: require BOTH a positive read-pattern (open(),
+        json.load(), glob.glob, .open(), .read_text, cat, < "...") AND a
+        .runs/<name>.<ext> path on the same line, AND no provenance-aware
+        marker. Skip pure-comment lines and docstring interiors. Allowlist
+        suppresses known-pending production sites during soak.
+        """
+        out = []
+        scan_glob_csv = rule.get("scan_glob", "")
+        allowlist_path = rule.get("allowlist_path", "")
+        pragma = rule.get("pragma", "# coherence-allow: provenance-blind-read")
+
+        allowlist_set = set()
+        if allowlist_path:
+            try:
+                allowed = json.load(open(os.path.join(REPO_ROOT, allowlist_path))).get("allowed", [])
+                allowlist_set = set(allowed)
+            except (OSError, json.JSONDecodeError):
+                pass
+
+        naked_re = re.compile(r"\.runs/[A-Za-z0-9_./-]+\.(jsonl?|md|txt)")
+        read_re = re.compile(
+            r"(?:\bopen\s*\(|json\.load\s*\(|glob\.glob\s*\(|"
+            r"\.read_text\s*\(|\.read_bytes\s*\(|\.readlines\s*\(|"
+            r"\.open\s*\(|\bcat\s+|<\s*\")"
+        )
+        proof_markers = [
+            "runs_reader.",
+            "discover_current_run_id",
+            "read_jsonl",
+            "read_context_files",
+            "read_git_log",
+            "scope=current-run",
+            "scope=cross-run-by-design",
+            "# scope:",
+        ]
+
+        for glob_pattern in [g.strip() for g in scan_glob_csv.split(",") if g.strip()]:
+            for path in glob.iglob(os.path.join(REPO_ROOT, glob_pattern), recursive=True):
+                rel_path = os.path.relpath(path, REPO_ROOT)
+                if rel_path in allowlist_set:
+                    continue
+                # Exclude tests by convention — tests legitimately exercise
+                # .runs/ I/O as part of their fixtures and assertions.
+                if "/tests/" in rel_path or rel_path.endswith("_test.py"):
+                    continue
+                try:
+                    content = open(path).read()
+                except OSError:
+                    continue
+                in_docstring = False
+                for line_idx, line in enumerate(content.splitlines(), 1):
+                    if line.count('"""') % 2 == 1 or line.count("'''") % 2 == 1:
+                        in_docstring = not in_docstring
+                        continue
+                    if in_docstring:
+                        continue
+                    stripped = line.lstrip()
+                    if stripped.startswith("#"):
+                        continue
+                    if not naked_re.search(line):
+                        continue
+                    if not read_re.search(line):
+                        continue
+                    if pragma in line:
+                        continue
+                    if any(m in line for m in proof_markers):
+                        continue
+                    out.append(_emit_finding(
+                        rule,
+                        f"{rel_path}:{line_idx}: provenance-blind .runs/ read — "
+                        f"use runs_reader.* helpers or add `{pragma}` with a rationale"
+                    ))
+        return out
+
+
+    def check_cross_run_channel_exemption_pairing(rule):
+        """For each entry in cross-run-channels.json, assert the path is NOT in
+        lifecycle-init.sh STALE_ARTIFACTS (which would delete it across runs).
+
+        Cross-run-by-design files must survive STALE_ARTIFACTS sweep. fix-ledger
+        is the canonical exception: it IS in STALE_ARTIFACTS (per-run cleared)
+        but is read across STATE transitions within one run, hence still
+        legitimately scope=cross-run-by-design. Treat as exempt when the entry
+        carries `transient_cross_state: true`.
+        """
+        out = []
+        channels_path = rule.get("channels_path", ".claude/patterns/cross-run-channels.json")
+        lifecycle_path = rule.get("lifecycle_path", ".claude/scripts/lifecycle-init.sh")
+
+        try:
+            channels = json.load(open(os.path.join(REPO_ROOT, channels_path))).get("channels", {})
+        except (OSError, json.JSONDecodeError) as e:
+            out.append(_emit_finding(rule, f"channels registry unreadable: {e}"))
+            return out
+
+        try:
+            lifecycle_content = open(os.path.join(REPO_ROOT, lifecycle_path)).read()
+        except OSError as e:
+            out.append(_emit_finding(rule, f"lifecycle-init.sh unreadable: {e}"))
+            return out
+
+        stale_section_match = re.search(
+            r"STALE_ARTIFACTS=\((.*?)\)", lifecycle_content, re.DOTALL
+        )
+        stale_list = stale_section_match.group(1) if stale_section_match else ""
+
+        for channel_name, entry in channels.items():
+            if entry.get("transient_cross_state"):
+                continue  # explicitly opted into per-run cleanup
+            for path in entry.get("paths", []):
+                basename = os.path.basename(path)
+                if basename in stale_list:
+                    out.append(_emit_finding(
+                        rule,
+                        f"cross-run channel '{channel_name}' path '{path}' is in "
+                        f"lifecycle-init.sh STALE_ARTIFACTS — would be deleted on "
+                        f"next skill entry, breaking cross-run semantics. "
+                        f"Either remove from STALE_ARTIFACTS or set "
+                        f"`transient_cross_state: true` on the channel entry."
+                    ))
+        return out
+
+
     # ---------------------------------------------------------------------------
     # Cross-file rule dispatch — registry-driven with type + field validation.
     #
@@ -4170,6 +4298,22 @@ def main() -> int:
             {"scan_glob", "exit_pattern", "friction_call_pattern", "pragma"},
             {"exclude_paths", "lookback_lines"},
             True,  # is_strict_aoc — silent-bypass is the bug class itself
+        ),
+        # #1437 + #1417 — provenance-blind filter class prevention.
+        # Soak: is_strict_aoc=False during one PR cycle. Promote to True
+        # after follow-up PRs migrate the 16 production sites listed in
+        # provenance-blind-allowlist.json.
+        "provenance_aware_runs_read": (
+            check_provenance_aware_runs_read,
+            {"scan_glob"},
+            {"allowlist_path", "pragma"},
+            False,
+        ),
+        "cross_run_channel_exemption_pairing": (
+            check_cross_run_channel_exemption_pairing,
+            set(),
+            {"channels_path", "lifecycle_path"},
+            False,
         ),
     }
     META_KEYS = {"id", "type", "severity", "description", "_transitional_note", "_comment", "convention_doc"}

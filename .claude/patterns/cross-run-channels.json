@@ -1,0 +1,20 @@
+{
+  "_comment": "Read-side registry of cross-run-by-design channels. runs_reader.read_jsonl(scope='cross-run-by-design') requires that cross_run_channel= argument names an entry here AND that the path is declared under that entry. Lockstep with lifecycle-init.sh STALE_ARTIFACTS is enforced by the cross_run_channel_exemption_pairing coherence rule. New channels added in their owner's PR — see plan delegated-drifting-spring.md decision 1.",
+  "channels": {
+    "fix-ledger": {
+      "paths": [".runs/fix-ledger.jsonl"],
+      "rationale": "Authoritative append-only ledger of agent + lead fixes across runs. Persists across lifecycle-init (not in STALE_ARTIFACTS). Used by recurrence-detector.py for cross-run composite-identity grouping and by check-cross-artifact-consistency.py for run-id-scoped counts.",
+      "owner": "write-fix-ledger.py"
+    },
+    "recurrence-candidates": {
+      "paths": [".runs/recurrence-candidates.jsonl"],
+      "rationale": "Phase B recurrence-candidate snapshots; explicitly cross-run for trend analysis.",
+      "owner": "recurrence-detector.py"
+    },
+    "agent-spawn-log": {
+      "paths": [".runs/agent-spawn-log.jsonl"],
+      "rationale": "Append-only log of agent spawn events; cross-run for lineage checks (e.g., skill-agent-gate.sh lineage validation).",
+      "owner": "skill-agent-gate.sh"
+    }
+  }
+}

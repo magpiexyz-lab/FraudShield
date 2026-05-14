@@ -126,6 +126,11 @@ with open(os.environ['_SAG_DEGRADED_LOG'], 'a') as f:
   # latest run_id rather than write 'unknown', so downstream provenance scans
   # (state-completion-gate.sh:223,289) can still cross-reference the spawn.
   # Falls back to 'unknown' only when no non-completed context exists.
+  #
+  # coherence-allow: provenance-blind-read — degraded-path attribution
+  # spans branches by design (a degraded agent spawn must attribute to ANY
+  # in-flight skill, not just one on the current branch). runs_reader's
+  # discover_current_run_id is branch-scoped and unsuitable here.
   _SAG_BEST_RUN_ID=$(python3 -c "
 import json, glob, os
 project = '$PROJECT_DIR'

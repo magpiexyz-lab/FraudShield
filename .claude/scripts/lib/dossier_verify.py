@@ -82,11 +82,22 @@ def assert_dossier_loaded(
             "dossier was empty) — see solve-reasoning.md Phase 4b."
         )
 
-    if phase_1a and len(response) < len(phase_1a):
+    # Git-sentinel entries (prior_run_id starts with "git:") are advisory —
+    # surfaced from git history when the ledger is empty (#1437 fix). The
+    # designer SHOULD consult them via `git show <sha>` but is not required
+    # to enumerate one prior_failure_response per. Only ledger-derived
+    # entries (real prior run_ids) count toward the response-floor.
+    ledger_entries = [
+        e for e in phase_1a
+        if not str(e.get("prior_run_id", "")).startswith("git:")
+    ]
+    if ledger_entries and len(response) < len(ledger_entries):
         raise DossierVerifyError(
             f"prior_failure_response has {len(response)} entries but dossier "
-            f"phase_1a has {len(phase_1a)}. Phase 4b contract requires >=1 "
-            "response per dossier entry citing a concrete_delta_step_or_guard."
+            f"phase_1a has {len(ledger_entries)} LEDGER entries "
+            f"(git-sentinel entries are advisory and excluded). Phase 4b "
+            "contract requires >=1 response per ledger entry citing a "
+            "concrete_delta_step_or_guard."
         )
 
 

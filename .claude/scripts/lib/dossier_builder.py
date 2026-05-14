@@ -258,6 +258,7 @@ def build_dossier(
         composite_run_count.setdefault(bucket["composite_hash"], set()).add(run_id)
 
     sha_by_subject = _git_log_for_files(sorted(file_set), project_dir, since_days=since_days)
+    sha_list = list(sha_by_subject.keys())
 
     phase_1a: list[dict] = []
     phase_4b: list[dict] = []
@@ -266,7 +267,14 @@ def build_dossier(
         composite_hash = bucket["composite_hash"]
         occurrences = len(composite_run_count.get(composite_hash, {run_id}))
         regression_test = _regression_test_present_for(run_id, project_dir)
-        prior_commit = next(iter(sha_by_subject.keys()), None)
+        # Per-bucket SHA: best-effort attribution. Picks the most-recent SHA
+        # not already attributed to an earlier bucket. Replaces the line-269 bug
+        # where `next(iter(sha_by_subject.keys()), None)` always picked the
+        # first SHA regardless of which bucket owned it. When no ledger entries
+        # exist the loop never fires and git history surfaces via the
+        # git-history-augmented block below.
+        seen_so_far = {e["prior_commit_sha"] for e in phase_4b if e.get("prior_commit_sha")}
+        prior_commit = next((s for s in sha_list if s not in seen_so_far), None)
         sample = bucket["rows"][0]
 
         slim = {
@@ -279,6 +287,42 @@ def build_dossier(
         full["failure_mode"] = _summarize_failure_mode(sample)
         full["what_was_missed"] = _summarize_what_was_missed(bucket["rows"])
         full["prior_commit_sha"] = prior_commit
+        phase_1a.append(slim)
+        phase_4b.append(full)
+
+    # Git-history-augmented entries (#1437 fix): index commits not represented
+    # in the ledger-derived buckets above. Each entry carries the
+    # `prior_run_id="git:<sha[:7]>"` sentinel so consumers (dossier_verify,
+    # solve-critic vector 4) can distinguish ledger from git-derived provenance.
+    # Capped at max_per_file=5 to avoid designer-burden cliff (see dossier_verify
+    # relaxation: git-sentinel entries are advisory, not response-required).
+    try:
+        from runs_reader import read_git_log  # noqa: E402 — Phase A library
+        git_entries = read_git_log(
+            sorted(file_set),
+            since_days=since_days,
+            max_per_file=5,
+            project_dir=str(project_dir),
+        )
+    except ImportError:
+        git_entries = []
+    already_seen_shas = {e["prior_commit_sha"] for e in phase_4b if e.get("prior_commit_sha")}
+    for entry in git_entries:
+        if entry["sha"] in already_seen_shas:
+            continue
+        already_seen_shas.add(entry["sha"])
+        slim = {
+            "prior_run_id": f"git:{entry['sha'][:7]}",
+            "files_touched": entry["files"],
+            "regression_test_present": False,
+            "occurrence_count_60d": 1,
+        }
+        full = dict(slim)
+        full["failure_mode"] = entry["subject"][:200]
+        full["what_was_missed"] = (
+            f"prior commit on these files; consult `git show {entry['sha'][:7]}` for details"
+        )
+        full["prior_commit_sha"] = entry["sha"]
         phase_1a.append(slim)
         phase_4b.append(full)
 

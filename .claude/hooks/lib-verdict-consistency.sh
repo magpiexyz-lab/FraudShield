@@ -28,37 +28,77 @@ check_verdict_error() {
 }
 
 # --- check_fixlog_verdict_consistency (AOC v1 FLS v1 canonical) ---
-# Blocks if: fix-ledger.jsonl has entries (or, transitional fallback,
-# fix-log.md has entries) but verdict is "clean" (not execution-audit).
-# Catches the case where observation-phase.md was skipped but agents
-# produced fixes that went unobserved.
+# Blocks if: fix-ledger.jsonl has entries FOR THE CURRENT RUN but verdict is
+# "clean" (not execution-audit). Catches the case where observation-phase.md
+# was skipped but agents produced fixes that went unobserved IN THE SAME RUN.
+#
+# Provenance-aware (#1417b fix): cross-run ledger rows from prior runs are
+# IGNORED. Single Python subprocess resolves identity + filters ledger.
+# Three early-return paths:
+#   NO_RUN_ID       — manual gh pr create with no in-flight skill (HC5).
+#                     Pass through; nothing to be inconsistent with.
+#   STALE_OBSERVE   — observe-result.run_id != current run_id (stale artifact
+#                     from a prior run). Pass through.
+#   OK              — current run identity resolved; ledger filtered to it.
+# Only the OK path with count > 0 + verdict=clean appends an error.
+#
 # Appends to global ERRORS array. Does not exit — caller decides.
 # Usage: check_fixlog_verdict_consistency
 check_fixlog_verdict_consistency() {
   local project_dir="${CLAUDE_PROJECT_DIR:-.}"
   local obs_file="$project_dir/.runs/observe-result.json"
   local ledger="$project_dir/.runs/fix-ledger.jsonl"
-  local fixlog="$project_dir/.runs/fix-log.md"
 
   [[ ! -f "$obs_file" ]] && return 0
 
-  # Authoritative count: ledger row count (one JSON per line).
-  # Transitional fallback: prose fix-log non-empty non-header lines.
-  local entry_count=0
-  if [[ -f "$ledger" ]]; then
-    entry_count=$(grep -c -v '^\s*$' "$ledger" 2>/dev/null || echo "0")
-  elif [[ -f "$fixlog" ]]; then
-    entry_count=$(grep -c -v '^\s*$\|^#' "$fixlog" 2>/dev/null || echo "0")
-  fi
-  [[ "$entry_count" -eq 0 ]] && return 0
+  local lib_dir
+  lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../scripts/lib" 2>/dev/null && pwd || echo "$project_dir/.claude/scripts/lib")"
 
-  local verdict strategy
-  verdict=$(read_json_field "$obs_file" "verdict")
-  strategy=$(read_json_field "$obs_file" "strategy")
+  local result
+  result=$(python3 -c "
+import sys, json
+sys.path.insert(0, '$lib_dir')
+from runs_reader import discover_current_run_id, read_jsonl
 
-  if [[ "$verdict" == "clean" ]] && [[ "$strategy" != "execution-audit" ]]; then
-    ERRORS+=("Verdict inconsistency: fix ledger/log has $entry_count entries but verdict is 'clean'. Observation was skipped or incomplete.")
-  fi
+identity = discover_current_run_id(project_dir='$project_dir')
+if not identity:
+    print('NO_RUN_ID\t0\t')
+    # friction-skip: trivial-fast-path — HC5 manual gh pr create has no active skill to attribute fix counts against; the result token signals 'pass-through' to the bash caller without bash-side exit
+    sys.exit(0)
+
+try:
+    obs_rid = json.load(open('$obs_file')).get('run_id', '')
+except Exception:
+    obs_rid = ''
+if obs_rid and obs_rid != identity.run_id:
+    print('STALE_OBSERVE\t0\t' + identity.run_id)
+    # friction-skip: trivial-fast-path — observe-result.run_id from a prior run is a stale artifact, not a real inconsistency for the current in-flight skill
+    sys.exit(0)
+
+try:
+    r = read_jsonl('$ledger', scope='current-run',
+                   current_run_id=identity.run_id, project_dir='$project_dir')
+    print('OK\t' + str(len(r.rows)) + '\t' + identity.run_id)
+except Exception as e:
+    print('ERROR\t0\tsubprocess-failure')
+" 2>/dev/null) || result="ERROR	0	subprocess-failure"
+
+  local status count run_id
+  IFS=$'\t' read -r status count run_id <<< "$result"
+  case "$status" in
+    NO_RUN_ID|STALE_OBSERVE|ERROR)
+      return 0
+      ;;
+    OK)
+      [[ "$count" -eq 0 ]] && return 0
+      local verdict strategy
+      verdict=$(read_json_field "$obs_file" "verdict")
+      strategy=$(read_json_field "$obs_file" "strategy")
+      if [[ "$verdict" == "clean" ]] && [[ "$strategy" != "execution-audit" ]]; then
+        ERRORS+=("Verdict inconsistency: fix ledger has $count entries for run $run_id but verdict is 'clean'. Observation was skipped or incomplete.")
+      fi
+      ;;
+  esac
 }
 
 # --- check_verdict_consistency ---

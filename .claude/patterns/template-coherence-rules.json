@@ -618,6 +618,23 @@
         ".claude/procedures/scaffold-pages.md"
       ],
       "description": "#1387: the self_check_score field (typed sub-object + explicit_none escape with reason enum) must be documented in scaffold-pages.md agent prompt AND procedure file when the validator exists. Both must coexist or both be absent; drift signals incomplete rollout of AOC v1.2 schema. Severity=warn during rollout (warn-default mode); flips to block after the validator hits fail-mode."
+    },
+    {
+      "id": "provenance_aware_runs_read",
+      "type": "provenance_aware_runs_read",
+      "severity": "warn",
+      "scan_glob": ".claude/scripts/**/*.py,.claude/scripts/**/*.sh,.claude/hooks/**/*.sh",
+      "allowlist_path": ".claude/patterns/provenance-blind-allowlist.json",
+      "pragma": "# coherence-allow: provenance-blind-read",
+      "description": "#1437/#1417 — detect READ-pattern .runs/ accesses in production code that lack runs_reader.* call or a scope marker. Tests are excluded (legitimately exercise .runs/ I/O). Allowlist suppresses 16 known production sites pending follow-up migration. After allowlist empties, promote severity to 'block' and set is_strict_aoc=True in the HANDLERS entry."
+    },
+    {
+      "id": "cross_run_channel_exemption_pairing",
+      "type": "cross_run_channel_exemption_pairing",
+      "severity": "warn",
+      "channels_path": ".claude/patterns/cross-run-channels.json",
+      "lifecycle_path": ".claude/scripts/lifecycle-init.sh",
+      "description": "#1437/#1417 — each cross-run-channels.json entry's path must not appear in lifecycle-init.sh STALE_ARTIFACTS unless the entry sets transient_cross_state: true. Prevents silent deletion of cross-run-by-design artifacts on next skill entry."
     }
   ]
 }

@@ -489,8 +489,35 @@
           { "$ref": "#/definitions/rule_branch_checkout_propagation_pairing" },
           { "$ref": "#/definitions/rule_hook_bypass_manifest_completeness" },
           { "$ref": "#/definitions/rule_hook_silent_skip_friction_pairing" },
-          { "$ref": "#/definitions/rule_lib_helper_stack_knowledge_required" }
+          { "$ref": "#/definitions/rule_lib_helper_stack_knowledge_required" },
+          { "$ref": "#/definitions/rule_provenance_aware_runs_read" },
+          { "$ref": "#/definitions/rule_cross_run_channel_exemption_pairing" }
         ]
+      }
+    },
+    "rule_provenance_aware_runs_read": {
+      "description": "Detect provenance-blind .runs/ reads in production code (#1437/#1417). Inverted matching: requires positive read-pattern + .runs/ path + no scope marker on the same line. Allowlist suppresses known-pending sites during soak.",
+      "required": ["id", "type", "scan_glob"],
+      "properties": {
+        "id": { "const": "provenance_aware_runs_read" },
+        "type": { "const": "provenance_aware_runs_read" },
+        "severity": { "$ref": "#/definitions/severity" },
+        "scan_glob": { "type": "string" },
+        "allowlist_path": { "type": "string" },
+        "pragma": { "type": "string" },
+        "description": { "type": "string" }
+      }
+    },
+    "rule_cross_run_channel_exemption_pairing": {
+      "description": "For each entry in cross-run-channels.json, assert the path is NOT in lifecycle-init.sh STALE_ARTIFACTS unless the entry sets transient_cross_state: true (per-run cleared, cross-run within one run).",
+      "required": ["id", "type"],
+      "properties": {
+        "id": { "const": "cross_run_channel_exemption_pairing" },
+        "type": { "const": "cross_run_channel_exemption_pairing" },
+        "severity": { "$ref": "#/definitions/severity" },
+        "channels_path": { "type": "string" },
+        "lifecycle_path": { "type": "string" },
+        "description": { "type": "string" }
       }
     }
   }

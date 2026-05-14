@@ -99,67 +99,45 @@ check_skill_completion() {
 #   include_completed="true"  → return any matching context (active or completed)
 #   include_completed="false" → skip contexts with completed: true
 #
-# Parent-preference (issue #1347): when include_completed="true" and BOTH a
-# top-level parent and an embedded child match the branch (both completed:true
-# at PR-creation time, child newer by timestamp), prefer the top-level parent
-# (parent == null) so verify-pr-gate.sh dispatches against the parent's
-# observation: config instead of the embedded child's. Active variant
-# (include_completed="false") is intentionally unchanged: the 3 active
-# callers (skill-write-gate, skill-commit-gate, observe-commit-gate)
-# dispatch to per-skill gate scripts and must keep child-preference during
-# in-flight embed. Orphan-child fallback (parent context absent on disk)
-# preserves pre-fix behavior via a second pass with best_ts reset.
+# Delegates to runs_reader.discover_current_run_id (issue #1437/#1417 fix).
+# The Python helper implements a 3-pass precedence:
+#   Pass 1 — active top-level contexts (completed=False, parent=None), 48h staleness cap.
+#   Pass 2 — completed top-level (only when include_completed=true), with
+#            context.timestamp >= HEAD commit timestamp. Rejects stale
+#            completed contexts that predate the PR's HEAD commit — the
+#            #1417 bug shape (chronologically old observe-context.json
+#            on a re-used branch was previously dispatched as the PR's
+#            skill identity).
+#   Pass 3 — orphan-child fallback (parent != None, within 48h cap).
+#            Preserves #1347 semantics: an embedded child's context is
+#            returned only when its top-level parent context is absent
+#            on disk; a stale completed top-level context that failed
+#            Pass 2's recency check cannot sneak through here.
+#
+# Active variant (include_completed=false) skips Pass 2; the 3 active-only
+# callers (skill-write-gate, skill-commit-gate, observe-commit-gate) still
+# only see in-flight contexts (Caveat #1 from /solve Round 2 critic).
 _detect_skill_for_branch_impl() {
   local branch="$1"
   local include_completed="$2"
   local project_dir="${CLAUDE_PROJECT_DIR:-.}"
+  local include_completed_py="False"
+  [[ "$include_completed" == "true" ]] && include_completed_py="True"
+  # Resolve runs_reader.py via lib.sh's own location (BASH_SOURCE points at
+  # this file's path) so the helper is found even when project_dir is a
+  # fixture/tmp without .claude/. Falls back to project_dir-relative path.
+  local lib_dir
+  lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../scripts/lib" 2>/dev/null && pwd || echo "$project_dir/.claude/scripts/lib")"
   python3 -c "
-import json, glob, os
-branch = '$branch'
-project = '$project_dir'
-include_completed = ('$include_completed' == 'true')
-best_skill = ''
-best_ts = ''
-# Pass 1: prefer top-level (parent:null) contexts when include_completed=true.
-# Active variant (include_completed=false) is unchanged — preserves child
-# detection during in-flight embed for write/commit gate dispatch.
-for f in glob.glob(os.path.join(project, '.runs', '*-context.json')):
-    if 'epilogue-context' in f:
-        continue
-    try:
-        d = json.load(open(f))
-        if d.get('branch') != branch:
-            continue
-        if not include_completed and d.get('completed'):
-            continue
-        if include_completed and d.get('parent'):
-            continue
-        ts = d.get('timestamp', '')
-        if ts > best_ts:
-            best_ts = ts
-            best_skill = d.get('skill', '')
-    except:
-        continue
-# Pass 2 (orphan-child fallback, #1347): only fires on the PR-gate path
-# when no top-level match exists. Reset accumulators so a malformed pass-1
-# entry does not block a legitimate pass-2 candidate.
-if include_completed and not best_skill:
-    best_ts = ''
-    best_skill = ''
-    for f in glob.glob(os.path.join(project, '.runs', '*-context.json')):
-        if 'epilogue-context' in f:
-            continue
-        try:
-            d = json.load(open(f))
-            if d.get('branch') != branch:
-                continue
-            ts = d.get('timestamp', '')
-            if ts > best_ts:
-                best_ts = ts
-                best_skill = d.get('skill', '')
-        except:
-            continue
-print(best_skill)
+import sys
+sys.path.insert(0, '$lib_dir')
+from runs_reader import discover_current_run_id
+identity = discover_current_run_id(
+    branch='$branch',
+    project_dir='$project_dir',
+    include_completed=$include_completed_py,
+)
+print(identity.skill if identity else '')
 " 2>/dev/null || echo ""
 }
 

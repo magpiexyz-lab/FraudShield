@@ -65,8 +65,17 @@ class TestDetectSkillForBranch(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp(prefix="test_dsfb_"))
         subprocess.run(["git", "init", "-q", str(self.tmp)], check=True)
+        # Back-date HEAD commit so all contexts written during the test
+        # (timestamps near "now") fall AFTER HEAD. runs_reader.discover_current_run_id
+        # Pass 2 now rejects completed contexts that predate the HEAD commit
+        # (fix for #1417); without back-dating, fixture timestamps could
+        # land before the just-created HEAD by a few seconds and be falsely
+        # rejected.
+        env = os.environ.copy()
+        env["GIT_AUTHOR_DATE"] = "2020-01-01T00:00:00+00:00"
+        env["GIT_COMMITTER_DATE"] = "2020-01-01T00:00:00+00:00"
         subprocess.run(["git", "-C", str(self.tmp), "commit", "-q", "--allow-empty",
-                        "-m", "init"], check=True)
+                        "-m", "init"], check=True, env=env)
         self.runs = self.tmp / ".runs"
         self.runs.mkdir()
 

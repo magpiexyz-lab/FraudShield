@@ -70,14 +70,21 @@ Dossier (Phase 1a + Phase 4b from solve-reasoning) and a designer-emitted
 `prior_failure_response[]`. Vector 7 (Falsification Gate) fires unconditionally
 whenever `problem_type == "defect"`. Each fires as TYPE A.
 
-4. **`cross-run-prior-failure-unaddressed`** — for every Phase-1a dossier
-   entry, the designer must have a matching `prior_failure_response` entry
-   whose `concrete_delta_step_or_guard` cites either an implementation
-   checklist step number OR a guard `artifact` path that did NOT appear in
-   the prior commit. If the dossier carries `prior_commit_sha`, run
+4. **`cross-run-prior-failure-unaddressed`** — for every Phase-1a LEDGER
+   dossier entry (entries whose `prior_run_id` does NOT start with `git:`),
+   the designer must have a matching `prior_failure_response` entry whose
+   `concrete_delta_step_or_guard` cites either an implementation checklist
+   step number OR a guard `artifact` path that did NOT appear in the prior
+   commit. If the dossier carries `prior_commit_sha`, run
    `git show <sha> -- <step or artifact>` to verify the cited delta is
    genuinely absent from the prior commit. Generic phrases like "be more
    careful" or "fix at root cause" do not satisfy this vector.
+
+   **Git-sentinel entries** (`prior_run_id="git:<sha[:7]>"`, surfaced from
+   git history when the fix-ledger is empty — #1437) are **advisory**: the
+   designer SHOULD consult them via `git show <sha>` but is **not** required
+   to enumerate one `prior_failure_response` per. `dossier_verify.py` enforces
+   this asymmetry — its response-floor counts ledger entries only.
 
 5. **`within-run-round1-concern-unaddressed`** — fires only on round 2.
    For every round-1 concern (matched by stable `concern_id`), the round-2

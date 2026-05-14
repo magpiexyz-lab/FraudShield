@@ -151,16 +151,23 @@ def main():
         source = None
         if os.path.exists(ledger_path):
             by_agent = {}
+            # #1417b: read ledger via runs_reader with provenance-aware scope.
+            # When current_run_id is known (verify-context exists), filter to
+            # that run only; otherwise read cross-run-by-design (registered
+            # channel) so legacy/pre-AOC invocations still work.
             try:
-                for line in open(ledger_path):
-                    line = line.strip()
-                    if not line: continue
-                    try:
-                        r = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-                    if current_run_id and r.get('run_id') != current_run_id:
-                        continue
+                import sys
+                _lib_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'lib')
+                if _lib_dir not in sys.path:
+                    sys.path.insert(0, _lib_dir)
+                from runs_reader import read_jsonl
+                if current_run_id:
+                    rr = read_jsonl(ledger_path, scope='current-run',
+                                    current_run_id=current_run_id, project_dir=project)
+                else:
+                    rr = read_jsonl(ledger_path, scope='cross-run-by-design',
+                                    cross_run_channel='fix-ledger', project_dir=project)
+                for r in rr.rows:
                     a = r.get('agent')
                     by_agent[a] = by_agent.get(a, 0) + 1
                 source = 'ledger'

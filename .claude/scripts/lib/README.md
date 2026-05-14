@@ -499,6 +499,68 @@ fix_template: |
   (RMG_V2_TOLERANT=1) is the emergency escape hatch only.
 ```
 
+### provenance-aware reader for .runs/ artifacts (#1437/#1417)
+```yaml
+id: runs-reader-provenance-aware-read
+maturity: canonical
+anti_pattern: false
+composite_identity:
+  root_cause_class: provenance-blind-runs-read
+  divergence_pattern: glob-then-filter-without-run-id-disambiguation
+  stack_scope: scripts/lib/runs_reader
+composite_identity_hash: 76f283bb06ac
+symptom_keywords: [runs, scope, current-run, cross-run-by-design, identity-resolution, dossier, ledger, manual-pr]
+confidence_score: 0.95
+occurrence_count: 2
+linked_issues: [1437, 1417, 1347]
+first_seen: 2026-05-14
+last_seen: 2026-05-14
+graduated_to: null
+prevention_mechanism: |
+  runs_reader.py exposes four functions that force every .runs/ read to
+  declare provenance intent:
+    - discover_current_run_id(branch?, project_dir?, include_completed=False, head_commit_timestamp?)
+        Identity-resolution. Two paths: active-only (include_completed=False;
+        newest in-flight, preserves child-preference) vs PR-gate (3-pass:
+        active top-level / completed top-level with HEAD-recency / orphan
+        child). 48h staleness cap.
+    - read_jsonl(path, *, scope, current_run_id?, cross_run_channel?)
+        scope='current-run' filters rows by run_id with HC2-graceful skip of
+        legacy rows missing run_id. scope='cross-run-by-design' requires the
+        channel to be pre-registered in .claude/patterns/cross-run-channels.json.
+        scope=None (omitted) → TypeError; scope is keyword-only.
+    - read_context_files(branch?, *, include_completed=False, project_dir?)
+        Returns list[dict] sorted by timestamp desc. Use discover_current_run_id
+        if you need single-Identity precedence.
+    - read_git_log(files, *, since_days=60, max_per_file=5, project_dir?)
+        git-history-augmented scope; per-file granularity; caps prevent
+        designer-burden cliff in dossier_builder.
+  The companion linter rule `provenance_aware_runs_read` flags new .runs/
+  reads in production code (tests excluded) that lack runs_reader.* call or
+  `# coherence-allow: provenance-blind-read` pragma.
+fix_template: |
+  When reading per-run state (e.g., fix-ledger filtered to current skill):
+
+      from runs_reader import discover_current_run_id, read_jsonl
+      identity = discover_current_run_id()
+      if not identity:
+          return  # HC5: manual gh pr create — pass through
+      result = read_jsonl('.runs/fix-ledger.jsonl', scope='current-run',
+                          current_run_id=identity.run_id)
+      # result.rows: filtered list; result.skipped_missing_runid: HC2 count
+
+  When reading cross-run data intentionally (trend/recurrence analysis):
+
+      from runs_reader import read_jsonl
+      result = read_jsonl('.runs/fix-ledger.jsonl', scope='cross-run-by-design',
+                          cross_run_channel='fix-ledger')
+
+  When surfacing git history because .runs/ is ephemeral:
+
+      from runs_reader import read_git_log
+      commits = read_git_log(divergence_files, max_per_file=5)
+```
+
 ### Prior-Failure Dossier builder (RMG v2 Phase 1a Recall layer)
 ```yaml
 id: prior-failure-dossier-builder
