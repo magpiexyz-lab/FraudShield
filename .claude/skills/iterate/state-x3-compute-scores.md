@@ -72,8 +72,11 @@ The script reads inputs, applies the precedence rules above, computes `visitors_
 }
 ```
 
-`metrics.ga_clicks` is 0 when state-x0a was silent-skipped (no Chrome MCP and
-no CSV). `denominator_source` then becomes `"ph"` and `capture_rate` is `null`.
+`metrics.ga_clicks` is 0 only when the operator's CSV had zero data rows for
+that MVP (campaign not present in the window) or no campaigns at all (header-only
+CSV — legitimate zero-paid-clicks case). `denominator_source` then becomes
+`"ph"` and `capture_rate` is `null`. Note that state-x0a now BLOCKS on missing
+CSV — there is no scrape-or-skip fallback.
 
 ### Summary line
 

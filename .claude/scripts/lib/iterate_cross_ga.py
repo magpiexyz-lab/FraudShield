@@ -426,7 +426,11 @@ def cmd_validate_csv(args: argparse.Namespace) -> int:
 def cmd_merge(args: argparse.Namespace) -> int:
     campaigns = _load_csv(args)
     if not campaigns:
-        print("merge: no GA campaigns provided (or all empty); writing pass-through.", file=sys.stderr)
+        # Reached only when the operator's CSV is header-only or has no rows the
+        # parser could decode. state-x0a's validate-csv subcommand should have
+        # warned upstream; this is the merge-side noop path. Every existing MVP
+        # gets ga_clicks=0 set so the POSTCONDITION still holds.
+        print("merge: CSV has zero parseable rows; setting ga_clicks=0 on every MVP.", file=sys.stderr)
 
     aliases = _load_aliases(args.config)
 

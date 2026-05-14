@@ -58,7 +58,7 @@ Print to stdout. Window comes from `.runs/iterate-cross-scores.json window_days`
 ```
 
 Column legend:
-- `GA-clk` — `metrics.ga_clicks`. Empty (`--`) when state-x0a was silent-skipped.
+- `GA-clk` — `metrics.ga_clicks`. Shown as `--` when an MVP has zero GA clicks in the window (either the CSV omits that campaign or the operator's CSV was header-only). state-x0a blocks if no CSV is provided, so a fully empty GA-clk column should not appear in normal operation.
 - `PH-vis` — `metrics.gclid_visitors` (PostHog).
 - `Conv%` — `metrics.true_conv_rate` × 100 (uses GA-clicks as denominator when GA data present, else PH visitors).
 - `Cap%` — `metrics.capture_rate` × 100 (how much of paid traffic PostHog actually captured). Null when no GA data.
