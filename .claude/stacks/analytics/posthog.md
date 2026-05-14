@@ -582,7 +582,7 @@ per-tool opt-out. Both default to tracking-enabled (absent = opt-in).
 - Server-side tracking (webhooks, API routes) goes through `src/lib/analytics-server.ts` — never import posthog-node directly in route handlers
 - `track()` auto-attaches `project_name` and `project_owner` to every event
 - All projects in the company share the same analytics project — these properties distinguish experiments
-- If you rename the project in experiment.yaml (`name` field), update the `PROJECT_NAME` and `PROJECT_OWNER` constants in both `src/lib/analytics.ts` and `src/lib/analytics-server.ts`
+- If you rename the project in experiment.yaml (`name` field), update the `PROJECT_NAME` and `PROJECT_OWNER` constants in both `src/lib/analytics.ts` and `src/lib/analytics-server.ts`. `/verify` and `/bootstrap` enforce `PROJECT_NAME` equality via `.claude/scripts/lib/check_project_name.py` — drift will fail the pipeline with a clear fix message; `PROJECT_OWNER` is checked only for unreplaced `"TODO"` placeholders.
 - Every event in experiment/EVENTS.yaml must have a `funnel_stage`. The analytics library generates typed wrappers for all events in the EVENTS.yaml `events` map. Cross-MVP funnel analysis queries by `funnel_stage` (with `count(DISTINCT distinct_id)` dedup), not by event name — this allows each MVP to define events that fit its domain while remaining comparable at the funnel level.
 
 ## Test Blocking
@@ -622,7 +622,7 @@ When creating a new analytics stack file, document the equivalent endpoint patte
 
 ## Audit Checklist (for /change skill — analytics type)
 - Verify `track()` in `analytics.ts` and `trackServerEvent()` in `analytics-server.ts` both exist and auto-attach `project_name` and `project_owner`
-- Verify `project_name` and `project_owner` values match experiment.yaml in both files
+- Verify `PROJECT_NAME` matches `experiment.yaml.name` via `python3 .claude/scripts/lib/check_project_name.py` (single source of truth — also runs in `/verify` state-0 and `/bootstrap` state-13a + state-13c gate-keeper). Verify `PROJECT_OWNER` matches `experiment.yaml.owner` manually (script does not cover owner).
 - If any values are wrong, fix both analytics files before auditing pages/routes
 
 ## Stack Knowledge

@@ -9,12 +9,17 @@
 > REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table.
 > web-app/service/cli: read archetype + scope into context for downstream agent gating
 
-1. **Bootstrap check** (standalone mode only):
-   If no `.runs/current-plan.md` exists (standalone `/verify`), check that the project is bootstrapped:
+1. **Bootstrap consistency check** (standalone mode only):
+   If no `.runs/current-plan.md` exists (standalone `/verify`), assert that the project is bootstrapped AND that `PROJECT_NAME` in `src/lib/analytics.ts` / `analytics-server.ts` (when present) equals `experiment.yaml.name`:
    ```bash
-   test -f package.json && test -f experiment/experiment.yaml
+   test -f package.json && test -f experiment/experiment.yaml \
+     && python3 .claude/scripts/lib/check_project_name.py
    ```
-   If either is missing, **STOP**: "No bootstrapped app found. Run `/bootstrap` first to scaffold the project from experiment.yaml."
+   If any assertion fails, **STOP** with the underlying error:
+   - Missing files → "No bootstrapped app found. Run `/bootstrap` first to scaffold the project from experiment.yaml."
+   - PROJECT_NAME drift → quote `check_project_name.py` stderr verbatim (it names every offending file and the expected value). Fix the constant in `src/lib/analytics.ts` (and `analytics-server.ts` if applicable) to match `experiment.yaml.name`. If the rename was intentional and you instead want to update the yaml, note that changing `experiment.yaml.name` after deploys exist will fork PostHog identity — past data won't roll over to the new name.
+
+   This check is gated to standalone mode because `bootstrap-verify` and `change-verify` reach the same script via `/bootstrap` state-13a (defense-in-depth: state-13a + state-13c gate-keeper both call the script).
 
 2. Ensure trace directory exists (stale traces cleaned by lifecycle-init.sh):
    ```bash

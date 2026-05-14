@@ -27,8 +27,11 @@ Run analytics and design verification checks:
      based on golden_path context). This groups fixes for efficient per-page editing.
    - (d) Fix missing events per-page. Budget: 2 fix attempts per page, max 5 pages.
      If a page exceeds 2 attempts, log the remaining missing events and move on.
-   - (e) Verify `PROJECT_NAME` and `PROJECT_OWNER` in `src/lib/analytics*.ts` are not
-     `"TODO"` -- run `grep -n 'TODO' src/lib/analytics*.ts`. Fix if found.
+   - (e) Verify `PROJECT_NAME` equals `experiment.yaml.name`:
+     `python3 .claude/scripts/lib/check_project_name.py`. Strict-equality (catches
+     both unreplaced `"TODO"` placeholders and post-rename drift in one check).
+     Additionally verify `PROJECT_OWNER` is not `"TODO"`:
+     `grep -n '"TODO"' src/lib/analytics*.ts`. Fix any failures directly.
    - (f) After fix budget exhausted: any remaining missing events are listed in the PR
      description under a "Known gaps" section. Do not block the pipeline for these.
 4. **Design tokens** (if archetype is `web-app`): verify `src/app/globals.css`

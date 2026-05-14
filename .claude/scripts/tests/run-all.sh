@@ -28,6 +28,7 @@ SUITES=(
   ".claude/scripts/tests/test_verify_semantics.py"
   ".claude/scripts/tests/test_field_role_map_rule.py"
   ".claude/scripts/tests/test_validate_behavior_pages.py"
+  ".claude/scripts/tests/test_check_project_name.py"
   ".claude/scripts/tests/test_aoc_coherence_rules.py"
   ".claude/scripts/tests/test_provenance_rules.py"
   ".claude/scripts/tests/test_write_agent_trace.py"
