@@ -127,6 +127,16 @@ for m in ctx['mvps']:
         # with NULL project_name) silently collapse into NO_DATA instead of
         # surfacing as a tracking-misconfiguration verdict.
         'orphan': bool(m.get('orphan')),
+        # Propagate GA fields from state-x0a's CSV merge into context.mvps.
+        # Without these four carries, x3 (which reads data.json) silently falls
+        # back to PostHog gclid_visitors as the denominator and never sees
+        # ga_only deploys, even when x0a successfully wrote ga_clicks to
+        # context.json. The bug masquerades as "GA data isn't reaching the
+        # verdict" but is actually a missing bridge from context.json → data.json.
+        'ga_clicks': m.get('ga_clicks', 0),
+        'ga_only': bool(m.get('ga_only')),
+        'ga_campaigns': m.get('ga_campaigns') or [],
+        'partial_tracking_pct': m.get('partial_tracking_pct'),
     })
 
 bash_payload = json.dumps({'mvps': mvp_records})
@@ -152,12 +162,13 @@ rm -f .runs/_iterate-cross-catalog-query.json .runs/_iterate-cross-catalog-raw.j
 **POSTCONDITIONS:**
 - Per-MVP `gclid_visitors` and `total_events_count` recorded
 - Per-MVP `event_catalog` (≤30 events) recorded with stage hints
+- Per-MVP `ga_clicks`, `ga_only`, `ga_campaigns`, `partial_tracking_pct` propagated from `context.json` (set by state-x0a's CSV merge)
 - `.runs/iterate-cross-data.json` exists with required schema
 
 **VERIFY:** see `state-registry.json` entry for `iterate-cross.x1`.
 
 ```bash
-python3 -c "import json; d=json.load(open('.runs/iterate-cross-data.json')); ms=d.get('mvps',[]); assert isinstance(ms, list) and len(ms)>0, 'mvps empty'; m=ms[0]; assert m.get('name') and 'gclid_visitors' in m and 'total_events_count' in m and 'event_catalog' in m, 'missing required fields on first MVP'"
+python3 -c "import json; d=json.load(open('.runs/iterate-cross-data.json')); ms=d.get('mvps',[]); assert isinstance(ms, list) and len(ms)>0, 'mvps empty'; req=['name','gclid_visitors','total_events_count','event_catalog','ga_clicks']; bad=[m.get('name','?') for m in ms if any(k not in m for k in req)]; assert not bad, 'MVPs missing required fields (incl. ga_clicks propagated from state-x0a context): %s' % bad"
 ```
 <!-- VERIFY=true: real assertion lives in state-registry.json; this line is the per-Rule-13 placeholder -->
 

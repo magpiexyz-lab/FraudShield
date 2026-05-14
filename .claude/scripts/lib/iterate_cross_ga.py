@@ -2,29 +2,33 @@
 """iterate_cross_ga.py — Bucket Google Ads campaigns into MVP records and merge clicks
 into the iterate-cross context.
 
-State-x0a runs this after scraping ads.google.com/aw/campaigns (or after the operator
-drops a CSV at .runs/iterate-cross-ga-clicks.csv). It folds `ga_clicks` into the per-MVP
-records produced by state-x0, creates `ga_only` records for campaigns with no PostHog
-MVP, and emits warnings for genuinely unmatched campaigns.
+State-x0a runs this after the operator exports a CSV from Google Ads UI and saves it
+at .runs/iterate-cross-ga-clicks.csv. It folds `ga_clicks` into the per-MVP records
+produced by state-x0, creates `ga_only` records for campaigns with no PostHog MVP,
+and emits warnings for genuinely unmatched campaigns.
 
-Input shape (raw JSON; produced by Chrome MCP scrape):
-  {
-    "scraped_at": "<ISO timestamp>",
-    "date_range_label": "<human label>",
-    "campaigns": [
-      {"name": "<campaign>", "account": "<MCC sub-account>",
-       "type": "Search|Performance Max|...", "impr": int, "clicks": int, "conv": int},
-      ...
-    ]
-  }
+Browser scraping was removed (PR fix/iterate-cross-csv-blocking). Rationale:
+the scraper was brittle to Google Ads UI changes (column-position drift, render
+timing, virtualization, anti-automation fallback page) and failed silently —
+producing zero or junk `ga_clicks` values that masqueraded as real data. CSV
+export is the only supported source; state-x0a halts loudly if the file is
+missing or malformed.
 
-Input shape (CSV fallback at .runs/iterate-cross-ga-clicks.csv):
-  campaign,clicks,conv,account
-  xpredict,1082,94,Lee MVP
-  ...
-  (header optional; `account` column optional; missing `conv` treated as 0)
+Input shape (CSV at .runs/iterate-cross-ga-clicks.csv):
+  Header row required. Required columns (case-insensitive substring match):
+    Campaign, Clicks
+  Optional columns: Account, Conversions (or Conv.), Impressions / Impr.
+  Column order is irrelevant — the parser indexes by header.
+  Thousands separators (1,082) are stripped.
+  UTF-8 BOM is stripped. Summary footer rows (starting with "Total:") are skipped.
 
-Bucketing algorithm:
+Subcommands:
+  validate-csv — verify the CSV has required columns + at least one data row.
+                 State-x0a calls this BEFORE merge to fail-fast with a clear
+                 diagnostic when the operator's export is missing columns.
+  merge        — fold CSV clicks into .runs/iterate-cross-context.json.
+
+Bucketing algorithm (unchanged):
   1. Compute campaign-MVP-name by stripping ad-naming suffixes
      (-search-v1, _Search_V1, etc.).
   2. Try substring match of stripped name's match_key against existing MVP keys.
@@ -33,10 +37,6 @@ Bucketing algorithm:
   4. If still no match AND the stripped name is alphabetic (not "Campaign #1"),
      auto-create a `ga_only` MVP record.
   5. Otherwise: stderr warning + emit to unmatched-out file.
-
-Subcommands:
-  merge    — fold scraped/CSV clicks into .runs/iterate-cross-context.json
-             AND .runs/iterate-cross-data.json when present (for re-run paths).
 
 Why match_key (alphanumeric-only normalizer): reused from iterate_cross_classify.py.
 Operator-declared kebab/snake/camel variants of the same MVP-name all collapse to
@@ -178,112 +178,72 @@ def bucket_campaign(
     return None, "unmatched"
 
 
-def parse_ga_raw(raw_blob: dict) -> list[dict]:
-    """Normalize the Chrome-MCP scrape blob into a flat list of campaign records."""
+def parse_ga_csv(csv_text: str) -> list[dict]:
+    """Parse Google Ads CSV export.
+
+    Header row REQUIRED. Columns matched by case-insensitive substring on header:
+      - Campaign (required)
+      - Clicks (required)
+      - Conversions / Conv. (optional, defaults to 0)
+      - Impressions / Impr. (optional, defaults to 0)
+      - Account (optional, defaults to empty string)
+    Column ORDER does not matter — the parser indexes by header position.
+
+    Tolerances:
+      - UTF-8 BOM at file start is stripped.
+      - Summary footer rows (first cell starts with "Total") are skipped.
+      - Thousands separators in numeric cells (1,082) are stripped.
+      - Empty / whitespace-only rows are skipped.
+      - Rows whose Campaign cell is empty are skipped.
+
+    Returns an empty list when required columns are absent — state-x0a's
+    `validate-csv` subcommand fails the gate before this is called, so
+    reaching this path implies CSV is valid; the empty-list return is a
+    defensive fallback.
+    """
+    if csv_text.startswith("﻿"):
+        csv_text = csv_text[1:]  # strip UTF-8 BOM
+    reader = csv.reader(io.StringIO(csv_text))
+    rows = list(reader)
+    if not rows:
+        return []
+    header = [(h or "").strip().lower() for h in rows[0]]
+
+    def find(*keys: str) -> int | None:
+        for i, h in enumerate(header):
+            for k in keys:
+                if k in h:
+                    return i
+        return None
+
+    i_name = find("campaign")
+    i_clicks = find("clicks")
+    if i_name is None or i_clicks is None:
+        return []
+    i_conv = find("conversions", "conv.")
+    i_account = find("account")
+
     out: list[dict] = []
-    for c in raw_blob.get("campaigns") or []:
-        if not isinstance(c, dict):
+    for row in rows[1:]:
+        if not row or i_name >= len(row):
             continue
-        name = (c.get("name") or "").strip()
+        name = (row[i_name] or "").strip()
         if not name:
             continue
-        clicks = int(c.get("clicks") or 0)
-        conv = float(c.get("conv") or 0)
-        out.append({
-            "name": name,
-            "account": c.get("account") or "",
-            "type": c.get("type") or "",
-            "clicks": clicks,
-            "conv": conv,
-        })
-    return out
-
-
-# Campaign-type anchors expected in the Google Ads campaigns table row. The JS
-# scraper uses these as a fixed anchor for column-position decoding because
-# column ORDER is stable but column COUNT can drift when operators toggle
-# columns. Keep this list in sync with the JS scraper at
-# .claude/skills/iterate/state-x0a-scrape-ga-clicks.md.
-_GA_TYPE_ANCHORS = ("Search", "Performance Max", "Display", "Shopping")
-
-
-def parse_ga_row_text(row_text: str) -> dict | None:
-    """Python equivalent of the JS row scraper in state-x0a.
-
-    Input: the `innerText` of one `div[role="row"]` from the Google Ads
-    campaigns table (newlines replaced with `|`).
-
-    Output: a normalized campaign record `{name, account, type, impr, clicks, conv}`,
-    or `None` when the row is a header/total/draft/placeholder row.
-
-    Column layout (offset from the `type` anchor at index `t`):
-      [name, settings, budget, '—', account_name, account_id, TYPE,
-       impr=t+1, interactions=t+2, 'Clicks,...'=t+3,
-       interaction_rate=t+4, avg_cost=t+5, cost=t+6, bid_strategy=t+7,
-       CLICKS=t+8, conv_rate=t+9, conv_count=t+10, ...]
-
-    The fixture-based test (`test_parse_ga_row_text_against_fixture`) asserts
-    this decoder matches a real captured row. When Google changes column
-    layout, the test fails BEFORE the operator runs /iterate --cross.
-    """
-    if not row_text:
-        return None
-    text = row_text.replace("\n", "|")
-    parts = [p.strip() for p in text.split("|") if p.strip()]
-    if not parts:
-        return None
-    first = parts[0]
-    if first == "Campaign" or first.startswith("Total:") or first == "expand_more":
-        return None
-    # Real campaign rows have "settings" as the second cell (chip-shaped budget editor).
-    if len(parts) < 2 or parts[1] != "settings":
-        return None
-    type_idx = next((i for i, p in enumerate(parts) if p in _GA_TYPE_ANCHORS), -1)
-    if type_idx < 0 or type_idx - 2 < 0 or type_idx + 10 >= len(parts):
-        return None
-    account = parts[type_idx - 2]
-    type_ = parts[type_idx]
-    try:
-        impr = int(parts[type_idx + 1].replace(",", "") or 0)
-        clicks = int(parts[type_idx + 8].replace(",", "") or 0)
-        conv = float(parts[type_idx + 10].replace(",", "") or 0)
-    except ValueError:
-        return None
-    return {
-        "name": first,
-        "account": account,
-        "type": type_,
-        "impr": impr,
-        "clicks": clicks,
-        "conv": conv,
-    }
-
-
-def parse_ga_csv(csv_text: str) -> list[dict]:
-    """Parse CSV fallback. Header row optional; columns: campaign,clicks[,conv[,account]]."""
-    out: list[dict] = []
-    reader = csv.reader(io.StringIO(csv_text))
-    for row in reader:
-        if not row:
-            continue
-        first = row[0].strip()
-        # Skip a header row if present.
-        if first.lower() in ("campaign", "name", "campaign_name"):
-            continue
-        if len(row) < 2:
-            continue
-        name = first
+        if name.lower().startswith("total"):
+            continue  # skip summary footer
         try:
-            clicks = int((row[1] or "0").strip() or 0)
-        except ValueError:
+            clicks_raw = (row[i_clicks] or "0").strip().replace(",", "") if i_clicks < len(row) else "0"
+            clicks = int(clicks_raw or 0)
+        except (ValueError, IndexError):
             continue
         conv = 0.0
-        if len(row) >= 3 and (row[2] or "").strip():
+        if i_conv is not None and i_conv < len(row):
             try:
-                conv = float(row[2].strip())
+                conv = float((row[i_conv] or "0").strip().replace(",", "") or 0)
             except ValueError:
-                conv = 0.0
-        account = row[3].strip() if len(row) >= 4 else ""
+                pass
+        account = (row[i_account] or "").strip() if i_account is not None and i_account < len(row) else ""
         out.append({"name": name, "account": account, "type": "", "clicks": clicks, "conv": conv})
     return out
 
@@ -393,13 +353,10 @@ def merge_ga_clicks(
 
 # ---------- CLI ----------
 
-def _load_raw(args: argparse.Namespace) -> list[dict]:
-    """Resolve the campaigns list from --ga-raw (JSON) or --ga-csv (CSV)."""
-    if args.ga_raw and os.path.exists(args.ga_raw):
-        blob = json.load(open(args.ga_raw))
-        return parse_ga_raw(blob)
+def _load_csv(args: argparse.Namespace) -> list[dict]:
+    """Resolve the campaigns list from --ga-csv. Returns [] if missing or unreadable."""
     if args.ga_csv and os.path.exists(args.ga_csv):
-        return parse_ga_csv(open(args.ga_csv).read())
+        return parse_ga_csv(open(args.ga_csv, encoding="utf-8").read())
     return []
 
 
@@ -417,8 +374,57 @@ def _load_aliases(config_path: str | None) -> dict[str, str]:
     return {match_key(k): v for k, v in aliases.items() if v}
 
 
+def cmd_validate_csv(args: argparse.Namespace) -> int:
+    """Verify the CSV has required header columns. Exit non-zero on failure.
+
+    Called by state-x0a Step 0 BEFORE merge to fail-fast with a clear diagnostic
+    when the operator's export is missing columns. Soft-warns (still exits 0)
+    on header-only CSV — that case can legitimately happen if the date window
+    captured zero paid clicks.
+    """
+    if not args.ga_csv or not os.path.exists(args.ga_csv):
+        print(f"ERROR: CSV not found at {args.ga_csv}", file=sys.stderr)
+        return 2
+    with open(args.ga_csv, encoding="utf-8") as f:
+        text = f.read()
+    if text.startswith("﻿"):
+        text = text[1:]  # strip BOM before checking emptiness
+    if not text.strip():
+        print(f"ERROR: CSV is empty: {args.ga_csv}", file=sys.stderr)
+        return 2
+    reader = csv.reader(io.StringIO(text))
+    rows = list(reader)
+    if not rows:
+        print(f"ERROR: CSV has no rows: {args.ga_csv}", file=sys.stderr)
+        return 2
+    header = [(h or "").strip().lower() for h in rows[0]]
+    required = {"campaign": False, "clicks": False}
+    for col in header:
+        for key in required:
+            if key in col:
+                required[key] = True
+    missing = [k for k, v in required.items() if not v]
+    if missing:
+        print(
+            f"ERROR: CSV missing required columns: {missing}. "
+            f"Header was: {rows[0]}. "
+            f"Re-export from Google Ads UI with at least Campaign and Clicks columns.",
+            file=sys.stderr,
+        )
+        return 2
+    if len(rows) < 2:
+        # Header-only: legitimate when the window has zero paid clicks. Warn only.
+        print(
+            f"WARN: CSV has header but zero data rows. If your date range had "
+            f"zero paid clicks that is correct; otherwise re-export. Skill will "
+            f"proceed with ga_clicks=0 on every MVP.",
+            file=sys.stderr,
+        )
+    return 0
+
+
 def cmd_merge(args: argparse.Namespace) -> int:
-    campaigns = _load_raw(args)
+    campaigns = _load_csv(args)
     if not campaigns:
         print("merge: no GA campaigns provided (or all empty); writing pass-through.", file=sys.stderr)
 
@@ -433,9 +439,13 @@ def cmd_merge(args: argparse.Namespace) -> int:
 
     merged, unmatched = merge_ga_clicks(campaigns, mvps, aliases)
     ctx["mvps"] = merged
+    # Record the CSV file's mtime as the data freshness stamp.
     ctx["ga_scraped_at"] = (
-        json.load(open(args.ga_raw)).get("scraped_at")
-        if args.ga_raw and os.path.exists(args.ga_raw)
+        __import__("datetime").datetime.fromtimestamp(
+            os.path.getmtime(args.ga_csv),
+            tz=__import__("datetime").timezone.utc,
+        ).isoformat()
+        if args.ga_csv and os.path.exists(args.ga_csv)
         else None
     )
 
@@ -458,26 +468,6 @@ def cmd_merge(args: argparse.Namespace) -> int:
         f"{ga_only_count} ga_only MVPs added, "
         f"{len(unmatched)} unmatched."
     )
-
-    # Per-sub-account scrape observability (state-x0a per-account loop fields).
-    # Emitted only when present in raw JSON, so legacy MCC-scrape inputs and
-    # CSV fallback paths produce the original single-line print unchanged.
-    raw = (
-        json.load(open(args.ga_raw))
-        if args.ga_raw and os.path.exists(args.ga_raw)
-        else {}
-    )
-    acc_ok = len(raw.get("accounts_scraped") or [])
-    acc_fail = len(raw.get("accounts_failed") or [])
-    window = raw.get("window_days")
-    date_label = raw.get("date_range_label")
-    if acc_ok or acc_fail or window:
-        extra = f"  scraped {acc_ok} sub-accounts ({acc_fail} failed)"
-        if window:
-            extra += f"; window {window}d"
-        if date_label:
-            extra += f" ({date_label})"
-        print(extra)
     return 0
 
 
@@ -485,9 +475,12 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Bucket and merge Google Ads click data into /iterate --cross context.")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
+    p_validate = sub.add_parser("validate-csv", help="Verify the GA CSV has required columns and at least one data row.")
+    p_validate.add_argument("--ga-csv", default=".runs/iterate-cross-ga-clicks.csv", help="Input: operator-supplied CSV export from Google Ads.")
+    p_validate.set_defaults(func=cmd_validate_csv)
+
     p_merge = sub.add_parser("merge", help="Fold GA clicks into iterate-cross-context.json.")
-    p_merge.add_argument("--ga-raw", default=".runs/_iterate-cross-ga-raw.json", help="Input: JSON blob from state-x0a Chrome scrape.")
-    p_merge.add_argument("--ga-csv", default=".runs/iterate-cross-ga-clicks.csv", help="Input: CSV fallback when scrape unavailable.")
+    p_merge.add_argument("--ga-csv", default=".runs/iterate-cross-ga-clicks.csv", help="Input: operator-supplied CSV export from Google Ads.")
     p_merge.add_argument("--context", default=".runs/iterate-cross-context.json", help="Target: state-x0 output to mutate.")
     p_merge.add_argument("--config", default="experiment/iterate-cross-config.yaml")
     p_merge.add_argument("--unmatched-out", default=".runs/_iterate-cross-ga-unmatched.json", help="Output: unmatched campaigns for operator triage.")

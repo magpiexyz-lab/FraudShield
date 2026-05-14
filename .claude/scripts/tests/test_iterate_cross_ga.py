@@ -18,13 +18,12 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
 
 from iterate_cross_ga import (  # noqa: E402
     bucket_campaign,
+    cmd_validate_csv,
     extract_mvp_name,
     is_placeholder_campaign,
     main,
     merge_ga_clicks,
     parse_ga_csv,
-    parse_ga_raw,
-    parse_ga_row_text,
 )
 
 
@@ -187,29 +186,11 @@ def test_bucket_skips_orphan_keys():
     assert mvp == "xpredict"
 
 
-# ---------- parse_ga_raw / parse_ga_csv ----------
-
-def test_parse_ga_raw_normalizes_fields():
-    blob = {"campaigns": [
-        {"name": "xpredict", "account": "Lee MVP", "type": "Performance Max", "impr": 1000, "clicks": 1082, "conv": 94},
-        {"name": "Lumen-Parth", "account": "Parth", "clicks": "786", "conv": "0"},
-    ]}
-    parsed = parse_ga_raw(blob)
-    assert len(parsed) == 2
-    assert parsed[0]["clicks"] == 1082
-    assert parsed[1]["clicks"] == 786  # string-coerced
-    assert parsed[0]["conv"] == 94.0
-    assert parsed[1]["account"] == "Parth"
-
-
-def test_parse_ga_raw_skips_empty_name():
-    blob = {"campaigns": [{"name": "", "clicks": 10}, {"name": "xpredict", "clicks": 5}]}
-    parsed = parse_ga_raw(blob)
-    assert len(parsed) == 1
-
+# ---------- parse_ga_csv ----------
 
 def test_parse_ga_csv_with_header():
-    csv_text = "campaign,clicks,conv\nxpredict,1082,94\nbrigent-search-v2,158,0\n"
+    """Real Google Ads CSV header form."""
+    csv_text = "Campaign,Clicks,Conversions\nxpredict,1082,94\nbrigent-search-v2,158,0\n"
     parsed = parse_ga_csv(csv_text)
     assert len(parsed) == 2
     assert parsed[0]["name"] == "xpredict"
@@ -217,18 +198,66 @@ def test_parse_ga_csv_with_header():
     assert parsed[0]["conv"] == 94.0
 
 
-def test_parse_ga_csv_without_header():
+def test_parse_ga_csv_without_header_returns_empty():
+    """Header is REQUIRED — parser must find Campaign + Clicks columns by name."""
     csv_text = "xpredict,1082\nbrigent,158\n"
     parsed = parse_ga_csv(csv_text)
-    assert len(parsed) == 2
-    assert parsed[0]["name"] == "xpredict"
-    assert parsed[0]["conv"] == 0.0
+    # First row is treated as header; finds no 'campaign'/'clicks' substring → []
+    assert parsed == []
 
 
 def test_parse_ga_csv_with_account():
     csv_text = "campaign,clicks,conv,account\nxpredict,1082,94,Lee MVP\n"
     parsed = parse_ga_csv(csv_text)
     assert parsed[0]["account"] == "Lee MVP"
+
+
+def test_parse_ga_csv_arbitrary_column_order():
+    """Column ORDER does not matter — parser indexes by header substring."""
+    csv_text = "Account,Clicks,Conversions,Campaign\nLee MVP,1082,94,xpredict\n"
+    parsed = parse_ga_csv(csv_text)
+    assert len(parsed) == 1
+    assert parsed[0]["name"] == "xpredict"
+    assert parsed[0]["clicks"] == 1082
+    assert parsed[0]["conv"] == 94.0
+    assert parsed[0]["account"] == "Lee MVP"
+
+
+def test_parse_ga_csv_strips_thousands_separator():
+    """Google Ads CSV exports use `1,082` formatting."""
+    csv_text = 'Campaign,Clicks,Conversions\nxpredict,"1,082","94"\n'
+    parsed = parse_ga_csv(csv_text)
+    assert parsed[0]["clicks"] == 1082
+    assert parsed[0]["conv"] == 94.0
+
+
+def test_parse_ga_csv_strips_utf8_bom():
+    """Google Ads CSV exports as UTF-8 with BOM."""
+    csv_text = "﻿Campaign,Clicks\nxpredict,1082\n"
+    parsed = parse_ga_csv(csv_text)
+    assert len(parsed) == 1
+    assert parsed[0]["name"] == "xpredict"
+
+
+def test_parse_ga_csv_skips_summary_total_row():
+    """Google Ads CSV exports include a summary footer row starting with 'Total:'."""
+    csv_text = "Campaign,Clicks\nxpredict,1082\nbrigent,158\nTotal,1240\n"
+    parsed = parse_ga_csv(csv_text)
+    assert len(parsed) == 2
+    assert {c["name"] for c in parsed} == {"xpredict", "brigent"}
+
+
+def test_parse_ga_csv_accepts_conv_dot_alias():
+    """Header `Conv.` (Google Ads abbreviation) is recognized as conversions column."""
+    csv_text = "Campaign,Clicks,Conv.\nxpredict,1082,94\n"
+    parsed = parse_ga_csv(csv_text)
+    assert parsed[0]["conv"] == 94.0
+
+
+def test_parse_ga_csv_missing_required_columns_returns_empty():
+    csv_text = "Foo,Bar\nbaz,42\n"
+    parsed = parse_ga_csv(csv_text)
+    assert parsed == []
 
 
 # ---------- merge_ga_clicks (end-to-end) ----------
@@ -358,40 +387,7 @@ def test_merge_silent_skip_does_not_clobber_other_fields():
     assert merged[0]["partial_tracking_pct"] == 0.14
 
 
-# ---------- DOM-row parser fixture (brittleness regression test) ----------
-
-def test_parse_ga_row_text_against_fixture():
-    """Captures known-good Google Ads row innerText against the JS scraper's
-    pipe-split + position-decode logic in Python.
-
-    Purpose: when Google updates the campaigns table layout (column order,
-    new columns, removed columns), this test fails BEFORE the operator runs
-    /iterate --cross. The Python parser mirrors the JS scraper at
-    .claude/skills/iterate/state-x0a-scrape-ga-clicks.md.
-    """
-    import os
-    fixture_path = os.path.join(os.path.dirname(__file__), "fixtures", "ga-ads-row-snapshot.json")
-    assert os.path.isfile(fixture_path), f"fixture missing: {fixture_path}"
-    fixture = json.load(open(fixture_path))
-    rows = fixture["rows"]
-
-    parsed = []
-    for row_text in rows:
-        c = parse_ga_row_text(row_text)
-        if c is not None:
-            parsed.append(c)
-
-    # Spot-check key shape invariants on the captured rows.
-    by_name = {c["name"]: c for c in parsed}
-    # xpredict (Performance Max) and Lumen-Parth (Search) should both decode.
-    assert "xpredict" in by_name
-    assert by_name["xpredict"]["clicks"] == 1082
-    assert by_name["xpredict"]["conv"] == 94.0
-    assert by_name["xpredict"]["type"] == "Performance Max"
-    assert "Lumen-Parth" in by_name
-    assert by_name["Lumen-Parth"]["clicks"] == 786
-    assert by_name["Lumen-Parth"]["type"] == "Search"
-
+# ---------- merge edge cases ----------
 
 def test_merge_attributes_ga_to_orphan_record_not_separate_ga_only():
     """When GA campaign name matches an existing __orphan_X__ record, attribute
@@ -470,21 +466,77 @@ def test_merge_full_experiment_data_shape_smoke():
     assert unmatched[0]["reason"] == "placeholder"
 
 
+# ---------- validate-csv subcommand ----------
+
+class _Args:
+    """Minimal argparse.Namespace stand-in for direct cmd_validate_csv calls."""
+    def __init__(self, **kw):
+        for k, v in kw.items():
+            setattr(self, k, v)
+
+
+def test_validate_csv_missing_file_exits_nonzero(tmp_path=None):
+    args = _Args(ga_csv=str(tempfile.mktemp(suffix=".csv")))
+    assert cmd_validate_csv(args) == 2
+
+
+def test_validate_csv_missing_required_columns_exits_nonzero():
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
+        f.write("Foo,Bar\nbaz,42\n")
+        path = f.name
+    try:
+        rc = cmd_validate_csv(_Args(ga_csv=path))
+        assert rc == 2
+    finally:
+        os.unlink(path)
+
+
+def test_validate_csv_accepts_valid_export():
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
+        f.write("Campaign,Account,Clicks,Conversions\nxpredict,Lee MVP,1082,94\n")
+        path = f.name
+    try:
+        rc = cmd_validate_csv(_Args(ga_csv=path))
+        assert rc == 0
+    finally:
+        os.unlink(path)
+
+
+def test_validate_csv_accepts_header_only_with_warning():
+    """Legitimate case: date window had zero paid clicks. Soft-warn, exit 0."""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
+        f.write("Campaign,Clicks\n")
+        path = f.name
+    try:
+        rc = cmd_validate_csv(_Args(ga_csv=path))
+        assert rc == 0
+    finally:
+        os.unlink(path)
+
+
+def test_validate_csv_handles_bom():
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False, encoding="utf-8") as f:
+        f.write("﻿Campaign,Clicks\nxpredict,1082\n")
+        path = f.name
+    try:
+        rc = cmd_validate_csv(_Args(ga_csv=path))
+        assert rc == 0
+    finally:
+        os.unlink(path)
+
+
 # ---------- main() integration ----------
 
 def test_main_merge_subcommand_smoke():
     with tempfile.TemporaryDirectory() as td:
-        ga_raw_path = os.path.join(td, "ga-raw.json")
+        ga_csv_path = os.path.join(td, "ga-clicks.csv")
         ctx_path = os.path.join(td, "context.json")
         unmatched_path = os.path.join(td, "unmatched.json")
 
-        json.dump({
-            "scraped_at": "2026-05-13T13:36:00Z",
-            "campaigns": [
-                {"name": "xpredict", "clicks": 1082, "conv": 94, "account": "Lee MVP", "type": "Performance Max"},
-                {"name": "reset-app-search-v1", "clicks": 58, "conv": 0, "account": "Radlin"},
-            ],
-        }, open(ga_raw_path, "w"))
+        with open(ga_csv_path, "w", encoding="utf-8") as f:
+            f.write("Campaign,Clicks,Conversions,Account\n")
+            f.write("xpredict,1082,94,Lee MVP\n")
+            f.write("reset-app-search-v1,58,0,Radlin\n")
 
         json.dump({
             "mvps": [_mvp("x-predict", gclid_visitors=2545)],
@@ -494,8 +546,7 @@ def test_main_merge_subcommand_smoke():
 
         rc = main([
             "merge",
-            "--ga-raw", ga_raw_path,
-            "--ga-csv", os.path.join(td, "no-such-file.csv"),  # CSV absent → falls back to JSON
+            "--ga-csv", ga_csv_path,
             "--context", ctx_path,
             "--config", os.path.join(td, "no-such-config.yaml"),
             "--unmatched-out", unmatched_path,
@@ -509,75 +560,19 @@ def test_main_merge_subcommand_smoke():
         assert by["reset-app"]["ga_only"] is True
 
 
-# ---------- cmd_merge observability print (per-sub-account audit line) ----------
-
-
-def _run_merge_capture_stdout(raw_payload: dict, mvps: list) -> str:
-    """Helper: run main(['merge', ...]) against an in-tempdir fixture and
-    return captured stdout. Used by the audit-line print tests."""
-    import io
-    import contextlib
-
+def test_main_validate_csv_subcommand_smoke():
     with tempfile.TemporaryDirectory() as td:
-        ga_raw_path = os.path.join(td, "ga-raw.json")
-        ctx_path = os.path.join(td, "context.json")
-        unmatched_path = os.path.join(td, "unmatched.json")
+        ga_csv_path = os.path.join(td, "ga.csv")
+        with open(ga_csv_path, "w", encoding="utf-8") as f:
+            f.write("Campaign,Clicks\nxpredict,1082\n")
+        rc = main(["validate-csv", "--ga-csv", ga_csv_path])
+        assert rc == 0
 
-        json.dump(raw_payload, open(ga_raw_path, "w"))
-        json.dump({"mvps": mvps, "mode": "cross", "window_days": raw_payload.get("window_days", 90)}, open(ctx_path, "w"))
-
-        buf = io.StringIO()
-        with contextlib.redirect_stdout(buf):
-            rc = main([
-                "merge",
-                "--ga-raw", ga_raw_path,
-                "--ga-csv", os.path.join(td, "no-such-file.csv"),
-                "--context", ctx_path,
-                "--config", os.path.join(td, "no-such-config.yaml"),
-                "--unmatched-out", unmatched_path,
-            ])
-        assert rc == 0, "cmd_merge returned nonzero"
-        return buf.getvalue()
-
-
-def test_cmd_merge_print_emits_audit_line_when_audit_fields_present():
-    """Per-sub-account scrape produces accounts_scraped/accounts_failed/window_days/
-    date_range_label in the raw JSON. cmd_merge must emit a second audit line so
-    operators can confirm the date window and per-account success rate."""
-    raw = {
-        "scraped_at": "2026-05-14T00:00:00Z",
-        "window_days": 90,
-        "date_range_label": "Feb 13 - May 14, 2026",
-        "accounts_scraped": [{"ocid": "111", "name": "Lee MVP"}, {"ocid": "222", "name": "Lew's MVP Account"}],
-        "accounts_failed": [{"ocid": "333", "name": "Failed", "reason": "render_timeout"}],
-        "campaigns": [{"name": "xpredict", "clicks": 10, "conv": 1, "account": "Lee MVP", "type": "Search"}],
-    }
-    mvps = [_mvp("x-predict", gclid_visitors=50)]
-    out = _run_merge_capture_stdout(raw, mvps)
-
-    # First line: the original merge summary (unchanged).
-    assert "merge: 1 campaigns" in out
-    # Second line: new audit info exposing sub-account scrape counts + window + chip label.
-    assert "scraped 2 sub-accounts (1 failed)" in out
-    assert "window 90d" in out
-    assert "Feb 13 - May 14, 2026" in out
-
-
-def test_cmd_merge_print_omits_audit_line_for_legacy_raw():
-    """Legacy MCC-scrape raw (and CSV fallback) doesn't carry the audit fields.
-    Don't print the second line in that case — keep the single-line contract that
-    matched the v1 behavior so existing log scrapers / smoke-tests don't break."""
-    raw = {
-        "scraped_at": "2026-05-13T00:00:00Z",
-        "campaigns": [{"name": "xpredict", "clicks": 10, "conv": 1, "account": "Lee MVP", "type": "Search"}],
-    }
-    mvps = [_mvp("x-predict", gclid_visitors=50)]
-    out = _run_merge_capture_stdout(raw, mvps)
-
-    assert "merge: 1 campaigns" in out
-    # Audit line should NOT be emitted when raw lacks per-account fields.
-    assert "sub-accounts" not in out
-    assert "window" not in out
+        # Now break the CSV — missing Clicks column
+        with open(ga_csv_path, "w", encoding="utf-8") as f:
+            f.write("Campaign,Account\nxpredict,Lee\n")
+        rc = main(["validate-csv", "--ga-csv", ga_csv_path])
+        assert rc == 2
 
 
 # Self-runner so this file works without pytest installed.
