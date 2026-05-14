@@ -70,9 +70,17 @@ try:
     obs_rid = json.load(open('$obs_file')).get('run_id', '')
 except Exception:
     obs_rid = ''
+# Narrow-window guard: lifecycle-init.sh clears observe-result.json
+# (it is in STALE_ARTIFACTS) at every skill entry, so under normal flow
+# observe-result.run_id == current run_id whenever it exists. This branch
+# only fires when a prior observe-result survives because (a) verify-pr-gate
+# runs from a manual gh pr create BEFORE lifecycle-init has run, or
+# (b) a partial lifecycle-init failed to clear the artifact. In either
+# case the stale observe is not a real inconsistency for the current
+# in-flight skill.
 if obs_rid and obs_rid != identity.run_id:
     print('STALE_OBSERVE\t0\t' + identity.run_id)
-    # friction-skip: trivial-fast-path — observe-result.run_id from a prior run is a stale artifact, not a real inconsistency for the current in-flight skill
+    # friction-skip: trivial-fast-path — stale observe-result.json; see narrow-window note above
     sys.exit(0)
 
 try:

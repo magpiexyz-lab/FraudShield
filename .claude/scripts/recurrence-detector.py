@@ -1,6 +1,16 @@
 #!/usr/bin/env python3
 """RMG v2 Layer 4 — Recurrence detector (advisory + promotion tiers).
 
+Read-side scope: **cross-run-by-design**. Groups rows by `composite_identity`
+across run_id boundaries to surface recurring failure shapes — the whole
+point of the detector is to see patterns that span multiple skill runs.
+The scope is declared at the call site via `# scope: cross-run-by-design`
+on the `load_fix_ledger` invocation. See `.claude/patterns/cross-run-channels.json`
+channel `fix-ledger`. The strict-parse helper here is preserved (raises
+`SchemaError` on JSON decode failure) instead of using `runs_reader.read_jsonl`
+which silently skips malformed lines — recurrence-detector's exit-code-3
+contract (CLI exit 3 on ledger schema error) must remain authoritative.
+
 Reads `.runs/fix-ledger.jsonl`, groups rows by composite_identity (joining to
 the existing Stack Knowledge composite via `stack_knowledge_parser.compute_hash`
 on `(root_cause_class, divergence_pattern, stack_scope)`), dedupes per day,
@@ -440,6 +450,7 @@ def main(argv: list[str] | None = None) -> int:
     lock_path = project_dir / ".runs" / "recurrence-candidates.jsonl.lock"
 
     try:
+        # scope: cross-run-by-design — recurrence detection groups across run_ids by design
         rows = list(load_fix_ledger(ledger_path))
     except SchemaError as exc:
         print(f"FAIL: fix-ledger.jsonl schema error: {exc}", file=sys.stderr)

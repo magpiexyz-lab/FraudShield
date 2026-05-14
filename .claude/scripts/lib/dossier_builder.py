@@ -14,7 +14,14 @@ Public API:
 Each entry mirrors the others — phase_4b is a strict superset of phase_1a:
 
     {
-      "prior_run_id": str,
+      "prior_run_id": str,         # "<skill>-<ts>" for ledger entries OR
+                                    # "git:<sha[:7]>" for git-history-augmented
+                                    # entries (#1437 fix). The "git:" sentinel
+                                    # tells consumers the entry was synthesized
+                                    # from VCS history rather than the ledger,
+                                    # and is **advisory** — solve-critic vector 4
+                                    # excludes git-sentinel entries from its
+                                    # response-floor (dossier_verify mirrors).
       "files_touched": [str, ...],
       "regression_test_present": bool,
       "occurrence_count_60d": int,
@@ -26,9 +33,14 @@ Each entry mirrors the others — phase_4b is a strict superset of phase_1a:
 
 Sources:
   * `.runs/fix-ledger.jsonl` — rows whose `file` ∈ `divergence_files`.
+    Filtered scope: cross-run by design — the dossier wants prior fix
+    attempts regardless of which run produced them.
   * `.runs/recurrence-candidates.jsonl` — rows whose composite_identity_hash
     matches any composite derived from the divergence_files set.
-  * git log on each divergence file (best-effort; missing/non-repo → []).
+  * git log on each divergence file (#1437; cap max_per_file=5 via
+    `runs_reader.read_git_log`) — surfaces history that would otherwise
+    be hidden when the ledger is empty (the silent-empty path the
+    original implementation hit). Best-effort: missing/non-repo → [].
 
 `regression_test_present` is True iff the prior run's `solve-trace.json` had
 a `recurrence_guard.kind ∈ {test, hook, invariant}` with non-null artifact.
