@@ -132,3 +132,14 @@ ga_campaign_aliases: {}
   # staylicaai: stylica-ai
   # pubcheck: verify
   # autodropship: dropship-ops
+
+# Note: state-x0a (Chrome MCP path) discovers sub-accounts every run by
+# scraping https://ads.google.com/aw/accounts and then visits each sub-account's
+# campaigns page individually (avoids MCC parent table virtualization that hides
+# rows beyond the viewport). There is no sub-account cache — fresh discovery
+# (~3s) ensures new sub-accounts surface automatically. Sub-account ocids are
+# NOT stored in this file.
+#
+# Date window comes from `window_days` above; x0a computes &dr=YYYYMMDD~YYYYMMDD
+# and injects it directly into each per-account URL (bypassing the date picker
+# UI which has a known UiCustomizationService hang failure mode on MCP tabs).

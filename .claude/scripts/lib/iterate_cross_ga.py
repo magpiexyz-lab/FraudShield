@@ -458,6 +458,26 @@ def cmd_merge(args: argparse.Namespace) -> int:
         f"{ga_only_count} ga_only MVPs added, "
         f"{len(unmatched)} unmatched."
     )
+
+    # Per-sub-account scrape observability (state-x0a per-account loop fields).
+    # Emitted only when present in raw JSON, so legacy MCC-scrape inputs and
+    # CSV fallback paths produce the original single-line print unchanged.
+    raw = (
+        json.load(open(args.ga_raw))
+        if args.ga_raw and os.path.exists(args.ga_raw)
+        else {}
+    )
+    acc_ok = len(raw.get("accounts_scraped") or [])
+    acc_fail = len(raw.get("accounts_failed") or [])
+    window = raw.get("window_days")
+    date_label = raw.get("date_range_label")
+    if acc_ok or acc_fail or window:
+        extra = f"  scraped {acc_ok} sub-accounts ({acc_fail} failed)"
+        if window:
+            extra += f"; window {window}d"
+        if date_label:
+            extra += f" ({date_label})"
+        print(extra)
     return 0
 
 

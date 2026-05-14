@@ -46,19 +46,103 @@ The lead agent makes the real decision (Chrome MCP available or not) — the bas
 
 ### Step 2: Scrape Google Ads (Chrome MCP path)
 
-When Chrome MCP is available, the lead agent drives the scrape inline. The path is
-specific to the MCC parent account so all 30+ sub-accounts are visible at once.
+When Chrome MCP is available, the lead agent drives the scrape inline.
 
-1. **Resolve tab.** Call `mcp__claude-in-chrome__tabs_context_mcp`. If a tab on
-   `ads.google.com/aw/campaigns` exists with `workspaceId=-638109893` (MCC), reuse
-   it; else create one via `mcp__claude-in-chrome__tabs_create_mcp` and navigate.
+**Why per-sub-account, not the MCC parent page.** The MCC parent campaigns table
+uses Particle UI virtualization — only ~12 of 49+ rows ever exist in the DOM,
+and programmatic `scrollTop` does NOT trigger new renders. The MCC page also
+loads `UiCustomizationService/List` (the cross-account chooser dropdown's
+dependency), which hangs indefinitely on MCP-reused tabs and surfaces as a
+generic "Turn off ad blockers" fallback page. Per-sub-account pages
+(`/aw/campaigns?ocid=<sub>` without `workspaceId`) render ≤10 rows each (no
+virtualization) and don't depend on `UiCustomizationService`. Combined with
+always-fresh-tab discipline this defeats both failure modes documented in the
+2026-05-14 session.
 
-2. **Set time window + sort.** Open the date picker and select a range that
-   covers `context.window_days` (default 90). Click the **Clicks** column header
-   twice so the table sorts descending by clicks (the highest-spend campaigns
-   appear first, useful for sanity check).
+#### Step 2.0: Always-fresh tab
 
-3. **Scrape via JavaScript.** Use `mcp__claude-in-chrome__javascript_tool` to run:
+MCP-reused Google Ads tabs accumulate state that hangs `UiCustomizationService`.
+Close any existing `ads.google.com` MCP tab and create a new one for every
+x0a invocation. Cost is ~1s; eliminates that whole failure class. The
+operator's non-MCP Chrome tab is unaffected — it shares cookies but not
+MCP-tab state.
+
+```
+ctx = mcp__claude-in-chrome__tabs_context_mcp(createIfEmpty: true)
+for t in ctx.availableTabs:
+    if 'ads.google.com' in t.url:
+        mcp__claude-in-chrome__tabs_close_mcp(tabId=t.tabId)
+fresh = mcp__claude-in-chrome__tabs_create_mcp()
+mcp__claude-in-chrome__navigate(tabId=fresh.tabId, url='https://ads.google.com/aw/overview?authuser=2')
+```
+
+The initial `/aw/overview` nav pins `authuser=2` before any account-scoped
+URLs. If the operator has a single Google session this is a no-op.
+
+#### Step 2.1: Discover sub-accounts (every run, no cache)
+
+Navigate the fresh tab to `https://ads.google.com/aw/accounts?authuser=2`.
+The accounts table is small (~6–15 rows) — no virtualization workaround
+needed. Scrape via `mcp__claude-in-chrome__javascript_tool`:
+
+```js
+const links = Array.from(document.querySelectorAll('a[href*="/aw/overview?ocid="]'));
+const seen = new Set();
+const accounts = [];
+for (const a of links) {
+  const m = a.href.match(/ocid=(\d{8,})/);
+  if (!m) continue;
+  const ocid = m[1];
+  if (seen.has(ocid)) continue;
+  seen.add(ocid);
+  const row = a.closest('[role="row"]') || a.closest('.particle-table-row') || a.parentElement;
+  const name = (row?.innerText || '').split('\n').map(s => s.trim()).filter(Boolean)[0] || `acct-${ocid}`;
+  accounts.push({ocid, name});
+}
+accounts.forEach((a, i) => console.log(`[GA_ACCT_v1] ${i.toString().padStart(2,'0')}|${a.ocid}|${a.name}`));
+console.log(`[GA_ACCT_v1_END] count=${accounts.length}`);
+accounts.length;
+```
+
+Read back via `mcp__claude-in-chrome__read_console_messages` with
+`pattern: "GA_ACCT_v1"`. Parse marker lines into `[{ocid, name}, ...]`.
+
+If `count < 3` (heuristic floor — operator likely has ≥3 sub-accounts),
+retry the page nav once with a 3s wait. If still <3, write
+`{"campaigns": []}` to `.runs/_iterate-cross-ga-raw.json` and skip to
+Step 3 (silent-skip path). Do NOT bail the whole state.
+
+#### Step 2.2: Per-sub-account scrape loop
+
+Compute the date-range URL parameter from `context.window_days`:
+
+```python
+import datetime, json
+window_days = json.load(open('.runs/iterate-cross-context.json')).get('window_days', 90)
+today = datetime.date.today()
+start = today - datetime.timedelta(days=window_days - 1)
+dr = f"{start.strftime('%Y%m%d')}~{today.strftime('%Y%m%d')}"
+```
+
+Google Ads' campaigns page honors `&dr=YYYYMMDD~YYYYMMDD` on initial load,
+which sets the date filter without touching the date-picker UI (which has
+the same `UiCustomizationService` failure mode as the MCC chooser).
+
+For each `(ocid, name)` discovered in Step 2.1:
+
+a. **Navigate** the fresh tab to:
+   ```
+   https://ads.google.com/aw/campaigns?ocid=<ocid>&authuser=2&dr=<dr>
+   ```
+   Intentionally omit `workspaceId` — sub-account scope removes the
+   chooser-dropdown dependency.
+
+b. **Wait for table render.** Poll via `javascript_tool` checking
+   `document.querySelectorAll('.particle-table-row').length > 0` with
+   timeout (3 attempts × 3s = 9s max). If timeout, record this account
+   in `accounts_failed` and `continue` to the next — do NOT abort the loop.
+
+c. **Scrape** via the existing row-decoder (`typeIdx`-anchored, marker-piped):
 
    ```js
    const rows = Array.from(document.querySelectorAll('div[role="row"]'));
@@ -81,24 +165,68 @@ specific to the MCC parent account so all 30+ sub-accounts are visible at once.
    campaigns.length;
    ```
 
-4. **Read back via console log markers** using `mcp__claude-in-chrome__read_console_messages` with `pattern: "GA_SCRAPE_v1"`. The output gets reconstructed into JSON and written to `.runs/_iterate-cross-ga-raw.json`. Use the marker-based pipe protocol (not direct JS return) because the return-value channel truncates above ~2KB and we routinely scrape 40+ campaigns.
+d. **Read back** via `mcp__claude-in-chrome__read_console_messages` with
+   `pattern: "GA_SCRAPE_v1"`. Use marker-piped console (not direct JS return)
+   because return-value channel truncates above ~2KB. Parse marker lines into
+   `[{name, account, type, impr, clicks, conv}, ...]`. **Tag every record's
+   `account` field with the current Step 2.1 `name`** — some Particle layouts
+   omit the account cell when scoped to a single account, so the row-decoder
+   may have set `account` to a noise value.
 
-5. The scraped JSON shape:
+   Use `clear: true` on `read_console_messages` so the next account's scrape
+   starts with an empty console (otherwise the next account would re-parse the
+   previous account's markers).
 
-   ```json
-   {
-     "scraped_at": "<ISO timestamp>",
-     "date_range_label": "<UI label, e.g. '26 Feb - 12 May 2026'>",
-     "campaigns": [
-       {"name": "xpredict", "account": "Lee MVP", "type": "Performance Max", "impr": 29453, "clicks": 1082, "conv": 94},
-       ...
-     ]
-   }
+e. **Date-range audit** (one marker per account, recorded into the raw JSON
+   so operators can confirm the window scraped matches `window_days`):
+   ```js
+   const chip = document.querySelector('material-button[debug-id*="date"], [aria-label*="Date range"]');
+   console.log(`[GA_DATE_v1] ${(chip?.innerText || '?').replace(/\s+/g, ' ').trim()}`);
    ```
 
-If the scrape fails (no permission, DOM changed, etc.), retry once. If it still
-fails, write an empty `{"campaigns": []}` blob and continue — state-x0a is
-opt-out; the rest of the skill must run regardless.
+f. Append the per-account campaigns into the accumulating list and move on.
+
+#### Step 2.3: Assemble raw JSON
+
+After the loop, write `.runs/_iterate-cross-ga-raw.json`:
+
+```json
+{
+  "scraped_at": "<ISO timestamp>",
+  "window_days": 90,
+  "date_range_dr": "20260213~20260514",
+  "date_range_label": "<from chip>",
+  "accounts_scraped": [{"ocid": "...", "name": "..."}, ...],
+  "accounts_failed": [{"ocid": "...", "name": "...", "reason": "render_timeout|nav_error"}, ...],
+  "campaigns": [
+    {"name": "xpredict", "account": "Lee MVP", "type": "Performance Max", "impr": 29453, "clicks": 1082, "conv": 94},
+    ...
+  ]
+}
+```
+
+The `campaigns: [...]` shape is identical to the legacy MCC scrape, so
+Step 3 (merge) consumes it unchanged. The new top-level audit fields
+(`accounts_scraped`, `accounts_failed`, `window_days`, `date_range_dr`,
+`date_range_label`) are picked up by `cmd_merge`'s observability print
+when present, and ignored otherwise.
+
+#### Step 2.4: Soft sanity checks (warn-only, never blocking)
+
+Before exiting Step 2:
+
+- If `len(accounts_failed) > 0`: print to stderr
+  `WARN: x0a partial — N/M sub-accounts failed: <names>. Drop CSV at .runs/iterate-cross-ga-clicks.csv to backfill, or re-run.`
+- If `sum(c.clicks for c in campaigns) == 0` AND `len(accounts_scraped) > 0`:
+  print `WARN: zero clicks scraped — likely date-range URL params changed; check date_range_label='<X>' vs expected window_days=N`.
+
+Both warnings are stderr-only. POSTCONDITION (every MVP has `ga_clicks`
+field after merge) is still met by Step 3 running.
+
+**Total scrape failure** (Chrome MCP unavailable mid-loop, or every account
+render-timed out): write `{"campaigns": []}` to the raw JSON and continue
+to Step 3 — same as the silent-skip path. The rest of the skill must run
+regardless.
 
 ### Step 3: Bucket + merge (ALWAYS runs)
 
