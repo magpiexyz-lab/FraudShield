@@ -11,6 +11,7 @@
 > 2. **approve and clear** — save plan, then clear context for a fresh start
 > 3. Or tell me what to change
 
+<!-- prose-gate:bootstrap-state-6-user-approval -->
 DO NOT proceed to STATE 7 until the user explicitly replies with approval.
 If the user requests changes instead of approving, revise the plan to address their feedback and present it again (return to STATE 5). Repeat until approved.
 

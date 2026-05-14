@@ -166,20 +166,68 @@ def main() -> int:
         except Exception as e:
             suppression_errors.append(f"cannot parse {RESULT_PATH}: {e}")
 
-    disposed_ids = filed_ids | suppressed_ids
+    # Prose-gate retro-suppressions-confirmation: validate findings_filed[]
+    # entries' confirmation_evidence (min_length:40). Additive — does not
+    # change existing suppression handling. See .claude/patterns/prose-gates.json
+    # gate_id=retro-suppressions-confirmation.
+    CONFIRMATION_MIN_LENGTH = 40
+    findings_filed_ids: set[str] = set()
+    findings_filed_errors: list[str] = []
+    result_doc_for_ff: dict = {}
+    if os.path.isfile(RESULT_PATH):
+        try:
+            result_doc_for_ff = json.load(open(RESULT_PATH))
+        except Exception:
+            result_doc_for_ff = {}
+    for ff in result_doc_for_ff.get("findings_filed") or []:
+        cid = ff.get("candidate_id")
+        if not cid:
+            findings_filed_errors.append(
+                f"findings_filed entry missing candidate_id: {ff!r}"
+            )
+            continue
+        conf = ff.get("confirmation_evidence") or ""
+        if not isinstance(conf, str) or len(conf) < CONFIRMATION_MIN_LENGTH:
+            findings_filed_errors.append(
+                f"findings_filed candidate_id={cid}: confirmation_evidence "
+                f"must be string >={CONFIRMATION_MIN_LENGTH} chars "
+                f"(got len={len(conf) if isinstance(conf, str) else 'non-string'})"
+            )
+            continue
+        findings_filed_ids.add(cid)
+    # Soft additive check on suppression confirmation_evidence — only flags
+    # entries whose `confirmation_evidence` (or legacy `justification`) is
+    # shorter than the threshold. Existing closed-enum check above is
+    # unchanged.
+    for s in result_doc_for_ff.get("suppressions") or []:
+        cid = s.get("candidate_id")
+        if not cid or cid not in suppressed_ids:
+            continue
+        conf = s.get("confirmation_evidence") or s.get("justification") or ""
+        if len(conf) < CONFIRMATION_MIN_LENGTH:
+            suppression_errors.append(
+                f"suppression candidate_id={cid}: confirmation_evidence "
+                f"(or legacy justification) must be >={CONFIRMATION_MIN_LENGTH} "
+                f"chars (got len={len(conf)})"
+            )
+
+    disposed_ids = filed_ids | suppressed_ids | findings_filed_ids
     missing_ids = pending_ids - disposed_ids
 
-    if not missing_ids and not suppression_errors:
+    if not missing_ids and not suppression_errors and not findings_filed_errors:
         print(
             f"validate-retrospective-completeness: OK ({len(pending_ids)} pending, "
-            f"{len(filed_ids)} filed, {len(suppressed_ids)} suppressed)"
+            f"{len(filed_ids)} filed, {len(suppressed_ids)} suppressed, "
+            f"{len(findings_filed_ids)} findings_filed)"
         )
         return 0
 
     # Failure path
     print(
         f"validate-retrospective-completeness: FAIL "
-        f"(missing dispositions: {len(missing_ids)}, suppression errors: {len(suppression_errors)})",
+        f"(missing dispositions: {len(missing_ids)}, "
+        f"suppression errors: {len(suppression_errors)}, "
+        f"findings_filed errors: {len(findings_filed_errors)})",
         file=sys.stderr,
     )
     if missing_ids:
@@ -201,6 +249,9 @@ def main() -> int:
     if suppression_errors:
         for e in suppression_errors:
             print(f"  SUPPRESSION ERROR: {e}", file=sys.stderr)
+    if findings_filed_errors:
+        for e in findings_filed_errors:
+            print(f"  FINDINGS_FILED ERROR: {e}", file=sys.stderr)
 
     if mode == "warn":
         print("\n[MODE=warn] not blocking finalize", file=sys.stderr)

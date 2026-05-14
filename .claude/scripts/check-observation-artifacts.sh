@@ -409,6 +409,26 @@ if [[ "$SCOPE" == "full" || "$SCOPE" == "process" ]]; then
   fi
 fi
 
+# ── Anomaly-audit-evidence gate (prose-gate observation-phase-step5c-anomaly-audit) ──
+# Deterministic invocation of anomaly-audit-evidence.py replaces the prose-only
+# "Step 5c-validate" invocation in observation-phase.md (closes the meta-failure
+# where Phase A's prose-gate fix was itself a prose-only gate). The validator
+# itself has --mode warn|deny; Phase A defaults to warn, Phase C flips to deny.
+# .claude/patterns/prose-gates.json gate_id=observation-phase-step5c-anomaly-audit.
+AAE_OUT=$(ANOMALY_AUDIT_MODE="${ANOMALY_AUDIT_MODE:-warn}" \
+  python3 "${PROJECT_DIR}/.claude/scripts/lib/anomaly-audit-evidence.py" \
+  --mode "${ANOMALY_AUDIT_MODE:-warn}" 2>&1) || AAE_RC=$?
+AAE_RC="${AAE_RC:-0}"
+if [[ "$AAE_RC" -ne 0 ]]; then
+  echo "$AAE_OUT" >&2
+  # Only the validator's own --mode controls exit code; we mirror the deny path
+  # here when ANOMALY_AUDIT_MODE=deny so MISSING is consistent across both gates.
+  if [[ "${ANOMALY_AUDIT_MODE:-warn}" == "deny" ]]; then
+    MISSING+=("anomaly-audit-evidence (#1434 prose-gate — .runs/audit-sample-result.json absent or malformed)")
+    PASS="false"
+  fi
+fi
+
 # ── Write audit artifact (delegates to canonical writer — GRAIM v2 Slice 3) ──
 # Build missing list as newline-delimited string, then convert in Python
 MISSING_STR=""

@@ -635,6 +635,31 @@
       "channels_path": ".claude/patterns/cross-run-channels.json",
       "lifecycle_path": ".claude/scripts/lifecycle-init.sh",
       "description": "#1437/#1417 — each cross-run-channels.json entry's path must not appear in lifecycle-init.sh STALE_ARTIFACTS unless the entry sets transient_cross_state: true. Prevents silent deletion of cross-run-by-design artifacts on next skill entry."
+    },
+    {
+      "id": "prose-gate-annotation",
+      "type": "prose_gate_annotation",
+      "severity": "warn",
+      "description": "#1434 — state files and prose patterns containing caps imperatives (DO NOT|MUST|REQUIRED|BLOCKING|MUST NOT) within 8 lines of a toolchain reference (write-agent-trace.sh|advance-state.sh|Agent invocation) must carry a `<!-- prose-gate:<gate_id> -->` annotation that matches an entry in prose-gates.json, OR a sanctioned `<!-- prose-only-OK: ≥80 chars rationale -->` waiver. Phase A is warn-mode; Phase C flips to block. The annotation codemod `.claude/scripts/lib/add-prose-gate-anchor.py` generates a worksheet for human review.",
+      "registry_path": ".claude/patterns/prose-gates.json",
+      "scan_globs": [
+        ".claude/skills/**/state-*.md",
+        ".claude/patterns/observation-phase.md",
+        ".claude/patterns/state-99-epilogue.md"
+      ],
+      "imperative_pattern": "\\b(DO NOT|MUST|REQUIRED|BLOCKING|MUST NOT)\\b",
+      "toolchain_pattern": "(write-agent-trace\\.sh|advance-state\\.sh)",
+      "proximity_lines": 8,
+      "annotation_pattern": "<!--\\s*prose-gate:[a-z][a-z0-9_-]+\\s*-->",
+      "waiver_pattern": "<!--\\s*prose-only-OK:.{80,}\\s*-->"
+    },
+    {
+      "id": "prose-gates-align-with-state-registry",
+      "type": "prose_gates_align_with_state_registry",
+      "severity": "warn",
+      "description": "#1434 — every prose-gates.json entry's scope.skill+scope.state_id must resolve to an existing state-registry.json state (or use scope.skill='*'/scope.state_id='*' for cross-skill gates). Catches the round-1 critic correction class where a gate names a state that does not exist (e.g., bootstrap.3a vs verify.3a for Stage 0).",
+      "registry_path": ".claude/patterns/prose-gates.json",
+      "state_registry_path": ".claude/patterns/state-registry.json"
     }
   ]
 }

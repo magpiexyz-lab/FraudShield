@@ -4171,6 +4171,108 @@ def main() -> int:
         return out
 
 
+    def check_prose_gate_annotation(rule):
+        """#1434 — caps imperatives near toolchain references in state files
+        must carry a `<!-- prose-gate:<gate_id> -->` annotation matching an
+        entry in prose-gates.json, OR a sanctioned `<!-- prose-only-OK:
+        ≥ 80 chars rationale -->` waiver. Closes the silent-bypass class
+        where a state file's prose gate has no machine-checkable enforcement.
+        """
+        findings = []
+        registry_path = rule.get("registry_path", "")
+        scan_globs = rule.get("scan_globs", []) or []
+        try:
+            imperative_re = re.compile(rule.get("imperative_pattern", ""))
+            toolchain_re = re.compile(rule.get("toolchain_pattern", ""))
+            annotation_re = re.compile(rule.get("annotation_pattern", ""))
+            waiver_re = re.compile(rule.get("waiver_pattern", ""))
+        except re.error as exc:
+            return [_emit_finding(rule, f"invalid regex: {exc}")]
+        proximity = int(rule.get("proximity_lines", 8))
+        # Load known gate ids from the registry to validate annotation suffixes.
+        valid_gate_ids: set[str] = set()
+        registry_abs = os.path.join(REPO_ROOT, registry_path)
+        if os.path.isfile(registry_abs):
+            try:
+                reg = json.load(open(registry_abs))
+                valid_gate_ids = {g.get("gate_id", "") for g in reg.get("gates", []) if g.get("gate_id")}
+            except (OSError, json.JSONDecodeError):
+                pass
+        annotation_id_re = re.compile(r"<!--\s*prose-gate:([a-z][a-z0-9_-]+)\s*-->")
+        for glob_pat in scan_globs:
+            for path in sorted(glob.glob(os.path.join(REPO_ROOT, glob_pat), recursive=True)):
+                rel = os.path.relpath(path, REPO_ROOT)
+                try:
+                    lines = open(path, encoding="utf-8").read().splitlines()
+                except OSError:
+                    continue
+                for i, line in enumerate(lines):
+                    if not imperative_re.search(line):
+                        continue
+                    start = max(0, i - proximity)
+                    end = min(len(lines), i + proximity + 1)
+                    window = "\n".join(lines[start:end])
+                    if not toolchain_re.search(window):
+                        continue
+                    if waiver_re.search(window):
+                        continue
+                    m = annotation_id_re.search(window)
+                    if m:
+                        anno_id = m.group(1)
+                        if valid_gate_ids and anno_id not in valid_gate_ids:
+                            findings.append(_emit_finding(rule,
+                                f"{rel}:{i+1}: prose-gate annotation references "
+                                f"gate_id={anno_id!r} not in prose-gates.json"))
+                        continue
+                    findings.append(_emit_finding(rule,
+                        f"{rel}:{i+1}: caps imperative `{line.strip()[:80]}` "
+                        f"within {proximity} lines of toolchain reference but no "
+                        f"`<!-- prose-gate:<id> -->` annotation or waiver found"))
+        return findings
+
+
+    def check_prose_gates_align_with_state_registry(rule):
+        """#1434 — every prose-gates.json gate's scope.skill + scope.state_id
+        must resolve to a state-registry.json state (or '*' for cross-skill /
+        cross-state gates). Catches the round-1 critic correction class where
+        a gate names a state that does not exist (e.g., bootstrap.3a vs
+        verify.3a for Stage 0).
+        """
+        findings = []
+        registry_path = rule.get("registry_path", "")
+        state_registry_path = rule.get("state_registry_path", "")
+        registry_abs = os.path.join(REPO_ROOT, registry_path)
+        state_reg_abs = os.path.join(REPO_ROOT, state_registry_path)
+        if not os.path.isfile(registry_abs):
+            return [_emit_finding(rule, f"registry missing: {registry_path}")]
+        if not os.path.isfile(state_reg_abs):
+            return [_emit_finding(rule, f"state-registry missing: {state_registry_path}")]
+        try:
+            reg = json.load(open(registry_abs))
+            state_reg = json.load(open(state_reg_abs))
+        except (OSError, json.JSONDecodeError) as e:
+            return [_emit_finding(rule, f"parse error: {e}")]
+        for gate in reg.get("gates", []) or []:
+            gate_id = gate.get("gate_id", "<unknown>")
+            scope = gate.get("scope", {}) or {}
+            skill = scope.get("skill")
+            state_id = scope.get("state_id")
+            if not skill or not state_id:
+                findings.append(_emit_finding(rule,
+                    f"gate {gate_id}: scope.skill or scope.state_id missing"))
+                continue
+            if skill == "*":
+                continue  # Cross-skill gate; nothing to verify.
+            if skill not in state_reg:
+                findings.append(_emit_finding(rule,
+                    f"gate {gate_id}: skill {skill!r} not in state-registry.json"))
+                continue
+            if state_id != "*" and str(state_id) not in (state_reg.get(skill) or {}):
+                findings.append(_emit_finding(rule,
+                    f"gate {gate_id}: state {skill}.{state_id} not in state-registry.json"))
+        return findings
+
+
     # ---------------------------------------------------------------------------
     # Cross-file rule dispatch — registry-driven with type + field validation.
     #
@@ -4313,6 +4415,24 @@ def main() -> int:
             check_cross_run_channel_exemption_pairing,
             set(),
             {"channels_path", "lifecycle_path"},
+            False,
+        ),
+        # #1434 — prose-gate annotation: caps imperatives near toolchain refs
+        # in state files must have a <!-- prose-gate:<id> --> annotation that
+        # matches an entry in prose-gates.json (or a sanctioned waiver).
+        "prose_gate_annotation": (
+            check_prose_gate_annotation,
+            {"registry_path", "scan_globs", "imperative_pattern",
+             "toolchain_pattern", "annotation_pattern", "waiver_pattern"},
+            {"proximity_lines"},
+            False,
+        ),
+        # #1434 — prose-gates registry alignment: every gate's scope.skill +
+        # scope.state_id must resolve to a state-registry.json state (or '*').
+        "prose_gates_align_with_state_registry": (
+            check_prose_gates_align_with_state_registry,
+            {"registry_path", "state_registry_path"},
+            set(),
             False,
         ),
     }

@@ -284,6 +284,25 @@ def check_traces(trace_names, context_label=''):
 
 check_traces(agent.get('requires_traces', []))
 
+# --- mode (foreground vs background) ---
+# Prose-gate verify-state-2-phase1-spawn-no-background:
+# When skill.yaml declares mode:foreground for an agent, deny spawns with
+# run_in_background:true. Declarative opt-in — agents that omit mode: are
+# unaffected. (.claude/patterns/prose-gates.json)
+declared_mode = agent.get('mode', '')
+if declared_mode == 'foreground':
+    try:
+        _sag_payload = json.loads(os.environ.get('_PAYLOAD', '{}'))
+        _run_in_bg = _sag_payload.get('tool_input', {}).get('run_in_background', False)
+    except Exception:
+        _run_in_bg = False
+    if _run_in_bg:
+        errors.append(
+            f'{agent_type} declares mode:foreground in skill.yaml but Agent '
+            'invoked with run_in_background:true — prose-gate '
+            'verify-state-2-phase1-spawn-no-background'
+        )
+
 # --- scope_condition ---
 sc = agent.get('scope_condition', {})
 if sc:

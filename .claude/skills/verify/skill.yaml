@@ -29,6 +29,7 @@ agents:
     requires_traces: [build-info-collector]
   design-critic:
     after: ["1"]
+    mode: "foreground"
     requires_archetype: web-app
     requires_traces: [build-info-collector]
     scope_condition:
@@ -36,10 +37,12 @@ agents:
       requires_traces: [security-defender, security-attacker, behavior-verifier]
   design-consistency-checker:
     after: ["1"]
+    mode: "foreground"
     requires_archetype: web-app
     requires_traces: [build-info-collector]
   ux-journeyer:
     after: ["1"]
+    mode: "foreground"
     requires_archetype: web-app
     requires_traces: [design-critic, design-consistency-checker]
   quality-fixer:

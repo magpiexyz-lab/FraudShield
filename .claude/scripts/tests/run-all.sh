@@ -79,6 +79,7 @@ SUITES=(
   ".claude/scripts/tests/test_codemod_canonical_writer.py"
   ".claude/scripts/tests/test_gate_artifact_writer_enforcement.py"
   ".claude/scripts/tests/test_gate_artifact_bash_write_guard.py"
+  ".claude/scripts/tests/test_prose_gate_e2e.py"
 )
 
 FAIL=0

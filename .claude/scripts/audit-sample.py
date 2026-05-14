@@ -127,6 +127,31 @@ def main():
 
     print(json.dumps(result))
 
+    # Phase A (prose-gate observation-phase-step5c-anomaly-audit): write
+    # .runs/audit-sample-result.json unconditionally so anomaly-audit-evidence.py
+    # can validate at state-99 epilogue. Triggered or not, the artifact must exist.
+    result_artifact = {
+        "triggered": trigger,
+        "audit_outcome": reason,
+        "anomaly_count_observed": args.anomaly_count,
+        "q_score": args.q_score,
+        "current_rate": state["current_rate"],
+        "consecutive_clean": state["consecutive_clean"],
+    }
+    try:
+        subprocess.run(
+            [
+                "bash", ".claude/scripts/lib/write-gate-artifact.sh",
+                "--path", ".runs/audit-sample-result.json",
+                "--payload", json.dumps(result_artifact),
+                "--skill", os.environ.get("SKILL_KEY", "observe"),
+            ],
+            check=False,
+        )
+    except Exception:
+        # Best-effort; epilogue validator catches missing artifact.
+        pass
+
 
 if __name__ == "__main__":
     main()

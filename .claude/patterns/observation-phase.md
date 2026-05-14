@@ -681,7 +681,14 @@ Read `.runs/compliance-audit-result.json`. Record `anomaly_count`.
 
 ### Step 5c: Adaptive LLM Audit
 
-**Activates when:** Step 5b `anomaly_count > 0` OR Q-score is low.
+<!-- prose-gate:observation-phase-step5c-anomaly-audit -->
+
+**Runs unconditionally.** Phase A (prose-gate `observation-phase-step5c-anomaly-audit`):
+`audit-sample.py` is invoked every time observation-phase runs, regardless of
+anomaly count or Q-score. The script writes `.runs/audit-sample-result.json`
+unconditionally — the `triggered` field records whether a deep LLM audit
+should follow. `anomaly-audit-evidence.py` is invoked at state-99 epilogue to
+validate the artifact exists and is well-formed (see step 5c-validate below).
 
 ```bash
 Q_SCORE=$(python3 -c "
@@ -697,7 +704,8 @@ ANOMALIES=$(python3 -c "import json;print(json.load(open('.runs/compliance-audit
 python3 .claude/scripts/audit-sample.py --anomaly-count "$ANOMALIES" --q-score "$Q_SCORE" --run-id "$RUN_ID"
 ```
 
-Read the JSON output. If `trigger` is `true`:
+Read the JSON output from stdout (the same payload is also written to
+`.runs/audit-sample-result.json`). If `trigger` is `true`:
 - Perform **inline** comparison-based evaluation (do NOT spawn a subagent):
 - For each failing check in `compliance-audit-result.json`:
   1. Read the spec (state-registry.json section)
@@ -706,6 +714,17 @@ Read the JSON output. If `trigger` is `true`:
   4. Classify root cause: template-spec-deficiency vs execution-omission vs
      expected-edge-case
   5. For template-spec-deficiency: apply 3-condition test to determine filing
+
+### Step 5c-validate: Anomaly-Audit Evidence Gate
+
+```bash
+python3 .claude/scripts/lib/anomaly-audit-evidence.py
+```
+
+The validator asserts `.runs/audit-sample-result.json` exists and carries
+`{triggered, audit_outcome, anomaly_count_observed}`. When `triggered==true`,
+`audit_outcome` must be non-empty. Failure logs to `.runs/lead-deviation-log.jsonl`
+with `gate_layer:prose-gates-v1` (warn mode in Phase A; deny in Phase C).
 
 ## Step 6: Action — Unified Filing
 

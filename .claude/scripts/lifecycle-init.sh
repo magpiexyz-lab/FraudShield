@@ -284,6 +284,14 @@ for f in "${DELIVERY_ARTIFACTS[@]}"; do
 done
 
 # --- Step 3a: Clean stale artifacts from prior runs ---
+# NOTE: .runs/lead-deviation-log.jsonl is intentionally preserved across runs
+# (scope=cross-run-by-design per .claude/patterns/prose-gates.json). It feeds
+# the 6th retrospective enumerator channel
+# (.claude/scripts/enumerate-pending-retrospective-findings.py:_candidates_from_lead_deviations).
+# DO NOT add .runs/lead-deviation-log.jsonl to STALE_ARTIFACTS — adding here
+# would silently break Phase B soak data collection and Phase C deny-mode
+# signal attribution. Same preservation convention as hook-friction.jsonl,
+# fix-ledger.jsonl, agent-spawn-log.jsonl (preserved by absence from this list).
 STALE_ARTIFACTS=(
   "$PROJECT_DIR/.runs/observe-result.json"
   "$PROJECT_DIR/.runs/epilogue-context.json"

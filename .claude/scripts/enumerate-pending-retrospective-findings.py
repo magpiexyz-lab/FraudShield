@@ -270,6 +270,65 @@ def _candidates_from_trace_overwrites(rid: str) -> list[dict]:
     return data.get("candidates", [])
 
 
+def _candidates_from_lead_deviations(rid: str) -> list[dict]:
+    """6th candidate source (#1431): lead-deviation entries from append-only
+    .runs/lead-deviation-log.jsonl.
+
+    Closes prose-gate `lead-synthesized-numerical-bounds` enumerator blindness:
+    the existing 5 channels only see trace-leaving artifacts; this channel
+    surfaces manual-write bypasses logged by prose-gate validators (with
+    gate_layer:prose-gates-v1 attribution for E2E falsification).
+
+    Emits one candidate per (gate_id, deviation_type, expected_artifact) key
+    from entries with auto_filed=false from the current run window.
+    """
+    path = ".runs/lead-deviation-log.jsonl"
+    if not os.path.isfile(path):
+        return []
+    out: list[dict] = []
+    seen: set[str] = set()
+    try:
+        with open(path) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    row = json.loads(line)
+                except Exception:
+                    continue
+                if rid and row.get("run_id") and row.get("run_id") != rid:
+                    continue
+                if row.get("auto_filed") is True:
+                    continue
+                gate_id = row.get("gate_id") or ""
+                dev_type = row.get("deviation_type") or ""
+                ev = row.get("evidence") or {}
+                key = (
+                    f"deviation:{gate_id}:{dev_type}:"
+                    f"{ev.get('expected_artifact', '')}"
+                )
+                if key in seen:
+                    continue
+                seen.add(key)
+                out.append({
+                    "candidate_id": _hash_key("lead-deviation", key),
+                    "kind": "lead-deviation",
+                    "confidence": "high",
+                    "key": key,
+                    "evidence": {
+                        "gate_id": gate_id,
+                        "gate_layer": row.get("gate_layer") or "prose-gates-v1",
+                        "deviation_type": dev_type,
+                        "evidence": ev,
+                    },
+                    "source_files": [path],
+                })
+    except Exception:
+        return []
+    return out
+
+
 def main() -> int:
     rid = _active_run_id()
     candidates: list[dict] = []
@@ -278,6 +337,7 @@ def main() -> int:
     candidates.extend(_candidates_from_coherence_findings(rid))
     candidates.extend(_candidates_from_agent_recoveries(rid))
     candidates.extend(_candidates_from_trace_overwrites(rid))
+    candidates.extend(_candidates_from_lead_deviations(rid))
 
     # Sort: high → medium → low, then by candidate_id for stability
     order = {"high": 0, "medium": 1, "low": 2}
