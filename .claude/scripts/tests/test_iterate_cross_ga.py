@@ -509,6 +509,77 @@ def test_main_merge_subcommand_smoke():
         assert by["reset-app"]["ga_only"] is True
 
 
+# ---------- cmd_merge observability print (per-sub-account audit line) ----------
+
+
+def _run_merge_capture_stdout(raw_payload: dict, mvps: list) -> str:
+    """Helper: run main(['merge', ...]) against an in-tempdir fixture and
+    return captured stdout. Used by the audit-line print tests."""
+    import io
+    import contextlib
+
+    with tempfile.TemporaryDirectory() as td:
+        ga_raw_path = os.path.join(td, "ga-raw.json")
+        ctx_path = os.path.join(td, "context.json")
+        unmatched_path = os.path.join(td, "unmatched.json")
+
+        json.dump(raw_payload, open(ga_raw_path, "w"))
+        json.dump({"mvps": mvps, "mode": "cross", "window_days": raw_payload.get("window_days", 90)}, open(ctx_path, "w"))
+
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = main([
+                "merge",
+                "--ga-raw", ga_raw_path,
+                "--ga-csv", os.path.join(td, "no-such-file.csv"),
+                "--context", ctx_path,
+                "--config", os.path.join(td, "no-such-config.yaml"),
+                "--unmatched-out", unmatched_path,
+            ])
+        assert rc == 0, "cmd_merge returned nonzero"
+        return buf.getvalue()
+
+
+def test_cmd_merge_print_emits_audit_line_when_audit_fields_present():
+    """Per-sub-account scrape produces accounts_scraped/accounts_failed/window_days/
+    date_range_label in the raw JSON. cmd_merge must emit a second audit line so
+    operators can confirm the date window and per-account success rate."""
+    raw = {
+        "scraped_at": "2026-05-14T00:00:00Z",
+        "window_days": 90,
+        "date_range_label": "Feb 13 - May 14, 2026",
+        "accounts_scraped": [{"ocid": "111", "name": "Lee MVP"}, {"ocid": "222", "name": "Lew's MVP Account"}],
+        "accounts_failed": [{"ocid": "333", "name": "Failed", "reason": "render_timeout"}],
+        "campaigns": [{"name": "xpredict", "clicks": 10, "conv": 1, "account": "Lee MVP", "type": "Search"}],
+    }
+    mvps = [_mvp("x-predict", gclid_visitors=50)]
+    out = _run_merge_capture_stdout(raw, mvps)
+
+    # First line: the original merge summary (unchanged).
+    assert "merge: 1 campaigns" in out
+    # Second line: new audit info exposing sub-account scrape counts + window + chip label.
+    assert "scraped 2 sub-accounts (1 failed)" in out
+    assert "window 90d" in out
+    assert "Feb 13 - May 14, 2026" in out
+
+
+def test_cmd_merge_print_omits_audit_line_for_legacy_raw():
+    """Legacy MCC-scrape raw (and CSV fallback) doesn't carry the audit fields.
+    Don't print the second line in that case — keep the single-line contract that
+    matched the v1 behavior so existing log scrapers / smoke-tests don't break."""
+    raw = {
+        "scraped_at": "2026-05-13T00:00:00Z",
+        "campaigns": [{"name": "xpredict", "clicks": 10, "conv": 1, "account": "Lee MVP", "type": "Search"}],
+    }
+    mvps = [_mvp("x-predict", gclid_visitors=50)]
+    out = _run_merge_capture_stdout(raw, mvps)
+
+    assert "merge: 1 campaigns" in out
+    # Audit line should NOT be emitted when raw lacks per-account fields.
+    assert "sub-accounts" not in out
+    assert "window" not in out
+
+
 # Self-runner so this file works without pytest installed.
 if __name__ == "__main__":
     import inspect

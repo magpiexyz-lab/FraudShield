@@ -68,16 +68,29 @@ operator's non-MCP Chrome tab is unaffected — it shares cookies but not
 MCP-tab state.
 
 ```
-ctx = mcp__claude-in-chrome__tabs_context_mcp(createIfEmpty: true)
+# 1. Snapshot current MCP tabs WITHOUT auto-creating.
+ctx = mcp__claude-in-chrome__tabs_context_mcp()
+
+# 2. Close any tab on ads.google.com (forces fresh session state).
 for t in ctx.availableTabs:
     if 'ads.google.com' in t.url:
         mcp__claude-in-chrome__tabs_close_mcp(tabId=t.tabId)
-fresh = mcp__claude-in-chrome__tabs_create_mcp()
-mcp__claude-in-chrome__navigate(tabId=fresh.tabId, url='https://ads.google.com/aw/overview?authuser=2')
+
+# 3. Re-snapshot; createIfEmpty=true rebuilds the MCP group if step 2
+#    closed the last tab (group auto-removes on last close).
+ctx2 = mcp__claude-in-chrome__tabs_context_mcp(createIfEmpty=true)
+fresh_tab_id = ctx2.availableTabs[0].tabId
+
+# 4. Navigate to /aw/overview to pin authuser=2 before account-scoped URLs.
+mcp__claude-in-chrome__navigate(tabId=fresh_tab_id, url='https://ads.google.com/aw/overview?authuser=2')
 ```
 
 The initial `/aw/overview` nav pins `authuser=2` before any account-scoped
-URLs. If the operator has a single Google session this is a no-op.
+URLs. If the operator has a single Google session this is a no-op. Step 3
+intentionally avoids `tabs_create_mcp()` — `createIfEmpty=true` returns the
+existing tab (if any non-Google tab survived) or creates a single fresh one.
+This prevents accidentally creating two tabs when no ads.google.com tab
+existed.
 
 #### Step 2.1: Discover sub-accounts (every run, no cache)
 
@@ -137,10 +150,28 @@ a. **Navigate** the fresh tab to:
    Intentionally omit `workspaceId` — sub-account scope removes the
    chooser-dropdown dependency.
 
-b. **Wait for table render.** Poll via `javascript_tool` checking
-   `document.querySelectorAll('.particle-table-row').length > 0` with
-   timeout (3 attempts × 3s = 9s max). If timeout, record this account
-   in `accounts_failed` and `continue` to the next — do NOT abort the loop.
+b. **Wait for table render.** Poll via `javascript_tool` until at least one
+   **campaign** row is rendered (not just summary/totals). The summary row
+   (`Total: Campaigns in your current view`) and the drafts overview row
+   render BEFORE campaign data; a predicate that only checks for any table
+   row would unblock prematurely and the scrape would record 0 campaigns
+   while marking the account success.
+
+   Use the same invariant the scraper depends on (`parts[1] === 'settings'`,
+   the gear icon column 1 marker that every campaign row has):
+
+   ```js
+   [...document.querySelectorAll('[role="row"]')].some(r => {
+     const parts = (r.innerText || '').replace(/\n+/g,'|').split('|').map(s=>s.trim()).filter(Boolean);
+     return parts[1] === 'settings';
+   });
+   ```
+
+   Poll with timeout (3 attempts × 3s = 9s max). If timeout, record this
+   account in `accounts_failed` with `reason: "render_timeout"` and `continue`
+   to the next account — do NOT abort the loop. Empty per-account pages (an
+   account with zero campaigns in the window) will also time out here; this
+   is acceptable — the merge produces 0 ga_clicks for those MVPs regardless.
 
 c. **Scrape** via the existing row-decoder (`typeIdx`-anchored, marker-piped):
 
@@ -165,26 +196,37 @@ c. **Scrape** via the existing row-decoder (`typeIdx`-anchored, marker-piped):
    campaigns.length;
    ```
 
-d. **Read back** via `mcp__claude-in-chrome__read_console_messages` with
-   `pattern: "GA_SCRAPE_v1"`. Use marker-piped console (not direct JS return)
-   because return-value channel truncates above ~2KB. Parse marker lines into
-   `[{name, account, type, impr, clicks, conv}, ...]`. **Tag every record's
-   `account` field with the current Step 2.1 `name`** — some Particle layouts
-   omit the account cell when scoped to a single account, so the row-decoder
-   may have set `account` to a noise value.
+d. **Emit date-range chip marker in the SAME javascript_tool execution**
+   (so a single console-read in step (e) captures both campaign markers and
+   the date marker):
 
-   Use `clear: true` on `read_console_messages` so the next account's scrape
-   starts with an empty console (otherwise the next account would re-parse the
-   previous account's markers).
-
-e. **Date-range audit** (one marker per account, recorded into the raw JSON
-   so operators can confirm the window scraped matches `window_days`):
    ```js
    const chip = document.querySelector('material-button[debug-id*="date"], [aria-label*="Date range"]');
    console.log(`[GA_DATE_v1] ${(chip?.innerText || '?').replace(/\s+/g, ' ').trim()}`);
    ```
 
-f. Append the per-account campaigns into the accumulating list and move on.
+e. **Read back** via `mcp__claude-in-chrome__read_console_messages` with
+   the COMBINED pattern `pattern: "GA_SCRAPE_v1|GA_DATE_v1"` and `clear: true`.
+   One call returns both markers. Use marker-piped console (not direct JS
+   return) because return-value channel truncates above ~2KB.
+
+   - Parse `[GA_SCRAPE_v1] index|name|account|type|impr|clicks|conv` lines
+     into campaign records.
+   - Parse the FIRST `[GA_DATE_v1] <chip-text>` line into a chip-text string.
+     The first successful account's chip is sufficient — all accounts use
+     the same date-range parameter and would show identical chip text.
+
+   `clear: true` is required: without it, the next account's scrape would
+   re-parse the previous account's markers and double-count campaigns.
+
+   **Tag every campaign record's `account` field with the current Step 2.1
+   `name`** — some Particle layouts omit the account cell when scoped to a
+   single account, so the row-decoder may have set `account` to a noise value.
+
+f. Append the per-account campaigns into the accumulating list. Store the
+   chip-text from the first successful account in a `date_range_label`
+   variable (subsequent accounts overwrite, but the value is stable across
+   accounts so this is idempotent). Move on to the next account.
 
 #### Step 2.3: Assemble raw JSON
 
@@ -206,10 +248,21 @@ After the loop, write `.runs/_iterate-cross-ga-raw.json`:
 ```
 
 The `campaigns: [...]` shape is identical to the legacy MCC scrape, so
-Step 3 (merge) consumes it unchanged. The new top-level audit fields
-(`accounts_scraped`, `accounts_failed`, `window_days`, `date_range_dr`,
-`date_range_label`) are picked up by `cmd_merge`'s observability print
-when present, and ignored otherwise.
+Step 3 (merge) consumes it unchanged. The new top-level audit fields are
+picked up by `cmd_merge`'s observability print when present, and ignored
+otherwise:
+
+- `accounts_scraped` — list of accounts where the wait predicate (Step 2.2.b)
+  passed AND scraping ran (success path). An account here may have 0 campaigns
+  in its `campaigns` contribution (legitimately empty account in the window).
+- `accounts_failed` — list of accounts where the wait predicate timed out
+  or navigation errored. Mutually exclusive with `accounts_scraped`.
+- `window_days` — from `context.window_days` (input).
+- `date_range_dr` — the `&dr=YYYYMMDD~YYYYMMDD` URL parameter passed to
+  per-account navigation (intended window).
+- `date_range_label` — the chip text actually rendered by Google Ads UI
+  (observed window — should match `date_range_dr`, but see Step 2.4 sanity
+  check).
 
 #### Step 2.4: Soft sanity checks (warn-only, never blocking)
 
@@ -217,11 +270,44 @@ Before exiting Step 2:
 
 - If `len(accounts_failed) > 0`: print to stderr
   `WARN: x0a partial — N/M sub-accounts failed: <names>. Drop CSV at .runs/iterate-cross-ga-clicks.csv to backfill, or re-run.`
-- If `sum(c.clicks for c in campaigns) == 0` AND `len(accounts_scraped) > 0`:
-  print `WARN: zero clicks scraped — likely date-range URL params changed; check date_range_label='<X>' vs expected window_days=N`.
 
-Both warnings are stderr-only. POSTCONDITION (every MVP has `ga_clicks`
-field after merge) is still met by Step 3 running.
+- **Date-range mismatch check.** The `&dr=YYYYMMDD~YYYYMMDD` URL parameter is
+  not officially documented by Google; if it ever stops working, the chip
+  shows a UI default (e.g., "Today", "Last 7 days") and the scrape uses
+  the wrong window — producing silently-wrong denominators. Detect by
+  checking `date_range_label` from the chip against the expected window:
+
+  ```python
+  import datetime, re
+  expected_start = today - datetime.timedelta(days=window_days - 1)
+  expected_end = today
+  label = raw['date_range_label'] or ''
+  ok = (
+      str(expected_start.year) in label
+      and str(expected_end.year) in label
+      and any(m in label for m in [expected_start.strftime('%b'), expected_start.strftime('%B')])
+      and any(m in label for m in [expected_end.strftime('%b'), expected_end.strftime('%B')])
+  )
+  if not ok:
+      print(
+          f"WARN: x0a date-range mismatch — chip='{label}' does not contain "
+          f"expected window {expected_start} → {expected_end} ({window_days}d). "
+          f"&dr= URL param may have stopped working; ga_clicks will reflect "
+          f"the UI default instead of window_days. Verify with operator-CSV "
+          f"path or open an issue.",
+          file=sys.stderr,
+      )
+  ```
+
+  Heuristic — accepts labels like `"26 Feb - 14 May 2026"`, `"Feb 13 - May 14, 2026"`,
+  `"Feb 13, 2026 - May 14, 2026"`. Rejects shorter labels like `"Today"`,
+  `"Last 7 days"`, `"Yesterday"`. Soft-fails (warn-only); does not block.
+
+- If `sum(c.clicks for c in campaigns) == 0` AND `len(accounts_scraped) > 0`:
+  print `WARN: zero clicks scraped — check date_range_label='<X>' vs window_days=N`.
+
+All warnings are stderr-only. POSTCONDITION (every MVP has `ga_clicks` field
+after merge) is still met by Step 3 running.
 
 **Total scrape failure** (Chrome MCP unavailable mid-loop, or every account
 render-timed out): write `{"campaigns": []}` to the raw JSON and continue
