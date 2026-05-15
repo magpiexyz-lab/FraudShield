@@ -107,3 +107,24 @@ PYEOF
 ```
 
 **Fixer role (REQUIRED):** the implementer MUST push a concrete entry into `fixes[]` for every file changed, test added, or bug fixed. Do NOT leave `fixes[]` empty when real fixes were applied — the AOC v1 FLS v1 consolidator reads `trace.fixes[]` and produces 0 rows whenever it is empty, starving pattern-classifier + q-score + observer (fix #1065). If no fixes were applied (pure clean green-on-first-try), add `"no_fixes_claimed": True` to the trace dict and leave `fixes: []`. The centralized writer (AOC v1.1) stamps `agent`, `timestamp`, `status:"completed"`, `provenance:"self"`, `partial:false`, `run_id`, `skill`, `spawn_sha`, and `spawn_index` from active identity + spawn-log.
+
+## Trace Schema (AOC v1.3)
+
+Every trace this agent writes via `write-agent-trace.sh` MUST include the
+following two fields with empty-array defaults:
+
+```json
+{
+  "workarounds": [],
+  "template_gap_observed": []
+}
+```
+
+Non-empty entries follow the schema in
+`.claude/patterns/agent-output-contract.md` `#### workarounds[]` and
+`#### template_gap_observed[]`. Use empty arrays when none observed —
+absence is not allowed (uniform shape across all 28 trace-writing agents
+so observer ingestion has one read schema; closes #1449/#1252 carveout).
+
+Phase C gate #7 (`agent-trace-schema-completeness`) enforces presence with
+empty-default; missing fields surface as deviation log entries.

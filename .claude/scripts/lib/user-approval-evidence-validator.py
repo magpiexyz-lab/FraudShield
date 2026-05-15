@@ -50,6 +50,8 @@ def _active_run_id() -> str:
 
 
 def _log_deviation(violations: list[str]) -> None:
+    """Append deviation entry via shared atomic appender. On exception →
+    write-failures.jsonl (observer-visible). Closes #1431."""
     entry = {
         "timestamp": _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "run_id": _active_run_id(),
@@ -64,19 +66,20 @@ def _log_deviation(violations: list[str]) -> None:
         },
         "auto_filed": False,
     }
-    try:
-        os.makedirs(os.path.dirname(DEVIATION_LOG_PATH) or ".", exist_ok=True)
-        with open(DEVIATION_LOG_PATH, "a") as f:
-            f.write(json.dumps(entry) + "\n")
-    except Exception as e:
-        print(f"WARN: failed to write deviation log: {e}", file=sys.stderr)
+    sys.path.insert(0, os.path.dirname(__file__))
+    from append_deviation_log import append
+    append(entry)
 
 
 def _resolve_mode(arg_mode: str | None) -> str:
-    """Resolve mode: CLI arg > env var > default 'warn' (Phase A)."""
+    """Resolve mode: CLI arg overrides; otherwise via shared prose_gate_mode
+    helper (PROSE_GATES_TOLERANT > PROSE_GATE_<GATE>_MODE > snapshot > registry
+    > prior_default="warn"). Closes #1449/#1431/#1433."""
     if arg_mode:
         return arg_mode
-    return os.environ.get(MODE_ENV_VAR, "warn").lower()
+    sys.path.insert(0, os.path.dirname(__file__))
+    from prose_gate_mode import resolve
+    return resolve(GATE_ID, prior_default="warn")
 
 
 def main() -> int:

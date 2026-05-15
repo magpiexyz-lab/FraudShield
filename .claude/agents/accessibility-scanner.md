@@ -148,3 +148,24 @@ Replace placeholders with actual values:
 The `impact` field uses axe-core severity levels: `"critical"`, `"serious"`, `"moderate"`, `"minor"`. For static fallback, map: High→`"serious"`, Medium→`"moderate"`. Both runtime and static fallback paths MUST populate the `violations` array (use `[]` when no violations found).
 
 `per_page_reviews` is populated by the runtime path only (static fallback does not navigate a live page). In the static-fallback path, omit the `per_page_reviews` key entirely — downstream readers treat absence as "not applicable" rather than "empty coverage".
+
+## Trace Schema (AOC v1.3)
+
+Every trace this agent writes via `write-agent-trace.sh` MUST include the
+following two fields with empty-array defaults:
+
+```json
+{
+  "workarounds": [],
+  "template_gap_observed": []
+}
+```
+
+Non-empty entries follow the schema in
+`.claude/patterns/agent-output-contract.md` `#### workarounds[]` and
+`#### template_gap_observed[]`. Use empty arrays when none observed —
+absence is not allowed (uniform shape across all 28 trace-writing agents
+so observer ingestion has one read schema; closes #1449/#1252 carveout).
+
+Phase C gate #7 (`agent-trace-schema-completeness`) enforces presence with
+empty-default; missing fields surface as deviation log entries.

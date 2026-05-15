@@ -20,7 +20,17 @@
   "definitions": {
     "gate": {
       "type": "object",
-      "required": ["gate_id", "scope", "intent", "enforcement_kind", "fail_mode", "prose_locations"],
+      "required": ["gate_id", "scope", "intent", "enforcement_kind", "prose_locations"],
+      "allOf": [
+        {
+          "description": "fail_mode is required when enforcement_kind != 'skill-yaml-mode'. Binary gates (skill-yaml-mode) have no warn↔deny gradient and omit the field; they MUST instead carry _no_fail_mode_reason explaining the omission.",
+          "if": {
+            "properties": { "enforcement_kind": { "not": { "const": "skill-yaml-mode" } } }
+          },
+          "then": { "required": ["fail_mode"] },
+          "else": { "required": ["_no_fail_mode_reason"] }
+        }
+      ],
       "properties": {
         "gate_id": {
           "type": "string",
@@ -112,7 +122,12 @@
         "fail_mode": {
           "type": "string",
           "enum": ["warn", "deny"],
-          "description": "warn = log and allow (Phase A/B); deny = block (Phase C)."
+          "description": "warn = log and allow (Phase A/B); deny = block (Phase C). Required when enforcement_kind != 'skill-yaml-mode' (see allOf condition above). Resolved at runtime via prose_gate_mode.resolve() — the helper consults snapshot, env override, and prior_default before falling back to this registry value (only when _schema_version >= 2)."
+        },
+        "_no_fail_mode_reason": {
+          "type": "string",
+          "minLength": 60,
+          "description": "Required ONLY for binary gates (enforcement_kind=skill-yaml-mode) where fail_mode is intentionally omitted. Explains why no warn↔deny gradient applies. Helper prose_gate_mode.resolve() raises ProseGateError if invoked for such gates."
         },
         "retrospective_visible": {
           "type": "boolean",

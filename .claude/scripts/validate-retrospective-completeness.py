@@ -84,10 +84,13 @@ def _is_valid_suppression_reason(reason: str) -> bool:
 
 
 def _mode() -> str:
-    # #1393 (a) phase-2: default flipped warn → deny. The retrospective gate
-    # is narrow (fires only on the silent-skip bug pattern); soak provides no
-    # decision-quality data here. Revert path: one-line override via env var.
-    return os.environ.get("RETROSPECTIVE_COMPLETENESS_MODE", "deny").lower()
+    # #1393 (a) phase-2 shipped deny default. Resolution moved to shared
+    # prose_gate_mode helper (#1449/#1431/#1433): PROSE_GATES_TOLERANT >
+    # PROSE_GATE_RETRO_SUPPRESSIONS_CONFIRMATION_MODE > snapshot > registry
+    # > prior_default="deny". prior_default preserves the #1393 phase-2 decision.
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
+    from prose_gate_mode import resolve
+    return resolve("retro-suppressions-confirmation", prior_default="deny")
 
 
 def main() -> int:

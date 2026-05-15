@@ -59,8 +59,12 @@ if [[ "${PROSE_GATES_TOLERANT:-0}" == "1" ]]; then
   exit 0
 fi
 
-# Phase A: warn-only. Phase C flips default to deny.
-MODE="${BOUND_COVERAGE_PROVIDER_MODE:-warn}"
+# Resolve mode via shared prose_gate_mode helper (#1449/#1431/#1433).
+# Gate 1 (lead-synthesized-numerical-bounds) prior_default="warn" preserves
+# Phase A behavior. Helper checks: PROSE_GATES_TOLERANT > per-gate env >
+# snapshot > registry (when v2+) > prior_default.
+# Per-gate override env: PROSE_GATE_LEAD_SYNTHESIZED_NUMERICAL_BOUNDS_MODE.
+MODE=$(bash "$(dirname "$0")/../scripts/lib/prose_gate_mode.sh" lead-synthesized-numerical-bounds warn)
 
 # Invoke the validator with the normalized command. Validator extracts the
 # --json payload and --coverage-provider arg itself.

@@ -329,6 +329,54 @@ def _candidates_from_lead_deviations(rid: str) -> list[dict]:
     return out
 
 
+def _candidates_from_log_write_failures(rid: str) -> list[dict]:
+    """7th candidate source: silent appender failures from
+    .runs/lead-deviation-log.write-failures.jsonl. HIGH-confidence by default
+    — silent failures are always actionable (the deviation log is the single
+    source of observability for prose-gate behavior; silent writes break
+    everything downstream). Closes #1431 reliability gap."""
+    path = ".runs/lead-deviation-log.write-failures.jsonl"
+    if not os.path.isfile(path):
+        return []
+    out: list[dict] = []
+    seen: set[str] = set()
+    try:
+        with open(path) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    row = json.loads(line)
+                except Exception:
+                    continue
+                exc = row.get("exception", "") or ""
+                # Dedupe by exception class+message prefix; same root cause
+                # across runs collapses to one finding.
+                key = f"log-write-failure:{exc[:80]}"
+                if key in seen:
+                    continue
+                seen.add(key)
+                out.append({
+                    "candidate_id": _hash_key("log-write-failure", key),
+                    "kind": "log-write-failure",
+                    "confidence": "high",
+                    "key": key,
+                    "evidence": {
+                        "exception": exc,
+                        "ts": row.get("ts"),
+                        "original_payload_gate_id": (
+                            row.get("original_payload", {}).get("gate_id", "")
+                            if isinstance(row.get("original_payload"), dict) else ""
+                        ),
+                    },
+                    "source_files": [path],
+                })
+    except Exception:
+        return []
+    return out
+
+
 def main() -> int:
     rid = _active_run_id()
     candidates: list[dict] = []
@@ -338,6 +386,7 @@ def main() -> int:
     candidates.extend(_candidates_from_agent_recoveries(rid))
     candidates.extend(_candidates_from_trace_overwrites(rid))
     candidates.extend(_candidates_from_lead_deviations(rid))
+    candidates.extend(_candidates_from_log_write_failures(rid))
 
     # Sort: high → medium → low, then by candidate_id for stability
     order = {"high": 0, "medium": 1, "low": 2}

@@ -175,15 +175,19 @@ except Exception as e:
 "
 
 # --- Step 2.5: AOC v1 FLS v1 — consolidate agent trace fixes[] into ledger ---
-# Ensures every skill (not just /verify) ends with a fresh .runs/fix-ledger.jsonl
-# for downstream consumers (pattern-classifier, observation-phase, write-q-score,
-# verify-report-gate). Idempotent: safe to run unconditionally. Writes an empty
-# ledger if no traces exist. The renderer is invoked by observation-phase's
-# fallback when fix-log.md is empty; we do NOT regenerate fix-log.md here so
-# that state-5 inline WARN entries and procedure-emitted `Fix (agent): ...`
-# prose entries are preserved during the transitional dual-check period.
+# Ensures every skill ends with a fresh .runs/fix-ledger.jsonl for downstream
+# consumers (pattern-classifier, observation-phase, write-q-score, verify-report-gate).
+# Both writers are idempotent and safe to invoke unconditionally:
+#   - write-fix-ledger.py: writes ledger from agent trace fixes[] arrays
+#   - render-fix-log.py: renders fix-log.md from the ledger via atomic temp+rename
+# AOC v1.1 PR5 retired direct prose appends to fix-log.md (see
+# fix-ledger-write-guard.sh:14-28 — direct echo > fix-log.md is now blocked).
+# The renderer is the sole writer to fix-log.md; safe to invoke at finalize time.
+# Closes #1449: render-fix-log.py promoted from observation-phase Step 2
+# conditional fallback to unconditional invocation here.
 if [[ -d "$PROJECT_DIR/.runs/agent-traces" ]]; then
   python3 "$PROJECT_DIR/.claude/scripts/write-fix-ledger.py" >/dev/null 2>&1 || true
+  python3 "$PROJECT_DIR/.claude/scripts/render-fix-log.py" >/dev/null 2>&1 || true
 fi
 
 # --- Step 2.6: Aggregate hook-friction.jsonl into hook-friction-summary.json (#1226) ---

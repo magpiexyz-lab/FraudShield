@@ -105,13 +105,12 @@ def _active_skill_state() -> tuple[str, str]:
 
 
 def _log_deviation(payload: dict) -> None:
-    """Append a single line to .runs/lead-deviation-log.jsonl. Best-effort."""
-    try:
-        os.makedirs(os.path.dirname(DEVIATION_LOG_PATH) or ".", exist_ok=True)
-        with open(DEVIATION_LOG_PATH, "a") as f:
-            f.write(json.dumps(payload) + "\n")
-    except Exception as e:
-        print(f"WARN: failed to write deviation log: {e}", file=sys.stderr)
+    """Append a single line to .runs/lead-deviation-log.jsonl via shared
+    atomic appender. On exception → write-failures.jsonl (observer-visible).
+    Closes #1431 reliability gap."""
+    sys.path.insert(0, os.path.dirname(__file__))
+    from append_deviation_log import append
+    append(payload)
 
 
 def _extract_trace_from_command(command: str) -> dict | None:

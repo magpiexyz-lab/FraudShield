@@ -102,14 +102,18 @@ fi
 #        file-retrospective-finding.py.
 ```
 
-### Fallback: consolidate agent traces → ledger → fix-log (AOC v1 FLS v1)
+### Fallback: belt-and-suspenders consolidate (AOC v1 FLS v1)
 
-If fix-log has only the header line and no entries, invoke the AOC v1 FLS v1
-canonical path: the consolidator writes `.runs/fix-ledger.jsonl` from agent
-trace `fixes[]` arrays (covering ALL verdict_agents, not only the three
-hard-coded paths above); the renderer regenerates `fix-log.md` from the
-ledger. Both are idempotent. This replaces the pre-AOC-v1 prose-synthesis
-fallback and eliminates the count-drift class documented in #1048.
+`lifecycle-finalize.sh` Step 2.5 invokes both `write-fix-ledger.py` and
+`render-fix-log.py` unconditionally on every skill termination (closes
+#1449), so by the time observation-phase runs (state-99) `fix-log.md` is
+already populated from the ledger. The fallback below is belt-and-suspenders
+for fast-path skills that skip finalize (legitimate per
+`lifecycle-init.sh --skip-finalize` flow) or standalone `/observe`
+invocations. The consolidator writes `.runs/fix-ledger.jsonl` from agent
+trace `fixes[]` arrays (covering ALL verdict_agents); the renderer
+regenerates `fix-log.md` from the ledger via atomic temp+rename. Both are
+idempotent. Eliminates the count-drift class documented in #1048.
 
 ```bash
 RUN_ID=$(python3 -c "

@@ -1,4 +1,4 @@
-# Agent Output Contract v1.2 (AOC v1.2)
+# Agent Output Contract v1.3 (AOC v1.3)
 
 > **Canonical source of truth for agent-trace verdict vocabulary and fix-ledger
 > semantics across the 18 `verdict_agents`.** Closes #1044 (verdict-vocab
@@ -9,8 +9,12 @@
 > + observation envelope), #1250 (fixer sanctioned-skip canonical path —
 > adds `lead-skipped` audit-only provenance + `write-skipped-fixer-trace.sh`),
 > and #1275 (post-completion writer fail-closed — adds `lead-orchestrated`
-> provenance + explicit-identity overrides on every writer). This
-> file is the single dependency point for downstream cross-group work
+> provenance + explicit-identity overrides on every writer). v1.3 closes
+> #1449/#1431/#1433 (adds `workarounds[]` + `template_gap_observed[]` as
+> mandatory-shape-with-empty-default fields on every trace-writing agent so
+> observer ingestion has uniform read schema; closes the per-class carveout
+> mistake that originally limited `template_recommendations[]` to scaffold-*).
+> This file is the single dependency point for downstream cross-group work
 > (e.g., #1042 design-critic degraded fixtures via Session C orchestration).
 
 ## Why this contract exists
@@ -127,6 +131,46 @@ cannot silently dereference it. See #1307 for the line-granularity defense.
 The observation-phase Step 2 evidence collector reads this field across
 all scaffold-* traces; entries whose `file` matches a template path get
 auto-filed as [observe] issues via `file-retrospective-finding.py`.
+
+#### workarounds[] (all trace-writing agents — AOC v1.3)
+
+Every trace-writing agent (all 32 agent classes, not just scaffold-*) MUST
+emit `workarounds[]`, defaulting to an empty array when none observed:
+
+  - `workarounds: []` (default — no workarounds applied)
+  - `workarounds: [{file, line, type, description, root_cause_unresolved}, ...]`
+
+Where each non-empty entry has:
+- `file` — file path (relative to repo root) where the workaround was applied
+- `line` — line number (or 0 if file-level)
+- `type` — one of `{"fixme-comment", "skip", "fallback", "stub", "deferred"}`
+- `description` — concise (≤200 chars) explanation of what was worked around
+- `root_cause_unresolved` (bool) — true when the workaround papers over a
+  deeper issue that should become a follow-up ticket
+
+Observer ingests these as candidates for follow-up template observations.
+**Schema completeness rule** (closes #1449 / #1252 carveout mistake):
+uniform shape across ALL agents — observer's read logic does not need to
+special-case agent class. Phase C gate #7 (PR 2 of #1449) enforces presence
+with empty-array default.
+
+#### template_gap_observed[] (all trace-writing agents — AOC v1.3)
+
+Every trace-writing agent (all 32 agent classes) MUST emit
+`template_gap_observed[]`, defaulting to an empty array when none observed:
+
+  - `template_gap_observed: []` (default)
+  - `template_gap_observed: [{template_path, section, observation, suggested_remediation}, ...]`
+
+Where each non-empty entry has:
+- `template_path` — path under `.claude/**` or template directory
+- `section` — heading text or descriptor for where the gap lives (e.g., the heading `"Step 5b"`)
+- `observation` — what the agent found ambiguous, missing, or wrong
+- `suggested_remediation` — proposed fix (concise, actionable)
+
+Distinct from `template_recommendations[]` (scaffold-* mandatory contract
+above). Observer files non-empty entries as template observations. Empty
+default eliminates the per-class schema-divergence problem.
 
 #### self_check_score (scaffold-pages agent — #1387 contract)
 

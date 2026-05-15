@@ -1,8 +1,9 @@
 {
   "_description": "Registry of prose gates: declarative source of truth binding prose intent in skill state files to a programmatic enforcement mechanism. Consumed by validators, hooks, and lint rules. See .claude/patterns/prose-gates-schema.json for shape validation. Closes #1434/#1431/#1393/#1433 defect class.",
-  "_schema_version": 1,
+  "_schema_version": 2,
   "_schema_version_notes": {
-    "1": "Initial — 6 gates covering the #1434 symptom table. All entries start fail_mode=warn for Phase A soak (Phase B). Phase C flips 4 of 6 to deny."
+    "1": "Initial — 6 gates covering the #1434 symptom table. All entries start fail_mode=warn for Phase A soak (Phase B). Phase C flips 4 of 6 to deny.",
+    "2": "fail_mode field is now load-bearing for callers that opt in via prose_gate_mode.resolve(). Helper enforces snapshot version-check before consulting registry value, preserving in-flight run safety. Phase C-fast: gates 1, 2, 4, 6 flipped warn→deny; gate 5 (retro-suppressions-confirmation) registry corrected from warn to deny matching #1393 phase-2 runtime default. Gate 3 (verify-state-2-phase1-spawn-no-background) is binary skill-yaml-mode and now omits fail_mode entirely (no warn↔deny concept). Closes #1449/#1431/#1433."
   },
   "gates": [
     {
@@ -50,7 +51,7 @@
         }
       ],
       "deviation_log": true,
-      "fail_mode": "warn",
+      "fail_mode": "deny",
       "retrospective_visible": true,
       "prose_locations": [
         ".claude/skills/verify/state-3a-design-agents.md:134-147"
@@ -69,7 +70,7 @@
         "timestamp": { "within_seconds_of_now": 60 }
       },
       "deviation_log": true,
-      "fail_mode": "warn",
+      "fail_mode": "deny",
       "retrospective_visible": true,
       "prose_locations": [
         ".claude/skills/bootstrap/state-6-user-approval.md:14"
@@ -84,7 +85,7 @@
       "required_skill_yaml_field": "agents.<all>.mode",
       "required_value": "foreground",
       "deviation_log": true,
-      "fail_mode": "warn",
+      "_no_fail_mode_reason": "Binary enforcement via skill-yaml-mode: agent either runs in foreground (passes) or in background (denied). No warn↔deny gradient applies. fail_mode field omitted by schema v2 condition (required only when enforcement_kind != 'skill-yaml-mode'). Helper prose_gate_mode.resolve() raises ProseGateError if invoked for this gate; the enforcer (skill-agent-gate.sh) does not call the helper.",
       "retrospective_visible": true,
       "prose_locations": [
         ".claude/skills/verify/state-2.md"
@@ -103,7 +104,7 @@
         "anomaly_count_observed": { "type": "integer" }
       },
       "deviation_log": true,
-      "fail_mode": "warn",
+      "fail_mode": "deny",
       "retrospective_visible": true,
       "prose_locations": [
         ".claude/patterns/observation-phase.md:680-735"
@@ -123,7 +124,7 @@
         "findings_filed[*].confirmation_evidence": { "min_length": 40 }
       },
       "deviation_log": true,
-      "fail_mode": "warn",
+      "fail_mode": "deny",
       "retrospective_visible": false,
       "prose_locations": [
         ".claude/patterns/observation-phase.md:497-548"
@@ -141,7 +142,7 @@
         }
       },
       "deviation_log": true,
-      "fail_mode": "warn",
+      "fail_mode": "deny",
       "retrospective_visible": true,
       "prose_locations": [
         ".claude/skills/verify/state-3a-design-agents.md:32-167"

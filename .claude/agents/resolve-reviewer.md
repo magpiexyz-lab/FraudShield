@@ -185,3 +185,24 @@ The centralized writer (AOC v1.1) stamps `agent`, `timestamp`, `provenance:"self
 - `confirmed_count`: number of issues labeled `"sound"`.
 - `disputed_count`: number of issues labeled `"needs-revision"` or `"challenged"`.
 - `verdicts[]`: one entry per issue reviewed with the original label and supporting fields for traceability. The `vector` field identifies which review dimension uncovered the gap (or `null` for sound verdicts).
+
+## Trace Schema (AOC v1.3)
+
+Every trace this agent writes via `write-agent-trace.sh` MUST include the
+following two fields with empty-array defaults:
+
+```json
+{
+  "workarounds": [],
+  "template_gap_observed": []
+}
+```
+
+Non-empty entries follow the schema in
+`.claude/patterns/agent-output-contract.md` `#### workarounds[]` and
+`#### template_gap_observed[]`. Use empty arrays when none observed —
+absence is not allowed (uniform shape across all 28 trace-writing agents
+so observer ingestion has one read schema; closes #1449/#1252 carveout).
+
+Phase C gate #7 (`agent-trace-schema-completeness`) enforces presence with
+empty-default; missing fields surface as deviation log entries.

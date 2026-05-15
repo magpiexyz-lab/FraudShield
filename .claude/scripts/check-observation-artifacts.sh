@@ -20,6 +20,12 @@ set -uo pipefail
 PROJECT_DIR="$(git rev-parse --show-toplevel 2>/dev/null || echo "${CLAUDE_PROJECT_DIR:-.}")"
 RUNS_DIR="$PROJECT_DIR/.runs"
 
+# Resolve gate 5 (retro-suppressions-confirmation) mode once via shared helper.
+# prior_default="deny" preserves #1393 phase-2 shipping decision. Helper checks:
+# PROSE_GATES_TOLERANT > PROSE_GATE_RETRO_SUPPRESSIONS_CONFIRMATION_MODE >
+# snapshot > registry > prior_default. Used in two places below (lines 372, 384).
+PROSE_GATE_RETRO_MODE=$(bash "$PROJECT_DIR/.claude/scripts/lib/prose_gate_mode.sh" retro-suppressions-confirmation deny 2>/dev/null || echo "deny")
+
 # Guarantee: always write a fallback audit artifact on unexpected exit
 _write_fallback_artifact() {
   if [[ ! -f "$RUNS_DIR/observation-enforcement.json" ]]; then
@@ -347,7 +353,7 @@ fi
 # Runs AFTER observation-phase Step 5a has written retrospective-result.json
 # (contrast: lifecycle-finalize.sh Step 1 runs BEFORE observation, so the
 # validator must be wired here, not there). Fail-mode: when validator returns
-# non-zero AND RETROSPECTIVE_COMPLETENESS_MODE=deny, add to MISSING so the
+# non-zero AND PROSE_GATE_RETRO_MODE == "deny", add to MISSING so the
 # observation-enforcement.json `pass` field flips to false and state-99 VERIFY
 # blocks.
 #
@@ -369,7 +375,7 @@ if [[ "$SCOPE" == "full" || "$SCOPE" == "process" ]] \
    && [[ -f "$RUNS_DIR/retrospective-result.json" ]] \
    && [[ ! -f "$RUNS_DIR/retrospective-pending-findings.json" ]]; then
   echo "WARN: retrospective-result.json exists but retrospective-pending-findings.json is absent — enumerate-pending-retrospective-findings.py was not invoked during Step 5a (#1393)" >&2
-  if [[ "${RETROSPECTIVE_COMPLETENESS_MODE:-deny}" == "deny" ]]; then
+  if [[ "$PROSE_GATE_RETRO_MODE" == "deny" ]]; then
     MISSING+=("retrospective-pending-findings.json (#1393 — enumeration step was skipped during Step 5a)")
     PASS="false"
   fi
@@ -381,7 +387,7 @@ if [[ "$SCOPE" == "full" || "$SCOPE" == "process" ]] \
   RC_RC="${RC_RC:-0}"
   if [[ "$RC_RC" -ne 0 ]]; then
     echo "$RC_OUT" >&2
-    if [[ "${RETROSPECTIVE_COMPLETENESS_MODE:-deny}" == "deny" ]]; then
+    if [[ "$PROSE_GATE_RETRO_MODE" == "deny" ]]; then
       MISSING+=("retrospective-completeness (#1276 — pending findings without disposition)")
       PASS="false"
     fi

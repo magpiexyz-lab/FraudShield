@@ -560,3 +560,38 @@ json.dump(d, open(path, 'w'), indent=2)
 PYEOF
   fi
 fi
+
+# --- Step 5c: snapshot prose-gates fail_mode for in-flight safety ---
+# Freezes per-gate fail_mode at run-start so mid-run registry changes do
+# not affect this run. prose_gate_mode.resolve() consults this snapshot
+# (gated on schema_version) before falling back to caller-passed prior_default.
+# Legacy contexts (no snapshot field, or older snapshot version) fall through
+# to prior_default → no in-flight regression. Closes #1449/#1431/#1433 in-flight
+# safety requirement.
+SNAP_CTX_PATH="$PROJECT_DIR/.runs/${CTX_SKILL}-context.json"
+if [[ -f "$SNAP_CTX_PATH" ]]; then
+  python3 - "$SNAP_CTX_PATH" "$PROJECT_DIR/.claude/patterns/prose-gates.json" <<'PYEOF'
+import json, sys, datetime
+ctx_path = sys.argv[1]
+reg_path = sys.argv[2]
+try:
+    ctx = json.load(open(ctx_path))
+    reg = json.load(open(reg_path))
+    snap = {}
+    for g in reg.get("gates", []) or []:
+        gid = g.get("gate_id")
+        fm = g.get("fail_mode")
+        # Only snapshot gates with fail_mode (binary gates omit the field).
+        if gid and fm in ("warn", "deny"):
+            snap[gid] = fm
+    ctx["prose_gates_modes_snapshot"] = snap
+    ctx["prose_gates_modes_snapshot_at_version"] = reg.get("_schema_version", 1)
+    ctx["prose_gates_modes_snapshot_taken_at"] = datetime.datetime.now(
+        datetime.timezone.utc
+    ).isoformat()
+    json.dump(ctx, open(ctx_path, "w"), indent=2)
+except Exception as e:
+    # Non-fatal: helper falls back to prior_default if snapshot absent.
+    print(f"WARN: lifecycle-init.sh Step 5c — snapshot prose_gates_modes failed: {e}", file=sys.stderr)
+PYEOF
+fi

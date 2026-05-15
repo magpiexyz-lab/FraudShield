@@ -335,3 +335,24 @@ Replace placeholders with actual values:
 - `<M>`: number of tests that passed
 - `per_behavior_reviews`: array of `{behavior_id, given, requires_auth, matched_phrase, unmatched_given_phrase, review_method, review_evidence, verdict}` per behavior with an `entry_route`. Verdict values per the Per-Behavior Render Review Policy Table above.
 - `unmatched_given_phrase`: top-level diagnostic; when any behavior's `given` was treated as fail-closed required, surface the first one here (helps the maintainer extend the phrase whitelist). Omit when no unmatched phrases were encountered.
+
+## Trace Schema (AOC v1.3)
+
+Every trace this agent writes via `write-agent-trace.sh` MUST include the
+following two fields with empty-array defaults:
+
+```json
+{
+  "workarounds": [],
+  "template_gap_observed": []
+}
+```
+
+Non-empty entries follow the schema in
+`.claude/patterns/agent-output-contract.md` `#### workarounds[]` and
+`#### template_gap_observed[]`. Use empty arrays when none observed —
+absence is not allowed (uniform shape across all 28 trace-writing agents
+so observer ingestion has one read schema; closes #1449/#1252 carveout).
+
+Phase C gate #7 (`agent-trace-schema-completeness`) enforces presence with
+empty-default; missing fields surface as deviation log entries.

@@ -191,3 +191,24 @@ python3 .claude/scripts/write-degraded-trace.py security-fixer \
 - Agent is a fixer AND is in `recovery_forbidden` — external recovery is refused for you. Self-degradation is the ONLY partial-completion path. Pass `--fixes-json` for every change you applied.
 
 The orchestrator will later run `validate-recovery.sh` against this trace to stamp `recovery_validated:true` when build+test+diff evidence supports the claim.
+
+## Trace Schema (AOC v1.3)
+
+Every trace this agent writes via `write-agent-trace.sh` MUST include the
+following two fields with empty-array defaults:
+
+```json
+{
+  "workarounds": [],
+  "template_gap_observed": []
+}
+```
+
+Non-empty entries follow the schema in
+`.claude/patterns/agent-output-contract.md` `#### workarounds[]` and
+`#### template_gap_observed[]`. Use empty arrays when none observed —
+absence is not allowed (uniform shape across all 28 trace-writing agents
+so observer ingestion has one read schema; closes #1449/#1252 carveout).
+
+Phase C gate #7 (`agent-trace-schema-completeness`) enforces presence with
+empty-default; missing fields surface as deviation log entries.

@@ -15,6 +15,16 @@
       "paths": [".runs/agent-spawn-log.jsonl"],
       "rationale": "Append-only log of agent spawn events; cross-run for lineage checks (e.g., skill-agent-gate.sh lineage validation).",
       "owner": "skill-agent-gate.sh"
+    },
+    "lead-deviation-log": {
+      "paths": [".runs/lead-deviation-log.jsonl"],
+      "rationale": "Append-only log of prose-gate violations across runs. Cross-run-by-design: enumerate-pending-retrospective-findings.py 6th candidate source uses entries from prior runs to surface untriaged violations. Preserved by lifecycle-init.sh:287-294. Closes PR-#1444 omission (registry was missing this entry; #1431).",
+      "owner": "append_deviation_log.py"
+    },
+    "lead-deviation-log-write-failures": {
+      "paths": [".runs/lead-deviation-log.write-failures.jsonl"],
+      "rationale": "Append-only log of failed deviation-log writes. Cross-run for visibility — silent appender failures otherwise undetectable. Read by enumerate-pending-retrospective-findings.py 7th candidate source as HIGH-confidence log-write-failure candidates. Closes #1431 reliability gap.",
+      "owner": "append_deviation_log.py"
     }
   }
 }

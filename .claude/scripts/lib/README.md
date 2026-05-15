@@ -865,6 +865,125 @@ fix_template: |
     - state-x0a GA bucketing (`.claude/scripts/lib/iterate_cross_ga.py`)
 ```
 
+### prose-gate effective-mode resolution with snapshot + per-gate override
+```yaml
+id: prose-gate-mode-shared-resolver
+maturity: stable
+anti_pattern: false
+composite_identity:
+  root_cause_class: registry-field-documentation-only-not-load-bearing
+  divergence_pattern: gate-runners-each-read-own-env-with-hardcoded-default
+  stack_scope: scripts/lib/prose_gate_mode
+composite_identity_hash: e57777802ea6
+symptom_keywords: [prose-gate, fail_mode, registry, env-var, override, snapshot, in-flight, rollback, warn, deny, soak]
+confidence_score: 0.85
+occurrence_count: 1
+linked_issues: [1449, 1431, 1433, 1444]
+first_seen: 2026-05-15
+last_seen: 2026-05-15
+graduated_to: null
+prevention_mechanism: |
+  prose_gate_mode.resolve(gate_id, prior_default) centralizes effective-mode
+  resolution across the 5 prose-gate enforcers/validators that have a
+  warn↔deny gradient. Resolution chain (first match wins): tolerant escape
+  > per-gate env > snapshot (version-checked) > registry (when v2+) >
+  caller-passed prior_default. Snapshot taken at lifecycle-init time keeps
+  in-flight runs safe against mid-run registry flips. prior_default
+  preserves each gate's existing runtime behavior so registry edits do not
+  silently regress (e.g., gate 5 caller passes "deny" preserving #1393
+  phase-2 shipping decision).
+fix_template: |
+  When a registry/config field needs to become load-bearing AND callers
+  currently each read their own env var with hardcoded defaults, AND
+  in-flight processes must remain unaffected by mid-run config changes:
+
+    1. Add a versioned snapshot field to per-run context at run-start
+       (lifecycle-init.sh post-init Step 5c style). Stamp with
+       `<config>_snapshot_at_version` so stale snapshots can be detected.
+    2. Build a single resolution helper with explicit ordering:
+         tolerant escape > per-key env > snapshot (version-gated) >
+         registry (gated on schema version increment) > caller prior_default
+    3. Each caller migrates to call the helper, passing its CURRENT runtime
+       default as prior_default. This preserves existing behavior unless
+       registry version increment + snapshot allows the registry to override.
+    4. Bump registry _schema_version when the field becomes load-bearing —
+       the version increment is the trigger that activates registry lookup.
+    5. Add a soak summary tool (regime-aware: binary at low-sample,
+       rate at medium, statistical at high) so per-flip rollback signal is
+       observable per-key.
+
+  Usage:
+    # Bash caller:
+    MODE=$(bash .claude/scripts/lib/prose_gate_mode.sh <gate_id> <prior_default>)
+
+    # Python caller:
+    import sys
+    sys.path.insert(0, os.path.dirname(__file__))  # or .claude/scripts/lib
+    from prose_gate_mode import resolve
+    mode = resolve("<gate_id>", prior_default="<warn|deny>")
+
+  Callers (production):
+    - .claude/hooks/bound-by-coverage-provider-gate.sh (gate 1)
+    - .claude/scripts/lib/anomaly-audit-evidence.py (gate 4)
+    - .claude/scripts/lib/user-approval-evidence-validator.py (gate 2)
+    - .claude/scripts/validate-retrospective-completeness.py (gate 5, prior_default=deny)
+    - .claude/scripts/check-observation-artifacts.sh (gate 5 dual-caller)
+```
+
+### atomic deviation-log appender with visible failure channel
+```yaml
+id: append-deviation-log-atomic-with-failures
+maturity: stable
+anti_pattern: false
+composite_identity:
+  root_cause_class: best-effort-jsonl-appender-silently-loses-data
+  divergence_pattern: open-append-without-fsync-and-silent-except
+  stack_scope: scripts/lib/append_deviation_log
+composite_identity_hash: 44739f770539
+symptom_keywords: [deviation-log, jsonl, append, fsync, silent-failure, write-failures, observability, prose-gate]
+confidence_score: 0.85
+occurrence_count: 1
+linked_issues: [1431, 1444]
+first_seen: 2026-05-15
+last_seen: 2026-05-15
+graduated_to: null
+prevention_mechanism: |
+  append_deviation_log.append(payload) centralizes the deviation-log writer
+  with: (a) POSIX O_APPEND atomicity for entries < PIPE_BUF (~4KB), (b)
+  fsync before close (survives process crash), (c) on exception writes to
+  a sibling write-failures.jsonl channel that is consumed by
+  enumerate-pending-retrospective-findings.py 7th candidate source as
+  HIGH-confidence findings (silent failures become observer-visible). Adds
+  _meta.schema_version stamp for forward-compat.
+fix_template: |
+  When multiple callers append JSONL entries to a single observability log
+  AND silent failures break downstream consumers (enumerator, observer):
+
+    1. Centralize the appender into one helper. Caller-side: just call
+       `append(entry_dict)`.
+    2. Use POSIX `open(path, "a")` (O_APPEND atomic for writes < PIPE_BUF)
+       + explicit f.flush() + os.fsync(f.fileno()) so writes survive crash.
+    3. On exception: log to a sibling .write-failures.jsonl channel with
+       {original_payload, exception, ts}. Best-effort writes to the failure
+       channel itself; if even that fails, print to stderr.
+    4. Wire the failure channel into the consumer's enumeration as HIGH-
+       confidence findings — silent failures become surface-visible.
+    5. Register both files in cross-run-channels.json (read-side metadata)
+       per the cross_run_channel_exemption_pairing coherence rule.
+
+  Usage:
+    import sys
+    sys.path.insert(0, os.path.dirname(__file__))  # or .claude/scripts/lib
+    from append_deviation_log import append
+    ok = append({"gate_id": "...", "evidence": {...}})
+    # Returns True on success; False routes to write-failures.jsonl.
+
+  Callers (production):
+    - .claude/scripts/lib/bound-by-coverage-provider.py
+    - .claude/scripts/lib/anomaly-audit-evidence.py
+    - .claude/scripts/lib/user-approval-evidence-validator.py
+```
+
 ## Existing helpers (no Stack Knowledge — single-caller or in-flux)
 
 These helpers are below the `lib_helper_stack_knowledge_required` rule's `caller_threshold: 2` (per narrow consumption_patterns excluding tests/), so they don't yet need a Stack Knowledge entry. Add an entry only when the helper crosses 2+ production callers.

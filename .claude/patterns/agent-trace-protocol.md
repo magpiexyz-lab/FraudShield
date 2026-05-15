@@ -114,6 +114,8 @@ Agents may add fields beyond the base schema to capture agent-specific metrics:
 | behavior-verifier | `unmatched_given_phrase` | string \| null | Top-level diagnostic — first behavior `given` phrase that hit the fail-closed default in `.claude/patterns/given-auth-matcher.md`. When non-null, a maintainer should extend the matcher's whitelist. Omitted when no unmatched phrases were encountered. |
 | any reviewer agent | `review_method_gate_evaluated` | boolean | Sentinel written by `.claude/patterns/review-verdict-gate.md` proving the gate ran on this trace. Asserted by `state-registry.json` VERIFY commands for state 2 and state 3c. Always `true` once present. |
 | any reviewer agent | `review_method_gate_corrections` | array | One entry per verdict the gate auto-corrected: `{location, review_method, original_verdict, corrected_to}`. Omitted when 0 corrections were applied. |
+| **all trace-writing agents** | `workarounds` | array | **AOC v1.3 mandatory shape** (empty array allowed). Workarounds applied during the agent's task — `[{file, line, type, description, root_cause_unresolved}]`. See agent-output-contract.md `#### workarounds[]` for entry schema. Closes #1449/#1252 carveout mistake — uniform shape across all agent classes for observer ingestion. |
+| **all trace-writing agents** | `template_gap_observed` | array | **AOC v1.3 mandatory shape** (empty array allowed). Template-rooted gaps the agent encountered — `[{template_path, section, observation, suggested_remediation}]`. Distinct from `template_recommendations[]` (scaffold-* mandatory). See agent-output-contract.md `#### template_gap_observed[]`. |
 
 ### Verdict Values (AOC v1)
 

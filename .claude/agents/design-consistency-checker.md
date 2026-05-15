@@ -154,3 +154,24 @@ Verdict invariant: `verdict == "fail" iff inconsistent_count > 0`.
 Use the **bash invocation** described in `.claude/procedures/design-consistency-checker.md` Step 4 — it passes `--trace-filename "$TRACE_FILENAME"` (the value you computed in First Action) so the file lands at `design-consistency-checker.json` (single-batch) or `design-consistency-checker-<batch_id>.json` (multi-batch). The centralized writer (AOC v1.1) stamps `agent`, `timestamp`, `provenance:"self"`, `run_id`, `skill`, `spawn_sha`, and `spawn_index` from active identity + spawn-log.
 
 In multi-batch runs the lead invokes `merge-design-consistency-checker-traces.py` after all batch agents complete. The merger emits the canonical `design-consistency-checker.json` aggregate with `provenance="lead-merge"` and `contributing_spawn_indexes` — the existing `aggregate_ok` hard-gate predicate accepts it.
+
+## Trace Schema (AOC v1.3)
+
+Every trace this agent writes via `write-agent-trace.sh` MUST include the
+following two fields with empty-array defaults:
+
+```json
+{
+  "workarounds": [],
+  "template_gap_observed": []
+}
+```
+
+Non-empty entries follow the schema in
+`.claude/patterns/agent-output-contract.md` `#### workarounds[]` and
+`#### template_gap_observed[]`. Use empty arrays when none observed —
+absence is not allowed (uniform shape across all 28 trace-writing agents
+so observer ingestion has one read schema; closes #1449/#1252 carveout).
+
+Phase C gate #7 (`agent-trace-schema-completeness`) enforces presence with
+empty-default; missing fields surface as deviation log entries.

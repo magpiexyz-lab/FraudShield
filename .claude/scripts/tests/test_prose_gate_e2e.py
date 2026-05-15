@@ -18,7 +18,7 @@ Case 2 (Write tool → only pre-existing layer fires):
     - The new layer leaves no gate_layer:prose-gates-v1 attribution
 
 Case 3 (mode flip):
-  Same case-1 violation with BOUND_COVERAGE_PROVIDER_MODE=warn vs deny.
+  Same case-1 violation with PROSE_GATE_LEAD_SYNTHESIZED_NUMERICAL_BOUNDS_MODE=warn vs deny.
   Assert exit codes 0 vs 2 respectively, and that deviation-log entries
   are written in both modes (warn-mode logs but does not block).
 
@@ -132,7 +132,7 @@ class TestProseGateE2E(unittest.TestCase):
             env={
                 **os.environ,
                 "CLAUDE_PROJECT_DIR": str(self.tmp),
-                "BOUND_COVERAGE_PROVIDER_MODE": "warn",
+                "PROSE_GATE_LEAD_SYNTHESIZED_NUMERICAL_BOUNDS_MODE": "warn",
             },
             cwd=str(self.tmp),
         )
@@ -198,7 +198,7 @@ class TestProseGateE2E(unittest.TestCase):
             env={
                 **os.environ,
                 "CLAUDE_PROJECT_DIR": str(self.tmp),
-                "BOUND_COVERAGE_PROVIDER_MODE": "deny",
+                "PROSE_GATE_LEAD_SYNTHESIZED_NUMERICAL_BOUNDS_MODE": "deny",
             },
             cwd=str(self.tmp),
         )
@@ -225,7 +225,7 @@ class TestProseGateE2E(unittest.TestCase):
                 **os.environ,
                 "CLAUDE_PROJECT_DIR": str(self.tmp),
                 "CLAUDE_HOOK_TEST_MODE": "1",
-                "BOUND_COVERAGE_PROVIDER_MODE": "deny",
+                "PROSE_GATE_LEAD_SYNTHESIZED_NUMERICAL_BOUNDS_MODE": "deny",
             },
             cwd=str(self.tmp),
         )
@@ -251,7 +251,7 @@ class TestProseGateE2E(unittest.TestCase):
                 **os.environ,
                 "CLAUDE_PROJECT_DIR": str(self.tmp),
                 "PROSE_GATES_TOLERANT": "1",
-                "BOUND_COVERAGE_PROVIDER_MODE": "deny",
+                "PROSE_GATE_LEAD_SYNTHESIZED_NUMERICAL_BOUNDS_MODE": "deny",
             },
             cwd=str(self.tmp),
         )
