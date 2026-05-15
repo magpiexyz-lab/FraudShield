@@ -153,10 +153,8 @@ If `stack.testing` is present in experiment.yaml:
 - Install packages: `npm install -D @playwright/test && npx playwright install chromium`
 - If using the full-auth path: install Supabase CLI (`npm install -D supabase`) and if
   `supabase/config.toml` does not exist, run `npx supabase init`
-- Create files per the chosen template path:
-  - `playwright.config.ts` (full or no-auth)
-  - `e2e/helpers.ts` (full or no-auth)
-  - If full-auth path: `e2e/global-setup.ts` and `e2e/global-teardown.ts`
+- Create files by copying templates from the testing stack file verbatim. **Source section: `## Files to Create` for full-auth path, `## No-Auth Fallback` for the fallback path** (chosen by the assumes check above). Iterate every `` ### `<filename>` `` heading under the chosen section — the backtick-quoted filename in each heading is the relative repo path to write to. Copy the code block immediately following each heading without modification (placeholder substitutions documented in subsequent bullets are applied AFTER the verbatim copy).
+- Audit checklist: the testing stack file's frontmatter `files:` list enumerates every file this stack owns. Every entry whose conditional comment (e.g., `# conditional: only when all assumes are met`) is satisfied by the chosen path MUST appear as a `` ### `<filename>` `` heading under the chosen section AND MUST be materialized. Missing an entry = block. This binds wire to the canonical content source (closes #1447 gap 3) and prevents the hand-enumeration drift class — future additions to playwright.md `files:` are picked up automatically without touching wire.md.
 - Generate `e2e/smoke.spec.ts` with one page-load test per experiment.yaml page:
   ```ts
   test("[page name] loads", async ({ page }) => {

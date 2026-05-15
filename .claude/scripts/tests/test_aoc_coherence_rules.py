@@ -709,5 +709,90 @@ class TestStageCValidatorInventoryCompleteness(unittest.TestCase):
         self.assertEqual(rc, 0, f"E1.12 expected pass, got:\n{out}")
 
 
+class TestMustContainSectionSourceCodeLiteral(unittest.TestCase):
+    """#1447 Rule A — pin the source-code-literal use of must_contain_section.
+
+    must_contain_section is canonically used for markdown section headings
+    (`required_section: "## Production Observability"`). Issue #1447 Rule A
+    repurposes it to assert a code literal (`'force-dynamic'`) appears in
+    scaffolded page.tsx files. The semantic is mechanically correct (runner.py
+    documents required_section as literal substring), but the rule name's
+    "section" framing makes the source-code-literal use non-obvious. This test
+    class pins the use-case so future rule-engine refactors preserve substring
+    matching even outside markdown contexts.
+    """
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def _rule(self):
+        return {
+            "rules": [{
+                "id": "test-seg-auth-force-dynamic",
+                "type": "must_contain_section",
+                "severity": "block",
+                "applies_to_glob": "src/app/**/[[]*[]]/page.tsx",
+                "required_section": "'force-dynamic'",
+                "trigger_pattern_any": [
+                    "from\\s+['\"]@/lib/auth['\"]"
+                ],
+                "description": "test fixture for #1447 Rule A — escaped brackets [[]*[]] match literal [seg] dynamic-segment directories"
+            }]
+        }
+
+    def test_page_with_force_dynamic_passes(self):
+        """A [seg] page that imports auth AND declares force-dynamic does not trigger."""
+        files = {
+            "src/app/items/[id]/page.tsx": (
+                "import { requireRole } from '@/lib/auth';\n"
+                "export const dynamic = 'force-dynamic';\n"
+                "export default function P() { return null; }\n"
+            ),
+        }
+        _setup_repo(self.tmpdir, self._rule(), files)
+        rc, out, _ = _run_linter(self.tmpdir, "--strict-aoc")
+        self.assertEqual(rc, 0, f"expected clean (force-dynamic present), got:\n{out}")
+
+    def test_page_missing_force_dynamic_is_blocked(self):
+        """A [seg] page that imports auth but lacks 'force-dynamic' literal is blocked."""
+        files = {
+            "src/app/projects/[slug]/page.tsx": (
+                "import { requireRole } from '@/lib/auth';\n"
+                "export default function P() { return null; }\n"
+            ),
+        }
+        _setup_repo(self.tmpdir, self._rule(), files)
+        rc, out, _ = _run_linter(self.tmpdir, "--strict-aoc")
+        self.assertEqual(rc, 1, f"expected block (force-dynamic missing), got clean:\n{out}")
+        self.assertIn("src/app/projects/[slug]/page.tsx", out)
+        self.assertIn("'force-dynamic'", out)
+
+    def test_page_without_auth_import_is_not_triggered(self):
+        """A [seg] page without auth imports does not trigger the rule even without force-dynamic."""
+        files = {
+            "src/app/public/[id]/page.tsx": (
+                "export default function P() { return null; }\n"
+            ),
+        }
+        _setup_repo(self.tmpdir, self._rule(), files)
+        rc, out, _ = _run_linter(self.tmpdir, "--strict-aoc")
+        self.assertEqual(rc, 0, f"expected clean (no auth import → no trigger), got:\n{out}")
+
+    def test_non_dynamic_page_not_in_scope(self):
+        """A non-[seg] page (e.g., src/app/items/page.tsx) is outside applies_to_glob."""
+        files = {
+            "src/app/items/page.tsx": (
+                "import { requireRole } from '@/lib/auth';\n"
+                "export default function P() { return null; }\n"
+            ),
+        }
+        _setup_repo(self.tmpdir, self._rule(), files)
+        rc, out, _ = _run_linter(self.tmpdir, "--strict-aoc")
+        self.assertEqual(rc, 0, f"expected clean (non-dynamic page out of scope), got:\n{out}")
+
+
 if __name__ == "__main__":
     unittest.main()

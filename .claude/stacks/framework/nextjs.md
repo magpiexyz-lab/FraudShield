@@ -24,6 +24,7 @@ clean:
   files: [.nvmrc, package.json, package-lock.json, tsconfig.json, next.config.ts, next-env.d.ts, eslint.config.mjs]
   dirs: [node_modules, .next, out]
 gitignore: [.next/, out/]
+emits_events: [retain_return]  # conditional: only when stack.analytics is present; framework template fires from src/components/RetainTracker.tsx
 ---
 # Framework: Next.js (App Router)
 > Used when experiment.yaml has `stack.services[].runtime: nextjs`
@@ -673,6 +674,60 @@ If the empirical test fails on a future Next.js patch release, file a new observ
 **Migration (already-bootstrapped projects on `src/middleware.ts`):** the legacy filename continues to work on Next.js 16+ but emits a deprecation warning at build time. Migrate via `git mv src/middleware.ts src/proxy.ts` AND rename the exported function from `middleware` to `proxy` (and any test imports referencing it by name) IN THE SAME COMMIT — the invariant rejects partial renames.
 
 **Runtime consumers** (ux-journeyer, etc.) probe `src/proxy.ts` first (today's default) and fall back to `src/middleware.ts` for projects still on the legacy filename.
+
+### When a `[seg]` page route does an auth lookup that may redirect, emit `force-dynamic` instead of `generateStaticParams`
+
+When a page path contains a dynamic `[seg]` AND the server loader calls an auth API that can redirect unauthenticated requests (e.g., `requireRole()`, `getCurrentUser()`, `getSession()`, or any `@/lib/supabase-auth*` import), emit `export const dynamic = 'force-dynamic'` at the top of the page. Do NOT use `dynamicParams=false + generateStaticParams()` — the build prerender executes the loader for every slug returned by `generateStaticParams`, captures the redirect-to-login response, and bakes it into the `.next/` output as a static 404. Users visiting the URL hit the hardcoded 404 (not a live auth check).
+
+Pages with `dynamic = 'force-dynamic'` re-execute on every request, so auth state is evaluated at request time and the redirect fires normally.
+
+```tsx
+// src/app/items/[id]/page.tsx — auth-gated [seg] route
+import { requireRole } from '@/lib/supabase-auth-server';
+import { fetchItem } from '@/lib/items';
+import { ItemView } from '@/components/ItemView';
+
+export const dynamic = 'force-dynamic';
+
+export default async function Page({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const user = await requireRole('member');  // redirects to /login if unauthenticated
+  const item = await fetchItem(id, user);
+  return <ItemView item={item} />;
+}
+```
+
+This complements the `generateStaticParams()` + client-component split documented above (the "Exception: when a page needs both `generateStaticParams()` and client-side hooks" entry): use that split pattern only when the `[seg]` route is **public**. For auth-gated `[seg]` routes, `force-dynamic` is the only correct choice.
+
+### When a `[seg]` page route is `anonymous_allowed` with `dynamic_segments` fixtures, short-circuit `DEMO_MODE`
+
+When a behavior has `anonymous_allowed=true` AND declares `dynamic_segments[]` fixture slugs in experiment.yaml, the page loader must support a `DEMO_MODE` short-circuit. `sitemap.ts` enumerates the fixture URLs (via `derive_dynamic_public_pages()` in `.claude/scripts/lib/derive_pages.py`), so search engines crawl those URLs — but in `DEMO_MODE` the Supabase loader returns empty (no real data seeded), and without a fixture branch the page renders "not available" for sitemap-listed slugs. Indexability breaks.
+
+Solution: export a `SAMPLE_<SEGMENT_NAME>` constant (array of fixture objects matching the page schema) at module top, then short-circuit at the top of the loader:
+
+```tsx
+// src/app/projects/[slug]/page.tsx — public [seg] route with DEMO_MODE fixtures
+import { notFound } from 'next/navigation';
+import { fetchProject } from '@/lib/projects';
+import { ProjectView } from '@/components/ProjectView';
+
+export const SAMPLE_SLUG = [
+  { slug: 'my-first-project', title: 'My First Project', body: '...' },
+  // one entry per fixture slug declared in experiment.yaml behaviors
+];
+
+export default async function Page({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params;
+  if (process.env.DEMO_MODE === 'true') {
+    const fixture = SAMPLE_SLUG.find(p => p.slug === slug);
+    return fixture ? <ProjectView project={fixture} /> : notFound();
+  }
+  const project = await fetchProject(slug);
+  return project ? <ProjectView project={project} /> : notFound();
+}
+```
+
+The `SAMPLE_<SEGMENT_NAME>` naming convention (uppercase segment param name) makes the fixture discoverable for `sitemap.ts` cross-checks and behavior tests. Fixture slug values MUST match `dynamic_segments[].slug` entries verbatim — otherwise sitemap URLs and page fixtures diverge.
 
 ### When configuring tsconfig.json, always exclude `.runs/` to prevent LSP diagnostic noise
 The `.runs/` directory is a scratch/gitignored workspace for skill execution artifacts (JSON traces, design-critic screenshot `.js` scripts, transient merge files). TypeScript's language server picks these files up by default because `tsconfig.json` has no `exclude` for `.runs/`. This produces false-positive LSP diagnostics on files that are not part of the build. Add `.runs` to the `exclude` array in the bootstrap `tsconfig.json` template:

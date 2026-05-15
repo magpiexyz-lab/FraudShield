@@ -321,6 +321,28 @@
       "description": "Issue #1170 lineage: stack files prescribing env-gated source code with literal placeholder fallbacks (e.g. ?? \"phc_TEAM_KEY\", || \"placeholder-stripe-publishable\") MUST include a `## Production Observability` section documenting the fail-loud contract. Without it the silent-fallback antipattern recurs. See .claude/stacks/TEMPLATE.md for the section requirements."
     },
     {
+      "id": "seg-auth-page-must-declare-force-dynamic",
+      "type": "must_contain_section",
+      "severity": "block",
+      "applies_to_glob": "src/app/**/[[]*[]]/page.tsx",
+      "required_section": "'force-dynamic'",
+      "trigger_pattern_any": [
+        "from\\s+['\"]@/lib/(auth|supabase-auth|supabase-auth-server)['\"]",
+        "from\\s+['\"]@supabase/ssr['\"]",
+        "\\b(requireRole|getCurrentUser|getSession)\\("
+      ],
+      "description": "Issue #1447 gap 1: pages under src/app/**/[*]/page.tsx that import auth helpers (requireRole, getCurrentUser, getSession, @/lib/supabase-auth*, @supabase/ssr) MUST declare `export const dynamic = 'force-dynamic'` at the top. Without this, Next.js build prerender executes the loader for every slug returned by generateStaticParams(), captures the auth-redirect response, and bakes it into .next/ output as a static 404. The rule uses must_contain_section's literal-substring semantic (runner.py:2537) to match the code literal 'force-dynamic' (with single quotes, since this is the canonical Next.js syntax). The `[*]/page.tsx` glob targets bracketed dynamic segment routes only, so prose files in src/ and non-segment pages are excluded. See nextjs.md Stack Knowledge entry 'When a [seg] page route does an auth lookup that may redirect' for the canonical pattern. Test fixture at .claude/scripts/tests/test_aoc_coherence_rules.py::test_must_contain_section_supports_source_code_literal pins the source-code-literal use of must_contain_section."
+    },
+    {
+      "id": "events-yaml-seeded-from-stack-emits-events",
+      "type": "events_yaml_seeded_from_stack_emits_events",
+      "severity": "block",
+      "stack_glob": ".claude/stacks/**/*.md",
+      "events_yaml_path": "experiment/EVENTS.yaml",
+      "exclude_stack_glob": [".claude/stacks/TEMPLATE.md", ".claude/stacks/_archive/**"],
+      "description": "Issue #1447 gap 4 defense-in-depth: every event listed in any active stack frontmatter `emits_events:` MUST appear as a top-level key under `events:` in experiment/EVENTS.yaml. Primary enforcement is /spec state-6-stack-funnel.md Section 8 step 9 which seeds these events during spec assembly; this rule catches drift (e.g., a contributor adds `emits_events:` to a stack but forgets to update step 9 logic, or a user manually deletes a seeded event from EVENTS.yaml). The rule no-ops on the template repo itself (no experiment/EVENTS.yaml present) — it activates inside bootstrapped projects."
+    },
+    {
       "id": "lib-readme-stack-knowledge-required",
       "type": "must_contain_section",
       "severity": "block",

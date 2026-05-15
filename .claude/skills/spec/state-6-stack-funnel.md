@@ -156,6 +156,16 @@ Derive project-specific analytics events from golden_path, behaviors, and hypoth
 6. **Variant property**: if the experiment has `variants` and the first golden_path event is a landing page event, add a `variant` property (type: string, required: false) to that event.
 7. **Payment events**: if `stack.payment` is present, derive payment-related events from monetize hypotheses and behaviors. Add `requires: [payment]` to those events.
 8. **Archetype-specific events**: if type is `service`, add `archetypes: [service]` to API-specific events. If `cli`, add `archetypes: [cli]` to command-specific events.
+9. **Stack-emitted events** (#1447): iterate every active stack file and read its frontmatter `emits_events:` list (a new optional list field — absent or empty means the stack fires no analytics events from its own template code). Active stacks come from:
+   - Shared categories: `stack.{database,auth,analytics,payment,email,ai,notifications,telephony,voice,project-management}` → `.claude/stacks/<category>/<value>.md`
+   - Per-service: for each `stack.services[]`, the keys `runtime`, `hosting`, `ui`, `testing` resolve to stack files under `.claude/stacks/<category>/<value>.md` using the canonical category mapping per CLAUDE.md Rule 3 (`runtime`→`framework/`, `hosting`→`hosting/`, `ui`→`ui/`, `testing`→`testing/`).
+
+   For each event name in any active stack's `emits_events:`, ensure an entry exists in the EVENTS.yaml `events:` map. If the entry is already present from steps 1-3 (experiment-derived), do NOT overwrite — experiment-defined trigger and properties win. If absent, synthesize a minimal entry:
+   - `funnel_stage`: derive from the analytics stack file's event-to-stage mapping (e.g., posthog.md maps `retain_return → retain`, `signup_start → activate`, `signup_complete → activate`). If the analytics stack does not list the event, infer from name conventions (`*_start`/`*_complete` → `activate`; `retain_*`/`return_*` → `retain`; `view_*`/`landing_*` → `reach`).
+   - `trigger`: derive from the source stack file's template-fire context (e.g., `retain_return` fires from RetainTracker.tsx on return after 24h; `signup_start` fires on signup-page mount; `signup_complete` fires after successful auth). Read the source stack's relevant section for the precise phrasing.
+   - `archetypes`: copy from the stack frontmatter annotation if declared (e.g., `# archetypes: [web-app]`). Default `[web-app]` if absent and the stack is web-app-only.
+
+   This handles framework-emitted events (events the framework or auth template fires automatically) that no experiment golden_path / behavior / hypothesis would reference. Without this, `nextjs.md`'s hardcoded `import { trackRetainReturn }` (RetainTracker) and `auth/supabase.md`'s `import { trackSignupStart, trackSignupComplete }` produce typed-wrapper drift on every analytics-enabled bootstrap (spec-reviewer S3b flags).
 
 **Generate EVENTS.yaml structure:**
 ```yaml

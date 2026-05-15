@@ -25,6 +25,7 @@ clean:
   files: []
   dirs: []
 gitignore: []
+emits_events: [signup_start, signup_complete]  # conditional: only when stack.analytics is present; archetypes: [web-app]; auth template fires from src/app/signup/page.tsx
 demo_mode:
   # Issue #1077: structured DEMO_MODE policy consumed by
   # .claude/scripts/lib/derive_slot_intent.py:derive_runtime_gate().

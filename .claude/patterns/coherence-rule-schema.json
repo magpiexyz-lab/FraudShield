@@ -491,7 +491,8 @@
           { "$ref": "#/definitions/rule_hook_silent_skip_friction_pairing" },
           { "$ref": "#/definitions/rule_lib_helper_stack_knowledge_required" },
           { "$ref": "#/definitions/rule_provenance_aware_runs_read" },
-          { "$ref": "#/definitions/rule_cross_run_channel_exemption_pairing" }
+          { "$ref": "#/definitions/rule_cross_run_channel_exemption_pairing" },
+          { "$ref": "#/definitions/rule_events_yaml_seeded_from_stack_emits_events" }
         ]
       }
     },
@@ -505,6 +506,19 @@
         "scan_glob": { "type": "string" },
         "allowlist_path": { "type": "string" },
         "pragma": { "type": "string" },
+        "description": { "type": "string" }
+      }
+    },
+    "rule_events_yaml_seeded_from_stack_emits_events": {
+      "description": "Issue #1447 Rule D: every event listed in any active stack file's frontmatter `emits_events:` list MUST appear as a top-level key under `events:` in experiment/EVENTS.yaml. Cross-file enum-membership audit. Primary enforcement is /spec state-6 step 9 which seeds these events during EVENTS.yaml assembly. This rule catches drift. No-ops on template repo (no EVENTS.yaml present).",
+      "required": ["id", "type"],
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "const": "events_yaml_seeded_from_stack_emits_events" },
+        "severity": { "$ref": "#/definitions/severity" },
+        "stack_glob": { "type": "string", "description": "Glob for stack files to scan. Default: .claude/stacks/**/*.md" },
+        "events_yaml_path": { "type": "string", "description": "Path to EVENTS.yaml. Default: experiment/EVENTS.yaml" },
+        "exclude_stack_glob": { "type": "array", "items": { "type": "string" }, "description": "fnmatch path patterns for stack files to exclude (e.g., TEMPLATE.md, _archive/**)." },
         "description": { "type": "string" }
       }
     },

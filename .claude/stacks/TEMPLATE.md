@@ -15,6 +15,12 @@
 #   files:          list[str]  — files to delete on `make clean`
 #   dirs:           list[str]  — directories to delete on `make clean`
 # gitignore:        list[str]  — entries to add to .gitignore
+# emits_events:     list[str]  — OPTIONAL (#1447); analytics events this stack's template code
+#                                fires automatically (e.g., from a hardcoded `import { trackX } from "@/lib/events"`).
+#                                Seeded by /spec state-6 step 9 into experiment/EVENTS.yaml when the stack is active
+#                                and `stack.analytics` is present. Default scope is `archetypes: [web-app]` unless the
+#                                stack declares broader via an inline comment (e.g., `# archetypes: [service]`).
+#                                Coherence rule `events-yaml-seeded-from-stack-emits-events` audits drift post-bootstrap.
 
 assumes: []
 packages:

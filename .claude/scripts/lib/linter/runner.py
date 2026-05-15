@@ -2593,6 +2593,133 @@ def main() -> int:
         return out
 
 
+    def check_events_yaml_seeded_from_stack_emits_events(rule):
+        """Issue #1447 Rule D — every event listed in ACTIVE stack files'
+        frontmatter `emits_events:` list MUST appear as a top-level key under
+        `events:` in experiment/EVENTS.yaml. Cross-file enum-membership audit.
+
+        ACTIVE stacks are derived from `experiment/experiment.yaml`'s `stack:`
+        section, using the CLAUDE.md Rule 3 category mapping:
+          - Shared: stack.{database,auth,analytics,payment,email,ai,...}
+                    → .claude/stacks/<category>/<value>.md
+          - Per-service: stack.services[].{runtime,hosting,ui,testing}
+                    → .claude/stacks/{framework,hosting,ui,testing}/<value>.md
+
+        Primary enforcement is /spec state-6 step 9 which seeds these events
+        during EVENTS.yaml assembly. This rule catches drift.
+
+        Rule shape:
+          {
+            "id": "<rule_id>",
+            "type": "events_yaml_seeded_from_stack_emits_events",
+            "severity": "block" | "warn",
+            "stack_glob": ".claude/stacks/**/*.md",      # optional, default shown
+            "events_yaml_path": "experiment/EVENTS.yaml", # optional, default shown
+            "exclude_stack_glob": ["path1", "path2"]      # optional, fnmatch patterns
+          }
+
+        No-op when:
+          - events_yaml_path does not exist
+          - experiment.yaml does not exist
+          - experiment.yaml has no `stack:` section
+        These conditions identify the template repo / non-bootstrapped projects.
+        """
+        import fnmatch
+        out = []
+        rid = rule.get("id", "<unknown>")
+        stack_glob = rule.get("stack_glob", ".claude/stacks/**/*.md")
+        events_yaml_path = rule.get("events_yaml_path", "experiment/EVENTS.yaml")
+        exclude_globs = rule.get("exclude_stack_glob", []) or []
+
+        events_yaml_full = os.path.join(REPO_ROOT, events_yaml_path)
+        experiment_yaml_full = os.path.join(REPO_ROOT, "experiment/experiment.yaml")
+        if not os.path.isfile(events_yaml_full) or not os.path.isfile(experiment_yaml_full):
+            return out
+
+        try:
+            import yaml as _yaml
+            events_data = _yaml.safe_load(open(events_yaml_full, encoding="utf-8")) or {}
+            events_declared = set((events_data.get("events") or {}).keys())
+            exp_data = _yaml.safe_load(open(experiment_yaml_full, encoding="utf-8")) or {}
+        except Exception as e:
+            out.append(f"  [{rid}] failed to parse experiment/EVENTS.yaml or experiment.yaml: {e}")
+            return out
+
+        stack_section = exp_data.get("stack") or {}
+        if not isinstance(stack_section, dict) or not stack_section:
+            return out  # template / unconfigured experiment
+
+        # Skip when EVENTS.yaml is in its placeholder state (empty events map).
+        # This means /spec has not yet run for this project — drift cannot
+        # exist before the seeding step has executed. After /spec runs, events
+        # is non-empty and Rule D activates for real bootstrapped projects.
+        if not events_declared:
+            return out
+
+        # Derive active stack file paths from experiment.yaml.
+        # Per-service category mapping per CLAUDE.md Rule 3.
+        SERVICE_KEY_TO_CATEGORY = {
+            "runtime": "framework",
+            "hosting": "hosting",
+            "ui": "ui",
+            "testing": "testing",
+        }
+        active_stacks = set()
+        for key, value in stack_section.items():
+            if key == "services":
+                services = value or []
+                if not isinstance(services, list):
+                    continue
+                for svc in services:
+                    if not isinstance(svc, dict):
+                        continue
+                    for svc_key, svc_val in svc.items():
+                        if svc_key in SERVICE_KEY_TO_CATEGORY and isinstance(svc_val, str):
+                            category = SERVICE_KEY_TO_CATEGORY[svc_key]
+                            active_stacks.add(f".claude/stacks/{category}/{svc_val}.md")
+            elif isinstance(value, str):
+                # Shared category: stack.<key>: <value>
+                active_stacks.add(f".claude/stacks/{key}/{value}.md")
+
+        def _excluded(rel_path):
+            for g in exclude_globs:
+                if fnmatch.fnmatch(rel_path, g):
+                    return True
+            return False
+
+        for sf in sorted(glob.glob(os.path.join(REPO_ROOT, stack_glob), recursive=True)):
+            rel = os.path.relpath(sf, REPO_ROOT)
+            if _excluded(rel):
+                continue
+            if rel not in active_stacks:
+                continue  # stack file exists but is not in this experiment's stack section
+            try:
+                content = open(sf, encoding="utf-8").read()
+            except (OSError, UnicodeDecodeError):
+                continue
+            m = re.match(r"^---\n(.*?\n)---", content, re.DOTALL)
+            if not m:
+                continue
+            try:
+                import yaml as _yaml
+                fm = _yaml.safe_load(m.group(1)) or {}
+            except Exception:
+                continue
+            emits = fm.get("emits_events")
+            if not isinstance(emits, list):
+                continue
+            for ev in emits:
+                if not isinstance(ev, str):
+                    continue
+                if ev not in events_declared:
+                    out.append(
+                        f"  [{rid}] {events_yaml_path}: active stack {rel} declares emits_events: [{ev}] "
+                        f"but '{ev}' is missing from events: map. Run /spec state-6 step 9 to seed "
+                        f"framework-emitted events, or add the event manually."
+                    )
+        return out
+
+
     def check_bash_hook_write_operator_binding(rule):
         """Issue #1236 — class-level prevention for the unbound-co-occurrence
         regex anti-pattern in Bash-matcher write-guard hooks.
@@ -4328,6 +4455,10 @@ def main() -> int:
         "boundary_kind_required":           (check_boundary_kind_required,           {"enforced_artifacts"},                                   {"agent_files_glob", "skill_files_glob"},                     False),
         "gate_artifact_discovery":          (check_gate_artifact_discovery,          {"manifest_path"},                                        {"registry_path", "hooks_glob"},                              False),
         "must_contain_section":             (check_must_contain_section,             {"applies_to_glob", "required_section", "trigger_pattern_any"}, {"exclude_glob"},                                       False),
+        # #1447 Rule D — cross-file enum-membership audit: every event in any
+        # active stack frontmatter `emits_events:` MUST appear under `events:`
+        # in experiment/EVENTS.yaml. No-ops on template repo (no EVENTS.yaml).
+        "events_yaml_seeded_from_stack_emits_events": (check_events_yaml_seeded_from_stack_emits_events, set(), {"stack_glob", "events_yaml_path", "exclude_stack_glob"}, False),
         # #1261 — catches false coherence-rule claims (e.g. "coherence rule
         # pins all three" without a co-occurring rule_id citation that resolves
         # to a real rules[*].id). Severity warn permanent (round-2 critic
