@@ -188,6 +188,14 @@ except Exception as e:
 if [[ -d "$PROJECT_DIR/.runs/agent-traces" ]]; then
   python3 "$PROJECT_DIR/.claude/scripts/write-fix-ledger.py" >/dev/null 2>&1 || true
   python3 "$PROJECT_DIR/.claude/scripts/render-fix-log.py" >/dev/null 2>&1 || true
+  # PR 2 post-render verifier (deny mode): render-fix-log.py is required to
+  # produce .runs/fix-log.md after invocation. If it doesn't, that's a real
+  # bug we want to catch immediately. Defense-in-depth check; always runs
+  # here because this is the only place the renderer is invoked unconditionally.
+  if [[ ! -f "$PROJECT_DIR/.runs/fix-log.md" ]]; then
+    echo "BLOCK: lifecycle-finalize Step 2.5: render-fix-log.py did not produce .runs/fix-log.md (renderer is the sole writer per AOC v1 R2; missing output indicates a renderer regression)" >&2
+    exit 1
+  fi
 fi
 
 # --- Step 2.6: Aggregate hook-friction.jsonl into hook-friction-summary.json (#1226) ---
@@ -502,6 +510,30 @@ if [[ -d "$PROJECT_DIR/.runs/agent-traces" ]]; then
     echo "Re-run: python3 .claude/scripts/verify-lead-orchestrated-spawn-log-lineage.py" >&2
     exit 1
   fi
+fi
+
+# --- Step 4.9: lead-deviation-log write-failures observation (PR 2 — warn) ---
+# When .runs/lead-deviation-log.write-failures.jsonl is non-empty, the
+# atomic appender (append_deviation_log.py) failed to write a deviation
+# entry — a silent observability gap. PR 2 lands warn (logs + continues);
+# PR 3 will flip to deny after 1-2 weeks of stable operation. Soak data
+# accumulates in the same file the deny-mode check would block on.
+WF_PATH="$PROJECT_DIR/.runs/lead-deviation-log.write-failures.jsonl"
+if [[ -s "$WF_PATH" ]]; then
+  WF_COUNT=$(wc -l < "$WF_PATH" 2>/dev/null | tr -d ' ' || echo 0)
+  echo "WARN: lifecycle-finalize Step 4.9 (PR 2): $WF_COUNT lead-deviation-log write-failures detected at $WF_PATH (warn mode; PR 3 will flip to deny after observation)" >&2
+  # PR 3 will replace the warn block with: exit 1 to enforce.
+fi
+
+# --- Step 4.10: agent-trace-schema-completeness gate #7 (PR 2 — warn) ---
+# AOC v1.3: every trace-writing agent MUST emit workarounds[] and
+# template_gap_observed[] keys (empty-array defaults allowed). The validator
+# scans .runs/agent-traces/*.json for the active run, logs missing-field
+# violations to .runs/lead-deviation-log.jsonl. PR 2 lands warn mode
+# (validator-extension); PR 3 flips warn→deny after 1-2 weeks observation.
+# Mode resolution via prose_gate_mode.resolve("agent-trace-schema-completeness").
+if [[ -d "$PROJECT_DIR/.runs/agent-traces" ]]; then
+  python3 "$PROJECT_DIR/.claude/scripts/lib/agent-trace-schema-validator.py" >/dev/null 2>&1 || true
 fi
 
 # --- Step 5: Delivery (code-writing skills only) ---

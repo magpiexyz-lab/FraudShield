@@ -50,11 +50,16 @@ jobs:
 
   validate:
     runs-on: ubuntu-latest
-    # Bumped from 3 → 5 minutes (Group A / #1275 + #1274). The job runs
-    # Shellcheck + 2 pytest invocations + multiple frontmatter/YAML/JSON
-    # validators; 3 min was tight even pre-change. New 51 test cases under
-    # .claude/scripts/tests/ add ~5-10s on top.
-    timeout-minutes: 5
+    # Bumped from 3 → 5 → 7 minutes. PR #1453 (prose-gates Phase C-fast)
+    # added the 28-agent .md trace contract sweep + 12 helper tests + 14
+    # phase-c tests; PR #1454 (verifiers) added 13 more tests + 3 new
+    # finalize steps. Combined: 5 min consistently overshoots (5m07s-5m16s)
+    # because the pre-existing slow tests (test_bash_hook_write_operator_binding.py
+    # 28s, test_markdown_cross_file_line_reference.py 26s,
+    # test_worktree_boundary_gate.py 14s, test_agent_trace_write_guard.py
+    # 12s) take 80+s alone, leaving little headroom for the rest. 7 min
+    # restores the same ~30% headroom 5min had at the 3min era.
+    timeout-minutes: 7
     steps:
       - uses: actions/checkout@v4
 
