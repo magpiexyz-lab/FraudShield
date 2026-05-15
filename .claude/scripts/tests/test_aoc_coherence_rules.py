@@ -734,12 +734,12 @@ class TestMustContainSectionSourceCodeLiteral(unittest.TestCase):
                 "id": "test-seg-auth-force-dynamic",
                 "type": "must_contain_section",
                 "severity": "block",
-                "applies_to_glob": "src/app/**/[[]*[]]/page.tsx",
+                "applies_to_glob": "src/app/**/[[]*[]]/**/page.tsx",
                 "required_section": "'force-dynamic'",
                 "trigger_pattern_any": [
                     "from\\s+['\"]@/lib/auth['\"]"
                 ],
-                "description": "test fixture for #1447 Rule A — escaped brackets [[]*[]] match literal [seg] dynamic-segment directories"
+                "description": "test fixture for #1447 Rule A — escaped brackets [[]*[]] match literal [seg] dirs; ** on both sides catches [seg] anywhere in the path"
             }]
         }
 
@@ -792,6 +792,38 @@ class TestMustContainSectionSourceCodeLiteral(unittest.TestCase):
         _setup_repo(self.tmpdir, self._rule(), files)
         rc, out, _ = _run_linter(self.tmpdir, "--strict-aoc")
         self.assertEqual(rc, 0, f"expected clean (non-dynamic page out of scope), got:\n{out}")
+
+    def test_edit_subpage_under_seg_is_in_scope(self):
+        """Issue #1447 follow-up: a page UNDER a [seg] directory (e.g.,
+        src/app/items/[id]/edit/page.tsx) is in scope. [seg] is the
+        grandparent, not the immediate parent. Without ** on both sides
+        of [[]*[]] in the glob, this case is silently missed."""
+        files = {
+            "src/app/items/[id]/edit/page.tsx": (
+                "import { requireRole } from '@/lib/auth';\n"
+                "export default function P() { return null; }\n"
+            ),
+        }
+        _setup_repo(self.tmpdir, self._rule(), files)
+        rc, out, _ = _run_linter(self.tmpdir, "--strict-aoc")
+        self.assertEqual(rc, 1, f"expected block (force-dynamic missing on edit subpage), got clean:\n{out}")
+        self.assertIn("src/app/items/[id]/edit/page.tsx", out)
+
+    def test_descendant_of_seg_is_in_scope(self):
+        """Issue #1447 follow-up: a page whose ancestor is a [seg] but the
+        page itself is not directly under the [seg] (e.g.,
+        src/app/[orgId]/projects/page.tsx — auth-gated within an org
+        context) is in scope."""
+        files = {
+            "src/app/[orgId]/projects/page.tsx": (
+                "import { requireRole } from '@/lib/auth';\n"
+                "export default function P() { return null; }\n"
+            ),
+        }
+        _setup_repo(self.tmpdir, self._rule(), files)
+        rc, out, _ = _run_linter(self.tmpdir, "--strict-aoc")
+        self.assertEqual(rc, 1, f"expected block (descendant of [seg] missing force-dynamic), got clean:\n{out}")
+        self.assertIn("src/app/[orgId]/projects/page.tsx", out)
 
 
 if __name__ == "__main__":

@@ -324,14 +324,14 @@
       "id": "seg-auth-page-must-declare-force-dynamic",
       "type": "must_contain_section",
       "severity": "block",
-      "applies_to_glob": "src/app/**/[[]*[]]/page.tsx",
+      "applies_to_glob": "src/app/**/[[]*[]]/**/page.tsx",
       "required_section": "'force-dynamic'",
       "trigger_pattern_any": [
         "from\\s+['\"]@/lib/(auth|supabase-auth|supabase-auth-server)['\"]",
         "from\\s+['\"]@supabase/ssr['\"]",
         "\\b(requireRole|getCurrentUser|getSession)\\("
       ],
-      "description": "Issue #1447 gap 1: pages under src/app/**/[*]/page.tsx that import auth helpers (requireRole, getCurrentUser, getSession, @/lib/supabase-auth*, @supabase/ssr) MUST declare `export const dynamic = 'force-dynamic'` at the top. Without this, Next.js build prerender executes the loader for every slug returned by generateStaticParams(), captures the auth-redirect response, and bakes it into .next/ output as a static 404. The rule uses must_contain_section's literal-substring semantic (runner.py:2537) to match the code literal 'force-dynamic' (with single quotes, since this is the canonical Next.js syntax). The `[*]/page.tsx` glob targets bracketed dynamic segment routes only, so prose files in src/ and non-segment pages are excluded. See nextjs.md Stack Knowledge entry 'When a [seg] page route does an auth lookup that may redirect' for the canonical pattern. Test fixture at .claude/scripts/tests/test_aoc_coherence_rules.py::test_must_contain_section_supports_source_code_literal pins the source-code-literal use of must_contain_section."
+      "description": "Issue #1447 gap 1: pages whose path has ANY [seg] ancestor under src/app/ AND import auth helpers (requireRole, getCurrentUser, getSession, @/lib/supabase-auth*, @supabase/ssr) MUST declare `export const dynamic = 'force-dynamic'` at the top. Covers immediate-parent [seg] (src/app/items/[id]/page.tsx), deeper descendants (src/app/items/[id]/edit/page.tsx), and grandparent [seg] (src/app/[orgId]/projects/page.tsx). Without this, Next.js build prerender executes the loader for every slug returned by generateStaticParams(), captures the auth-redirect response, and bakes it into .next/ output as a static 404. The rule uses must_contain_section's literal-substring semantic (runner.py:2537) to match the code literal 'force-dynamic' (with single quotes, since this is the canonical Next.js syntax). The bracket-escaped glob `[[]*[]]` matches literal [seg] dirs; `**` on both sides catches the segment anywhere in the path. See nextjs.md Stack Knowledge entry 'When a [seg] page route does an auth lookup that may redirect' for the canonical pattern. Test fixture at .claude/scripts/tests/test_aoc_coherence_rules.py::TestMustContainSectionSourceCodeLiteral pins the source-code-literal use of must_contain_section across multiple [seg] depth scenarios."
     },
     {
       "id": "events-yaml-seeded-from-stack-emits-events",
