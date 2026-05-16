@@ -13,11 +13,42 @@
 
 **ACTIONS:**
 
-> **BLOCKING -- present to user even if classification seems obvious.**
-> The purpose is explicit user buy-in on external dependencies, not
-> efficiency. Even if scaffold-externals reports "No external
-> dependencies", confirm to the user: "No external dependencies
-> detected. Proceeding." NEVER self-decide. NEVER skip this interaction.
+> **BLOCKING by default — present to user.** The purpose is explicit user
+> buy-in on external dependencies. NEVER self-decide on a classification
+> with `unknown`, conflicting LLM-vs-registry signals, or any non-trivial
+> credential question.
+>
+> **No-stop opt-in (#1450 gap 12):** when the session sets `--no-stop`
+> AND every external in the classification table satisfies ALL of:
+>   (a) `classification` is `keep` or `stub` (not `unknown`),
+>   (b) no conflict between LLM judgment and registry hint,
+>   (c) no credential value needs to be collected from the user,
+> THEN proceed silently — write the externals-decisions artifact and the
+> BG2.5 verdict directly without an interactive prompt. The
+> `no_stop_compatible: true` flag on this state's entry in
+> `state-registry.json` is the contract that callers (e.g.,
+> bootstrap-verify mode) use to know the silent path is sanctioned.
+>
+> When even one external is ambiguous, the BLOCKING path applies
+> regardless of `--no-stop`. The point of the override is to skip
+> obvious decisions, not to suppress real choices.
+
+To detect `--no-stop`:
+```bash
+NO_STOP=$(python3 -c "
+import json
+try:
+    d = json.load(open('.runs/bootstrap-context.json'))
+    print('1' if d.get('no_stop') is True else '0')
+except Exception:
+    print('0')
+" 2>/dev/null)
+```
+
+Branch:
+- If `NO_STOP=1` AND every classification table row is unambiguous (per
+  the three conditions above): write artifacts silently and advance.
+- Else: continue with the interactive procedure below.
 
 After the externals subagent returns its classification table:
 

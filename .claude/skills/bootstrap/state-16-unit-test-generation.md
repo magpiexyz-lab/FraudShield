@@ -13,9 +13,15 @@ Generate unit tests for CRITICAL modules using implementer agents.
 - Independent modules can be in any order — place them first
 
 **Isolation policy:** Before spawning implementer agents, determine the isolation mode:
-- Check if any test files already exist under `src/`: `find src -name '*.test.*' -o -name '*.spec.*' | head -1`
-- **If no test files exist** (typical during bootstrap): use **direct mode** — agents commit directly to the feature branch without worktree isolation. This avoids unnecessary worktree overhead when there is no risk of conflicting modifications.
-- **If any test file already exists** (atypical, possible if re-running after partial failure): use **worktree mode** — agents run in worktree isolation per the standard procedure.
+- Check if any test files already exist under `src/` **outside the scaffold-libs domain**:
+  ```bash
+  find src \( -name '*.test.*' -o -name '*.spec.*' \) -not -path 'src/lib/*' | head -1
+  ```
+  Rationale (#1450 gap 11): scaffold-libs (state-11a) writes `src/lib/*.test.ts` BEFORE state-16 runs the first time. Without the `-not -path 'src/lib/*'` filter, those scaffold-libs tests would falsely trigger worktree mode on every clean bootstrap. Domain split:
+    - **scaffold-libs domain**: `src/lib/*.test.ts` (utility unit tests written at state-11a)
+    - **state-16 domain**: `src/app/api/**/*.test.ts`, `src/components/**/*.test.tsx` (route + component tests)
+- **If no state-16-domain test files exist** (typical during bootstrap): use **direct mode** — agents commit directly to the feature branch without worktree isolation. This avoids unnecessary worktree overhead when there is no risk of conflicting modifications.
+- **If any state-16-domain test file already exists** (atypical, possible if re-running after partial failure): use **worktree mode** — agents run in worktree isolation per the standard procedure.
 
 **Spawn rules** (three orthogonal concerns — separated to prevent doc/execution drift, #1047):
 

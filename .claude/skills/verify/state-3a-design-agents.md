@@ -235,7 +235,12 @@ full visual review instead of fast-pathing with an empty boundary.
    > **Backward compatible:** All downstream logic (gate validation, Stage 1c exclusion)
    > treats missing or empty `design-claims.json` as "no claims" — current behavior preserved.
 
-5a. **Lead-supplied fallback boundary for full-tree mode** (#1196 — only when `BOUNDARY_KIND == "full-tree"`):
+5a. **Lead-supplied fallback boundary for full-tree mode OR bootstrap-verify diff mode** (#1196 + #1450 gap 13 — fires when either trigger condition holds):
+
+   **Trigger conditions (either suffices):**
+   - `BOUNDARY_KIND == "full-tree"` (no commits on feature branch yet) — the original #1196 case.
+   - `BOUNDARY_KIND == "diff" AND MODE == "bootstrap-verify"` (#1450 gap 13) — state-16 implementer commits test files, producing `BOUNDARY_KIND=diff` with non-empty divergence, but test commits don't touch `src/app/<page>/**`, so `PR_file_boundary ∩ src/app/<page>/**` is empty. Per-page agents would fast-path with `verdict=boundary-skip` — exactly the failure mode #1381 D3 was designed to prevent. The lead-supplied `design-page-set.json` boundary is the canonical source of truth in this case.
+
    For each entry in `.runs/design-page-set.json["pages"]`:
    - Compute `fallback_boundary[page]` = page-local files matched by `src/app/<page>/**` (recursive)
      **MINUS** shadcn primitives (drop any path starting with `src/components/ui/` or `src/components/magicui/` per the same shadcn-primitive filter applied to imports in step 2 above)
@@ -245,9 +250,11 @@ full visual review instead of fast-pathing with an empty boundary.
      - Else use `landing.source_files` (already filtered to non-API page sources by `derive_pages.py:392-421`)
        and apply the same shadcn filter
 
-   When `BOUNDARY_KIND == "full-tree"`, the FILE_BOUNDARY emitted into the agent's spawn prompt (next step) MUST use `fallback_boundary[page]` instead of `PR_file_boundary ∩ src/app/<page>/**`.
+   When either trigger condition holds, the FILE_BOUNDARY emitted into the agent's spawn prompt (next step) MUST use `fallback_boundary[page]` instead of `PR_file_boundary ∩ src/app/<page>/**`.
 
    The agent contract is unchanged — design-critic always sees a concrete reviewable boundary. Skill identity stays in the lead.
+
+   **Why this preserves #1381 D3's intent**: D3 was designed to keep test-only commits from masking unreviewed scaffold UI. The fallback fires precisely when test-only commits produce an empty `src/app/<page>/**` intersection — the same condition D3 surfaces — and substitutes the canonical page-set source. The substitution doesn't bypass D3's intent; it implements it.
 
 #### Stage 1: Per-page review (parallel)
 

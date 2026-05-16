@@ -97,7 +97,9 @@
     "12": {
       "verify": "python3 -c \"import json; d=json.load(open('.runs/gate-verdicts/bg2.5.json')); assert d.get('verdict')=='PASS', 'BG2.5 verdict is %s' % d.get('verdict'); assert d.get('timestamp','')!='', 'timestamp empty'\" && test -f .runs/bootstrap-state12-stack-knowledge-hints.json",
       "artifact": ".runs/gate-verdicts/bg2.5.json",
-      "lifecycle": "transient-cross-skill"
+      "lifecycle": "transient-cross-skill",
+      "no_stop_compatible": true,
+      "_no_stop_compatible_note": "#1450 gap 12: state-12 honors a session-level --no-stop flag and proceeds silently when ALL externals classify unambiguously (classification in {keep, stub}, no LLM-vs-registry conflict, no credentials to collect). Ambiguous classifications still block. See state-12-externals-decisions.md ACTIONS section."
     },
     "13": "python3 -c \"import json; d=json.load(open('.runs/bootstrap-build-result.json')); assert d['exit_code']==0, 'build exit_code=%d' % d['exit_code']\"",
     "13a": "python3 -c \"import sys, json; sys.path.insert(0, '.claude/scripts/lib'); from verify_helpers import unstamped_values; d=json.load(open('.runs/bootstrap-design-validated.json')); assert all(v in (True, 'skipped') for v in unstamped_values(d)), f'failed checks: {d}'\"",
