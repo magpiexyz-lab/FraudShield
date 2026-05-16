@@ -43,7 +43,7 @@ npm install -D typescript @types/react @types/node eslint@9 @eslint/js typescrip
 ## Project Setup
 - `.nvmrc`: containing `20` (used by CI and local version managers)
 - `package.json`: `scripts` with `dev`, `build`, `start`, `lint` (`eslint src/`); `engines: { "node": ">=20" }`. Stack-specific scripts (e.g., `prebuild` for database auto-migrate) are added by the owning scaffold-libs stage together with the target file it invokes — scaffold-setup must NOT write such script entries ahead of the helper file's creation, which would leave a fragile window where any intermediate `npm run build` fails at an unresolvable `prebuild`.
-- `tsconfig.json`: enable `strict: true`, `@/` path alias mapping to `src/`, and `exclude: ["node_modules", ".next", ".runs"]` — see the Stack Knowledge entry "tsconfig.json must exclude .runs/" for the rationale
+- `tsconfig.json`: enable `strict: true`, `@/` path alias mapping to `src/`, and `exclude: ["node_modules", ".next", ".runs", "scripts"]` — see the Stack Knowledge entry "tsconfig.json must exclude .runs/ AND scripts/" for the rationale
 - `next.config.ts`: starts minimal. Stack files extend it conditionally with their own `nextConfig` blocks (rewrites, env injection, etc.) — additions are merged into a single object literal, not stacked configs. Notable extensions:
   - `analytics/posthog.md` adds `rewrites()` for the `/ingest/*` proxy and `skipTrailingSlashRedirect: true`.
   - `analytics/posthog.md` (and any stack relying on a deploy-environment client-side gate) requires an `env` block injecting `NEXT_PUBLIC_VERCEL_ENV: process.env.VERCEL_ENV ?? ""`. Vercel does NOT auto-prefix system env vars with `NEXT_PUBLIC_` — without this injection, client-side `process.env.NEXT_PUBLIC_VERCEL_ENV` is `undefined` and any `=== "production"` gate evaluates to false even on real production deploys. The `?? ""` keeps the value defined-but-empty when the build runs outside Vercel (local dev, bootstrap), so gates fall through to non-production code paths cleanly.
@@ -729,18 +729,23 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
 
 The `SAMPLE_<SEGMENT_NAME>` naming convention (uppercase segment param name) makes the fixture discoverable for `sitemap.ts` cross-checks and behavior tests. Fixture slug values MUST match `dynamic_segments[].slug` entries verbatim — otherwise sitemap URLs and page fixtures diverge.
 
-### When configuring tsconfig.json, always exclude `.runs/` to prevent LSP diagnostic noise
-The `.runs/` directory is a scratch/gitignored workspace for skill execution artifacts (JSON traces, design-critic screenshot `.js` scripts, transient merge files). TypeScript's language server picks these files up by default because `tsconfig.json` has no `exclude` for `.runs/`. This produces false-positive LSP diagnostics on files that are not part of the build. Add `.runs` to the `exclude` array in the bootstrap `tsconfig.json` template:
+### When configuring tsconfig.json, always exclude `.runs/` AND `scripts/` to prevent build + LSP noise (#1450 gap 4)
+TypeScript's `include: ["**/*.ts", "**/*.tsx", ...]` glob picks up two classes of files that are NOT part of the application build:
+
+1. **`.runs/`** — scratch/gitignored workspace for skill execution artifacts (JSON traces, design-critic screenshot `.js` scripts, transient merge files). Produces false-positive LSP diagnostics on files that are not part of the build.
+2. **`scripts/`** — bakeoff harnesses and ad-hoc tooling (e.g., `scripts/bakeoff/*.ts` per `.claude/stacks/images/fal.md:481-485`). These often have their own nested `package.json` with dependencies that the root `node_modules` does NOT contain. Without exclusion, `tsc --noEmit` fails with `Cannot find module '@fal-ai/client'` (or similar) during `npm run build`, blocking state progression.
+
+Both must be excluded in the bootstrap `tsconfig.json` template:
 
 ```json
 {
   "compilerOptions": { ... },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules", ".next", ".runs"]
+  "exclude": ["node_modules", ".next", ".runs", "scripts"]
 }
 ```
 
-Without this exclusion, any `.js` helper file written to `.runs/` during skill execution emits spurious TypeScript errors in editors and LSP clients, making real diagnostics harder to scan.
+Without `.runs` exclusion: spurious LSP errors. Without `scripts` exclusion: bootstrap-time build failure when any bakeoff or image-pipeline scaffold runs under `scripts/`. Cross-reference: `.claude/stacks/images/fal.md` already documents the bakeoff sub-case; the root tsconfig must default to excluding the whole `scripts/` tree so individual stack scaffolds don't each need to teach a tsconfig amendment.
 
 ### React 19: use `React.SyntheticEvent<HTMLFormElement>` for onSubmit handler types
 `React.FormEvent<HTMLFormElement>` is deprecated in React 19 types — it emits a TypeScript deprecation warning during `npm run build`. The correct replacement is `React.SyntheticEvent<HTMLFormElement>`, which covers the same surface and does not trigger the warning. Write the handler signature as `async function onSubmit(e: React.SyntheticEvent<HTMLFormElement>) { ... }` (never `React.FormEvent<...>`).
@@ -1020,6 +1025,61 @@ export function NavBar() {
 ```
 
 The returned `null` is evaluated on the client after hydration, so the server-rendered output may briefly include the global nav before React decides to hide it. Acceptable tradeoff for the simpler implementation; if flash-of-unstyled-content is unacceptable, move the gate to the root layout's server component using `headers()` to read the path. The alternative `body:has(#sentinel-id) .global-nav { display: none }` CSS pattern also works but is fragile — it depends on a sentinel element being present and is less obvious to future maintainers. Without this gate, every marketing/auth page ships with duplicate navigation bars (fix #1072).
+
+### When emitting opengraph-image.tsx (next/og ImageResponse), use only Satori-supported CSS (#1450 gap 5)
+Satori — the render engine inside Next.js's `next/og ImageResponse` — supports a small subset of CSS. The full restriction list is in Satori's docs; the most common mistake is `display`:
+
+| display value | Satori support |
+|---|---|
+| `flex` | ✅ supported (canonical layout) |
+| `block` | ✅ supported |
+| `contents` | ✅ supported |
+| `none` | ✅ supported |
+| `-webkit-box` | ✅ supported |
+| `inline-block`, `grid`, `table`, `inline-flex`, `inline` | ❌ rejected at render time |
+
+When scaffolding `src/app/opengraph-image.tsx`, default the root element to `display: 'flex'` and use `flexDirection: 'column'` / `'row'` for layout. Inline content (text + icon side-by-side) uses a flex child with `gap` instead of `display: 'inline-block'`. The Satori error message at render time is generic ("Failed to fetch / load OG image"), so an unsupported `display` value can be hard to diagnose post-deploy — prefer the flex default at scaffold time.
+
+### When iterating list items inside JSX, use .filter().map((_, idx) => ...) not let counter mutation (#1450 gap 7)
+React 19's stricter `eslint-plugin-react-hooks` immutability rule flags any `let counter += 1` inside a `.map()` callback as a lint error (`react-hooks/...` purity violation). The OLD pattern that triggers the rule:
+
+```tsx
+// ❌ React 19 lint error — mutation inside .map callback
+let counter = 0;
+return turns.map((turn) => {
+  if (!turn.content) return null;
+  const idx = counter++;
+  return <li key={idx}>{turn.content}</li>;
+});
+```
+
+The canonical replacement is `.filter().map((_, idx) => ...)` so the index is derived from the filtered array's positional callback parameter, not a mutated outer variable:
+
+```tsx
+// ✅ functional purity — idx from .map's second arg
+return turns
+  .filter((turn) => Boolean(turn.content))
+  .map((turn, idx) => <li key={idx}>{turn.content}</li>);
+```
+
+Applies broadly: any scaffold that needs a "skipped some, index the rest" iteration must use `.filter().map((_, idx) => ...)`. Examples: spec-builder turn rendering, FAQ accordion item indexing, table-row enumeration with conditional skips.
+
+### When removing default focus outlines, always pair with focus-visible:ring-* (WCAG 2.4.7) (#1450 gap 8)
+Inline `outline: 'none'` or Tailwind `focus:outline-none` WITHOUT a focus-visible fallback is a serious axe-core violation: WCAG 2.4.7 "Focus Visible" requires keyboard focus to be perceivable on every interactive element. The error class fires on FAQ accordions, custom buttons, dialog triggers, and any element where the designer wanted to "hide the default browser focus ring" without thinking about keyboard-only users.
+
+The canonical Tailwind idiom:
+
+```tsx
+// ❌ axe-core serious violation
+<button className="focus:outline-none">Open FAQ</button>
+
+// ✅ WCAG 2.4.7 compliant — outline removed but focus-visible ring restored
+<button className="focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-primary">
+  Open FAQ
+</button>
+```
+
+`focus-visible` shows the ring only for keyboard navigation (Tab key), not for mouse clicks — so the visual design stays clean for pointer users while remaining accessible for keyboard users. Apply this pattern in every scaffold that emits a focusable element with custom styling: FAQ items, Card primitives, custom selects, accordion triggers.
 
 ```yaml
 id: nextjs-open-redirect-next-param

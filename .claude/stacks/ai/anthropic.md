@@ -314,6 +314,30 @@ Apply to EVERY API route that forwards conversation history to the AI SDK: spec-
 
 This pattern is route-level (not library-level): the cap depends on the route's purpose, so the `ai.ts` library exports stay agnostic. Combine with per-session rate limiting (separate concern — that handles request frequency; this handles per-request payload).
 
+### When forwarding multi-turn conversation history to the API, filter zero-length turns BEFORE POST (#1450 gap 6)
+
+Server-side zod schemas for multi-turn APIs commonly use `content: z.string().min(1)` to reject empty messages. Client patterns that initialize an empty assistant placeholder before the first fetch (a common UX choice — pre-allocate the next-turn slot so the streaming response renders into a pre-mounted DOM node) cause the schema to reject with `HTTP 400` on the first user submission, producing the dead-form symptom: the user types, hits enter, the request fires, the server returns 400, the UI silently dies.
+
+The fix is one filter line before the POST:
+
+```tsx
+// ❌ schema rejects: turns[N-1] has content = ""
+const next = [...turns, { role: "assistant", content: "" }];
+await fetch("/api/spec-builder/turn", {
+  method: "POST",
+  body: JSON.stringify({ turns: next }),
+});
+
+// ✅ filter before POST; placeholder stays in local state but never leaves client
+const payload = turns.filter((t) => t.content && t.content.length > 0);
+await fetch("/api/spec-builder/turn", {
+  method: "POST",
+  body: JSON.stringify({ turns: payload }),
+});
+```
+
+Applies to every multi-turn client: spec-builder, chat assistants, document summarization with context. The placeholder can still live in client state for the streaming-mount UX — the requirement is that the POSTed `turns` array contains only messages with non-empty `content`. Scaffold-pages self-check should grep emitted client code for the filter pattern when a multi-turn API route is wired.
+
 ### When user-supplied content appears in an Anthropic prompt that drives a business-visible output value
 
 When user-supplied content (spec fields, form inputs, document text) is concatenated directly into an Anthropic prompt string without structural delimiters, a user can inject instructions that override the AI's intended behavior. When the AI output drives a business-visible value (price range, access level, report score), this becomes a security vulnerability: the user can manipulate the output by injecting closing tags or system-level instructions into their input.
