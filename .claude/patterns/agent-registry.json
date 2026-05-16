@@ -38,6 +38,8 @@
     "security-fixer": {
       "allowed_verdicts": ["pass", "fail", "blocked"],
       "allowed_results": ["clean", "fixed", "partial", "none", "skipped"],
+      "required_structured_fields": ["tests_need_update"],
+      "_tests_need_update_note": "#1450 gap 9: list[dict] of {file, line, old_code, new_code, reason}. Emitted unconditionally; empty list [] when no test assertions were invalidated by the applied fixes. Surfaces stale colocated-test assertions after OWASP A4 fixes (e.g., status-code collapse 404/409 → 400) so the lead can dispatch a test-reconciler or escalate to user instead of manually rewriting assertions. Consumer: /verify or /change Phase X.",
       "_skipped_note": "AOC v1.2: verdict=blocked + result=skipped is the audit-only sanctioned-skip shape written by write-skipped-fixer-trace.sh when the upstream gate fired. AVS v1 closes verdict to {pass,fail,blocked,unresolved}, so we use 'blocked' (semantically: 'fixer was blocked from spawning by upstream') with result='skipped' as the qualifier. No pass_* predicate accepts verdict=blocked, so the hard gate blocks naturally; the trace exists solely so observer + audit consumers see the decision. Note: ux-journeyer ALREADY uses verdict=blocked as an additional_block_condition — precedent exists for this verdict value."
     },
     "quality-fixer": {

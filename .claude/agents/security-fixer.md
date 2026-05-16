@@ -84,6 +84,21 @@ Re-verify each fixed issue using the method that matches its source:
 
 **Fix Tracking**: As you apply each fix, record it as `{"file": "<path>", "symptom": "<what was wrong>", "fix": "<what you changed>"}`. These entries populate the `fixes` array in the final trace JSON. The count of entries in `fixes` must equal the `issues_fixed` numeric field.
 
+### 5b. Reconcile Colocated Tests (#1450 gap 9)
+
+After applying each fix, scan colocated `*.test.ts` / `*.test.tsx` files (in the same directory OR a sibling `__tests__/` folder) for assertions that referenced the OLD status code, response shape, or behavior. The classic case: an OWASP A4 fix that collapses `404`/`409` to `400` across multiple routes invalidates assertions like `expect(res.status).toBe(404)` in colocated route tests.
+
+For each stale assertion, emit a structured entry into the `tests_need_update` array (defined below). DO NOT modify the test files yourself — the lead consumer (typically `/verify` or `/change`) decides whether to dispatch a test-reconciler implementer or escalate to the user. Always emit the array, even when no tests need update: empty list `[]` is the valid clean state.
+
+For each entry:
+- `file`: path to the test file with the stale assertion
+- `line`: line number (1-indexed) of the stale assertion
+- `old_code`: the assertion as it currently stands (single line; for multi-line assertions, the line containing the value being asserted)
+- `new_code`: the suggested replacement that matches the applied fix
+- `reason`: short prose explaining which fix invalidated this assertion (e.g., "OWASP A4 fix collapsed 404→400 for /api/profile/[id]")
+
+If you cannot determine a precise `new_code` (e.g., the test asserts a non-trivial response body), leave `new_code` as the empty string and explain in `reason`; the consumer treats empty `new_code` as "needs human attention".
+
 ### 6. Generate Report Tables
 
 **Defender Results:**
@@ -142,12 +157,22 @@ import json, subprocess
 trace = {
     "verdict": "<verdict>",         # AOC v1 AVS v1: "pass" | "fail" (lowercase)
     "result": "<result>",            # AOC v1: "clean" | "fixed" | "partial" | "none"
-    "checks_performed": ["fix_code", "rebuild", "recheck", "collect_changes", "generate_tables"],
+    "checks_performed": ["fix_code", "rebuild", "recheck", "collect_changes", "reconcile_tests", "generate_tables"],
     "issues_fixed": <N>,
     "unresolved_critical": <UC>,
     "fixes": [
         # One entry per fix applied. Example:
         # {"file": "src/app/api/auth/route.ts", "symptom": "missing rate limiting", "fix": "added rate limiter middleware"}
+    ],
+    # #1450 gap 9: structured colocated-test reconciliation. ALWAYS emit;
+    # empty list when no test assertions were invalidated.
+    "tests_need_update": [
+        # One entry per stale assertion found during step 5b. Example:
+        # {"file": "src/app/api/profile/[id]/__tests__/route.test.ts",
+        #  "line": 42,
+        #  "old_code": "expect(res.status).toBe(404);",
+        #  "new_code": "expect(res.status).toBe(400);",
+        #  "reason": "OWASP A4 fix collapsed 404→400 to prevent existence leak"}
     ],
 }
 subprocess.run(

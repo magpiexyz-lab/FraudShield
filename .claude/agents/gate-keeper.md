@@ -107,27 +107,37 @@ Rules:
 
 ### Verdict File Contract
 
-After outputting the markdown verdict table, persist the verdict to disk:
+After outputting the markdown verdict table, persist the verdict to disk via the canonical writer (#1450 gap 10 / #1299 canonical-writer migration). The previous heredoc pattern produced double-escaped strings inside bash (`\\"magpiexyz-lab\\"` instead of `"magpiexyz-lab"`), causing state-completion-gate to reject the malformed JSON. Building the payload via `python3 -c "import json; print(json.dumps(...))"` eliminates the bash escaping layer and lets `write-gate-artifact.sh` add the GRAIM v2 C1 identity stamps automatically.
 
 ```bash
 mkdir -p .runs/gate-verdicts
 bash .claude/scripts/archive-gate-verdict.sh <gate-id>
-cat > .runs/gate-verdicts/<gate-id>.json << 'VEOF'
-{
-  "gate": "<ID>",
-  "verdict": "<PASS|BLOCK>",
-  "severity": "<critical|warning>",
-  "branch": "<output of git branch --show-current>",
-  "timestamp": "<ISO 8601>",
-  "checks": [
-    {"name": "<check>", "status": "<PASS|BLOCK>", "observed": "<value>"}
-  ],
-  "quality_checks": [
-    {"name": "<quality check name>", "result": "<pass|fail|skip>", "details": "<observed value or skip reason>"}
-  ]
+BRANCH=$(git branch --show-current)
+TIMESTAMP=$(python3 -c "import datetime; print(datetime.datetime.now(datetime.timezone.utc).isoformat())")
+PAYLOAD=$(python3 -c "
+import json
+payload = {
+    'gate': '<ID>',
+    'verdict': '<PASS|BLOCK>',
+    'severity': '<critical|warning>',
+    'branch': '$BRANCH',
+    'timestamp': '$TIMESTAMP',
+    'checks': [
+        {'name': '<check>', 'status': '<PASS|BLOCK>', 'observed': '<value>'},
+    ],
+    'quality_checks': [
+        {'name': '<quality check name>', 'result': '<pass|fail|skip>', 'details': '<observed value or skip reason>'},
+    ],
 }
-VEOF
+print(json.dumps(payload))
+")
+bash .claude/scripts/lib/write-gate-artifact.sh \
+  --path .runs/gate-verdicts/<gate-id>.json \
+  --payload "$PAYLOAD" \
+  --skill <active-skill>
 ```
+
+Replace the placeholder values before executing. The canonical writer is the single source of truth for `.runs/gate-verdicts/*.json` (declared in `.claude/patterns/gate-readable-artifacts-canonical.json`); the previous heredoc pattern is forbidden by the existing `gate-artifact-writer-enforcement` rule in `.claude/patterns/template-coherence-rules.json` (warn severity during the soak window; fixing this entry removes one warn-finding from the backlog).
 
 Rules:
 - `<gate-id>` is the gate identifier in lowercase: `bg1`, `bg2`, `bg2.5`, `bg2-wire`, `bg4`, `g1`, etc.
