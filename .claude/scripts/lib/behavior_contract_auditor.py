@@ -68,11 +68,23 @@ def _candidate_page_files(repo_root: str, page: str) -> list[str]:
 
     Issue #1450 gaps 1-2: route-shape resolution and co-located file
     enumeration are sourced from the canonical helper
-    `derive_pages.derive_page_set_for_design_critic`, which already:
-      (a) handles non-hyphenated dynamic routes (variant→/v/[variant],
-          quote→/quote/[token]) via _path_to_page_info name-suffixing,
+    `derive_pages.derive_page_set_for_design_critic`, which:
+      (a) walks the filesystem and reports each page's route_pattern,
+          test_url, source_files, and dynamic_segments,
       (b) enumerates nested .tsx/.jsx in each page folder (lines 327-340
           of derive_pages.py), covering *-client.tsx / *-tracker.tsx.
+
+    Three lookup strategies are applied in order; the first match wins:
+      1. Exact name (`scope == discovered.name`) — static routes
+         and scope names already aligned with disambiguated discovery.
+      2. Static-prefix match (`scope.split('-')[0] == discovered.split('-')[0]`)
+         — covers scope='portfolio-detail' → discovered='portfolio-slug'
+         when the dynamic route is /portfolio/[slug].
+      3. Dynamic-segment match (`scope in discovered.dynamic_segments`)
+         — covers scope='variant' → discovered='v-variant' when the
+         dynamic route is /v/[variant]. Closes the original gap-1
+         case the static-prefix fallback cannot reach (URL prefix
+         differs from scope name).
 
     Returns absolute paths so callers' open() works regardless of CWD
     (the auditor may be invoked with `cwd != repo_root`).
@@ -90,25 +102,37 @@ def _candidate_page_files(repo_root: str, page: str) -> list[str]:
             entries = derive_page_set_for_design_critic({}, repo_root)
         except Exception:
             entries = []
-        # Direct name match first.
+
+        def _files(entry):
+            return sorted(
+                {os.path.join(repo_root, p) for p in entry.get("source_files", [])}
+            )
+
+        # Lookup 1 — direct name match (covers static routes
+        # `src/app/<page>/page.tsx` AND scope names already aligned with
+        # disambiguated discovery, e.g., scope='portfolio-slug').
         for entry in entries:
             if entry.get("name") == page:
-                return sorted(
-                    {os.path.join(repo_root, p) for p in entry.get("source_files", [])}
-                )
-        # Dynamic-route suffix fallback: scope page slug "portfolio" (or
-        # the hyphenated form "portfolio-detail" used by experiment.yaml)
-        # may have been discovered as "portfolio-slug" because the
-        # filesystem is src/app/portfolio/[slug]/page.tsx. Match by static
-        # prefix on both sides — covers both bare-slug ("portfolio") and
-        # disambiguated ("portfolio-detail") scope names.
+                return _files(entry)
+
+        # Lookup 2 — static-prefix match. Scope='portfolio-detail' maps to
+        # discovered='portfolio-slug' (both share prefix 'portfolio') when
+        # the dynamic route is `src/app/portfolio/[slug]/page.tsx`.
         page_prefix = page.split("-", 1)[0]
         for entry in entries:
             discovered = entry.get("name", "")
             if discovered and discovered.split("-", 1)[0] == page_prefix:
-                return sorted(
-                    {os.path.join(repo_root, p) for p in entry.get("source_files", [])}
-                )
+                return _files(entry)
+
+        # Lookup 3 — dynamic-segment name match. Scope='variant' maps to
+        # discovered='v-variant' (URL static prefix 'v' differs from scope
+        # name, but the bracket segment name matches) when the dynamic
+        # route is `src/app/v/[variant]/page.tsx`. Covers the original
+        # gap-1 case the static-prefix fallback cannot reach because the
+        # URL prefix is not a substring of the scope name.
+        for entry in entries:
+            if page in (entry.get("dynamic_segments") or []):
+                return _files(entry)
 
     # Fallback: direct probe at src/app/<page>/page.tsx (covers fresh
     # checkouts where derive_pages cannot import or returns nothing).

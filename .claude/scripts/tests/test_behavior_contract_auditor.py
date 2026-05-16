@@ -56,22 +56,46 @@ class TestCandidatePageFiles(unittest.TestCase):
         self.assertTrue(files[0].endswith("/spec-builder/page.tsx"))
 
     def test_non_hyphenated_dynamic_route_variant(self):
-        # Gap 1: page='variant', filesystem is src/app/v/[variant]/page.tsx.
-        # Old auditor returned [] (hyphen-only disambiguation). New
-        # auditor finds the page via derive_page_set_for_design_critic.
+        # #1450 gap 1 — canonical case from the issue description:
+        # scope='variant', filesystem='src/app/v/[variant]/page.tsx'.
+        # The URL static prefix ('v') differs from the scope name
+        # ('variant'), so neither direct-name nor static-prefix match
+        # would succeed; the dynamic-segments fallback resolves this
+        # via derive_pages's `dynamic_segments: ['variant']` field.
         with tempfile.TemporaryDirectory() as tmp:
-            _mkpage_with_files(tmp, "v/[variant]")
+            _mkpage_with_files(tmp, "v/[variant]", ["variant-client.tsx"])
             files = _candidate_page_files(tmp, "variant")
-        # Discovered name will be 'v-variant'; the prefix-fallback ('v')
-        # does not match scope 'variant', so for true non-hyphen-leading
-        # routes the auditor returns []. This case requires the scope
-        # name to match either the discovered name or its prefix; document
-        # the boundary.
-        # NOTE: page 'variant' alone has no static prefix that maps to
-        # any folder under src/app — the canonical resolver requires
-        # experiment.yaml to declare the routed page. We exercise the
-        # alternative scoping in test_dynamic_route_static_prefix below.
-        self.assertIsInstance(files, list)
+        self.assertGreaterEqual(
+            len(files), 1,
+            f"variant case must resolve via dynamic_segments fallback (got: {files})",
+        )
+        self.assertTrue(
+            any(f.endswith("/v/[variant]/page.tsx") for f in files),
+            f"page.tsx must be in returned files (got: {files})",
+        )
+        # Co-located client component must also be included (gap 2 sibling).
+        self.assertTrue(
+            any(f.endswith("variant-client.tsx") for f in files),
+            f"co-located *-client.tsx must be in returned files (got: {files})",
+        )
+
+    def test_non_hyphenated_dynamic_route_quote_token(self):
+        # #1450 gap 1 — sister case: scope='quote', filesystem=
+        # 'src/app/quote/[token]/page.tsx'. Here the URL static prefix
+        # ('quote') equals the scope name, so the static-prefix fallback
+        # resolves it (the dynamic-segments fallback is also satisfied
+        # via [token], but prefix match fires first).
+        with tempfile.TemporaryDirectory() as tmp:
+            _mkpage_with_files(tmp, "quote/[token]")
+            files = _candidate_page_files(tmp, "quote")
+        self.assertGreaterEqual(
+            len(files), 1,
+            f"quote case must resolve via static-prefix or dynamic-segments (got: {files})",
+        )
+        self.assertTrue(
+            any(f.endswith("/quote/[token]/page.tsx") for f in files),
+            f"page.tsx must be in returned files (got: {files})",
+        )
 
     def test_dynamic_route_static_prefix_portfolio(self):
         # Gap 1 (hyphenated form): page='portfolio-detail', filesystem
