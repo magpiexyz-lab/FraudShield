@@ -388,6 +388,26 @@
         "pragma": {"type": "string"}
       }
     },
+    "rule_route_resolution_canonical_source": {
+      "description": "#1450 gaps 1-3 — Python scripts that resolve page-name → route-path must source page enumeration from derive_pages.py. Fires when a .py file under scan_corpus contains a glob.glob() pattern referencing both src/app and page.tsx AND does not import from the canonical module. Pragmatic regex-based detection; full AST detection deferred.",
+      "type": "object",
+      "required": ["id", "type", "severity", "scan_corpus", "canonical_module", "trigger_pattern"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string"},
+        "type": {"const": "route_resolution_canonical_source"},
+        "severity": {"$ref": "#/definitions/severity"},
+        "description": {"type": "string"},
+        "_comment": {"type": "string"},
+        "_transitional_note": {"type": "string"},
+        "convention_doc": {"type": "string"},
+        "scan_corpus": {"type": "array", "items": {"type": "string"}},
+        "canonical_module": {"type": "string"},
+        "canonical_symbols": {"type": "array", "items": {"type": "string"}},
+        "exempt_paths": {"type": "array", "items": {"type": "string"}},
+        "trigger_pattern": {"type": "string"}
+      }
+    },
     "rule_lib_helper_stack_knowledge_required": {
       "description": "#1300 — every public function in lib/*.py with >= caller_threshold production callers must have a Stack Knowledge entry in lib/README.md whose stack_scope is module-precise (scripts/lib/<module>), OR the helper module must declare a not-reusable pragma at the top. Closes the gap left by `lib-readme-stack-knowledge-required` (must_contain_section), which only guards heading presence — not per-helper coverage.",
       "type": "object",
@@ -489,6 +509,7 @@
           { "$ref": "#/definitions/rule_branch_checkout_propagation_pairing" },
           { "$ref": "#/definitions/rule_hook_bypass_manifest_completeness" },
           { "$ref": "#/definitions/rule_hook_silent_skip_friction_pairing" },
+          { "$ref": "#/definitions/rule_route_resolution_canonical_source" },
           { "$ref": "#/definitions/rule_lib_helper_stack_knowledge_required" },
           { "$ref": "#/definitions/rule_provenance_aware_runs_read" },
           { "$ref": "#/definitions/rule_cross_run_channel_exemption_pairing" },

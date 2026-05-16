@@ -4400,6 +4400,70 @@ def main() -> int:
         return findings
 
 
+    def check_route_resolution_canonical_source(rule):
+        """#1450 gaps 1-3 — Python scripts that resolve page-name → route-path
+        must source page enumeration from derive_pages.py.
+
+        Pragmatic detection: rule fires when a .py file under scan_corpus
+        contains a glob.glob() pattern referencing both `src/app` and `page.tsx`
+        AND does not import from the canonical module (`derive_pages`). This
+        catches reimplementations of route-shape resolution (the auditor vs
+        emit-sitemap drift class). Pure AST detection is deferred — pragmatic
+        regex is the chosen tradeoff to ship the prevention guard now.
+        """
+        import glob as _glob
+        import re as _re
+        findings = []
+        rid = rule.get("id", "<unknown>")
+        scan_corpus = rule.get("scan_corpus", [])
+        canonical_mod = rule.get("canonical_module", "derive_pages")
+        trigger_pattern = rule.get("trigger_pattern", "")
+        exempt_paths = rule.get("exempt_paths", [])
+
+        if not scan_corpus:
+            return [f"  [{rid}] scan_corpus is required"]
+        if not trigger_pattern:
+            return [f"  [{rid}] trigger_pattern is required"]
+        try:
+            trigger_re = _re.compile(trigger_pattern)
+        except _re.error as exc:
+            return [f"  [{rid}] invalid trigger_pattern regex: {exc}"]
+
+        exempt = set()
+        for pat in exempt_paths:
+            for p in _glob.glob(os.path.join(REPO_ROOT, pat), recursive=True):
+                exempt.add(os.path.normpath(p))
+
+        # Import detection — accept any form referencing the canonical module
+        # name as a top-level symbol: `from derive_pages import X`,
+        # `from .derive_pages import X`, `from foo.derive_pages import X`,
+        # `import derive_pages`, `import foo.derive_pages`.
+        import_re = _re.compile(
+            rf"^\s*(from\s+[\w.]*\b{_re.escape(canonical_mod)}\b|"
+            rf"import\s+[\w.]*\b{_re.escape(canonical_mod)}\b)",
+            _re.MULTILINE,
+        )
+
+        for pat in scan_corpus:
+            for path in sorted(_glob.glob(os.path.join(REPO_ROOT, pat), recursive=True)):
+                norm = os.path.normpath(path)
+                if norm in exempt:
+                    continue
+                try:
+                    with open(path, encoding="utf-8", errors="ignore") as fh:
+                        source = fh.read()
+                except OSError:
+                    continue
+                if trigger_re.search(source) and not import_re.search(source):
+                    rel = os.path.relpath(path, REPO_ROOT)
+                    findings.append(_emit_finding(rule,
+                        f"{rel}: globs src/app/**/page.tsx without importing from "
+                        f"{canonical_mod} — route-shape resolution must source from "
+                        f"the canonical helper to prevent the auditor/emitter drift "
+                        f"class (#1450 gaps 1-3)"))
+        return findings
+
+
     # ---------------------------------------------------------------------------
     # Cross-file rule dispatch — registry-driven with type + field validation.
     #
@@ -4531,6 +4595,15 @@ def main() -> int:
             {"scan_glob", "exit_pattern", "friction_call_pattern", "pragma"},
             {"exclude_paths", "lookback_lines"},
             True,  # is_strict_aoc — silent-bypass is the bug class itself
+        ),
+        # #1450 gaps 1-3 — route-resolution drift prevention. Fires when a .py
+        # file under .claude/scripts/ globs src/app/**/page.tsx without
+        # importing from derive_pages. Block under --strict-aoc.
+        "route_resolution_canonical_source": (
+            check_route_resolution_canonical_source,
+            {"scan_corpus", "canonical_module", "trigger_pattern"},
+            {"canonical_symbols", "exempt_paths"},
+            True,  # is_strict_aoc — drift produces user-visible auditor/sitemap bugs
         ),
         # #1437 + #1417 — provenance-blind filter class prevention.
         # Soak: is_strict_aoc=False during one PR cycle. Promote to True

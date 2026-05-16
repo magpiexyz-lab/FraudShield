@@ -324,15 +324,27 @@ def derive_page_set_for_design_critic(
             )
             if rel not in entry["source_files"]:
                 entry["source_files"].append(rel)
-            # Also enumerate nested .tsx/.jsx files under this page's folder
+            # Also enumerate nested .tsx/.jsx files under this page's folder.
+            # #1450 gap 2: glob.glob interprets `[seg]` in dynamic-route
+            # folder names (e.g., src/app/portfolio/[slug]/) as a character
+            # class, so the recursive pattern returns [] for dynamic routes.
+            # Escape the folder portion with glob.escape so bracket segments
+            # are treated as literals; the `**/*.<ext>` glob portion stays
+            # unescaped to preserve recursion semantics.
             folder = os.path.dirname(rel)
             if folder:
+                folder_abs = os.path.join(repo_root, folder)
+                escaped = glob.escape(folder_abs)
                 for ext in ("tsx", "jsx"):
+                    # Two passes: (a) same-folder files (no `**` so siblings
+                    # like `portfolio-client.tsx` appear), (b) recursive
+                    # subdir files.
+                    same_dir = glob.glob(os.path.join(escaped, f"*.{ext}"))
                     nested = glob.glob(
-                        os.path.join(repo_root, folder, f"**/*.{ext}"),
+                        os.path.join(escaped, f"**/*.{ext}"),
                         recursive=True,
                     )
-                    for nrel in nested:
+                    for nrel in same_dir + nested:
                         nrel_norm = os.path.relpath(nrel, repo_root).replace(
                             os.sep, "/"
                         )

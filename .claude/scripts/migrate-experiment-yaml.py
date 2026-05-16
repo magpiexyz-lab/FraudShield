@@ -21,11 +21,13 @@ Output: .runs/upgrade-migration-applied.json (audit log)
         Also prints JSON summary to stdout for /upgrade Plan rendering.
 """
 import datetime
-import glob
 import json
 import os
 import re
 import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
+from derive_pages import derive_page_set_for_design_critic  # type: ignore  # noqa: E402
 
 
 def _write_result(d: dict) -> None:
@@ -67,12 +69,14 @@ def main() -> None:
         })
         return
 
-    # Discover pages on disk — constrain heuristic to real candidates.
-    existing_pages = set()
-    for d in glob.glob("src/app/*/page.tsx"):
-        page_name = d.split("/")[-2]
-        if page_name and page_name != "":
-            existing_pages.add(page_name)
+    # Discover pages on disk via the canonical helper — constrain heuristic
+    # to real candidates. (#1450 gaps 1-3: route-shape resolution must source
+    # from derive_pages, not local glob reimplementations.)
+    existing_pages = {
+        entry["name"]
+        for entry in derive_page_set_for_design_critic(data, ".")
+        if entry.get("name")
+    }
 
     suggestions = []
     behaviors = data.get("behaviors") or []

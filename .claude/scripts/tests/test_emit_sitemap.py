@@ -38,6 +38,10 @@ class TestEmitSitemap(unittest.TestCase):
         self.assertNotIn("spec-builder", out)
 
     def test_static_pages_emitted(self):
+        # #1450 gap 3: emit-sitemap now sources route shape from the
+        # filesystem via derive_page_set_for_design_critic, so the test
+        # scaffolds the page.tsx files (matching production where scaffold-pages
+        # writes pages before emit-sitemap runs at state-11c).
         exp = {
             "stack": {"auth": "supabase"},
             "behaviors": [
@@ -46,12 +50,58 @@ class TestEmitSitemap(unittest.TestCase):
             "golden_path": [{"step": "1", "page": "landing"}],
         }
         with tempfile.TemporaryDirectory() as tmp:
+            _mkpage(tmp, "spec-builder")
+            _mkpage(tmp, "portfolio")
+            _mkpage(tmp, "login")
+            _mkpage(tmp, "signup")
             out = emit_sitemap.emit(exp, tmp)
-        # Static pages from derive_scope_pages — alphabetized.
+        # Static pages — sourced from filesystem-resolved routes.
         self.assertIn("/spec-builder", out)
         self.assertIn("/portfolio", out)
         self.assertIn("/login", out)   # auth-derived
         self.assertIn("/signup", out)  # auth-derived
+
+    def test_dynamic_route_emits_concretized_url_not_page_name(self):
+        # #1450 gap 3 regression: experiment.yaml says page=variant but
+        # the filesystem route is /v/[variant]. The OLD emit-sitemap wrote
+        # /variant (wrong); the NEW emit-sitemap writes /v/<test_url>.
+        exp = {"behaviors": [{"id": "b", "pages": ["variant"]}]}
+        with tempfile.TemporaryDirectory() as tmp:
+            _mkpage(tmp, "v/[variant]")
+            out = emit_sitemap.emit(exp, tmp)
+        self.assertNotIn(" `${b}/variant`", out)
+        # The synthetic test URL is whatever derive_pages substitutes for
+        # [variant]; assert the /v/ prefix is present.
+        self.assertIn(" `${b}/v/", out)
+
+    def test_dynamic_route_quote_token(self):
+        # Sister case to gap 1: page=quote → /quote/[token].
+        exp = {"behaviors": [{"id": "b", "pages": ["quote"]}]}
+        with tempfile.TemporaryDirectory() as tmp:
+            _mkpage(tmp, "quote/[token]")
+            out = emit_sitemap.emit(exp, tmp)
+        # No bare /quote entry — must be concretized.
+        self.assertNotRegex(out, r"`\$\{b\}/quote`")
+        self.assertIn(" `${b}/quote/", out)
+
+    def test_no_duplicate_portfolio_slug_entries(self):
+        # #1450 gap 3 second-half: portfolio-detail historically produced
+        # duplicate /portfolio/<slug> entries. With dedup-by-URL and a
+        # single fixture slug, only one entry should appear.
+        exp = {
+            "behaviors": [
+                {"id": "b", "pages": ["portfolio-detail"],
+                 "anonymous_allowed": True,
+                 "dynamic_segments": {"slug": ["alpha"]}},
+            ],
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            _mkpage(tmp, "portfolio/[slug]")
+            out = emit_sitemap.emit(exp, tmp)
+        # No literal-bracket leak.
+        self.assertNotIn("[slug]", out)
+        # /portfolio/alpha should appear exactly once.
+        self.assertEqual(out.count("/portfolio/alpha`"), 1)
 
     def test_dynamic_segment_urls_emitted_when_route_exists(self):
         exp = {

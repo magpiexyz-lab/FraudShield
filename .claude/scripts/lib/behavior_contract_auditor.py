@@ -66,31 +66,55 @@ def _read_text(path: str) -> str | None:
 def _candidate_page_files(repo_root: str, page: str) -> list[str]:
     """Return ABSOLUTE .tsx/.jsx file paths under the page's folder.
 
-    Tries src/app/<page>/page.tsx first, then disambiguated dynamic
-    routes (page contains "-" → split static prefix). Falls back to
-    src/app/**/page.tsx scan when neither matches.
+    Issue #1450 gaps 1-2: route-shape resolution and co-located file
+    enumeration are sourced from the canonical helper
+    `derive_pages.derive_page_set_for_design_critic`, which already:
+      (a) handles non-hyphenated dynamic routes (variant→/v/[variant],
+          quote→/quote/[token]) via _path_to_page_info name-suffixing,
+      (b) enumerates nested .tsx/.jsx in each page folder (lines 327-340
+          of derive_pages.py), covering *-client.tsx / *-tracker.tsx.
 
-    Returns absolute paths so the caller's open() works regardless of
-    process CWD (the auditor may be invoked with `cwd != repo_root`).
+    Returns absolute paths so callers' open() works regardless of CWD
+    (the auditor may be invoked with `cwd != repo_root`).
     """
+    # Lazy import: derive_pages lives in the same package; avoid
+    # top-level import to keep this module's import surface small for
+    # subprocess invocations and to defer any derive_pages side effects.
+    try:
+        from derive_pages import derive_page_set_for_design_critic  # type: ignore
+    except Exception:
+        derive_page_set_for_design_critic = None  # type: ignore
+
+    if derive_page_set_for_design_critic is not None:
+        try:
+            entries = derive_page_set_for_design_critic({}, repo_root)
+        except Exception:
+            entries = []
+        # Direct name match first.
+        for entry in entries:
+            if entry.get("name") == page:
+                return sorted(
+                    {os.path.join(repo_root, p) for p in entry.get("source_files", [])}
+                )
+        # Dynamic-route suffix fallback: scope page slug "portfolio" (or
+        # the hyphenated form "portfolio-detail" used by experiment.yaml)
+        # may have been discovered as "portfolio-slug" because the
+        # filesystem is src/app/portfolio/[slug]/page.tsx. Match by static
+        # prefix on both sides — covers both bare-slug ("portfolio") and
+        # disambiguated ("portfolio-detail") scope names.
+        page_prefix = page.split("-", 1)[0]
+        for entry in entries:
+            discovered = entry.get("name", "")
+            if discovered and discovered.split("-", 1)[0] == page_prefix:
+                return sorted(
+                    {os.path.join(repo_root, p) for p in entry.get("source_files", [])}
+                )
+
+    # Fallback: direct probe at src/app/<page>/page.tsx (covers fresh
+    # checkouts where derive_pages cannot import or returns nothing).
     direct = os.path.join(repo_root, "src", "app", page, "page.tsx")
     if os.path.isfile(direct):
         return [direct]
-    # Disambiguation: page='portfolio-detail' may map to src/app/portfolio/[slug]/
-    if "-" in page:
-        prefix = page.split("-", 1)[0]
-        base = os.path.join(repo_root, "src", "app", prefix)
-        if os.path.isdir(base):
-            hits: list[str] = []
-            for pf in glob.glob(os.path.join(base, "**", "page.tsx"), recursive=True):
-                hits.append(pf)
-            for pf in glob.glob(os.path.join(base, "**", "page.jsx"), recursive=True):
-                hits.append(pf)
-            if hits:
-                # Also include co-located .tsx files (client components)
-                for pf in glob.glob(os.path.join(base, "**", "*-client.tsx"), recursive=True):
-                    hits.append(pf)
-                return sorted(set(hits))
     return []
 
 

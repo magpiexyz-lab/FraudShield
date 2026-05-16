@@ -33,7 +33,11 @@ import sys
 from typing import Any
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from derive_pages import derive_scope_pages, dynamic_public_pages  # type: ignore
+from derive_pages import (  # type: ignore
+    derive_page_set_for_design_critic,
+    derive_scope_pages,
+    dynamic_public_pages,
+)
 
 
 _SITEMAP_TEMPLATE = '''import type {{ MetadataRoute }} from 'next';
@@ -64,26 +68,45 @@ def _entry(path: str, priority: float) -> str:
 
 
 def emit(experiment: dict[str, Any], repo_root: str = ".") -> str:
-    """Render src/app/sitemap.ts contents as a string."""
+    """Render src/app/sitemap.ts contents as a string.
+
+    Issue #1450 gap 3: route shape is sourced from
+    derive_page_set_for_design_critic (the canonical filesystem walker
+    that returns each page's concretized `test_url`). Previously the
+    emitter wrote page-name-as-URL entries (e.g., /variant), producing
+    invalid URLs when the actual route was /v/[variant]. The canonical
+    helper hands us the resolved URL directly.
+
+    For multi-value dynamic pages (e.g., portfolio with 3 fixture slugs),
+    dynamic_public_pages still enumerates each value — its output is
+    unioned with the canonical helper's test_urls and deduplicated.
+    """
     entries: list[str] = []
+    seen_urls: set[str] = set()
+
+    def _add(url: str | None, priority: float) -> None:
+        if not url or url in seen_urls:
+            return
+        seen_urls.add(url)
+        entries.append(_entry(url, priority))
 
     # Landing root — always present.
-    entries.append(_entry("/", 1.0))
+    _add("/", 1.0)
 
-    # Static scope pages (excludes landing — already added above).
-    scope = derive_scope_pages(experiment)
-    for page in scope:
-        entries.append(_entry(f"/{page}", 0.7))
-
-    # Dynamic-segment URL instances (#1387 dynamic_public_pages).
-    # When repo_root has no src/app/ tree (e.g., test fixture), entries may
-    # carry route_pattern=None / concrete_url=None — skip those.
-    dyn = dynamic_public_pages(experiment, repo_root)
-    for entry in dyn:
-        url = entry.get("concrete_url")
-        if not url:
+    # Canonical page set: one entry per page, with route resolved from
+    # filesystem (handles non-hyphenated dynamic routes, brackets
+    # substituted with synthetic IDs). Skip landing — already added.
+    for entry in derive_page_set_for_design_critic(experiment, repo_root):
+        if entry.get("name") == "landing":
             continue
-        entries.append(_entry(url, 0.6))
+        _add(entry.get("test_url"), 0.7)
+
+    # Multi-value dynamic pages: enumerate every concretized URL per
+    # segment value declared in experiment.yaml fixture data. Dedup
+    # against canonical helper's test_url so we don't double-list the
+    # single synthetic-ID URL.
+    for entry in dynamic_public_pages(experiment, repo_root):
+        _add(entry.get("concrete_url"), 0.6)
 
     return _SITEMAP_TEMPLATE.format(entries="\n".join(entries))
 

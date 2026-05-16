@@ -575,6 +575,17 @@
       "description": "#1349 + #1350 — every `exit 0` / `sys.exit(0)` in a PreToolUse hook must EITHER (a) be preceded within 10 lines by a friction-log call (_write_hook_friction / deny / deny_errors / handle_validation) OR (b) carry a `# friction-skip: <reason>` pragma on the same line or the directly preceding line. Closes Issues #1349 + #1350 silent-bypass class. Regex covers all forms: bare `exit 0`, `[[ ... ]] && exit 0`, `... || exit 0`, and Python `sys.exit(0)`. lib-core.sh excluded because handle_validation:170 IS the canonical fail-open implementation (PARSE_ERROR → exit 0)."
     },
     {
+      "id": "route-resolution-canonical-source",
+      "type": "route_resolution_canonical_source",
+      "severity": "block",
+      "scan_corpus": [".claude/scripts/**/*.py"],
+      "canonical_module": "derive_pages",
+      "canonical_symbols": ["derive_page_set_for_design_critic", "_path_to_page_info", "derive_scope_pages", "dynamic_public_pages"],
+      "exempt_paths": [".claude/scripts/lib/derive_pages.py", ".claude/scripts/tests/**"],
+      "trigger_pattern": "glob\\.glob\\([^)]*src/app[^)]*page\\.tsx",
+      "description": "#1450 gaps 1-3 — Python scripts that resolve page-name → route-path must source page enumeration from derive_pages.py. Detects reimplementations of route-shape resolution that drift from the canonical helper. Fires when a .py file under .claude/scripts/**/*.py contains a glob.glob() pattern referencing both src/app and page.tsx AND does not import from derive_pages. Pragmatic regex-based detection — pure AST detection deferred."
+    },
+    {
       "id": "design-agents-hard-gate-parity",
       "type": "agent_registry_predicate_parity",
       "severity": "block",
