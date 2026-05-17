@@ -1,8 +1,8 @@
 # STATE x0a: LOAD_GA_CSV
 
 Operator-supplied CSV is the sole source of paid-click data. No browser scrape,
-no silent-skip. If the CSV is missing or malformed, this state HALTS with
-explicit instructions and `/iterate --cross` cannot proceed.
+no silent-skip. If the CSV is missing, stale (>24h old), or malformed, this
+state HALTS with explicit instructions and `/iterate --cross` cannot proceed.
 
 ## Why this state exists
 
@@ -28,18 +28,23 @@ that masqueraded as real data. CSV export is the only supported source.
 
 ### Step 0: Blocking CSV gate
 
-Check `.runs/iterate-cross-ga-clicks.csv` and validate its header. If absent
-or missing required columns, HALT with the export instructions below. State
-does not advance until the operator provides a valid CSV and re-runs
-`/iterate --cross`.
+Check `.runs/iterate-cross-ga-clicks.csv`: file must exist, be ≤24h old, and
+have a valid header. If any check fails, HALT with the export instructions
+below. State does not advance until the operator provides a fresh, valid CSV
+and re-runs `/iterate --cross`.
+
+The 24h freshness gate prevents silent reuse of stale paid-click data across
+sessions (`.runs/` is gitignored and never auto-cleaned, so a CSV from days
+ago would otherwise flow through unnoticed and produce verdicts that don't
+match current ad spend).
 
 ```bash
 CSV=.runs/iterate-cross-ga-clicks.csv
+MAX_AGE_HOURS=24
 WINDOW_DAYS=$(python3 -c "import json; print(json.load(open('.runs/iterate-cross-context.json')).get('window_days', 90))")
 
-if [ ! -f "$CSV" ]; then
+print_export_instructions() {
   cat >&2 <<EOF
-STOP: /iterate --cross requires a Google Ads click CSV.
 
 How to export (~30 seconds):
 
@@ -50,14 +55,28 @@ How to export (~30 seconds):
   3. Make sure the columns include at minimum: Campaign, Clicks
      (recommended: + Account, Conversions, Impr.)
   4. Click Download icon -> CSV
-  5. Save the file as: .runs/iterate-cross-ga-clicks.csv
+  5. Save the file as: .runs/iterate-cross-ga-clicks.csv (overwrite if present)
   6. Re-run /iterate --cross
 
-The skill cannot produce trustworthy verdicts without paid-click data.
+The skill cannot produce trustworthy verdicts without fresh paid-click data.
 PostHog visitor counts undercount paid traffic by 20-65% and are blind to
 deploys with broken event tracking. CSV path makes verdicts reflect real
 ad spend.
 EOF
+}
+
+if [ ! -f "$CSV" ]; then
+  echo "STOP: /iterate --cross requires a Google Ads click CSV." >&2
+  print_export_instructions
+  exit 1
+fi
+
+AGE_HOURS=$(python3 -c "import os, time; print(int((time.time() - os.path.getmtime('$CSV')) / 3600))")
+if [ "$AGE_HOURS" -gt "$MAX_AGE_HOURS" ]; then
+  echo "STOP: GA CSV is ${AGE_HOURS}h old (max ${MAX_AGE_HOURS}h)." >&2
+  echo "File: $CSV" >&2
+  echo "Stale paid-click data produces unreliable verdicts -- re-export from Google Ads." >&2
+  print_export_instructions
   exit 1
 fi
 
