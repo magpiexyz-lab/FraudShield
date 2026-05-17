@@ -87,7 +87,7 @@ if not missing and not incomplete: print('  All scaffold agents completed with t
 
 **VERIFY:**
 ```bash
-grep -q 'phase2-wire' .runs/current-plan.md
+grep -q 'Merged checkpoint validation passed' .runs/current-plan.md
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

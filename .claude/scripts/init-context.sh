@@ -71,11 +71,17 @@ else:
       # Merge extra fields into existing context, protecting base infrastructure fields.
       # skill is protected: callers must not override identity (the #941 bug source).
       # Q-score attribution uses the separate attributed_to field.
-      printf '%s' "$EXTRA" | python3 -c "
+      #
+      # Issue #1459: the merge case routes through the canonical writer.
+      # At this point $CTX already exists with run_id (the has_identity
+      # branch), so write-gate-artifact.sh can derive run_id via its
+      # OVERRIDE_SKILL fallback (see write-gate-artifact.sh:93). The
+      # canonical writer re-stamps {skill, run_id, written_at}.
+      MERGED_PAYLOAD=$(printf '%s' "$EXTRA" | python3 -c "
 import json, sys
 ctx = json.load(open('$CTX'))
 extra = json.loads(sys.stdin.read())
-protected = {'branch', 'timestamp', 'run_id', 'skill'}
+protected = {'branch', 'timestamp', 'run_id', 'skill', 'written_at'}
 dropped = []
 for k, v in extra.items():
     if k in protected:
@@ -83,9 +89,13 @@ for k, v in extra.items():
         continue
     ctx[k] = v
 if dropped:
-    sys.stderr.write('WARN: init-context.sh — ignored protected fields from extra: ' + ','.join(dropped) + ' (skill/branch/timestamp/run_id are immutable per #941; use attributed_to for Q-score attribution)\n')
-json.dump(ctx, open('$CTX', 'w'))
-"
+    sys.stderr.write('WARN: init-context.sh — ignored protected fields from extra: ' + ','.join(dropped) + ' (skill/branch/timestamp/run_id/written_at are immutable per #941/#1459; use attributed_to for Q-score attribution)\n')
+print(json.dumps(ctx))
+")
+      bash "$PROJECT_DIR/.claude/scripts/lib/write-gate-artifact.sh" \
+        --path "$CTX" \
+        --payload "$MERGED_PAYLOAD" \
+        --skill "$SKILL"
       exit 0
     fi
   fi
@@ -112,13 +122,22 @@ BRANCH="$(git branch --show-current)"
 # Parent/ancestors are derived by lifecycle-init.sh --embed by reading the
 # parent's context file directly (never trust a CLI-arg chain — R2 C8).
 if [[ -z "$EXTRA" || "$EXTRA" == "{}" ]]; then
-  # Pure bash — no python3 needed
+  # Pure bash — no python3 needed. `written_at` is included so the
+  # fresh-create path emits the full GRAIM v2 C1 identity triad
+  # (skill, run_id, written_at) — see issue #1459. The canonical writer
+  # cannot stamp written_at here because the context file does not yet
+  # exist (chicken-and-egg with write-gate-artifact.sh's identity lookup).
+  # `init-context.sh` is enumerated in gate-artifact-writer-enforcement's
+  # allowed_writers list as the sanctioned bootstrap-writer for context
+  # files; this comment is the in-code anchor for that exemption.
   cat > "$CTX" << CTXEOF
-{"skill":"$SKILL","branch":"$BRANCH","timestamp":"$TS","run_id":"$SKILL-$TS","completed_states":[],"parent":null,"ancestors":[],"attributed_to":"$SKILL","completed":false}
+{"skill":"$SKILL","branch":"$BRANCH","timestamp":"$TS","run_id":"$SKILL-$TS","completed_states":[],"parent":null,"ancestors":[],"attributed_to":"$SKILL","completed":false,"written_at":"$TS"}
 CTXEOF
 else
   # Merge base + extra via python3. skill/branch/timestamp/run_id are protected
   # (issue #941: callers must not override identity via extra_json).
+  # `written_at` is included in the base schema for #1459 (GRAIM v2 C1
+  # identity-triad invariant on fresh-create).
   printf '%s' "$EXTRA" | python3 -c "
 import json, sys
 base = {
@@ -131,9 +150,10 @@ base = {
     'ancestors': [],
     'attributed_to': '$SKILL',
     'completed': False,
+    'written_at': '$TS',
 }
 extra = json.loads(sys.stdin.read())
-protected = {'branch', 'timestamp', 'run_id', 'skill'}
+protected = {'branch', 'timestamp', 'run_id', 'skill', 'written_at'}
 dropped = []
 for k, v in extra.items():
     if k in protected:
@@ -141,7 +161,7 @@ for k, v in extra.items():
         continue
     base[k] = v
 if dropped:
-    sys.stderr.write('WARN: init-context.sh — ignored protected fields from extra: ' + ','.join(dropped) + ' (skill/branch/timestamp/run_id are immutable per #941; use attributed_to for Q-score attribution)\n')
+    sys.stderr.write('WARN: init-context.sh — ignored protected fields from extra: ' + ','.join(dropped) + ' (skill/branch/timestamp/run_id/written_at are immutable per #941/#1459; use attributed_to for Q-score attribution)\n')
 json.dump(base, open('$CTX', 'w'))
 "
 fi

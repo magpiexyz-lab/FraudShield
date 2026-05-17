@@ -86,8 +86,10 @@ class TestEmitSitemap(unittest.TestCase):
 
     def test_no_duplicate_portfolio_slug_entries(self):
         # #1450 gap 3 second-half: portfolio-detail historically produced
-        # duplicate /portfolio/<slug> entries. With dedup-by-URL and a
-        # single fixture slug, only one entry should appear.
+        # duplicate /portfolio/<slug> entries. Updated post-#1467 to assert
+        # against the new emission shape: slug literals live in a const
+        # fixture array (emitted once) and URLs are constructed at runtime
+        # via .map((slug) => ({ url: `${b}/portfolio/${slug}`, ... })).
         exp = {
             "behaviors": [
                 {"id": "b", "pages": ["portfolio-detail"],
@@ -100,10 +102,19 @@ class TestEmitSitemap(unittest.TestCase):
             out = emit_sitemap.emit(exp, tmp)
         # No literal-bracket leak.
         self.assertNotIn("[slug]", out)
-        # /portfolio/alpha should appear exactly once.
-        self.assertEqual(out.count("/portfolio/alpha`"), 1)
+        # Slug literal appears exactly once in the fixture array.
+        self.assertEqual(out.count('"alpha"'), 1)
+        # The .map iteration over the fixture array appears exactly once.
+        self.assertEqual(out.count(".map((slug) =>"), 1)
+        # Template-literal URL template appears in the .map() body.
+        self.assertIn("/portfolio/${slug}", out)
 
     def test_dynamic_segment_urls_emitted_when_route_exists(self):
+        # Post-#1467: behavior_contract_auditor._sitemap_has_iteration
+        # requires the sitemap to expand dynamic fixtures via
+        # .map / for / forEach with the contract segment as the arrow
+        # parameter. The slug literals MUST also appear (auditor
+        # _sitemap_contains_slug greps for slug strings anywhere in src).
         exp = {
             "behaviors": [
                 {"id": "b-13", "pages": ["portfolio-detail"],
@@ -114,11 +125,17 @@ class TestEmitSitemap(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             _mkpage(tmp, "portfolio/[slug]")
             out = emit_sitemap.emit(exp, tmp)
-        self.assertIn("/portfolio/alpha", out)
-        self.assertIn("/portfolio/beta", out)
+        # Slug literals are present in the fixture array.
+        self.assertIn('"alpha"', out)
+        self.assertIn('"beta"', out)
+        # The .map() iteration constructs the per-slug URLs at runtime.
+        self.assertIn(".map((slug) =>", out)
+        self.assertIn("/portfolio/${slug}", out)
 
     def test_dynamic_segment_skipped_when_route_absent(self):
-        # No src/app/portfolio/[slug] → concrete_url is None → skipped.
+        # No src/app/portfolio/[slug] → concrete_url is None → no
+        # fixture array emitted. The slug literal MUST NOT appear (no
+        # fallback emission).
         exp = {
             "behaviors": [
                 {"id": "b-13", "pages": ["portfolio-detail"],
@@ -128,7 +145,8 @@ class TestEmitSitemap(unittest.TestCase):
         }
         with tempfile.TemporaryDirectory() as tmp:
             out = emit_sitemap.emit(exp, tmp)
-        self.assertNotIn("/portfolio/alpha", out)
+        self.assertNotIn('"alpha"', out)
+        self.assertNotIn(".map((slug) =>", out)
 
     def test_deterministic_output(self):
         # Same input → byte-identical output.

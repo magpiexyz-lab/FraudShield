@@ -33,7 +33,7 @@ You are a world-champion of persuasion. Your landing page is the absolute limit 
 - If `src/app/v/[variant]/page.tsx` exists: variant routing is active. Create `src/components/landing-content.tsx` only -- do NOT create `src/app/page.tsx`.
 - **Cross-agent fixture contract (#1069):** if you emit an `href` to a dynamic-segment route owned by another agent (any route matching `/<owner-base>/<slug-or-id>`, e.g., `/portfolio/<case-slug>`, `/projects/<id>`, `/catalog/<sku>`), you MUST read that route's canonical fixture file (typically `src/app/<owner-base>/<entities>.ts` or `.../cases.ts`, `.../items.ts`) and reference its identifiers verbatim. Do NOT fabricate identifiers for routes you do not own. If the canonical fixture file does not yet exist when you run (concurrent B2 fan-out), pick identifiers from the behavior's demo-data contract in experiment.yaml and cross-check after all B2 agents complete. This gap used to 404 every cross-page link from landing featured-content strips to portfolio/projects detail pages (see `.claude/patterns/template-coherence-rules.json` `internal_href_validity` rule as post-scaffold defense-in-depth).
 
-> These criteria are evaluated from source code only — no build or screenshot is required.
+> The 7 Persuasion Self-Check dimensions above are evaluated from source code only. Render-time correctness (HTML entities in rendered text, baseline alignment, mobile overflow) is covered separately by Step 3c "Rendered self-audit (MANDATORY before trace)" in `.claude/procedures/scaffold-landing.md`. Screenshots are required by that step.
 
 ## Persuasion Self-Check (verify before shipping)
 

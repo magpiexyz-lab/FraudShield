@@ -1030,6 +1030,29 @@ await page.goto("/protected-page", { waitUntil: "networkidle" });
 
 Alternatively, assert on the redirect destination with `page.waitForURL(/\/login/)` instead of asserting on page content.
 
+### When writing e2e selectors for CTA buttons or marketing copy elements
+
+Use `data-testid` or purpose-specific `data-*` attributes (e.g., `data-preview-cta`, `data-pricing-cta`) as the primary selector for CTAs and marketing copy elements, not visible text content. Text-content selectors (`getByText(...)`, `page.locator('text=...')`) break on every copy change — including A/B test rewrites, marketing iteration, and legal/UPL copy adjustments — causing cascading e2e failures unrelated to functional regressions.
+
+```tsx
+import { Button } from "@/components/ui/button";
+
+// Component
+<Button data-preview-cta>Lock in early-bird pricing</Button>
+
+// Test — stable across copy changes
+await expect(page.locator("[data-preview-cta]")).toBeVisible();
+await page.locator("[data-preview-cta]").click();
+```
+
+If you need to assert that specific copy is visible (e.g., to verify the variant rendered the right headline), do so as a secondary `toHaveText()` assertion on a node already located by its `data-*` attribute:
+
+```tsx
+await expect(page.locator("[data-preview-cta]")).toHaveText(/lock in early-bird/i);
+```
+
+Attribute selectors decouple test stability from marketing iteration — a one-PR rewrite of the CTA from `"Lock in founding rate"` to `"Lock in early-bird pricing"` would otherwise break 6+ e2e tests across `funnel.spec.ts` and `behaviors.spec.ts`. Apply this rule to landing-page CTAs, pricing-table CTAs, signup/login submit buttons, and any element whose primary identity is its visible copy.
+
 ## PR Instructions
 - Install [Docker Desktop](https://www.docker.com/products/docker-desktop/) if not already installed
 - Start local Supabase: `make supabase-start` (now delegates to `bash .claude/scripts/ensure-supabase-start.sh`, which also writes the ownership marker — safe for both manual dev and in-skill use)

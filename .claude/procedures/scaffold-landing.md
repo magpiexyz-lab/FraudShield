@@ -101,6 +101,24 @@ Generate a JSON-LD `<script type="application/ld+json">` block for the landing p
 - Properties: `name` (display name per messaging.md Section E), `description` (meta description per Section E), `url` (from deploy manifest `canonical_url`, or `/` if not yet deployed)
 - For web-app: embed in layout.tsx body. For service/cli: embed in the inline HTML `<head>`
 
+### 3c. Rendered self-audit (MANDATORY before trace)
+
+Before writing the trace, the agent MUST render the landing page and audit its own output. Source-only inspection cannot catch JSX-vs-string-literal entity bugs (e.g., `"don&apos;t bill"` rendering literally as `don&apos;t` instead of `don't`) or layout-level baseline-alignment defects. These are obvious in one screenshot but invisible in source.
+
+Procedure:
+
+1. Start (or reuse) the dev server. Take screenshots at desktop (1280×800) and mobile (390×844) viewports. For variant-bearing experiments, screenshot the default variant AND every `/v/<slug>` variant route declared in experiment.yaml.
+2. Read each screenshot and look for:
+   - **HTML entity literals in rendered text** — literal `&amp;`, `&apos;`, `&quot;`, `&#NN;` sequences. The JSX runtime never renders these as text; their presence indicates an entity was embedded inside a JS string literal rather than as JSX text.
+   - **Baseline misalignment** in stat-card-shape components (a small caption baselined with the bottom of a large tabular numeral instead of stacked below it).
+   - **Horizontal overflow at mobile viewport** — content spilling past the viewport width.
+   - **Broken `aspect-video` containers**, broken image fallbacks, missing alt text on visible images.
+3. Add the following fields to the trace JSON:
+   - `screenshots_taken: [{ viewport: "desktop"|"mobile", variant: "<slug or 'default'>", path: "<path>" }]` — required; at minimum one entry per viewport-variant pair.
+   - `rendered_self_check_findings: [...]` — required; empty array is acceptable when no issues are found, but the field must exist so downstream consumers can distinguish "audited and clean" from "silently skipped."
+
+Without `screenshots_taken`, the canonical writer must not accept `verdict: clean`. The `Persuasion Self-Check` dimensions (custom palette, typography hierarchy, etc.) remain source-evaluable as before — this rendered audit covers a strictly different failure class (render-time bugs that source inspection cannot detect).
+
 ### 4. Wire analytics
 
 If `stack.analytics` is present and not already included:

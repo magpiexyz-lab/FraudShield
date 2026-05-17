@@ -53,18 +53,29 @@ function base() {{
 export default function sitemap(): MetadataRoute.Sitemap {{
   const now = new Date();
   const b = base();
-  return [
+{fixtures}  return [
 {entries}
   ];
 }}
 '''
 
 
-def _entry(path: str, priority: float) -> str:
+def _literal_entry(path: str, priority: float) -> str:
     return (
         f"    {{ url: `${{b}}{path}`, lastModified: now, "
-        f"changeFrequency: 'weekly', priority: {priority:.1f} }},"
+        f"changeFrequency: 'weekly' as const, priority: {priority:.1f} }},"
     )
+
+
+def _fixture_const_name(page: str, segment: str) -> str:
+    """Return a TS const name for a (page, segment) fixture array.
+
+    E.g., ('portfolio-slug', 'slug') -> 'PORTFOLIO_SLUG_FIXTURES'.
+    E.g., ('v-variant', 'variant')   -> 'V_VARIANT_FIXTURES'.
+    """
+    import re as _re
+    slug = _re.sub(r"[^a-zA-Z0-9]+", "_", page).strip("_").upper()
+    return f"{slug}_FIXTURES"
 
 
 def emit(experiment: dict[str, Any], repo_root: str = ".") -> str:
@@ -77,38 +88,97 @@ def emit(experiment: dict[str, Any], repo_root: str = ".") -> str:
     invalid URLs when the actual route was /v/[variant]. The canonical
     helper hands us the resolved URL directly.
 
-    For multi-value dynamic pages (e.g., portfolio with 3 fixture slugs),
-    dynamic_public_pages still enumerates each value — its output is
-    unioned with the canonical helper's test_urls and deduplicated.
+    Issue #1467: behavior_contract_auditor._sitemap_has_iteration (in
+    behavior_contract_auditor.py:393-407) builds its regex from
+    re.escape(<segment>) where <segment> is the contract's segment
+    identifier (e.g., 'variant', 'slug', 'id', 'token'). Auditor accepts
+    a sitemap.ts containing `.map((<segment>) => ...)` / `for (const
+    <segment> of ...)` / `.forEach((<segment>) => ...)` and rejects
+    sitemaps that emit only literal { url: ... } entries per fixture.
+
+    To satisfy both _sitemap_has_iteration (auditor) and _sitemap_contains_slug
+    (which greps for slug literals anywhere in the file), this emitter
+    now groups dynamic_public_pages() entries by (page, segment) and
+    emits a per-group const fixture array plus a spread-map call. The
+    `.map()` arrow parameter is the segment identifier (e.g.,
+    `.map((slug) => ...)`, `.map((variant) => ...)`) so the auditor's
+    re.escape(segment) regex matches by construction. Slug literals
+    appear inside the const fixture array, satisfying
+    _sitemap_contains_slug.
+
+    Static-route entries (canonical page set) remain literal { url: ... }
+    objects — the auditor does not require iteration for non-dynamic
+    pages.
     """
-    entries: list[str] = []
+    static_entries: list[str] = []
     seen_urls: set[str] = set()
 
-    def _add(url: str | None, priority: float) -> None:
+    def _add_static(url: str | None, priority: float) -> None:
         if not url or url in seen_urls:
             return
         seen_urls.add(url)
-        entries.append(_entry(url, priority))
+        static_entries.append(_literal_entry(url, priority))
 
     # Landing root — always present.
-    _add("/", 1.0)
+    _add_static("/", 1.0)
 
     # Canonical page set: one entry per page, with route resolved from
-    # filesystem (handles non-hyphenated dynamic routes, brackets
-    # substituted with synthetic IDs). Skip landing — already added.
+    # filesystem. Skip landing (already added).
     for entry in derive_page_set_for_design_critic(experiment, repo_root):
         if entry.get("name") == "landing":
             continue
-        _add(entry.get("test_url"), 0.7)
+        _add_static(entry.get("test_url"), 0.7)
 
-    # Multi-value dynamic pages: enumerate every concretized URL per
-    # segment value declared in experiment.yaml fixture data. Dedup
-    # against canonical helper's test_url so we don't double-list the
-    # single synthetic-ID URL.
+    # Multi-value dynamic pages: group by (page, segment), emit a
+    # const fixture array + .map() iteration block per group. Pre-mark
+    # all concrete URLs as seen so the iteration entries are not also
+    # emitted as literals by the dedup logic.
+    dynamic_groups: dict[tuple[str, str], dict[str, Any]] = {}
     for entry in dynamic_public_pages(experiment, repo_root):
-        _add(entry.get("concrete_url"), 0.6)
+        concrete = entry.get("concrete_url")
+        if not concrete:
+            continue
+        seen_urls.add(concrete)
+        page = entry.get("page") or ""
+        segment = entry.get("segment") or ""
+        route_pattern = entry.get("route_pattern") or ""
+        value = entry.get("value")
+        if not page or not segment or not route_pattern or value is None:
+            continue
+        key = (page, segment)
+        grp = dynamic_groups.setdefault(key, {
+            "page": page,
+            "segment": segment,
+            "route_pattern": route_pattern,
+            "values": [],
+        })
+        if value not in grp["values"]:
+            grp["values"].append(value)
 
-    return _SITEMAP_TEMPLATE.format(entries="\n".join(entries))
+    fixture_decls: list[str] = []
+    dynamic_entries: list[str] = []
+    for (page, segment), grp in sorted(dynamic_groups.items()):
+        const_name = _fixture_const_name(page, segment)
+        values_repr = ", ".join(f'"{v}"' for v in grp["values"])
+        fixture_decls.append(
+            f"  const {const_name} = [{values_repr}] as const;"
+        )
+        # Convert "/portfolio/[slug]" -> "/portfolio/${slug}" template-literal form.
+        # The arrow parameter MUST equal `segment` so the auditor's
+        # re.escape(segment) regex matches the .map() call site.
+        url_template = grp["route_pattern"].replace(
+            f"[{segment}]", "${" + segment + "}"
+        )
+        dynamic_entries.append(
+            "    ..." + const_name
+            + f".map(({segment}) => ({{ url: `${{b}}{url_template}`, "
+            "lastModified: now, "
+            "changeFrequency: 'weekly' as const, priority: 0.6 })),"
+        )
+
+    entries_block = "\n".join(static_entries + dynamic_entries)
+    fixtures_block = ("\n".join(fixture_decls) + "\n") if fixture_decls else ""
+    return _SITEMAP_TEMPLATE.format(entries=entries_block, fixtures=fixtures_block)
 
 
 def _load_experiment(path: str) -> dict[str, Any]:

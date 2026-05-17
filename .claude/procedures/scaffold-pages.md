@@ -72,6 +72,37 @@ The score sub-object enables design-critic Stage 0 fast-path to consume the agen
 - Ensure layout.tsx `metadata` export uses messaging.md Section E derivation: `title` = meta title, `description` = meta description, `openGraph` = `{ title, description }`
 
 #### Pages (Step 4)
+
+### Page.tsx export constraint (Next.js requirement)
+
+Next.js page route files (`src/app/<page>/page.tsx`, `src/app/<page>/[seg]/page.tsx`) allow ONLY these named exports:
+
+- `default` (the page component)
+- `generateStaticParams`, `generateMetadata`, `metadata`
+- `dynamic`, `dynamicParams`, `revalidate`, `fetchCache`, `runtime`, `preferredRegion`, `maxDuration`
+
+ANY other `export const` / `export function` / `export type` from `page.tsx` fails the build with `"<name>" is not a valid Next.js entry export value. [71002]`. This includes the JS-idiomatic pattern of exporting a fixture array for `generateStaticParams` to reuse:
+
+```tsx
+// WRONG — fails the build (export of non-route symbol)
+export const SAMPLE_TOKENS = ["demo-fixture-token"] as const;
+export function generateStaticParams() {
+  return SAMPLE_TOKENS.map((token) => ({ token }));
+}
+
+// CORRECT (a) — declare without `export` if used only locally
+const SAMPLE_TOKENS = ["demo-fixture-token"] as const;
+export function generateStaticParams() {
+  return SAMPLE_TOKENS.map((token) => ({ token }));
+}
+
+// CORRECT (b) — move to a colocated non-page file when it must be importable
+// src/app/<page>/fixtures.ts
+//   export const SAMPLE_TOKENS = ["demo-fixture-token"] as const;
+// src/app/<page>/page.tsx
+//   import { SAMPLE_TOKENS } from "./fixtures";
+```
+
 For each page in the canonical SET — compute via:
 
 ```bash

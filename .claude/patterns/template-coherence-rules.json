@@ -112,11 +112,11 @@
       "type": "gate_artifact_writer_enforcement",
       "severity": "warn",
       "manifest_path": ".claude/patterns/gate-readable-artifacts-canonical.json",
-      "allowed_writers": [],
+      "allowed_writers": [".claude/scripts/init-context.sh"],
       "scan_corpus": [".claude/skills", ".claude/agents", ".claude/patterns", ".claude/procedures", ".claude/scripts"],
       "convention_doc": ".claude/patterns/agent-output-contract.md",
       "_transitional_note": "Severity=warn during soak window. Flipped to block in chore/canonical-writer-migration-deny PR after the soak window confirms zero new-code-path entries in .runs/hook-friction.jsonl from gate-artifact-bash-write-guard.sh.",
-      "description": "Issue #1299: writes to gate-readable manifest paths (declared in gate-readable-artifacts-canonical.json) must go through .claude/scripts/lib/write-gate-artifact.sh so {skill,run_id,written_at} stamping is automatic. Scans state-files, agent docs, patterns, procedures, and helper scripts (.sh/.py) for write-syntax tokens (with open(path,'w'|'a'), json.dump-with-open, > path, tee path, cat <<EOF > path). Read-syntax (open(...,'r'), json.load, os.path.exists, [-f path], [-e path]) is allowlisted at line level to avoid the ~455-instance false-positive baseline (solve-critic R2-C1). Complemented at runtime by .claude/hooks/gate-artifact-bash-write-guard.sh."
+      "description": "Issue #1299: writes to gate-readable manifest paths (declared in gate-readable-artifacts-canonical.json) must go through .claude/scripts/lib/write-gate-artifact.sh so {skill,run_id,written_at} stamping is automatic. Scans state-files, agent docs, patterns, procedures, and helper scripts (.sh/.py) for write-syntax tokens (with open(path,'w'|'a'), json.dump-with-open, > path, tee path, cat <<EOF > path). Read-syntax (open(...,'r'), json.load, os.path.exists, [-f path], [-e path]) is allowlisted at line level to avoid the ~455-instance false-positive baseline (solve-critic R2-C1). Complemented at runtime by .claude/hooks/gate-artifact-bash-write-guard.sh. ALLOWED_WRITERS: .claude/scripts/init-context.sh is the co-canonical writer for .runs/<skill>-context.json (issue #1459) — it CREATES the run_id that write-gate-artifact.sh reads to stamp identity on every other gate-readable artifact. Chicken-and-egg with the canonical writer (whose identity-lookup requires the context to already exist). The fresh-create branches in init-context.sh (lines 117 bash heredoc, 122-145 python) explicitly include all 3 GRAIM v2 C1 fields (skill, run_id, written_at) in the base schema, preserving the identity invariant. The merge-existing branch (line 87) routes through write-gate-artifact.sh normally."
     },
     {
       "id": "aoc-consumer-coverage",
@@ -693,6 +693,42 @@
       "description": "#1434 — every prose-gates.json entry's scope.skill+scope.state_id must resolve to an existing state-registry.json state (or use scope.skill='*'/scope.state_id='*' for cross-skill gates). Catches the round-1 critic correction class where a gate names a state that does not exist (e.g., bootstrap.3a vs verify.3a for Stage 0).",
       "registry_path": ".claude/patterns/prose-gates.json",
       "state_registry_path": ".claude/patterns/state-registry.json"
+    },
+    {
+      "id": "scaffold-pages-export-constraint-present",
+      "type": "must_contain_section",
+      "severity": "warn",
+      "applies_to_glob": ".claude/procedures/scaffold-pages.md",
+      "required_section": "### Page.tsx export constraint",
+      "trigger_pattern_any": ["page\\.tsx"],
+      "description": "Issue #1474 — scaffold-pages procedure must document Next.js's page.tsx export constraint (only `default`, `generateStaticParams`, `generateMetadata`, `metadata`, `dynamic`, `dynamicParams`, `revalidate`, `fetchCache`, `runtime`, `preferredRegion`, `maxDuration` are valid named exports). Without this entry, agents emit `export const SAMPLE_TOKENS = [...]` and trigger Next.js build error 71002 downstream."
+    },
+    {
+      "id": "scaffold-landing-rendered-self-audit-present",
+      "type": "must_contain_section",
+      "severity": "warn",
+      "applies_to_glob": ".claude/procedures/scaffold-landing.md",
+      "required_section": "Rendered self-audit",
+      "trigger_pattern_any": ["scaffold-landing"],
+      "description": "Issue #1469 — scaffold-landing procedure must require a render-time self-audit (screenshot at desktop/mobile viewports + entity/baseline self-check) before the agent claims verdict=clean. Without this step, JSX-vs-string-literal HTML entities (e.g., `don&apos;t` rendering literally) and baseline-misalignment defects reach downstream undetected."
+    },
+    {
+      "id": "playwright-cta-data-attribute-sk-entry",
+      "type": "must_contain_section",
+      "severity": "warn",
+      "applies_to_glob": ".claude/stacks/testing/playwright.md",
+      "required_section": "### When writing e2e selectors for CTA buttons",
+      "trigger_pattern_any": ["## Stack Knowledge"],
+      "description": "Issue #1452 — playwright Stack Knowledge must document the data-attribute CTA selector pattern (data-testid / data-preview-cta) over text-content selectors (getByText). Text-content selectors break on every CTA copy change (A/B variant rewrites, marketing iteration), causing cascading e2e failures."
+    },
+    {
+      "id": "nextjs-conditional-role-alert-sk-entry",
+      "type": "must_contain_section",
+      "severity": "warn",
+      "applies_to_glob": ".claude/stacks/framework/nextjs.md",
+      "required_section": "### When a form or status message uses a conditionally-mounted role=alert element",
+      "trigger_pattern_any": ["## Stack Knowledge"],
+      "description": "Issue #1451 — nextjs Stack Knowledge must document the unconditional-mount + sr-only + aria-live=assertive + aria-atomic=true pattern for live regions. Conditionally-mounted role=alert elements silently drop announcements in VoiceOver/Safari and NVDA/Firefox (WCAG 4.1.3 Status Messages High in axe scans)."
     }
   ]
 }

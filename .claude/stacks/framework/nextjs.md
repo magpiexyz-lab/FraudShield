@@ -409,6 +409,37 @@ import { NavBar } from "@/components/nav-bar";
 
 ## Stack Knowledge
 
+### When a form or status message uses a conditionally-mounted role=alert element
+
+Mount the alert region **unconditionally** on first render and toggle its visibility with the Tailwind `sr-only` class (or `hidden`) — never use `{condition && <div role="alert">...}`. A conditionally-mounted live region is absent from the accessibility tree at page load, so the browser never registers it as a live region. When the element mounts after a state change, the announcement fires inconsistently — VoiceOver/Safari and NVDA/Firefox silently drop the message in many cases. axe-core flags this as WCAG 4.1.3 (Status Messages) High.
+
+```tsx
+// WRONG — live region absent on initial render; announcement silently drops on mount
+{error && (
+  <div role="alert">{error}</div>
+)}
+
+// CORRECT — always-mounted live region; visibility toggled via sr-only
+<div
+  role="alert"
+  aria-live="assertive"
+  aria-atomic="true"
+  className={error ? "" : "sr-only"}
+>
+  {error ?? ""}
+</div>
+```
+
+Required attributes on the always-present container:
+
+- `role="alert"` (or `role="status"` for non-urgent updates)
+- `aria-live="assertive"` (use `"polite"` for non-urgent updates)
+- `aria-atomic="true"` so screen readers announce the full updated content, not just the diff
+
+Update the **text content** of the always-mounted element to trigger the announcement — adding/removing the element from the DOM does not reliably fire one. The `sr-only` class (Tailwind's visually-hidden utility) keeps the empty state out of the visual layout while preserving the node in the accessibility tree.
+
+Apply to: form validation errors, autosave status indicators, toast-replacement inline notices, signup/login submission feedback. Common scaffolded pages where this matters: preview/preview-view.tsx, signup/login form components, any `<form>` that surfaces async errors.
+
 ### When inline SVG `<text>` needs CSS font features (tabular numbers, ligatures, etc.)
 
 Pass `fontFeatureSettings` via the `style` prop, NOT as a JSX attribute. React does not recognize `fontFeatureSettings` as a valid SVG element prop — it emits an "unrecognized prop" warning and the server-rendered HTML diverges from the client tree, producing a hydration mismatch. tabular-numeric alignment (`"tnum"`) is lost on the first client render.

@@ -154,12 +154,46 @@ def _read_combined_source(files: list[str]) -> str:
 
 # Regex for fetch call sites referencing a specific route literal.
 # Matches: fetch('/api/x', ...), fetch("/api/x"), fetch(`/api/x`)
+#
+# Issue #1466 (c): when the contract route contains a bracketed
+# dynamic segment (e.g. `/api/items/[id]`), the literal-string regex
+# misses the natural JS/TS dynamic-route idiom
+# `fetch(`/api/items/${id}`)`. The fallback below resolves the contract
+# route into its static prefix (text before the first `[seg]`) and
+# matches template-literal call sites that begin with that prefix and
+# contain a `${...}` interpolation. Static-route contracts use only
+# the literal-string match — the template-literal fallback fires only
+# when a `[` appears in the contract route.
+_TEMPLATE_LITERAL_FALLBACK_BRACKET_RE = re.compile(r"\[[^\]]+\]")
+
+
 def _fetch_present(source: str, route: str) -> bool:
     pattern = re.compile(
         r"""fetch\s*\(\s*['"`]""" + re.escape(route) + r"""['"`]""",
         re.IGNORECASE,
     )
-    return bool(pattern.search(source))
+    if pattern.search(source):
+        return True
+    # Template-literal fallback for dynamic-segment routes.
+    if "[" not in route:
+        return False
+    # Split the contract route on its FIRST bracketed segment. The
+    # static prefix is everything before the bracket; the suffix
+    # after the matching `]` is allowed to contain additional path
+    # segments and possibly more brackets.
+    bracket_match = _TEMPLATE_LITERAL_FALLBACK_BRACKET_RE.search(route)
+    if not bracket_match:
+        return False
+    prefix = route[:bracket_match.start()]
+    # Build a regex: fetch( <quote> <prefix> <${...}> <anything> <quote>
+    # The static prefix is escaped; the `${...}` interpolation is
+    # required so we don't match a literal string like
+    # `fetch('/api/items/some-static')` that happens to share the prefix.
+    tl_pat = re.compile(
+        r"""fetch\s*\(\s*`""" + re.escape(prefix) + r"""\$\{[^`]+`""",
+        re.IGNORECASE,
+    )
+    return bool(tl_pat.search(source))
 
 
 # Detect if the fetch call is wrapped in a constant-false block. Heuristic:
@@ -224,7 +258,9 @@ def _trycatch_no_throw_around_fetch(source: str, fetch_start: int, fetch_end: in
     Uses brace tracking rather than regex because `[^}]*` cannot handle
     nested braces inside the catch body. Conservative: requires the
     `try` keyword to appear within 400 chars before the fetch, and the
-    matching `} catch` to appear within 800 chars after.
+    matching `} catch` to appear within 2000 chars after (issue #1466 —
+    widened from 800 to cover realistic non-trivial catch bodies that
+    re-throw at the end).
     """
     before = source[max(0, fetch_start - 400):fetch_start]
     # Walk backward to find the most recent unmatched `try {`.
@@ -258,8 +294,10 @@ def _trycatch_no_throw_around_fetch(source: str, fetch_start: int, fetch_end: in
         return False
 
     # The fetch is inside a try block. Now walk forward to find the
-    # matching `}` that closes that try, followed by `catch`.
-    after = source[fetch_end:fetch_end + 800]
+    # matching `}` that closes that try, followed by `catch`. Window
+    # widened from 800 to 2000 chars (issue #1466) so re-throws at the
+    # end of realistic non-trivial catch bodies are not missed.
+    after = source[fetch_end:fetch_end + 2000]
     depth = depth_before  # current nesting depth (post-fetch)
     target_depth = try_at_depth[-1]  # depth at which the enclosing try { opened
     i = 0
@@ -304,19 +342,135 @@ def _trycatch_no_throw_around_fetch(source: str, fetch_start: int, fetch_end: in
     return 'throw' not in catch_body
 
 
+def _skip_string(source: str, i: int, quote: str) -> int:
+    """Skip forward past a string/template-literal body and return the
+    index just after its closing quote. Handles backslash escapes.
+    """
+    n = len(source)
+    j = i + 1
+    while j < n and source[j] != quote:
+        if source[j] == "\\":
+            j += 2
+            continue
+        j += 1
+    return j + 1
+
+
+def _outer_chain_catch_window(source: str, fetch_end: int) -> str:
+    """Return the outer-chain method-call window for a `fetch(...)` at
+    position `fetch_end` (which is `fmatch.end()` — the position just
+    after the matched route literal inside the fetch parens).
+
+    Issue #1466 (round-2 critic Concern 2): the previous "literal-catch
+    within 400 chars of fetch(" heuristic misclassified the
+    `await res.json().catch(() => ({}))` pattern as a fetch-fallback
+    when in fact it is an inner-promise response-body fallback. The
+    canonical distinction is **paren depth**: a `.catch(` at depth 0 in
+    the post-fetch tokens (after the outermost `)` of `fetch(...)` has
+    closed) belongs to the same promise chain as the fetch itself — it
+    IS the fetch-fallback. A `.catch(` while paren depth is still > 0
+    (i.e., before fetch's outer `)` closes) is nested inside a
+    sub-expression like `.json().catch(...)` and is an inner-promise
+    fallback, not the fetch's.
+
+    Two-phase approach:
+      Phase 1: walk forward from `fetch_end` counting `(` and `)` until
+               depth returns to 0 — at that moment, fetch's outermost
+               `)` has closed.
+      Phase 2: starting just after fetch's `)`, collect ONLY the chained
+               method calls `.method(...).method(...)` that form part of
+               the same promise chain. Stop at any non-chain token
+               (statement terminator, type assertion, end of expression).
+               This bounded window is what gets scanned for stub-fallback
+               literal-catch / empty-param-catch.
+
+    Phase 2 termination conditions:
+      - Whitespace followed by anything other than `.` (statement break)
+      - `;`, `,`, `)`, `]`, `}` at the outer depth (expression context end)
+      - End of source
+
+    The chain `fetch(x).then(r => r.json()).catch(...)` STILL classifies
+    as a fetch-fallback because, after fetch's `)` closes, the next token
+    is `.then(` — chain continues. After `.then(...)` closes, the next
+    token is `.catch(` — also chain. The catch IS in the outer chain.
+
+    The expression `fetch(x); ... .json().catch(...)` does NOT classify
+    because after fetch's `)`, the next non-whitespace token is `;` —
+    chain terminated. The `.catch(` later belongs to an inner expression.
+    """
+    n = len(source)
+    depth = 1
+    i = fetch_end
+    # Phase 1: find fetch's outer ) close
+    fetch_close = -1
+    while i < n and depth > 0:
+        ch = source[i]
+        if ch in ('"', "'", "`"):
+            i = _skip_string(source, i, ch)
+            continue
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth == 0:
+                fetch_close = i
+                break
+        i += 1
+    if fetch_close < 0:
+        return ""
+    # Phase 2: collect chained .method(...) calls
+    chain_start = fetch_close + 1
+    j = chain_start
+    while j < n:
+        # Skip whitespace within the chain
+        while j < n and source[j] in (" ", "\t", "\n", "\r"):
+            j += 1
+        if j >= n or source[j] != ".":
+            break
+        # Found a `.method(` chain step. Walk past .name(
+        j += 1  # consume '.'
+        while j < n and (source[j].isalnum() or source[j] == "_"):
+            j += 1
+        # Optional whitespace then '(' or break out (member access, not call)
+        k = j
+        while k < n and source[k] in (" ", "\t"):
+            k += 1
+        if k >= n or source[k] != "(":
+            # member access without call — break (e.g., `.length`)
+            j = k
+            break
+        # Walk past the matching ) of this method call
+        d = 1
+        j = k + 1
+        while j < n and d > 0:
+            ch = source[j]
+            if ch in ('"', "'", "`"):
+                j = _skip_string(source, j, ch)
+                continue
+            if ch == "(":
+                d += 1
+            elif ch == ")":
+                d -= 1
+            j += 1
+    return source[chain_start:j]
+
+
 def _has_stub_catch(source: str, route: str) -> bool:
     """Detect stub-fallback patterns wrapping fetch(route).
 
     Three detection layers (heuristic — AST upgrade is follow-up):
 
-      (a) .catch(<params>) => LITERAL — existing literal-return detection.
-          Catches `.catch(() => ({}))`, `.catch(() => [])`, etc.
+      (a) .catch(<params>) => LITERAL on the OUTER fetch chain — applies
+          only AFTER fetch(...)'s outermost `)` closes. Catches
+          `fetch(url).catch(() => ({}))` and
+          `fetch(url).then(...).catch(() => ({}))`. Does NOT match
+          `fetch(url, {body: await body.json().catch(...)})` (catch is
+          on an inner promise inside fetch's own argument).
 
-      (b) .catch(() => EXPR) with empty params and non-block return —
-          empty params mean the error is discarded, so any non-block
-          return is a stub by definition. Catches the function-call form
-          `.catch(() => synthesize_stub_id())` and identifier form
-          `.catch(() => MOCK_DATA)` that (a) misses.
+      (b) .catch(() => EXPR) with empty params and non-block return,
+          again on the OUTER chain. Catches identifier stubs and
+          function-call stubs (e.g., `.catch(() => MOCK_DATA)`,
+          `.catch(() => synthesize_stub_id())`).
 
       (c) try { fetch(...) ... } catch { <no throw> } — wrap the fetch
           in a try block whose paired catch arm swallows the error.
@@ -326,19 +480,30 @@ def _has_stub_catch(source: str, route: str) -> bool:
     detected here — they may legitimately derive the return value from
     `err`. Layer 4b runtime check (behavior-verifier B7) is the
     load-bearing trustworthy check for those.
+
+    Issue #1466 round-2 Concern 2: paren-depth-aware windowing replaces
+    the previous "first 400 chars after fetch_end" window so that inner
+    `.json().catch(...)` (legitimate response-body fallback) is not
+    misclassified as a fetch-fallback. The chain
+    `fetch(x).then(r => r.json()).catch(...)` STILL classifies as a
+    fetch-fallback because the outer `.catch(` appears at depth 0 in the
+    post-fetch token stream (after fetch's outermost `)` closes).
     """
     fetch_pat = re.compile(
         r"""fetch\s*\(\s*['"`]""" + re.escape(route) + r"""['"`]"""
     )
     for fmatch in fetch_pat.finditer(source):
-        window = source[fmatch.end():fmatch.end() + 400]
-        # (a) literal-return catch
-        if _CATCH_LITERAL_RE.search(window):
+        # Outer-chain window: post-fetch tokens after the outermost )
+        # of fetch(...) closes. Bounds inner-promise catches OUT of scope.
+        outer_window = _outer_chain_catch_window(source, fmatch.end())
+        # (a) literal-return catch on the outer chain
+        if outer_window and _CATCH_LITERAL_RE.search(outer_window):
             return True
-        # (b) empty-param non-block catch
-        if _CATCH_EMPTY_PARAM_EXPR_RE.search(window):
+        # (b) empty-param non-block catch on the outer chain
+        if outer_window and _CATCH_EMPTY_PARAM_EXPR_RE.search(outer_window):
             return True
-        # (c) try/catch wrap with no throw
+        # (c) try/catch wrap with no throw (windowless — uses brace
+        # tracking from fetch position)
         if _trycatch_no_throw_around_fetch(source, fmatch.start(), fmatch.end()):
             return True
     return False
