@@ -158,6 +158,19 @@ def compute_headline_verdict(mvp: dict, issues: dict, thresholds: dict) -> dict:
     # Null when no GA data available (we have no ground-truth denominator).
     capture_rate = (gclid_visitors / ga_clicks) if ga_clicks > 0 else None
 
+    # DB ground-truth cross-check (state-x0b → x1 propagation).
+    # db_signups is None when Supabase mapping is missing/unauthorized — treat
+    # as "no comparison available", do NOT collapse to zero.
+    db_signups = mvp.get("db_signups")
+    db_first_signup_at = mvp.get("db_first_signup_at")
+    sanity_flags = compute_db_sanity_flags(
+        paid_signups=signups,
+        db_signups=db_signups,
+        db_first_signup_at=db_first_signup_at,
+        first_seen=mvp.get("first_seen"),
+        ga_clicks=ga_clicks,
+    )
+
     return {
         "name": mvp.get("name"),
         "owner": mvp.get("owner"),
@@ -167,6 +180,7 @@ def compute_headline_verdict(mvp: dict, issues: dict, thresholds: dict) -> dict:
             "gclid_visitors": gclid_visitors,
             "ga_clicks": ga_clicks,
             "signups": signups,
+            "db_signups": db_signups,
             "conv_rate": round(conv_rate, 4),
             "true_conv_rate": round(true_conv_rate, 4),
             "capture_rate": round(capture_rate, 4) if capture_rate is not None else None,
@@ -180,7 +194,127 @@ def compute_headline_verdict(mvp: dict, issues: dict, thresholds: dict) -> dict:
         "partial_tracking_pct": mvp.get("partial_tracking_pct"),
         "ga_only": bool(mvp.get("ga_only")),
         "ga_campaigns": mvp.get("ga_campaigns") or [],
+        # DB cross-check artifacts (from state-x0b).
+        "db_signups_table": mvp.get("db_signups_table"),
+        "db_first_signup_at": db_first_signup_at,
+        "db_unmapped_reason": mvp.get("db_unmapped_reason"),
+        "tracking_sanity_flags": sanity_flags,
     }
+
+
+def compute_db_sanity_flags(
+    paid_signups: int,
+    db_signups: int | None,
+    db_first_signup_at: str | None,
+    first_seen: str | None,
+    ga_clicks: int,
+) -> list[dict]:
+    """Emit human-readable sanity flags when PostHog and Supabase disagree.
+
+    Returns a list of {flag, severity, message} dicts. Empty list means
+    PH and DB agree (or DB has no signal to compare against).
+
+    Flag semantics:
+      - ph_attribution_broken: DB has signups but PH paid is zero. gclid
+        attribution likely lost between landing and signup page. (x-predict
+        is the canonical example: 18 DB users, 0 paid.)
+      - ph_undercount: DB has > 3x PH paid signups. Either organic-only
+        signups (fine) OR PostHog `signup_complete` track call instrumented
+        late / not on every signup path (stylica-ai pattern).
+      - ph_overcount: PH paid > DB total * 1.5. signup_events config likely
+        wrong (counting a non-signup event — stylica-ai's `activate` before
+        the operator-locked fix).
+      - late_instrumentation: PH's first signup event is > 7 days AFTER the
+        DB's first signup row. Operator likely added the track() call after
+        product launched. Early signups silently lost.
+
+    All flags are non-blocking — they surface in x4 output for operator review.
+    """
+    flags: list[dict] = []
+
+    if db_signups is None:
+        # No DB comparison available; nothing to flag.
+        return flags
+
+    # ph_attribution_broken: paying for ads, DB has rows, PH paid is zero.
+    if db_signups >= 3 and paid_signups == 0 and ga_clicks > 0:
+        flags.append({
+            "flag": "ph_attribution_broken",
+            "severity": "high",
+            "message": (
+                f"DB has {db_signups} signups but PostHog paid count is 0. "
+                "gclid attribution may be lost between landing and signup page — "
+                "check that PostHog SDK captures $session_entry_gclid before the URL is cleaned."
+            ),
+        })
+
+    # ph_overcount: PH > 1.5x DB total → likely wrong signup_events event name.
+    elif db_signups > 0 and paid_signups > db_signups * 1.5:
+        flags.append({
+            "flag": "ph_overcount",
+            "severity": "high",
+            "message": (
+                f"PostHog paid signups ({paid_signups}) > DB total ({db_signups}) * 1.5. "
+                "Likely classified a non-signup event (e.g. activate firing on feature-use). "
+                "Edit experiment/iterate-cross-config.yaml mvp_mappings.<name>.signup_events and lock with classified_by: operator."
+            ),
+        })
+
+    # ph_undercount: DB > 3x PH paid → late instrumentation, broken track path, or organic-only.
+    elif db_signups > paid_signups * 3 and db_signups >= 3:
+        flags.append({
+            "flag": "ph_undercount",
+            "severity": "medium",
+            "message": (
+                f"DB has {db_signups} signups, PostHog paid only {paid_signups}. "
+                "Could be organic-only traffic (no gclid) OR PostHog track('signup_complete') "
+                "not covering all signup paths (e.g. OAuth callback fires server-side)."
+            ),
+        })
+
+    # late_instrumentation: PH first event > 7d AFTER DB first row.
+    # `first_seen` on the MVP is the earliest PH event with gclid attribution,
+    # which is the right baseline for "when did paid tracking start working".
+    if db_first_signup_at and first_seen:
+        try:
+            from datetime import datetime, timezone
+
+            def parse_iso(s: str) -> datetime:
+                # Tolerate space-separated and various trailing fragments.
+                s = s.replace(" ", "T")
+                if "+" in s:
+                    s = s.split("+")[0] + "+00:00"
+                if s.endswith("Z"):
+                    s = s[:-1] + "+00:00"
+                if "." in s and len(s.split(".")[-1].split("+")[0]) > 6:
+                    # Trim sub-microsecond precision Postgres sometimes emits.
+                    head, _, tail = s.partition(".")
+                    frac, _, tz = tail.partition("+")
+                    s = f"{head}.{frac[:6]}+{tz}" if tz else f"{head}.{frac[:6]}"
+                if "+" not in s:
+                    s = s + "+00:00"
+                return datetime.fromisoformat(s)
+
+            db_first = parse_iso(db_first_signup_at)
+            ph_first = parse_iso(first_seen)
+            gap_days = (ph_first - db_first).days
+            if gap_days >= 7:
+                flags.append({
+                    "flag": "late_instrumentation",
+                    "severity": "high",
+                    "message": (
+                        f"PostHog first paid event ({ph_first.date()}) is {gap_days} days AFTER "
+                        f"first DB signup ({db_first.date()}). "
+                        "Tracking was added after product launch — signups before the PH instrument "
+                        "date are invisible to /iterate. Consider extending the analysis window or "
+                        "noting the gap when interpreting the conversion rate."
+                    ),
+                })
+        except (ValueError, TypeError):
+            # Date parsing failure is non-critical; skip the flag.
+            pass
+
+    return flags
 
 
 def parse_debug_prompts(content: str) -> dict:
@@ -275,11 +409,28 @@ def emit_telegram(scores: list, debug_prompts: dict, visitors_floor: int) -> str
                     f" ⚠ PH-overcount {round(gclid_visitors / ga_clicks * 100)}% "
                     "(likely distinct_id churn)"
                 )
+            # DB sanity-flag suffixes (from compute_db_sanity_flags via x0b → x1 → x3).
+            # Surface high-severity flags inline; medium-severity stay in the JSON
+            # for operators who dig deeper.
+            db_suffix = ""
+            db_signups = metrics.get("db_signups")
+            if db_signups is not None:
+                db_suffix = f" · DB={db_signups}"
+            tracking_flags = s.get("tracking_sanity_flags") or []
+            tracking_suffix = ""
+            for tf in tracking_flags:
+                if tf.get("severity") == "high":
+                    tracking_suffix = f" ⚠ {tf['flag']}"
+                    break
             lines.append(
-                f"• {name}{pt_suffix}{cap_suffix}{overcount_suffix} "
-                f"{line_metrics} → {verdict}"
+                f"• {name}{pt_suffix}{cap_suffix}{overcount_suffix}{tracking_suffix} "
+                f"{line_metrics}{db_suffix} → {verdict}"
             )
             lines.append(f"  Action: {action}")
+            # Inline the sanity-flag messages so operators get the WHY without
+            # having to grep the JSON. One bullet per flag.
+            for tf in tracking_flags:
+                lines.append(f"  ⚠ [{tf['flag']}] {tf['message']}")
             # Verdicts that need an inline debug prompt for the operator to copy/paste:
             # NO_DATA and GA_NO_PH_TRACKING both require investigation in the MVP repo.
             if verdict in (VERDICT_NO_DATA, VERDICT_GA_NO_PH_TRACKING):

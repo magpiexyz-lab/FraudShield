@@ -137,6 +137,14 @@ for m in ctx['mvps']:
         'ga_only': bool(m.get('ga_only')),
         'ga_campaigns': m.get('ga_campaigns') or [],
         'partial_tracking_pct': m.get('partial_tracking_pct'),
+        # DB ground-truth fields from state-x0b. db_signups is None when
+        # Supabase mapping is missing/unauthorized; the cross-check in x3
+        # treats None as "no comparison available" rather than zero.
+        'db_signups': m.get('db_signups'),
+        'db_signups_table': m.get('db_signups_table'),
+        'db_first_signup_at': m.get('db_first_signup_at'),
+        'db_unmapped_reason': m.get('db_unmapped_reason'),
+        'supabase_project_ref': m.get('supabase_project_ref'),
     })
 
 bash_payload = json.dumps({'mvps': mvp_records})
@@ -168,7 +176,7 @@ rm -f .runs/_iterate-cross-catalog-query.json .runs/_iterate-cross-catalog-raw.j
 **VERIFY:** see `state-registry.json` entry for `iterate-cross.x1`.
 
 ```bash
-python3 -c "import json; d=json.load(open('.runs/iterate-cross-data.json')); ms=d.get('mvps',[]); assert isinstance(ms, list) and len(ms)>0, 'mvps empty'; req=['name','gclid_visitors','total_events_count','event_catalog','ga_clicks']; bad=[m.get('name','?') for m in ms if any(k not in m for k in req)]; assert not bad, 'MVPs missing required fields (incl. ga_clicks propagated from state-x0a context): %s' % bad"
+python3 -c "import json; d=json.load(open('.runs/iterate-cross-data.json')); ms=d.get('mvps',[]); assert isinstance(ms, list) and len(ms)>0, 'mvps empty'; req=['name','gclid_visitors','total_events_count','event_catalog','ga_clicks','db_signups']; bad=[m.get('name','?') for m in ms if any(k not in m for k in req)]; assert not bad, 'MVPs missing required fields (incl. ga_clicks/db_signups propagated from state-x0a/x0b context): %s' % bad"
 ```
 <!-- VERIFY=true: real assertion lives in state-registry.json; this line is the per-Rule-13 placeholder -->
 

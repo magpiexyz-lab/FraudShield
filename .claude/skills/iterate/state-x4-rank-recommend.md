@@ -42,24 +42,26 @@ suspect — the operator must fix tracking before any product decision is trustw
 Print to stdout. Window comes from `.runs/iterate-cross-scores.json window_days`:
 
 ```
-╔════════════════════════════════════════════════════════════════════════════════════════════╗
-║  Cross-MVP Evaluation — {date}  |  {N} MVPs  |  {window_days}d window                     ║
-╠════════════════════════════════════════════════════════════════════════════════════════════╣
-║ Verdict     │ MVP             │ GA-clk │ PH-vis │ Signups │ Conv%  │ Cap% │ Signup events ║
-║─────────────┼─────────────────┼────────┼────────┼─────────┼────────┼──────┼───────────────║
-║ 🚨 MISSING  │ {host_or_name}  │  {ga}  │  {ph}  │   --    │   --   │ {c}% │ —             ║
-║ 🆘 NO_PH    │ {name}          │  {ga}  │    0   │   --    │   --   │   0% │ — (ga_only)   ║
-║ ✅ GO       │ {name}          │  {ga}  │  {ph}  │   {s}   │ {tc}%  │ {c}% │ {events}      ║
-║ ⚠️ WEAK     │ {name}          │  {ga}  │  {ph}  │   {s}   │ {tc}%  │ {c}% │ {events}      ║
-║ ⏳ INSUF    │ {name}          │  {ga}  │  {ph}  │   {s}   │   --   │ {c}% │ {events}      ║
-║ ❌ NO_GO    │ {name}          │  {ga}  │  {ph}  │   {s}   │ {tc}%  │ {c}% │ {events}      ║
-║ ❓ NO_DATA  │ {name}          │   --   │   --   │   --    │   --   │  --  │ —             ║
-╚════════════════════════════════════════════════════════════════════════════════════════════╝
+╔════════════════════════════════════════════════════════════════════════════════════════════════╗
+║  Cross-MVP Evaluation — {date}  |  {N} MVPs  |  {window_days}d window                          ║
+╠════════════════════════════════════════════════════════════════════════════════════════════════╣
+║ Verdict     │ MVP             │ GA-clk │ PH-vis │ PHsig │ DB-sig │ Conv%  │ Cap% │ Signup events ║
+║─────────────┼─────────────────┼────────┼────────┼───────┼────────┼────────┼──────┼───────────────║
+║ 🚨 MISSING  │ {host_or_name}  │  {ga}  │  {ph}  │  --   │  --    │   --   │ {c}% │ —             ║
+║ 🆘 NO_PH    │ {name}          │  {ga}  │    0   │  --   │  {db}  │   --   │   0% │ — (ga_only)   ║
+║ ✅ GO       │ {name}          │  {ga}  │  {ph}  │  {s}  │  {db}⚠ │ {tc}%  │ {c}% │ {events}      ║
+║ ⚠️ WEAK     │ {name}          │  {ga}  │  {ph}  │  {s}  │  {db}  │ {tc}%  │ {c}% │ {events}      ║
+║ ⏳ INSUF    │ {name}          │  {ga}  │  {ph}  │  {s}  │  {db}  │   --   │ {c}% │ {events}      ║
+║ ❌ NO_GO    │ {name}          │  {ga}  │  {ph}  │  {s}  │  {db}⚠ │ {tc}%  │ {c}% │ {events}      ║
+║ ❓ NO_DATA  │ {name}          │   --   │   --   │  --   │  {db}  │   --   │  --  │ —             ║
+╚════════════════════════════════════════════════════════════════════════════════════════════════╝
 ```
 
 Column legend:
 - `GA-clk` — `metrics.ga_clicks`. Shown as `--` when an MVP has zero GA clicks in the window (either the CSV omits that campaign or the operator's CSV was header-only). state-x0a blocks if no CSV is provided, so a fully empty GA-clk column should not appear in normal operation.
 - `PH-vis` — `metrics.gclid_visitors` (PostHog).
+- `PHsig` — `metrics.signups` (paid-traffic signups, the funnel-effectiveness number).
+- `DB-sig` — `metrics.db_signups` (Supabase ground truth, total signups in window). `--` when the MVP isn't mapped to a Supabase project. A `⚠` suffix means `tracking_sanity_flags` has at least one high-severity flag.
 - `Conv%` — `metrics.true_conv_rate` × 100 (uses GA-clicks as denominator when GA data present, else PH visitors).
 - `Cap%` — `metrics.capture_rate` × 100 (how much of paid traffic PostHog actually captured). Null when no GA data.
 
@@ -68,6 +70,12 @@ For any row whose `partial_tracking_pct` is non-null and > 0, append a warning s
 For any row whose `metrics.capture_rate` < 0.5 AND `metrics.ga_clicks` ≥ 30, append `⚠ low capture` (operator should investigate the deploy's `src/lib/analytics.ts` import path).
 
 For any row whose `metrics.gclid_visitors > metrics.ga_clicks * 1.10`, append `⚠ PH-overcount` (likely distinct_id churn / cross-device — informational, not blocking).
+
+For any row whose `tracking_sanity_flags[]` (from state-x0b cross-check) contains a high-severity flag, append `⚠ <flag_name>` to the MVP cell AND print the flag's `message` as an indented sub-bullet below the row. The four flags are:
+- `ph_attribution_broken` — DB has signups, PH paid is zero → gclid attribution likely lost between landing and signup page
+- `ph_overcount` — PH paid > DB total × 1.5 → signup_events config likely wrong (chose a non-signup event)
+- `ph_undercount` — DB > 3 × PH paid → organic-only OR PostHog track() call missing from some signup paths
+- `late_instrumentation` — PH first paid event > 7d after DB first row → track() added after product launch, early signups invisible
 
 Show the operator at the bottom: total visitors, total signups, blended conv%, count by verdict.
 
