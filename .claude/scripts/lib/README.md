@@ -134,6 +134,103 @@ fix_template: |
         # ... format and emit
 ```
 
+### Observation-Anchored Recovery Contract (OARC)
+```yaml
+id: observation-anchored-recovery-contract
+maturity: stable
+anti_pattern: false
+composite_identity:
+  root_cause_class: fallback-writer-produces-schema-valid-but-depth-incomplete-artifact
+  divergence_pattern: structural-gate-accepts-stub-without-paired-observation
+  stack_scope: scripts/lib/gate_evidence_runner-recovery_skip_extraction
+composite_identity_hash: 97f0cc6a5f1a
+symptom_keywords: [fallback, recovery, self-degraded, lead-orchestrated, sparse-trace, init-stub, candidates-tried-zero, step-5.5-skipped, post-completion, recovery_validated, partial-trace]
+confidence_score: 0.85
+occurrence_count: 7
+linked_issues: [1468, 1456, 1042, 1061, 1189, 1196, 1303, 1437]
+first_seen: 2026-05-18
+last_seen: 2026-05-18
+graduated_to: null
+prevention_mechanism: |
+  Sibling pattern to EARC (Evidence-Anchored Repair Channel, #1189). Any
+  agent-traces/*.json writer path that produces a schema-valid artifact
+  under exceptional / recovery / post-completion conditions MUST either:
+    (a) write the full schema with real data, OR
+    (b) appear as a candidate row in retrospective-pending-findings.json
+        (paired observation) that the lead files or suppresses.
+
+  Detection runs at observation-phase Step 5a via two GECR rules
+  (.claude/patterns/gate-evidence-rules.json):
+
+    - recovery-path-skip-pairing (#1468): traces with provenance in
+      {self-degraded, recovery, lead-orchestrated} AND partial=true AND
+      a non-sanctioned degraded_reason AND a detectable skipped depth-
+      check (landing: candidates_tried==0 with unused sidecar candidates;
+      non-landing has_images=true: image_issues_for_landing key absent).
+
+    - sparse-trace-pairing (#1456): traces with status="started" + no
+      verdict (init-stub survived), OR provenance="lead-orchestrated"
+      missing AOC v1.3 required fields (workarounds[] /
+      template_gap_observed[]).
+
+  Both rules use the recovery_skip_extraction matcher in
+  gate_evidence_runner.py and emit candidates via two new enumerator
+  kinds (recovery-path-skip, sparse-trace) in
+  enumerate-pending-retrospective-findings.py. The matches_friction_count
+  predicate requires the candidate to be either filed via
+  file-retrospective-finding.py OR suppressed in retrospective-result.json
+  suppressions[] with a closed-enum reason.
+
+  Sanctioned legitimate-skip degraded_reasons (empty-boundary-fast-path
+  from #1061, demo-mode-fixture-short-circuit from #1042,
+  redirect-source-only from #1196) are anchored to the canonical list in
+  .claude/scripts/lib/sanctioned_degraded_reasons.py — adding a new
+  sanctioned skip requires editing exactly one file (no drift between
+  merge-design-critic-traces.py carve-out and the matcher suppression).
+
+  Phase C cutover criteria for both rules: see
+  .claude/patterns/gecr-cutover-criteria.json + verify-linter rule
+  gecr-cutover-overdue (closes the #1437/#1415 meta-pattern where soak-
+  mode advisory-only carve-outs were forgotten and permanently weakened
+  enforcement).
+
+fix_template: |
+  When a new fallback writer path is introduced (or an existing one
+  surfaces a regression), register the OARC mechanism BEFORE shipping:
+
+    1. If the fallback shape isn't captured by recovery-path-skip or
+       sparse-trace, extend the recovery_skip_extraction matcher in
+       gate_evidence_runner.py with a new sub-kind (mirror existing
+       handlers ~lines 440+).
+
+    2. Add a corresponding enumerator function to
+       enumerate-pending-retrospective-findings.py mirroring
+       _candidates_from_sparse_traces. Register the kind in
+       KIND_PRIORITY (assign next sequential rank) and append to main().
+
+    3. Register a new GECR rule in .claude/patterns/gate-evidence-rules.json
+       with type="recovery_path_observation", matcher.kind=
+       "recovery_skip_extraction", and matches_friction_count predicate
+       targeting the new kind via params.target_kinds.
+
+    4. Add the rule's mode_env entry to
+       .claude/patterns/gecr-cutover-criteria.json with soak_window +
+       deny_flip_trigger so the meta-defense linter tracks the cutover.
+
+    5. Cover with unit tests in test_oarc_matcher.py.
+
+  Sanctioned-skip carve-outs:
+    - Append to .claude/scripts/lib/sanctioned_degraded_reasons.py
+    - Document source PR/issue in .claude/agents/design-critic.md
+      Rendered-Review Contract or equivalent sanctioned-skip section
+
+example_callers:
+  - .claude/agents/landing-images-critic.md (Step 5.5 self-degrade)
+  - .claude/agents/solve-critic.md (round-2 post-completion)
+  - .claude/scripts/merge-landing-critic-traces.py (sparse sub-trace handling)
+  - .claude/scripts/merge-design-critic-traces.py (sparse sub-trace handling)
+```
+
 ### perceptual-hash + provenance binding for image evidence
 ```yaml
 id: image-evidence-provenance-phash

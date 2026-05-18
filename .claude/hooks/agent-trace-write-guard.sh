@@ -300,6 +300,16 @@ if echo "$COMMAND_CANONICAL" | grep -qE "$ALLOWED_REGEX_MERGE_DESIGN_CONSISTENCY
   exit 0
 fi
 
+# Allow the official landing-critic pre-merge script (lead-merge pre-aggregation
+# for #1468 landing-critic split — landing-sections-critic.json + landing-images-critic.json
+# → design-critic-landing.json BEFORE merge-design-critic-traces.py runs). Mirrors
+# the #1257 convention.
+ALLOWED_REGEX_MERGE_LANDING_CRITIC='(^|[[:space:]]|&&|;|\|)[[:space:]]*python3?[[:space:]]+[./]*\.?claude/scripts/merge-landing-critic-traces\.py'
+if echo "$COMMAND_CANONICAL" | grep -qE "$ALLOWED_REGEX_MERGE_LANDING_CRITIC"; then
+  # friction-skip: trivial-fast-path — input absent or non-applicable
+  exit 0
+fi
+
 # AOC v1.1: centralized agent-trace writer. Required to include --json
 # (the trace payload). Provenance, source, coverage_provider preconditions
 # are enforced inside the script.

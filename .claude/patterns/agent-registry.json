@@ -4,6 +4,7 @@
   "_schema_version_notes": "v6 (AOC v1.2): adds `lead-orchestrated` (pass-able via pass_lead_orchestrated) and `lead-skipped` (audit-only, no predicate) provenance values; adds `lead_orchestrated_forbidden` registry field excluding security-attacker/security-defender (probes touch live endpoints; retrospective lead attestation unsound); extends security-fixer/quality-fixer `allowed_verdicts`/`allowed_results` to include `skipped`; adds `_aggregate_ok_accepted_predicates` structured field (single source of truth for the aggregate_ok sibling-acceptance set; F8 lint asserts AST equality with the predicate impl). v5 (AOC v1.1 PR4): adds resolve-reviewer as a first-class verdict_agent (closes #1055 alias drift). v4 (AOC v1.1): extends provenance enum to 7 values (lead-on-behalf, lead-synthesized, lead-fix); adds pass_lead_on_behalf / pass_lead_fix / pass_lead_synthesized predicates; validated_fallback now accepts lead-on-behalf with recovery_validated:true; aggregate_ok sibling acceptance includes new predicates. See agent-output-contract.md \"Versioning rules\" for the synchronized-update protocol. v3 (AOC v1): adds verdict_agents_schema declaring per-agent allowed_verdicts/allowed_results/required_structured_fields. hard_gates add pass_clean/pass_after_fixes predicates alongside v2 predicates. v2: adds non_fixer_agents, recovery_forbidden, lead_merge_aggregate_agents; hard_gates use structured predicates. See .claude/patterns/agent-trace-protocol.md.",
   "verdict_agents": [
     "observer", "spec-reviewer", "design-critic", "design-consistency-checker",
+    "landing-sections-critic", "landing-images-critic",
     "ux-journeyer", "security-fixer", "quality-fixer", "security-attacker", "security-defender",
     "behavior-verifier", "performance-reporter", "accessibility-scanner",
     "build-info-collector", "pattern-classifier",
@@ -23,6 +24,16 @@
     "design-critic": {
       "allowed_verdicts": ["pass", "fail", "unresolved"],
       "allowed_results": ["clean", "fixed", "partial", null]
+    },
+    "landing-sections-critic": {
+      "allowed_verdicts": ["pass", "fail", "unresolved"],
+      "allowed_results": ["clean", "fixed", "partial", null],
+      "_split_from_note": "#1468 landing-critic split: sibling of landing-images-critic. Layer 1/2/3 section scoring scope only. Pre-aggregated by .claude/scripts/merge-landing-critic-traces.py into design-critic-landing.json before the outer merge-design-critic-traces.py runs. Same verdict/result vocab as design-critic."
+    },
+    "landing-images-critic": {
+      "allowed_verdicts": ["pass", "fail", "unresolved"],
+      "allowed_results": ["clean", "fixed", "partial", null],
+      "_split_from_note": "#1468 landing-critic split: sibling of landing-sections-critic. Step 5.5 image candidate inspection + image-quality anti-patterns + image fixes scope only. Pre-aggregated into design-critic-landing.json. Same verdict/result vocab as design-critic."
     },
     "design-consistency-checker": {
       "allowed_verdicts": ["pass", "fail"],
@@ -123,6 +134,7 @@
     "observer", "spec-reviewer", "behavior-verifier",
     "performance-reporter", "accessibility-scanner",
     "design-critic", "design-consistency-checker",
+    "landing-sections-critic", "landing-images-critic",
     "ux-journeyer", "security-defender", "security-attacker",
     "solve-critic", "resolve-challenger", "review-challenger",
     "resolve-reviewer",
@@ -257,6 +269,16 @@
       "agent": "design-critic",
       "allow_predicates": ["pass_clean", "pass_after_fixes", "pass_self_pass_or_fail", "validated_fallback", "aggregate_ok", "legacy_pass_no_recovery", "pass_lead_synthesized", "pass_lead_orchestrated"],
       "_block_explanation": "Blocked unless AOC v1 pass_clean/pass_after_fixes, or v2 pass_self_pass_or_fail / validated_fallback (also covers #1042 fixture short-circuit via self-degraded + recovery_validated) / aggregate_ok, or legacy_pass_no_recovery (pre-migration), or pass_lead_synthesized (#1256 Stage 0 all-pages-fast-path lead-synthesized aggregate with sanctioned coverage_provider), or AOC v1.2 pass_lead_orchestrated (post-completion lead-orchestrated re-spawn with explicit-identity attestation)."
+    },
+    {
+      "agent": "landing-sections-critic",
+      "allow_predicates": ["pass_clean", "pass_after_fixes", "pass_self_pass_or_fail", "validated_fallback", "aggregate_ok", "legacy_pass_no_recovery", "pass_lead_synthesized", "pass_lead_orchestrated"],
+      "_block_explanation": "Parity with design-critic per design-agents-hard-gate-parity coherence rule. #1468 landing split: this sibling of landing-images-critic owns Layer 1/2/3 section scoring; same allow_predicates set so the pre-merged design-critic-landing.json sibling is accepted via aggregate_ok at the outer design-critic merge."
+    },
+    {
+      "agent": "landing-images-critic",
+      "allow_predicates": ["pass_clean", "pass_after_fixes", "pass_self_pass_or_fail", "validated_fallback", "aggregate_ok", "legacy_pass_no_recovery", "pass_lead_synthesized", "pass_lead_orchestrated"],
+      "_block_explanation": "Parity with design-critic per design-agents-hard-gate-parity coherence rule. #1468 landing split: this sibling of landing-sections-critic owns Step 5.5 image candidate inspection; same allow_predicates set."
     },
     {
       "agent": "ux-journeyer",

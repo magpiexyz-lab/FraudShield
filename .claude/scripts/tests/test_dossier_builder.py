@@ -188,5 +188,86 @@ class DefaultsTests(unittest.TestCase):
         self.assertEqual(DOSSIER_WINDOW_DAYS_DEFAULT, 60)
 
 
+class SemanticMatchAnnotationTests(unittest.TestCase):
+    """OARC #1468/#1456 — `designer_consultation_attestation_required` field
+    must appear on every phase_1a and phase_4b entry, computed from semantic
+    overlap between the canonicalized symptom and the prior entry's
+    failure_mode / commit subject."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="rmg-dossier-semantic-")
+        self.runs = Path(self.tmp) / ".runs"
+        self.runs.mkdir()
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _write_ledger(self, rows):
+        with (self.runs / "fix-ledger.jsonl").open("w") as fh:
+            for row in rows:
+                fh.write(json.dumps(row) + "\n")
+
+    def test_attestation_field_present_on_every_entry(self):
+        """Field MUST appear on every entry regardless of value (closes the
+        'silently absent → consumer crashes' failure class)."""
+        self._write_ledger([
+            _row(run_id="r1", timestamp="2026-04-15T10:00:00Z",
+                 symptom="quux baz frob", fix="apply baz frob"),
+        ])
+        d = build_dossier(
+            divergence_files=["foo/bar.ts"],
+            symptom_signature="quux baz frob",
+            project_dir=self.tmp,
+            since_days=3650,
+        )
+        for entry in d["phase_1a"]:
+            self.assertIn("designer_consultation_attestation_required", entry)
+            self.assertIsInstance(
+                entry["designer_consultation_attestation_required"], bool
+            )
+        for entry in d["phase_4b"]:
+            self.assertIn("designer_consultation_attestation_required", entry)
+            self.assertIsInstance(
+                entry["designer_consultation_attestation_required"], bool
+            )
+
+    def test_strong_semantic_match_required_true(self):
+        """When the canonicalized symptom shares ≥2 content tokens with the
+        bucket's failure_mode AND files overlap, attestation MUST be required."""
+        self._write_ledger([
+            _row(run_id="r1", timestamp="2026-04-15T10:00:00Z",
+                 symptom="agent trace post completion identity sparse",
+                 fix="apply agent trace post completion identity sparse"),
+        ])
+        d = build_dossier(
+            divergence_files=["foo/bar.ts"],
+            symptom_signature="agent trace post completion identity sparse",
+            project_dir=self.tmp,
+            since_days=3650,
+        )
+        self.assertTrue(d["phase_1a"][0]["designer_consultation_attestation_required"],
+                        "strong match must require attestation")
+
+    def test_unrelated_symptom_required_false(self):
+        """When the symptom and prior failure_mode share 0 content tokens,
+        attestation MUST NOT be required."""
+        self._write_ledger([
+            _row(run_id="r1", timestamp="2026-04-15T10:00:00Z",
+                 symptom="quux baz frob xyzzy",
+                 fix="apply quux baz frob xyzzy"),
+        ])
+        d = build_dossier(
+            divergence_files=["foo/bar.ts"],
+            symptom_signature="completely orthogonal mango banana yacht",
+            project_dir=self.tmp,
+            since_days=3650,
+        )
+        self.assertFalse(
+            d["phase_1a"][0]["designer_consultation_attestation_required"],
+            "unrelated symptom must not require attestation"
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

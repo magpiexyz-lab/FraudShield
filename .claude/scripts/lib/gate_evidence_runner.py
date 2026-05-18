@@ -414,6 +414,181 @@ def _matcher_friction_event_extraction(rule: dict, rows: list[dict], params: dic
     return events
 
 
+def _matcher_recovery_skip_extraction(rule: dict, rows: list[dict], params: dict) -> list[dict]:
+    """For #1468 + #1456: extract fallback-shape skip events from agent traces.
+
+    Implements the OARC (Observation-Anchored Recovery Contract, sibling of
+    EARC #1189): traces produced under exceptional / recovery / post-completion
+    conditions must either carry full schema with real data OR appear as a
+    candidate row in retrospective-pending-findings.json that the lead files
+    or suppresses.
+
+    Emits two friction-event kinds gated on `params.target_kinds`:
+
+    - `recovery-path-skip` — provenance ∈ {self-degraded, recovery,
+      lead-orchestrated} AND partial=true AND a non-sanctioned degraded_reason
+      AND a domain-specific skipped check is detectable (landing context:
+      candidates_tried==0 with unused sidecar candidates; non-landing
+      has_images=true: image_issues_for_landing key missing).
+
+    - `sparse-trace` — trace shape `{agent, status, timestamp, run_id}` without
+      `verdict` (init-trace.py stub survived past skill completion) OR
+      `provenance="lead-orchestrated"` AND missing AOC v1.3 required fields
+      (`workarounds[]` / `template_gap_observed[]`).
+
+    Suppression sources (params):
+      - `target_kinds`: which OARC kind(s) this rule should emit
+      - `suppressed_degraded_reasons`: sanctioned legitimate-skip allowlist;
+        prefer importing the shared canonical list at
+        `.claude/scripts/lib/sanctioned_degraded_reasons.py` rather than
+        duplicating in rule JSON.
+
+    Cross-reference happens in check_expected_observation
+    (matches_friction_count predicate maps to retrospective-pending-findings.json).
+    """
+    target_kinds = set(params.get("target_kinds") or [])
+    # Suppressed reasons can come from rule JSON params OR the shared canonical
+    # list. Default = shared list. Allow rule to override only by extension
+    # (intersection enforced — never strip canonical suppressions).
+    try:
+        from sanctioned_degraded_reasons import SANCTIONED_DEGRADED_REASONS  # type: ignore
+        canonical_suppressions = set(SANCTIONED_DEGRADED_REASONS)
+    except ImportError:
+        canonical_suppressions = set()
+    rule_suppressions = set(params.get("suppressed_degraded_reasons") or [])
+    suppressed = canonical_suppressions | rule_suppressions
+
+    # Load suppression sidecars by path so the matcher can do landing-context
+    # checks without reading from disk a second time.
+    sidecars: dict[str, dict | list | str | None] = {}
+    for row in rows:
+        path = row.get("path", "")
+        if path.endswith("image-candidates.json") or path.endswith("page-image-map.json"):
+            sidecars[os.path.basename(path)] = row.get("content")
+
+    image_candidates_sidecar = sidecars.get("image-candidates.json")
+    page_image_map = sidecars.get("page-image-map.json") or {}
+    if not isinstance(page_image_map, dict):
+        page_image_map = {}
+
+    # When the rule targets recovery-path-skip AND image-candidates.json is
+    # absent, the contract has no anchor — return [] rather than firing false
+    # positives. Note: sidecar may exist but be empty dict; that still counts
+    # as "no unused candidates" → no recovery-path-skip firing (caught below).
+    if "recovery-path-skip" in target_kinds and image_candidates_sidecar is None:
+        # Absence of sidecar means no candidate-confirmation contract for this
+        # run. Allow sparse-trace kind to still emit (it doesn't depend on
+        # image-candidates.json), so we don't early-return globally.
+        target_kinds = target_kinds - {"recovery-path-skip"}
+        if not target_kinds:
+            return []
+
+    failures: list[dict] = []
+    for row in rows:
+        path = row.get("path", "")
+        if not path.startswith(".runs/agent-traces/"):
+            continue
+        trace = row.get("content")
+        if not isinstance(trace, dict):
+            continue
+        prov = trace.get("provenance", "")
+        status = trace.get("status", "")
+        verdict = trace.get("verdict")
+        degraded_reason = trace.get("degraded_reason", "")
+        page = trace.get("page", "")
+        agent_name = trace.get("agent", "")
+
+        # ── kind=sparse-trace detection ──────────────────────────────────────
+        if "sparse-trace" in target_kinds:
+            # Init-stub survived: status=started + no verdict field
+            if status == "started" and verdict is None:
+                failures.append({
+                    "kind": "sparse-trace",
+                    "shape": "init-stub-survived",
+                    "source_path": path,
+                    "agent": agent_name,
+                    "description": (
+                        f"init-trace.py stub at {path} survived without a "
+                        f"completing write (agent={agent_name!r})"
+                    )[:200],
+                })
+                continue  # Don't also evaluate recovery-path-skip on the same trace
+            # Lead-orchestrated missing AOC v1.3 fields
+            if prov == "lead-orchestrated":
+                missing_fields = [
+                    f for f in ("workarounds", "template_gap_observed")
+                    if f not in trace
+                ]
+                if missing_fields:
+                    failures.append({
+                        "kind": "sparse-trace",
+                        "shape": "lead-orchestrated-missing-aoc-v1.3",
+                        "source_path": path,
+                        "agent": agent_name,
+                        "missing_fields": missing_fields,
+                        "description": (
+                            f"lead-orchestrated trace at {path} missing "
+                            f"AOC v1.3 fields: {missing_fields}"
+                        )[:200],
+                    })
+                    continue
+
+        # ── kind=recovery-path-skip detection ────────────────────────────────
+        if "recovery-path-skip" not in target_kinds:
+            continue
+        if prov not in ("self-degraded", "recovery", "lead-orchestrated"):
+            continue
+        if not trace.get("partial"):
+            continue
+        if degraded_reason in suppressed:
+            continue
+        # Skipped-check detection: landing context or has_images=true context.
+        skipped_check = None
+        # Landing-owned candidate confirmation
+        if page == "landing":
+            # candidates_tried==0 with unused sidecar candidates → silent skip
+            candidates_tried = trace.get("candidates_tried")
+            if candidates_tried == 0 or candidates_tried is None:
+                # Check sidecar for unused candidates in landing-owned slots
+                if isinstance(image_candidates_sidecar, dict):
+                    landing_slots = image_candidates_sidecar.get("landing", {}) or {}
+                    unresolved = trace.get("unresolved_images") or []
+                    has_unresolved_escape_hatch = bool(unresolved)
+                    has_unused_candidates = any(
+                        isinstance(slot, dict) and len(slot.get("candidates") or []) > 1
+                        for slot in landing_slots.values()
+                        if slot != "empty-state"
+                    ) if isinstance(landing_slots, dict) else False
+                    if has_unused_candidates and not has_unresolved_escape_hatch:
+                        skipped_check = "step-5.5-image-candidate-inspection"
+        # Non-landing has_images=true: image_issues_for_landing key missing
+        else:
+            page_entry = page_image_map.get(page) if isinstance(page_image_map, dict) else None
+            has_images = (
+                isinstance(page_entry, dict) and page_entry.get("has_images") is True
+            )
+            if has_images and "image_issues_for_landing" not in trace:
+                skipped_check = "image_issues_for_landing-key-absent"
+
+        if skipped_check is None:
+            continue
+        failures.append({
+            "kind": "recovery-path-skip",
+            "source_path": path,
+            "agent": agent_name,
+            "page": page,
+            "degraded_reason": degraded_reason or "<absent>",
+            "skipped_check": skipped_check,
+            "description": (
+                f"fallback-shape trace at {path} (agent={agent_name!r}, "
+                f"page={page!r}, reason={degraded_reason!r}) silently skipped "
+                f"{skipped_check}"
+            )[:200],
+        })
+
+    return failures
+
+
 def apply_matcher(rule: dict, rows: list[dict]) -> list[dict]:
     """Dispatch matcher.kind to its implementation."""
     matcher = rule.get("matcher", {})
@@ -438,8 +613,7 @@ def apply_matcher(rule: dict, rows: list[dict]) -> list[dict]:
         # No pattern matched in any row → all rows are failures
         return [{"reason": f"none of {len(patterns)} patterns matched", "patterns": patterns}]
     elif kind == "recovery_skip_extraction":
-        # Reserved for follow-up #1468 — placeholder
-        return []
+        return _matcher_recovery_skip_extraction(rule, rows, params)
     else:
         sys.stderr.write(f"gate_evidence_runner: WARN — unknown matcher kind: {kind!r}\n")
         return []

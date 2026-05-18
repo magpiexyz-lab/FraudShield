@@ -213,6 +213,74 @@ def main(argv: list[str] | None = None) -> int:
             print(f"VERIFY FAIL: {exc}", file=sys.stderr)
             return 1
 
+        # OARC #1468/#1456 — semantic-match consultation gate. For every
+        # phase_1a entry where the dossier set
+        # `designer_consultation_attestation_required: true` (semantic-match
+        # heuristic: ≥2 content-token overlap with the canonicalized symptom
+        # AND ≥1 file overlap), `solve-trace.json.prior_failure_consultation`
+        # MUST have a matching entry with `consulted_via != "skipped"` OR a
+        # `skip_justification` of ≥40 chars. Soak in warn mode initially:
+        # CONSULTATION_SOAK=1 downgrades failures to stderr warnings.
+        dossier_path = ".runs/prior-failure-dossier.json"
+        if (os.path.isfile(dossier_path)
+                and pa.get("problem_type") == "defect"):
+            try:
+                dossier = _load(dossier_path)
+            except (OSError, json.JSONDecodeError):
+                dossier = {}
+            required_prior_run_ids = [
+                e.get("prior_run_id")
+                for e in (dossier.get("phase_1a") or [])
+                if isinstance(e, dict)
+                and e.get("designer_consultation_attestation_required") is True
+                and e.get("prior_run_id")
+            ]
+            if required_prior_run_ids:
+                consultations = trace.get("prior_failure_consultation") or []
+                consulted_index: dict[str, dict] = {}
+                if isinstance(consultations, list):
+                    for c in consultations:
+                        if isinstance(c, dict) and c.get("prior_run_id"):
+                            consulted_index[c["prior_run_id"]] = c
+                missing: list[str] = []
+                weak: list[str] = []
+                for pid in required_prior_run_ids:
+                    entry = consulted_index.get(pid)
+                    if entry is None:
+                        missing.append(pid)
+                        continue
+                    via = entry.get("consulted_via", "")
+                    if via == "skipped":
+                        justification = entry.get("skip_justification") or ""
+                        if not isinstance(justification, str) or len(justification.strip()) < 40:
+                            weak.append(pid)
+                if missing or weak:
+                    msg_parts = []
+                    if missing:
+                        msg_parts.append(
+                            f"missing consultation entries for: {missing}"
+                        )
+                    if weak:
+                        msg_parts.append(
+                            f"skipped consultations with weak justification (<40 chars): {weak}"
+                        )
+                    full_msg = (
+                        "OARC #1468/#1456 — semantic-match dossier entries require "
+                        "prior_failure_consultation. " + "; ".join(msg_parts)
+                        + ". Each entry must carry `consulted_via != \"skipped\"` "
+                        "OR `skip_justification` ≥40 chars. See "
+                        "`.claude/agents/solve-critic.md` vector 4 amendment."
+                    )
+                    # Soak/deny mode: CONSULTATION_DENY=1 promotes the gate to a
+                    # hard block (Phase C cutover trigger per
+                    # .claude/patterns/gecr-cutover-criteria.json). Default
+                    # during soak: warn-only — surface the gap without blocking
+                    # PR merge so designers see the contract before enforcement.
+                    if os.environ.get("CONSULTATION_DENY") == "1":
+                        print(f"VERIFY FAIL: {full_msg}", file=sys.stderr)
+                        return 1
+                    print(f"VERIFY WARN: {full_msg}", file=sys.stderr)
+
     # #1331 runtime guard: when /solve full-mode runs round 2, the orchestrator
     # must have archived round-1 to the sidecar. Read solve-critic.json.round
     # directly as the signal channel — when round == 2, the archive at

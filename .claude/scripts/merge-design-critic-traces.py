@@ -31,21 +31,17 @@ import json
 import os
 import sys
 
-
-# #1265: sanctioned `degraded_reason` allowlist for the source-only/unknown
-# verdict carve-out (lines below) AND the worst-wins validated_fallback skip.
-# Centralizing here prevents the "N+1 sanctioned reason will repeat the
-# defect" class. Adding a new reason: append here AND document it in
-# .claude/agents/design-critic.md (Rendered-Review Contract). The carve-out
-# at line 122-128 of the loop body uses this set; the validated_fallback
-# worst-wins skip uses provenance + recovery_validated rather than
-# enumerating reasons (keeps coverage in sync with evaluate-hard-gate-
-# predicates.py validated_fallback predicate semantics).
-SANCTIONED_DEGRADED_REASONS = frozenset({
-    "demo-mode-fixture-short-circuit",
-    "redirect-source-only",
-    "empty-boundary-fast-path",
-})
+# Import the shared sanctioned-skip list from `.claude/scripts/lib/`.
+# #1265 centralised the list here; the import indirection in slice 0 of the
+# OARC PR makes both this merger AND the GECR `recovery_skip_extraction`
+# matcher (`gate_evidence_runner.py`) reference the same source of truth,
+# preventing the "N+1 sanctioned reason will repeat the defect" class. The
+# carve-out at line ~190 of the loop body and the validated_fallback skip
+# both read this constant. Adding a new reason: edit
+# `.claude/scripts/lib/sanctioned_degraded_reasons.py` and document in
+# `.claude/agents/design-critic.md` Rendered-Review Contract.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
+from sanctioned_degraded_reasons import SANCTIONED_DEGRADED_REASONS  # noqa: E402
 
 # #1265: provenance values whose self-degraded-or-recovery state is
 # acceptable as a sibling-class exception in worst-wins aggregation
@@ -133,6 +129,20 @@ def main() -> int:
         except Exception as exc:
             sys.stderr.write(f"merge-design-critic-traces: cannot parse {b}: {exc}\n")
             return 2
+
+        # Sparse-trace tolerance (Step 5a of OARC PR #1468/#1456): when a
+        # sub-trace is an init-stub that survived (status=started + no verdict
+        # field), skip it from aggregation with a warning. The OARC enumerator
+        # (`enumerate-pending-retrospective-findings.py._candidates_from_sparse_traces`)
+        # will emit a sparse-trace candidate row for the lead to file/suppress
+        # — no need to crash here or silently zero-fill fields.
+        if d.get("status") == "started" and d.get("verdict") is None:
+            sys.stderr.write(
+                f"merge-design-critic-traces: WARN — sparse sub-trace at {b} "
+                f"(status=started, no verdict). Skipping from aggregation; OARC "
+                f"sparse-trace-pairing rule will require paired observation.\n"
+            )
+            continue
 
         merged["pages_reviewed"] += _coalesce(d.get("pages_reviewed"), 1)
         merged["min_score"] = min(merged["min_score"], _coalesce(d.get("min_score"), 10))

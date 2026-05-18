@@ -358,6 +358,38 @@ Phase D (Layer 2).
 
 If the dossier is empty, Phase 4b is a no-op.
 
+#### Prior-Failure Consultation (OARC #1468/#1456 — semantic-match escalation)
+
+Phase 1a entries where the dossier set
+`designer_consultation_attestation_required: true` (semantic-match
+heuristic: ≥2 content-token overlap between the canonicalized symptom
+and the prior commit's subject/failure_mode AND ≥1 file overlap)
+require an explicit consultation attestation in addition to (or in
+place of) `prior_failure_response`. The designer MUST emit:
+
+```json
+"prior_failure_consultation": [
+  {
+    "prior_run_id": "<from dossier; e.g., git:abc1234 OR a ledger run_id>",
+    "consulted_via": "git_show | read_pr | skipped",
+    "skip_justification": "<≥40 chars; required when consulted_via=skipped>"
+  }
+]
+```
+
+`verify-recurrence-guard.py --require-dossier` enforces this gate.
+Default during soak: warn-only (prints `VERIFY WARN: OARC ...` to
+stderr, returns 0 — does not block PR merge). Phase C cutover: set
+`CONSULTATION_DENY=1` to promote to hard block. See
+`.claude/patterns/gecr-cutover-criteria.json` for cutover timeline.
+
+Rationale: in template repos with empty fix-ledger the dossier
+otherwise degrades to git-sentinel "advisory only" (caef8ab/#1437),
+re-introducing the RMG v1 leak that R2-A2 was designed to close.
+The semantic-match annotation surfaces high-signal prior commits as
+REQUIRED consultation, restoring R2-A2's strength in the empty-ledger
+case.
+
 ### Phase 5 — Critic Loop (1 Named agent, max 2 rounds)
 
 Spawn the `solve-critic` Named agent (`subagent_type: solve-critic`).
@@ -395,6 +427,14 @@ agent and cannot be modified by it.
   ```
 
   Then spawn a **new** solve-critic agent (use the Agent tool, NOT SendMessage to the round 1 agent). The round-2 spawn prompt MUST include `round_1_concerns` (the full `concerns[]` array from the archived round-1 trace, with stable `concern_id` values) under a `## Round 1 Concerns to Cross-Check` header — see `.claude/agents/solve-critic.md` "Round 2 Prompt Contract". Wait for the agent to return its result. The agent overwrites the live trace at `.runs/agent-traces/solve-critic.json` with `round: 2` and updated counts; the round-1 archive at `.runs/solve-critic-round1.json` remains as the audit-trail source for vector 5 (`within-run-round1-concern-unaddressed`). Any remaining TYPE A → package as caveats in output. Stop.
+
+  **Post-completion handling (#1456 OARC sparse-trace fix):** when the caller's `*-context.json` is `completed:true` (round-2 re-spawn from a finished skill, e.g., `/observe` against a completed `/resolve`, OR a /solve --defect run where round 1 already advanced the caller's state), `resolve_active_identity` returns empty and `write-agent-trace.sh`'s default `self` provenance branch exits 1 (see `.claude/scripts/write-agent-trace.sh`: search for `"no active skill context on current branch"`). The agent's Trace Output Bash heredoc already detects this via `$CONTEXT_FILE.completed` and passes `--provenance lead-orchestrated --source-run-id <id> --source-skill <skill>`. The caller (orchestrator) must:
+
+    1. Determine whether the active context is `completed:true` BEFORE spawning round 2.
+    2. If yes, export `SOURCE_RUN_ID` and `SOURCE_SKILL` env vars from the context BEFORE the Agent tool invocation so `skill-agent-gate.sh` stamps the spawn-log under the source identity (the 3-gate validation from #1275 / `a0e568d` requires this).
+    3. The spawn prompt SHOULD also include `is_post_completion: true` so the agent has explicit signal in addition to the env vars.
+
+  Without this, the agent's write attempt fails silently → the init-trace.py 4-key stub survives → sparse-trace candidate emitted by GECR `sparse-trace-pairing` rule. With this, the agent writes a full lead-orchestrated trace and the gate accepts via `pass_lead_orchestrated`.
 
 **IMPORTANT**: Each critic round MUST complete (agent returns result) before the caller proceeds to Phase 6 or advances to the next state.
 

@@ -1,0 +1,34 @@
+{
+  "$comment": "Phase C cutover criteria for GECR rules in soak mode (#1276/#1291 convention). Each rule's soak_window + deny_flip_trigger codifies when the warn→deny mode flip is required. Closes the a72d712 (#1415) / caef8ab (#1437) meta-recurrence pattern: 'rule ships warn-only → soak window passes without follow-up → advisory-only carve-out becomes permanent → enforcement gap silently re-introduced'. The verify-linter rule `gecr-cutover-overdue` (template-coherence-rules.json) flags any entry whose soak_window elapsed AND flip_pr_required is still true.",
+  "schema_version": 1,
+  "rules": {
+    "recovery-path-skip-pairing": {
+      "soak_window_min_days": 30,
+      "soak_window_min_real_cycles": 2,
+      "deny_flip_trigger": "At least 1 candidate of kind=recovery-path-skip emitted AND correctly filed-or-suppressed in a real /verify or /change run",
+      "first_merged_at": null,
+      "flip_pr_required": true,
+      "tracker": "#1468-followup-deny",
+      "mode_env": "GATE_EVIDENCE_RECOVERY_SKIP_MODE"
+    },
+    "sparse-trace-pairing": {
+      "soak_window_min_days": 30,
+      "soak_window_min_real_cycles": 2,
+      "deny_flip_trigger": "At least 1 sparse-trace candidate (init-stub-survived OR lead-orchestrated-missing-aoc-v1.3) detected AND paired with an observation in a real run",
+      "first_merged_at": null,
+      "flip_pr_required": true,
+      "tracker": "#1456-followup-deny",
+      "mode_env": "GATE_EVIDENCE_SPARSE_TRACE_MODE"
+    },
+    "prior-failure-consultation-gate": {
+      "$comment": "Step 14c gate in verify-recurrence-guard.py — enforces prior_failure_consultation[] for dossier entries with designer_consultation_attestation_required=true. Tracked alongside the two GECR rules above so the same gecr-cutover-overdue linter rule (template-coherence-rules.json) flags it when overdue, even though it is a verifier-side gate rather than a declarative GECR rule.",
+      "soak_window_min_days": 30,
+      "soak_window_min_real_cycles": 2,
+      "deny_flip_trigger": "At least 1 /solve --defect run with semantic-match dossier entry AND consultation correctly emitted",
+      "first_merged_at": null,
+      "flip_pr_required": true,
+      "tracker": "#1468-#1456-consultation-deny",
+      "mode_env": "CONSULTATION_DENY"
+    }
+  }
+}

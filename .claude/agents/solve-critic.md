@@ -86,6 +86,30 @@ whenever `problem_type == "defect"`. Each fires as TYPE A.
    to enumerate one `prior_failure_response` per. `dossier_verify.py` enforces
    this asymmetry — its response-floor counts ledger entries only.
 
+   **Exception — semantic-match escalation (OARC #1468/#1456):** when the
+   dossier entry sets `designer_consultation_attestation_required: true`,
+   consultation is REQUIRED. The annotation is computed by
+   `.claude/scripts/lib/dossier_builder._compute_semantic_match` — it fires
+   only when the canonicalized symptom shares ≥2 content tokens with the
+   prior commit's subject/failure_mode AND ≥1 file overlaps the divergence
+   set. The designer MUST emit a `prior_failure_consultation[]` entry in
+   `solve-trace.json` of shape:
+   ```json
+   {
+     "prior_run_id": "git:<sha>",
+     "consulted_via": "git_show | read_pr | skipped",
+     "skip_justification": "<≥40 chars; only when consulted_via=skipped>"
+   }
+   ```
+   `verify-recurrence-guard.py --require-dossier` enforces this gate.
+   Default during soak: warn-only (prints `VERIFY WARN: OARC ...` to
+   stderr, returns 0 — does not block PR merge). Phase C cutover:
+   set `CONSULTATION_DENY=1` to promote to hard block (returns 1).
+   See `.claude/patterns/gecr-cutover-criteria.json` for cutover
+   timeline; the `gecr-cutover-overdue` linter rule
+   (`.claude/patterns/template-coherence-rules.json`) flags when the
+   soak window has elapsed without a deny-flip PR.
+
 5. **`within-run-round1-concern-unaddressed`** — fires only on round 2.
    For every round-1 concern (matched by stable `concern_id`), the round-2
    design must cite `addressed_by:<step#>` AND the cited step must
@@ -194,6 +218,18 @@ cid = concern_id_for(category="symptom-only", description="<your description>")
 Round 2 cross-checks round-1 concerns by `concern_id` (stable across
 paraphrasing), not by free-text — see vector 5 above.
 
+## Post-completion re-spawn
+
+When the lead orchestrates a TRUE post-completion re-spawn of solve-critic (e.g., round 2 of /solve --defect runs against an already-completed sibling skill's context, or `/observe` re-spawning a critic against a completed `bootstrap`/`change` run), the writer's normal `resolve_active_identity` path returns empty. Use the AOC v1.2 `lead-orchestrated` provenance per the **Post-completion re-spawn orchestrator playbook** in `.claude/patterns/agent-output-contract.md` (mirrors `.claude/agents/design-critic.md` § "Post-completion re-spawn" — same protocol, substitute `solve-critic` throughout).
+
+The lead (the calling skill's Phase 5 round-2 spawn block) exports `SOURCE_RUN_ID` + `SOURCE_SKILL` env vars BEFORE invoking the Agent tool so `skill-agent-gate.sh` can stamp a non-degraded spawn-log entry under the source identity. The hook independently validates three gates: context+completed:true, active-identity exclusion, anti-replay (#1275 / `a0e568d`).
+
+The agent's Trace Output Bash heredoc (above) ALREADY contains the conditional that detects `$CONTEXT_FILE.completed == true` and passes `--provenance lead-orchestrated --source-run-id <id> --source-skill <skill>` to `write-agent-trace.sh`. No further agent-side action is required.
+
+**Acceptance:** the gate accepts solve-critic's lead-orchestrated trace via `pass_lead_orchestrated` (registered in `.claude/patterns/agent-registry.json` hard_gates allow_predicates for solve-critic via parity with design-critic). Lifecycle Step 4.8 cross-checks the spawn-log lineage; lifecycle Step 4.7 cross-checks that the re-spawn happened when the dossier/protocol required it.
+
+**MID-SKILL re-spawn is different.** When the calling skill is still active (e.g., normal round-2 within the same /solve run), use `--provenance self` — the default path resolves identity correctly. R4 of `source_identity_validator` forbids `lead-orchestrated` mid-skill.
+
 ### Concern Classification
 
 For each concern, classify it:
@@ -230,7 +266,7 @@ required structured fields `type_a_count`, `type_b_count`, `type_c_count`.
 
 ```bash
 python3 - <<'PYEOF'
-import json, subprocess
+import json, os, subprocess
 # `problem_type` comes from your spawn prompt (e.g., "defect" or "feature").
 # Set it accordingly before composing the trace.
 problem_type = "<defect or feature>"
@@ -254,16 +290,47 @@ trace = {
             "addressed_by": "<round 2 only: cited step # or artifact path; null otherwise>"
         }
     ],
+    # AOC v1.3: required empty-default fields (see "Trace Schema (AOC v1.3)" below).
+    "workarounds": [],
+    "template_gap_observed": [],
     # RMG v2: list of prior_run_id values from the Phase 1a dossier that
     # this critic round actually evaluated. Empty when the dossier was
     # absent or empty. Cross-checked by adversarial-merge-gate.sh.
     "prior_failure_dossier_evaluated": [<run_id>, ...],
 }
-subprocess.run(
-    ["bash", ".claude/scripts/write-agent-trace.sh", "solve-critic",
-     "--json", json.dumps(trace)],
-    check=True,
-)
+
+# AOC v1.2 post-completion handling (closes #1456 — sparse-trace 134-byte stub).
+# When $CONTEXT_FILE.completed == true (round-2 re-spawn from a finished skill),
+# write-agent-trace.sh's default `self` provenance branch exits 1 because
+# resolve_active_identity returns empty (see .claude/scripts/write-agent-trace.sh:
+# search for "no active skill context on current branch"). Pass --provenance
+# lead-orchestrated + --source-* flags so the writer takes the AOC v1.2
+# lead-orchestrated branch (search for `provenance == "lead-orchestrated"`) instead.
+# Without this conditional, the init-trace.py 4-key stub survives → sparse-trace.
+# The orchestrator must export SOURCE_RUN_ID/SOURCE_SKILL env vars BEFORE the
+# Agent tool spawn so skill-agent-gate.sh stamps the spawn-log under the source
+# identity (3-gate validation from #1275/a0e568d). See "Post-completion re-spawn"
+# section below.
+ctx_path = os.environ.get("CONTEXT_FILE", "")
+if not ctx_path:
+    # Fallback: discover the most recently touched *-context.json among the
+    # three accepted callers. This mirrors the spawn-prompt $CONTEXT_FILE
+    # contract from the calling skill.
+    for candidate in (".runs/resolve-context.json", ".runs/change-context.json", ".runs/solve-context.json"):
+        if os.path.isfile(candidate):
+            ctx_path = candidate
+            break
+args = ["bash", ".claude/scripts/write-agent-trace.sh", "solve-critic",
+        "--json", json.dumps(trace)]
+try:
+    ctx = json.load(open(ctx_path)) if ctx_path and os.path.isfile(ctx_path) else {}
+except (OSError, json.JSONDecodeError):
+    ctx = {}
+if ctx.get("completed") is True and ctx.get("run_id") and ctx.get("skill"):
+    args += ["--provenance", "lead-orchestrated",
+             "--source-run-id", ctx["run_id"],
+             "--source-skill", ctx["skill"]]
+subprocess.run(args, check=True)
 PYEOF
 ```
 

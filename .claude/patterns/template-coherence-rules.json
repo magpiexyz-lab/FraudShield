@@ -419,6 +419,13 @@
       "description": "#1275 / Group A — every agent with `pass_lead_orchestrated` in its hard_gates `allow_predicates` MUST contain a `## Post-completion re-spawn` section in its .md describing how the lead orchestrates the re-spawn (SOURCE_RUN_ID/SOURCE_SKILL env-var contract, write-agent-trace.sh invocation, expected verdict). Enumerated from hard_gates (single source of truth) so adding a new lead-orchestrated agent automatically triggers the doc requirement. Severity=warn — informational catch for future drift."
     },
     {
+      "id": "gecr-cutover-overdue",
+      "type": "gecr_cutover_overdue",
+      "severity": "warn",
+      "criteria_path": ".claude/patterns/gecr-cutover-criteria.json",
+      "description": "OARC #1468/#1456 meta-defense — when a GECR rule's soak_window has elapsed AND flip_pr_required is still true (no follow-up deny-flip PR landed), emit a warning citing the tracker and the env_mode var to flip. Closes the a72d712 (#1415) / caef8ab (#1437) meta-recurrence pattern where soak-mode advisory-only carve-outs were forgotten and permanently weakened enforcement. Resolves `first_merged_at` from criteria entry (manual fill) OR git log first-add of the criteria file. Severity=warn — observability only; deny-flip is a follow-up PR."
+    },
+    {
       "id": "hard-block-validators-integration-required",
       "type": "validator_integration_required",
       "severity": "block",

@@ -14,6 +14,10 @@ Inputs (all optional; missing → no candidates from that source):
   .runs/hook-friction-summary.json      — aggregated hook denial counts
   .runs/fix-ledger.jsonl                — fix log entries (template-edit rows)
   .runs/template-coherence-cache.json   — cross-file coherence findings
+  .runs/agent-traces/*.json             — agent workarounds[] + template_gap_observed[] (#1470), recovery/sparse shapes (#1468/#1456 OARC)
+  .runs/verify-recheck.json             — verify-state failures (#1470)
+  .runs/lead-deviation-log.jsonl        — prose-gate deviations
+  .runs/image-candidates.json + page-image-map.json — sidecars for recovery-path-skip suppression (#1468)
 
 Output: .runs/retrospective-pending-findings.json
   {
@@ -23,7 +27,10 @@ Output: .runs/retrospective-pending-findings.json
     "candidates": [
       {
         "candidate_id": "<sha256[:12] hash of (kind, key)>",
-        "kind": "hook-friction" | "template-edit" | "coherence-finding" | "agent-recovery",
+        "kind": "hook-friction" | "template-edit" | "coherence-finding" | "agent-recovery"
+              | "agent-workaround" | "trace-overwrite" | "verify-failure"
+              | "lead-deviation" | "log-write-failure"
+              | "recovery-path-skip" | "sparse-trace",
         "confidence": "high" | "medium" | "low",
         "key": "<canonical identifier — used for dedup>",
         "evidence": {<source-specific fields>},
@@ -36,6 +43,9 @@ Confidence rubric (programmatic 3-condition test approximation):
   HIGH:   hook-friction with count >= 3 AND distinct hook (proven recurring)
           OR template-edit row with kind=template-edit (lead patched template)
           OR coherence-finding category=cross_file_contradiction
+          OR verify-failure (any failed verify state)
+          OR recovery-path-skip / sparse-trace (OARC #1468/#1456 — fallback
+             writer produced schema-valid but depth-incomplete artifact)
   MEDIUM: agent-recovery (recovery_validated=true but recovery happened)
           OR hook-friction with count 1-2 (one-off but still informative)
   LOW:    any uncategorized signal (lead must triage)
@@ -547,6 +557,168 @@ def _candidates_from_verify_failures(rid: str) -> list[dict]:
     return out
 
 
+def _candidates_from_recovery_skips(rid: str) -> list[dict]:
+    """GECR #1468 — enumerate fallback-shape skip events as candidates.
+
+    Mirrors `_candidates_from_agent_workarounds` shape. Detects agent traces
+    where provenance ∈ {self-degraded, recovery, lead-orchestrated} AND
+    partial=true AND a non-sanctioned degraded_reason AND a domain-specific
+    skipped check is detectable (landing context: candidates_tried==0 with
+    unused sidecar candidates; non-landing has_images=true:
+    image_issues_for_landing key missing).
+
+    Suppression sources:
+      - `.claude/scripts/lib/sanctioned_degraded_reasons.py` canonical list
+        (empty-boundary-fast-path, demo-mode-fixture-short-circuit,
+        redirect-source-only).
+
+    OARC (Observation-Anchored Recovery Contract) sibling of EARC (#1189):
+    fallback traces must either carry full schema with real data OR appear
+    as a candidate here that the lead files or suppresses.
+    """
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
+    try:
+        from sanctioned_degraded_reasons import SANCTIONED_DEGRADED_REASONS
+    except ImportError:
+        SANCTIONED_DEGRADED_REASONS = frozenset()
+    image_candidates_path = ".runs/image-candidates.json"
+    page_image_map_path = ".runs/page-image-map.json"
+    image_candidates = None
+    page_image_map: dict = {}
+    if os.path.isfile(image_candidates_path):
+        try:
+            image_candidates = json.load(open(image_candidates_path))
+        except Exception:
+            image_candidates = None
+    if os.path.isfile(page_image_map_path):
+        try:
+            page_image_map = json.load(open(page_image_map_path)) or {}
+        except Exception:
+            page_image_map = {}
+
+    out: list[dict] = []
+    seen_keys: set[str] = set()
+    for trace_path in sorted(glob.glob(".runs/agent-traces/*.json")):
+        try:
+            trace = json.load(open(trace_path))
+        except Exception:
+            continue
+        if rid and trace.get("run_id") and trace.get("run_id") != rid:
+            continue
+        prov = trace.get("provenance", "")
+        if prov not in ("self-degraded", "recovery", "lead-orchestrated"):
+            continue
+        if not trace.get("partial"):
+            continue
+        degraded_reason = trace.get("degraded_reason", "")
+        if degraded_reason in SANCTIONED_DEGRADED_REASONS:
+            continue
+        page = trace.get("page", "")
+        agent_name = trace.get("agent", "") or os.path.basename(trace_path)
+        skipped_check = None
+        if page == "landing":
+            candidates_tried = trace.get("candidates_tried")
+            unresolved = trace.get("unresolved_images") or []
+            if (candidates_tried == 0 or candidates_tried is None) and not unresolved:
+                if image_candidates is None:
+                    # No contract to enforce when sidecar is absent
+                    continue
+                landing_slots = image_candidates.get("landing", {}) or {}
+                has_unused = False
+                if isinstance(landing_slots, dict):
+                    for slot_name, slot in landing_slots.items():
+                        if slot == "empty-state":
+                            continue
+                        if isinstance(slot, dict) and len(slot.get("candidates") or []) > 1:
+                            has_unused = True
+                            break
+                if has_unused:
+                    skipped_check = "step-5.5-image-candidate-inspection"
+        else:
+            page_entry = page_image_map.get(page) if page else None
+            has_images = isinstance(page_entry, dict) and page_entry.get("has_images") is True
+            if has_images and "image_issues_for_landing" not in trace:
+                skipped_check = "image_issues_for_landing-key-absent"
+        if skipped_check is None:
+            continue
+        key = f"recovery-path-skip:{trace_path}:{degraded_reason}:{skipped_check}"
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        out.append({
+            "candidate_id": _hash_key("recovery-path-skip", key),
+            "kind": "recovery-path-skip",
+            "confidence": "high",
+            "key": key,
+            "evidence": {
+                "trace_path": trace_path,
+                "agent": agent_name,
+                "page": page,
+                "degraded_reason": degraded_reason or "<absent>",
+                "skipped_check": skipped_check,
+            },
+            "source_files": [trace_path],
+        })
+    return out
+
+
+def _candidates_from_sparse_traces(rid: str) -> list[dict]:
+    """GECR #1456 — enumerate sparse agent traces as candidates.
+
+    Detects (a) init-trace.py 4-key stubs that survived past skill completion
+    (status="started" + no verdict field), AND (b) lead-orchestrated traces
+    missing AOC v1.3 fields (workarounds[] / template_gap_observed[]).
+
+    Closes the gap from #1303 (a0e568d) AOC v1.2 agent-side rollout that
+    completed documentation only for design-critic.md.
+    """
+    out: list[dict] = []
+    seen_keys: set[str] = set()
+    for trace_path in sorted(glob.glob(".runs/agent-traces/*.json")):
+        try:
+            trace = json.load(open(trace_path))
+        except Exception:
+            continue
+        if rid and trace.get("run_id") and trace.get("run_id") != rid:
+            continue
+        status = trace.get("status", "")
+        verdict = trace.get("verdict")
+        prov = trace.get("provenance", "")
+        agent_name = trace.get("agent", "") or os.path.basename(trace_path)
+        shape = None
+        missing_fields: list[str] = []
+        # Shape (a): init-stub survived
+        if status == "started" and verdict is None:
+            shape = "init-stub-survived"
+        # Shape (b): lead-orchestrated missing AOC v1.3 fields
+        elif prov == "lead-orchestrated":
+            for f in ("workarounds", "template_gap_observed"):
+                if f not in trace:
+                    missing_fields.append(f)
+            if missing_fields:
+                shape = "lead-orchestrated-missing-aoc-v1.3"
+        if shape is None:
+            continue
+        key = f"sparse-trace:{trace_path}:{shape}"
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        out.append({
+            "candidate_id": _hash_key("sparse-trace", key),
+            "kind": "sparse-trace",
+            "confidence": "high",
+            "key": key,
+            "evidence": {
+                "trace_path": trace_path,
+                "agent": agent_name,
+                "shape": shape,
+                "missing_fields": missing_fields,
+            },
+            "source_files": [trace_path],
+        })
+    return out
+
+
 def main() -> int:
     rid = _active_run_id()
     candidates: list[dict] = []
@@ -559,6 +731,8 @@ def main() -> int:
     candidates.extend(_candidates_from_verify_failures(rid))  # GECR #1470
     candidates.extend(_candidates_from_lead_deviations(rid))
     candidates.extend(_candidates_from_log_write_failures(rid))
+    candidates.extend(_candidates_from_recovery_skips(rid))  # GECR #1468 (OARC)
+    candidates.extend(_candidates_from_sparse_traces(rid))   # GECR #1456 (OARC)
 
     # Stable kind priority for sort (Plan-Agent-B Concern 24 — new kinds
     # interleave deterministically with existing kinds).
@@ -572,6 +746,8 @@ def main() -> int:
         "verify-failure": 7,
         "lead-deviation": 8,
         "log-write-failure": 9,
+        "recovery-path-skip": 10,
+        "sparse-trace": 11,
     }
     # Sort: kind_priority → high → medium → low → by candidate_id (stable)
     order = {"high": 0, "medium": 1, "low": 2}

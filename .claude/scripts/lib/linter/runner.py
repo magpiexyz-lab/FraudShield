@@ -3213,6 +3213,88 @@ def main() -> int:
         return out
 
 
+    def check_gecr_cutover_overdue(rule):
+        """OARC #1468/#1456 meta-defense — warn when a GECR rule's Phase C
+        cutover window has elapsed AND `flip_pr_required` is still true.
+
+        Closes the a72d712 (#1415) / caef8ab (#1437) meta-recurrence pattern:
+        "rule ships warn-only → soak window passes without follow-up →
+        advisory-only carve-out becomes permanent → enforcement gap silently
+        re-introduced".
+
+        For each entry in `.claude/patterns/gecr-cutover-criteria.json`:
+          - If `flip_pr_required` is false, skip (already flipped).
+          - If `first_merged_at` is null, resolve via `git log` against the
+            criteria file (first commit timestamp). When git is unavailable
+            (CI fixture), skip silently — manual entries are also accepted.
+          - Compute elapsed_days = (now - first_merged_at).days.
+          - If elapsed_days > `soak_window_min_days`, emit a warning citing
+            the tracker.
+
+        Severity defaults to warn — this is observability, not a hard block;
+        a deny-mode flip can be triggered by raising severity in a follow-up
+        when the team consistently sees overdue entries.
+        """
+        out = []
+        rid = rule.get("id", "<unknown>")
+        criteria_rel = rule.get("criteria_path",
+                                ".claude/patterns/gecr-cutover-criteria.json")
+        criteria_path = os.path.join(REPO_ROOT, criteria_rel)
+        if not os.path.isfile(criteria_path):
+            return []  # criteria file not yet committed; soak phase hasn't started
+        try:
+            criteria = json.load(open(criteria_path))
+        except Exception as e:
+            return [f"  [{rid}] cannot read {criteria_rel}: {e}"]
+        import datetime as dt
+        import subprocess as sp
+        now = dt.datetime.now(dt.timezone.utc)
+        for rule_id, entry in (criteria.get("rules") or {}).items():
+            if not entry.get("flip_pr_required"):
+                continue  # Already flipped
+            soak_days = int(entry.get("soak_window_min_days", 30))
+            first_merged = entry.get("first_merged_at")
+            if not first_merged:
+                # Resolve via git log first-add timestamp of criteria file.
+                try:
+                    proc = sp.run(
+                        ["git", "log", "--diff-filter=A", "--format=%cI",
+                         "--", criteria_rel],
+                        cwd=REPO_ROOT, text=True,
+                        capture_output=True, timeout=10,
+                    )
+                    if proc.returncode == 0:
+                        lines = [l for l in proc.stdout.strip().split("\n") if l]
+                        if lines:
+                            first_merged = lines[-1]
+                except Exception:
+                    continue  # Skip silently in CI/fixture contexts
+            if not first_merged:
+                continue
+            try:
+                first_dt = dt.datetime.fromisoformat(
+                    first_merged.replace("Z", "+00:00")
+                )
+            except (TypeError, ValueError):
+                continue
+            if first_dt.tzinfo is None:
+                first_dt = first_dt.replace(tzinfo=dt.timezone.utc)
+            elapsed_days = (now - first_dt).days
+            if elapsed_days > soak_days:
+                tracker = entry.get("tracker", "<no tracker>")
+                mode_env = entry.get("mode_env", "<no mode_env>")
+                out.append(
+                    f"  [{rid}] GECR rule {rule_id!r} cutover OVERDUE: "
+                    f"elapsed {elapsed_days}d > {soak_days}d soak window, "
+                    f"flip_pr_required still true. Tracker: {tracker}. "
+                    f"Either: (a) file the deny-flip PR (set {mode_env}=deny "
+                    f"in the rule's severity AND set flip_pr_required:false "
+                    f"in {criteria_rel}), OR (b) extend soak_window_min_days "
+                    f"with explicit rationale."
+                )
+        return out
+
+
     def check_post_completion_respawn_doc_present(rule):
         """#1275 / Group A — assert every agent with `pass_lead_orchestrated`
         in its hard_gates `allow_predicates` has a `## Post-completion re-spawn`
@@ -4689,6 +4771,8 @@ def main() -> int:
         "aggregate_ok_predicate_doc_matches_impl": (check_aggregate_ok_predicate_doc_matches_impl, set(), {"registry_path", "impl_path"}, True),
         # #1275 / Group A — post-completion re-spawn doc presence.
         "post_completion_respawn_doc_present": (check_post_completion_respawn_doc_present, set(), {"registry_path", "agents_dir", "required_section"}, False),
+        # OARC #1468/#1456 meta-defense — warn when GECR Phase C cutover overdue.
+        "gecr_cutover_overdue": (check_gecr_cutover_overdue, set(), {"criteria_path"}, False),
         # #1295 PR1 — Stage B + Stage C validator coherence rules.
         # #1307 — minimum_integration_count is an optional cardinality
         # threshold (default 1 preserves backwards compat).

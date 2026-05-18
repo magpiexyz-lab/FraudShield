@@ -138,12 +138,46 @@ def _should_skip_as_submerged(trace_path, aggregate_agents, all_paths):
     intermediate and MUST NOT emit ledger rows (their fixes are already
     concatenated into the aggregate's fixes[] by merge-<agent>-traces.py).
     Without this skip, every per-page fix doubles: once in the sub-trace
-    row and once in the aggregate row."""
+    row and once in the aggregate row.
+
+    Generic 2-level aggregation (#1468 landing-critic split): when an
+    aggregate trace declares a `sub_traces` field (a list of filenames),
+    those sub-traces are ALSO skipped if the aggregate is itself absorbed
+    by a higher-level aggregate. Example chain:
+
+      landing-{sections,images}-critic.json → design-critic-landing.json
+        → design-critic.json
+
+    landing-sections-critic.json and landing-images-critic.json do not match
+    the design-critic- prefix, but design-critic-landing.json lists them in
+    `sub_traces`. This generic check walks all aggregates' sub_traces lists.
+    """
     basename = os.path.basename(trace_path).replace(".json", "")
+    filename = os.path.basename(trace_path)
+    # Pass 1: direct prefix match against registered aggregate agents.
     for agent in aggregate_agents:
         if basename.startswith(agent + "-"):
             aggregate_path = os.path.join(TRACES_DIR, agent + ".json")
             if aggregate_path in all_paths:
+                return True
+    # Pass 2: sub_traces field on any aggregate that is itself absorbed.
+    # Read each aggregate trace's sub_traces field and check if filename matches.
+    for agent in aggregate_agents:
+        aggregate_path = os.path.join(TRACES_DIR, agent + ".json")
+        if aggregate_path not in all_paths:
+            continue
+        # Walk every <agent>-*.json sibling — they may themselves declare
+        # sub_traces that include `filename` (chained aggregation).
+        for path in all_paths:
+            sib_base = os.path.basename(path)
+            if not (sib_base == agent + ".json" or sib_base.startswith(agent + "-")):
+                continue
+            try:
+                sib = json.load(open(path))
+            except (OSError, json.JSONDecodeError):
+                continue
+            sub_traces = sib.get("sub_traces") or []
+            if isinstance(sub_traces, list) and filename in sub_traces:
                 return True
     return False
 

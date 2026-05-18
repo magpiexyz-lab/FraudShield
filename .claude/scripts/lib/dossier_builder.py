@@ -209,6 +209,92 @@ def _summarize_what_was_missed(rows: list[dict]) -> str:
     return f"prior attempt: {head}; recurrence indicates the guard did not hold"
 
 
+# Sentinel tokens emitted by symptom_canonicalizer.canonicalize_symptom().
+# Excluded from semantic-match scoring because they appear in every canonicalized
+# symptom and would inflate the overlap score without indicating real relevance.
+_SYMPTOM_SENTINEL_TOKENS = frozenset({
+    "<TS>", "<PATH>", "<SHA>", "<LINE>", "<COL>",
+})
+
+# Stop-words that appear in too many commit subjects to be discriminating.
+_SEMANTIC_MATCH_STOPWORDS = frozenset({
+    "fix", "fixes", "fixed", "feat", "chore", "refactor", "docs", "test", "tests",
+    "the", "a", "an", "and", "or", "of", "in", "to", "for", "with", "from",
+    "add", "remove", "update", "change", "use", "via", "by", "on",
+})
+
+
+def _tokenize_for_semantic_match(text: str) -> set[str]:
+    """Extract content tokens (lowercase, ≥3 chars, no sentinels, no stopwords).
+
+    Used by `_compute_semantic_match` to score overlap between a canonicalized
+    symptom signature and a prior commit's subject. The set form lets us use
+    set-intersection cardinality as the overlap metric.
+    """
+    if not isinstance(text, str):
+        return set()
+    import re as _re
+    lowered = text.lower()
+    # Strip sentinel tokens like <ts>, <path>, <sha>
+    for sent in _SYMPTOM_SENTINEL_TOKENS:
+        lowered = lowered.replace(sent.lower(), " ")
+    # Split on non-alnum (including hyphens) so compound tokens like
+    # "post-completion" and "--source-run-id" decompose into their content
+    # words. This is critical for the overlap heuristic: symptom signatures
+    # like "post-completion identity-resolution" must match commit subjects
+    # like "writer identity overrides" via the "identity" word, not require
+    # the entire compound to be identical.
+    tokens = {
+        t for t in _re.split(r"[^a-z0-9]+", lowered)
+        if len(t) >= 3 and t not in _SEMANTIC_MATCH_STOPWORDS
+    }
+    return tokens
+
+
+def _compute_semantic_match(
+    symptom_signature: str,
+    commit_subject: str,
+    files_touched: list[str],
+    divergence_files: set[str] | list[str],
+    *,
+    min_token_overlap: int = 2,
+) -> bool:
+    """Return True iff the prior commit's subject semantically matches the
+    current symptom signature.
+
+    Heuristic (#1468/#1456 root-cause analysis closure):
+      - Tokenize both symptom_signature and commit_subject into content
+        tokens (excluding sentinels + stopwords + tokens shorter than 3 chars).
+      - Require ≥ min_token_overlap content-token overlap.
+      - Require ≥1 file in `files_touched` matches `divergence_files` (always
+        true by construction since the dossier only includes co-touched files,
+        but kept here as a defensive invariant).
+
+    Returns True only when BOTH conditions hold — preventing false positives
+    from file-name-only co-occurrence (the original RMG v2 git-sentinel
+    "advisory" mode that this annotation reinforces).
+
+    When True, `solve-critic` vector 4 escalates the entry from advisory to
+    REQUIRED consultation; the designer must emit a `prior_failure_consultation`
+    entry in solve-trace.json with `consulted_via != "skipped"` OR a
+    `skip_justification` ≥40 chars.
+    """
+    if not symptom_signature or not commit_subject:
+        return False
+    symptom_tokens = _tokenize_for_semantic_match(symptom_signature)
+    subject_tokens = _tokenize_for_semantic_match(commit_subject)
+    overlap = symptom_tokens & subject_tokens
+    if len(overlap) < min_token_overlap:
+        return False
+    file_set = set(divergence_files) if divergence_files else set()
+    if not file_set or not files_touched:
+        return False
+    return any(
+        f in file_set or any(f.startswith(d.rstrip("/") + "/") for d in file_set)
+        for f in files_touched
+    )
+
+
 def build_dossier(
     divergence_files: list[str],
     symptom_signature: str,
@@ -289,14 +375,24 @@ def build_dossier(
         prior_commit = next((s for s in sha_list if s not in seen_so_far), None)
         sample = bucket["rows"][0]
 
+        failure_mode = _summarize_failure_mode(sample)
+        # OARC #1468/#1456: annotate semantic-match for designer-consultation
+        # gating. Ledger entries are already response-required (not advisory)
+        # per solve-critic vector 4, so attestation_required is independent of
+        # the response-floor — set True iff the canonicalized symptom and the
+        # bucket's failure_mode share ≥2 content tokens AND ≥1 file overlap.
+        attestation_required = _compute_semantic_match(
+            symptom_signature, failure_mode, files, file_set,
+        )
         slim = {
             "prior_run_id": run_id,
             "files_touched": files,
             "regression_test_present": regression_test,
             "occurrence_count_60d": occurrences,
+            "designer_consultation_attestation_required": attestation_required,
         }
         full = dict(slim)
-        full["failure_mode"] = _summarize_failure_mode(sample)
+        full["failure_mode"] = failure_mode
         full["what_was_missed"] = _summarize_what_was_missed(bucket["rows"])
         full["prior_commit_sha"] = prior_commit
         phase_1a.append(slim)
@@ -323,11 +419,19 @@ def build_dossier(
         if entry["sha"] in already_seen_shas:
             continue
         already_seen_shas.add(entry["sha"])
+        # OARC #1468/#1456: semantic-match annotation. Git-sentinel entries
+        # default to advisory (vector 4); when this flag is True the entry
+        # escalates to REQUIRED consultation. Computed from the commit subject
+        # vs the canonicalized symptom signature.
+        attestation_required = _compute_semantic_match(
+            symptom_signature, entry.get("subject", ""), entry.get("files") or [], file_set,
+        )
         slim = {
             "prior_run_id": f"git:{entry['sha'][:7]}",
             "files_touched": entry["files"],
             "regression_test_present": False,
             "occurrence_count_60d": 1,
+            "designer_consultation_attestation_required": attestation_required,
         }
         full = dict(slim)
         full["failure_mode"] = entry["subject"][:200]

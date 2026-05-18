@@ -69,6 +69,8 @@ SUITES=(
   ".claude/scripts/tests/test_check_fixlog_verdict_per_run.py"
   ".claude/scripts/tests/test_provenance_linter_rule.py"
   ".claude/scripts/tests/test_dossier_builder.py"
+  ".claude/scripts/tests/test_oarc_matcher.py"
+  ".claude/scripts/tests/test_landing_critic_merger.py"
   ".claude/scripts/tests/test_concern_id_stability.py"
   ".claude/scripts/tests/test_verify_rmg_guard_artifact.py"
   ".claude/scripts/tests/test_design_agents_orchestration.py"

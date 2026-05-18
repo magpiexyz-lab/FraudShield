@@ -113,6 +113,17 @@ step or guard artifact absent from the prior commit (R2-A2). Empty dossier
       # artifact absent from the prior commit (R2-A2). Empty when dossier
       # was empty.
       trace['prior_failure_response'] = []
+      # OARC #1468/#1456 — Prior-Failure Consultation. One entry per Phase 1a
+      # dossier entry where `designer_consultation_attestation_required: true`
+      # (semantic-match heuristic: ≥2 content-token overlap with canonicalized
+      # symptom AND ≥1 file overlap). For attestation_required entries the
+      # designer MUST emit consulted_via != 'skipped' OR skip_justification ≥40
+      # chars. Other entries (advisory git-sentinels + ledger entries) may also
+      # appear here for completeness. Empty when no dossier entry sets the
+      # annotation. Enforced by verify-recurrence-guard.py --require-dossier
+      # in warn mode during soak; Phase C cutover via CONSULTATION_DENY=1.
+      # Schema: [{prior_run_id, consulted_via: git_show|read_pr|skipped, skip_justification}]
+      trace['prior_failure_consultation'] = []
   print(json.dumps(trace))
   ")
   bash .claude/scripts/lib/write-gate-artifact.sh \

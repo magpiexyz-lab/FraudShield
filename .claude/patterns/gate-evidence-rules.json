@@ -62,6 +62,52 @@
       "mode_env": "GATE_EVIDENCE_OBSERVATION_PAIRING_MODE",
       "schema_cutoff": true,
       "description": "GECR #1470 — Cross-references friction events from agent-traces (workarounds[] + template_gap_observed[]) and verify-recheck.json (verify_results[].passed=false) against .runs/retrospective-filed-findings.json filed[] OR .runs/retrospective-result.json suppressions[]. Unpaired events fail the gate with specific citation + remediation pointing to file-retrospective-finding.py. Note: redundant with enumerate-pending-retrospective-findings.py's new agent-workaround + verify-failure candidate kinds (which feed validate-retrospective-completeness.py); ships warn-only for defense-in-depth observability. severity warn during soak."
+    },
+    {
+      "id": "recovery-path-skip-pairing",
+      "type": "recovery_path_observation",
+      "gate_id": "check-observation-artifacts",
+      "severity": "warn",
+      "evidence_sources": [
+        {"path_glob": ".runs/agent-traces/*.json", "reader": "json"},
+        {"path_glob": ".runs/image-candidates.json", "reader": "json"},
+        {"path_glob": ".runs/page-image-map.json", "reader": "json"}
+      ],
+      "matcher": {
+        "kind": "recovery_skip_extraction",
+        "params": {"target_kinds": ["recovery-path-skip"]}
+      },
+      "expected_observation": {
+        "artifact_path": ".runs/retrospective-filed-findings.json",
+        "predicate": "matches_friction_count",
+        "params": {"or_suppressed_in": ".runs/retrospective-result.json", "target_kinds": ["recovery-path-skip"]}
+      },
+      "failure_citation_format": "OARC violation — recovery-path skip in '{source_path}' (page={page}, reason={degraded_reason}, missing={skipped_check}) lacks paired observation. Run `python3 .claude/scripts/enumerate-pending-retrospective-findings.py` and file or suppress the candidate.",
+      "mode_env": "GATE_EVIDENCE_RECOVERY_SKIP_MODE",
+      "schema_cutoff": true,
+      "description": "GECR #1468 — Observation-Anchored Recovery Contract (OARC, sibling of EARC #1189). Any .runs/agent-traces/*.json with provenance in {self-degraded, recovery, lead-orchestrated} AND partial=true AND a non-sanctioned degraded_reason AND a detectable skipped depth-check (landing: candidates_tried==0 with unused sidecar candidates; non-landing has_images=true: image_issues_for_landing key absent) MUST have a paired observation in retrospective-filed-findings.json OR a suppression in retrospective-result.json. Suppressions list canonical via .claude/scripts/lib/sanctioned_degraded_reasons.py (#1042, #1061, #1196). severity warn during soak — Phase C cutover per .claude/patterns/gecr-cutover-criteria.json."
+    },
+    {
+      "id": "sparse-trace-pairing",
+      "type": "recovery_path_observation",
+      "gate_id": "check-observation-artifacts",
+      "severity": "warn",
+      "evidence_sources": [
+        {"path_glob": ".runs/agent-traces/*.json", "reader": "json"}
+      ],
+      "matcher": {
+        "kind": "recovery_skip_extraction",
+        "params": {"target_kinds": ["sparse-trace"]}
+      },
+      "expected_observation": {
+        "artifact_path": ".runs/retrospective-filed-findings.json",
+        "predicate": "matches_friction_count",
+        "params": {"or_suppressed_in": ".runs/retrospective-result.json", "target_kinds": ["sparse-trace"]}
+      },
+      "failure_citation_format": "OARC violation — sparse trace in '{source_path}' (agent={agent}, shape={shape}) lacks paired observation. Run `python3 .claude/scripts/enumerate-pending-retrospective-findings.py` and file or suppress the candidate.",
+      "mode_env": "GATE_EVIDENCE_SPARSE_TRACE_MODE",
+      "schema_cutoff": true,
+      "description": "GECR #1456 — OARC: detects (a) init-trace.py 4-key stubs that survived past skill completion (status='started' + no verdict field) AND (b) lead-orchestrated traces missing AOC v1.3 required fields (workarounds[] / template_gap_observed[]). Closes the agent-side gap left by AOC v1.2 #1303 (a0e568d) which completed docs only for design-critic.md. severity warn during soak — Phase C cutover per .claude/patterns/gecr-cutover-criteria.json."
     }
   ]
 }

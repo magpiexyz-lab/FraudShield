@@ -278,10 +278,12 @@ must be forwarded into the per-page spawn prompt so agents know whether
 python3 -c "import json; ps=json.load(open('.runs/design-page-set.json')); landing=ps.get('landing'); print(json.dumps(landing) if isinstance(landing, dict) else 'NULL')"
 ```
 
-If non-null, **append** the landing entry to the parallel spawn list — landing
-is spawned alongside non-landing per-page agents in the SAME single-message
-Agent batch (not serially, not in a separate stage). Landing's prompt fields
-match the non-landing template with these specifics:
+If non-null, **spawn TWO landing-scope agents in parallel** (#1468 landing-critic split — sections + images on independent maxTurns budgets) in the SAME single-message Agent batch alongside the non-landing per-page agents:
+
+1. `landing-sections-critic` — Layer 1/2/3 section scoring, non-image fixes. Trace filename: `landing-sections-critic.json`.
+2. `landing-images-critic` — Step 5.5 image candidate inspection, image-quality anti-patterns, image fixes. Trace filename: `landing-images-critic.json`.
+
+Both agents receive the same landing prompt fields:
 - `name: "landing"`, `route_pattern: "/"`, `test_url: "/"`
 - `FILE_BOUNDARY` = `landing.source_files ∩ PR_file_boundary` (often empty for
   landing-only-via-shared-component PRs)
@@ -289,9 +291,15 @@ match the non-landing template with these specifics:
   (typically `src/components/landing-content.tsx` when present in PR)
 - `has_images: true` (from `page-image-map.json["pages"]["landing"]` —
   always `landing-hardcoded` for landing)
-- Image-sidecar contract (special branch in the bullet list below): full
-  read-write access — emit `candidates_tried` in trace
-- Trace filename: `design-critic-landing.json`
+
+**Sibling coordination:**
+- `landing-sections-critic` MUST observe image issues in trace under `image_issues_for_landing` (`[{slot, issue}]`) but MUST NOT touch `.runs/image-candidates.json`.
+- `landing-images-critic` owns `candidates_tried`, `new_candidates_generated`, `unresolved_images`, `image_scores`, `image_fixes`. Step 5.5 candidate confirmation is REQUIRED when sidecar exists.
+- Both agents share the dev-server URL passed via `base_url`. Do NOT start a second server.
+
+After both landing siblings complete, the lead invokes `python3 .claude/scripts/merge-landing-critic-traces.py` to pre-aggregate the two traces into `design-critic-landing.json`. This pre-merge MUST happen BEFORE the outer `merge-design-critic-traces.py` run so the outer merger sees `design-critic-landing.json` as a normal sibling.
+
+**Non-landing pages** (everything else in `pages[]`) continue to spawn a single `design-critic` per page as below — no split.
 
 Spawn **one design-critic agent per page**, ALL as parallel foreground Agent calls in a **SINGLE message**. Each agent prompt includes:
 - Page name and route: "Review SINGLE page: `<page_name>` at route `<route_pattern>` (concrete test URL: `<test_url>`)." Pass BOTH `route_pattern` (literal `/quote/[id]` form) AND `test_url` (concretized with synthetic IDs from state-2a) — the agent forwards both into `render-review-detection.md` so the DEMO_MODE fixture short-circuit branch can fire.
@@ -400,7 +408,15 @@ Spawn **one design-critic agent per page**, ALL as parallel foreground Agent cal
 
 **Wait for all per-page agents to complete.**
 
-After completion: use [Trace State Detection](../verify.md#trace-state-detection) to check **each** `design-critic-<page_name>.json` individually. If any agent is State 2 (exhausted), follow [Exhaustion Protocol](../verify.md#exhaustion-protocol) Tier 1 with reduced scope: "Focus on this page only." If State 1 (never started) and agent returned output, write a recovery trace.
+After completion: use [Trace State Detection](../verify.md#trace-state-detection) to check **each** `design-critic-<page_name>.json` individually (and `landing-sections-critic.json` + `landing-images-critic.json` for the landing pair). If any agent is State 2 (exhausted), follow [Exhaustion Protocol](../verify.md#exhaustion-protocol) Tier 1 with reduced scope: "Focus on this page only." If State 1 (never started) and agent returned output, write a recovery trace.
+
+**Landing pre-merge (#1468):** If both `landing-sections-critic.json` AND `landing-images-critic.json` exist, run the pre-aggregator BEFORE Stage 1b so the outer Stage-1c flow sees a single `design-critic-landing.json` sibling:
+
+```bash
+python3 .claude/scripts/merge-landing-critic-traces.py
+```
+
+This writes `.runs/agent-traces/design-critic-landing.json` with `provenance="lead-merge"` and the field ownership table specified in the merger script. If either sub-trace is sparse (init-stub survived), the merger logs a warning and the new GECR rule `sparse-trace-pairing` (`.claude/patterns/gate-evidence-rules.json`) emits a paired-observation candidate via the OARC enumerator path.
 
 #### Stage 1b: Orchestrator shared-component fixes (serial)
 
