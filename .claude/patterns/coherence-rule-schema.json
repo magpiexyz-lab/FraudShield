@@ -408,6 +408,25 @@
         "trigger_pattern": {"type": "string"}
       }
     },
+    "rule_gate_verdict_evidence_coverage": {
+      "description": "GECR #1473+#1470 — Structural-shape gate-keeper checks (test -f / test -d / grep -E.*href / grep -c) must be covered by a rule in .claude/patterns/gate-evidence-rules.json OR carry an explicit evidence_check_intentionally_structural annotation in the rules file's annotation registry. Prevents meta-level structural-proxy regression where new gate-keeper checks revert to gameable shape-only enforcement (the very pattern GECR closes).",
+      "type": "object",
+      "required": ["id", "type", "severity", "scan_corpus", "rules_registry", "trigger_pattern"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string"},
+        "type": {"const": "gate_verdict_evidence_coverage"},
+        "severity": {"$ref": "#/definitions/severity"},
+        "description": {"type": "string"},
+        "_comment": {"type": "string"},
+        "scan_corpus": {"type": "array", "items": {"type": "string"}},
+        "rules_registry": {"type": "string"},
+        "trigger_pattern": {"type": "string"},
+        "exempt_paths": {"type": "array", "items": {"type": "string"}},
+        "valid_annotations": {"type": "array", "items": {"type": "string"}},
+        "annotation_registry_key": {"type": "string"}
+      }
+    },
     "rule_lib_helper_stack_knowledge_required": {
       "description": "#1300 — every public function in lib/*.py with >= caller_threshold production callers must have a Stack Knowledge entry in lib/README.md whose stack_scope is module-precise (scripts/lib/<module>), OR the helper module must declare a not-reusable pragma at the top. Closes the gap left by `lib-readme-stack-knowledge-required` (must_contain_section), which only guards heading presence — not per-helper coverage.",
       "type": "object",
@@ -510,6 +529,7 @@
           { "$ref": "#/definitions/rule_hook_bypass_manifest_completeness" },
           { "$ref": "#/definitions/rule_hook_silent_skip_friction_pairing" },
           { "$ref": "#/definitions/rule_route_resolution_canonical_source" },
+          { "$ref": "#/definitions/rule_gate_verdict_evidence_coverage" },
           { "$ref": "#/definitions/rule_lib_helper_stack_knowledge_required" },
           { "$ref": "#/definitions/rule_provenance_aware_runs_read" },
           { "$ref": "#/definitions/rule_cross_run_channel_exemption_pairing" },

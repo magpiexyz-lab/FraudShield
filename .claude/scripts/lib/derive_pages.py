@@ -166,6 +166,147 @@ def derive_funnel_steps(experiment: dict[str, Any]) -> list[dict]:
     return list(experiment.get("golden_path") or [])
 
 
+def derive_dynamic_only_pages(
+    experiment: dict[str, Any],
+    repo_root: str = ".",
+) -> dict[str, str]:
+    """Classify each scope page by route shape (GECR — closes #1473).
+
+    Returns a dict mapping each scope-page slug (from derive_scope_pages())
+    to one of four classification strings:
+
+      - "static"       — `src/app/<page>/page.tsx` exists, no `[*]/page.tsx`
+                         children. Bare-slug href= in nav-bar is sufficient
+                         (current BG2-WIRE check 1 semantics).
+      - "dynamic-only" — no `src/app/<page>/page.tsx`, at least one
+                         `src/app/<page>/[*]/page.tsx` child. Bare-slug
+                         `href="/<page>"` is INSUFFICIENT (would 404);
+                         require template-literal navigation
+                         `<Link href={`/<page>/${...}`}>` somewhere reachable.
+      - "mixed"        — BOTH a static `page.tsx` AND dynamic children.
+                         Both bare-slug AND template-literal navigation
+                         expected (list view + detail view both reachable).
+      - "absent"       — neither file present (declared in experiment.yaml
+                         but not yet scaffolded). Trivially passes — other
+                         BG2 checks (3c) enforce existence separately.
+
+    Slug-suffix handling: scope-page slugs come from derive_scope_pages()
+    which returns canonical short slugs from experiment.yaml (e.g.,
+    `portfolio-detail`). The filesystem folder may be a static prefix of
+    the slug (e.g., `src/app/portfolio/[slug]/page.tsx`). This function
+    handles the mismatch via the same static-prefix fallback used by
+    derive_page_set_for_design_critic (lines 362-374): for each scope page,
+    if the literal folder is absent, fall back to the slug's static prefix
+    (`slug.split("-", 1)[0]`).
+
+    Dynamic-segment forms:
+      - `[id]`        — regular dynamic; contributes to "dynamic-only" or "mixed"
+      - `[...slug]`   — catch-all; must always be parameterized → contributes to
+                        "dynamic-only"
+      - `[[...slug]]` — optional catch-all; matches both `/` and `/anything` →
+                        contributes to "mixed" (bare slug also reachable)
+
+    Service/cli archetypes (no `src/app/`): returns {} (consistent with
+    derive_landing_for_design_critic returning None for these archetypes).
+
+    Round-2 critic mitigations applied:
+      - Concern 487fdf73cf62 (slug suffix mismatch): direct filesystem scan
+        with explicit static-prefix fallback — does NOT route through
+        derive_page_set_for_design_critic's slug-munging path.
+      - Concern cfb66259539e (mixed-route ambiguity): explicit `mixed` state
+        rather than collapsing to dynamic-only or static.
+      - Concern Plan-Agent-B-5 (REPLACE-mode breaks static pages): trinary
+        classification means caller can branch behavior per page.
+    """
+    src_app = os.path.join(repo_root, "src", "app")
+    if not os.path.isdir(src_app):
+        return {}
+
+    scope_pages = derive_scope_pages(experiment)
+    result: dict[str, str] = {}
+
+    for slug in scope_pages:
+        # Try literal slug folder first; fall back to static prefix
+        # (`portfolio-detail` → `portfolio`) so hyphenated experiment.yaml
+        # slugs find their on-disk folder.
+        candidate_folders: list[str] = [slug]
+        if "-" in slug:
+            prefix = slug.split("-", 1)[0]
+            if prefix and prefix != slug:
+                candidate_folders.append(prefix)
+
+        static_index_found = False
+        regular_dynamic_children = False
+        optional_catch_all_children = False
+        folder_found = False
+
+        for folder in candidate_folders:
+            folder_abs = os.path.join(src_app, folder)
+            if not os.path.isdir(folder_abs):
+                continue
+            folder_found = True
+
+            # Static index check
+            for ext in (".tsx", ".jsx", ".ts", ".js"):
+                if os.path.isfile(os.path.join(folder_abs, f"page{ext}")):
+                    static_index_found = True
+                    break
+
+            # Dynamic child check — glob.escape protects bracket folders
+            # (see #1450 gap 2 in derive_pages.py:328-352)
+            escaped = glob.escape(folder_abs)
+            for ext in ("tsx", "jsx", "ts", "js"):
+                # Look for any */page.<ext> under direct children
+                for child_page in glob.glob(
+                    os.path.join(escaped, "*", f"page.{ext}")
+                ):
+                    # Extract the immediate-child segment name to classify
+                    rel = os.path.relpath(child_page, folder_abs)
+                    parts = rel.split(os.sep)
+                    if not parts:
+                        continue
+                    segment = parts[0]
+                    if not segment.startswith("["):
+                        # static sibling (e.g., src/app/<page>/about/page.tsx);
+                        # doesn't make this a dynamic route
+                        continue
+                    # Detect optional catch-all `[[...slug]]` (starts with `[[`)
+                    if segment.startswith("[["):
+                        optional_catch_all_children = True
+                    else:
+                        regular_dynamic_children = True
+            # Stop after first folder found — don't double-count prefix
+            # fallback when literal folder also exists.
+            if folder_found:
+                break
+
+        if not folder_found:
+            result[slug] = "absent"
+            continue
+
+        # Bare-slug reachability: either a static page.tsx OR an optional
+        # catch-all (`[[...slug]]`) which matches `/` with no parameter.
+        bare_slug_reachable = static_index_found or optional_catch_all_children
+        # Template-literal use case exists when a regular dynamic segment
+        # `[id]` is present (route REQUIRES a parameter to render).
+        template_literal_required = regular_dynamic_children
+
+        if bare_slug_reachable and template_literal_required:
+            # Both nav forms expected — list view (bare slug) + detail (template literal)
+            result[slug] = "mixed"
+        elif template_literal_required:
+            # Only `[id]`-style children — bare slug would 404
+            result[slug] = "dynamic-only"
+        elif bare_slug_reachable:
+            # Static or optional-catch-all-only — bare slug works, no template literal needed
+            result[slug] = "static"
+        else:
+            # Folder exists but no recognizable page.* — treat as absent
+            result[slug] = "absent"
+
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Design-critic orchestration helpers (#1042 / Session C)
 # ---------------------------------------------------------------------------
@@ -803,10 +944,11 @@ def main() -> None:
         "public_paths",
         "design_critic_pages",
         "dynamic_public_pages",
+        "dynamic_only_pages",
     ):
         sys.stderr.write(
             "usage: derive_pages.py "
-            "{scope|validation|funnel|public_paths|design_critic_pages|dynamic_public_pages} "
+            "{scope|validation|funnel|public_paths|design_critic_pages|dynamic_public_pages|dynamic_only_pages} "
             "[< experiment.yaml]\n"
         )
         sys.exit(2)
@@ -830,6 +972,11 @@ def main() -> None:
         # #1387: enumerate concrete URL instances for dynamic-segment public
         # pages (sitemap.ts emitter consumer + post-fan-out audit input).
         result = dynamic_public_pages(experiment)
+    elif sys.argv[1] == "dynamic_only_pages":
+        # GECR #1473: classify each scope page by route shape so BG2-WIRE
+        # check 1 can branch behavior (static → bare-slug; dynamic-only →
+        # template-literal REPLACE; mixed → both; absent → trivially pass).
+        result = derive_dynamic_only_pages(experiment)
     else:
         result = derive_funnel_steps(experiment)
 

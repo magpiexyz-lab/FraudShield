@@ -4464,6 +4464,160 @@ def main() -> int:
         return findings
 
 
+    def check_gate_verdict_evidence_coverage(rule):
+        """GECR #1473+#1470 — Structural-shape gate-keeper checks must be
+        covered by a rule in gate-evidence-rules.json OR carry an explicit
+        evidence_check_intentionally_structural annotation.
+
+        Prevents meta-level structural-proxy regression: a future gate-keeper
+        check that uses test -f / test -d / grep -E.*href / grep -c (the
+        gameable shapes #1473 + #1470 closed) silently passes lint unless
+        the author registers a rule or annotates the exemption.
+
+        Mirrors `check_route_resolution_canonical_source` pattern (#1460).
+        Defensive: fails loud on malformed registry shape instead of stack
+        trace (Plan-Agent-A Open Risk 1). Annotation-spelling validation
+        via `valid_annotations` closed enum (Plan-Agent-B Concern 18).
+        """
+        import glob as _glob
+        import json as _json
+        import re as _re
+        findings = []
+        rid = rule.get("id", "<unknown>")
+        scan_corpus = rule.get("scan_corpus", [])
+        rules_registry_path = rule.get("rules_registry", "")
+        trigger_pattern = rule.get("trigger_pattern", "")
+        exempt_paths = rule.get("exempt_paths", [])
+        valid_annotations = rule.get(
+            "valid_annotations",
+            ["evidence_check_intentionally_structural"],
+        )
+        annotation_key = rule.get(
+            "annotation_registry_key",
+            "evidence_check_intentionally_structural",
+        )
+
+        if not scan_corpus:
+            return [f"  [{rid}] scan_corpus is required"]
+        if not rules_registry_path:
+            return [f"  [{rid}] rules_registry is required"]
+        if not trigger_pattern:
+            return [f"  [{rid}] trigger_pattern is required"]
+
+        try:
+            trigger_re = _re.compile(trigger_pattern)
+        except _re.error as exc:
+            return [f"  [{rid}] invalid trigger_pattern regex: {exc}"]
+
+        # Load registry — fail loud on parse error / missing required shape.
+        # Defensive schema check (Plan-Agent-A Open Risk 1): registry MUST
+        # be a dict with `rules` array. Bad shape → infrastructure finding,
+        # not silent miss.
+        registry_path_abs = os.path.join(REPO_ROOT, rules_registry_path)
+        if not os.path.isfile(registry_path_abs):
+            return [
+                f"  [{rid}] rules_registry not found at {rules_registry_path}"
+            ]
+        try:
+            with open(registry_path_abs) as fh:
+                registry = _json.load(fh)
+        except (OSError, _json.JSONDecodeError) as exc:
+            return [
+                f"  [{rid}] cannot parse rules_registry at "
+                f"{rules_registry_path}: {exc}"
+            ]
+        if not isinstance(registry, dict) or not isinstance(
+            registry.get("rules"), list
+        ):
+            return [
+                f"  [{rid}] rules_registry malformed: missing top-level "
+                f"`rules` array at {rules_registry_path}"
+            ]
+
+        # Build registered set: rule ids AND gate_ids both count as "covered"
+        registered: set[str] = set()
+        for r in registry.get("rules", []):
+            if isinstance(r, dict):
+                if r.get("id"):
+                    registered.add(r["id"])
+                if r.get("gate_id"):
+                    registered.add(r["gate_id"])
+
+        # Annotation registry — top-level key listing intentionally-structural
+        # check identifiers (e.g., "bg2-check-7-quality"). Schema accepts both
+        # bare strings and {check_id, justification} dicts (see
+        # gate-evidence-rule-schema.json oneOf for evidence_check_intentionally_structural).
+        annotated: set[str] = set()
+        ann_list = registry.get(annotation_key, [])
+        if isinstance(ann_list, list):
+            for entry in ann_list:
+                if isinstance(entry, str):
+                    annotated.add(entry)
+                elif isinstance(entry, dict):
+                    cid = entry.get("check_id")
+                    if isinstance(cid, str):
+                        annotated.add(cid)
+
+        # Validate annotation typos (Plan-Agent-B Concern 18): every top-level
+        # key in registry that starts with "evidence_check_" must be in
+        # valid_annotations. Typo produces did-you-mean output.
+        for key in registry.keys():
+            if not isinstance(key, str):
+                continue
+            if not key.startswith("evidence_check_"):
+                continue
+            if key not in valid_annotations:
+                closest = ", ".join(valid_annotations)
+                findings.append(_emit_finding(rule,
+                    f"unknown annotation key '{key}' in {rules_registry_path}"
+                    f" — did you mean one of: {closest}?"))
+
+        # Scan corpus for structural-shape triggers
+        exempt: set[str] = set()
+        for pat in exempt_paths:
+            for p in _glob.glob(os.path.join(REPO_ROOT, pat), recursive=True):
+                exempt.add(os.path.normpath(p))
+
+        for pat in scan_corpus:
+            for path in sorted(_glob.glob(os.path.join(REPO_ROOT, pat), recursive=True)):
+                norm = os.path.normpath(path)
+                if norm in exempt:
+                    continue
+                try:
+                    with open(path, encoding="utf-8", errors="ignore") as fh:
+                        source = fh.read()
+                except OSError:
+                    continue
+
+                rel = os.path.relpath(path, REPO_ROOT)
+                # Walk line by line; report each match that lacks coverage
+                for lineno, line in enumerate(source.splitlines(), start=1):
+                    if not trigger_re.search(line):
+                        continue
+                    # Heuristic check identifier: derive from line text +
+                    # file (e.g., "gate-keeper.md:309"). The author can
+                    # register this identifier in the registry to mark it
+                    # covered, OR add to evidence_check_intentionally_structural
+                    # list with a justification.
+                    check_id = f"{rel}:{lineno}"
+                    # Coverage: any registered id appearing in the line
+                    # (gate-keeper checks often inline their rule id),
+                    # OR explicit annotation
+                    covered = check_id in annotated or any(
+                        rid_check and rid_check in line for rid_check in registered
+                    )
+                    if covered:
+                        continue
+                    findings.append(_emit_finding(rule,
+                        f"{rel}:{lineno}: structural-shape check (test -f / "
+                        f"test -d / grep -E.*href / grep -c) without GECR "
+                        f"coverage. Add a rule to {rules_registry_path} that "
+                        f"references this check's gate-id, OR add "
+                        f"'{check_id}' to the {annotation_key} list in "
+                        f"{rules_registry_path} with a justification."))
+        return findings
+
+
     # ---------------------------------------------------------------------------
     # Cross-file rule dispatch — registry-driven with type + field validation.
     #
@@ -4604,6 +4758,19 @@ def main() -> int:
             {"scan_corpus", "canonical_module", "trigger_pattern"},
             {"canonical_symbols", "exempt_paths"},
             True,  # is_strict_aoc — drift produces user-visible auditor/sitemap bugs
+        ),
+        # GECR #1473+#1470 — meta-coverage rule preventing structural-shape-as-
+        # proxy regression. Scans gate-keeper.md and check-observation-artifacts.sh
+        # for test -f / test -d / grep -E.*href / grep -c patterns; for each
+        # match, requires either a registered gate-id in gate-evidence-rules.json
+        # OR an explicit evidence_check_intentionally_structural annotation
+        # entry. is_strict_aoc=False initially — soak window flips to True after
+        # ≥2 real skill cycles (per #1291 convention).
+        "gate_verdict_evidence_coverage": (
+            check_gate_verdict_evidence_coverage,
+            {"scan_corpus", "rules_registry", "trigger_pattern"},
+            {"exempt_paths", "valid_annotations", "annotation_registry_key"},
+            False,
         ),
         # #1437 + #1417 — provenance-blind filter class prevention.
         # Soak: is_strict_aoc=False during one PR cycle. Promote to True

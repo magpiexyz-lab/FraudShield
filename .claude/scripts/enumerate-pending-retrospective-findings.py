@@ -377,6 +377,176 @@ def _candidates_from_log_write_failures(rid: str) -> list[dict]:
     return out
 
 
+def _candidates_from_agent_workarounds(rid: str) -> list[dict]:
+    """GECR #1470 — enumerate workarounds[] + template_gap_observed[] from
+    every agent trace as candidates.
+
+    Schema in agent-output-contract.md §135-173 (AOC v1.3): all 32 trace-
+    writing agents emit `workarounds[]` and `template_gap_observed[]` with
+    empty-array default. Non-empty entries are friction signals — the agent
+    couldn't proceed without papering over a deeper issue. These have been
+    inert candidate sources since #1449 because enumerate-pending was never
+    extended to consume them.
+
+    Skip entries where `root_cause_unresolved == False` (Plan-Agent-B
+    Concern 7: explicit self-resolved workaround should not surface).
+
+    Dedup key collapses paraphrasing across agents touching the same
+    (file, line, type) location (Plan-Agent-B Concern 6).
+    """
+    out: list[dict] = []
+    seen_keys: set[str] = set()
+    try:
+        traces = glob.glob(".runs/agent-traces/*.json")
+    except Exception:
+        return []
+
+    for trace_path in traces:
+        try:
+            with open(trace_path) as fh:
+                trace = json.load(fh)
+        except (OSError, json.JSONDecodeError):
+            continue
+
+        if rid and trace.get("run_id") and trace.get("run_id") != rid:
+            continue
+
+        agent_name = trace.get("agent") or os.path.basename(trace_path)
+
+        # workarounds[]
+        workarounds = trace.get("workarounds") or []
+        if isinstance(workarounds, list):
+            for entry in workarounds:
+                if not isinstance(entry, dict):
+                    continue
+                if entry.get("root_cause_unresolved") is False:
+                    # Explicit self-resolved — skip
+                    continue
+                file = entry.get("file") or ""
+                line = entry.get("line", 0)
+                type_ = entry.get("type") or ""
+                description = (entry.get("description") or "")[:200]
+                if not file and not description:
+                    continue
+                key = (
+                    f"agent-workarounds:{file}:{line}:{type_}:"
+                    f"{description[:80].lower().strip()}"
+                )
+                if key in seen_keys:
+                    continue
+                seen_keys.add(key)
+                # Confidence: high when explicitly flagged unresolved;
+                # low when absent (defensive default — flag for triage)
+                confidence = (
+                    "high" if entry.get("root_cause_unresolved") is True else "low"
+                )
+                out.append({
+                    "candidate_id": _hash_key("agent-workarounds", key),
+                    "kind": "agent-workaround",
+                    "confidence": confidence,
+                    "key": key,
+                    "evidence": {
+                        "file": file,
+                        "line": line,
+                        "type": type_,
+                        "description": description,
+                        "agent": agent_name,
+                        "root_cause_unresolved": entry.get("root_cause_unresolved"),
+                    },
+                    "source_files": [trace_path],
+                })
+
+        # template_gap_observed[]
+        gaps = trace.get("template_gap_observed") or []
+        if isinstance(gaps, list):
+            for entry in gaps:
+                if not isinstance(entry, dict):
+                    continue
+                template_path = entry.get("template_path") or ""
+                section = entry.get("section") or ""
+                observation = (entry.get("observation") or "")[:200]
+                if not template_path and not observation:
+                    continue
+                key = (
+                    f"agent-template-gap:{template_path}:{section}:"
+                    f"{observation[:80].lower().strip()}"
+                )
+                if key in seen_keys:
+                    continue
+                seen_keys.add(key)
+                out.append({
+                    "candidate_id": _hash_key("agent-template-gap", key),
+                    "kind": "agent-workaround",  # share kind for downstream consumers
+                    "confidence": "high",
+                    "key": key,
+                    "evidence": {
+                        "template_path": template_path,
+                        "section": section,
+                        "observation": observation,
+                        "suggested_remediation": (
+                            entry.get("suggested_remediation") or ""
+                        )[:200],
+                        "agent": agent_name,
+                    },
+                    "source_files": [trace_path],
+                })
+    return out
+
+
+def _candidates_from_verify_failures(rid: str) -> list[dict]:
+    """GECR #1470 — enumerate verify-recheck failed states as candidates.
+
+    Per-state granularity (Plan-Agent-B Concern 4). Dedup key uses state +
+    hash(error) so a rerun-that-still-fails collapses to the same candidate
+    but a transient flake (re-run passes) does not propagate.
+    """
+    path = ".runs/verify-recheck.json"
+    if not os.path.isfile(path):
+        return []
+    try:
+        with open(path) as fh:
+            data = json.load(fh)
+    except (OSError, json.JSONDecodeError):
+        return []
+    # Tolerate missing run_id; filter only when both present
+    if rid and data.get("run_id") and data.get("run_id") != rid:
+        return []
+
+    verify_results = data.get("verify_results") or []
+    if not isinstance(verify_results, list):
+        return []
+
+    out: list[dict] = []
+    seen_keys: set[str] = set()
+    for row in verify_results:
+        if not isinstance(row, dict):
+            continue
+        if row.get("passed") is not False:
+            continue
+        state = str(row.get("state") or row.get("name") or "").strip()
+        error = str(row.get("error") or "")
+        if not state and not error:
+            continue
+        # Deterministic dedup: state + first 80 chars of canonicalized error
+        error_norm = error[:80].strip()
+        key = f"verify-failure:{state}:{error_norm}"
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        out.append({
+            "candidate_id": _hash_key("verify-failure", key),
+            "kind": "verify-failure",
+            "confidence": "high",
+            "key": key,
+            "evidence": {
+                "state": state,
+                "error": error[:300],
+            },
+            "source_files": [path],
+        })
+    return out
+
+
 def main() -> int:
     rid = _active_run_id()
     candidates: list[dict] = []
@@ -384,13 +554,32 @@ def main() -> int:
     candidates.extend(_candidates_from_template_edits(rid))
     candidates.extend(_candidates_from_coherence_findings(rid))
     candidates.extend(_candidates_from_agent_recoveries(rid))
+    candidates.extend(_candidates_from_agent_workarounds(rid))  # GECR #1470
     candidates.extend(_candidates_from_trace_overwrites(rid))
+    candidates.extend(_candidates_from_verify_failures(rid))  # GECR #1470
     candidates.extend(_candidates_from_lead_deviations(rid))
     candidates.extend(_candidates_from_log_write_failures(rid))
 
-    # Sort: high → medium → low, then by candidate_id for stability
+    # Stable kind priority for sort (Plan-Agent-B Concern 24 — new kinds
+    # interleave deterministically with existing kinds).
+    KIND_PRIORITY = {
+        "hook-friction": 1,
+        "template-edit": 2,
+        "coherence-finding": 3,
+        "agent-recovery": 4,
+        "agent-workaround": 5,
+        "trace-overwrite": 6,
+        "verify-failure": 7,
+        "lead-deviation": 8,
+        "log-write-failure": 9,
+    }
+    # Sort: kind_priority → high → medium → low → by candidate_id (stable)
     order = {"high": 0, "medium": 1, "low": 2}
-    candidates.sort(key=lambda c: (order.get(c["confidence"], 9), c["candidate_id"]))
+    candidates.sort(key=lambda c: (
+        KIND_PRIORITY.get(c.get("kind", ""), 99),
+        order.get(c["confidence"], 9),
+        c["candidate_id"],
+    ))
 
     out = {
         "run_id": rid,

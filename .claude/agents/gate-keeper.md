@@ -306,9 +306,16 @@ Verify scaffold-wire output AFTER scaffold-wire completes (state-14). This gate 
 > REF: Archetype branching — see `.claude/patterns/archetype-behavior-check.md` Quick-Reference Table, rows "Primary unit".
 > [primary-unit] web-app: page (`src/app/<page>/page.tsx`) | service: endpoint (`src/app/api/<ep>/route.ts`) | cli: command (`src/commands/<cmd>.ts`)
 
-1. **Wire artifact: nav-bar inventory coverage** (web-app + stack.auth only) — verify NavBar links cover the canonical set:
+1. **Wire artifact: nav-bar inventory coverage** (web-app + stack.auth only) — verify NavBar links cover the canonical set with **trinary classification** (GECR #1473):
 - `src/components/nav-bar.tsx` exists and contains the marker comment `{/* DERIVED-FROM: derive_scope_pages */}` (emitted by scaffold-wire Step 5b.3). BLOCK if absent.
-- For each `<page>` in `derive_scope_pages(experiment)` excluding `landing`, `login`, `signup`, `auth/callback`, `auth/reset-password`: assert the page slug appears as a whole path segment in an `href` in `src/components/nav-bar.tsx` — run `grep -E 'href=(\"/(<page>)(/|\"|\\?)|\\{[^}]*\"/?<page>[\"/]?[^}]*\\})' src/components/nav-bar.tsx`. BLOCK with list of missing pages.
+- Classify each scope page by route shape via `python3 .claude/scripts/lib/derive_pages.py dynamic_only_pages < experiment/experiment.yaml`. The output is a JSON dict mapping each `derive_scope_pages()` slug (excluding `landing`, `login`, `signup`, `auth/callback`, `auth/reset-password`) to one of `"static" | "dynamic-only" | "mixed" | "absent"`.
+- Delegate the check to the GECR runner: `python3 .claude/scripts/verify-gate-evidence.py --rule-id bg2-wire-nav-reachability` — invokes rule `bg2-wire-nav-reachability` in `.claude/patterns/gate-evidence-rules.json` (matcher type `template_literal_navigation`). Exit 0 = PASS, 1 = BLOCK with `failures[]` written to stderr including `{page, classification, requirement, found, expected}`, 2 = infrastructure error.
+- Per-classification semantics (GECR #1473 — REPLACES the prior bare-slug-only check):
+  - `"static"`: bare-slug `href="/<page>"` required (preserves prior semantics).
+  - `"dynamic-only"`: page has NO `src/app/<page>/page.tsx` but at least one `src/app/<page>/[*]/page.tsx`. **Bare slug is INSUFFICIENT** (would 404 in production). REQUIRE template-literal navigation `<Link href={`/<page>/${...}`}>` under `src/app/**/*.tsx` ∪ `src/components/nav-bar.tsx`. Closes #1473: prior rule forced synthetic-href workaround `<Link href="/<page>" onClick={preventDefault + router.push(...)}>` which is an a11y regression (screen readers, middle-click, keyboard nav all see the fiction).
+  - `"mixed"`: both static index AND dynamic children. Require BOTH bare-slug AND template-literal forms (list-view + detail-view both reachable).
+  - `"absent"`: page in `derive_scope_pages()` but no on-disk folder yet. Trivially passes — page existence is enforced separately by BG2 check 3c.
+- `MODE=GATE_EVIDENCE_NAV_REACHABILITY_MODE`: defaults `warn` during soak per #1291 convention; flip to `deny` after ≥2 real skill cycles with zero false positives.
 - Skip for service/cli archetypes or when `stack.auth` is absent.
 
 2. **Wire artifact: api routes for mutation behaviors** (web-app + service): if mutation behaviors exist in experiment.yaml (behaviors with `actor: user` that imply writes), `src/app/api/` contains route files — run `ls src/app/api/`. BLOCK if missing. Skip for cli.

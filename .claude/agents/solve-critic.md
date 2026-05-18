@@ -137,6 +137,43 @@ whenever `problem_type == "defect"`. Each fires as TYPE A.
    the framing is tautological. Compute `concern_id` via
    `concern_id_for(category="falsification-weak", description="<text>")`.
 
+8. **`field-citation-verification`** — Fires whenever `problem_type == "defect"`.
+   For every backtick-quoted field name, file path, function name, or schema
+   key cited in the design (e.g., `` `verify_results[].passed` ``,
+   `` `workarounds[].file` ``, `` `evidence_paths[]` ``), the critic MUST run
+   a grep against the cited source file (using Bash) and verify the cited
+   symbol exists in main.
+
+   Concrete checks:
+     (a) Extract every backtick-quoted identifier-like token from the design
+         (regex: `` `[A-Za-z_][A-Za-z0-9_.\[\]]*` ``).
+     (b) Determine the claimed source file from surrounding context (e.g.,
+         "`.runs/verify-recheck.json verify_results[]`" → source is the writer
+         of that artifact; "`.claude/scripts/foo.py:bar()`" → source is the
+         function definition site).
+     (c) Run `grep -rn '<identifier>' <claimed_source>`. For artifact field
+         citations without a stated source, grep across `.claude/scripts/` for
+         the writer.
+     (d) If 0 matches AND the citation is NOT in an exempt section → TYPE A
+         concern, category `field-citation-verification`.
+
+   Exempt sections (the field IS intended to be added by the design — citing
+   it here is correct):
+     - Any section heading containing "Proposed", "Adding", "New Schema",
+       "Step N: Create"
+     - Citations marked with `(new)`, `(NEW)`, or `(proposed)` adjacent to the
+       backtick block
+
+   Paraphrased citations not in backticks are NOT covered — designs MUST use
+   canonical backtick-quoted form for any field reference.
+
+   Rationale: round-2 of `/solve --defect` on issues #1473+#1470 surfaced 4/9
+   TYPE A concerns of this class (`who` vs `provenance`, `prior_default` vs
+   `fail_mode`, `failed_states[]` vs `verify_results[]`, `evidence_paths[]`
+   field non-existent). Making this an explicit critic vector prevents the
+   recurrence pattern across future defect runs. Compute `concern_id` via
+   `concern_id_for(category="field-citation-verification", description="<text>")`.
+
 ### Concern IDs and Categories (RMG v2)
 
 Each concern carries a stable `concern_id` (12-char sha1 of
@@ -144,8 +181,8 @@ Each concern carries a stable `concern_id` (12-char sha1 of
 from:
 
 `cross-run-prior-failure-unaddressed | within-run-round1-concern-unaddressed |
-unguardability-rationale-weak | falsification-weak | symptom-only |
-unguarded-recurrence | uncovered-instances | other`
+unguardability-rationale-weak | falsification-weak | field-citation-verification |
+symptom-only | unguarded-recurrence | uncovered-instances | other`
 
 Compute `concern_id` via `.claude/scripts/lib/concern_id.py`:
 
@@ -174,7 +211,7 @@ For each concern: type, description, evidence, and (for TYPE A) suggested fix.
 
 **Type**: A | B | C
 **ID**: <12-char concern_id from concern_id_for(category, description)>
-**Category**: <one of: cross-run-prior-failure-unaddressed | within-run-round1-concern-unaddressed | unguardability-rationale-weak | falsification-weak | symptom-only | unguarded-recurrence | uncovered-instances | other>
+**Category**: <one of: cross-run-prior-failure-unaddressed | within-run-round1-concern-unaddressed | unguardability-rationale-weak | falsification-weak | field-citation-verification | symptom-only | unguarded-recurrence | uncovered-instances | other>
 **Description**: <what is wrong>
 **Evidence**: <file:line or reasoning chain>
 **Addressed-by**: <round 2 only: cite the step # or artifact in the round-2 design that addresses the matching round-1 concern_id>

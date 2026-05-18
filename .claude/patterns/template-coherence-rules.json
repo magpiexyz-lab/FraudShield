@@ -586,6 +586,18 @@
       "description": "#1450 gaps 1-3 — Python scripts that resolve page-name → route-path must source page enumeration from derive_pages.py. Detects reimplementations of route-shape resolution that drift from the canonical helper. Fires when a .py file under .claude/scripts/**/*.py contains a glob.glob() pattern referencing both src/app and page.tsx AND does not import from derive_pages. Pragmatic regex-based detection — pure AST detection deferred."
     },
     {
+      "id": "gate-verdict-evidence-coverage",
+      "type": "gate_verdict_evidence_coverage",
+      "severity": "warn",
+      "scan_corpus": [".claude/agents/gate-keeper.md", ".claude/scripts/check-observation-artifacts.sh"],
+      "rules_registry": ".claude/patterns/gate-evidence-rules.json",
+      "trigger_pattern": "test -f|test -d|grep -E.*href|grep -c ",
+      "exempt_paths": [],
+      "valid_annotations": ["evidence_check_intentionally_structural"],
+      "annotation_registry_key": "evidence_check_intentionally_structural",
+      "description": "GECR #1473+#1470 — Structural-shape gate-keeper checks (test -f / test -d / grep -E.*href / grep -c) must be covered by a rule in gate-evidence-rules.json (matching by gate_id appearing in the check's line text) OR carry an explicit evidence_check_intentionally_structural list entry in the rules registry with the check identifier (<rel-path>:<lineno>) and a rationale. Prevents meta-level structural-proxy regression: a new structural-shape check added to gate-keeper.md silently passes lint today; this rule flips that to warn (soak) then block. Severity warn during soak per #1291 convention; flip to block after ≥2 real skill cycles with zero false positives."
+    },
+    {
       "id": "design-agents-hard-gate-parity",
       "type": "agent_registry_predicate_parity",
       "severity": "block",

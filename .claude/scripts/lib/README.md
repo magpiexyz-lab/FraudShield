@@ -18,6 +18,122 @@ Helpers NOT intended for reuse (one-off utilities, single-caller adapters) shoul
 
 ## Stack Knowledge
 
+### gate-evidence cross-reference protocol (GECR)
+```yaml
+id: gate-evidence-citation-protocol
+maturity: stable
+anti_pattern: false
+composite_identity:
+  root_cause_class: gate-enforces-structural-shape-as-proxy-for-semantic-property
+  divergence_pattern: gate-pass-signal-decoupled-from-evidence-source
+  stack_scope: scripts/lib/gate_evidence_runner
+composite_identity_hash: 7edfd62ca235
+symptom_keywords: [gate, gate-keeper, evidence, citation, cross-reference, semantic-check, structural-proxy, synthetic-href, empty-stub, observe, BG2-WIRE, observation-pairing, nav-bar, dynamic-route, retrospective]
+confidence_score: 0.85
+occurrence_count: 2
+linked_issues: [1473, 1470, 1468, 1456]
+first_seen: 2026-05-18
+last_seen: 2026-05-18
+graduated_to: null
+prevention_mechanism: |
+  Declarative rules in .claude/patterns/gate-evidence-rules.json describe
+  per-rule evidence sources, matchers, and failure citations. A generic
+  runner (lib.gate_evidence_runner) loads rules through
+  jsonschema.validate() against gate-evidence-rule-schema.json, resolves
+  evidence sources via glob+reader (json | jsonl | grep_tsx | filesystem),
+  applies matchers (template_literal_navigation | friction_event_extraction
+  | recovery_skip_extraction | any_of_patterns), and emits structured
+  failures with citations. Each rule honors a MODE env var (warn|deny) +
+  schema_version_gate.required_schema_version() for soak-then-flip rollout
+  and pre-cutoff grandfathering.
+
+  Two seed rules ship with the foundation:
+    - bg2-wire-nav-reachability (#1473): for dynamic-only pages
+      (derive_dynamic_only_pages classification == "dynamic-only"),
+      REPLACE bare-slug href requirement with template-literal navigation
+      requirement (`<Link href={`/<page>/${...}`}>` somewhere under
+      src/app/**/*.tsx or src/components/nav-bar.tsx). For "static" pages,
+      preserve current bare-slug semantics. For "mixed" pages, require BOTH.
+    - agent-workaround-pairing (#1470): cross-references friction events
+      from .runs/agent-traces/*.json (workarounds[] +
+      template_gap_observed[]) and .runs/verify-recheck.json
+      (verify_results[].passed=false) against
+      .runs/retrospective-filed-findings.json filed[] OR
+      .runs/retrospective-result.json suppressions[] (with rationale).
+      Unpaired events fail the gate with specific citation.
+
+  Meta-coverage lint rule rule_gate_verdict_evidence_coverage
+  (template-coherence-rules.json) enforces that every structural-shape
+  gate-keeper check (test -f / test -d / grep -E.*href / grep -c) is
+  either covered by a rule in gate-evidence-rules.json OR carries an
+  explicit evidence_check_intentionally_structural annotation. Prevents
+  meta-level structural-proxy regression where new gate-keeper checks
+  silently revert to gameable shape-only enforcement.
+
+  Solve-critic Vector 8 (field-citation-verification) catches the
+  recurring "design cites field name without grep-verifying it exists in
+  the cited source file" failure mode that produced 4/9 round-2 TYPE A
+  concerns during the originating /solve --defect run.
+
+fix_template: |
+  When a gate's pass-signal is currently a structural shape check (file
+  existence, key presence, literal substring match) but the gate's INTENT
+  is a semantic property (route reachability, observation fidelity,
+  recovery-path validity), add a new rule to
+  .claude/patterns/gate-evidence-rules.json:
+
+    {
+      "id": "<gate-id>-<purpose>",
+      "type": "navigation_reachability | friction_event_extraction | recovery_path_observation",
+      "gate_id": "<gate-id>",
+      "severity": "warn",  # flip to block after soak (1-2 real skill cycles)
+      "evidence_sources": [
+        {"path_glob": "<glob>", "reader": "json|jsonl|grep_tsx|filesystem",
+         "always_included_paths": ["..."]}
+      ],
+      "matcher": {"kind": "<matcher>", "params": {...}},
+      "expected_observation": {
+        "artifact_path": "<runtime-artifact>",
+        "predicate": "exists_with_citation | array_non_empty | matches_friction_count",
+        "params": {...}
+      },
+      "failure_citation_format": "<jinja-style template>",
+      "mode_env": "GATE_EVIDENCE_<NAME>_MODE",
+      "schema_cutoff": true
+    }
+
+  The gate-keeper.md (or check-observation-artifacts.sh) numbered check
+  then delegates to:
+    python3 .claude/scripts/verify-gate-evidence.py --rule-id <rule-id>
+  Exit 0=PASS, 1=BLOCK, 2=infrastructure-error.
+
+  Soak strategy (#1291 convention):
+    1. severity="warn" + MODE=warn for 1-2 real skill cycles
+    2. Inspect .runs/ for false positives via `verify-linter.sh` output
+    3. Flip severity="block" and document in follow-up PR
+    4. Default MODE remains "warn"; deny-mode opt-in via env var
+
+  Round-2 critic guards baked into the runner:
+    - jsonschema.validate() at load (Plan-Agent-A Open Risk 1: malformed
+      registry produces SystemExit(2) with schema path, not stack trace)
+    - Slug-suffix awareness in matchers (round-2 Concern 487fdf73cf62):
+      hyphenated experiment.yaml slugs (`portfolio-detail`) resolve to
+      static-prefix folders (`portfolio/[slug]`); the matcher searches
+      for both forms
+    - rg-style multi-line matching for template literals (BG2 check 18
+      pattern; round-2 Concern Plan-Agent-B-8)
+    - Optional catch-all (`[[...slug]]`) classified as static (round-2
+      Concern Plan-Agent-B-2 inversion: optional matches `/` so bare slug
+      IS reachable)
+
+  Usage from a Python validator or gate-keeper invocation:
+    from lib.gate_evidence_runner import load_rules, run_rule, format_failure
+    rules = load_rules()
+    for rule in rules:
+        mode, failures = run_rule(rule)
+        # ... format and emit
+```
+
 ### perceptual-hash + provenance binding for image evidence
 ```yaml
 id: image-evidence-provenance-phash

@@ -515,8 +515,32 @@ python3 .claude/scripts/enumerate-pending-retrospective-findings.py
 This writes `.runs/retrospective-pending-findings.json` containing all
 candidates derivable from runtime evidence (hook-friction-summary.json,
 fix-ledger.jsonl template-edit rows, template-coherence-cache.json findings,
-agent traces with recovery_validated). Each candidate has a stable
-`candidate_id` (12-char hash of kind+key) used for disposition tracking.
+agent traces with recovery_validated, agent-trace `workarounds[]` and
+`template_gap_observed[]` entries (GECR #1470), and verify-recheck.json
+failed states (GECR #1470)). Each candidate has a stable `candidate_id`
+(12-char hash of kind+key) used for disposition tracking.
+
+GECR candidate kinds (#1470 — Gate Evidence Cross-Reference Protocol):
+
+- **`agent-workaround`** — non-empty `workarounds[]` or `template_gap_observed[]`
+  in any `.runs/agent-traces/*.json`. Per AOC v1.3 (`#1449`), every trace-
+  writing agent emits these arrays; before #1470 they were inert because the
+  enumerator never consumed them. Entries with explicit
+  `root_cause_unresolved: false` are skipped (agent self-marked as
+  in-PR-resolved). Dedup key collapses paraphrased descriptions across agents
+  touching the same `(file, line, type)` location. Confidence: `high` when
+  `root_cause_unresolved: true` was explicit; `low` when absent (defensive
+  default — surface for lead triage).
+- **`verify-failure`** — each `verify_results[].passed == false` row in
+  `.runs/verify-recheck.json`. Per-check granularity (one candidate per failed
+  state, NOT one aggregate). Dedup key uses `(state, hash(error))` so:
+    - A failure that persists across reruns collapses to the same candidate
+    - A transient flake (rerun passes) does NOT propagate
+
+Both new kinds honor the same suppression mechanism as existing kinds: file
+via `file-retrospective-finding.py` OR suppress via
+`.runs/retrospective-result.json` `suppressions[]` with closed-enum reason
+(see below).
 
 For EACH candidate, the lead chooses one of:
   (a) **File**: invoke `python3 .claude/scripts/file-retrospective-finding.py
