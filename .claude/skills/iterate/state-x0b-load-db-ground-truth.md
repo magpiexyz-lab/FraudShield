@@ -1,20 +1,27 @@
 # STATE x0b: LOAD_DB_GROUND_TRUTH
 
-Pulls authoritative signup counts from each MVP's Supabase database, so x3 can
-cross-check PostHog's paid-signup count against the database's actual signups
-and flag tracking divergence.
+Pulls authoritative signup counts from each MVP's primary database
+(Supabase OR Railway Postgres), so x3 can cross-check PostHog's paid-signup
+count against the database's actual signups and flag tracking divergence.
 
 PostHog answers "how many paid users engaged with the page".
-Supabase answers "how many actually completed signup".
+The database answers "how many actually completed signup".
 The two should roughly agree; when they don't, that's a tracking gap worth
 surfacing — not a verdict bug. stylica-ai's 33 (PH, including `activate`) →
 2 (PH, `signup_complete`) → 6 (Supabase) is the canonical example: the gap
 between 2 and 6 was a PostHog instrumentation delay (event added 2026-04-30
 but first signup landed 2026-04-13).
 
-This state is OPTIONAL: when the Supabase access token is absent, x0b skips
-with a warning instead of halting. /iterate --cross still produces verdicts;
-they're just one fewer column rich.
+Two passes run in sequence:
+1. **Supabase pass** (Steps 1-2) — primary. Uses Management API to list
+   projects, fuzzy-match MVP names, query signup tables.
+2. **Railway pass** (Step 3) — fallback for MVPs the Supabase pass left
+   unmapped. Uses `railway list --json` to enumerate Postgres-bearing
+   projects, links each in a tempdir to pull DATABASE_PUBLIC_URL, queries
+   via psql. Never overwrites a Supabase-sourced db_signups.
+
+Both passes are independently optional: if neither auth is present, every
+MVP ends with `db_signups: null` and the report falls back to PostHog-only.
 
 ## Why this state exists
 
@@ -34,18 +41,24 @@ State-x3 consumes `db_signups` to emit one of four sanity flags:
 
 **PRECONDITIONS:**
 - STATE x0a POSTCONDITIONS met (`.runs/iterate-cross-context.json` exists with `ga_clicks` on every MVP)
-- `~/.supabase/access-token` exists (created by `supabase login` once per machine)
+- At least ONE of: `~/.supabase/access-token` (via `supabase login`) OR `railway whoami` returns logged-in (via `railway login`). Both absent = step still runs but every MVP ends `db_signups: null`.
 
 **ACTIONS:**
 
-### Step 0: Optional gate — Supabase token present?
+### Step 0: Detect Supabase availability
+
+The Supabase pass (Steps 1-2) is the primary DB source. The Railway pass
+(Step 3) is the fallback. Both passes are independently optional — if neither
+auth is present, every MVP ends with `db_signups: null` and verdicts fall
+back to PostHog-only (same as before either integration existed).
 
 ```bash
+SUPABASE_AVAILABLE=true
 if [ ! -f ~/.supabase/access-token ]; then
-  echo "WARN: ~/.supabase/access-token not found. Skipping DB ground-truth probe." >&2
-  echo "       /iterate --cross will still produce verdicts but db_signups will be null." >&2
-  echo "       Run \`supabase login\` once to enable the DB cross-check." >&2
-  # Stamp all mvps with null db_signups so x1 schema check still passes.
+  echo "WARN: ~/.supabase/access-token not found. Skipping Supabase pass." >&2
+  echo "       Will still try Railway pass (Step 3) as fallback." >&2
+  echo "       Run \`supabase login\` once to enable the Supabase cross-check." >&2
+  # Pre-stamp all mvps with no_token so a subsequent Railway pass can refine.
   # Build the full updated context as a payload and re-write via the canonical
   # writer (agent-output-contract: never directly write to gate-readable paths).
   PAYLOAD=$(python3 -c "
@@ -60,18 +73,21 @@ print(json.dumps(ctx))
     --path .runs/iterate-cross-context.json \
     --payload "$PAYLOAD" \
     --skill iterate-cross
-  bash .claude/scripts/advance-state.sh iterate-cross x0b
-  exit 0
+  SUPABASE_AVAILABLE=false
 fi
 ```
 
 ### Step 1: Fuzzy-match MVPs to Supabase projects + operator confirm
 
+Skipped entirely when `SUPABASE_AVAILABLE=false`. Run the whole `if`-block:
+
 ```bash
-python3 .claude/scripts/lib/iterate_cross_db.py merge \
-  --context .runs/iterate-cross-context.json \
-  --config experiment/iterate-cross-config.yaml > .runs/_iterate-cross-db-step1.json
-STEP1_EXIT=$?
+if [ "$SUPABASE_AVAILABLE" = "true" ]; then
+  python3 .claude/scripts/lib/iterate_cross_db.py merge \
+    --context .runs/iterate-cross-context.json \
+    --config experiment/iterate-cross-config.yaml > .runs/_iterate-cross-db-step1.json
+  STEP1_EXIT=$?
+fi
 ```
 
 The script reads context, calls Supabase Management API to list all projects
@@ -91,7 +107,7 @@ normalized-name (strip non-alphanumerics + lowercase) using three strategies:
   re-run with `--auto-confirm` once they've eyeballed it.
 
 ```bash
-if [ "$STEP1_EXIT" = "2" ]; then
+if [ "$SUPABASE_AVAILABLE" = "true" ] && [ "$STEP1_EXIT" = "2" ]; then
   echo ""
   echo "═══ Proposed MVP → Supabase project mapping ═══" >&2
   python3 -c "
@@ -116,16 +132,18 @@ Re-invoke with auto-confirm to write the matched refs to config and execute
 the queries:
 
 ```bash
-python3 .claude/scripts/lib/iterate_cross_db.py merge \
-  --context .runs/iterate-cross-context.json \
-  --config experiment/iterate-cross-config.yaml \
-  --auto-confirm > .runs/_iterate-cross-db-step2.json
+if [ "$SUPABASE_AVAILABLE" = "true" ]; then
+  python3 .claude/scripts/lib/iterate_cross_db.py merge \
+    --context .runs/iterate-cross-context.json \
+    --config experiment/iterate-cross-config.yaml \
+    --auto-confirm > .runs/_iterate-cross-db-step2.json
 
-python3 -c "
+  python3 -c "
 import json
 d = json.load(open('.runs/_iterate-cross-db-step2.json'))
-print(f'DB ground truth: queried={d[\"queried\"]} unmapped={d[\"unmapped\"]} errors={d[\"errors\"]}')
+print(f'Supabase DB ground truth: queried={d[\"queried\"]} unmapped={d[\"unmapped\"]} errors={d[\"errors\"]}')
 "
+fi
 ```
 
 The merge step writes per-MVP into `iterate-cross-context.json`:
@@ -136,32 +154,96 @@ The merge step writes per-MVP into `iterate-cross-context.json`:
 - `db_breakdown` — per-table counts for transparency
 - `db_unmapped_reason` — set to `"no_match"`, `"no_token"`, or `"orphan"` when `db_signups` is null
 
-### Step 3: Operator override hooks
+### Step 3: Railway fallback (sibling DB source)
 
-When auto-discovery picks the wrong table, the operator overrides in
+For every MVP that the Supabase pass left as `db_signups: None` with
+`db_unmapped_reason: "no_match"`, try Railway. This catches MVPs whose
+primary DB lives on Railway-hosted Postgres instead of Supabase
+(`Outcome-Oracle` pattern). The Supabase pass is preserved as authoritative —
+Railway is a strict fallback and never overwrites a non-null `db_signups`.
+
+```bash
+# Same auto-confirm shape as Supabase step 2, but always one shot: Railway
+# has far fewer Postgres projects than Supabase has projects, so ambiguity
+# pressure is low. Bumping to a needs_confirm review path is future work.
+python3 .claude/scripts/lib/iterate_cross_railway_db.py merge \
+  --context .runs/iterate-cross-context.json \
+  --config experiment/iterate-cross-config.yaml \
+  --auto-confirm > .runs/_iterate-cross-railway-step.json
+
+python3 -c "
+import json
+d = json.load(open('.runs/_iterate-cross-railway-step.json'))
+step = d.get('step')
+if step == 'skipped_auth':
+    print(f'Railway fallback skipped: {d.get(\"reason\")}')
+    print('  (Run \`! railway login\` in the prompt box to enable Railway DB cross-check.)')
+elif step == 'skipped_no_psql':
+    print(f'Railway fallback skipped: {d.get(\"reason\")}')
+    print('  (psql is the SQL client used to query Railway Postgres URLs.)')
+elif step == 'no_candidates':
+    print('Railway fallback: no Supabase-unmapped MVPs to retry.')
+elif step == 'no_postgres_projects':
+    print(f'Railway fallback: workspace has no Postgres-bearing projects ({d.get(\"unmapped\", 0)} MVPs stay unmapped).')
+elif step == 'merged':
+    print(f'Railway fallback: queried={d.get(\"queried\")} '
+          f'still_unmapped={d.get(\"unmapped\")} errors={d.get(\"errors\")} '
+          f'(of {d.get(\"total_candidates\")} candidates)')
+"
+```
+
+Railway-side fields written into `iterate-cross-context.json` (additive to the
+Supabase schema; do NOT overlap):
+
+- `railway_project_id` — UUID of the Railway project (mirrors `supabase_project_ref`)
+- `railway_project_name` — display name
+- `railway_service_name` — which Postgres service won (e.g. `Postgres`, `Postgres-5HUP`)
+- `db_source` — `"supabase"` or `"railway"` so x3/x4 can tell where the number came from
+- `db_signups_table` — Railway-sourced tables are prefixed `railway:` (e.g. `railway:public.users`)
+- `db_unmapped_reason` — refined from `"no_match"` → `"no_match_neither"` when neither source matched
+
+**Railway-side preconditions:**
+- `railway` CLI installed (`which railway`)
+- Authenticated via `railway login` (token at `~/.railway/config.json`)
+- `psql` available locally (queries use `DATABASE_PUBLIC_URL` proxy)
+
+If any precondition fails, the step prints a notice and continues — Railway
+is optional, just like Supabase token absence skips that pass.
+
+### Step 4: Operator override hooks
+
+When auto-discovery picks the wrong table OR you want to lock a fuzzy match
+against future drift, the operator overrides in
 `experiment/iterate-cross-config.yaml`:
 
 ```yaml
 mvp_mappings:
-  diarly:
+  diarly:                                          # Supabase MVP
     supabase_project_ref: qiinzizrdjzlrhasddtw
-    db_signup_table: public.waitlist_subscribers_only   # explicit override
+    db_signup_table: public.waitlist_subscribers_only
+  outcome-oracle:                                  # Railway MVP
+    railway_project_id: 999fa04b-9c0b-47cd-af5e-5587c6bd9e49
+    railway_service_name: Postgres                 # only needed when project has multiple PG services
+    db_signup_table: public.users                  # same override field works for both sources
 ```
 
-`db_signup_table` accepts `auth.<table>` (only `auth.users` supported, uses
+`db_signup_table` accepts `auth.<table>` (Supabase only; uses
 `email_confirmed_at IS NOT NULL` filter) or `public.<table>` (uses the table's
-discovered timestamp column for window filtering).
+discovered timestamp column for window filtering). Railway has no `auth.*`
+schema so only `public.<table>` is valid there.
 
 ### Cleanup
 
 ```bash
-rm -f .runs/_iterate-cross-db-step1.json .runs/_iterate-cross-db-step2.json
+rm -f .runs/_iterate-cross-db-step1.json .runs/_iterate-cross-db-step2.json .runs/_iterate-cross-railway-step.json
 ```
 
 **POSTCONDITIONS:**
-- Every MVP record has `db_signups` field (int OR null)
+- Every MVP record has `db_signups` field (int OR null) — populated by either Supabase OR Railway pass
 - Every MVP record has `db_unmapped_reason` when `db_signups` is null
-- MVPs that got auto-matched have `supabase_project_ref` written to config (idempotent)
+  (`"no_match"` if only Supabase was tried, `"no_match_neither"` if Railway was also tried and failed,
+  `"no_token"` / `"orphan"` for the existing reasons)
+- MVPs that got auto-matched have `supabase_project_ref` OR `railway_project_id` written to config (idempotent)
 
 **VERIFY:** see `state-registry.json` entry for `iterate-cross.x0b`.
 

@@ -138,13 +138,24 @@ for m in ctx['mvps']:
         'ga_campaigns': m.get('ga_campaigns') or [],
         'partial_tracking_pct': m.get('partial_tracking_pct'),
         # DB ground-truth fields from state-x0b. db_signups is None when
-        # Supabase mapping is missing/unauthorized; the cross-check in x3
+        # NEITHER Supabase nor Railway mapping matched; the cross-check in x3
         # treats None as "no comparison available" rather than zero.
+        #
+        # db_source is the cross-source attribution channel — without it
+        # carried through here, x4 cannot tell whether DB-sig=20 came from
+        # Supabase (auth.users) or Railway (psql public.users). The two have
+        # very different trust profiles (Supabase Auth has stable schema +
+        # email_confirmed_at; Railway is raw user-owned schema), so making
+        # them visually distinguishable in the report matters.
         'db_signups': m.get('db_signups'),
         'db_signups_table': m.get('db_signups_table'),
         'db_first_signup_at': m.get('db_first_signup_at'),
         'db_unmapped_reason': m.get('db_unmapped_reason'),
+        'db_source': m.get('db_source'),  # 'supabase' | 'railway' | None
         'supabase_project_ref': m.get('supabase_project_ref'),
+        'railway_project_id': m.get('railway_project_id'),
+        'railway_project_name': m.get('railway_project_name'),
+        'railway_service_name': m.get('railway_service_name'),
     })
 
 bash_payload = json.dumps({'mvps': mvp_records})
@@ -171,6 +182,8 @@ rm -f .runs/_iterate-cross-catalog-query.json .runs/_iterate-cross-catalog-raw.j
 - Per-MVP `gclid_visitors` and `total_events_count` recorded
 - Per-MVP `event_catalog` (≤30 events) recorded with stage hints
 - Per-MVP `ga_clicks`, `ga_only`, `ga_campaigns`, `partial_tracking_pct` propagated from `context.json` (set by state-x0a's CSV merge)
+- Per-MVP `db_signups`, `db_signups_table`, `db_first_signup_at`, `db_unmapped_reason`, `db_source` propagated from `context.json` (set by state-x0b's Supabase + Railway passes). `db_source` discriminates between the two backends — `"supabase"`, `"railway"`, or `None` when neither matched.
+- Per-MVP `supabase_project_ref` / `railway_project_id` / `railway_project_name` / `railway_service_name` propagated when applicable (for x4 to render attribution)
 - `.runs/iterate-cross-data.json` exists with required schema
 
 **VERIFY:** see `state-registry.json` entry for `iterate-cross.x1`.

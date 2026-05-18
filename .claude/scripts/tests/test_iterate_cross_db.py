@@ -203,6 +203,71 @@ class QueryMvpGroundTruthTests(unittest.TestCase):
         self.assertTrue(result["errors"])
 
 
+class MergeIntoContextSourceStampTests(unittest.TestCase):
+    """Supabase pass must set db_source='supabase' on successful queries.
+
+    Without this stamp, the schema is asymmetric with the Railway pass
+    (which sets db_source='railway'): x4 would see db_source=None for all
+    Supabase rows and read it as "unknown source" rather than the actual
+    default Supabase attribution.
+    """
+
+    @patch("iterate_cross_db.list_supabase_projects")
+    @patch("iterate_cross_db.query_mvp_ground_truth")
+    def test_supabase_success_stamps_db_source(self, mock_q, mock_list):
+        mock_list.return_value = [{"id": "ref_alpha", "name": "alpha"}]
+        mock_q.return_value = {
+            "db_signups": 12, "db_signups_table": "public.users",
+            "db_first_signup_at": "2026-04-01", "db_breakdown": {"public.users": 12},
+            "errors": None,
+        }
+        with tempfile.TemporaryDirectory() as t:
+            ctx_path = os.path.join(t, "ctx.json")
+            cfg_path = os.path.join(t, "cfg.yaml")
+            with open(ctx_path, "w") as f:
+                json.dump({"window_days": 90, "mvps": [
+                    {"name": "alpha"},
+                ]}, f)
+            import yaml as _yaml
+            with open(cfg_path, "w") as f:
+                _yaml.safe_dump({"mvp_mappings": {
+                    "alpha": {"supabase_project_ref": "ref_alpha"},
+                }}, f)
+            _ = db.merge_into_context(ctx_path, cfg_path, auto_confirm=True)
+            updated = json.load(open(ctx_path))
+            m = updated["mvps"][0]
+            self.assertEqual(m["db_signups"], 12)
+            self.assertEqual(m["db_source"], "supabase")
+
+    @patch("iterate_cross_db.list_supabase_projects")
+    @patch("iterate_cross_db.query_mvp_ground_truth")
+    def test_supabase_no_signups_does_not_stamp_db_source(self, mock_q, mock_list):
+        # When query returns None, don't claim Supabase as the source — there's
+        # no source to attribute and the Railway fallback might fill it later.
+        mock_list.return_value = [{"id": "ref_alpha", "name": "alpha"}]
+        mock_q.return_value = {
+            "db_signups": None, "db_signups_table": None,
+            "db_first_signup_at": None, "db_breakdown": {},
+            "errors": ["query failed"],
+        }
+        with tempfile.TemporaryDirectory() as t:
+            ctx_path = os.path.join(t, "ctx.json")
+            cfg_path = os.path.join(t, "cfg.yaml")
+            with open(ctx_path, "w") as f:
+                json.dump({"window_days": 90, "mvps": [{"name": "alpha"}]}, f)
+            import yaml as _yaml
+            with open(cfg_path, "w") as f:
+                _yaml.safe_dump({"mvp_mappings": {
+                    "alpha": {"supabase_project_ref": "ref_alpha"},
+                }}, f)
+            _ = db.merge_into_context(ctx_path, cfg_path, auto_confirm=True)
+            updated = json.load(open(ctx_path))
+            m = updated["mvps"][0]
+            self.assertIsNone(m["db_signups"])
+            # db_source not set — leaves the field absent so Railway can fill in.
+            self.assertNotIn("db_source", m)
+
+
 class SanityFlagTests(unittest.TestCase):
     """compute_db_sanity_flags is the heart of x3's cross-check.
     Each flag has a single decisive scenario."""

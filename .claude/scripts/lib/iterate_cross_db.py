@@ -560,6 +560,14 @@ def merge_into_context(
         mvp["db_signups_table"] = gt["db_signups_table"]
         mvp["db_first_signup_at"] = gt["db_first_signup_at"]
         mvp["db_breakdown"] = gt["db_breakdown"]
+        # db_source stamps which backend produced this number. Symmetric with
+        # the Railway pass (which sets "railway"); without stamping the
+        # Supabase side too, x4 would see db_source=None everywhere except
+        # Railway-sourced rows, which reads as "unknown source" rather than
+        # the actual Supabase-sourced default. Only stamp on success — if the
+        # query returned None, we have no source to attribute.
+        if gt["db_signups"] is not None:
+            mvp["db_source"] = "supabase"
         if gt.get("errors"):
             errors_total += len(gt["errors"])
             mvp["db_errors"] = gt["errors"]

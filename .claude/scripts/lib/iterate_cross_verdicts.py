@@ -195,9 +195,15 @@ def compute_headline_verdict(mvp: dict, issues: dict, thresholds: dict) -> dict:
         "ga_only": bool(mvp.get("ga_only")),
         "ga_campaigns": mvp.get("ga_campaigns") or [],
         # DB cross-check artifacts (from state-x0b).
+        # db_source discriminates which backend supplied db_signups so x4 can
+        # render attribution ("supabase" | "railway" | None). db_signups_table
+        # is already source-prefixed for Railway (e.g. "railway:public.users"),
+        # but the explicit field is cleaner for downstream consumers than
+        # string-prefix parsing.
         "db_signups_table": mvp.get("db_signups_table"),
         "db_first_signup_at": db_first_signup_at,
         "db_unmapped_reason": mvp.get("db_unmapped_reason"),
+        "db_source": mvp.get("db_source"),
         "tracking_sanity_flags": sanity_flags,
     }
 
