@@ -280,6 +280,18 @@ def test_falls_back_to_gclid_visitors_when_no_ga_data():
     assert score["metrics"]["true_conv_rate"] == 0.05
 
 
+def test_ga_clicks_zero_explicitly_uses_gclid_visitors_for_boundary():
+    """ga_clicks=0 is not a real GA denominator; fall back to PH visitors."""
+    score = compute_headline_verdict(
+        mvp(visitors=100, signups=6, ga_clicks=0),
+        {},
+        THRESHOLDS,
+    )
+    assert score["metrics"]["denominator_source"] == "ph"
+    assert score["headline_verdict"] == VERDICT_GO
+    assert score["metrics"]["true_conv_rate"] == 0.06
+
+
 def test_ph_overcount_capture_rate_above_100():
     """x-predict real case: GA 2055, PH 2545. capture_rate = 124% (PH over-counts)."""
     score = compute_headline_verdict(
@@ -404,6 +416,60 @@ def test_signup_source_db_real_preferred_over_ph_when_both_positive():
     assert score["headline_verdict"] == VERDICT_GO
 
 
+def test_db_first_sanity_flags_compare_raw_ph_to_db_for_overcount():
+    """DB-first verdicts still need PH-vs-DB sanity flags for bad signup_events."""
+    record = mvp(visitors=100, signups=3, ga_clicks=100)
+    record.update({
+        "db_signups_real": 1,
+        "db_signups_real_windowed": True,
+        "db_source": "supabase",
+        "db_unmapped_reason": None,
+        "ph_signups": 3,
+        "ph_signups_available": True,
+    })
+    score = compute_headline_verdict(record, {}, THRESHOLDS)
+    assert score["metrics"]["signup_source"] == "db_real"
+    assert score["metrics"]["effective_signups"] == 1
+    assert score["headline_verdict"] == VERDICT_NO_GO
+    assert any(f["flag"] == "ph_overcount" for f in score["tracking_sanity_flags"])
+
+
+def test_db_first_sanity_flags_compare_raw_ph_to_db_for_attribution_gap():
+    """DB-first must not mask PH paid=0 when DB proves real paid signups exist."""
+    record = mvp(visitors=100, signups=0, ga_clicks=100)
+    record.update({
+        "db_signups_real": 6,
+        "db_signups_real_windowed": True,
+        "db_source": "railway",
+        "db_unmapped_reason": None,
+        "ph_signups": 0,
+        "ph_signups_available": True,
+    })
+    score = compute_headline_verdict(record, {}, THRESHOLDS)
+    assert score["metrics"]["signup_source"] == "db_real"
+    assert score["metrics"]["effective_signups"] == 6
+    assert score["headline_verdict"] == VERDICT_GO
+    assert any(f["flag"] == "ph_attribution_broken" for f in score["tracking_sanity_flags"])
+
+
+def test_db_first_sanity_flags_compare_raw_ph_to_db_for_undercount():
+    """DB-first must still flag DB counts that are much higher than PH paid."""
+    record = mvp(visitors=200, signups=2, ga_clicks=200)
+    record.update({
+        "db_signups_real": 10,
+        "db_signups_real_windowed": True,
+        "db_source": "supabase",
+        "db_unmapped_reason": None,
+        "ph_signups": 2,
+        "ph_signups_available": True,
+    })
+    score = compute_headline_verdict(record, {}, THRESHOLDS)
+    assert score["metrics"]["signup_source"] == "db_real"
+    assert score["metrics"]["effective_signups"] == 10
+    assert score["headline_verdict"] == VERDICT_NO_GO
+    assert any(f["flag"] == "ph_undercount" for f in score["tracking_sanity_flags"])
+
+
 def test_signup_source_ph_fallback_when_db_unmapped():
     """When db_unmapped_reason is set, DB is untrusted → fall back to PH."""
     record = mvp(visitors=100, signups=8, ga_clicks=100)
@@ -411,6 +477,23 @@ def test_signup_source_ph_fallback_when_db_unmapped():
         "db_signups_real": None,
         "db_signups_real_windowed": False,
         "db_source": None,
+        "db_unmapped_reason": "no_match",
+        "ph_signups": 8,
+        "ph_signups_available": True,
+    })
+    score = compute_headline_verdict(record, {}, THRESHOLDS)
+    assert score["metrics"]["signup_source"] == "ph"
+    assert score["metrics"]["effective_signups"] == 8
+    assert score["headline_verdict"] == VERDICT_GO
+
+
+def test_signup_source_ph_fallback_when_db_unmapped_even_with_count():
+    """An unmapped DB count is not trusted; PH remains the fallback source."""
+    record = mvp(visitors=100, signups=8, ga_clicks=100)
+    record.update({
+        "db_signups_real": 17,
+        "db_signups_real_windowed": True,
+        "db_source": "supabase",
         "db_unmapped_reason": "no_match",
         "ph_signups": 8,
         "ph_signups_available": True,
@@ -553,6 +636,15 @@ def test_telegram_universal_rule_uses_visitors_floor():
     text = emit_telegram(scores, {}, visitors_floor=50)
     # Should reference the actual threshold, not "50 visitors" by accident
     assert "<50 visitors" in text or "≥50 visitors" in text
+
+
+def test_telegram_universal_rule_uses_conv_rate_threshold():
+    scores = [
+        compute_headline_verdict(mvp(name="a", visitors=100, signups=7), {}, THRESHOLDS),
+    ]
+    text = emit_telegram(scores, {}, visitors_floor=100, conv_rate_go=0.08)
+    assert "conv ≥8%" in text
+    assert "conv <8%" in text
 
 
 def test_action_line_formats_visitors_needed():

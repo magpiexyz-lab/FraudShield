@@ -39,19 +39,4 @@ The campaign's Final URL is visible in the Google Ads UI under "Ads" → click t
    - The expected name → events are firing under the right project_name. Then the issue is that `/iterate --cross` discovery didn't pick up this MVP because the gclid query filter excluded its traffic. Check the test-gclid convention in the NO_DATA section above — operator manual-test gclids (length ≤ 40 OR prefix not in `Cj/EAI/CIa`) are filtered out by design.
 4. Append `?gclid=test123` to the URL, reload, and check that PostHog captures the event with `properties.project_name` set. If the event arrives but `project_name` is missing, the analytics layer isn't auto-attaching it — verify `src/lib/analytics.ts` `enriched` object includes `project_name: PROJECT_NAME`.
 
-Report which step failed and the minimum fix. Don't apply it yet — operator reviews first. Once fixed, run `/iterate --cross` again; this MVP should move from GA_NO_PH_TRACKING into a normal verdict (GO / WEAK / NO_GO / INSUFFICIENT_DATA based on real signups).
-
----
-
-## WEAK
-
-This MVP is above the visitors floor (≥50 gclid visitors) but has fewer than 3 signups. It's not a clear NO_GO (some users converted) but not yet a GO either. The signal is real but thin — investigate before deciding.
-
-Verify in order:
-
-1. Read `experiment/experiment.yaml` and confirm what the MVP's "signup" actually means. Is `signup_events` in `experiment/iterate-cross-config.yaml mvp_mappings.<this_mvp>.signup_events` correct? If wrong (e.g., a tracking event was excluded), update it and re-run `/iterate --cross`.
-2. Open the landing page. Time the path from "first visit" to "completed signup" — count the steps, the form fields, the friction. Anything users would bail at?
-3. Check landing page Core Web Vitals (LCP, INP, CLS). Slow page = high bounce.
-4. Look at the gclid_visitors:signups ratio. If it's 0.5%, conversion is very low — likely a landing-page or product-message problem. If it's 4%+, conversion works but volume is low — extend the campaign or raise budget.
-
-Report which factor is most likely. Then propose either: (a) a landing-page fix to ship and re-test, OR (b) extend the campaign window for more data.
+Report which step failed and the minimum fix. Don't apply it yet — operator reviews first. Once fixed, run `/iterate --cross` again; this MVP should move from GA_NO_PH_TRACKING into a normal verdict (GO / NO_GO / INSUFFICIENT_DATA based on DB-first signup conversion).

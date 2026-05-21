@@ -1,6 +1,6 @@
 # STATE x4: RANK_AND_RECOMMEND
 
-PostHog-only report. No Google Ads spend / CTR / QS columns.
+Cross-MVP report using PostHog visitors, Google Ads click denominators when available, and DB-first signup counts.
 
 **PRECONDITIONS:**
 - STATE x3 POSTCONDITIONS met
@@ -26,10 +26,9 @@ Sort MVPs into this order:
 0. `MISSING_PROJECT_NAME` — sort by `gclid_visitors` desc (biggest leaks first; these block all downstream analysis until tracking is fixed, so they go at the top)
 1. `GA_NO_PH_TRACKING` — sort by `ga_clicks` desc (paying for blind deploys; surface the most expensive first)
 2. `GO` — sort by `signups` desc, then visitors asc (most efficient first; visitors = `ga_clicks` when GA data present, else `gclid_visitors`)
-3. `WEAK` — sort by `signups` desc, then visitors desc
-4. `INSUFFICIENT_DATA` — sort by visitors desc (closest to floor first)
-5. `NO_GO` — sort by visitors desc
-6. `NO_DATA` — alphabetical
+3. `INSUFFICIENT_DATA` — sort by visitors desc (closest to floor first)
+4. `NO_GO` — sort by visitors desc
+5. `NO_DATA` — alphabetical
 
 This keeps the most-actionable verdicts at the top. `MISSING_PROJECT_NAME` and
 `GA_NO_PH_TRACKING` outrank everything else because the data underneath is
@@ -37,6 +36,8 @@ suspect — the operator must fix tracking before any product decision is trustw
 The rank table uses `.claude/scripts/lib/iterate_cross_verdicts.py::sort_scores_global`.
 The Telegram artifact uses `sort_scores_by_owner` so each owner block preserves
 this verdict precedence after owner grouping.
+Legacy `WEAK` scores are still sorted by the implementation for old artifacts,
+but current x3 no longer emits `WEAK`.
 
 ---
 
@@ -53,7 +54,6 @@ Print to stdout. Window comes from `.runs/iterate-cross-scores.json window_days`
 ║ 🚨 MISSING  │ {host_or_name}  │  {ga}  │  {ph}  │  --   │  --    │   --   │ {c}% │ —             ║
 ║ 🆘 NO_PH    │ {name}          │  {ga}  │    0   │  --   │  {db}  │   --   │   0% │ — (ga_only)   ║
 ║ ✅ GO       │ {name}          │  {ga}  │  {ph}  │  {s}  │  {db}⚠ │ {tc}%  │ {c}% │ {events}      ║
-║ ⚠️ WEAK     │ {name}          │  {ga}  │  {ph}  │  {s}  │  {db}  │ {tc}%  │ {c}% │ {events}      ║
 ║ ⏳ INSUF    │ {name}          │  {ga}  │  {ph}  │  {s}  │  {db}  │   --   │ {c}% │ {events}      ║
 ║ ❌ NO_GO    │ {name}          │  {ga}  │  {ph}  │  {s}  │  {db}⚠ │ {tc}%  │ {c}% │ {events}      ║
 ║ ❓ NO_DATA  │ {name}          │   --   │   --   │  --   │  {db}  │   --   │  --  │ —             ║
@@ -100,12 +100,13 @@ If any MVP in scores has `owner != null`, group MVPs by owner. For each owner, p
 Action templates per verdict (keep brief; debug prompts come from `iterate-cross-debug-prompts.md` for `NO_DATA`):
 
 - **GO** → "Promote {name} to Phase 2 with `/iterate` (default mode)."
-- **WEAK** → "Investigate {name}: above visitors floor but only {signups} signups. Check landing-page friction or extend campaign window."
-- **NO_GO** → "Stop {name}. Confirm rejection in retro."
-- **INSUFFICIENT_DATA** → "Keep {name} running until {visitors_needed} more visitors arrive (target: 50+)."
+- **NO_GO** → "Stop {name}. Confirm rejection in retro. ({visitors_floor}+ visitors with conv below threshold.)"
+- **INSUFFICIENT_DATA** → "Keep {name} running until {visitors_needed} more visitors arrive (target: {visitors_floor}+)."
 - **NO_DATA** → "Debug PostHog tracking. Run Claude Code in the MVP repo with this prompt: {inline NO_DATA debug prompt}"
 - **MISSING_PROJECT_NAME** → "Fix {name} tracking: PostHog events arrived without `project_name`. Check `src/lib/analytics.ts` PROJECT_NAME constant — it must equal experiment.yaml.name (kebab-case enforced by /bootstrap state-3). Re-run /verify after fixing."
 - **GA_NO_PH_TRACKING** → "Fix {name}: Google Ads is serving paid traffic but PostHog sees zero events. Check the campaign's Final URL in Google Ads UI, then verify (a) `src/lib/analytics.ts` is imported on that route, (b) `PROJECT_NAME` constant matches `experiment.yaml.name`. Use the GA_NO_PH_TRACKING debug prompt below."
+
+Legacy **WEAK** action text is retained in the Python helper only so old score artifacts can still render.
 
 If NO MVP has an owner set, skip Section B and emit a notice:
 > No `mvp_mappings.<name>.owner` set in `experiment/iterate-cross-config.yaml`. Add owner to enable per-owner action grouping.

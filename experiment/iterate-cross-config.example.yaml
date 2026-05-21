@@ -103,18 +103,18 @@ signup_whitelist:
   - account_created
   - activate
 
-# Phase 1 thresholds. The defaults reflect Bernoulli noise floor:
-#   At p=5%, P(signups >= 3 | n=50) ≈ 73%, so 50 visitors comfortably
-#   distinguishes signal from noise when 3+ signups appear.
+# Phase 1 thresholds. Current decision rule:
+#   visitors < visitors_floor -> INSUFFICIENT_DATA
+#   visitors >= visitors_floor AND conv >= conv_rate_go -> GO
+#   visitors >= visitors_floor AND conv < conv_rate_go -> NO_GO
 #
-# Note: when state-x0a (Chrome MCP GA scrape) succeeds, `visitors` resolves
-# to `ga_clicks` (Google Ads ground truth) rather than PostHog `gclid_visitors`.
-# This gives an accurate denominator even when 40-65% of clicks bounce before
-# the PostHog SDK loads. Visitor floor unchanged — semantics are the same.
+# Conversion uses DB-first effective signups divided by visitors. When state-x0a
+# loaded Google Ads clicks, `visitors` resolves to `ga_clicks`; otherwise it
+# falls back to PostHog `gclid_visitors`.
 thresholds:
-  signups_go: 3        # Headline GO when distinct gclid signups >= this
-  visitors_floor: 50   # NO_GO if visitors >= this AND signups == 0;
-                       # WEAK if visitors >= this AND 0 < signups < signups_go
+  visitors_floor: 100  # Minimum paid visitors before GO/NO_GO is evaluable
+  conv_rate_go: 0.06   # GO when effective_signups / visitors is >= this
+  signups_go: 6        # Derived visitors_floor * conv_rate_go; kept for back-compat
 
 # Google Ads campaign-name → MVP-name overrides used by state-x0a when the
 # automatic bucket logic in iterate_cross_ga.py can't map a campaign to its

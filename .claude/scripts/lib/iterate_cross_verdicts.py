@@ -224,6 +224,7 @@ def compute_headline_verdict(mvp: dict, issues: dict, thresholds: dict) -> dict:
     gclid_visitors = mvp.get("gclid_visitors", 0)
     ga_clicks = mvp.get("ga_clicks", 0) or 0
     ph_signups = mvp.get("ph_signups", mvp.get("signups", 0))
+    raw_ph_signups = int(ph_signups or 0)
     effective_signups, signup_source, source_flags = resolve_effective_signups(mvp)
     signups = effective_signups if effective_signups is not None else 0
     signup_events = mvp.get("signup_events") or []
@@ -268,13 +269,15 @@ def compute_headline_verdict(mvp: dict, issues: dict, thresholds: dict) -> dict:
     # Null when no GA data available (we have no ground-truth denominator).
     capture_rate = (gclid_visitors / ga_clicks) if ga_clicks > 0 else None
 
-    # DB ground-truth cross-check (state-x0b → x1 propagation).
+    # DB ground-truth cross-check (state-x0b → x1 propagation). These flags
+    # compare raw PH paid signups against DB truth even when the verdict itself
+    # uses DB-first effective signups.
     # db_signups is None when Supabase mapping is missing/unauthorized — treat
     # as "no comparison available", do NOT collapse to zero.
     db_signups = mvp.get("db_signups_real", mvp.get("db_signups"))
     db_first_signup_at = mvp.get("db_first_signup_at")
     sanity_flags = compute_db_sanity_flags(
-        paid_signups=signups,
+        paid_signups=raw_ph_signups,
         db_signups=db_signups,
         db_first_signup_at=db_first_signup_at,
         first_seen=mvp.get("first_seen"),
@@ -460,7 +463,7 @@ def parse_debug_prompts(content: str) -> dict:
 ACTION_TEMPLATES = {
     VERDICT_GO: "Promote {name} to Phase 2 (run /iterate default mode for the deeper analysis).",
     VERDICT_WEAK: "{name}: above visitors floor but only {signups} signups. Investigate landing-page friction or extend campaign window before deciding.",  # deprecated — current rule never emits WEAK
-    VERDICT_NO_GO: "Stop {name}; document hypothesis rejection in retro. (≥{visitors_floor} visitors with conv < 6%)",
+    VERDICT_NO_GO: "Stop {name}; document hypothesis rejection in retro. (≥{visitors_floor} visitors with conv < {conv_rate_go_pct})",
     VERDICT_INSUFFICIENT: "Keep {name} running until {visitors_needed} more visitors arrive (target: {visitors_floor}+).",
     VERDICT_NO_DATA: "Debug PostHog tracking for {name}. Run Claude Code in the MVP repo with the NO_DATA prompt below.",
     VERDICT_MISSING_PROJECT_NAME: "Fix {name} tracking: PostHog events arrived without `project_name`. Check `src/lib/analytics.ts` PROJECT_NAME constant — it must equal experiment.yaml.name (kebab-case). Re-run /verify in the MVP repo after fixing.",
@@ -468,17 +471,34 @@ ACTION_TEMPLATES = {
 }
 
 
-def action_line(verdict: str, name: str, signups: int, visitors_needed: int, visitors_floor: int) -> str:
+def _format_rate_pct(rate: float) -> str:
+    return f"{rate * 100:g}%"
+
+
+def action_line(
+    verdict: str,
+    name: str,
+    signups: int,
+    visitors_needed: int,
+    visitors_floor: int,
+    conv_rate_go: float = 0.06,
+) -> str:
     template = ACTION_TEMPLATES.get(verdict, "Unknown verdict.")
     return template.format(
         name=name,
         signups=signups,
         visitors_needed=visitors_needed,
         visitors_floor=visitors_floor,
+        conv_rate_go_pct=_format_rate_pct(conv_rate_go),
     )
 
 
-def emit_telegram(scores: list, debug_prompts: dict, visitors_floor: int) -> str:
+def emit_telegram(
+    scores: list,
+    debug_prompts: dict,
+    visitors_floor: int,
+    conv_rate_go: float = 0.06,
+) -> str:
     """Group by owner; one block per owner; each block ≤ 4000 chars.
 
     If no MVP has owner set, all MVPs are grouped under 'unassigned'.
@@ -502,6 +522,7 @@ def emit_telegram(scores: list, debug_prompts: dict, visitors_floor: int) -> str
                 metrics["signups"],
                 s["visitors_needed"],
                 visitors_floor,
+                conv_rate_go,
             )
             # Visitor display: prefer ga_clicks when GA was the denominator.
             ga_clicks = metrics.get("ga_clicks", 0) or 0
@@ -559,8 +580,8 @@ def emit_telegram(scores: list, debug_prompts: dict, visitors_floor: int) -> str
         lines.append("")
         lines.append("Universal rule:")
         lines.append(f"• <{visitors_floor} visitors → keep running (INSUFFICIENT)")
-        lines.append(f"• ≥{visitors_floor} visitors with conv ≥6% → promote to Phase 2 (GO)")
-        lines.append(f"• ≥{visitors_floor} visitors with conv <6% → stop (NO_GO)")
+        lines.append(f"• ≥{visitors_floor} visitors with conv ≥{_format_rate_pct(conv_rate_go)} → promote to Phase 2 (GO)")
+        lines.append(f"• ≥{visitors_floor} visitors with conv <{_format_rate_pct(conv_rate_go)} → stop (NO_GO)")
 
         for prompt_name in sorted(needed_prompts):
             body = debug_prompts.get(prompt_name)
@@ -637,7 +658,12 @@ def main(argv: list[str] | None = None) -> int:
         debug_prompts = {}
         if args.debug_prompts and os.path.exists(args.debug_prompts):
             debug_prompts = parse_debug_prompts(open(args.debug_prompts).read())
-        text = emit_telegram(scores, debug_prompts, thresholds["visitors_floor"])
+        text = emit_telegram(
+            scores,
+            debug_prompts,
+            thresholds["visitors_floor"],
+            thresholds.get("conv_rate_go", 0.06),
+        )
         if args.dry_run:
             print(f"DRY-RUN: would write {args.emit_telegram} ({len(text)} chars)")
         else:

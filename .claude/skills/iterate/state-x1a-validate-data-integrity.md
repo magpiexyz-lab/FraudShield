@@ -76,7 +76,8 @@ for mvp in data['mvps']:
     # Flag 2: auto_default_match — catalog contains any event from the default whitelist
     auto_default_match = bool(catalog_events & set(default_signup_whitelist))
 
-    # Flag 3: low_traffic — fewer than 5 gclid visitors (can't reach 3-signup GO threshold)
+    # Flag 3: low_traffic — fewer than 5 gclid visitors (far below the default
+    # 100-visitor verdict floor; informational only)
     low_traffic = mvp.get('gclid_visitors', 0) < 5
 
     # Flag 4: no_event_data — catalog empty (likely tracking not capturing PostHog events)
@@ -134,7 +135,7 @@ Print a concise summary:
 > - {sc_count} signup_classified (operator config provides signup_events; skip LLM)
 > - {ad_count} auto_default_match (catalog has known signup event; classify by default whitelist)
 > - {llm_count} needs_llm_classification (no obvious signup event; LLM proposes in x2)
-> - {lt_count} low_traffic (<5 gclid visitors; verdict will be INSUFFICIENT_DATA regardless)
+> - {lt_count} low_traffic (<5 gclid visitors; normally INSUFFICIENT_DATA unless a higher-precedence tracking error applies)
 > - {ne_count} no_event_data (no events found; likely tracking not deployed)
 
 **POSTCONDITIONS:**

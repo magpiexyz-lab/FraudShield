@@ -41,8 +41,9 @@ phase_filter:
   fallback_all_gclid: true   # if utm_campaign_like has no matches for an MVP, count all gclid traffic
 mvp_mappings: {}             # per-MVP overrides (signup_events, owner, deploy_domain)
 thresholds:
-  signups_go: 3
-  visitors_floor: 50
+  visitors_floor: 100
+  conv_rate_go: 0.06
+  signups_go: 6              # derived visitors_floor * conv_rate_go; back-compat
 # Orphan/canonical merge threshold. When an orphan host's gclid set overlaps with
 # a canonical MVP's gclid set by at least this fraction (of the smaller set), the
 # orphan is merged into the canonical (treated as partial-page tracking on the
