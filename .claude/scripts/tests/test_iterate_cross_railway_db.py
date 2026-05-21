@@ -168,6 +168,42 @@ class QueryMvpGroundTruthRailwayTests(unittest.TestCase):
         # Sentinel table value still set so downstream can see what operator wrote
         self.assertEqual(result["db_signups_table"], "railway:auth.users")
 
+    @patch("iterate_cross_railway_db._psql_query")
+    def test_select_signups_aliases_timestamp_columns_with_window(self, mock_psql):
+        mock_psql.return_value = {"rows": [], "error": None}
+        for ts_col in ["created_at", "inserted_at", "signed_up_at", "submitted_at", "registered_at"]:
+            with self.subTest(ts_col=ts_col):
+                mock_psql.reset_mock()
+                rw.select_signups_in_window_pg("postgresql://fake", "signups", ts_col, 30)
+                sql = mock_psql.call_args.args[1]
+                self.assertIn(f'SELECT email, "{ts_col}"::text AS signup_at', sql)
+                self.assertIn(f'WHERE "{ts_col}" >= now() - INTERVAL \'30 days\'', sql)
+        mock_psql.reset_mock()
+        rw.select_signups_in_window_pg("postgresql://fake", "signups", None, 30)
+        sql = mock_psql.call_args.args[1]
+        self.assertIn("SELECT email, NULL::text AS signup_at", sql)
+        self.assertNotIn("INTERVAL '30 days'", sql)
+
+    @patch("iterate_cross_railway_db._psql_query")
+    def test_query_applies_email_filter_and_uses_real_first_timestamp(self, mock_psql):
+        mock_psql.side_effect = [
+            {"rows": [["users", "id,email,registered_at"]], "error": None},
+            {"rows": [
+                ["fixture@example.com", "2026-05-01T00:00:00+00:00"],
+                ["real@customer.com", "2026-05-03T00:00:00+00:00"],
+                ["dev@team.test", "2026-05-02T00:00:00+00:00"],
+            ], "error": None},
+        ]
+        cfg = {"email_filter": {"rules": {"team_domains": ["team.test"]}}}
+        result = rw.query_mvp_ground_truth_railway("postgresql://fake", 60, config=cfg)
+        select_sql = mock_psql.call_args_list[1].args[1]
+        self.assertIn('"registered_at" >= now() - INTERVAL \'60 days\'', select_sql)
+        self.assertEqual(result["db_signups_raw"], 3)
+        self.assertEqual(result["db_signups_real"], 1)
+        self.assertEqual(result["db_signups_team"], 1)
+        self.assertEqual(result["db_signups_test"], 1)
+        self.assertEqual(result["db_first_signup_at"], "2026-05-03T00:00:00+00:00")
+
 
 class CheckPsqlAvailableTests(unittest.TestCase):
     @patch("iterate_cross_railway_db.subprocess.run")
@@ -369,6 +405,47 @@ class MergeIntoContextTests(unittest.TestCase):
             )
 
     @patch("iterate_cross_railway_db._check_railway_auth", return_value=None)
+    @patch("iterate_cross_railway_db._check_psql_available", return_value=None)
+    @patch("iterate_cross_railway_db.list_railway_projects")
+    @patch("iterate_cross_railway_db.get_database_url")
+    @patch("iterate_cross_railway_db.query_mvp_ground_truth_railway")
+    def test_dry_run_leaves_context_file_untouched(self, mock_q, mock_url, mock_list, *_):
+        mock_list.return_value = [
+            {"id": "rp1", "name": "neuralpost", "workspace": "w",
+             "services": [{"id": "s", "name": "Postgres"}]},
+        ]
+        mock_url.return_value = {"url": "postgresql://fake", "error": None}
+        mock_q.return_value = {
+            "db_signups": 23,
+            "db_signups_raw": 23,
+            "db_signups_real": 23,
+            "db_signups_team": 0,
+            "db_signups_test": 0,
+            "db_signups_filter_audit": [],
+            "db_signups_real_windowed": True,
+            "db_signups_table": "railway:public.users",
+            "db_first_signup_at": "2026-04-01T00:00:00+00:00",
+            "db_breakdown": {"public.users": 23},
+            "errors": None,
+        }
+        original = {
+            "window_days": 90,
+            "mvps": [{"name": "neuralpost", "db_signups": None, "db_unmapped_reason": "no_match"}],
+        }
+        with tempfile.TemporaryDirectory() as t:
+            ctx = self._write_context(t, original["mvps"])
+            cfg = self._write_config(t, {
+                "neuralpost": {
+                    "railway_project_id": "rp1",
+                    "railway_service_name": "Postgres",
+                },
+            })
+            result = rw.merge_into_context(ctx, cfg, auto_confirm=True, dry_run=True)
+
+            self.assertEqual(result["step"], "merged")
+            self.assertEqual(json.load(open(ctx)), original)
+
+    @patch("iterate_cross_railway_db._check_railway_auth", return_value=None)
     @patch("iterate_cross_railway_db.list_railway_projects")
     def test_no_candidates_when_supabase_covered_everything(self, mock_list, _mock_auth):
         mock_list.return_value = [
@@ -384,6 +461,117 @@ class MergeIntoContextTests(unittest.TestCase):
             cfg = self._write_config(t)
             result = rw.merge_into_context(ctx, cfg, auto_confirm=True)
         self.assertEqual(result["step"], "no_candidates")
+
+    @patch("iterate_cross_railway_db._check_railway_auth", return_value=None)
+    @patch("iterate_cross_railway_db._check_psql_available", return_value=None)
+    @patch("iterate_cross_railway_db.list_railway_projects")
+    @patch("iterate_cross_railway_db.get_database_url")
+    @patch("iterate_cross_railway_db.query_mvp_ground_truth_railway")
+    def test_refreshes_services_and_retries_sole_canonical_postgres(
+        self, mock_q, mock_url, mock_list, *_,
+    ):
+        initial = [
+            {"id": "rp1", "name": "alpha", "workspace": "w",
+             "services": [{"id": "old", "name": "Old Postgres"}]},
+        ]
+        refreshed = [
+            {"id": "rp1", "name": "alpha", "workspace": "w",
+             "services": [{"id": "pg", "name": "Postgres"}]},
+        ]
+        mock_list.side_effect = [initial, refreshed]
+        mock_url.side_effect = [
+            {"url": None, "error": "service not found"},
+            {"url": "postgresql://fake", "error": None},
+        ]
+        mock_q.return_value = {
+            "db_signups": 9, "db_signups_table": "railway:public.users",
+            "db_first_signup_at": None, "db_breakdown": {"public.users": 9},
+            "db_signups_raw": 9, "db_signups_real": 9, "db_signups_team": 0,
+            "db_signups_test": 0, "db_signups_filter_audit": [],
+            "db_signups_real_windowed": True, "errors": None,
+        }
+        with tempfile.TemporaryDirectory() as t:
+            ctx = self._write_context(t, [
+                {"name": "alpha", "db_signups": None, "db_unmapped_reason": "no_match"},
+            ])
+            cfg = self._write_config(t, {
+                "alpha": {"railway_project_id": "rp1", "railway_service_name": "Old Postgres"},
+            })
+            result = rw.merge_into_context(ctx, cfg, auto_confirm=True)
+            updated = json.load(open(ctx))["mvps"][0]
+        self.assertEqual(result["queried"], 1)
+        self.assertEqual(mock_url.call_args_list[0].args[:2], ("rp1", "Old Postgres"))
+        self.assertEqual(mock_url.call_args_list[1].args[:2], ("rp1", "Postgres"))
+        self.assertEqual(updated["railway_service_name"], "Postgres")
+        self.assertEqual(updated["db_source"], "railway")
+
+    @patch("iterate_cross_railway_db._check_railway_auth", return_value=None)
+    @patch("iterate_cross_railway_db._check_psql_available", return_value=None)
+    @patch("iterate_cross_railway_db.list_railway_projects")
+    @patch("iterate_cross_railway_db.get_database_url")
+    def test_multiple_services_without_match_marks_service_missing(self, mock_url, mock_list, *_):
+        projects = [
+            {"id": "rp1", "name": "alpha", "workspace": "w",
+             "services": [{"id": "pg1", "name": "Postgres A"}, {"id": "pg2", "name": "Postgres B"}]},
+        ]
+        mock_list.side_effect = [projects, projects]
+        mock_url.return_value = {"url": None, "error": "service not found"}
+        with tempfile.TemporaryDirectory() as t:
+            ctx = self._write_context(t, [
+                {"name": "alpha", "db_signups": None, "db_unmapped_reason": "no_match"},
+            ])
+            cfg = self._write_config(t, {
+                "alpha": {"railway_project_id": "rp1", "railway_service_name": "Deleted Postgres"},
+            })
+            result = rw.merge_into_context(ctx, cfg, auto_confirm=True)
+            updated = json.load(open(ctx))["mvps"][0]
+        self.assertEqual(result["errors"], 1)
+        self.assertEqual(updated["db_unmapped_reason"], "railway_service_missing")
+        self.assertEqual(mock_url.call_count, 1)
+
+    @patch("iterate_cross_railway_db._check_railway_auth", return_value=None)
+    @patch("iterate_cross_railway_db._check_psql_available", return_value=None)
+    @patch("iterate_cross_railway_db.list_railway_projects")
+    @patch("iterate_cross_railway_db.get_database_url")
+    @patch("iterate_cross_railway_db.query_mvp_ground_truth_railway")
+    def test_candidate_selection_respects_allow_railway_fallback(
+        self, mock_q, mock_url, mock_list, *_,
+    ):
+        reasons = {
+            "alpha": "no_match",
+            "beta": "no_token",
+            "gamma": "no_email_column",
+            "delta": "project_deleted",
+            "epsilon": "query_error",
+            "zeta": "forbidden",
+        }
+        mock_list.return_value = [
+            {"id": name, "name": name, "workspace": "w",
+             "services": [{"id": f"{name}-pg", "name": "Postgres"}]}
+            for name in reasons
+        ]
+        mock_url.return_value = {"url": "postgresql://fake", "error": None}
+        mock_q.return_value = {
+            "db_signups": 1, "db_signups_table": "railway:public.users",
+            "db_first_signup_at": None, "db_breakdown": {"public.users": 1},
+            "db_signups_raw": 1, "db_signups_real": 1, "db_signups_team": 0,
+            "db_signups_test": 0, "db_signups_filter_audit": [],
+            "db_signups_real_windowed": True, "errors": None,
+        }
+        with tempfile.TemporaryDirectory() as t:
+            ctx = self._write_context(t, [
+                {"name": name, "db_signups": None, "db_unmapped_reason": reason}
+                for name, reason in reasons.items()
+            ])
+            cfg = self._write_config(t)
+            rw.merge_into_context(ctx, cfg, auto_confirm=True)
+            updated = {m["name"]: m for m in json.load(open(ctx))["mvps"]}
+        self.assertEqual(mock_q.call_count, 4)
+        for name in ["alpha", "beta", "gamma", "delta"]:
+            self.assertEqual(updated[name]["db_source"], "railway")
+        for name in ["epsilon", "zeta"]:
+            self.assertIsNone(updated[name]["db_signups"])
+            self.assertNotIn("db_source", updated[name])
 
 
 class GetDatabaseUrlTests(unittest.TestCase):

@@ -80,10 +80,13 @@ if [ "$AGE_HOURS" -gt "$MAX_AGE_HOURS" ]; then
   exit 1
 fi
 
-python3 .claude/scripts/lib/iterate_cross_ga.py validate-csv --ga-csv "$CSV" || exit 1
+python3 .claude/scripts/lib/iterate_cross_ga.py validate-csv \
+  --ga-csv "$CSV" \
+  --context .runs/iterate-cross-context.json || exit 1
 ```
 
-Column requirements (case-insensitive substring match on header row):
+Column requirements (preamble-aware header detection; exact header matches win
+before substring matches so `Campaign status` cannot shadow `Campaign`):
 - **Required:** `Campaign`, `Clicks`
 - **Optional but recommended:** `Account`, `Conversions` (or `Conv.`), `Impr.`
 

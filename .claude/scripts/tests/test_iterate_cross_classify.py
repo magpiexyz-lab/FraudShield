@@ -151,6 +151,13 @@ class Args:
         self.__dict__.update(kwargs)
 
 
+def _signup_counts(results):
+    return {
+        "results": results,
+        "_x2_signup_batches_status": {"complete": True, "batches_run": 1, "parts_total": 1},
+    }
+
+
 def test_prepare_buckets_correctly():
     with tempfile.TemporaryDirectory() as td:
         mvps = [
@@ -376,7 +383,7 @@ def test_finalize_applies_signup_counts():
             return
 
         counts_p = os.path.join(td, "counts.json")
-        json.dump({"results": [["alpha", 8], ["beta", 1]]}, open(counts_p, "w"))
+        json.dump(_signup_counts([["alpha", 8], ["beta", 1]]), open(counts_p, "w"))
 
         summary_p = os.path.join(td, "persist-summary.json")
         json.dump({"filtered_events": []}, open(summary_p, "w"))
@@ -412,7 +419,7 @@ def test_finalize_sanity_check_flags_high_ratio():
             return
 
         counts_p = os.path.join(td, "counts.json")
-        json.dump({"results": [["fake_signal", 15]]}, open(counts_p, "w"))
+        json.dump(_signup_counts([["fake_signal", 15]]), open(counts_p, "w"))
 
         summary_p = os.path.join(td, "persist-summary.json")
         json.dump({"filtered_events": []}, open(summary_p, "w"))
@@ -450,7 +457,7 @@ def test_finalize_sanity_skips_low_volume():
             return
 
         counts_p = os.path.join(td, "counts.json")
-        json.dump({"results": [["low_vol", 3]]}, open(counts_p, "w"))
+        json.dump(_signup_counts([["low_vol", 3]]), open(counts_p, "w"))
 
         summary_p = os.path.join(td, "persist-summary.json")
         json.dump({"filtered_events": []}, open(summary_p, "w"))
@@ -481,7 +488,7 @@ def test_finalize_empty_signup_events_yields_zero_signups():
 
         # Counts.json doesn't include this MVP (since it had no signup events to query)
         counts_p = os.path.join(td, "counts.json")
-        json.dump({"results": []}, open(counts_p, "w"))
+        json.dump(_signup_counts([]), open(counts_p, "w"))
 
         summary_p = os.path.join(td, "persist-summary.json")
         json.dump({"filtered_events": []}, open(summary_p, "w"))
@@ -495,6 +502,68 @@ def test_finalize_empty_signup_events_yields_zero_signups():
         m = result["mvps"][0]
         assert m["signups"] == 0
         assert m["signup_events"] == []
+        assert m["ph_signups"] is None
+        assert m["ph_signups_available"] is False
+
+
+def test_finalize_raises_when_signup_batches_status_missing():
+    with tempfile.TemporaryDirectory() as td:
+        data_p = os.path.join(td, "data.json")
+        json.dump({"mvps": [{"name": "alpha", "gclid_visitors": 100}]}, open(data_p, "w"))
+        config_p = os.path.join(td, "config.yaml")
+        try:
+            import yaml
+            yaml.safe_dump({"mvp_mappings": {"alpha": {"signup_events": ["signup_complete"]}}}, open(config_p, "w"))
+        except ImportError:
+            return
+        counts_p = os.path.join(td, "counts.json")
+        json.dump({"results": [["alpha", 8]]}, open(counts_p, "w"))
+        summary_p = os.path.join(td, "persist-summary.json")
+        json.dump({"filtered_events": []}, open(summary_p, "w"))
+        import pytest
+        with pytest.raises(RuntimeError, match="_x2_signup_batches_status missing from signup-count input"):
+            cmd_finalize(Args(data=data_p, config=config_p, signup_counts=counts_p,
+                              persist_summary=summary_p, strict_sanity=False))
+
+
+def test_finalize_raises_on_missing_results_key():
+    with tempfile.TemporaryDirectory() as td:
+        data_p = os.path.join(td, "data.json")
+        json.dump({"mvps": [{"name": "alpha", "gclid_visitors": 100}]}, open(data_p, "w"))
+        config_p = os.path.join(td, "config.yaml")
+        try:
+            import yaml
+            yaml.safe_dump({"mvp_mappings": {"alpha": {"signup_events": ["signup_complete"]}}}, open(config_p, "w"))
+        except ImportError:
+            return
+        counts_p = os.path.join(td, "counts.json")
+        json.dump({"unexpected": []}, open(counts_p, "w"))
+        summary_p = os.path.join(td, "persist-summary.json")
+        json.dump({"filtered_events": []}, open(summary_p, "w"))
+        import pytest
+        with pytest.raises(SystemExit, match="missing results"):
+            cmd_finalize(Args(data=data_p, config=config_p, signup_counts=counts_p,
+                              persist_summary=summary_p, strict_sanity=False))
+
+
+def test_finalize_raises_on_missing_row_for_nonempty_signup_events():
+    with tempfile.TemporaryDirectory() as td:
+        data_p = os.path.join(td, "data.json")
+        json.dump({"mvps": [{"name": "alpha", "gclid_visitors": 100}]}, open(data_p, "w"))
+        config_p = os.path.join(td, "config.yaml")
+        try:
+            import yaml
+            yaml.safe_dump({"mvp_mappings": {"alpha": {"signup_events": ["signup_complete"]}}}, open(config_p, "w"))
+        except ImportError:
+            return
+        counts_p = os.path.join(td, "counts.json")
+        json.dump(_signup_counts([]), open(counts_p, "w"))
+        summary_p = os.path.join(td, "persist-summary.json")
+        json.dump({"filtered_events": []}, open(summary_p, "w"))
+        import pytest
+        with pytest.raises(SystemExit, match="Missing signup-count row"):
+            cmd_finalize(Args(data=data_p, config=config_p, signup_counts=counts_p,
+                              persist_summary=summary_p, strict_sanity=False))
 
 
 # ---------- Orphan overlap merge (Issue 3) ----------

@@ -72,43 +72,93 @@ if os.path.exists('experiment/iterate-cross-config.yaml'):
 print(cfg.get('window_days', 90))
 ")
 
-# Load shared paid-traffic filter — single source of truth in gclid_filter.py.
-PAID_GCLID_FILTER=$(python3 -c "import sys; sys.path.insert(0, '.claude/scripts/lib'); from gclid_filter import PAID_GCLID_FILTER; print(PAID_GCLID_FILTER)")
+python3 - "$POSTHOG_PROJECT_ID" "$WINDOW_DAYS" <<'PY'
+import json, os, sys
+sys.path.insert(0, '.claude/scripts/lib')
+from gclid_filter import PAID_GCLID_FILTER
+from iterate_cross_posthog_batch import paginate_discovery_query
 
-cat > /tmp/iterate-cross-discover.json <<JSON
-{
-  "query": {
-    "kind": "HogQLQuery",
-    "query": "SELECT properties.project_name AS mvp_key, max(properties.utm_campaign) AS sample_utm_campaign, count(DISTINCT distinct_id) AS gclid_visitors, min(timestamp) AS first_seen, max(timestamp) AS last_seen FROM events WHERE $PAID_GCLID_FILTER AND properties.project_name IS NOT NULL AND properties.project_name != {empty} AND timestamp >= now() - INTERVAL ${WINDOW_DAYS} DAY GROUP BY mvp_key HAVING gclid_visitors > 0 ORDER BY gclid_visitors DESC LIMIT 200",
-    "values": {"empty": ""}
-  }
-}
-JSON
+project_id = sys.argv[1]
+window_days = int(sys.argv[2])
+api_key = open(os.path.expanduser('~/.posthog/personal-api-key')).read().strip()
+sql = (
+    "SELECT properties.project_name AS mvp_key, "
+    "max(properties.utm_campaign) AS sample_utm_campaign, "
+    "count(DISTINCT distinct_id) AS gclid_visitors, "
+    "min(timestamp) AS first_seen, max(timestamp) AS last_seen "
+    f"FROM events WHERE {PAID_GCLID_FILTER} "
+    "AND properties.project_name IS NOT NULL "
+    "AND properties.project_name != {empty} "
+    f"AND timestamp >= now() - INTERVAL {window_days} DAY "
+    "GROUP BY mvp_key HAVING gclid_visitors > 0 "
+    "ORDER BY gclid_visitors DESC LIMIT 200"
+)
+rows, metadata = paginate_discovery_query(
+    sql,
+    {"empty": ""},
+    project_id,
+    api_key,
+    page_size=200,
+)
+payload = {"results": rows, "_canonical_pagination_status": metadata}
+json.dump(payload, open('.runs/_iterate-cross-discover.json', 'w'))
 
-curl -s -X POST "https://us.i.posthog.com/api/projects/$POSTHOG_PROJECT_ID/query/" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $POSTHOG_API_KEY" \
-  --data @/tmp/iterate-cross-discover.json > .runs/_iterate-cross-discover.json
+context_path = '.runs/iterate-cross-context.json'
+if os.path.exists(context_path):
+    ctx = json.load(open(context_path))
+    ctx['_canonical_pagination_status'] = metadata
+    json.dump(ctx, open(context_path, 'w'), indent=2)
+PY
 ```
+
+The production path must page this query with
+`.claude/scripts/lib/iterate_cross_posthog_batch.py::paginate_discovery_query`
+instead of relying on the visible `LIMIT 200`. The helper stamps
+`_canonical_pagination_status` into context and keeps fetching until a short
+page proves the result set is complete.
 
 Parallel sibling query — count gclid events with NULL/empty `project_name`. These get surfaced in the operator confirmation message; they are NOT auto-keyed by URL anymore (the previous `splitByChar(domain($current_url))[1]` fallback created cross-pollution between similarly-named MVPs):
 
 ```bash
-cat > /tmp/iterate-cross-orphan.json <<JSON
-{
-  "query": {
-    "kind": "HogQLQuery",
-    "query": "SELECT splitByChar('.', domain(coalesce(properties.\$current_url, '')))[1] AS host_prefix, count(DISTINCT distinct_id) AS gclid_visitors FROM events WHERE $PAID_GCLID_FILTER AND (properties.project_name IS NULL OR properties.project_name = {empty}) AND timestamp >= now() - INTERVAL ${WINDOW_DAYS} DAY GROUP BY host_prefix HAVING gclid_visitors > 0 ORDER BY gclid_visitors DESC LIMIT 50",
-    "values": {"empty": ""}
-  }
-}
-JSON
+python3 - "$POSTHOG_PROJECT_ID" "$WINDOW_DAYS" <<'PY'
+import json, os, sys
+sys.path.insert(0, '.claude/scripts/lib')
+from gclid_filter import PAID_GCLID_FILTER
+from iterate_cross_posthog_batch import paginate_discovery_query
 
-curl -s -X POST "https://us.i.posthog.com/api/projects/$POSTHOG_PROJECT_ID/query/" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $POSTHOG_API_KEY" \
-  --data @/tmp/iterate-cross-orphan.json > .runs/_iterate-cross-orphan.json
+project_id = sys.argv[1]
+window_days = int(sys.argv[2])
+api_key = open(os.path.expanduser('~/.posthog/personal-api-key')).read().strip()
+sql = (
+    "SELECT splitByChar('.', domain(coalesce(properties.$current_url, '')))[1] AS host_prefix, "
+    "count(DISTINCT distinct_id) AS gclid_visitors "
+    f"FROM events WHERE {PAID_GCLID_FILTER} "
+    "AND (properties.project_name IS NULL OR properties.project_name = {empty}) "
+    f"AND timestamp >= now() - INTERVAL {window_days} DAY "
+    "GROUP BY host_prefix HAVING gclid_visitors > 0 "
+    "ORDER BY gclid_visitors DESC LIMIT 50"
+)
+rows, metadata = paginate_discovery_query(
+    sql,
+    {"empty": ""},
+    project_id,
+    api_key,
+    page_size=50,
+)
+payload = {"results": rows, "_orphan_pagination_status": metadata}
+json.dump(payload, open('.runs/_iterate-cross-orphan.json', 'w'))
+
+context_path = '.runs/iterate-cross-context.json'
+if os.path.exists(context_path):
+    ctx = json.load(open(context_path))
+    ctx['_orphan_pagination_status'] = metadata
+    json.dump(ctx, open(context_path, 'w'), indent=2)
+PY
 ```
+
+The orphan query uses the same helper with a page size of 50 and stamps
+`_orphan_pagination_status` into context. A result set of exactly 50 rows is
+not complete until the next page has been queried.
 
 Parse results into MVP records. Each MVP gets:
 - `name` — `mvp_key` from query (always equals `properties.project_name` — never URL-derived)
@@ -269,6 +319,12 @@ Wait for confirmation. If the operator wants to exclude/add MVPs, adjust the lis
 python3 -c "
 import json
 
+def status_from(path, key, fallback):
+    try:
+        return json.load(open(path)).get(key) or fallback
+    except Exception:
+        return fallback
+
 mvps = [
     # Populate from discovered + operator-confirmed list:
     # {'name': 'pettracker', 'owner': 'lee', 'gclid_visitors': 60,
@@ -283,12 +339,14 @@ extra = {
     'window_days': $WINDOW_DAYS,
     'mvp_count': len(mvps),
     'mvps': mvps,
+    '_canonical_pagination_status': status_from('.runs/_iterate-cross-discover.json', '_canonical_pagination_status', {'status': 'missing'}),
+    '_orphan_pagination_status': status_from('.runs/_iterate-cross-orphan.json', '_orphan_pagination_status', {'status': 'missing'}),
     'completed_states': ['x0']
 }
 json.dump(extra, open('.runs/_iterate-cross-extra.json', 'w'))
 "
 bash .claude/scripts/init-context.sh iterate-cross "@.runs/_iterate-cross-extra.json"
-rm -f .runs/_iterate-cross-extra.json .runs/_iterate-cross-discover.json .runs/_iterate-cross-orphan.json /tmp/iterate-cross-discover.json /tmp/iterate-cross-orphan.json
+rm -f .runs/_iterate-cross-extra.json .runs/_iterate-cross-discover.json .runs/_iterate-cross-orphan.json
 ```
 
 The base fields (`skill`, `branch`, `timestamp`, `run_id`) are already set by lifecycle-init.sh.
@@ -301,7 +359,7 @@ The base fields (`skill`, `branch`, `timestamp`, `run_id`) are already set by li
 **VERIFY:** see `state-registry.json` entry for `iterate-cross.x0`.
 
 ```bash
-python3 -c "import json; d=json.load(open('.runs/iterate-cross-context.json')); ms=d.get('mvps',[]); assert isinstance(ms, list) and len(ms)>0, 'mvps empty'; bad=[m.get('name','?') for m in ms if not m.get('name') or 'gclid_visitors' not in m]; assert not bad, 'MVPs missing required fields: %s' % bad"
+python3 -c "import json; d=json.load(open('.runs/iterate-cross-context.json')); ms=d.get('mvps',[]); assert isinstance(ms, list) and len(ms)>0, 'mvps empty'; bad=[m.get('name','?') for m in ms if not m.get('name') or 'gclid_visitors' not in m]; assert not bad, 'MVPs missing required fields: %s' % bad; assert d.get('_canonical_pagination_status',{}).get('status') == 'complete', 'canonical pagination incomplete'; assert d.get('_orphan_pagination_status',{}).get('status') == 'complete', 'orphan pagination incomplete'"
 ```
 <!-- VERIFY=true: real assertion lives in state-registry.json; this line is the per-Rule-13 placeholder -->
 

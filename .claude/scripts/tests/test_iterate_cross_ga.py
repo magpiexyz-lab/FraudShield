@@ -260,6 +260,20 @@ def test_parse_ga_csv_missing_required_columns_returns_empty():
     assert parsed == []
 
 
+def test_parse_ga_csv_skips_google_ads_preamble_and_exact_campaign_column():
+    csv_text = (
+        "Campaign report\n"
+        "All time\n"
+        "\n"
+        "Campaign status,Campaign,Clicks\n"
+        "Enabled,xpredict,1082\n"
+    )
+    parsed = parse_ga_csv(csv_text)
+    assert len(parsed) == 1
+    assert parsed[0]["name"] == "xpredict"
+    assert parsed[0]["clicks"] == 1082
+
+
 # ---------- merge_ga_clicks (end-to-end) ----------
 
 def _mvp(name, gclid_visitors=0):
@@ -512,6 +526,16 @@ def test_validate_csv_accepts_header_only_with_warning():
         assert rc == 0
     finally:
         os.unlink(path)
+
+
+def test_validate_csv_rejects_header_only_when_context_has_gclid_traffic():
+    with tempfile.TemporaryDirectory() as td:
+        csv_path = os.path.join(td, "ga.csv")
+        ctx_path = os.path.join(td, "ctx.json")
+        open(csv_path, "w").write("Campaign,Clicks\n")
+        json.dump({"mvps": [{"name": "x", "gclid_visitors": 1}]}, open(ctx_path, "w"))
+        rc = cmd_validate_csv(_Args(ga_csv=csv_path, context=ctx_path))
+        assert rc == 2
 
 
 def test_validate_csv_handles_bom():

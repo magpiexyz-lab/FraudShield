@@ -17,6 +17,7 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest.mock import MagicMock
 from unittest.mock import patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
@@ -202,6 +203,125 @@ class QueryMvpGroundTruthTests(unittest.TestCase):
         self.assertIsNone(result["db_signups"])
         self.assertTrue(result["errors"])
 
+    def test_management_api_http_failures_map_to_unmapped_reasons(self):
+        cases = [
+            ('{"message":"forbidden"}\nHTTP_STATUS:403', "forbidden"),
+            ('{"message":"missing"}\nHTTP_STATUS:404', "project_deleted"),
+            ('{"message":"bad gateway"}\nHTTP_STATUS:502', "query_error"),
+            ('{"message":"dict without error"}\nHTTP_STATUS:200', "query_error"),
+            ('{"message":"bad request"}\nHTTP_STATUS:400', "query_error"),
+            ("\nHTTP_STATUS:200", "query_error"),
+        ]
+        for stdout, reason in cases:
+            with self.subTest(reason=reason, stdout=stdout):
+                with patch("iterate_cross_db.subprocess.run") as mock_run:
+                    mock_run.return_value = MagicMock(returncode=0, stdout=stdout, stderr="")
+                    result = db.query_mvp_ground_truth("test-ref", window_days=90, token="token")
+                self.assertIsNone(result["db_signups_real"])
+                self.assertEqual(result["db_unmapped_reason"], reason)
+
+    @patch("iterate_cross_db._management_api_query")
+    def test_select_signups_aliases_timestamp_columns(self, mock_api):
+        mock_api.return_value = []
+        for ts_col in ["created_at", "inserted_at", "signed_up_at", "submitted_at", "registered_at"]:
+            with self.subTest(ts_col=ts_col):
+                mock_api.reset_mock()
+                db.select_signups_in_window("ref", "signups", ts_col, 45)
+                sql = mock_api.call_args.args[1]
+                self.assertIn(f'SELECT email, "{ts_col}" AS signup_at', sql)
+                self.assertIn(f'WHERE "{ts_col}" >= now() - INTERVAL \'45 days\'', sql)
+        mock_api.reset_mock()
+        db.select_signups_in_window("ref", "signups", None, 45)
+        sql = mock_api.call_args.args[1]
+        self.assertIn("SELECT email, NULL AS signup_at", sql)
+        self.assertNotIn("INTERVAL '45 days'", sql)
+
+    @patch("iterate_cross_db._management_api_query")
+    def test_auth_users_filters_confirmed_and_email_categories(self, mock_api):
+        mock_api.side_effect = [
+            [
+                {
+                    "email": "real@customer.com",
+                    "signup_at": "2026-05-03T00:00:00+00:00",
+                    "email_confirmed_at": "2026-05-03T00:01:00+00:00",
+                },
+                {
+                    "email": "unconfirmed@customer.com",
+                    "signup_at": "2026-05-01T00:00:00+00:00",
+                    "email_confirmed_at": None,
+                },
+                {
+                    "email": "dev@team.test",
+                    "signup_at": "2026-05-02T00:00:00+00:00",
+                    "email_confirmed_at": "2026-05-02T00:01:00+00:00",
+                },
+                {
+                    "email": "fixture@example.com",
+                    "signup_at": "2026-05-01T00:00:00+00:00",
+                    "email_confirmed_at": "2026-05-01T00:01:00+00:00",
+                },
+            ],
+            [],
+        ]
+        cfg = {"email_filter": {"rules": {"team_domains": ["team.test"]}}}
+        result = db.query_mvp_ground_truth("test-ref", window_days=90, config=cfg)
+        auth_sql = mock_api.call_args_list[0].args[1]
+        self.assertIn("email_confirmed_at IS NOT NULL", auth_sql)
+        self.assertEqual(result["db_signups_raw"], 3)
+        self.assertEqual(result["db_signups_real"], 1)
+        self.assertEqual(result["db_signups_team"], 1)
+        self.assertEqual(result["db_signups_test"], 1)
+        self.assertEqual(result["db_first_signup_at"], "2026-05-03T00:00:00+00:00")
+
+    @patch("iterate_cross_db._management_api_query")
+    def test_email_table_beats_larger_no_email_profile_table(self, mock_api):
+        mock_api.side_effect = [
+            [
+                {"email": f"user{i}@customer.com", "signup_at": f"2026-05-0{i + 1}T00:00:00+00:00", "email_confirmed_at": "x"}
+                for i in range(5)
+            ],
+            [{"table_name": "profiles", "columns": "id,user_id,created_at"}],
+        ]
+        result = db.query_mvp_ground_truth("test-ref", window_days=90, config={"email_filter": {"rules": {}}})
+        self.assertEqual(result["db_signups_real"], 5)
+        self.assertEqual(result["db_signups_table"], "auth.users")
+
+    @patch("iterate_cross_db._management_api_query")
+    def test_no_email_only_project_returns_no_email_column(self, mock_api):
+        mock_api.side_effect = [
+            [],
+            [{"table_name": "profiles", "columns": "id,user_id,created_at"}],
+        ]
+        result = db.query_mvp_ground_truth("test-ref", window_days=90, config={"email_filter": {"rules": {}}})
+        self.assertIsNone(result["db_signups_real"])
+        self.assertEqual(result["db_unmapped_reason"], "no_email_column")
+
+    @patch("iterate_cross_db._management_api_query")
+    def test_first_signup_at_is_earliest_real_row_only(self, mock_api):
+        mock_api.side_effect = [
+            [],
+            [{"table_name": "signups", "columns": "id,email,created_at"}],
+            [
+                {"email": "fixture@example.com", "signup_at": "2026-05-01T00:00:00+00:00"},
+                {"email": "real@customer.com", "signup_at": "2026-05-03T00:00:00+00:00"},
+                {"email": "another@customer.com", "signup_at": "2026-05-04T00:00:00+00:00"},
+            ],
+        ]
+        result = db.query_mvp_ground_truth("test-ref", window_days=90, config={"email_filter": {"rules": {}}})
+        self.assertEqual(result["db_signups_raw"], 3)
+        self.assertEqual(result["db_signups_real"], 2)
+        self.assertEqual(result["db_first_signup_at"], "2026-05-03T00:00:00+00:00")
+
+
+class RailwayFallbackPredicateTests(unittest.TestCase):
+    def test_allow_railway_fallback_reason_matrix(self):
+        for reason in ["no_match", "no_token", "no_email_column", "project_deleted"]:
+            with self.subTest(reason=reason):
+                self.assertTrue(db.allow_railway_fallback(reason))
+        for reason in ["query_error", "forbidden", None]:
+            with self.subTest(reason=reason):
+                self.assertFalse(db.allow_railway_fallback(reason))
+
 
 class MergeIntoContextSourceStampTests(unittest.TestCase):
     """Supabase pass must set db_source='supabase' on successful queries.
@@ -266,6 +386,40 @@ class MergeIntoContextSourceStampTests(unittest.TestCase):
             self.assertIsNone(m["db_signups"])
             # db_source not set — leaves the field absent so Railway can fill in.
             self.assertNotIn("db_source", m)
+
+    @patch("iterate_cross_db.list_supabase_projects")
+    @patch("iterate_cross_db.query_mvp_ground_truth")
+    def test_dry_run_leaves_context_file_untouched(self, mock_q, mock_list):
+        mock_list.return_value = [{"id": "ref_alpha", "name": "alpha"}]
+        mock_q.return_value = {
+            "db_signups": 12,
+            "db_signups_raw": 12,
+            "db_signups_real": 12,
+            "db_signups_team": 0,
+            "db_signups_test": 0,
+            "db_signups_filter_audit": [],
+            "db_signups_real_windowed": True,
+            "db_signups_table": "public.users",
+            "db_first_signup_at": "2026-04-01",
+            "db_breakdown": {"public.users": 12},
+            "errors": None,
+        }
+        original = {"window_days": 90, "mvps": [{"name": "alpha"}]}
+        with tempfile.TemporaryDirectory() as t:
+            ctx_path = os.path.join(t, "ctx.json")
+            cfg_path = os.path.join(t, "cfg.yaml")
+            with open(ctx_path, "w") as f:
+                json.dump(original, f)
+            import yaml as _yaml
+            with open(cfg_path, "w") as f:
+                _yaml.safe_dump({"mvp_mappings": {
+                    "alpha": {"supabase_project_ref": "ref_alpha"},
+                }}, f)
+
+            result = db.merge_into_context(ctx_path, cfg_path, auto_confirm=True, dry_run=True)
+
+            self.assertEqual(result["step"], "merged")
+            self.assertEqual(json.load(open(ctx_path)), original)
 
 
 class SanityFlagTests(unittest.TestCase):

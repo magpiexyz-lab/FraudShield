@@ -18,6 +18,38 @@ Helpers NOT intended for reuse (one-off utilities, single-caller adapters) shoul
 
 ## Stack Knowledge
 
+### Iterate-cross redacted email signup filter
+```yaml
+id: iterate-cross-redacted-email-signup-filter
+maturity: stable
+anti_pattern: false
+composite_identity:
+  root_cause_class: db-ground-truth-counts-include-team-test-fixtures
+  divergence_pattern: raw-db-signups-promote-or-suppress-verdicts-without-real-user-filter
+  stack_scope: scripts/lib/iterate_cross_email_filter
+composite_identity_hash: 9d41553a060b
+symptom_keywords: [iterate-cross, db_signups, email_filter, pii-redaction, team-emails, test-emails, signup-fixtures, gmail-normalize, plus-alias]
+confidence_score: 0.9
+occurrence_count: 2
+linked_issues: [1482]
+first_seen: 2026-05-21
+last_seen: 2026-05-21
+graduated_to: null
+prevention_mechanism: |
+  iterate_cross_email_filter.py is the canonical deterministic filter for
+  email-bearing signup rows from both Supabase and Railway. It classifies
+  rows into real/team/test using operator-owned config, reserved test
+  domains, team domains, Gmail normalization, and plus-alias handling.
+  It returns only aggregate counts and redacted audit entries so .runs
+  artifacts, Telegram output, and HTML reports never persist full emails.
+fix_template: |
+  When a DB ground-truth integration reads signup rows, select email-bearing
+  rows instead of count(*), call filter_signups(rows, config), and persist:
+  db_signups_raw, db_signups_real, db_signups_team, db_signups_test,
+  db_signups_filter_audit, db_signups_real_windowed, and db_first_signup_at.
+  Never write raw email addresses to .runs artifacts; use redact_email().
+```
+
 ### gate-evidence cross-reference protocol (GECR)
 ```yaml
 id: gate-evidence-citation-protocol
@@ -563,6 +595,42 @@ fix_template: |
   unit-testable checks. All 5 historical query sites (state-x0 canonical,
   state-x0 orphan, state-x1, state-x2, state-c2) already read from this
   helper. Any new query MUST follow the same pattern.
+```
+
+### iterate-cross PostHog query batching helper
+```yaml
+id: iterate-cross-posthog-query-batching-helper
+maturity: stable
+anti_pattern: false
+composite_identity:
+  root_cause_class: posthog-portfolio-query-cap-or-timeout
+  divergence_pattern: single-shot-discovery-or-union-query-in-state-bash
+  stack_scope: scripts/lib/iterate_cross_posthog_batch
+composite_identity_hash: 875494305052
+symptom_keywords: [iterate-cross, posthog, hogql, pagination, limit, offset, union-all, batch-size, discovery, signup-counts]
+confidence_score: 0.9
+occurrence_count: 1
+linked_issues: []
+first_seen: 2026-05-21
+last_seen: 2026-05-21
+graduated_to: null
+prevention_mechanism: |
+  iterate_cross_posthog_batch.py is the canonical execution helper for
+  /iterate --cross PostHog queries that can grow with portfolio size. Discovery
+  queries must use paginate_discovery_query() so LIMIT/OFFSET pages continue
+  until a short page proves completeness. Per-MVP UNION ALL query groups must
+  use run_union_batches() so HogQL execution stays under timeout limits while
+  preserving one concatenated results payload for downstream state code.
+fix_template: |
+  In state bash, build the SQL parts in Python, import the helper from
+  .claude/scripts/lib, and call:
+
+    rows, metadata = paginate_discovery_query(sql, values, project_id, api_key, page_size=200)
+    rows, metadata = run_union_batches(parts, values, project_id, api_key, batch_size=20)
+
+  Write raw artifacts as {"results": rows, "<state_status_key>": metadata}
+  and propagate the metadata into the gate-readable context/data artifact
+  through the standard state artifact writer.
 ```
 
 ### shared selector for per-page design-critic traces (epoch suffix routing)

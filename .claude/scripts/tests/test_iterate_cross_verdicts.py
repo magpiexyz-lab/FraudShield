@@ -27,8 +27,11 @@ from iterate_cross_verdicts import (  # noqa: E402
     action_line,
     compute_headline_verdict,
     emit_telegram,
+    is_trusted_db_real,
     main,
     parse_debug_prompts,
+    sort_scores_by_owner,
+    sort_scores_global,
 )
 
 
@@ -321,6 +324,80 @@ def test_verdict_enum_consistency():
         score = compute_headline_verdict(m, issues, THRESHOLDS)
         assert score["headline_verdict"] == expected
         assert score["headline_verdict"] in VERDICT_ENUM
+
+
+def test_signup_source_db_real_zero_suppresses_ph_go():
+    record = mvp(visitors=100, signups=5, ga_clicks=100)
+    record.update({
+        "db_signups_real": 0,
+        "db_signups_real_windowed": True,
+        "db_source": "supabase",
+        "db_unmapped_reason": None,
+        "ph_signups": 5,
+        "ph_signups_available": True,
+    })
+    score = compute_headline_verdict(record, {}, THRESHOLDS)
+    assert score["headline_verdict"] == VERDICT_NO_GO
+    assert score["metrics"]["signup_source"] == "db_real_zero"
+    assert score["metrics"]["effective_signups"] == 0
+    assert any(f["flag"] == "db_zero_with_ph_signups" for f in score["tracking_sanity_flags"])
+
+
+def test_signup_source_db_real_for_low_real_counts_with_ph_zero():
+    for n, expected in [(1, VERDICT_WEAK), (2, VERDICT_WEAK), (3, VERDICT_GO)]:
+        record = mvp(visitors=100, signups=0, ga_clicks=100)
+        record.update({
+            "db_signups_real": n,
+            "db_signups_real_windowed": True,
+            "db_source": "railway",
+            "db_unmapped_reason": None,
+            "ph_signups": 0,
+            "ph_signups_available": True,
+        })
+        score = compute_headline_verdict(record, {}, THRESHOLDS)
+        assert score["headline_verdict"] == expected
+        assert score["metrics"]["signup_source"] == "db_real"
+        assert score["metrics"]["effective_signups"] == n
+
+
+def test_is_trusted_db_real_rejects_untrusted_sources():
+    base = {"db_signups_real": 1, "db_signups_real_windowed": True, "db_source": "supabase", "db_unmapped_reason": None}
+    assert is_trusted_db_real(base)
+    for patch in [
+        {"db_source": None},
+        {"db_source": "unknown"},
+        {"db_unmapped_reason": "query_error"},
+        {"db_signups_real_windowed": False},
+    ]:
+        candidate = dict(base, **patch)
+        assert not is_trusted_db_real(candidate)
+
+
+def test_sort_scores_global_verdict_precedence_before_owner():
+    scores = [
+        {"name": "weak-b", "owner": "a", "headline_verdict": VERDICT_WEAK, "metrics": {"gclid_visitors": 200}},
+        {"name": "go", "owner": "z", "headline_verdict": VERDICT_GO, "metrics": {"gclid_visitors": 1}},
+        {"name": "missing", "owner": "a", "headline_verdict": VERDICT_MISSING_PROJECT_NAME, "metrics": {"gclid_visitors": 1}},
+    ]
+    assert [s["name"] for s in sort_scores_global(scores)] == ["missing", "go", "weak-b"]
+
+
+def test_sort_scores_global_uses_traffic_then_name_within_verdict():
+    scores = [
+        {"name": "b", "owner": "a", "headline_verdict": VERDICT_WEAK, "metrics": {"gclid_visitors": 5}},
+        {"name": "a", "owner": "z", "headline_verdict": VERDICT_WEAK, "metrics": {"gclid_visitors": 5}},
+        {"name": "c", "owner": "a", "headline_verdict": VERDICT_WEAK, "metrics": {"ga_clicks": 10, "gclid_visitors": 1}},
+    ]
+    assert [s["name"] for s in sort_scores_global(scores)] == ["c", "a", "b"]
+
+
+def test_sort_scores_by_owner_groups_owner_before_global_ordering():
+    scores = [
+        {"name": "missing-z", "owner": "z", "headline_verdict": VERDICT_MISSING_PROJECT_NAME, "metrics": {"gclid_visitors": 100}},
+        {"name": "weak-a", "owner": "a", "headline_verdict": VERDICT_WEAK, "metrics": {"gclid_visitors": 1}},
+        {"name": "go-a", "owner": "a", "headline_verdict": VERDICT_GO, "metrics": {"gclid_visitors": 1}},
+    ]
+    assert [s["name"] for s in sort_scores_by_owner(scores)] == ["go-a", "weak-a", "missing-z"]
 
 
 # ---------- Telegram emission ----------

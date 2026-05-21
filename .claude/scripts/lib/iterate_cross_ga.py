@@ -207,11 +207,18 @@ def parse_ga_csv(csv_text: str) -> list[dict]:
     rows = list(reader)
     if not rows:
         return []
-    header = [(h or "").strip().lower() for h in rows[0]]
+    header_idx = _find_header_row(rows)
+    if header_idx is None:
+        return []
+    header = [(h or "").strip().lower() for h in rows[header_idx]]
 
     def find(*keys: str) -> int | None:
+        exact = {k.lower().strip() for k in keys}
         for i, h in enumerate(header):
-            for k in keys:
+            if h in exact:
+                return i
+        for i, h in enumerate(header):
+            for k in exact:
                 if k in h:
                     return i
         return None
@@ -224,7 +231,7 @@ def parse_ga_csv(csv_text: str) -> list[dict]:
     i_account = find("account")
 
     out: list[dict] = []
-    for row in rows[1:]:
+    for row in rows[header_idx + 1:]:
         if not row or i_name >= len(row):
             continue
         name = (row[i_name] or "").strip()
@@ -246,6 +253,18 @@ def parse_ga_csv(csv_text: str) -> list[dict]:
         account = (row[i_account] or "").strip() if i_account is not None and i_account < len(row) else ""
         out.append({"name": name, "account": account, "type": "", "clicks": clicks, "conv": conv})
     return out
+
+
+def _find_header_row(rows: list[list[str]]) -> int | None:
+    for idx, row in enumerate(rows):
+        header = [(h or "").strip().lower() for h in row]
+        has_campaign = "campaign" in header or any(h == "campaign name" for h in header)
+        has_clicks = "clicks" in header
+        if not has_campaign:
+            has_campaign = any(h == "campaign" or h.endswith(" campaign") for h in header)
+        if has_campaign and has_clicks:
+            return idx
+    return None
 
 
 def merge_ga_clicks(
@@ -397,7 +416,15 @@ def cmd_validate_csv(args: argparse.Namespace) -> int:
     if not rows:
         print(f"ERROR: CSV has no rows: {args.ga_csv}", file=sys.stderr)
         return 2
-    header = [(h or "").strip().lower() for h in rows[0]]
+    header_idx = _find_header_row(rows)
+    if header_idx is None:
+        print(
+            f"ERROR: CSV missing required columns: ['campaign', 'clicks']. "
+            f"Could not find a header row in {args.ga_csv}.",
+            file=sys.stderr,
+        )
+        return 2
+    header = [(h or "").strip().lower() for h in rows[header_idx]]
     required = {"campaign": False, "clicks": False}
     for col in header:
         for key in required:
@@ -407,12 +434,23 @@ def cmd_validate_csv(args: argparse.Namespace) -> int:
     if missing:
         print(
             f"ERROR: CSV missing required columns: {missing}. "
-            f"Header was: {rows[0]}. "
+            f"Header was: {rows[header_idx]}. "
             f"Re-export from Google Ads UI with at least Campaign and Clicks columns.",
             file=sys.stderr,
         )
         return 2
-    if len(rows) < 2:
+    parsed = parse_ga_csv(text)
+    if not parsed:
+        if getattr(args, "context", None) and os.path.exists(args.context):
+            ctx = json.load(open(args.context))
+            has_paid_traffic = any((m.get("gclid_visitors", 0) or 0) > 0 for m in ctx.get("mvps", []))
+            if has_paid_traffic:
+                print(
+                    "ERROR: CSV has no data rows but context already has gclid traffic. "
+                    "Re-export the active Google Ads campaign report.",
+                    file=sys.stderr,
+                )
+                return 2
         # Header-only: legitimate when the window has zero paid clicks. Warn only.
         print(
             f"WARN: CSV has header but zero data rows. If your date range had "
@@ -481,6 +519,7 @@ def main(argv: list[str] | None = None) -> int:
 
     p_validate = sub.add_parser("validate-csv", help="Verify the GA CSV has required columns and at least one data row.")
     p_validate.add_argument("--ga-csv", default=".runs/iterate-cross-ga-clicks.csv", help="Input: operator-supplied CSV export from Google Ads.")
+    p_validate.add_argument("--context", default=None, help="Optional iterate-cross context for header-only validation.")
     p_validate.set_defaults(func=cmd_validate_csv)
 
     p_merge = sub.add_parser("merge", help="Fold GA clicks into iterate-cross-context.json.")

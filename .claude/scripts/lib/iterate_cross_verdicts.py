@@ -73,6 +73,86 @@ VERDICT_ENUM = {
     VERDICT_GA_NO_PH_TRACKING,
 }
 
+VERDICT_SORT_ORDER = {
+    VERDICT_MISSING_PROJECT_NAME: 0,
+    VERDICT_GA_NO_PH_TRACKING: 1,
+    VERDICT_GO: 2,
+    VERDICT_WEAK: 3,
+    VERDICT_INSUFFICIENT: 4,
+    VERDICT_NO_GO: 5,
+    VERDICT_NO_DATA: 6,
+}
+
+
+def is_trusted_db_real(mvp: dict) -> bool:
+    return (
+        mvp.get("db_signups_real") is not None
+        and mvp.get("db_unmapped_reason") is None
+        and mvp.get("db_signups_real_windowed") is True
+        and mvp.get("db_source") in {"supabase", "railway"}
+    )
+
+
+def resolve_effective_signups(mvp: dict) -> tuple[int | None, str | None, list[dict]]:
+    ph_signups_available = mvp.get("ph_signups_available")
+    if ph_signups_available is None:
+        ph_signups_available = bool(mvp.get("signup_events"))
+    ph_signups = mvp.get("ph_signups", mvp.get("signups"))
+    if ph_signups is None and ph_signups_available:
+        ph_signups = 0
+    db_real = mvp.get("db_signups_real")
+    flags: list[dict] = []
+
+    if (
+        is_trusted_db_real(mvp)
+        and db_real == 0
+        and ph_signups_available is True
+        and (ph_signups or 0) > 0
+    ):
+        flags.append({
+            "flag": "db_zero_with_ph_signups",
+            "severity": "high",
+            "message": "Trusted DB has zero real signups while PostHog has paid signup events.",
+        })
+        return 0, "db_real_zero", flags
+    if is_trusted_db_real(mvp) and (
+        (db_real or 0) > 0 and ph_signups_available is True and (ph_signups or 0) == 0
+        or ph_signups_available is False
+    ):
+        return int(db_real or 0), "db_real", flags
+    if ph_signups_available is True:
+        return int(ph_signups or 0), "ph", flags
+    return None, None, flags
+
+
+def _traffic_for_sort(score: dict) -> int:
+    metrics = score.get("metrics", {})
+    return metrics.get("ga_clicks") or metrics.get("gclid_visitors") or 0
+
+
+def _global_score_key(score: dict) -> tuple:
+    return (
+        VERDICT_SORT_ORDER.get(score.get("headline_verdict"), 99),
+        -_traffic_for_sort(score),
+        score.get("name") or "",
+    )
+
+
+def sort_scores_global(scores: list[dict]) -> list[dict]:
+    """Rank-table ordering: verdict first, traffic second, name third."""
+    return sorted(scores, key=_global_score_key)
+
+
+def sort_scores_by_owner(scores: list[dict]) -> list[dict]:
+    """Telegram ordering: owner first, then global ordering within each owner."""
+    return sorted(
+        scores,
+        key=lambda s: (
+            s.get("owner") or "unassigned",
+            *_global_score_key(s),
+        ),
+    )
+
 
 def load_config(path: str | None) -> dict:
     """Load YAML config; deep-merge with defaults so partial configs work."""
@@ -118,7 +198,9 @@ def compute_headline_verdict(mvp: dict, issues: dict, thresholds: dict) -> dict:
     """
     gclid_visitors = mvp.get("gclid_visitors", 0)
     ga_clicks = mvp.get("ga_clicks", 0) or 0
-    signups = mvp.get("signups", 0)
+    ph_signups = mvp.get("ph_signups", mvp.get("signups", 0))
+    effective_signups, signup_source, source_flags = resolve_effective_signups(mvp)
+    signups = effective_signups if effective_signups is not None else 0
     signup_events = mvp.get("signup_events") or []
 
     # Denominator selection: GA clicks override PH visitors when available.
@@ -161,7 +243,7 @@ def compute_headline_verdict(mvp: dict, issues: dict, thresholds: dict) -> dict:
     # DB ground-truth cross-check (state-x0b → x1 propagation).
     # db_signups is None when Supabase mapping is missing/unauthorized — treat
     # as "no comparison available", do NOT collapse to zero.
-    db_signups = mvp.get("db_signups")
+    db_signups = mvp.get("db_signups_real", mvp.get("db_signups"))
     db_first_signup_at = mvp.get("db_first_signup_at")
     sanity_flags = compute_db_sanity_flags(
         paid_signups=signups,
@@ -169,7 +251,7 @@ def compute_headline_verdict(mvp: dict, issues: dict, thresholds: dict) -> dict:
         db_first_signup_at=db_first_signup_at,
         first_seen=mvp.get("first_seen"),
         ga_clicks=ga_clicks,
-    )
+    ) + source_flags
 
     return {
         "name": mvp.get("name"),
@@ -180,7 +262,13 @@ def compute_headline_verdict(mvp: dict, issues: dict, thresholds: dict) -> dict:
             "gclid_visitors": gclid_visitors,
             "ga_clicks": ga_clicks,
             "signups": signups,
-            "db_signups": db_signups,
+            "effective_signups": effective_signups,
+            "signup_source": signup_source,
+            "ph_signups": ph_signups,
+            "ph_signups_available": mvp.get("ph_signups_available"),
+            "db_signups": mvp.get("db_signups"),
+            "db_signups_real": mvp.get("db_signups_real"),
+            "db_signups_raw": mvp.get("db_signups_raw"),
             "conv_rate": round(conv_rate, 4),
             "true_conv_rate": round(true_conv_rate, 4),
             "capture_rate": round(capture_rate, 4) if capture_rate is not None else None,
@@ -368,13 +456,12 @@ def emit_telegram(scores: list, debug_prompts: dict, visitors_floor: int) -> str
     If no MVP has owner set, all MVPs are grouped under 'unassigned'.
     """
     by_owner: dict = {}
-    for s in scores:
+    for s in sort_scores_by_owner(scores):
         owner = s.get("owner") or "unassigned"
         by_owner.setdefault(owner, []).append(s)
 
     blocks = []
-    for owner in sorted(by_owner):
-        owner_scores = by_owner[owner]
+    for owner, owner_scores in by_owner.items():
         lines = [f"*Phase 1 cross-MVP update — {owner}*", ""]
         needed_prompts: set = set()
         for s in owner_scores:
@@ -474,6 +561,7 @@ def main(argv: list[str] | None = None) -> int:
         help="Optional input: pre-computed scores file. If provided, skip recomputation (used by x4 to avoid clobbering x3 output).",
     )
     parser.add_argument("--config", default="experiment/iterate-cross-config.yaml")
+    parser.add_argument("--run-dir", default=".runs")
     parser.add_argument(
         "--output",
         default=None,
@@ -481,6 +569,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--debug-prompts", default=".claude/patterns/iterate-cross-debug-prompts.md")
     parser.add_argument("--emit-telegram", default=None, help="Output: write Telegram-ready text here.")
+    parser.add_argument("--dry-run", action="store_true", help="Compute outputs without writing score or Telegram artifacts.")
     args = parser.parse_args(argv)
 
     if not args.output and not args.emit_telegram:
@@ -504,20 +593,29 @@ def main(argv: list[str] | None = None) -> int:
             issues = issues_by_name.get(mvp["name"], {})
             scores.append(compute_headline_verdict(mvp, issues, thresholds))
 
-    output = {"thresholds": thresholds, "window_days": window_days, "mvps": scores}
+    output = {
+        "thresholds": thresholds,
+        "window_days": window_days,
+        "mvps": sort_scores_global(scores),
+    }
 
-    if args.output:
+    if args.output and not args.dry_run:
         json.dump(output, open(args.output, "w"), indent=2)
         print(f"Wrote {args.output} ({len(scores)} MVPs)")
+    elif args.output:
+        print(f"DRY-RUN: would write {args.output} ({len(scores)} MVPs)")
 
     if args.emit_telegram:
         debug_prompts = {}
         if args.debug_prompts and os.path.exists(args.debug_prompts):
             debug_prompts = parse_debug_prompts(open(args.debug_prompts).read())
         text = emit_telegram(scores, debug_prompts, thresholds["visitors_floor"])
-        with open(args.emit_telegram, "w") as f:
-            f.write(text)
-        print(f"Wrote {args.emit_telegram}")
+        if args.dry_run:
+            print(f"DRY-RUN: would write {args.emit_telegram} ({len(text)} chars)")
+        else:
+            with open(args.emit_telegram, "w") as f:
+                f.write(text)
+            print(f"Wrote {args.emit_telegram}")
 
     return 0
 

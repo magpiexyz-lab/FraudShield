@@ -1,6 +1,9 @@
 # STATE x3: COMPUTE_SCORES
 
 Pure compute: read per-MVP `signups` + `gclid_visitors` from data.json, apply 3/50 rule, write scores.json.
+When trusted DB ground truth proves PostHog is unavailable or wrong, x3 writes
+`metrics.signup_source` and `metrics.effective_signups` and uses the effective
+count for the verdict.
 
 **PRECONDITIONS:**
 - STATE x2 POSTCONDITIONS met
@@ -18,9 +21,9 @@ For each MVP, apply rules in order. The first matching rule sets `headline_verdi
 | 0 | `missing_project_name == true` | `MISSING_PROJECT_NAME` | Orphan event stream (gclid events with no `project_name` property). Tracking misconfiguration — fix `src/lib/analytics.ts` PROJECT_NAME constant. Highest precedence because identity is upstream of every other signal. |
 | 1 | `ga_clicks_without_ph_traffic == true` | `GA_NO_PH_TRACKING` | Strictly stricter than `MISSING_PROJECT_NAME`: GA records paid clicks but PostHog has zero presence (neither canonical events nor orphan rows). Operator is paying for a blind deploy — fix `analytics.ts` import or PROJECT_NAME mismatch. |
 | 2 | `no_event_data == true` | `NO_DATA` | Discovered MVP but no PostHog events found. Likely tracking not deployed. |
-| 3 | `signups >= thresholds.signups_go` (default 3) | `GO` | Sufficient signal. Eligible for Phase 2 promotion. |
-| 4 | `visitors >= thresholds.visitors_floor` (default 50) AND `signups == 0` | `NO_GO` | Past data-floor with zero conversion. Reject. |
-| 5 | `visitors >= thresholds.visitors_floor` AND `0 < signups < signups_go` | `WEAK` | Above visitors floor with some signal but below GO threshold. Decide case-by-case. |
+| 3 | `effective_signups >= thresholds.signups_go` (default 3) | `GO` | Sufficient signal. Eligible for Phase 2 promotion. |
+| 4 | `visitors >= thresholds.visitors_floor` (default 50) AND `effective_signups == 0` | `NO_GO` | Past data-floor with zero conversion. Reject. |
+| 5 | `visitors >= thresholds.visitors_floor` AND `0 < effective_signups < signups_go` | `WEAK` | Above visitors floor with some signal but below GO threshold. Decide case-by-case. |
 | 6 | (default) | `INSUFFICIENT_DATA` | Below visitors floor, can't conclude. Compute `visitors_needed = max(0, visitors_floor - visitors)`. |
 
 **Denominator:** `visitors` is `ga_clicks` when state-x0a merged Google Ads data
@@ -28,6 +31,12 @@ For each MVP, apply rules in order. The first matching rule sets `headline_verdi
 in `metrics.gclid_visitors` for diagnostics, and `metrics.denominator_source`
 indicates which was used. See `.claude/scripts/lib/iterate_cross_verdicts.py`
 `compute_headline_verdict` for the implementation.
+
+Signup-source resolution is strict:
+- `db_real_zero`: trusted `db_signups_real == 0` and PostHog reports paid signups, suppressing false GO
+- `db_real`: trusted DB real count is used when PostHog is unavailable or returns zero for a real DB count
+- `ph`: PostHog count remains canonical when both PH and DB have positive signal
+- `null`: neither source is available; existing verdict precedence decides
 
 ### Use the verdict module
 
@@ -59,6 +68,8 @@ The script reads inputs, applies the precedence rules above, computes `visitors_
         "gclid_visitors": 100,
         "ga_clicks": 102,
         "signups": 8,
+        "effective_signups": 8,
+        "signup_source": "ph",
         "conv_rate": 0.08,
         "true_conv_rate": 0.0784,
         "capture_rate": 0.9804,
@@ -91,7 +102,7 @@ Print to stdout:
 **VERIFY:** see `state-registry.json` entry for `iterate-cross.x3`.
 
 ```bash
-python3 -c "import json; d=json.load(open('.runs/iterate-cross-scores.json')); ms=d.get('mvps',[]); assert isinstance(ms, list) and len(ms)>0, 'mvps empty'; allowed={'GO','WEAK','NO_GO','INSUFFICIENT_DATA','NO_DATA','MISSING_PROJECT_NAME','GA_NO_PH_TRACKING'}; bad=[m.get('name','?') for m in ms if m.get('headline_verdict') not in allowed]; assert not bad, 'MVPs with invalid headline_verdict: %s' % bad"
+python3 -c "import json; d=json.load(open('.runs/iterate-cross-scores.json')); ms=d.get('mvps',[]); assert isinstance(ms, list) and len(ms)>0, 'mvps empty'; allowed={'GO','WEAK','NO_GO','INSUFFICIENT_DATA','NO_DATA','MISSING_PROJECT_NAME','GA_NO_PH_TRACKING'}; sources={'db_real_zero','db_real','ph',None}; bad=[m.get('name','?') for m in ms if m.get('headline_verdict') not in allowed]; assert not bad, 'MVPs with invalid headline_verdict: %s' % bad; bad2=[m.get('name','?') for m in ms if m.get('metrics',{}).get('signup_source') not in sources or 'effective_signups' not in m.get('metrics',{})]; assert not bad2, 'MVPs missing/invalid signup_source metrics: %s' % bad2"
 ```
 <!-- VERIFY=true: real assertion lives in state-registry.json; this line is the per-Rule-13 placeholder -->
 

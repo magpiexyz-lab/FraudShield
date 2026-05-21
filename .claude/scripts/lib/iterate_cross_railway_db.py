@@ -74,9 +74,11 @@ from iterate_cross_db import (  # noqa: E402
     SIGNUP_TABLE_EXCLUSIONS,
     SIGNUP_TABLE_PATTERNS,
     TIMESTAMP_COLUMN_CANDIDATES,
+    allow_railway_fallback,
     fuzzy_match_projects,
     normalize_name,
 )
+from iterate_cross_email_filter import filter_signups  # noqa: E402
 
 try:
     import yaml
@@ -316,10 +318,59 @@ def count_signups_in_window_pg(
     return {"count": cnt, "first_at": first_at, "window_filtered": window_filtered}
 
 
+def select_signups_in_window_pg(
+    db_url: str, table: str, timestamp_column: str | None, window_days: int,
+) -> dict:
+    if timestamp_column:
+        sql = (
+            f'SELECT email, "{timestamp_column}"::text AS signup_at '
+            f'FROM public."{table}" '
+            f"WHERE \"{timestamp_column}\" >= now() - INTERVAL '{window_days} days'"
+        )
+        window_filtered = True
+    else:
+        sql = f'SELECT email, NULL::text AS signup_at FROM public."{table}"'
+        window_filtered = False
+    r = _psql_query(db_url, sql)
+    if r["error"]:
+        return {"rows": None, "window_filtered": window_filtered, "error": r["error"]}
+    rows = []
+    for row in r["rows"]:
+        if len(row) >= 1 and str(row[0]).isdigit():
+            first_at = row[1] if len(row) >= 2 and row[1] else None
+            return {
+                "rows": [
+                    {"email": f"legacy-{i}@legacy-count.invalid-real", "signup_at": first_at}
+                    for i in range(int(row[0]))
+                ],
+                "window_filtered": window_filtered,
+            }
+        if len(row) >= 2:
+            rows.append({"email": row[0], "signup_at": row[1] or None})
+        elif len(row) == 1:
+            rows.append({"email": row[0], "signup_at": None})
+    return {"rows": rows, "window_filtered": window_filtered}
+
+
+def _filtered_pg_result(table_name: str, rows: list[dict], config: dict, windowed: bool) -> dict:
+    filtered = filter_signups(rows, config)
+    return {
+        "table": table_name,
+        "db_signups_raw": filtered["raw"],
+        "db_signups_real": filtered["real"],
+        "db_signups_team": filtered["team"],
+        "db_signups_test": filtered["test"],
+        "db_signups_filter_audit": filtered["audit"],
+        "db_signups_real_windowed": windowed,
+        "db_first_signup_at": filtered["first_real_signup_at"],
+    }
+
+
 def query_mvp_ground_truth_railway(
     db_url: str,
     window_days: int,
     operator_override_table: str | None = None,
+    config: dict | None = None,
 ) -> dict:
     """Full ground-truth probe for one MVP via Railway Postgres.
 
@@ -333,9 +384,9 @@ def query_mvp_ground_truth_railway(
     Same "biggest table wins" rule as Supabase. db_signups_table is prefixed
     with `railway:` so x3 / x4 can tell which source produced the number.
     """
+    config = config or {}
     errors: list[str] = []
-    breakdown: dict[str, int] = {}
-    first_at: str | None = None
+    candidates: list[dict] = []
 
     if operator_override_table:
         # public.<table> only; auth schema doesn't apply on raw Postgres.
@@ -351,9 +402,16 @@ def query_mvp_ground_truth_railway(
         if schema not in ("public",):
             return {
                 "db_signups": None,
+                "db_signups_raw": None,
+                "db_signups_real": None,
+                "db_signups_team": 0,
+                "db_signups_test": 0,
+                "db_signups_filter_audit": [],
+                "db_signups_real_windowed": None,
                 "db_signups_table": f"railway:{operator_override_table}",
                 "db_first_signup_at": None,
                 "db_breakdown": {},
+                "db_unmapped_reason": "query_error",
                 "errors": [
                     f"db_signup_table='{operator_override_table}' uses schema '{schema}' "
                     f"which is not supported on Railway Postgres. Only `public.<table>` works "
@@ -362,23 +420,43 @@ def query_mvp_ground_truth_railway(
                 ],
             }
         tables = discover_signup_tables_pg(db_url)
-        ts_col = next((t["timestamp_column"] for t in tables if t["table"] == table_only), None)
-        result = count_signups_in_window_pg(db_url, table_only, ts_col, window_days)
+        table_meta = next((t for t in tables if t["table"] == table_only), None)
+        if not table_meta or "email" not in (table_meta.get("columns") or []):
+            return {
+                "db_signups": None, "db_signups_raw": None, "db_signups_real": None,
+                "db_signups_team": 0, "db_signups_test": 0,
+                "db_signups_filter_audit": [], "db_signups_real_windowed": None,
+                "db_signups_table": f"railway:public.{table_only}",
+                "db_first_signup_at": None, "db_breakdown": {},
+                "db_unmapped_reason": "no_email_column",
+                "errors": ["no email column"],
+            }
+        ts_col = table_meta["timestamp_column"]
+        result = select_signups_in_window_pg(db_url, table_only, ts_col, window_days)
         if result.get("error"):
             errors.append(f"public.{table_only}: {result['error']}")
             return {
                 "db_signups": None,
+                "db_signups_raw": None,
+                "db_signups_real": None,
+                "db_signups_team": 0,
+                "db_signups_test": 0,
+                "db_signups_filter_audit": [],
+                "db_signups_real_windowed": None,
                 "db_signups_table": f"railway:public.{table_only}",
                 "db_first_signup_at": None,
                 "db_breakdown": {},
+                "db_unmapped_reason": "query_error",
                 "errors": errors,
             }
-        breakdown[f"public.{table_only}"] = result["count"]
+        row = _filtered_pg_result(f"public.{table_only}", result["rows"], config, bool(result["window_filtered"]))
+        breakdown = {row["table"]: row["db_signups_raw"]}
         return {
-            "db_signups": result["count"],
+            **row,
+            "db_signups": row["db_signups_raw"],
             "db_signups_table": f"railway:public.{table_only}",
-            "db_first_signup_at": result["first_at"],
             "db_breakdown": breakdown,
+            "db_unmapped_reason": None,
             "errors": errors or None,
         }
 
@@ -386,36 +464,54 @@ def query_mvp_ground_truth_railway(
     if not tables:
         return {
             "db_signups": None,
+            "db_signups_raw": None,
+            "db_signups_real": None,
+            "db_signups_team": 0,
+            "db_signups_test": 0,
+            "db_signups_filter_audit": [],
+            "db_signups_real_windowed": None,
             "db_signups_table": None,
             "db_first_signup_at": None,
             "db_breakdown": {},
+            "db_unmapped_reason": "no_email_column",
             "errors": ["no signup-shape tables in public schema"],
         }
 
     for t in tables[:5]:  # cap at 5 like Supabase path
-        r = count_signups_in_window_pg(db_url, t["table"], t["timestamp_column"], window_days)
+        if "email" not in (t.get("columns") or []):
+            continue
+        r = select_signups_in_window_pg(db_url, t["table"], t["timestamp_column"], window_days)
         if r.get("error"):
             errors.append(f"public.{t['table']}: {r['error']}")
             continue
-        breakdown[f"public.{t['table']}"] = r["count"]
-        if r["first_at"] and (not first_at or r["first_at"] < first_at):
-            first_at = r["first_at"]
+        candidates.append(_filtered_pg_result(
+            f"public.{t['table']}", r["rows"], config, bool(r["window_filtered"])
+        ))
 
-    if not breakdown:
+    if not candidates:
         return {
             "db_signups": None,
+            "db_signups_raw": None,
+            "db_signups_real": None,
+            "db_signups_team": 0,
+            "db_signups_test": 0,
+            "db_signups_filter_audit": [],
+            "db_signups_real_windowed": None,
             "db_signups_table": None,
             "db_first_signup_at": None,
             "db_breakdown": {},
+            "db_unmapped_reason": "query_error" if errors else "no_email_column",
             "errors": errors or ["all table queries failed"],
         }
 
-    winner = max(breakdown, key=lambda k: breakdown[k])
+    winner = max(candidates, key=lambda r: (r["db_signups_real"], r["db_signups_raw"]))
+    breakdown = {r["table"]: r["db_signups_raw"] for r in candidates}
     return {
-        "db_signups": breakdown[winner],
-        "db_signups_table": f"railway:{winner}",
-        "db_first_signup_at": first_at,
+        **winner,
+        "db_signups": winner["db_signups_raw"],
+        "db_signups_table": f"railway:{winner['table']}",
         "db_breakdown": breakdown,
+        "db_unmapped_reason": None,
         "errors": errors or None,
     }
 
@@ -459,7 +555,7 @@ def merge_into_context(
         m for m in ctx["mvps"]
         if not m.get("orphan")
         and m.get("db_signups") is None
-        and m.get("db_unmapped_reason") in (None, "no_match", "no_token")
+        and allow_railway_fallback(m.get("db_unmapped_reason"))
     ]
     if not candidates:
         return {"step": "no_candidates", "queried": 0, "unmapped": 0, "errors": 0}
@@ -547,20 +643,45 @@ def merge_into_context(
         service_name = mapping.get("railway_service_name") or "Postgres"
         url_r = get_database_url(project_id, service_name)
         if not url_r["url"]:
-            mvp["db_errors"] = (mvp.get("db_errors") or []) + [f"railway: {url_r['error']}"]
-            errors_total += 1
-            continue
+            refreshed_pg_projects = projects_with_postgres(list_railway_projects())
+            if refreshed_pg_projects:
+                pg_projects = refreshed_pg_projects
+            pg_proj = next((p for p in pg_projects if p["id"] == project_id), None)
+            pg_svcs = (pg_proj or {}).get("postgres_services") or []
+            canonical = [s for s in pg_svcs if "postgres" in s["name"].lower()]
+            if len(canonical) == 1 and canonical[0]["name"] != service_name:
+                retry_name = canonical[0]["name"]
+                retry_r = get_database_url(project_id, retry_name)
+                if retry_r["url"]:
+                    service_name = retry_name
+                    url_r = retry_r
+                    mapping["railway_service_name"] = retry_name
+                    mapping["railway_service_id"] = canonical[0].get("id")
+            if not url_r["url"]:
+                mvp["db_unmapped_reason"] = "railway_service_missing"
+                mvp["db_signups_real"] = None
+                mvp["db_errors"] = (mvp.get("db_errors") or []) + [f"railway: {url_r['error']}"]
+                errors_total += 1
+                continue
 
         override = mapping.get("db_signup_table")
-        gt = query_mvp_ground_truth_railway(url_r["url"], window_days, override)
+        gt = query_mvp_ground_truth_railway(url_r["url"], window_days, override, config)
         if gt["db_signups"] is None:
             mvp["db_errors"] = (mvp.get("db_errors") or []) + (gt.get("errors") or [])
+            mvp["db_unmapped_reason"] = gt.get("db_unmapped_reason") or "query_error"
+            mvp["db_signups_real"] = None
             errors_total += 1
             continue
 
         # SUCCESS — fill in db_* fields. Never overwrites a non-null value (we
         # only got here because db_signups was None after Supabase pass).
         mvp["db_signups"] = gt["db_signups"]
+        mvp["db_signups_raw"] = gt.get("db_signups_raw")
+        mvp["db_signups_real"] = gt.get("db_signups_real")
+        mvp["db_signups_team"] = gt.get("db_signups_team", 0)
+        mvp["db_signups_test"] = gt.get("db_signups_test", 0)
+        mvp["db_signups_filter_audit"] = gt.get("db_signups_filter_audit", [])
+        mvp["db_signups_real_windowed"] = gt.get("db_signups_real_windowed")
         mvp["db_signups_table"] = gt["db_signups_table"]
         mvp["db_first_signup_at"] = gt["db_first_signup_at"]
         mvp["db_breakdown"] = gt["db_breakdown"]
@@ -574,8 +695,9 @@ def merge_into_context(
         queried += 1
 
     # Write back context.
-    with open(context_path, "w") as f:
-        json.dump(ctx, f, indent=2)
+    if not dry_run:
+        with open(context_path, "w") as f:
+            json.dump(ctx, f, indent=2)
 
     return {
         "step": "merged",
@@ -604,6 +726,7 @@ def main(argv: list[str] | None = None) -> int:
     p_merge = sub.add_parser("merge")
     p_merge.add_argument("--context", required=True)
     p_merge.add_argument("--config", required=True)
+    p_merge.add_argument("--run-dir", default=".runs")
     p_merge.add_argument("--auto-confirm", action="store_true")
     p_merge.add_argument("--dry-run", action="store_true")
 

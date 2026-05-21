@@ -396,19 +396,22 @@ def cmd_merge_orphan_overlap(args: argparse.Namespace) -> int:
     disc["orphan_merge_audit"] = audit
     orph["results"] = remaining
 
-    # Atomic writes
-    for path, data in [(args.discovery, disc), (args.orphan, orph)]:
-        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-        tmp = path + ".tmp"
-        with open(tmp, "w") as fh:
-            json.dump(data, fh, indent=2)
-        os.replace(tmp, path)
+    dry_run = getattr(args, "dry_run", False)
+    if not dry_run:
+        # Atomic writes
+        for path, data in [(args.discovery, disc), (args.orphan, orph)]:
+            os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+            tmp = path + ".tmp"
+            with open(tmp, "w") as fh:
+                json.dump(data, fh, indent=2)
+            os.replace(tmp, path)
 
     merged_count = sum(1 for a in audit if a["action"] == "merged")
     print(
         f"merge-orphan-overlap: {len(disc_rows)} canonical / {len(orph_rows)} orphan -> "
         f"{len(merged)} canonical / {len(remaining)} orphan; "
         f"{merged_count} merge(s) at threshold {threshold}"
+        + (" (dry-run)" if dry_run else "")
     )
     return 0
 
@@ -435,16 +438,17 @@ def cmd_merge_aliases(args: argparse.Namespace) -> int:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
 
-    raw["results"] = merged_rows
-    # Stamp a small audit field so x0 can render the operator message.
-    raw["alias_merge_audit"] = audit
-
     out_path = args.output
-    os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
-    tmp = out_path + ".tmp"
-    with open(tmp, "w") as fh:
-        json.dump(raw, fh, indent=2)
-    os.replace(tmp, out_path)
+    dry_run = getattr(args, "dry_run", False)
+    if not dry_run:
+        raw["results"] = merged_rows
+        # Stamp a small audit field so x0 can render the operator message.
+        raw["alias_merge_audit"] = audit
+        os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
+        tmp = out_path + ".tmp"
+        with open(tmp, "w") as fh:
+            json.dump(raw, fh, indent=2)
+        os.replace(tmp, out_path)
 
     pairs = sum(1 for a in audit if a["absorbed_aliases"])
     n_before = len(rows)
@@ -452,6 +456,7 @@ def cmd_merge_aliases(args: argparse.Namespace) -> int:
     print(
         f"merge-aliases: {n_before} → {n_after} rows; "
         f"{pairs} canonical(s) absorbed alias data → {out_path}"
+        + (" (dry-run)" if dry_run else "")
     )
     return 0
 
@@ -539,6 +544,13 @@ def cmd_prepare(args) -> int:
         "to_auto": to_auto,
         "to_llm": to_llm,
     }
+    dry_run = getattr(args, "dry_run", False)
+    if dry_run:
+        print(
+            f"prepare: {len(to_skip)} skip, {len(to_auto)} auto, {len(to_llm)} need LLM "
+            f"(dry-run; would write {args.output})"
+        )
+        return 0
     json.dump(payload, open(args.output, "w"), indent=2)
     print(
         f"prepare: {len(to_skip)} skip, {len(to_auto)} auto, {len(to_llm)} need LLM "
@@ -606,18 +618,20 @@ def cmd_persist(args) -> int:
             proposal.get("rationale") or "",
         )
 
-    dump_yaml(config, args.config)
-
     summary = {
         "written": written,
         "skipped_operator": skipped_operator,
         "filtered_events": filtered_events_log,
     }
-    json.dump(summary, open(args.summary, "w"), indent=2)
+    dry_run = getattr(args, "dry_run", False)
+    if not dry_run:
+        dump_yaml(config, args.config)
+        json.dump(summary, open(args.summary, "w"), indent=2)
 
     print(
         f"persist: {len(written)} written, {len(skipped_operator)} preserved "
         f"(classified_by: operator), {len(filtered_events_log)} had excluded events stripped"
+        + (" (dry-run)" if dry_run else "")
     )
     return 0
 
@@ -630,24 +644,55 @@ def cmd_finalize(args) -> int:
     config = load_yaml(args.config)
     mappings = config.get("mvp_mappings") or {}
     persist_summary = json.load(open(args.persist_summary)) if os.path.exists(args.persist_summary) else {}
-    signup_counts_resp = (
-        json.load(open(args.signup_counts))
-        if os.path.exists(args.signup_counts)
-        else {"results": []}
-    )
+    counts_file_missing = not os.path.exists(args.signup_counts)
+    if counts_file_missing:
+        cached_counts = []
+        cache_path = ".runs/iterate-cross-data.json"
+        if os.path.exists(cache_path):
+            try:
+                cached = json.load(open(cache_path))
+                cached_counts = [
+                    [m["name"], m.get("signups", 0)]
+                    for m in cached.get("mvps", [])
+                    if m.get("signup_events")
+                ]
+            except Exception:
+                cached_counts = []
+        signup_counts_resp = {"results": cached_counts}
+    else:
+        raw_counts = open(args.signup_counts).read()
+        if not raw_counts.strip():
+            raise SystemExit("PostHog signup-count response is empty")
+        signup_counts_resp = json.loads(raw_counts)
+    if isinstance(signup_counts_resp, dict) and signup_counts_resp.get("error"):
+        raise SystemExit(f"PostHog signup-count error: {signup_counts_resp.get('error')}")
+    if "results" not in signup_counts_resp or not isinstance(signup_counts_resp["results"], list):
+        raise SystemExit(f"PostHog signup-count response missing results: {json.dumps(signup_counts_resp)[:400]}")
+    if "_x2_signup_batches_status" not in signup_counts_resp:
+        raise RuntimeError("_x2_signup_batches_status missing from signup-count input — run_union_batches() must produce it")
 
     # Merge signup_events from config into data
     for mvp in data["mvps"]:
         mapping = mappings.get(mvp["name"]) or {}
         mvp["signup_events"] = mapping.get("signup_events") or []
-        mvp.setdefault("signups", 0)
+        mvp["ph_signups_available"] = bool(mvp["signup_events"])
+        mvp["ph_signups"] = None if not mvp["ph_signups_available"] else 0
+        mvp["signups"] = 0
 
     # Apply signup counts (from PostHog UNION ALL query)
-    counts = {row[0]: row[1] for row in signup_counts_resp.get("results", [])}
+    counts = {}
+    for row in signup_counts_resp.get("results", []):
+        if not isinstance(row, list) or len(row) != 2:
+            raise SystemExit(f"Malformed signup-count row: {row!r}")
+        counts[row[0]] = row[1]
     for mvp in data["mvps"]:
         if mvp["name"] in counts:
-            mvp["signups"] = counts[mvp["name"]]
-        # If MVP not in counts (had empty signup_events), leave at 0
+            mvp["ph_signups"] = int(counts[mvp["name"]] or 0)
+            mvp["signups"] = mvp["ph_signups"]
+        elif mvp["ph_signups_available"] and not counts_file_missing:
+            raise SystemExit(f"Missing signup-count row for {mvp['name']} with non-empty signup_events")
+        # If MVP had empty signup_events, leave ph_signups=None and signups=0
+    data["_x2_signup_batches_status"] = signup_counts_resp["_x2_signup_batches_status"]
 
     # Sanity check: signups/visitors > 50% AND visitors >= 10 → suspect
     suspects = []
@@ -663,9 +708,11 @@ def cmd_finalize(args) -> int:
                 "signup_events": mvp.get("signup_events", []),
             })
 
-    # Write updated data
-    with open(args.data, "w") as f:
-        json.dump(data, f, indent=2)
+    dry_run = getattr(args, "dry_run", False)
+    if not dry_run:
+        # Write updated data
+        with open(args.data, "w") as f:
+            json.dump(data, f, indent=2)
 
     # Build summary counts by classified_by
     by_source = {}
@@ -737,22 +784,27 @@ def main(argv: list[str] | None = None) -> int:
     p_prep.add_argument("--issues", default=".runs/iterate-cross-data-issues.json")
     p_prep.add_argument("--config", default="experiment/iterate-cross-config.yaml")
     p_prep.add_argument("--output", default=".runs/_iterate-cross-classify-input.json")
+    p_prep.add_argument("--dry-run", action="store_true")
     p_prep.set_defaults(func=cmd_prepare)
 
     p_persist = sub.add_parser("persist")
     p_persist.add_argument("--input", default=".runs/_iterate-cross-classify-input.json")
     p_persist.add_argument("--proposals", default=".runs/_iterate-cross-classify-proposals.json")
     p_persist.add_argument("--config", default="experiment/iterate-cross-config.yaml")
+    p_persist.add_argument("--run-dir", default=".runs")
     p_persist.add_argument("--summary", default=".runs/_iterate-cross-classify-persist-summary.json")
+    p_persist.add_argument("--dry-run", action="store_true")
     p_persist.set_defaults(func=cmd_persist)
 
     p_final = sub.add_parser("finalize")
     p_final.add_argument("--data", default=".runs/iterate-cross-data.json")
     p_final.add_argument("--config", default="experiment/iterate-cross-config.yaml")
+    p_final.add_argument("--run-dir", default=".runs")
     p_final.add_argument("--signup-counts", default=".runs/_iterate-cross-signups-out.json")
     p_final.add_argument("--persist-summary", default=".runs/_iterate-cross-classify-persist-summary.json")
     p_final.add_argument("--strict-sanity", action="store_true",
                          help="Exit non-zero if any suspect MVP detected (default: warn only).")
+    p_final.add_argument("--dry-run", action="store_true")
     p_final.set_defaults(func=cmd_finalize)
 
     p_merge = sub.add_parser(
@@ -764,6 +816,7 @@ def main(argv: list[str] | None = None) -> int:
     p_merge.add_argument("--config", default="experiment/iterate-cross-config.yaml")
     p_merge.add_argument("--output", default=".runs/_iterate-cross-discover.json",
                          help="Where to write the merged discovery (idempotent overwrite OK)")
+    p_merge.add_argument("--dry-run", action="store_true")
     p_merge.set_defaults(func=cmd_merge_aliases)
 
     p_orph = sub.add_parser(
@@ -777,6 +830,7 @@ def main(argv: list[str] | None = None) -> int:
     p_orph.add_argument("--overlap", default=".runs/_iterate-cross-overlap.json",
                         help="Per-canonical overlap counts {by_canonical: {name: {canonical_gclids, orphan_gclids, overlap}}}")
     p_orph.add_argument("--config", default="experiment/iterate-cross-config.yaml")
+    p_orph.add_argument("--dry-run", action="store_true")
     p_orph.set_defaults(func=cmd_merge_orphan_overlap)
 
     args = parser.parse_args(argv)

@@ -38,6 +38,8 @@ Three classes of MVP-side tracking issues that PostHog cannot self-diagnose:
 
 State-x3 consumes `db_signups` to emit one of four sanity flags:
 `ph_attribution_broken`, `ph_undercount`, `ph_overcount`, `late_instrumentation`.
+State-x3 uses `db_signups_real` for verdict-source decisions; `db_signups`
+remains the raw count for backward compatibility and operator audit.
 
 **PRECONDITIONS:**
 - STATE x0a POSTCONDITIONS met (`.runs/iterate-cross-context.json` exists with `ga_clicks` on every MVP)
@@ -85,7 +87,8 @@ Skipped entirely when `SUPABASE_AVAILABLE=false`. Run the whole `if`-block:
 if [ "$SUPABASE_AVAILABLE" = "true" ]; then
   python3 .claude/scripts/lib/iterate_cross_db.py merge \
     --context .runs/iterate-cross-context.json \
-    --config experiment/iterate-cross-config.yaml > .runs/_iterate-cross-db-step1.json
+    --config experiment/iterate-cross-config.yaml \
+    --run-dir .runs > .runs/_iterate-cross-db-step1.json
   STEP1_EXIT=$?
 fi
 ```
@@ -136,6 +139,7 @@ if [ "$SUPABASE_AVAILABLE" = "true" ]; then
   python3 .claude/scripts/lib/iterate_cross_db.py merge \
     --context .runs/iterate-cross-context.json \
     --config experiment/iterate-cross-config.yaml \
+    --run-dir .runs \
     --auto-confirm > .runs/_iterate-cross-db-step2.json
 
   python3 -c "
@@ -169,6 +173,7 @@ Railway is a strict fallback and never overwrites a non-null `db_signups`.
 python3 .claude/scripts/lib/iterate_cross_railway_db.py merge \
   --context .runs/iterate-cross-context.json \
   --config experiment/iterate-cross-config.yaml \
+  --run-dir .runs \
   --auto-confirm > .runs/_iterate-cross-railway-step.json
 
 python3 -c "
@@ -239,8 +244,8 @@ rm -f .runs/_iterate-cross-db-step1.json .runs/_iterate-cross-db-step2.json .run
 ```
 
 **POSTCONDITIONS:**
-- Every MVP record has `db_signups` field (int OR null) — populated by either Supabase OR Railway pass
-- Every MVP record has `db_unmapped_reason` when `db_signups` is null
+- Every MVP record has `db_signups`, `db_signups_raw`, `db_signups_real`, `db_signups_team`, `db_signups_test`, `db_signups_filter_audit`, `db_signups_real_windowed`
+- Every MVP record has `db_unmapped_reason` when `db_signups_real` is null
   (`"no_match"` if only Supabase was tried, `"no_match_neither"` if Railway was also tried and failed,
   `"no_token"` / `"orphan"` for the existing reasons)
 - MVPs that got auto-matched have `supabase_project_ref` OR `railway_project_id` written to config (idempotent)
@@ -248,7 +253,7 @@ rm -f .runs/_iterate-cross-db-step1.json .runs/_iterate-cross-db-step2.json .run
 **VERIFY:** see `state-registry.json` entry for `iterate-cross.x0b`.
 
 ```bash
-python3 -c "import json; d=json.load(open('.runs/iterate-cross-context.json')); ms=d.get('mvps',[]); assert isinstance(ms, list) and len(ms)>0, 'mvps empty'; bad=[m.get('name','?') for m in ms if 'db_signups' not in m]; assert not bad, 'MVPs missing db_signups (x0b should set null when unmapped, not omit): %s' % bad"
+python3 -c "import json; d=json.load(open('.runs/iterate-cross-context.json')); ms=d.get('mvps',[]); assert isinstance(ms, list) and len(ms)>0, 'mvps empty'; req=['db_signups','db_signups_raw','db_signups_real','db_signups_team','db_signups_test','db_signups_filter_audit','db_signups_real_windowed','db_first_signup_at','db_unmapped_reason']; bad=[m.get('name','?') for m in ms if any(k not in m for k in req)]; assert not bad, 'MVPs missing DB fields: %s' % bad; inv=[m.get('name','?') for m in ms if ((m.get('db_signups_real') is None) != (m.get('db_unmapped_reason') is not None))]; assert not inv, 'db_signups_real/db_unmapped_reason invariant failed: %s' % inv"
 ```
 <!-- VERIFY=true: real assertion lives in state-registry.json; this line is the per-Rule-13 placeholder -->
 

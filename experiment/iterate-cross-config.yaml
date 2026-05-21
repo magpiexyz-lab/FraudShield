@@ -1,0 +1,568 @@
+mvp_mappings:
+  x-predict:
+    signup_events:
+    - waitlist_signup
+    classified_by: x2-whitelist
+    classified_at: '2026-05-12T04:43:23Z'
+    rationale: 'Standard event(s): waitlist_signup'
+    supabase_project_ref: gprmfbskzdqiegvotkob
+  stylica-ai:
+    signup_events:
+    - signup_complete
+    classified_by: operator
+    classified_at: '2026-05-17T03:50:00Z'
+    rationale: activate (33 uu) ∩ signup_complete (2 uu) = 0 — activate fires on image generation, not signup. Locked to signup_complete
+      only after team feedback that Supabase shows 6 signups vs 33 activates.
+    supabase_project_ref: yvccrwkuypltwwnezhjh
+  brigent:
+    signup_events:
+    - waitlist_submit
+    classified_by: x2-whitelist
+    classified_at: '2026-05-12T04:43:23Z'
+    rationale: 'Standard event(s): waitlist_submit'
+    supabase_project_ref: xargalvhsxskejfyxgfw
+  deepstats:
+    signup_events:
+    - signup_complete
+    classified_by: x2-whitelist
+    classified_at: '2026-05-12T04:43:23Z'
+    rationale: 'Standard event(s): signup_complete'
+    supabase_project_ref: gvkjwsfuurvojwfhxjvj
+  neuralpost:
+    signup_events:
+    - signup_complete
+    - early_access_signup
+    classified_by: x2-whitelist
+    classified_at: '2026-05-12T04:43:23Z'
+    rationale: 'Standard event(s): signup_complete, early_access_signup'
+    supabase_project_ref: laelnucrwgzeazrmaxdu
+  verify:
+    signup_events:
+    - user_signed_up
+    classified_by: operator
+    classified_at: '2026-05-17T03:50:00Z'
+    rationale: 'Deploy renamed event from early_access_signup → user_signed_up. Old name does not exist in current catalog
+      (verified via wide HogQL query 2026-05-17). Real paid signups: 5 via user_signed_up.'
+    supabase_project_ref: vjmowkgvjozhmldzywey
+  statistica:
+    signup_events:
+    - signup_complete
+    - activate
+    classified_by: x2-whitelist
+    classified_at: '2026-05-12T04:43:23Z'
+    rationale: 'Standard event(s): signup_complete, activate'
+  diarly:
+    signup_events:
+    - signup_complete
+    classified_by: x2-whitelist
+    classified_at: '2026-05-12T04:43:23Z'
+    rationale: 'Standard event(s): signup_complete'
+    supabase_project_ref: qiinzizrdjzlrhasddtw
+  smelt:
+    signup_events:
+    - signup_complete
+    - waitlist_signup
+    - activate
+    classified_by: x2-whitelist
+    classified_at: '2026-05-12T04:43:23Z'
+    rationale: 'Standard event(s): signup_complete, waitlist_signup, activate'
+    supabase_project_ref: hwtzliuucbottqttgaxb
+  ghostops:
+    signup_events:
+    - signup_complete
+    - early_access_signup
+    classified_by: x2-whitelist
+    classified_at: '2026-05-12T04:43:23Z'
+    rationale: 'Standard event(s): signup_complete, early_access_signup'
+    supabase_project_ref: sirusqaajtprnnrxmbaw
+  agentburn:
+    signup_events:
+    - activate
+    classified_by: x2-whitelist
+    classified_at: '2026-05-12T04:43:23Z'
+    rationale: 'Standard event(s): activate'
+    supabase_project_ref: ururiyivaewwofgyfbme
+  handpick:
+    signup_events:
+    - form_submitted
+    classified_by: x2-whitelist
+    classified_at: '2026-05-12T04:43:23Z'
+    rationale: 'Standard event(s): form_submitted'
+    supabase_project_ref: qpwyuhtgoftbmujbrzmz
+  dropship-ops:
+    signup_events:
+    - waitlist_signup
+    classified_by: x2-whitelist
+    classified_at: '2026-05-12T04:43:23Z'
+    rationale: 'Standard event(s): waitlist_signup'
+    supabase_project_ref: eakbgyqyugxeqsfmosrw
+  lead-sniffer:
+    signup_events:
+    - signup_complete
+    classified_by: x2-whitelist
+    classified_at: '2026-05-12T04:43:23Z'
+    rationale: 'Standard event(s): signup_complete'
+    supabase_project_ref: zmqjdpfwkavndtewntxu
+  hospitica:
+    signup_events:
+    - signup_complete
+    classified_by: x2-whitelist
+    classified_at: '2026-05-12T04:43:23Z'
+    rationale: 'Standard event(s): signup_complete'
+    supabase_project_ref: yjnbfxpdwwobhlnhtkhw
+  dropship:
+    signup_events:
+    - waitlist_signup
+    classified_by: x2-whitelist
+    classified_at: '2026-05-12T04:43:23Z'
+    rationale: 'Standard event(s): waitlist_signup'
+  agent-lens:
+    signup_events:
+    - signup_complete
+    classified_by: x2-whitelist
+    classified_at: '2026-05-12T04:43:23Z'
+    rationale: 'Standard event(s): signup_complete'
+    supabase_project_ref: jtmpknpqfabpwxfiabui
+  foundrygraph:
+    signup_events:
+    - signup_complete
+    - early_access_signup
+    classified_by: x2-whitelist
+    classified_at: '2026-05-12T04:43:23Z'
+    rationale: 'Standard event(s): signup_complete, early_access_signup'
+    supabase_project_ref: fxpeaaeauthlasvglykh
+  report-pilot:
+    signup_events:
+    - signup_complete
+    classified_by: x2-whitelist
+    classified_at: '2026-05-12T04:43:23Z'
+    rationale: 'Standard event(s): signup_complete'
+    supabase_project_ref: ykrylrsaojerzthrahni
+  xpredict:
+    signup_events:
+    - calibration_complete
+    - simulation_complete
+    classified_by: x2-inferred
+    classified_at: '2026-05-12T04:43:23Z'
+    rationale: calibration_complete + simulation_complete are the *_complete pattern conversion events for this prediction
+      tool. Both have only 1 user each — heavy traffic but very low completion.
+  lumen:
+    signup_events: []
+    classified_by: operator
+    classified_at: '2026-05-18T00:00:00Z'
+    rationale: 'PostHog (in shared project 321343, ✓ visible): landing_viewed(566)/cta_clicked(123)/demo_clicked(44 interaction)/password_reset_requested(3
+      retain)/pricing_page_viewed(2)/return_visit(0) — no paid conversion event captured by PostHog. Supabase (per-MVP, NOT
+      shared): team-confirmed (2026-05-18) signups DO exist in Supabase project hisnpjvwbmrcsutjkfnb, table public.waitlist
+      — but that project lives in a personal Supabase org, so our shared-org token gets 403. db_unmapped_reason=no_match refers
+      to Supabase only; PostHog data is intact. To cross-check ground truth: project owner must transfer the project to our
+      shared Supabase org OR invite our token''s account.'
+  splitshare:
+    signup_events:
+    - signup_completed
+    classified_by: operator
+    classified_at: '2026-05-18T00:00:00Z'
+    rationale: 'signup_completed is canonical (3 users). Standard SaaS signup. Team-confirmed (2026-05-18) NO Supabase was
+      provisioned during initial deploy — signups POSTed to placeholder URL and 83 ad clicks captured ZERO emails. Historical
+      ground truth is unrecoverable for the past window. Going forward: team will provision Supabase before re-running ads.
+      Until then, db_signups=null is accurate.'
+  flowops:
+    signup_events:
+    - waitlist_submitted
+    classified_by: operator
+    classified_at: '2026-05-18T00:00:00Z'
+    rationale: waitlist_submitted is canonical waitlist pattern (2 users in shared PostHog 321343, ✓ visible). Team-confirmed
+      (2026-05-18) this MVP has NO Supabase by design — PostHog is the canonical truth source (verified via PostHog dashboard
+      1427792). db_signups=null is expected and accurate; x3/x4 correctly use PH signup count for verdict. db_unmapped_reason=no_match
+      is a misleading label here (refers to Supabase only) but does not affect classification.
+  mosai:
+    signup_events: []
+    classified_by: x2-empty
+    classified_at: '2026-05-18T12:31:10Z'
+    rationale: 'Top events: landing_view, how_it_works_view, about_view, segment_play_complete(0 gclid), pricing_view, subscriber_home_view
+      (post-signup view). No paid conversion event. segment_play_complete is content-consumption, not signup.'
+    supabase_project_ref: kbvhpevktlbnbsjpugef
+  split-share-neon:
+    signup_events:
+    - signup_completed
+    classified_by: x2-strong
+    classified_at: '2026-05-12T04:43:23Z'
+    rationale: Same catalog as splitshare (deploy domain alias). signup_completed canonical (3 users).
+  downshift-landing:
+    signup_events:
+    - demo_completed
+    classified_by: x2-inferred
+    classified_at: '2026-05-12T04:43:23Z'
+    rationale: demo_completed (1) is demo-driven funnel activation per rule 3. No signup events.
+    supabase_project_ref: iwnsrcjngrkoktgjguyj
+  rubber-duck-api:
+    signup_events:
+    - signup_start
+    classified_by: x2-loose
+    classified_at: '2026-05-12T04:43:23Z'
+    rationale: Only signup_start exists (7 users), no _complete event captured. Loose per rule 5.
+    supabase_project_ref: edvntohudsmxtrlcwfvv
+  franchisepulse:
+    signup_events: []
+    classified_by: x2-empty
+    classified_at: '2026-05-18T12:31:10Z'
+    rationale: landing_view(6)/outreach_click(6) + dashboard_first_view(0)/location_connected(0)/cta_click(0). outreach_click
+      is interim, not completion. No conversion event captured.
+    supabase_project_ref: jgmdnlbuccdoekzbexxu
+  downshift:
+    signup_events:
+    - demo_completed
+    classified_by: x2-inferred
+    classified_at: '2026-05-12T04:43:23Z'
+    rationale: Same catalog as downshift-landing. demo_completed (1) inferred conversion.
+  agent-shield:
+    signup_events: []
+    classified_by: operator
+    classified_at: '2026-05-18T00:00:00Z'
+    rationale: 'Sanity check flagged 100% playground_scan/landing_visit ratio (15/15) — playground_scan fires on view, not
+      on completed scan. No real conversion event captured. Demoted to empty. DB ground truth: not in shared Supabase org
+      (5 sibling agent-* projects exist but none called agent-shield); no team response yet to 2026-05-18 inquiry about backend
+      location.'
+  expertmint:
+    signup_events:
+    - buyer_signup_complete
+    classified_by: x2-strong
+    classified_at: '2026-05-12T04:43:23Z'
+    rationale: buyer_signup_complete (3 users) matches <role>_signup_complete pattern.
+    supabase_project_ref: lldmgqjzylodihnvbext
+  pmax-sentinel:
+    signup_events:
+    - signup_started
+    classified_by: x2-loose
+    classified_at: '2026-05-17T03:37:55Z'
+    rationale: signup_started (4 gclid) is signup_start-shape — no _complete event. Rule 5 loose. first_audit_rendered (1
+      gclid) is render not completion. google_ads_oauth_started 0 gclid.
+    supabase_project_ref: hmiesyabwdkooioohobw
+  creatorflow:
+    signup_events: []
+    classified_by: x2-empty
+    classified_at: '2026-05-18T12:31:10Z'
+    rationale: page_view(17) + cta_click(2) + magic_link_sent(0 gclid). Magic-link-sent is the activation shape but had zero
+      paid traffic — no signal.
+    supabase_project_ref: dqsuzaukhhczvpeunbmu
+  agent-cost-monitor:
+    signup_events: []
+    classified_by: x2-empty
+    classified_at: '2026-05-18T12:31:10Z'
+    rationale: Only landing_page_viewed(13 gclid). No conversion event captured.
+    supabase_project_ref: iirfggrnzgsrxjpsoxrd
+  sundaykit:
+    signup_events:
+    - sample_downloaded
+    classified_by: x2-inferred
+    classified_at: '2026-05-12T04:43:23Z'
+    rationale: sample_downloaded (1) inferred as meaningful first-action for a sample-kit MVP.
+    supabase_project_ref: dszxbcsfgtcyjugtxdii
+  rubberduck:
+    signup_events:
+    - signup_start
+    classified_by: x2-loose
+    classified_at: '2026-05-12T04:43:23Z'
+    rationale: Same as rubber-duck-api. signup_start only, loose.
+  agentcostmonitor:
+    signup_events: []
+    classified_by: x2-empty
+    classified_at: '2026-05-12T04:43:23Z'
+    rationale: Duplicate-naming variant of agent-cost-monitor. Only landing_page_viewed.
+  cumulus:
+    signup_events: []
+    classified_by: x2-empty
+    classified_at: '2026-05-18T12:31:10Z'
+    rationale: Only landing_visit(25 gclid) in catalog. No conversion event captured.
+    supabase_project_ref: ianpvkdqczdndtnogeqh
+  onbrand-ai:
+    signup_events: []
+    classified_by: x2-empty
+    classified_at: '2026-05-18T12:31:10Z'
+    rationale: landing_viewed(4)/ad_clicked(4)/cta_clicked(1). No conversion event captured.
+    supabase_project_ref: shjsgldikqvzqpknihze
+  agent-firewall:
+    signup_events:
+    - install_started
+    classified_by: x2-loose
+    classified_at: '2026-05-17T03:37:55Z'
+    rationale: install_started (1 gclid) is the only demand-side event beyond landing. Same shape as signup_start (started
+      not completed) → rule 5 loose.
+    supabase_project_ref: zarodccybfjohgdydsdn
+  pingback:
+    signup_events:
+    - signup_completed
+    classified_by: operator
+    classified_at: '2026-05-17T03:50:00Z'
+    rationale: signup_completed (3 uu, 0 paid) exists but was below the x1 catalog HAVING threshold (uu>=5 OR gclid>0), so
+      the previous run did not see it. Team-confirmed event name.
+    supabase_project_ref: sepkmjeogvtbfoggcaqe
+  agentshield:
+    signup_events: []
+    classified_by: operator
+    classified_at: '2026-05-12T04:43:23Z'
+    rationale: Sanity check flagged 100% playground_scan/landing_visit ratio. Demoted to empty (same reason as agent-shield).
+  __orphan_xpredict__:
+    signup_events: []
+    classified_by: x2-empty
+    classified_at: '2026-05-13T08:13:56Z'
+    rationale: No events in catalog
+  __orphan_lumen__:
+    signup_events: []
+    classified_by: x2-empty
+    classified_at: '2026-05-13T08:13:56Z'
+    rationale: No events in catalog
+  __orphan_brigent__:
+    signup_events: []
+    classified_by: x2-empty
+    classified_at: '2026-05-13T08:13:56Z'
+    rationale: No events in catalog
+  __orphan_stylica-ai__:
+    signup_events: []
+    classified_by: x2-empty
+    classified_at: '2026-05-14T13:27:07Z'
+    rationale: No events in catalog
+  __orphan_deepstats__:
+    signup_events: []
+    classified_by: x2-empty
+    classified_at: '2026-05-13T08:13:56Z'
+    rationale: No events in catalog
+  __orphan_neuralpost__:
+    signup_events: []
+    classified_by: x2-empty
+    classified_at: '2026-05-13T08:13:56Z'
+    rationale: No events in catalog
+  __orphan_smelt__:
+    signup_events: []
+    classified_by: x2-empty
+    classified_at: '2026-05-13T08:13:56Z'
+    rationale: No events in catalog
+  __orphan_split-share-neon__:
+    signup_events: []
+    classified_by: x2-empty
+    classified_at: '2026-05-18T12:31:10Z'
+    rationale: No events in catalog
+  __orphan_hospitica__:
+    signup_events: []
+    classified_by: x2-empty
+    classified_at: '2026-05-18T12:31:10Z'
+    rationale: No events in catalog
+  __orphan_flowops__:
+    signup_events: []
+    classified_by: x2-empty
+    classified_at: '2026-05-13T08:13:56Z'
+    rationale: No events in catalog
+  __orphan_lead-sniffer__:
+    signup_events: []
+    classified_by: x2-empty
+    classified_at: '2026-05-13T08:13:56Z'
+    rationale: No events in catalog
+  __orphan_dropship__:
+    signup_events: []
+    classified_by: x2-empty
+    classified_at: '2026-05-18T12:31:10Z'
+    rationale: No events in catalog
+  __orphan_downshift__:
+    signup_events: []
+    classified_by: x2-empty
+    classified_at: '2026-05-18T12:31:10Z'
+    rationale: No events in catalog
+  __orphan_agent-lens__:
+    signup_events: []
+    classified_by: x2-empty
+    classified_at: '2026-05-13T08:13:56Z'
+    rationale: No events in catalog
+  __orphan_agentburn__:
+    signup_events: []
+    classified_by: x2-empty
+    classified_at: '2026-05-13T08:13:56Z'
+    rationale: No events in catalog
+  __orphan_expertmint__:
+    signup_events: []
+    classified_by: x2-empty
+    classified_at: '2026-05-13T08:13:56Z'
+    rationale: No events in catalog
+  __orphan_pmax-sentinel__:
+    signup_events: []
+    classified_by: x2-empty
+    classified_at: '2026-05-13T08:13:56Z'
+    rationale: No events in catalog
+  __orphan_ghostops__:
+    signup_events: []
+    classified_by: x2-empty
+    classified_at: '2026-05-13T08:13:56Z'
+    rationale: No events in catalog
+  __orphan_report-pilot__:
+    signup_events: []
+    classified_by: x2-empty
+    classified_at: '2026-05-13T08:13:56Z'
+    rationale: No events in catalog
+  __orphan_rubberduck__:
+    signup_events: []
+    classified_by: x2-empty
+    classified_at: '2026-05-12T12:47:38Z'
+    rationale: No events in catalog
+  __orphan_agentcostmonitor__:
+    signup_events: []
+    classified_by: x2-empty
+    classified_at: '2026-05-13T08:13:56Z'
+    rationale: No events in catalog
+  __orphan_pingback__:
+    signup_events: []
+    classified_by: x2-empty
+    classified_at: '2026-05-13T08:13:56Z'
+    rationale: No events in catalog
+  __orphan_downshift-landing__:
+    signup_events: []
+    classified_by: x2-empty
+    classified_at: '2026-05-12T12:47:38Z'
+    rationale: No events in catalog
+  __orphan_agentshield__:
+    signup_events: []
+    classified_by: x2-empty
+    classified_at: '2026-05-13T08:13:56Z'
+    rationale: No events in catalog
+  __orphan_sundaykit__:
+    signup_events: []
+    classified_by: x2-empty
+    classified_at: '2026-05-12T12:47:38Z'
+    rationale: No events in catalog
+  __orphan_cumulus__:
+    signup_events: []
+    classified_by: x2-empty
+    classified_at: '2026-05-12T12:47:38Z'
+    rationale: No events in catalog
+  deploy-guard:
+    signup_events: []
+    classified_by: x2-empty
+    classified_at: '2026-05-18T12:31:10Z'
+    rationale: Only landing_page_viewed(22) + cta_clicked(4). No conversion event captured.
+    supabase_project_ref: hadyolqrlaohrhyqdjlk
+  __orphan_creatorflow__:
+    signup_events: []
+    classified_by: x2-empty
+    classified_at: '2026-05-13T08:13:56Z'
+    rationale: No events in catalog
+  suits:
+    signup_events:
+    - signup_start
+    classified_by: operator
+    classified_at: '2026-05-18T00:00:00Z'
+    rationale: Only signup_start (3 gclid users) — no _complete event. Rule 5 loose. Team-confirmed (2026-05-18) Supabase
+      project was paused and not capturing email data; team is re-provisioning on both Supabase and Railway. Re-run /iterate
+      --cross after that lands to recover ground truth. Project (if any) is in personal org, not visible to shared-org token.
+  commissioniq:
+    signup_events: []
+    classified_by: x2-empty
+    classified_at: '2026-05-18T12:31:10Z'
+    rationale: No events in catalog
+    supabase_project_ref: xlvsznbythvwkvvdpdlq
+  sdr-copilot:
+    signup_events:
+    - signup_complete
+    classified_by: x2-whitelist
+    classified_at: '2026-05-14T10:26:53Z'
+    rationale: 'Standard event(s): signup_complete'
+    supabase_project_ref: wxvmomdmxppmrgbyuyfz
+  campaign:
+    signup_events: []
+    classified_by: x2-empty
+    classified_at: '2026-05-14T13:27:07Z'
+    rationale: No events in catalog
+  reset-app:
+    signup_events:
+    - email_submitted
+    classified_by: x2-strong
+    classified_at: '2026-05-17T03:37:55Z'
+    rationale: email_submitted (5 organic users, 0 gclid) is the canonical *_submitted email/form-collection completion shape
+      per rule 1. Zero paid-traffic signups in window is informational.
+    supabase_project_ref: reatvvwyeewhsrgezhsc
+  auditbot:
+    supabase_project_ref: wpomhkfrpolcxurafcff
+    signup_events:
+    - signup_start
+    classified_by: x2-loose
+    classified_at: '2026-05-18T12:31:10Z'
+    rationale: 'signup_start(1 gclid) is the only demand-side event beyond landing(13). Rule 5 loose: no _complete event captured
+      yet.'
+  dead-link:
+    supabase_project_ref: zjaghzayvjpmrcqqxwtp
+    signup_events: []
+    classified_by: x2-empty
+    classified_at: '2026-05-18T12:31:10Z'
+    rationale: landing_visits(6)+cta_clicks(2). No signup-shape event. Likely waitlist/email capture instrumentation missing.
+  gapsmith:
+    supabase_project_ref: egicwsjhzwvetsvgozhl
+    signup_events: []
+    classified_by: x2-empty
+    classified_at: '2026-05-18T12:31:10Z'
+    rationale: No events in catalog
+  __orphan_auditbot-ten__:
+    signup_events: []
+    classified_by: x2-empty
+    classified_at: '2026-05-18T12:31:10Z'
+    rationale: No events in catalog
+  __orphan_deadlink-monitor__:
+    signup_events: []
+    classified_by: x2-empty
+    classified_at: '2026-05-18T12:31:10Z'
+    rationale: No events in catalog
+mvp_aliases:
+  hospitica:
+  - statistica
+  splitshare:
+  - split-share-neon
+  agent-shield:
+  - agentshield
+  agent-cost-monitor:
+  - agentcostmonitor
+  rubber-duck-api:
+  - rubberduck
+  dropship-ops:
+  - dropship
+  x-predict:
+  - xpredict
+ga_campaign_aliases:
+  staylicaai: stylica-ai
+  staylicaailew: stylica-ai
+  pubcheck: verify
+  pubchecksearchvalidationv1: verify
+  autodropship: dropship-ops
+email_filter:
+  classified_by: operator
+  classified_at: '2026-05-18T14:07:32Z'
+  rules:
+    test_tlds:
+    - .test
+    - .example
+    - .invalid
+    - .localhost
+    - .local
+    test_domains:
+    - example.com
+    - example.org
+    - example.net
+    - test.com
+    - email.com
+    - verify.com
+    test_suffixes:
+    - .internal
+    team_domains:
+    - magpiexyz.io
+    - draftlabs.org
+  team_emails:
+  - oculusmetaverse21@gmail.com
+  - radlinabbott@gmail.com
+  - radlinabbott14@gmail.com
+  - steemerturk@gmail.com
+  - anuragiitjee@gmail.com
+  - karanduua@gmail.com
+  - demorlizer@gmail.com
+  - ghostopsorg@proton.me
+  plus_alias_team_prefixes:
+  - oculusmetaverse21
+  test_emails:
+  - test@agencytest.com
+  - livetest@checkflow.com
+  - test-flow2@agentlens.dev
+  - test-ad-launch@agentlens.dev
+  - yomama@gmail.com

@@ -21,6 +21,18 @@ This state is **pure compute** — no network calls. Idempotent. Safe to re-run 
 
 ### Read inputs + compute flags
 
+Canonical implementation:
+
+```bash
+python3 .claude/scripts/lib/iterate_cross_integrity.py \
+  --data .runs/iterate-cross-data.json \
+  --config experiment/iterate-cross-config.yaml \
+  --output .runs/iterate-cross-data-issues.json
+```
+
+The helper computes the seven flags below and is the path used by dry-run
+validation. The inline form is retained here only as readable reference.
+
 ```bash
 python3 - <<'PY'
 import json, os, sys

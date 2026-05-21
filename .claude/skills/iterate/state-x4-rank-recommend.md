@@ -34,6 +34,9 @@ Sort MVPs into this order:
 This keeps the most-actionable verdicts at the top. `MISSING_PROJECT_NAME` and
 `GA_NO_PH_TRACKING` outrank everything else because the data underneath is
 suspect — the operator must fix tracking before any product decision is trustworthy.
+The rank table uses `.claude/scripts/lib/iterate_cross_verdicts.py::sort_scores_global`.
+The Telegram artifact uses `sort_scores_by_owner` so each owner block preserves
+this verdict precedence after owner grouping.
 
 ---
 
@@ -60,8 +63,9 @@ Print to stdout. Window comes from `.runs/iterate-cross-scores.json window_days`
 Column legend:
 - `GA-clk` — `metrics.ga_clicks`. Shown as `--` when an MVP has zero GA clicks in the window (either the CSV omits that campaign or the operator's CSV was header-only). state-x0a blocks if no CSV is provided, so a fully empty GA-clk column should not appear in normal operation.
 - `PH-vis` — `metrics.gclid_visitors` (PostHog).
-- `PHsig` — `metrics.signups` (paid-traffic signups, the funnel-effectiveness number).
-- `DB-sig` — `metrics.db_signups` (Supabase ground truth, total signups in window). `--` when the MVP isn't mapped to a Supabase project. A `⚠` suffix means `tracking_sanity_flags` has at least one high-severity flag.
+- `PHsig` — `metrics.ph_signups` (PostHog paid-traffic signups).
+- `DB-sig` — `metrics.db_signups_real` (filtered DB real signups in window). `--` when the MVP isn't mapped to a trusted DB source. A `⚠` suffix means `tracking_sanity_flags` has at least one high-severity flag.
+- `Source` — `metrics.signup_source` (`db_real_zero`, `db_real`, `ph`, or null) and `metrics.effective_signups`, the value consumed by the verdict.
 - `Conv%` — `metrics.true_conv_rate` × 100 (uses GA-clicks as denominator when GA data present, else PH visitors).
 - `Cap%` — `metrics.capture_rate` × 100 (how much of paid traffic PostHog actually captured). Null when no GA data.
 
