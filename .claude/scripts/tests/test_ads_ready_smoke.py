@@ -1,0 +1,185 @@
+#!/usr/bin/env python3
+"""Tests for .claude/scripts/lib/ads_ready_smoke.py."""
+
+from __future__ import annotations
+
+import io
+import json
+import os
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
+
+import ads_ready_smoke as S  # noqa: E402
+from gclid_filter import SYNTHETIC_GCLID_PREFIX  # noqa: E402
+
+
+def write_json(path: Path, data: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+
+def make_root(root: Path, *, playwright: bool = True, events: str | None = None) -> None:
+    if playwright:
+        (root / "node_modules" / "@playwright" / "test").mkdir(parents=True)
+    (root / "experiment").mkdir(parents=True, exist_ok=True)
+    (root / "experiment" / "experiment.yaml").write_text(
+        "name: alpha\n"
+        "type: web-app\n"
+        "stack:\n"
+        "  analytics: posthog\n"
+        "  services:\n"
+        "    - name: app\n"
+        "      hosting: vercel\n",
+        encoding="utf-8",
+    )
+    if events is not None:
+        (root / "experiment" / "EVENTS.yaml").write_text(events, encoding="utf-8")
+
+
+class AdsReadySmokeOrchestratorTests(unittest.TestCase):
+    def run_smoke(self, ctx: dict, *patches):
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            context = base / "context.json"
+            static_result = base / "static.json"
+            output = base / "smoke.json"
+            write_json(context, ctx)
+            write_json(static_result, {"overall_pass": True})
+            with patch("sys.stderr", new=io.StringIO()):
+                rc = S.main(
+                    [
+                        "--context",
+                        str(context),
+                        "--static-result",
+                        str(static_result),
+                        "--output",
+                        str(output),
+                    ]
+                )
+            return rc, json.loads(output.read_text(encoding="utf-8"))
+
+    def test_playwright_not_installed_hard_fails(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            make_root(root, playwright=False)
+            rc, result = self.run_smoke({"mvp_root": str(root), "deploy_url": "https://alpha.example"})
+
+        self.assertEqual(rc, 0)
+        self.assertFalse(result["overall_pass"])
+        self.assertEqual(result["failed_count"], 1)
+        self.assertIn("Playwright is required", result["checks"][0]["details"])
+        self.assertIn("npm install --save-dev @playwright/test", result["checks"][0]["fix"])
+
+    @patch("ads_ready_smoke.autodetect_vercel_deploy_url", return_value=None)
+    def test_no_deploy_url_hard_fails(self, _mock_autodetect):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            make_root(root, playwright=True)
+            rc, result = self.run_smoke({"mvp_root": str(root), "deploy_url": ""})
+
+        self.assertEqual(rc, 0)
+        self.assertFalse(result["overall_pass"])
+        self.assertIn("Could not determine deployed URL", result["checks"][0]["details"])
+        self.assertIn("vercel login", result["checks"][0]["fix"])
+
+    @patch("ads_ready_smoke.time.sleep")
+    @patch("ads_ready_smoke.secrets.token_urlsafe", return_value="TOKEN")
+    @patch("ads_ready_smoke.run_playwright_smoke", return_value=Path("captured-events.json"))
+    @patch("ads_ready_smoke._read_posthog_api_key", return_value="phx_api")
+    @patch("ads_ready_smoke.H.resolve_production_posthog_key", return_value=("phc_REAL", "vercel_env_set", None))
+    @patch("ads_ready_smoke._posthog_query")
+    @patch("ads_ready_smoke._posthog_get")
+    def test_playwright_and_hogql_success(
+        self,
+        mock_posthog_get,
+        mock_posthog_query,
+        _mock_resolve,
+        _mock_read_key,
+        _mock_playwright,
+        _mock_token,
+        _mock_sleep,
+    ):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            make_root(
+                root,
+                playwright=True,
+                events="events:\n  visit_landing:\n    funnel_stage: landing\n",
+            )
+            mock_posthog_get.side_effect = [
+                {"results": [{"id": "org1"}], "next": "/api/organizations/?page=2"},
+                {"results": [{"id": 1, "name": "Other", "api_token": "phc_OTHER"}], "next": None},
+                {"results": [{"id": "org2"}], "next": None},
+                {"results": [{"id": 2, "name": "Team", "api_token": "phc_REAL"}], "next": None},
+            ]
+            mock_posthog_query.side_effect = [
+                {"results": [["visit_landing", "alpha", SYNTHETIC_GCLID_PREFIX + "TOKEN"]]},
+                {"results": [["visit_landing", "alpha", SYNTHETIC_GCLID_PREFIX + "TOKEN"]]},
+                {"results": [["visit_landing", 1]]},
+            ]
+            rc, result = self.run_smoke({"mvp_root": str(root), "deploy_url": "https://alpha.example"})
+
+        self.assertEqual(rc, 0)
+        self.assertTrue(result["overall_pass"])
+        self.assertEqual(result["passed_count"], 3)
+        self.assertEqual(result["failed_count"], 0)
+        self.assertTrue(result["synthetic_gclid"].startswith(SYNTHETIC_GCLID_PREFIX))
+        self.assertEqual(mock_posthog_query.call_count, 3)
+        self.assertEqual(mock_posthog_get.call_count, 4)
+
+    @patch("ads_ready_smoke.time.sleep")
+    @patch("ads_ready_smoke.secrets.token_urlsafe", return_value="TOKEN")
+    @patch("ads_ready_smoke.run_playwright_smoke", return_value=Path("captured-events.json"))
+    @patch(
+        "ads_ready_smoke.discover_posthog_project",
+        return_value={"project_id": "2", "api_key": "phx_api", "expected_project_name": "alpha"},
+    )
+    @patch("ads_ready_smoke._posthog_query")
+    def test_hogql_timeout_retries_then_fails(
+        self,
+        mock_posthog_query,
+        _mock_discover,
+        _mock_playwright,
+        _mock_token,
+        mock_sleep,
+    ):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            make_root(
+                root,
+                playwright=True,
+                events="events:\n  visit_landing:\n    funnel_stage: landing\n",
+            )
+            mock_posthog_query.side_effect = [
+                {"results": []},
+                {"results": []},
+                {"results": []},
+                {"results": []},
+            ]
+            rc, result = self.run_smoke({"mvp_root": str(root), "deploy_url": "https://alpha.example"})
+
+        self.assertEqual(rc, 0)
+        self.assertFalse(result["overall_pass"])
+        self.assertGreaterEqual(result["failed_count"], 1)
+        self.assertIn("90s timeout", result["checks"][0]["details"])
+        self.assertEqual(mock_sleep.call_count, 2)
+        self.assertEqual(mock_posthog_query.call_count, 4)
+
+    def test_static_only_writes_three_skipped_checks(self):
+        rc, result = self.run_smoke({"static_only": True})
+
+        self.assertEqual(rc, 0)
+        self.assertTrue(result["skipped"])
+        self.assertIsNone(result["overall_pass"])
+        self.assertEqual(result["skipped_count"], 3)
+        self.assertEqual([check["id"] for check in result["checks"]], [20, 21, 22])
+        self.assertTrue(all(check["skipped"] for check in result["checks"]))
+
+
+if __name__ == "__main__":
+    unittest.main()

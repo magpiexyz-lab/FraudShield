@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
 from gclid_filter import (  # noqa: E402
     PAID_GCLID_EXPR,
     PAID_GCLID_FILTER,
+    SYNTHETIC_GCLID_PREFIX,
     is_real_gclid,
 )
 
@@ -55,6 +56,12 @@ def test_short_real_prefix_excluded():
     assert not is_real_gclid("Cj0KCQ")
 
 
+def test_ads_ready_synthetic_prefix_excluded():
+    """Synthetic /ads-ready gclids mimic Cj format but must not count as paid traffic."""
+    synthetic = SYNTHETIC_GCLID_PREFIX + "PADDED_TO_LOOK_LONG_ENOUGH_FOR_FILTER"
+    assert not is_real_gclid(synthetic)
+
+
 def test_none_excluded():
     assert not is_real_gclid(None)
 
@@ -73,6 +80,8 @@ def test_filter_sql_renders():
     assert "$session_entry_gclid" in PAID_GCLID_FILTER
     assert "properties.gclid" in PAID_GCLID_FILTER
     assert "startsWith" in PAID_GCLID_FILTER
+    assert "AND NOT startsWith" in PAID_GCLID_FILTER
+    assert SYNTHETIC_GCLID_PREFIX in PAID_GCLID_FILTER
     assert "40" in PAID_GCLID_FILTER
     # PAID_GCLID_EXPR is the operand reused 5 times in the filter expression
     assert PAID_GCLID_FILTER.count(PAID_GCLID_EXPR) >= 4

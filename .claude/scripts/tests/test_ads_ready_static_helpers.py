@@ -1,0 +1,618 @@
+#!/usr/bin/env python3
+"""Tests for .claude/scripts/lib/ads_ready_static_helpers.py."""
+
+from __future__ import annotations
+
+import contextlib
+import os
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
+
+import ads_ready_static_helpers as H  # noqa: E402
+
+
+FIXTURES = Path(__file__).resolve().parent / "fixtures" / "ads_ready"
+CLEAN = FIXTURES / "clean_mvp"
+
+
+def fixture_ctx(name: str = "clean_mvp") -> dict:
+    return {"mvp_root": str(FIXTURES / name)}
+
+
+@contextlib.contextmanager
+def repo(files: dict[str, str]):
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        for rel, content in files.items():
+            path = root / rel
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8")
+        yield root
+
+
+def experiment_yaml(
+    name: str = "alpha",
+    stack: str = "stack:\n  analytics: posthog\n",
+    extra: str = "",
+) -> str:
+    return f"name: {name}\ntype: web-app\n{stack}{extra}"
+
+
+def analytics_ts(name: str = "alpha", key: str = "phc_REAL_KEY") -> str:
+    return (
+        f'export const PROJECT_NAME = "{name}";\n'
+        f'const POSTHOG_PLACEHOLDER = "phc_TEAM_KEY";\n'
+        f'export const POSTHOG_KEY = process.env.NEXT_PUBLIC_POSTHOG_KEY ?? "{key}";\n'
+        "export function track(e: string) { return e; }\n"
+        "export function identify(id: string) { return id; }\n"
+    )
+
+
+def events_yaml(events: str) -> str:
+    return "events:\n" + events
+
+
+class Check1ProjectNameTests(unittest.TestCase):
+    def test_passes_clean_fixture(self):
+        passed, _, _ = H.check_project_name_drift(fixture_ctx())
+        self.assertTrue(passed)
+
+    def test_fails_on_project_name_drift(self):
+        with repo(
+            {
+                "experiment/experiment.yaml": experiment_yaml("alpha"),
+                "src/lib/analytics.ts": analytics_ts("beta"),
+            }
+        ) as root:
+            passed, details, fix = H.check_project_name_drift({"mvp_root": str(root)})
+        self.assertFalse(passed)
+        self.assertIn("drift", details)
+        self.assertIn("PROJECT_NAME drift", fix)
+
+    def test_exit_2_environmental_error_is_failure(self):
+        with repo({}) as root:
+            passed, details, fix = H.check_project_name_drift({"mvp_root": str(root)})
+        self.assertFalse(passed)
+        self.assertIn("exit 2", details)
+        self.assertIn("environmental", fix)
+
+
+class Check2PlaceholderTests(unittest.TestCase):
+    @patch("ads_ready_static_helpers.resolve_production_posthog_key")
+    def test_vercel_env_real_key_passes(self, mock_resolve):
+        mock_resolve.return_value = ("phc_REAL", "vercel_env_set", None)
+        passed, details, _ = H.check_no_posthog_placeholder(fixture_ctx())
+        self.assertTrue(passed)
+        self.assertIn("vercel_env_set", details)
+
+    @patch("ads_ready_static_helpers.resolve_production_posthog_key")
+    def test_source_placeholder_fails(self, mock_resolve):
+        mock_resolve.return_value = ("phc_TEAM_KEY", "source_fallback", "src/lib/analytics.ts")
+        passed, details, fix = H.check_no_posthog_placeholder(fixture_ctx())
+        self.assertFalse(passed)
+        self.assertIn("placeholder", details)
+        self.assertIn("src/lib/analytics.ts", fix)
+
+    @patch("ads_ready_static_helpers.resolve_production_posthog_key")
+    def test_source_inconsistent_fails(self, mock_resolve):
+        mock_resolve.return_value = (None, "source_fallback_inconsistent", None)
+        passed, details, fix = H.check_no_posthog_placeholder(fixture_ctx())
+        self.assertFalse(passed)
+        self.assertIn("disagree", details)
+        self.assertIn("Sync", fix)
+
+
+class Check3AnalyticsWiredTests(unittest.TestCase):
+    def test_clean_fixture_passes_via_bfs_alias_import(self):
+        passed, details, _ = H.check_analytics_module_wired(fixture_ctx())
+        self.assertTrue(passed)
+        self.assertIn("LandingHero", details)
+
+    def test_broken_no_import_fixture_fails(self):
+        passed, details, fix = H.check_analytics_module_wired(
+            fixture_ctx("broken_no_analytics_import")
+        )
+        self.assertFalse(passed)
+        self.assertIn("No reachable", details)
+        self.assertIn("BFS", fix)
+
+    def test_relative_import_resolves_to_events_module(self):
+        with repo(
+            {
+                "experiment/experiment.yaml": experiment_yaml("alpha"),
+                "src/app/page.tsx": (
+                    'import { trackLandingViewed } from "../lib/events";\n'
+                    "export default function Page() { trackLandingViewed(); return null; }\n"
+                ),
+                "src/lib/events.ts": "export function trackLandingViewed() {}\n",
+            }
+        ) as root:
+            passed, details, _ = H.check_analytics_module_wired({"mvp_root": str(root)})
+        self.assertTrue(passed)
+        self.assertIn("src/lib/events.ts", details)
+
+
+class Check4RawCaptureTests(unittest.TestCase):
+    def test_clean_fixture_passes(self):
+        passed, _, _ = H.check_no_raw_capture(fixture_ctx())
+        self.assertTrue(passed)
+
+    def test_broken_raw_capture_fixture_fails(self):
+        passed, details, fix = H.check_no_raw_capture(fixture_ctx("broken_raw_capture"))
+        self.assertFalse(passed)
+        self.assertIn("src/app/page.tsx", details)
+        self.assertIn("Replace raw", fix)
+
+    def test_exclusion_paths_do_not_fail(self):
+        with repo(
+            {
+                "experiment/experiment.yaml": experiment_yaml("alpha"),
+                "src/lib/analytics.ts": "posthog.capture('ok here');\n",
+                "src/lib/analytics-server.ts": "posthog.identify('ok here');\n",
+                "src/app/page.test.ts": "posthog.capture('test');\n",
+                "src/app/Button.stories.tsx": "posthog.capture('story');\n",
+                "src/app/page.tsx": "export default function Page() { return null; }\n",
+            }
+        ) as root:
+            passed, _, _ = H.check_no_raw_capture({"mvp_root": str(root)})
+        self.assertTrue(passed)
+
+
+class Check5SignupEventsTests(unittest.TestCase):
+    def test_clean_fixture_signup_event_implemented(self):
+        passed, _, _ = H.check_signup_events_implemented(fixture_ctx())
+        self.assertTrue(passed)
+
+    def test_missing_signup_event_fails(self):
+        with repo(
+            {
+                "experiment/experiment.yaml": experiment_yaml("alpha"),
+                "experiment/iterate-cross-config.yaml": (
+                    "mvp_mappings:\n  alpha:\n    signup_events: [signup_complete]\n"
+                ),
+                "src/app/page.tsx": "export default function Page() { return null; }\n",
+            }
+        ) as root:
+            passed, details, fix = H.check_signup_events_implemented({"mvp_root": str(root)})
+        self.assertFalse(passed)
+        self.assertIn("signup_complete", details)
+        self.assertIn("trackSignupComplete", fix)
+
+    def test_raw_track_call_satisfies_signup_event(self):
+        with repo(
+            {
+                "experiment/experiment.yaml": experiment_yaml("alpha"),
+                "experiment/iterate-cross-config.yaml": (
+                    "mvp_mappings:\n  alpha:\n    signup_events: [signup_complete]\n"
+                ),
+                "src/app/page.tsx": "track('signup_complete');\n",
+            }
+        ) as root:
+            passed, _, _ = H.check_signup_events_implemented({"mvp_root": str(root)})
+        self.assertTrue(passed)
+
+
+class Check6PostHogTeamKeyTests(unittest.TestCase):
+    def _run_check6_with_server(self, server_result):
+        projects = [
+            {"id": 1, "name": "shared", "api_token": "phc_CLIENT"},
+            {"id": 2, "name": "other", "api_token": "phc_OTHER"},
+        ]
+        with patch(
+            "ads_ready_static_helpers.resolve_production_posthog_key",
+            return_value=("phc_CLIENT", "vercel_env_set", None),
+        ), patch(
+            "ads_ready_static_helpers._read_posthog_api_key", return_value="phx_personal"
+        ), patch(
+            "ads_ready_static_helpers._list_posthog_projects", return_value=projects
+        ), patch(
+            "ads_ready_static_helpers.vercel_api.read_vercel_token", return_value="vercel-token"
+        ), patch(
+            "ads_ready_static_helpers.vercel_api.get_vercel_env_var",
+            return_value=server_result,
+        ) as mock_env:
+            result = H.check_posthog_team_key(fixture_ctx())
+        mock_env.assert_called_with(
+            "vercel-token",
+            "prj_clean",
+            "team_clean",
+            "POSTHOG_SERVER_KEY",
+            target="production",
+        )
+        return result
+
+    def test_matching_team_project_passes(self):
+        passed, details, _ = self._run_check6_with_server(H.vercel_api.EnvResultAbsent())
+        self.assertTrue(passed)
+        self.assertIn("shared", details)
+
+    @patch("ads_ready_static_helpers.resolve_production_posthog_key")
+    @patch("ads_ready_static_helpers._read_posthog_api_key", return_value="phx_personal")
+    @patch("ads_ready_static_helpers._list_posthog_projects")
+    @patch("ads_ready_static_helpers.vercel_api.read_vercel_token", return_value="vercel-token")
+    @patch("ads_ready_static_helpers.vercel_api.get_vercel_env_var", return_value=H.vercel_api.EnvResultAbsent())
+    def test_mvp_key_not_in_team_project_fails(self, _env, _token, mock_projects, _api, mock_resolve):
+        mock_resolve.return_value = ("phc_MISSING", "vercel_env_set", None)
+        mock_projects.return_value = [{"id": 1, "name": "shared", "api_token": "phc_CLIENT"}]
+        passed, details, fix = H.check_posthog_team_key(fixture_ctx())
+        self.assertFalse(passed)
+        self.assertIn("shared", details)
+        self.assertIn("Vercel production env", fix)
+
+    @patch("ads_ready_static_helpers.resolve_production_posthog_key")
+    @patch("ads_ready_static_helpers._read_posthog_api_key", side_effect=FileNotFoundError())
+    def test_missing_posthog_api_key_fails(self, _api, mock_resolve):
+        mock_resolve.return_value = ("phc_CLIENT", "source_fallback", "src/lib/analytics.ts")
+        passed, details, fix = H.check_posthog_team_key(fixture_ctx())
+        self.assertFalse(passed)
+        self.assertIn("personal API key", details)
+        self.assertIn("~/.posthog/personal-api-key", fix)
+
+    def test_server_key_absent_passes(self):
+        passed, _, _ = self._run_check6_with_server(H.vercel_api.EnvResultAbsent())
+        self.assertTrue(passed)
+
+    def test_server_key_empty_string_fails(self):
+        passed, details, fix = self._run_check6_with_server(H.vercel_api.EnvResultFound(""))
+        self.assertFalse(passed)
+        self.assertIn("empty string", details)
+        self.assertIn("does NOT fall through", fix)
+
+    def test_server_key_placeholder_fails(self):
+        passed, details, fix = self._run_check6_with_server(
+            H.vercel_api.EnvResultFound("phc_TEAM_KEY")
+        )
+        self.assertFalse(passed)
+        self.assertIn("placeholder", details)
+        self.assertIn("Unset POSTHOG_SERVER_KEY", fix)
+
+    def test_server_key_same_project_passes(self):
+        passed, _, _ = self._run_check6_with_server(H.vercel_api.EnvResultFound("phc_CLIENT"))
+        self.assertTrue(passed)
+
+    def test_server_key_different_project_fails(self):
+        passed, details, fix = self._run_check6_with_server(H.vercel_api.EnvResultFound("phc_OTHER"))
+        self.assertFalse(passed)
+        self.assertIn("different PostHog project", details)
+        self.assertIn("server events go to `other`", fix)
+
+    def test_server_key_env_error_fails(self):
+        passed, details, fix = self._run_check6_with_server(
+            H.vercel_api.EnvResultError("HTTP 401")
+        )
+        self.assertFalse(passed)
+        self.assertIn("HTTP 401", details)
+        self.assertIn("API error", fix)
+
+
+class Check7SupabaseTests(unittest.TestCase):
+    def test_project_ref_accessible_passes(self):
+        with repo(
+            {
+                "experiment/experiment.yaml": experiment_yaml("alpha", "stack:\n  database: supabase\n"),
+                ".env.local": "NEXT_PUBLIC_SUPABASE_URL=https://abc123.supabase.co\n",
+            }
+        ) as root, patch("ads_ready_static_helpers._read_token", return_value="tok"), patch(
+            "ads_ready_static_helpers.list_supabase_projects",
+            return_value=[{"id": "abc123", "name": "alpha"}],
+        ):
+            passed, _, _ = H.check_supabase_team_org({"mvp_root": str(root)})
+        self.assertTrue(passed)
+
+    def test_missing_supabase_url_fails(self):
+        with repo({"experiment/experiment.yaml": experiment_yaml("alpha", "stack:\n  database: supabase\n")}) as root:
+            passed, details, fix = H.check_supabase_team_org({"mvp_root": str(root)})
+        self.assertFalse(passed)
+        self.assertIn("NEXT_PUBLIC_SUPABASE_URL", details)
+        self.assertIn("Set NEXT_PUBLIC_SUPABASE_URL", fix)
+
+    def test_inaccessible_project_fails(self):
+        with repo(
+            {
+                "experiment/experiment.yaml": experiment_yaml("alpha", "stack:\n  database: supabase\n"),
+                ".env.local": "NEXT_PUBLIC_SUPABASE_URL=https://abc123.supabase.co\n",
+            }
+        ) as root, patch("ads_ready_static_helpers._read_token", return_value="tok"), patch(
+            "ads_ready_static_helpers.list_supabase_projects",
+            return_value=[{"id": "other", "name": "other"}],
+        ):
+            passed, details, fix = H.check_supabase_team_org({"mvp_root": str(root)})
+        self.assertFalse(passed)
+        self.assertIn("abc123", details)
+        self.assertIn("Transfer", fix)
+
+
+class Check8RailwayTests(unittest.TestCase):
+    @patch("ads_ready_static_helpers._check_railway_auth", return_value="login required")
+    def test_auth_missing_fails(self, _auth):
+        passed, details, fix = H.check_railway_team_workspace(fixture_ctx())
+        self.assertFalse(passed)
+        self.assertIn("login required", details)
+        self.assertIn("railway login", fix)
+
+    @patch("ads_ready_static_helpers._check_railway_auth", return_value=None)
+    @patch("ads_ready_static_helpers.list_railway_projects")
+    def test_project_id_match_passes(self, mock_projects, _auth):
+        mock_projects.return_value = [{"id": "rp_1", "name": "alpha"}]
+        with repo(
+            {
+                "experiment/experiment.yaml": experiment_yaml("alpha", "stack:\n  database: railway\n"),
+                "railway.json": '{"projectId":"rp_1"}',
+            }
+        ) as root:
+            passed, _, _ = H.check_railway_team_workspace({"mvp_root": str(root)})
+        self.assertTrue(passed)
+
+    @patch("ads_ready_static_helpers._check_railway_auth", return_value=None)
+    @patch("ads_ready_static_helpers.list_railway_projects", return_value=[])
+    def test_no_matching_project_fails(self, _projects, _auth):
+        with repo(
+            {
+                "experiment/experiment.yaml": experiment_yaml("alpha", "stack:\n  database: railway\n"),
+                "railway.json": '{"projectId":"rp_1"}',
+            }
+        ) as root:
+            passed, details, fix = H.check_railway_team_workspace({"mvp_root": str(root)})
+        self.assertFalse(passed)
+        self.assertIn("not accessible", details)
+        self.assertIn("team workspace", fix)
+
+
+class Check9VercelTests(unittest.TestCase):
+    @patch("ads_ready_static_helpers.vercel_api.read_vercel_token", return_value=None)
+    def test_missing_token_fails(self, _token):
+        passed, details, fix = H.check_vercel_team_account(fixture_ctx())
+        self.assertFalse(passed)
+        self.assertIn("missing", details)
+        self.assertIn("vercel login", fix)
+
+    @patch("ads_ready_static_helpers.vercel_api.read_vercel_token", return_value="tok")
+    @patch("ads_ready_static_helpers.vercel_api.find_project", return_value={"id": "prj_clean"})
+    def test_linked_project_found_passes(self, mock_find, _token):
+        passed, _, _ = H.check_vercel_team_account(fixture_ctx())
+        self.assertTrue(passed)
+        mock_find.assert_called_with("tok", "team_clean", "prj_clean")
+
+    @patch("ads_ready_static_helpers.vercel_api.read_vercel_token", return_value="tok")
+    @patch("ads_ready_static_helpers.vercel_api.find_project", return_value=None)
+    def test_missing_team_project_fails(self, _find, _token):
+        passed, details, fix = H.check_vercel_team_account(fixture_ctx())
+        self.assertFalse(passed)
+        self.assertIn("prj_clean", details)
+        self.assertIn("Transfer", fix)
+
+
+class Check10StripeTests(unittest.TestCase):
+    @patch("ads_ready_static_helpers.stripe_api.read_stripe_key_from_config", return_value=None)
+    def test_missing_operator_key_fails(self, _key):
+        passed, details, fix = H.check_stripe_team_account(fixture_ctx())
+        self.assertFalse(passed)
+        self.assertIn("Stripe CLI", details)
+        self.assertIn("stripe login", fix)
+
+    @patch("ads_ready_static_helpers.stripe_api.read_stripe_key_from_config", return_value="sk_operator")
+    @patch("ads_ready_static_helpers.stripe_api.get_account_id")
+    def test_matching_account_passes(self, mock_account, _key):
+        mock_account.side_effect = ["acct_team", "acct_team"]
+        with repo(
+            {
+                "experiment/experiment.yaml": experiment_yaml("alpha", "stack:\n  payment: stripe\n"),
+                ".env.local": "STRIPE_SECRET_KEY=sk_mvp\n",
+            }
+        ) as root:
+            passed, _, _ = H.check_stripe_team_account({"mvp_root": str(root)})
+        self.assertTrue(passed)
+
+    @patch("ads_ready_static_helpers.stripe_api.read_stripe_key_from_config", return_value="sk_operator")
+    @patch("ads_ready_static_helpers.stripe_api.get_account_id")
+    def test_mismatched_account_fails(self, mock_account, _key):
+        mock_account.side_effect = ["acct_team", "acct_personal"]
+        with repo(
+            {
+                "experiment/experiment.yaml": experiment_yaml("alpha", "stack:\n  payment: stripe\n"),
+                ".env.local": "STRIPE_SECRET_KEY=sk_mvp\n",
+            }
+        ) as root:
+            passed, details, fix = H.check_stripe_team_account({"mvp_root": str(root)})
+        self.assertFalse(passed)
+        self.assertIn("acct_personal", details)
+        self.assertIn("acct_team", fix)
+
+
+class Check11EventsImplementedTests(unittest.TestCase):
+    def test_clean_fixture_passes(self):
+        passed, _, _ = H.check_events_yaml_all_implemented(fixture_ctx())
+        self.assertTrue(passed)
+
+    def test_missing_event_impl_fixture_fails(self):
+        passed, details, fix = H.check_events_yaml_all_implemented(
+            fixture_ctx("broken_events_yaml_missing_impl")
+        )
+        self.assertFalse(passed)
+        self.assertIn("signup_complete", details)
+        self.assertIn("EVENTS.yaml", fix)
+
+    def test_requires_filter_skips_non_applicable_event(self):
+        with repo(
+            {
+                "experiment/experiment.yaml": experiment_yaml("alpha"),
+                "experiment/EVENTS.yaml": events_yaml(
+                    "  paid_signup:\n    funnel_stage: monetize\n    requires: [payment]\n"
+                ),
+                "src/app/page.tsx": "export default function Page() { return null; }\n",
+            }
+        ) as root:
+            passed, _, _ = H.check_events_yaml_all_implemented({"mvp_root": str(root)})
+        self.assertTrue(passed)
+
+
+class Check12UnauthorizedTrackTests(unittest.TestCase):
+    def test_clean_fixture_passes(self):
+        passed, _, _ = H.check_no_unauthorized_track_calls(fixture_ctx())
+        self.assertTrue(passed)
+
+    def test_raw_unknown_track_fails(self):
+        with repo(
+            {
+                "experiment/experiment.yaml": experiment_yaml("alpha"),
+                "experiment/EVENTS.yaml": events_yaml(
+                    "  landing_viewed:\n    funnel_stage: landing\n"
+                ),
+                "src/app/page.tsx": "track('mystery_event');\n",
+            }
+        ) as root:
+            passed, details, fix = H.check_no_unauthorized_track_calls({"mvp_root": str(root)})
+        self.assertFalse(passed)
+        self.assertIn("mystery_event", details)
+        self.assertIn("Add it to EVENTS.yaml", fix)
+
+    def test_unknown_wrapper_track_fails(self):
+        with repo(
+            {
+                "experiment/experiment.yaml": experiment_yaml("alpha"),
+                "experiment/EVENTS.yaml": events_yaml("{}\n"),
+                "src/app/page.tsx": "trackMysteryEvent();\n",
+            }
+        ) as root:
+            passed, details, _ = H.check_no_unauthorized_track_calls({"mvp_root": str(root)})
+        self.assertFalse(passed)
+        self.assertIn("mystery_event", details)
+
+
+class Check13IdentifyTests(unittest.TestCase):
+    def test_clean_fixture_passes_direct_identify(self):
+        passed, details, _ = H.check_identify_in_signup(fixture_ctx())
+        self.assertTrue(passed)
+        self.assertIn("identify", details)
+
+    def test_signup_without_identify_fixture_fails(self):
+        passed, details, fix = H.check_identify_in_signup(
+            fixture_ctx("broken_signup_no_identify")
+        )
+        self.assertFalse(passed)
+        self.assertIn("signup_complete", details)
+        self.assertIn("identify", fix)
+
+    def test_transitive_auth_utility_identify_passes(self):
+        with repo(
+            {
+                "experiment/experiment.yaml": experiment_yaml("alpha"),
+                "src/app/page.tsx": (
+                    'import { onSignup } from "@/lib/auth-client";\n'
+                    "export default function Page() { trackSignupComplete(); onSignup(); return null; }\n"
+                ),
+                "src/lib/auth-client.ts": "export function onSignup() { identify('user_1'); }\n",
+            }
+        ) as root:
+            passed, details, _ = H.check_identify_in_signup({"mvp_root": str(root)})
+        self.assertTrue(passed)
+        self.assertIn("auth-client", details)
+
+
+class ResolveProductionPostHogKeyTests(unittest.TestCase):
+    @patch("ads_ready_static_helpers.vercel_api.read_vercel_token", return_value="tok")
+    @patch("ads_ready_static_helpers.vercel_api.get_vercel_env_var")
+    def test_vercel_env_set_source_tag(self, mock_env, _token):
+        mock_env.return_value = H.vercel_api.EnvResultFound("phc_ENV")
+        with repo({"experiment/experiment.yaml": experiment_yaml("alpha")}) as root:
+            key, source, file = H.resolve_production_posthog_key(
+                {"mvp_root": str(root), "vercel_project_id": "prj"}
+            )
+        self.assertEqual((key, source, file), ("phc_ENV", "vercel_env_set", None))
+
+    @patch("ads_ready_static_helpers.vercel_api.read_vercel_token", return_value="tok")
+    @patch("ads_ready_static_helpers.vercel_api.get_vercel_env_var")
+    def test_vercel_env_empty_or_placeholder_source_tag(self, mock_env, _token):
+        mock_env.return_value = H.vercel_api.EnvResultFound("")
+        with repo({"experiment/experiment.yaml": experiment_yaml("alpha")}) as root:
+            key, source, file = H.resolve_production_posthog_key(
+                {"mvp_root": str(root), "vercel_project_id": "prj"}
+            )
+        self.assertEqual((key, source, file), ("", "vercel_env_empty_or_placeholder", None))
+
+    @patch("ads_ready_static_helpers.vercel_api.read_vercel_token", return_value="tok")
+    @patch("ads_ready_static_helpers.vercel_api.get_vercel_env_var")
+    def test_vercel_env_error_source_tag(self, mock_env, _token):
+        mock_env.return_value = H.vercel_api.EnvResultError("HTTP 500")
+        with repo({"experiment/experiment.yaml": experiment_yaml("alpha")}) as root:
+            key, source, file = H.resolve_production_posthog_key(
+                {"mvp_root": str(root), "vercel_project_id": "prj"}
+            )
+        self.assertEqual((key, source, file), (None, "vercel_env_error", None))
+
+    @patch("ads_ready_static_helpers.vercel_api.read_vercel_token", return_value=None)
+    def test_source_fallback_single_file_pass(self, _token):
+        with repo({"src/lib/analytics.ts": analytics_ts("alpha", "phc_SOURCE")}) as root:
+            key, source, file = H.resolve_production_posthog_key({"mvp_root": str(root)})
+        self.assertEqual((key, source, file), ("phc_SOURCE", "source_fallback", "src/lib/analytics.ts"))
+
+    @patch("ads_ready_static_helpers.vercel_api.read_vercel_token", return_value=None)
+    def test_source_fallback_multiple_identical_pass(self, _token):
+        with repo(
+            {
+                "src/lib/analytics.ts": analytics_ts("alpha", "phc_SAME"),
+                "src/lib/analytics-server.ts": analytics_ts("alpha", "phc_SAME"),
+            }
+        ) as root:
+            key, source, file = H.resolve_production_posthog_key({"mvp_root": str(root)})
+        self.assertEqual((key, source, file), ("phc_SAME", "source_fallback", "src/lib/analytics.ts"))
+
+    @patch("ads_ready_static_helpers.vercel_api.read_vercel_token", return_value=None)
+    def test_source_fallback_placeholder_fails_with_source_tag(self, _token):
+        with repo({"src/lib/analytics.ts": analytics_ts("alpha", "phc_TEAM_KEY")}) as root:
+            key, source, file = H.resolve_production_posthog_key({"mvp_root": str(root)})
+        self.assertEqual((key, source, file), ("phc_TEAM_KEY", "source_fallback", "src/lib/analytics.ts"))
+
+    @patch("ads_ready_static_helpers.vercel_api.read_vercel_token", return_value=None)
+    def test_source_fallback_inconsistent_fails(self, _token):
+        with repo(
+            {
+                "src/lib/analytics.ts": analytics_ts("alpha", "phc_ONE"),
+                "src/lib/analytics-server.ts": analytics_ts("alpha", "phc_TWO"),
+            }
+        ) as root:
+            key, source, file = H.resolve_production_posthog_key({"mvp_root": str(root)})
+        self.assertEqual((key, source, file), (None, "source_fallback_inconsistent", None))
+
+    @patch("ads_ready_static_helpers.vercel_api.read_vercel_token", return_value=None)
+    def test_missing_source_tag(self, _token):
+        with repo({}) as root:
+            key, source, file = H.resolve_production_posthog_key({"mvp_root": str(root)})
+        self.assertEqual((key, source, file), (None, "missing", None))
+
+
+class AppliesPredicateTests(unittest.TestCase):
+    def test_iterate_cross_signup_events_predicate(self):
+        self.assertTrue(H.applies_if_iterate_cross_config_has_signup_events(fixture_ctx()))
+        with repo({"experiment/experiment.yaml": experiment_yaml("alpha")}) as root:
+            self.assertFalse(
+                H.applies_if_iterate_cross_config_has_signup_events({"mvp_root": str(root)})
+            )
+
+    def test_stack_predicates(self):
+        with repo(
+            {
+                "experiment/experiment.yaml": experiment_yaml(
+                    "alpha",
+                    "stack:\n  database: supabase\n  payment: stripe\n  services:\n    - hosting: vercel\n",
+                )
+            }
+        ) as root:
+            ctx = {"mvp_root": str(root)}
+            self.assertTrue(H.applies_if_stack_database_supabase(ctx))
+            self.assertFalse(H.applies_if_stack_database_railway(ctx))
+            self.assertTrue(H.applies_if_stack_hosting_vercel(ctx))
+            self.assertTrue(H.applies_if_stack_payment_stripe(ctx))
+
+    def test_events_yaml_predicate(self):
+        self.assertTrue(H.applies_if_events_yaml_exists(fixture_ctx()))
+        self.assertFalse(H.applies_if_events_yaml_exists(fixture_ctx("broken_no_analytics_import")))
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

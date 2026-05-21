@@ -50,6 +50,38 @@ fix_template: |
   Never write raw email addresses to .runs artifacts; use redact_email().
 ```
 
+### Supabase management-project ownership checks
+```yaml
+id: supabase-management-project-ownership-checks
+maturity: stable
+anti_pattern: false
+composite_identity:
+  root_cause_class: mvp-database-project-lives-outside-team-org
+  divergence_pattern: operator-cannot-validate-or-query-supabase-ground-truth-before-ads
+  stack_scope: scripts/lib/iterate_cross_db
+composite_identity_hash: 3ec889a7087d
+symptom_keywords: [supabase, management-api, project-ref, team-org, db-signups, ads-ready, iterate-cross]
+confidence_score: 0.85
+occurrence_count: 2
+linked_issues: []
+first_seen: 2026-05-21
+last_seen: 2026-05-21
+graduated_to: null
+prevention_mechanism: |
+  iterate_cross_db._read_token() and list_supabase_projects() are the
+  canonical operator-authenticated Supabase project inventory path. Reusing
+  the same token file and Management API enumeration for /ads-ready prevents
+  drift between pre-ad ownership checks and /iterate --cross DB ground-truth
+  collection.
+fix_template: |
+  When a template script needs to confirm that a Supabase project belongs to
+  the operator-visible team org, parse the project ref from the MVP's
+  NEXT_PUBLIC_SUPABASE_URL, call _read_token(), then call
+  list_supabase_projects(token). Pass only when the project ref appears in the
+  returned project list. Missing token is an operator auth failure; do not
+  silently skip the ownership check.
+```
+
 ### gate-evidence cross-reference protocol (GECR)
 ```yaml
 id: gate-evidence-citation-protocol
@@ -1263,6 +1295,44 @@ fix_template: |
     - .claude/scripts/lib/bound-by-coverage-provider.py
     - .claude/scripts/lib/anomaly-audit-evidence.py
     - .claude/scripts/lib/user-approval-evidence-validator.py
+```
+
+### Vercel operator-auth project and env discovery
+```yaml
+id: vercel-api-operator-auth-discovery
+maturity: stable
+anti_pattern: false
+composite_identity:
+  root_cause_class: deployment-account-and-env-resolution-drift
+  divergence_pattern: callers-hand-roll-vercel-cli-auth-project-env-lookups
+  stack_scope: scripts/lib/vercel_api
+composite_identity_hash: 7d6df93a7e31
+symptom_keywords: [vercel, project-link, teamId, production-env, NEXT_PUBLIC_POSTHOG_KEY, deployment-url, ads-ready]
+confidence_score: 0.85
+occurrence_count: 1
+linked_issues: []
+first_seen: 2026-05-22
+last_seen: 2026-05-22
+graduated_to: null
+prevention_mechanism: |
+  vercel_api centralizes Vercel CLI token discovery, team-scoped project
+  listing, latest production deployment lookup, and tri-state production env
+  reads. Callers must not collapse "confirmed absent" and "API error" into the
+  same branch, and team projects must pass teamId when available from
+  .vercel/project.json.
+fix_template: |
+  When code needs Vercel project identity, deployment URL, or production env:
+
+    1. Read the operator token through vercel_api.read_vercel_token().
+    2. Prefer .vercel/project.json projectId/orgId over name matching.
+    3. Pass teamId to project/env/deployment calls when present.
+    4. For env vars, branch on EnvResultFound, EnvResultAbsent, and
+       EnvResultError separately. Never fall back to source or local env on
+       EnvResultError.
+
+  Callers (production):
+    - .claude/scripts/lib/ads_ready_static_helpers.py
+    - .claude/scripts/lib/ads_ready_smoke.py
 ```
 
 ## Existing helpers (no Stack Knowledge — single-caller or in-flux)

@@ -12,6 +12,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
 
 import iterate_cross_posthog_batch as batch  # noqa: E402
+from gclid_filter import PAID_GCLID_FILTER, SYNTHETIC_GCLID_PREFIX  # noqa: E402
 
 
 def test_paginate_discovery_query_fetches_until_short_page():
@@ -96,3 +97,9 @@ def test_run_union_batches_empty_fast_path():
     rows, meta = batch.run_union_batches([], {}, "pid", "key")
     assert rows == []
     assert meta == {"complete": True, "batches_run": 0, "parts_total": 0}
+
+
+def test_paid_gclid_filter_excludes_ads_ready_synthetic_prefix():
+    assert SYNTHETIC_GCLID_PREFIX == "Cj0KCQjw_ads_ready_synthetic_"
+    assert "AND NOT startsWith" in PAID_GCLID_FILTER
+    assert SYNTHETIC_GCLID_PREFIX in PAID_GCLID_FILTER

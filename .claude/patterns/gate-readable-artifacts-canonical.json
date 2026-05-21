@@ -6,6 +6,24 @@
   "generator": ".claude/scripts/derive-graim-manifest.py",
   "artifacts": [
     {
+      "path": ".runs/ads-ready-smoke-result.json",
+      "consumers": [
+        "state-registry:ads-ready.1"
+      ],
+      "writers": [],
+      "scope": "transient-cross-skill",
+      "rationale": "Read by VERIFY blocks in skills: ads-ready."
+    },
+    {
+      "path": ".runs/ads-ready-static-result.json",
+      "consumers": [
+        "state-registry:ads-ready.0"
+      ],
+      "writers": [],
+      "scope": "transient-cross-skill",
+      "rationale": "Read by VERIFY blocks in skills: ads-ready."
+    },
+    {
       "path": ".runs/agent-traces/accessibility-scanner.json",
       "consumers": [
         "state-registry:verify.2"

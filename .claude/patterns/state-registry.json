@@ -459,6 +459,23 @@
       "lifecycle": "transient-cross-skill"
     }
   },
+  "ads-ready": {
+    "0": {
+      "verify": "test -f .runs/ads-ready-static-result.json && python3 -c \"import json; d=json.load(open('.runs/ads-ready-static-result.json')); assert d.get('overall_pass') is True, 'Layer A failed: %d failure(s)' % d.get('failed_count', 0)\"",
+      "artifact": ".runs/ads-ready-static-result.json",
+      "lifecycle": "transient-intra-skill"
+    },
+    "1": {
+      "verify": "test -f .runs/ads-ready-smoke-result.json && python3 -c \"import json; d=json.load(open('.runs/ads-ready-smoke-result.json')); assert d.get('overall_pass') is True or d.get('skipped') is True, 'Layer B failed: %d failure(s)' % d.get('failed_count', 0)\"",
+      "artifact": ".runs/ads-ready-smoke-result.json",
+      "lifecycle": "transient-intra-skill"
+    },
+    "99": {
+      "verify": "test -f .runs/verify-recheck.json && test -f .runs/observation-enforcement.json && python3 -c \"import json,glob; d=json.load(open('.runs/observation-enforcement.json')); ctx=None\nfor f in glob.glob('.runs/*-context.json'):\n    if 'epilogue' in f: continue\n    try: c=json.load(open(f))\n    except: continue\n    if c.get('completed') is True: continue\n    if ctx is None or (c.get('timestamp','') > (ctx.get('timestamp','') or '')): ctx=c\nactive_skill=ctx.get('skill','') if ctx else ''\nactive_run_id=ctx.get('run_id','') if ctx else ''\nassert d.get('pass') is True or d.get('skipped') is True, 'observation enforcement failed: pass=%s skipped=%s missing=%s scope=%s error=%s' % (d.get('pass'), d.get('skipped'), d.get('missing'), d.get('scope'), d.get('error'))\nassert d.get('skill') == active_skill, 'observation-enforcement.json skill=%r does not match active_skill=%r (stale prior-skill artifact)' % (d.get('skill'), active_skill)\nassert d.get('run_id') == active_run_id, 'observation-enforcement.json run_id=%r does not match active_run_id=%r (stale artifact)' % (d.get('run_id'), active_run_id)\"",
+      "artifact": ".runs/observation-enforcement.json",
+      "lifecycle": "transient-cross-skill"
+    }
+  },
   "audit": {
     "0": "test -f .runs/audit-context.json && python3 -c \"import json,os; ctx=json.load(open('.runs/audit-context.json')); assert ctx.get('scope','')!='full' or os.path.exists('.runs/audit-skill-manifest.json'), 'full scope but manifest missing'\"",
     "1": "python3 -c \"import json,os; d=json.load(open('.runs/audit-analysis.json')); assert 'duplication' in d; assert not os.path.exists('.runs/audit-skill-manifest.json') or 'skill_architecture' in d\"",
