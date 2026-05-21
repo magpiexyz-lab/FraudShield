@@ -58,51 +58,73 @@ def mvp(name="m", owner="alice", visitors=0, signups=0, signup_events=None,
     }
 
 
-# ---------- Verdict precedence ----------
+# ---------- Verdict precedence (rule v2: vis<100 → INSUF; vis≥100 & conv≥6% → GO; else NO_GO) ----------
 
-def test_go_with_3_signups():
-    score = compute_headline_verdict(mvp(visitors=40, signups=3), {}, THRESHOLDS)
+def test_go_at_floor_with_6pct_conv():
+    """visitors=100 & signups=6 → conv=6.0% (exactly at threshold) → GO."""
+    score = compute_headline_verdict(mvp(visitors=100, signups=6), {}, THRESHOLDS)
     assert score["headline_verdict"] == VERDICT_GO
     assert score["visitors_needed"] == 0
 
 
-def test_go_with_more_than_3_signups():
-    score = compute_headline_verdict(mvp(visitors=34, signups=6), {}, THRESHOLDS)
+def test_go_with_high_conv():
+    """visitors=200 & signups=20 → conv=10% → GO."""
+    score = compute_headline_verdict(mvp(visitors=200, signups=20), {}, THRESHOLDS)
     assert score["headline_verdict"] == VERDICT_GO
 
 
 def test_no_go_at_floor_with_zero_signups():
-    score = compute_headline_verdict(mvp(visitors=50, signups=0), {}, THRESHOLDS)
+    """visitors=100 & signups=0 → conv=0% < 6% → NO_GO."""
+    score = compute_headline_verdict(mvp(visitors=100, signups=0), {}, THRESHOLDS)
     assert score["headline_verdict"] == VERDICT_NO_GO
 
 
-def test_weak_above_floor_with_some_but_not_enough_signups():
-    """≥50 visitors with 0<signups<3 → WEAK (between NO_GO and GO)."""
+def test_no_go_above_floor_with_some_signups_below_6pct():
+    """≥100 visitors with conv < 6% → NO_GO (WEAK no longer emitted)."""
     score = compute_headline_verdict(mvp(visitors=107, signups=1), {}, THRESHOLDS)
-    assert score["headline_verdict"] == VERDICT_WEAK
+    assert score["headline_verdict"] == VERDICT_NO_GO
 
 
-def test_weak_with_two_signups_at_high_volume():
+def test_no_go_with_2_signups_at_high_volume():
+    """200 visitors / 2 signups = 1% conv → NO_GO."""
     score = compute_headline_verdict(mvp(visitors=200, signups=2), {}, THRESHOLDS)
-    assert score["headline_verdict"] == VERDICT_WEAK
+    assert score["headline_verdict"] == VERDICT_NO_GO
+
+
+def test_no_go_just_below_6pct_threshold():
+    """100 visitors / 5 signups = 5.0% conv → NO_GO (just under 6%)."""
+    score = compute_headline_verdict(mvp(visitors=100, signups=5), {}, THRESHOLDS)
+    assert score["headline_verdict"] == VERDICT_NO_GO
 
 
 def test_insufficient_data_below_floor():
+    """visitors=20 < 100 floor → INSUF regardless of signups."""
     score = compute_headline_verdict(mvp(visitors=20, signups=1), {}, THRESHOLDS)
     assert score["headline_verdict"] == VERDICT_INSUFFICIENT
-    assert score["visitors_needed"] == 30
+    assert score["visitors_needed"] == 80
+
+
+def test_insufficient_with_great_conv_but_low_traffic():
+    """8 visitors / 6 signups = 75% conv, but vis<100 → INSUF.
+
+    dead-link real case: tiny sample with extreme conversion is exactly
+    the case the visitors_floor protects against (likely attribution issue,
+    not real conversion rate)."""
+    score = compute_headline_verdict(mvp(visitors=8, signups=6), {}, THRESHOLDS)
+    assert score["headline_verdict"] == VERDICT_INSUFFICIENT
+    assert score["visitors_needed"] == 92
 
 
 def test_insufficient_zero_visitors():
     score = compute_headline_verdict(mvp(visitors=0, signups=0), {}, THRESHOLDS)
     assert score["headline_verdict"] == VERDICT_INSUFFICIENT
-    assert score["visitors_needed"] == 50
+    assert score["visitors_needed"] == 100
 
 
-def test_no_data_takes_precedence_over_signups():
-    """no_event_data flag wins even with signups (shouldn't happen but defensive)."""
+def test_no_data_takes_precedence_over_go():
+    """no_event_data flag wins even with conv-passing scenario."""
     score = compute_headline_verdict(
-        mvp(visitors=80, signups=5),
+        mvp(visitors=100, signups=10),  # 10% conv would be GO
         {"no_event_data": True},
         THRESHOLDS,
     )
@@ -112,6 +134,16 @@ def test_no_data_takes_precedence_over_signups():
 def test_no_data_takes_precedence_over_no_go():
     score = compute_headline_verdict(
         mvp(visitors=154, signups=0),
+        {"no_event_data": True},
+        THRESHOLDS,
+    )
+    assert score["headline_verdict"] == VERDICT_NO_DATA
+
+
+def test_no_data_takes_precedence_over_insufficient():
+    """no_event_data wins even when visitors are below floor."""
+    score = compute_headline_verdict(
+        mvp(visitors=20, signups=0),
         {"no_event_data": True},
         THRESHOLDS,
     )
@@ -147,9 +179,9 @@ def test_missing_project_name_takes_precedence_over_go():
 
 
 def test_missing_project_name_falsy_falls_through_to_normal_precedence():
-    """When missing_project_name is False/absent, the GO/WEAK/etc. logic runs normally."""
+    """When missing_project_name is False/absent, normal verdict logic runs."""
     score = compute_headline_verdict(
-        mvp(visitors=100, signups=5),
+        mvp(visitors=100, signups=8),  # 8% conv → GO
         {"missing_project_name": False},
         THRESHOLDS,
     )
@@ -206,28 +238,28 @@ def test_ga_clicks_used_as_denominator_when_present():
     """When mvp.ga_clicks > 0, verdict uses GA-clicks not PH visitors.
 
     stylica-ai real case: GA 575 / PH 201 / 33 signups. With GA denominator
-    visitor count is 575, ≥50 floor + ≥3 signups → GO (unchanged), but the
-    metrics report the more accurate true_conv_rate.
+    conv = 33/575 = 5.7% → below 6% threshold → NO_GO. This is exactly the
+    over-counting trap the GA-first rule catches.
     """
     score = compute_headline_verdict(
         mvp(visitors=201, signups=33, ga_clicks=575),
         {},
         THRESHOLDS,
     )
-    assert score["headline_verdict"] == VERDICT_GO
+    # 33/575 = 5.74% < 6% threshold → NO_GO (not GO as PH/201=16.4% would suggest).
+    assert score["headline_verdict"] == VERDICT_NO_GO
     assert score["metrics"]["denominator_source"] == "ga"
     assert score["metrics"]["ga_clicks"] == 575
     assert score["metrics"]["gclid_visitors"] == 201
-    # true_conv_rate = 33/575 = 5.74%, much lower than PH-only 33/201 = 16.4%
     assert abs(score["metrics"]["true_conv_rate"] - 33 / 575) < 1e-4
     assert abs(score["metrics"]["capture_rate"] - 201 / 575) < 1e-4
 
 
 def test_ga_clicks_promotes_insuf_to_no_go_at_floor():
-    """mosai real case: PH 44 visitors (below 50 floor → INSUF) but GA 50 clicks
-    (at floor, 0 signups → NO_GO). Workaround surfaces the deserved NO_GO."""
+    """mosai real case: PH 44 visitors (below floor) but GA 100 clicks (at floor,
+    0 signups → NO_GO). Workaround surfaces the deserved NO_GO."""
     score = compute_headline_verdict(
-        mvp(visitors=44, signups=0, ga_clicks=50),
+        mvp(visitors=44, signups=0, ga_clicks=100),
         {},
         THRESHOLDS,
     )
@@ -256,39 +288,31 @@ def test_ph_overcount_capture_rate_above_100():
         THRESHOLDS,
     )
     assert score["metrics"]["capture_rate"] > 1.0
-    # NO_GO still fires (visitors=2055 >= floor, signups=0).
+    # NO_GO fires (visitors=2055 >= floor, conv=0%).
     assert score["headline_verdict"] == VERDICT_NO_GO
 
 
 def test_ga_only_mvp_with_zero_ph_visitors_no_signups():
-    """ga_only synthetic record with ga_clicks > 0, no flag → INSUFFICIENT_DATA
-    (below floor in this test). Operator gets a normal-shaped record and can
-    inspect ga_only flag for context."""
+    """ga_only synthetic record below floor → INSUFFICIENT_DATA when no
+    ga_clicks_without_ph_traffic flag set."""
     score = compute_headline_verdict(
         mvp(visitors=0, signups=0, ga_clicks=27, ga_only=True),
         {},  # no flag set
         THRESHOLDS,
     )
-    # 27 < 50 floor, 0 signups → INSUFFICIENT_DATA
     assert score["headline_verdict"] == VERDICT_INSUFFICIENT
     assert score["ga_only"] is True
 
 
 def test_visitors_needed_zero_for_go():
-    score = compute_headline_verdict(mvp(visitors=10, signups=3), {}, THRESHOLDS)
+    score = compute_headline_verdict(mvp(visitors=100, signups=10), {}, THRESHOLDS)
     assert score["headline_verdict"] == VERDICT_GO
     assert score["visitors_needed"] == 0
 
 
 def test_visitors_needed_zero_for_no_go():
-    score = compute_headline_verdict(mvp(visitors=50, signups=0), {}, THRESHOLDS)
+    score = compute_headline_verdict(mvp(visitors=100, signups=0), {}, THRESHOLDS)
     assert score["headline_verdict"] == VERDICT_NO_GO
-    assert score["visitors_needed"] == 0
-
-
-def test_visitors_needed_zero_for_weak():
-    score = compute_headline_verdict(mvp(visitors=80, signups=1), {}, THRESHOLDS)
-    assert score["headline_verdict"] == VERDICT_WEAK
     assert score["visitors_needed"] == 0
 
 
@@ -314,10 +338,10 @@ def test_signup_events_carried_through():
 def test_verdict_enum_consistency():
     """Each verdict path returns a value in the registry-asserted enum."""
     cases = [
-        (mvp(visitors=10, signups=3), {}, VERDICT_GO),
-        (mvp(visitors=50, signups=0), {}, VERDICT_NO_GO),
-        (mvp(visitors=80, signups=1), {}, VERDICT_WEAK),
-        (mvp(visitors=10, signups=0), {}, VERDICT_INSUFFICIENT),
+        (mvp(visitors=100, signups=10), {}, VERDICT_GO),       # 10% conv
+        (mvp(visitors=100, signups=0), {}, VERDICT_NO_GO),     # 0% conv
+        (mvp(visitors=200, signups=2), {}, VERDICT_NO_GO),     # 1% conv
+        (mvp(visitors=20, signups=0), {}, VERDICT_INSUFFICIENT),
         (mvp(visitors=10, signups=0), {"no_event_data": True}, VERDICT_NO_DATA),
     ]
     for m, issues, expected in cases:
@@ -344,7 +368,9 @@ def test_signup_source_db_real_zero_suppresses_ph_go():
 
 
 def test_signup_source_db_real_for_low_real_counts_with_ph_zero():
-    for n, expected in [(1, VERDICT_WEAK), (2, VERDICT_WEAK), (3, VERDICT_GO)]:
+    """DB-first: when trusted DB is available, use it regardless of PH. Verdict
+    follows conv >= 6%."""
+    for n, expected in [(1, VERDICT_NO_GO), (5, VERDICT_NO_GO), (6, VERDICT_GO), (10, VERDICT_GO)]:
         record = mvp(visitors=100, signups=0, ga_clicks=100)
         record.update({
             "db_signups_real": n,
@@ -355,9 +381,44 @@ def test_signup_source_db_real_for_low_real_counts_with_ph_zero():
             "ph_signups_available": True,
         })
         score = compute_headline_verdict(record, {}, THRESHOLDS)
-        assert score["headline_verdict"] == expected
+        assert score["headline_verdict"] == expected, f"n={n}: got {score['headline_verdict']}, expected {expected}"
         assert score["metrics"]["signup_source"] == "db_real"
         assert score["metrics"]["effective_signups"] == n
+
+
+def test_signup_source_db_real_preferred_over_ph_when_both_positive():
+    """Key DB-first behavior: when DB AND PH both have signal, use DB."""
+    record = mvp(visitors=100, signups=14, ga_clicks=100)
+    record.update({
+        "db_signups_real": 17,             # DB has more (truth)
+        "db_signups_real_windowed": True,
+        "db_source": "supabase",
+        "db_unmapped_reason": None,
+        "ph_signups": 14,                  # PH undercounts
+        "ph_signups_available": True,
+    })
+    score = compute_headline_verdict(record, {}, THRESHOLDS)
+    assert score["metrics"]["signup_source"] == "db_real"
+    assert score["metrics"]["effective_signups"] == 17
+    # conv = 17/100 = 17% → GO
+    assert score["headline_verdict"] == VERDICT_GO
+
+
+def test_signup_source_ph_fallback_when_db_unmapped():
+    """When db_unmapped_reason is set, DB is untrusted → fall back to PH."""
+    record = mvp(visitors=100, signups=8, ga_clicks=100)
+    record.update({
+        "db_signups_real": None,
+        "db_signups_real_windowed": False,
+        "db_source": None,
+        "db_unmapped_reason": "no_match",
+        "ph_signups": 8,
+        "ph_signups_available": True,
+    })
+    score = compute_headline_verdict(record, {}, THRESHOLDS)
+    assert score["metrics"]["signup_source"] == "ph"
+    assert score["metrics"]["effective_signups"] == 8
+    assert score["headline_verdict"] == VERDICT_GO
 
 
 def test_is_trusted_db_real_rejects_untrusted_sources():

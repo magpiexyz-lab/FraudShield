@@ -14,16 +14,20 @@ Verdict precedence (first match wins):
   0. MISSING_PROJECT_NAME    (issues.missing_project_name — orphan event stream)
   1. GA_NO_PH_TRACKING       (issues.ga_clicks_without_ph_traffic — GA has spend, PostHog blind)
   2. NO_DATA                 (issues.no_event_data)
-  3. GO                      (signups >= signups_go)
-  4. NO_GO                   (visitors >= visitors_floor AND signups == 0)
-  5. WEAK                    (visitors >= visitors_floor AND 0 < signups < signups_go)
-  6. INSUFFICIENT_DATA       (default; visitors_needed = visitors_floor - visitors)
+  3. INSUFFICIENT_DATA       (visitors < visitors_floor — not enough sample)
+  4. GO                      (visitors >= visitors_floor AND conv_rate >= conv_rate_go)
+  5. NO_GO                   (visitors >= visitors_floor AND conv_rate < conv_rate_go)
 
 Denominator rule: when mvp.ga_clicks > 0 (state-x0a merged Google Ads clicks),
 `visitors = ga_clicks` (the more reliable signal — clicks are GA-counted directly,
 not subject to PostHog SDK lazy-load failures). Otherwise fall back to PostHog
 `gclid_visitors`. The score record exposes both numbers + `denominator_source`
 so x4 can flag PH-overcount discrepancies (ph > ga * 1.10).
+
+Signups numerator: prefer trusted DB ground truth (Supabase or Railway) whenever
+available; fall back to PostHog `ph_signups` only when DB has no mapping. DB rows
+are the actual completed signups — PH events may over- or under-count due to
+late instrumentation, ad-blocker drops, or wrong signup_events config.
 """
 
 from __future__ import annotations
@@ -45,8 +49,9 @@ DEFAULT_CONFIG = {
     ],
     "mvp_mappings": {},
     "thresholds": {
-        "signups_go": 3,
-        "visitors_floor": 50,
+        "signups_go": 6,            # derived: visitors_floor * conv_rate_go
+        "visitors_floor": 100,      # min paid visitors to commit either way
+        "conv_rate_go": 0.06,       # min conversion rate to call GO
     },
     "window_days": 90,
 }
@@ -94,6 +99,25 @@ def is_trusted_db_real(mvp: dict) -> bool:
 
 
 def resolve_effective_signups(mvp: dict) -> tuple[int | None, str | None, list[dict]]:
+    """Pick the signup count and source for the verdict.
+
+    DB-first policy: when the MVP has a trusted DB ground-truth count
+    (Supabase or Railway, mapped + windowed), use it regardless of what
+    PostHog reports. PostHog is a fallback only when no DB is available.
+
+    Rationale: DB rows are actual completed signups. PostHog events can be
+    over-counted (wrong signup_events config), under-counted (late
+    instrumentation, ad-blocker drops, OAuth callbacks fired server-side),
+    or attribution-broken (gclid lost between landing and signup page).
+
+    Returns (effective_signups, source, sanity_flags).
+    Sources:
+      - "db_real":      trusted DB count used (preferred)
+      - "db_real_zero": trusted DB == 0 while PostHog has paid signups
+                        (flagged for operator review; treat as 0)
+      - "ph":           PostHog count used (no trusted DB available)
+      - None:           neither source has signal
+    """
     ph_signups_available = mvp.get("ph_signups_available")
     if ph_signups_available is None:
         ph_signups_available = bool(mvp.get("signup_events"))
@@ -103,23 +127,24 @@ def resolve_effective_signups(mvp: dict) -> tuple[int | None, str | None, list[d
     db_real = mvp.get("db_signups_real")
     flags: list[dict] = []
 
-    if (
-        is_trusted_db_real(mvp)
-        and db_real == 0
-        and ph_signups_available is True
-        and (ph_signups or 0) > 0
-    ):
-        flags.append({
-            "flag": "db_zero_with_ph_signups",
-            "severity": "high",
-            "message": "Trusted DB has zero real signups while PostHog has paid signup events.",
-        })
-        return 0, "db_real_zero", flags
-    if is_trusted_db_real(mvp) and (
-        (db_real or 0) > 0 and ph_signups_available is True and (ph_signups or 0) == 0
-        or ph_signups_available is False
-    ):
+    if is_trusted_db_real(mvp):
+        # DB has the truth. Emit a high-severity flag only when DB=0 contradicts
+        # positive PH paid signups — that's a signal the PH config is wrong, not
+        # that the verdict should change.
+        if (
+            db_real == 0
+            and ph_signups_available is True
+            and (ph_signups or 0) > 0
+        ):
+            flags.append({
+                "flag": "db_zero_with_ph_signups",
+                "severity": "high",
+                "message": "Trusted DB has zero real signups while PostHog has paid signup events.",
+            })
+            return 0, "db_real_zero", flags
         return int(db_real or 0), "db_real", flags
+
+    # No trusted DB → fall back to PostHog when available.
     if ph_signups_available is True:
         return int(ph_signups or 0), "ph", flags
     return None, None, flags
@@ -188,13 +213,13 @@ def compute_headline_verdict(mvp: dict, issues: dict, thresholds: dict) -> dict:
       0. missing_project_name → MISSING_PROJECT_NAME (orphan event stream — fix tracking)
       1. ga_clicks_without_ph_traffic → GA_NO_PH_TRACKING (paying for blind deploy)
       2. no_event_data → NO_DATA
-      3. signups >= signups_go → GO
-      4. visitors >= visitors_floor AND signups == 0 → NO_GO
-      5. visitors >= visitors_floor AND 0 < signups < signups_go → WEAK
-      6. (default) → INSUFFICIENT_DATA
+      3. visitors < visitors_floor → INSUFFICIENT_DATA (not enough sample)
+      4. conv_rate >= conv_rate_go → GO
+      5. (default; visitors >= floor, conv below threshold) → NO_GO
 
-    Denominator: ga_clicks when > 0 (state-x0a merged Google Ads data),
-    else gclid_visitors. The PH count remains in metrics for diagnostics.
+    Conversion rate is signups / visitors where signups uses DB-first priority
+    (see resolve_effective_signups) and visitors uses GA-clicks when available
+    (state-x0a merged Google Ads data), else PostHog gclid_visitors.
     """
     gclid_visitors = mvp.get("gclid_visitors", 0)
     ga_clicks = mvp.get("ga_clicks", 0) or 0
@@ -211,23 +236,26 @@ def compute_headline_verdict(mvp: dict, issues: dict, thresholds: dict) -> dict:
         visitors = gclid_visitors
         denominator_source = "ph"
 
+    visitors_floor = thresholds["visitors_floor"]
+    conv_rate_go = thresholds.get("conv_rate_go", 0.06)
+    # Effective conv rate uses the chosen denominator (GA when present).
+    conv_rate_for_verdict = (signups / visitors) if visitors > 0 else 0.0
+
     if issues.get("missing_project_name"):
         verdict = VERDICT_MISSING_PROJECT_NAME
     elif issues.get("ga_clicks_without_ph_traffic"):
         verdict = VERDICT_GA_NO_PH_TRACKING
     elif issues.get("no_event_data"):
         verdict = VERDICT_NO_DATA
-    elif signups >= thresholds["signups_go"]:
-        verdict = VERDICT_GO
-    elif visitors >= thresholds["visitors_floor"] and signups == 0:
-        verdict = VERDICT_NO_GO
-    elif visitors >= thresholds["visitors_floor"]:
-        verdict = VERDICT_WEAK
-    else:
+    elif visitors < visitors_floor:
         verdict = VERDICT_INSUFFICIENT
+    elif conv_rate_for_verdict >= conv_rate_go:
+        verdict = VERDICT_GO
+    else:
+        verdict = VERDICT_NO_GO
 
     visitors_needed = (
-        max(0, thresholds["visitors_floor"] - visitors)
+        max(0, visitors_floor - visitors)
         if verdict == VERDICT_INSUFFICIENT
         else 0
     )
@@ -431,8 +459,8 @@ def parse_debug_prompts(content: str) -> dict:
 
 ACTION_TEMPLATES = {
     VERDICT_GO: "Promote {name} to Phase 2 (run /iterate default mode for the deeper analysis).",
-    VERDICT_WEAK: "{name}: above visitors floor but only {signups} signups. Investigate landing-page friction or extend campaign window before deciding.",
-    VERDICT_NO_GO: "Stop {name}; document hypothesis rejection in retro.",
+    VERDICT_WEAK: "{name}: above visitors floor but only {signups} signups. Investigate landing-page friction or extend campaign window before deciding.",  # deprecated — current rule never emits WEAK
+    VERDICT_NO_GO: "Stop {name}; document hypothesis rejection in retro. (≥{visitors_floor} visitors with conv < 6%)",
     VERDICT_INSUFFICIENT: "Keep {name} running until {visitors_needed} more visitors arrive (target: {visitors_floor}+).",
     VERDICT_NO_DATA: "Debug PostHog tracking for {name}. Run Claude Code in the MVP repo with the NO_DATA prompt below.",
     VERDICT_MISSING_PROJECT_NAME: "Fix {name} tracking: PostHog events arrived without `project_name`. Check `src/lib/analytics.ts` PROJECT_NAME constant — it must equal experiment.yaml.name (kebab-case). Re-run /verify in the MVP repo after fixing.",
@@ -530,9 +558,9 @@ def emit_telegram(scores: list, debug_prompts: dict, visitors_floor: int) -> str
                 needed_prompts.add(verdict)
         lines.append("")
         lines.append("Universal rule:")
-        lines.append(f"• <{visitors_floor} visitors → keep running")
-        lines.append(f"• ≥{visitors_floor} visitors with 0 signups → stop")
-        lines.append(f"• ≥3 signups → promote to Phase 2")
+        lines.append(f"• <{visitors_floor} visitors → keep running (INSUFFICIENT)")
+        lines.append(f"• ≥{visitors_floor} visitors with conv ≥6% → promote to Phase 2 (GO)")
+        lines.append(f"• ≥{visitors_floor} visitors with conv <6% → stop (NO_GO)")
 
         for prompt_name in sorted(needed_prompts):
             body = debug_prompts.get(prompt_name)
