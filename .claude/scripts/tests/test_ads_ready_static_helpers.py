@@ -296,65 +296,53 @@ class Check5SignupEventsTests(unittest.TestCase):
 
 
 class Check6PostHogTeamKeyTests(unittest.TestCase):
-    def _run_check6_with_server(self, server_result):
-        projects = [
-            {"id": 1, "name": "shared", "api_token": "phc_CLIENT"},
-            {"id": 2, "name": "other", "api_token": "phc_OTHER"},
-        ]
+    def _run_check6(
+        self,
+        key: str = "phc_CLIENT",
+        source: str = "vercel_env_set",
+        resolved_file=None,
+    ):
         with patch(
             "ads_ready_static_helpers.resolve_production_posthog_key",
-            return_value=("phc_CLIENT", "vercel_env_set", None),
-        ), patch(
-            "ads_ready_static_helpers._read_posthog_api_key", return_value="phx_personal"
-        ), patch(
-            "ads_ready_static_helpers._list_posthog_projects", return_value=projects
+            return_value=(key, source, resolved_file),
         ), patch(
             "ads_ready_static_helpers.load_team_config", return_value=team_config()
-        ), patch(
-            "ads_ready_static_helpers.vercel_api.read_vercel_token", return_value="vercel-token"
-        ), patch(
-            "ads_ready_static_helpers.vercel_api.get_vercel_env_var",
-            return_value=server_result,
-        ) as mock_env:
+        ):
             result = H.check_posthog_team_key(fixture_ctx())
-        mock_env.assert_called_with(
-            "vercel-token",
-            "prj_clean",
-            "team_clean",
-            "POSTHOG_SERVER_KEY",
-            target="production",
-        )
         return result
 
-    def test_matching_team_project_passes(self):
-        passed, details, _ = self._run_check6_with_server(H.vercel_api.EnvResultAbsent())
+    def test_matching_team_key_passes(self):
+        passed, details, _ = self._run_check6()
         self.assertTrue(passed)
-        self.assertIn("shared", details)
+        self.assertEqual(
+            details,
+            "MVP NEXT_PUBLIC_POSTHOG_KEY matches team-config.yaml.team.posthog.project_api_tokens",
+        )
 
     @patch("ads_ready_static_helpers.resolve_production_posthog_key")
-    @patch("ads_ready_static_helpers._read_posthog_api_key", return_value="phx_personal")
-    @patch("ads_ready_static_helpers._list_posthog_projects")
     @patch("ads_ready_static_helpers.load_team_config")
-    @patch("ads_ready_static_helpers.vercel_api.read_vercel_token", return_value="vercel-token")
-    @patch("ads_ready_static_helpers.vercel_api.get_vercel_env_var", return_value=H.vercel_api.EnvResultAbsent())
-    def test_mvp_key_not_in_team_project_fails(self, _env, _token, mock_config, mock_projects, _api, mock_resolve):
+    def test_mvp_key_not_in_team_config_fails(self, mock_config, mock_resolve):
         mock_resolve.return_value = ("phc_MISSING", "vercel_env_set", None)
         mock_config.return_value = team_config()
-        mock_projects.return_value = [{"id": 1, "name": "personal", "api_token": "phc_MISSING"}]
         passed, details, fix = H.check_posthog_team_key(fixture_ctx())
         self.assertFalse(passed)
         self.assertIn("team-config", details)
-        self.assertIn("project_api_tokens", fix)
+        self.assertIn("actual=phc_MI...SING", fix)
+        self.assertIn("team.posthog.project_ids=[1, 2]", details)
+        self.assertIn("team.posthog.project_api_tokens count=1", details)
 
     @patch("ads_ready_static_helpers.resolve_production_posthog_key")
     @patch("ads_ready_static_helpers.load_team_config", return_value=team_config())
-    @patch("ads_ready_static_helpers._read_posthog_api_key", side_effect=FileNotFoundError())
-    def test_missing_posthog_api_key_fails(self, _api, _config, mock_resolve):
+    def test_source_fallback_key_passes_without_posthog_api_key(
+        self,
+        _config,
+        mock_resolve,
+    ):
         mock_resolve.return_value = ("phc_CLIENT", "source_fallback", "src/lib/analytics.ts")
         passed, details, fix = H.check_posthog_team_key(fixture_ctx())
-        self.assertFalse(passed)
-        self.assertIn("personal API key", details)
-        self.assertIn("~/.posthog/personal-api-key", fix)
+        self.assertTrue(passed)
+        self.assertIn("team-config.yaml.team.posthog.project_api_tokens", details)
+        self.assertIsNone(fix)
 
     @patch("ads_ready_static_helpers.resolve_production_posthog_key")
     @patch("ads_ready_static_helpers.load_team_config", return_value={})
@@ -364,41 +352,18 @@ class Check6PostHogTeamKeyTests(unittest.TestCase):
         self.assertFalse(passed)
         self.assertIn("Team config not found", details)
 
-    def test_server_key_absent_passes(self):
-        passed, _, _ = self._run_check6_with_server(H.vercel_api.EnvResultAbsent())
+    @patch("ads_ready_static_helpers.resolve_production_posthog_key")
+    @patch("ads_ready_static_helpers.load_team_config", return_value=team_config())
+    def test_check6_does_not_call_posthog_api(self, _config, mock_resolve):
+        mock_resolve.return_value = ("phc_CLIENT", "vercel_env_set", None)
+        with patch("ads_ready_static_helpers._read_posthog_api_key") as mock_read, patch(
+            "ads_ready_static_helpers._list_posthog_projects"
+        ) as mock_projects, patch("ads_ready_static_helpers.subprocess.run") as mock_run:
+            passed, _, _ = H.check_posthog_team_key(fixture_ctx())
         self.assertTrue(passed)
-
-    def test_server_key_empty_string_fails(self):
-        passed, details, fix = self._run_check6_with_server(H.vercel_api.EnvResultFound(""))
-        self.assertFalse(passed)
-        self.assertIn("empty string", details)
-        self.assertIn("does NOT fall through", fix)
-
-    def test_server_key_placeholder_fails(self):
-        passed, details, fix = self._run_check6_with_server(
-            H.vercel_api.EnvResultFound("phc_TEAM_KEY")
-        )
-        self.assertFalse(passed)
-        self.assertIn("placeholder", details)
-        self.assertIn("Unset POSTHOG_SERVER_KEY", fix)
-
-    def test_server_key_same_project_passes(self):
-        passed, _, _ = self._run_check6_with_server(H.vercel_api.EnvResultFound("phc_CLIENT"))
-        self.assertTrue(passed)
-
-    def test_server_key_different_project_fails(self):
-        passed, details, fix = self._run_check6_with_server(H.vercel_api.EnvResultFound("phc_OTHER"))
-        self.assertFalse(passed)
-        self.assertIn("different PostHog project", details)
-        self.assertIn("server events go to `other`", fix)
-
-    def test_server_key_env_error_fails(self):
-        passed, details, fix = self._run_check6_with_server(
-            H.vercel_api.EnvResultError("HTTP 401")
-        )
-        self.assertFalse(passed)
-        self.assertIn("HTTP 401", details)
-        self.assertIn("API error", fix)
+        mock_read.assert_not_called()
+        mock_projects.assert_not_called()
+        mock_run.assert_not_called()
 
 
 class Check7SupabaseTests(unittest.TestCase):

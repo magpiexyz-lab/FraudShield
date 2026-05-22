@@ -355,11 +355,13 @@ def _team_values_or_failure(
     ctx: dict,
     provider: str,
     field: str,
+    config: dict | None = None,
 ) -> tuple[list[str], tuple[bool, str, str | None] | None]:
-    try:
-        config = _team_config(ctx)
-    except TeamConfigLoadError as exc:
-        return [], _team_config_load_error_result(exc)
+    if config is None:
+        try:
+            config = _team_config(ctx)
+        except TeamConfigLoadError as exc:
+            return [], _team_config_load_error_result(exc)
     if not config:
         return [], _missing_team_config_result()
     team = config.get("team")
@@ -859,7 +861,10 @@ def _format_posthog_team_expectation(team_posthog: dict) -> str:
         project_ids = []
     if not isinstance(api_tokens, list):
         api_tokens = []
-    return f"team.posthog.project_ids={project_ids}; team.posthog.project_api_tokens={api_tokens}"
+    return (
+        f"team.posthog.project_ids={project_ids}; "
+        f"team.posthog.project_api_tokens count={len(api_tokens)}"
+    )
 
 
 def _resolve_mvp_env_value(ctx: dict, keys: list[str]) -> tuple[str | None, str | None, str | None]:
@@ -969,89 +974,37 @@ def check_posthog_team_key(ctx: dict) -> tuple[bool, str, str | None]:
         config = _team_config(ctx)
     except TeamConfigLoadError as exc:
         return _team_config_load_error_result(exc)
-    if not config:
-        return _missing_team_config_result()
-    if not isinstance(config.get("team"), dict):
-        return _missing_team_root_result()
-    if not isinstance(config["team"].get("posthog"), dict):
-        return _missing_team_provider_result("posthog")
+    team_tokens, failure = _team_values_or_failure(
+        ctx,
+        "posthog",
+        "project_api_tokens",
+        config,
+    )
+    if failure:
+        return failure
     posthog_config = _team_provider(config, "posthog")
-    team_tokens = _team_list(config, "posthog", "project_api_tokens")
-    if not team_tokens:
-        return _missing_team_section_result("posthog", "project_api_tokens")
     expected = _format_posthog_team_expectation(posthog_config)
+    source_label = (
+        f"`{resolved_file}` source fallback"
+        if source == "source_fallback"
+        else "Vercel production env"
+    )
     if key not in team_tokens:
-        source_label = f"`{resolved_file}` source fallback" if source == "source_fallback" else "Vercel production env"
         return (
             False,
-            f"Resolved PostHog key {_mask_secret(key)} from {source_label} is not in team-config. Expected {expected}.",
-            f"Set NEXT_PUBLIC_POSTHOG_KEY in {source_label} to one of team.posthog.project_api_tokens. Expected {expected}.",
+            (
+                "Resolved PostHog key is not in team-config. "
+                f"Expected {expected}; actual={_mask_secret(key)} from {source_label}."
+            ),
+            (
+                f"Set NEXT_PUBLIC_POSTHOG_KEY in {source_label} to one of "
+                "team.posthog.project_api_tokens. "
+                f"Expected {expected}; actual={_mask_secret(key)}."
+            ),
         )
-
-    try:
-        api_key = _read_posthog_api_key()
-    except Exception:
-        return (
-            False,
-            f"PostHog personal API key is missing. Expected {expected}.",
-            "Save your PostHog personal API key to ~/.posthog/personal-api-key (see iterate-cross state-x0). For /ads-ready, the token needs Project Read scope; Layer B also needs Query Read.",
-        )
-
-    try:
-        projects = _list_posthog_projects(api_key, str(ctx.get("posthog_api_host") or POSTHOG_PRIVATE_API_HOST))
-    except PermissionError as exc:
-        return False, f"{exc}. Expected {expected}.", "Create a PostHog personal API key with Project Read scope."
-    except Exception as exc:
-        return False, f"PostHog project discovery failed: {exc}. Expected {expected}.", "Confirm PostHog API token scopes and retry."
-
-    project_names = [str(p.get("name") or p.get("id") or "<unnamed>") for p in projects]
-    client_project = next((p for p in projects if p.get("api_token") == key), None)
-    if client_project is None:
-        accessible = ", ".join(project_names) or "<no accessible projects>"
-        return (
-            False,
-            f"Resolved PostHog key {_mask_secret(key)} is in team-config, but is not visible via /api/projects/. Expected {expected}; accessible projects: {accessible}.",
-            "Use a PostHog personal API key that can read the configured team project, then re-run /ads-ready.",
-        )
-
-    server_result = _server_key_result(ctx)
-    if isinstance(server_result, vercel_api.EnvResultError):
-        return (
-            False,
-            f"Could not verify POSTHOG_SERVER_KEY in Vercel production env: {server_result.reason}",
-            "Fix Vercel auth/API access and re-run /ads-ready; server-side PostHog attribution cannot be verified on API error.",
-        )
-    if isinstance(server_result, vercel_api.EnvResultFound):
-        server_value = server_result.value
-        if server_value == "":
-            return (
-                False,
-                "POSTHOG_SERVER_KEY is set to empty string in Vercel production env.",
-                "POSTHOG_SERVER_KEY is set to empty string in Vercel production env. JavaScript `??` does NOT fall through on empty string, so server-side PostHog events will fail. Either unset POSTHOG_SERVER_KEY (preferred) or set it to a real team key.",
-            )
-        if server_value == POSTHOG_PLACEHOLDER:
-            return (
-                False,
-                "POSTHOG_SERVER_KEY is set to the placeholder `phc_TEAM_KEY` in Vercel production env.",
-                "POSTHOG_SERVER_KEY is set to the placeholder `phc_TEAM_KEY` in Vercel production env. Server events will go to a no-op project. Unset POSTHOG_SERVER_KEY or set it to a real team key.",
-            )
-        server_project = next((p for p in projects if p.get("api_token") == server_value), None)
-        if server_project is None or server_project.get("api_token") != client_project.get("api_token"):
-            client_name = str(client_project.get("name") or client_project.get("id") or "<client project>")
-            server_name = (
-                str(server_project.get("name") or server_project.get("id"))
-                if server_project
-                else "<no accessible team project>"
-            )
-            return (
-                False,
-                f"POSTHOG_SERVER_KEY ({_mask_secret(server_value)}) targets a different PostHog project than NEXT_PUBLIC_POSTHOG_KEY ({_mask_secret(key)}).",
-                f"POSTHOG_SERVER_KEY (`{_mask_secret(server_value)}`) targets a different PostHog project than NEXT_PUBLIC_POSTHOG_KEY (`{_mask_secret(key)}`). Client events go to `{client_name}`, server events go to `{server_name}` - funnel attribution breaks. Set POSTHOG_SERVER_KEY to the same key as NEXT_PUBLIC_POSTHOG_KEY, or unset it. Expected {expected}.",
-            )
-
     return (
         True,
-        f"Resolved PostHog key matches team-config and PostHog project `{client_project.get('name') or client_project.get('id')}`.",
+        "MVP NEXT_PUBLIC_POSTHOG_KEY matches team-config.yaml.team.posthog.project_api_tokens",
         None,
     )
 
