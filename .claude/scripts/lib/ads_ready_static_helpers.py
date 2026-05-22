@@ -381,8 +381,6 @@ def _vercel_identity(ctx: dict) -> tuple[str | None, str | None, str | None]:
     if link:
         project_id = project_id or link.get("projectId")
         team_id = team_id or link.get("orgId")
-    if not project_id:
-        project_id = _mvp_name(ctx) or None
     token = ctx.get("vercel_token") or vercel_api.read_vercel_token()
     return token, project_id, team_id
 

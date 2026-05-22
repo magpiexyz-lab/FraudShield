@@ -27,6 +27,12 @@ from iterate_cross_posthog_batch import _posthog_query  # noqa: E402
 CHECK_20_NAME = "Synthetic gclid arrives at PostHog"
 CHECK_21_NAME = "Golden-path landing event fires"
 CHECK_22_NAME = "No double-firing of critical events"
+CHECK_9_ID = 9
+CHECK_9_NAME = "Vercel deployment in team account"
+VERCEL_LINK_FIX = (
+    "Run `vercel link` against the team Vercel project first so "
+    ".vercel/project.json exists and Check 9 can validate it, then re-run /ads-ready."
+)
 SMOKE_DIR = Path(".runs") / "_ads_ready_smoke_dir"
 
 
@@ -307,18 +313,67 @@ def _read_vercel_project_link(root: Path) -> dict[str, str | None] | None:
     return {"projectId": data.get("projectId"), "orgId": data.get("orgId")}
 
 
+def _static_check_result(static_result: dict[str, Any], check_id: int) -> dict[str, Any] | None:
+    for result in static_result.get("checks") or []:
+        if isinstance(result, dict) and result.get("id") == check_id:
+            return result
+    return None
+
+
+def _static_vercel_gate_failure(static_result: dict[str, Any]) -> tuple[str, str] | None:
+    check_9 = _static_check_result(static_result, CHECK_9_ID)
+    if check_9 is None:
+        return None
+    if check_9.get("applicable") is not True:
+        return (
+            f"Layer A Check 9 ({CHECK_9_NAME}) was not applicable, so Layer B cannot "
+            "validate a Vercel smoke target against a verified team project. "
+            ".vercel/project.json is missing or Vercel hosting was not detected.",
+            VERCEL_LINK_FIX,
+        )
+    if check_9.get("passed") is not True:
+        details = str(check_9.get("details") or "No details provided.")
+        fix = str(check_9.get("fix") or VERCEL_LINK_FIX)
+        return (f"Layer A Check 9 ({CHECK_9_NAME}) did not pass: {details}", fix)
+    return None
+
+
+def _vercel_project_link_issue(ctx: dict[str, Any]) -> str | None:
+    link = _read_vercel_project_link(_root(ctx))
+    if not link:
+        return ".vercel/project.json is missing"
+    if not link.get("projectId"):
+        return ".vercel/project.json is missing projectId"
+    if not link.get("orgId"):
+        return ".vercel/project.json is missing orgId"
+    return None
+
+
+def _raise_if_vercel_project_link_missing(ctx: dict[str, Any], deploy_url: str | None = None) -> None:
+    issue = _vercel_project_link_issue(ctx)
+    if not issue:
+        return
+    if deploy_url:
+        raise SmokeSetupError(
+            f"Could not validate URL {deploy_url} against the verified Vercel project because "
+            f"{issue}. Run `vercel link` against the team Vercel project first."
+        )
+    raise SmokeSetupError(
+        f"Could not auto-detect deployed URL because {issue}. "
+        "Run `vercel link` against the team Vercel project first."
+    )
+
+
 def _vercel_identity(ctx: dict[str, Any]) -> tuple[str | None, str | None, str | None]:
     token = ctx.get("vercel_token") or vercel_api.read_vercel_token()
-    project_id = ctx.get("vercel_project_id")
-    team_id = ctx.get("vercel_team_id")
     link = _read_vercel_project_link(_root(ctx))
-    if link:
-        project_id = project_id or link.get("projectId")
-        team_id = team_id or link.get("orgId")
-    return token, project_id or _mvp_name(ctx) or None, team_id
+    project_id = str(link.get("projectId") or "").strip() if link else ""
+    team_id = str(link.get("orgId") or "").strip() if link else ""
+    return token, project_id or None, team_id or None
 
 
 def autodetect_vercel_deploy_url(ctx: dict[str, Any]) -> str | None:
+    _raise_if_vercel_project_link_missing(ctx)
     token, project_id, team_id = _vercel_identity(ctx)
     if not token or not project_id:
         return None
@@ -359,6 +414,7 @@ def validate_operator_deploy_url(ctx: dict[str, Any], deploy_url: str) -> str:
     if not host:
         raise SmokeSetupError(f"URL {deploy_url} is not a valid URL.")
 
+    _raise_if_vercel_project_link_missing(ctx, deploy_url=deploy_url)
     token, project_id, team_id = _vercel_identity(ctx)
     if not token:
         raise SmokeSetupError(
@@ -393,9 +449,25 @@ def validate_operator_deploy_url(ctx: dict[str, Any], deploy_url: str) -> str:
 
 def resolve_deploy_url(ctx: dict[str, Any]) -> str | None:
     deploy_url = str(ctx.get("deploy_url") or "").strip()
+    _raise_if_vercel_project_link_missing(ctx, deploy_url=deploy_url or None)
     if deploy_url:
         return validate_operator_deploy_url(ctx, deploy_url)
     return autodetect_vercel_deploy_url(ctx)
+
+
+def _url_setup_fix(exc: Exception) -> str:
+    message = str(exc)
+    if ".vercel/project.json" in message or "Check 9" in message or "vercel link" in message:
+        return VERCEL_LINK_FIX
+    if "Vercel auth is missing" in message:
+        return (
+            "Run `vercel login` with an account that can access the team project, "
+            "then re-run /ads-ready."
+        )
+    return (
+        "Drop --url and let auto-detect run, or run `vercel login` and use a known "
+        "production deployment/domain for the verified Vercel project."
+    )
 
 
 def playwright_installed(root: Path) -> bool:
@@ -746,20 +818,27 @@ def main(argv: list[str] | None = None) -> int:
         write_skipped(args.output, reason="static_only flag set")
         return 0
 
+    static_result = _read_json(args.static_result)
+    vercel_gate_failure = _static_vercel_gate_failure(static_result)
+    if vercel_gate_failure:
+        details, fix = vercel_gate_failure
+        write_failed(args.output, details, fix)
+        return 0
+
     try:
         deploy_url = resolve_deploy_url(ctx)
     except SmokeSetupError as exc:
         write_failed(
             args.output,
             str(exc),
-            "Drop --url and let auto-detect run, or run `vercel login` and use a known production deployment/domain for the verified Vercel project.",
+            _url_setup_fix(exc),
         )
         return 0
     if not deploy_url:
         write_failed(
             args.output,
             "Could not determine deployed URL. Pass --url, or log into Vercel CLI.",
-            "Pass --url to /ads-ready, or run `vercel login` and ensure the MVP is linked to a Vercel project.",
+            "Pass --url after Check 9 passes, or run `vercel login` and `vercel link` against the team Vercel project.",
         )
         return 0
 

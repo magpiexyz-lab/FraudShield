@@ -23,7 +23,13 @@ def write_json(path: Path, data: dict) -> None:
     path.write_text(json.dumps(data), encoding="utf-8")
 
 
-def make_root(root: Path, *, playwright: bool = True, events: str | None = None) -> None:
+def make_root(
+    root: Path,
+    *,
+    playwright: bool = True,
+    events: str | None = None,
+    hosting: str = "vercel",
+) -> None:
     if playwright:
         (root / "node_modules" / "@playwright" / "test").mkdir(parents=True)
     (root / "experiment").mkdir(parents=True, exist_ok=True)
@@ -34,29 +40,33 @@ def make_root(root: Path, *, playwright: bool = True, events: str | None = None)
         "  analytics: posthog\n"
         "  services:\n"
         "    - name: app\n"
-        "      hosting: vercel\n",
+        f"      hosting: {hosting}\n",
         encoding="utf-8",
     )
     if events is not None:
         (root / "experiment" / "EVENTS.yaml").write_text(events, encoding="utf-8")
 
 
+def write_vercel_link(root: Path, project_id: str = "prj_alpha", org_id: str = "team_clean") -> None:
+    write_json(root / ".vercel" / "project.json", {"projectId": project_id, "orgId": org_id})
+
+
 class AdsReadySmokeOrchestratorTests(unittest.TestCase):
-    def run_smoke(self, ctx: dict, *patches):
+    def run_smoke(self, ctx: dict, static_result: dict | None = None):
         with tempfile.TemporaryDirectory() as td:
             base = Path(td)
             context = base / "context.json"
-            static_result = base / "static.json"
+            static_path = base / "static.json"
             output = base / "smoke.json"
             write_json(context, ctx)
-            write_json(static_result, {"overall_pass": True})
+            write_json(static_path, static_result or {"overall_pass": True})
             with patch("sys.stderr", new=io.StringIO()):
                 rc = S.main(
                     [
                         "--context",
                         str(context),
                         "--static-result",
-                        str(static_result),
+                        str(static_path),
                         "--output",
                         str(output),
                     ]
@@ -68,6 +78,7 @@ class AdsReadySmokeOrchestratorTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             make_root(root, playwright=False)
+            write_vercel_link(root)
             rc, result = self.run_smoke({"mvp_root": str(root), "deploy_url": "https://alpha.example"})
 
         self.assertEqual(rc, 0)
@@ -81,6 +92,7 @@ class AdsReadySmokeOrchestratorTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             make_root(root, playwright=True)
+            write_vercel_link(root)
             rc, result = self.run_smoke({"mvp_root": str(root), "deploy_url": ""})
 
         self.assertEqual(rc, 0)
@@ -98,10 +110,7 @@ class AdsReadySmokeOrchestratorTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             make_root(root, playwright=True)
-            write_json(
-                root / ".vercel" / "project.json",
-                {"projectId": "prj_alpha", "orgId": "team_clean"},
-            )
+            write_vercel_link(root)
             rc, result = self.run_smoke(
                 {"mvp_root": str(root), "deploy_url": "https://personal.example.com"}
             )
@@ -120,10 +129,7 @@ class AdsReadySmokeOrchestratorTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             make_root(root, playwright=True)
-            write_json(
-                root / ".vercel" / "project.json",
-                {"projectId": "prj_alpha", "orgId": "team_clean"},
-            )
+            write_vercel_link(root)
             rc, result = self.run_smoke(
                 {"mvp_root": str(root), "deploy_url": "https://alpha.example.com"}
             )
@@ -142,16 +148,55 @@ class AdsReadySmokeOrchestratorTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             make_root(root, playwright=True)
-            write_json(
-                root / ".vercel" / "project.json",
-                {"projectId": "prj_alpha", "orgId": "team_clean"},
-            )
+            write_vercel_link(root)
             self.assertEqual(
                 S.resolve_deploy_url(
                     {"mvp_root": str(root), "deploy_url": "https://alpha.example.com/pricing"}
                 ),
                 "https://alpha.example.com/pricing",
             )
+
+    @patch("ads_ready_smoke.vercel_api.read_vercel_token", return_value="vercel-token")
+    @patch(
+        "ads_ready_smoke.vercel_api.latest_production_deployment_url",
+        return_value="https://alpha-personal.vercel.app",
+    )
+    @patch("ads_ready_smoke.vercel_api.get_project_domains", return_value=["alpha-personal.vercel.app"])
+    def test_hosting_typo_without_vercel_link_blocks_personal_matching_project(
+        self,
+        mock_domains,
+        mock_latest,
+        mock_token,
+    ):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            make_root(root, playwright=True, hosting="vecel")
+            static_result = {
+                "overall_pass": True,
+                "checks": [
+                    {
+                        "id": 9,
+                        "name": "Vercel deployment in team account",
+                        "applicable": False,
+                        "passed": None,
+                        "details": "N/A (not applicable to this MVP)",
+                        "fix": None,
+                    }
+                ],
+            }
+            rc, result = self.run_smoke(
+                {"mvp_root": str(root), "deploy_url": "https://alpha-personal.vercel.app"},
+                static_result=static_result,
+            )
+
+        self.assertEqual(rc, 0)
+        self.assertFalse(result["overall_pass"])
+        self.assertIn("Layer A Check 9", result["checks"][0]["details"])
+        self.assertIn(".vercel/project.json", result["checks"][0]["details"])
+        self.assertIn("vercel link", result["checks"][0]["fix"])
+        mock_token.assert_not_called()
+        mock_latest.assert_not_called()
+        mock_domains.assert_not_called()
 
     @patch("ads_ready_smoke.validate_operator_deploy_url", return_value="https://alpha.example")
     @patch("ads_ready_smoke.time.sleep")
@@ -184,6 +229,7 @@ class AdsReadySmokeOrchestratorTests(unittest.TestCase):
                 playwright=True,
                 events="events:\n  visit_landing:\n    funnel_stage: landing\n",
             )
+            write_vercel_link(root)
             mock_posthog_get.side_effect = [
                 {"results": [{"id": 2, "name": "Team", "api_token": "phc_REAL"}], "next": None},
             ]
@@ -237,6 +283,7 @@ class AdsReadySmokeOrchestratorTests(unittest.TestCase):
                 playwright=True,
                 events="events:\n  visit_landing:\n    funnel_stage: landing\n",
             )
+            write_vercel_link(root)
             mock_posthog_query.side_effect = [
                 {"results": []},
                 {"results": []},
