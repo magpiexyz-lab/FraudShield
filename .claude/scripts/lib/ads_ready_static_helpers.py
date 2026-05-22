@@ -108,23 +108,31 @@ def _load_yaml_file(path: Path) -> dict:
     return data if isinstance(data, dict) else {}
 
 
-def load_team_config(skill_root: Path | None = None) -> dict:
-    """Load .claude/team-config.yaml. Returns parsed YAML or empty dict if missing."""
-    candidates: list[Path] = []
-    if skill_root is not None:
-        candidates.append(Path(skill_root).expanduser() / ".claude" / "team-config.yaml")
-    candidates.append(Path.cwd() / ".claude" / "team-config.yaml")
+class TeamConfigLoadError(RuntimeError):
+    def __init__(self, path: Path, reason: str) -> None:
+        self.path = path
+        self.reason = reason
+        super().__init__(f"{path}: {reason}")
 
-    seen: set[Path] = set()
-    for candidate in candidates:
-        resolved = candidate.resolve()
-        if resolved in seen:
-            continue
-        seen.add(resolved)
-        data = _load_yaml_file(candidate)
-        if data:
-            return data
-    return {}
+
+def load_team_config(skill_root: Path | None = None) -> dict:
+    """Load .claude/team-config.yaml from the explicit MVP root or cwd."""
+    explicit_root = skill_root is not None
+    root = Path(skill_root).expanduser() if explicit_root else Path.cwd()
+    path = root / ".claude" / "team-config.yaml"
+    if not path.exists():
+        if explicit_root:
+            raise TeamConfigLoadError(path, "missing")
+        return {}
+    if yaml is None:
+        return {}
+    try:
+        data = yaml.safe_load(_read_text(path)) or {}
+    except Exception as exc:
+        if explicit_root:
+            raise TeamConfigLoadError(path, f"YAML parse error: {exc}")
+        return {}
+    return data if isinstance(data, dict) else {}
 
 
 def _experiment(ctx: dict) -> dict:
@@ -276,8 +284,13 @@ def _team_config(ctx: dict) -> dict:
     return load_team_config(_root(ctx))
 
 
-def _team_provider(config: dict, provider: str) -> dict:
+def _team_root(config: dict) -> dict:
     team = config.get("team") if isinstance(config, dict) else {}
+    return team if isinstance(team, dict) else {}
+
+
+def _team_provider(config: dict, provider: str) -> dict:
+    team = _team_root(config)
     if not isinstance(team, dict):
         return {}
     section = team.get(provider)
@@ -288,7 +301,22 @@ def _team_list(config: dict, provider: str, field: str) -> list[str]:
     values = _team_provider(config, provider).get(field)
     if not isinstance(values, list):
         return []
-    return [str(value) for value in values if value is not None]
+    normalized = [str(value).strip() for value in values if value is not None]
+    return [value for value in normalized if value]
+
+
+def _team_config_load_error_result(exc: TeamConfigLoadError) -> tuple[bool, str, str | None]:
+    if exc.reason == "missing":
+        return (
+            False,
+            f"Team config not found at {exc.path}.",
+            f"Add {exc.path} with the team's provider identity allowlists, then re-run /ads-ready.",
+        )
+    return (
+        False,
+        f"Team config parse error at {exc.path}: {exc.reason}",
+        f"Fix YAML syntax in {exc.path}, then re-run /ads-ready.",
+    )
 
 
 def _missing_team_config_result() -> tuple[bool, str, str | None]:
@@ -296,6 +324,22 @@ def _missing_team_config_result() -> tuple[bool, str, str | None]:
         False,
         TEAM_CONFIG_MISSING_DETAILS,
         "Add .claude/team-config.yaml with the team's provider identity allowlists, then re-run /ads-ready.",
+    )
+
+
+def _missing_team_root_result() -> tuple[bool, str, str | None]:
+    return (
+        False,
+        "Team config missing team section.",
+        "Add a top-level team: section to .claude/team-config.yaml, then re-run /ads-ready.",
+    )
+
+
+def _missing_team_provider_result(provider: str) -> tuple[bool, str, str | None]:
+    return (
+        False,
+        f"Team config missing team.{provider} section.",
+        f"Add team.{provider} to .claude/team-config.yaml, then re-run /ads-ready.",
     )
 
 
@@ -312,9 +356,17 @@ def _team_values_or_failure(
     provider: str,
     field: str,
 ) -> tuple[list[str], tuple[bool, str, str | None] | None]:
-    config = _team_config(ctx)
+    try:
+        config = _team_config(ctx)
+    except TeamConfigLoadError as exc:
+        return [], _team_config_load_error_result(exc)
     if not config:
         return [], _missing_team_config_result()
+    team = config.get("team")
+    if not isinstance(team, dict):
+        return [], _missing_team_root_result()
+    if not isinstance(team.get(provider), dict):
+        return [], _missing_team_provider_result(provider)
     values = _team_list(config, provider, field)
     if not values:
         return [], _missing_team_section_result(provider, field)
@@ -773,31 +825,61 @@ def _format_posthog_team_expectation(team_posthog: dict) -> str:
     return f"team.posthog.project_ids={project_ids}; team.posthog.project_api_tokens={api_tokens}"
 
 
-def _vercel_production_env_value(ctx: dict, key: str) -> tuple[str | None, str | None]:
-    token, project_id, team_id = _vercel_identity(ctx)
-    if not token or not project_id:
-        return None, None
-    result = vercel_api.get_vercel_env_var(token, project_id, team_id, key, target="production")
-    if isinstance(result, vercel_api.EnvResultError):
-        return None, result.reason
-    if isinstance(result, vercel_api.EnvResultFound) and result.value:
-        return result.value, None
-    return None, None
-
-
 def _resolve_mvp_env_value(ctx: dict, keys: list[str]) -> tuple[str | None, str | None, str | None]:
-    env = _read_env_file(_root(ctx))
+    root = _root(ctx)
+    link = _read_vercel_project_link(root)
+    env = _read_env_file(root)
+    token, project_id, team_id = _vercel_identity(ctx)
+    display_keys = "/".join(keys)
+
+    if not token:
+        return (
+            None,
+            "vercel_env_error",
+            f"Could not verify Vercel production env for {display_keys}: Vercel token is missing.",
+        )
+    if not project_id:
+        return (
+            None,
+            "vercel_env_error",
+            f"Could not verify Vercel production env for {display_keys}: Vercel project ID is missing.",
+        )
+
     for key in keys:
-        value = env.get(key)
-        if value:
-            return value, f".env.local:{key}", None
-    for key in keys:
-        value, error = _vercel_production_env_value(ctx, key)
-        if error:
-            return None, f"vercel:{key}", error
-        if value:
-            return value, f"vercel:{key}", None
-    return None, None, None
+        result = vercel_api.get_vercel_env_var(token, project_id, team_id, key, target="production")
+        if isinstance(result, vercel_api.EnvResultError):
+            return (
+                None,
+                "vercel_env_error",
+                f"Could not verify Vercel production env for {key}: {result.reason}",
+            )
+        if isinstance(result, vercel_api.EnvResultFound):
+            if result.value:
+                return result.value, "vercel_env_set", None
+            return (
+                None,
+                "vercel_env_empty",
+                f"{key} is set to empty string in Vercel production env; empty strings mask .env.local.",
+            )
+
+    local_keys = [key for key in keys if env.get(key)]
+    local_note = ""
+    if local_keys:
+        local_note = (
+            f" .env.local contains {', '.join(local_keys)}, but local env is diagnostic only "
+            "and cannot satisfy /ads-ready."
+        )
+    if not link:
+        return (
+            None,
+            "vercel_project_link_missing",
+            f"{display_keys} is absent from Vercel production env and .vercel/project.json is missing.{local_note}",
+        )
+    return (
+        None,
+        "vercel_env_absent",
+        f"{display_keys} is absent from Vercel production env.{local_note}",
+    )
 
 
 def _supabase_project_ref_from_url(supabase_url: str | None) -> str | None:
@@ -846,9 +928,16 @@ def check_posthog_team_key(ctx: dict) -> tuple[bool, str, str | None]:
     if source not in {"vercel_env_set", "source_fallback"} or not key or key == POSTHOG_PLACEHOLDER:
         return _posthog_source_failure(source, resolved_file)
 
-    config = _team_config(ctx)
+    try:
+        config = _team_config(ctx)
+    except TeamConfigLoadError as exc:
+        return _team_config_load_error_result(exc)
     if not config:
         return _missing_team_config_result()
+    if not isinstance(config.get("team"), dict):
+        return _missing_team_root_result()
+    if not isinstance(config["team"].get("posthog"), dict):
+        return _missing_team_provider_result("posthog")
     posthog_config = _team_provider(config, "posthog")
     team_tokens = _team_list(config, "posthog", "project_api_tokens")
     if not team_tokens:
@@ -935,22 +1024,19 @@ def check_supabase_team_org(ctx: dict) -> tuple[bool, str, str | None]:
     if failure:
         return failure
 
-    supabase_url, source, env_error = _resolve_mvp_env_value(
-        ctx,
-        ["SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_URL"],
-    )
+    supabase_url, source, env_error = _resolve_mvp_env_value(ctx, ["NEXT_PUBLIC_SUPABASE_URL"])
     if env_error:
         return (
             False,
-            f"Could not read Supabase URL from Vercel production env: {env_error}",
-            "Fix Vercel auth/API access, or set SUPABASE_URL/NEXT_PUBLIC_SUPABASE_URL in .env.local before re-running /ads-ready.",
+            env_error,
+            "Set NEXT_PUBLIC_SUPABASE_URL in Vercel production env; .env.local is diagnostic only for /ads-ready.",
         )
     project_ref = _supabase_project_ref_from_url(supabase_url)
     if not project_ref:
         return (
             False,
-            "SUPABASE_URL/NEXT_PUBLIC_SUPABASE_URL is missing or invalid in .env.local and Vercel production env.",
-            "Set SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL to the team Supabase project URL.",
+            "NEXT_PUBLIC_SUPABASE_URL is missing or invalid in Vercel production env.",
+            "Set NEXT_PUBLIC_SUPABASE_URL in Vercel production env to the team Supabase project URL.",
         )
     try:
         token = _read_token()
@@ -1044,15 +1130,43 @@ def check_vercel_team_account(ctx: dict) -> tuple[bool, str, str | None]:
             "Vercel project link is missing orgId in .vercel/project.json.",
             "Run `vercel link` against the team Vercel project so .vercel/project.json contains orgId.",
         )
+    if not link.get("projectId"):
+        return (
+            False,
+            "Vercel project link is missing projectId in .vercel/project.json.",
+            "Run `vercel link` against the team Vercel project so .vercel/project.json contains projectId.",
+        )
     team_id = str(link["orgId"])
-    project_id = str(link.get("projectId") or "<unknown>")
-    if team_id in expected_team_ids:
-        return True, f"Vercel project `{project_id}` is linked to team `{team_id}`.", None
-    return (
-        False,
-        f"Vercel project `{project_id}` is linked to orgId `{team_id}`, not team.vercel.team_ids={expected_team_ids}.",
-        f"Transfer Vercel project {project_id} to one of team.vercel.team_ids={expected_team_ids}, or re-run `vercel link` against the team's project.",
-    )
+    project_id = str(link["projectId"])
+    if team_id not in expected_team_ids:
+        return (
+            False,
+            f"Vercel project `{project_id}` is linked to orgId `{team_id}`, not team.vercel.team_ids={expected_team_ids}.",
+            f"Transfer Vercel project {project_id} to one of team.vercel.team_ids={expected_team_ids}, or re-run `vercel link` against the team's project.",
+        )
+
+    token = ctx.get("vercel_token") or vercel_api.read_vercel_token()
+    if not token:
+        return (
+            False,
+            "Vercel token is missing; cannot validate .vercel/project.json against the Vercel API.",
+            "Run `vercel login` with an account that can access the team project, then re-run /ads-ready.",
+        )
+    try:
+        project = vercel_api.find_project(token, team_id=team_id, project_id_or_name=project_id)
+    except Exception as exc:
+        return (
+            False,
+            f"Could not verify Vercel project `{project_id}` via API: {exc}",
+            "Fix Vercel auth/API access, then re-run /ads-ready.",
+        )
+    if project is None:
+        return (
+            False,
+            f"Vercel project `{project_id}` was not accessible via API under team `{team_id}`.",
+            "Re-link to an existing team Vercel project, or log in with a Vercel account that can access it.",
+        )
+    return True, f"Vercel project `{project_id}` is linked to team `{team_id}` and API-accessible.", None
 
 
 def check_stripe_team_account(ctx: dict) -> tuple[bool, str, str | None]:
@@ -1064,11 +1178,15 @@ def check_stripe_team_account(ctx: dict) -> tuple[bool, str, str | None]:
     if env_error:
         return (
             False,
-            f"Could not read STRIPE_SECRET_KEY from Vercel production env: {env_error}",
-            "Fix Vercel auth/API access, or set STRIPE_SECRET_KEY in .env.local before re-running /ads-ready.",
+            env_error,
+            "Set STRIPE_SECRET_KEY in Vercel production env; .env.local is diagnostic only for /ads-ready.",
         )
     if not mvp_key:
-        return False, "STRIPE_SECRET_KEY is missing for a Stripe MVP.", "Set STRIPE_SECRET_KEY in Vercel env or .env.local."
+        return (
+            False,
+            "STRIPE_SECRET_KEY is missing for a Stripe MVP.",
+            "Set STRIPE_SECRET_KEY in Vercel production env.",
+        )
     mvp_account = stripe_api.get_account_id(mvp_key)
     if not mvp_account:
         return False, "Could not resolve Stripe account ID from STRIPE_SECRET_KEY.", "Confirm STRIPE_SECRET_KEY and retry."
@@ -1094,10 +1212,50 @@ def _events_map(ctx: dict) -> dict[str, dict]:
     return {}
 
 
-def _event_applies(ctx: dict, event_config: dict) -> bool:
+def _event_requires(event_config: dict) -> list[str]:
     requires = event_config.get("requires") or []
     if isinstance(requires, str):
         requires = [requires]
+    if not isinstance(requires, list):
+        return []
+    return [str(req) for req in requires if str(req)]
+
+
+def _known_stack_requirement_keys(ctx: dict) -> set[str]:
+    stack = _stack(ctx)
+    known = {
+        "database",
+        "auth",
+        "auth_providers",
+        "analytics",
+        "payment",
+        "email",
+        "runtime",
+        "hosting",
+        "ui",
+        "testing",
+    }
+    known.update(str(key) for key in stack.keys() if key != "services")
+    services = stack.get("services") or []
+    if isinstance(services, list):
+        for service in services:
+            if isinstance(service, dict):
+                known.update(str(key) for key in service.keys() if key != "name")
+    return known
+
+
+def _unknown_event_requires(ctx: dict) -> list[tuple[str, str]]:
+    known = _known_stack_requirement_keys(ctx)
+    unknown: list[tuple[str, str]] = []
+    for event_name, event_config in _events_map(ctx).items():
+        for requirement in _event_requires(event_config):
+            if requirement not in known:
+                unknown.append((event_name, requirement))
+    return unknown
+
+
+def _event_applies(ctx: dict, event_config: dict) -> bool:
+    requires = _event_requires(event_config)
     if any(not _stack_has_requirement(ctx, str(req)) for req in requires):
         return False
     archetypes = event_config.get("archetypes") or []
@@ -1117,6 +1275,14 @@ def _filtered_events(ctx: dict) -> set[str]:
 
 
 def check_events_yaml_all_implemented(ctx: dict) -> tuple[bool, str, str | None]:
+    unknown_requires = _unknown_event_requires(ctx)
+    if unknown_requires:
+        event, requirement = unknown_requires[0]
+        return (
+            False,
+            f"EVENTS.yaml event `{event}` has requires: `{requirement}` which is not a known stack key.",
+            f"EVENTS.yaml event {event} has requires: {requirement} which is not a known stack key (typo? add to experiment.yaml stack first).",
+        )
     events = sorted(_filtered_events(ctx))
     if not events:
         return True, "EVENTS.yaml has no applicable events.", None

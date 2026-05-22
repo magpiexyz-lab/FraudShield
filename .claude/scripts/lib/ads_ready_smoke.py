@@ -401,7 +401,10 @@ def discover_posthog_project(ctx: dict[str, Any]) -> dict[str, Any]:
     else:
         raise SmokeSetupError(_source_failure_message(source, key, resolved_file))
 
-    team_config = H.load_team_config(_root(ctx))
+    try:
+        team_config = H.load_team_config(_root(ctx))
+    except H.TeamConfigLoadError as exc:
+        raise SmokeSetupError(H._team_config_load_error_result(exc)[1]) from exc
     if not team_config:
         raise SmokeSetupError(H.TEAM_CONFIG_MISSING_DETAILS)
     team_tokens = H._team_list(team_config, "posthog", "project_api_tokens")

@@ -75,6 +75,86 @@ def team_config(**overrides) -> dict:
     return config
 
 
+PROVIDER_FIELDS = (
+    ("posthog", "project_api_tokens"),
+    ("supabase", "organization_ids"),
+    ("railway", "workspace_ids"),
+    ("vercel", "team_ids"),
+    ("stripe", "account_ids"),
+)
+
+
+class TeamConfigRealFileTests(unittest.TestCase):
+    def _repo_with_team_config(self, team_config_text: str | None):
+        files = {
+            "experiment/experiment.yaml": experiment_yaml("alpha"),
+            ".vercel/project.json": '{"projectId":"prj_clean","orgId":"team_clean"}',
+        }
+        if team_config_text is not None:
+            files[".claude/team-config.yaml"] = team_config_text
+        return repo(files)
+
+    def _values_from(self, root: Path, provider: str, field: str):
+        return H._team_values_or_failure({"mvp_root": str(root)}, provider, field)
+
+    def test_explicit_mvp_root_missing_file_fails_with_path(self):
+        with self._repo_with_team_config(None) as root:
+            passed, details, fix = H.check_vercel_team_account({"mvp_root": str(root)})
+        self.assertFalse(passed)
+        self.assertIn(str(root / ".claude" / "team-config.yaml"), details)
+        self.assertIn("Add", fix)
+
+    def test_yaml_syntax_error_fails_with_parse_message(self):
+        with self._repo_with_team_config("team:\n  vercel: [\n") as root:
+            passed, details, fix = H.check_vercel_team_account({"mvp_root": str(root)})
+        self.assertFalse(passed)
+        self.assertIn("parse error", details)
+        self.assertIn(str(root / ".claude" / "team-config.yaml"), details)
+        self.assertIn("Fix YAML syntax", fix)
+
+    def test_team_section_missing_fails(self):
+        with self._repo_with_team_config("not_team: {}\n") as root:
+            _values, failure = self._values_from(root, "vercel", "team_ids")
+        self.assertIsNotNone(failure)
+        self.assertFalse(failure[0])
+        self.assertIn("team section", failure[1])
+
+    def test_provider_sections_missing_fail(self):
+        for provider, field in PROVIDER_FIELDS:
+            with self.subTest(provider=provider):
+                with self._repo_with_team_config("team: {}\n") as root:
+                    _values, failure = self._values_from(root, provider, field)
+                self.assertIsNotNone(failure)
+                self.assertFalse(failure[0])
+                self.assertIn(f"team.{provider} section", failure[1])
+
+    def test_provider_lists_empty_fail(self):
+        for provider, field in PROVIDER_FIELDS:
+            with self.subTest(provider=provider):
+                config = f"team:\n  {provider}:\n    {field}: []\n"
+                with self._repo_with_team_config(config) as root:
+                    _values, failure = self._values_from(root, provider, field)
+                self.assertIsNotNone(failure)
+                self.assertFalse(failure[0])
+                self.assertIn(f"team.{provider}.{field}", failure[1])
+
+    def test_provider_lists_match_single_multiple_and_whitespace_values(self):
+        cases = [
+            ("single", ['"one"'], ["one"]),
+            ("multiple", ['"one"', '"two"'], ["one", "two"]),
+            ("whitespace", ['" one "', '"two  "'], ["one", "two"]),
+        ]
+        for provider, field in PROVIDER_FIELDS:
+            for label, raw_values, expected in cases:
+                with self.subTest(provider=provider, case=label):
+                    items = "\n".join(f"      - {value}" for value in raw_values)
+                    config = f"team:\n  {provider}:\n    {field}:\n{items}\n"
+                    with self._repo_with_team_config(config) as root:
+                        values, failure = self._values_from(root, provider, field)
+                    self.assertIsNone(failure)
+                    self.assertEqual(values, expected)
+
+
 class Check1ProjectNameTests(unittest.TestCase):
     def test_passes_clean_fixture(self):
         passed, _, _ = H.check_project_name_drift(fixture_ctx())
@@ -326,9 +406,15 @@ class Check7SupabaseTests(unittest.TestCase):
         with repo(
             {
                 "experiment/experiment.yaml": experiment_yaml("alpha", "stack:\n  database: supabase\n"),
-                ".env.local": "NEXT_PUBLIC_SUPABASE_URL=https://abc123.supabase.co\n",
+                ".env.local": "NEXT_PUBLIC_SUPABASE_URL=https://personal.supabase.co\n",
+                ".vercel/project.json": '{"projectId":"prj_supabase","orgId":"team_clean"}',
             }
         ) as root, patch("ads_ready_static_helpers.load_team_config", return_value=team_config()), patch(
+            "ads_ready_static_helpers.vercel_api.read_vercel_token", return_value="vercel-token"
+        ), patch(
+            "ads_ready_static_helpers.vercel_api.get_vercel_env_var",
+            return_value=H.vercel_api.EnvResultFound("https://abc123.supabase.co"),
+        ) as mock_env, patch(
             "ads_ready_static_helpers._read_token", return_value="tok"
         ), patch(
             "ads_ready_static_helpers._get_supabase_project",
@@ -336,25 +422,45 @@ class Check7SupabaseTests(unittest.TestCase):
         ):
             passed, _, _ = H.check_supabase_team_org({"mvp_root": str(root)})
         self.assertTrue(passed)
+        mock_env.assert_called_with(
+            "vercel-token",
+            "prj_supabase",
+            "team_clean",
+            "NEXT_PUBLIC_SUPABASE_URL",
+            target="production",
+        )
 
     def test_missing_supabase_url_fails(self):
-        with repo({"experiment/experiment.yaml": experiment_yaml("alpha", "stack:\n  database: supabase\n")}) as root, patch(
+        with repo(
+            {
+                "experiment/experiment.yaml": experiment_yaml("alpha", "stack:\n  database: supabase\n"),
+                ".vercel/project.json": '{"projectId":"prj_supabase","orgId":"team_clean"}',
+            }
+        ) as root, patch(
             "ads_ready_static_helpers.load_team_config", return_value=team_config()
         ), patch(
-            "ads_ready_static_helpers.vercel_api.read_vercel_token", return_value=None
+            "ads_ready_static_helpers.vercel_api.read_vercel_token", return_value="vercel-token"
+        ), patch(
+            "ads_ready_static_helpers.vercel_api.get_vercel_env_var",
+            return_value=H.vercel_api.EnvResultAbsent(),
         ):
             passed, details, fix = H.check_supabase_team_org({"mvp_root": str(root)})
         self.assertFalse(passed)
-        self.assertIn("SUPABASE_URL", details)
-        self.assertIn("Set SUPABASE_URL", fix)
+        self.assertIn("absent from Vercel production env", details)
+        self.assertIn("NEXT_PUBLIC_SUPABASE_URL", fix)
 
     def test_wrong_team_org_fails(self):
         with repo(
             {
                 "experiment/experiment.yaml": experiment_yaml("alpha", "stack:\n  database: supabase\n"),
-                ".env.local": "NEXT_PUBLIC_SUPABASE_URL=https://abc123.supabase.co\n",
+                ".vercel/project.json": '{"projectId":"prj_supabase","orgId":"team_clean"}',
             }
         ) as root, patch("ads_ready_static_helpers.load_team_config", return_value=team_config()), patch(
+            "ads_ready_static_helpers.vercel_api.read_vercel_token", return_value="vercel-token"
+        ), patch(
+            "ads_ready_static_helpers.vercel_api.get_vercel_env_var",
+            return_value=H.vercel_api.EnvResultFound("https://abc123.supabase.co"),
+        ), patch(
             "ads_ready_static_helpers._read_token", return_value="tok"
         ), patch(
             "ads_ready_static_helpers._get_supabase_project",
@@ -367,11 +473,8 @@ class Check7SupabaseTests(unittest.TestCase):
 
     @patch("ads_ready_static_helpers.vercel_api.read_vercel_token", return_value="vercel-token")
     @patch("ads_ready_static_helpers.vercel_api.get_vercel_env_var")
-    def test_vercel_supabase_url_fallback_passes(self, mock_env, _token):
-        mock_env.side_effect = [
-            H.vercel_api.EnvResultAbsent(),
-            H.vercel_api.EnvResultFound("https://abc123.supabase.co"),
-        ]
+    def test_vercel_supabase_url_passes(self, mock_env, _token):
+        mock_env.return_value = H.vercel_api.EnvResultFound("https://abc123.supabase.co")
         with repo({"experiment/experiment.yaml": experiment_yaml("alpha", "stack:\n  database: supabase\n")}) as root, patch(
             "ads_ready_static_helpers.load_team_config", return_value=team_config()
         ), patch("ads_ready_static_helpers._read_token", return_value="tok"), patch(
@@ -380,6 +483,22 @@ class Check7SupabaseTests(unittest.TestCase):
         ):
             passed, _, _ = H.check_supabase_team_org({"mvp_root": str(root), "vercel_project_id": "prj"})
         self.assertTrue(passed)
+
+    @patch("ads_ready_static_helpers.load_team_config", return_value=team_config())
+    @patch("ads_ready_static_helpers.vercel_api.read_vercel_token", return_value="vercel-token")
+    @patch("ads_ready_static_helpers.vercel_api.get_vercel_env_var", return_value=H.vercel_api.EnvResultFound(""))
+    def test_empty_vercel_supabase_url_fails(self, _env, _token, _config):
+        with repo(
+            {
+                "experiment/experiment.yaml": experiment_yaml("alpha", "stack:\n  database: supabase\n"),
+                ".env.local": "NEXT_PUBLIC_SUPABASE_URL=https://abc123.supabase.co\n",
+                ".vercel/project.json": '{"projectId":"prj_supabase","orgId":"team_clean"}',
+            }
+        ) as root:
+            passed, details, fix = H.check_supabase_team_org({"mvp_root": str(root)})
+        self.assertFalse(passed)
+        self.assertIn("empty string", details)
+        self.assertIn("Vercel production env", fix)
 
     @patch("ads_ready_static_helpers.load_team_config", return_value={})
     def test_missing_team_config_fails(self, _config):
@@ -456,10 +575,18 @@ class Check8RailwayTests(unittest.TestCase):
 
 
 class Check9VercelTests(unittest.TestCase):
-    @patch("ads_ready_static_helpers.load_team_config", return_value=team_config())
-    def test_linked_project_found_passes(self, _config):
-        passed, _, _ = H.check_vercel_team_account(fixture_ctx())
+    def test_linked_project_found_passes(self):
+        with patch("ads_ready_static_helpers.load_team_config", return_value=team_config()), patch(
+            "ads_ready_static_helpers.vercel_api.read_vercel_token", return_value="vercel-token"
+        ), patch(
+            "ads_ready_static_helpers.vercel_api.find_project", return_value={"id": "prj_clean"}
+        ) as mock_find:
+            passed, details, _ = H.check_vercel_team_account(fixture_ctx())
         self.assertTrue(passed)
+        self.assertIn("API-accessible", details)
+        mock_find.assert_called_with(
+            "vercel-token", team_id="team_clean", project_id_or_name="prj_clean"
+        )
 
     @patch(
         "ads_ready_static_helpers.load_team_config",
@@ -486,6 +613,23 @@ class Check9VercelTests(unittest.TestCase):
         self.assertFalse(passed)
         self.assertIn("Team config not found", details)
 
+    @patch("ads_ready_static_helpers.load_team_config", return_value=team_config())
+    @patch("ads_ready_static_helpers.vercel_api.read_vercel_token", return_value=None)
+    def test_missing_vercel_token_fails(self, _token, _config):
+        passed, details, fix = H.check_vercel_team_account(fixture_ctx())
+        self.assertFalse(passed)
+        self.assertIn("Vercel token is missing", details)
+        self.assertIn("vercel login", fix)
+
+    @patch("ads_ready_static_helpers.load_team_config", return_value=team_config())
+    @patch("ads_ready_static_helpers.vercel_api.read_vercel_token", return_value="vercel-token")
+    @patch("ads_ready_static_helpers.vercel_api.find_project", return_value=None)
+    def test_project_link_must_be_api_accessible(self, _find, _token, _config):
+        passed, details, fix = H.check_vercel_team_account(fixture_ctx())
+        self.assertFalse(passed)
+        self.assertIn("not accessible", details)
+        self.assertIn("Re-link", fix)
+
 
 class Check10StripeTests(unittest.TestCase):
     @patch("ads_ready_static_helpers.load_team_config", return_value=team_config())
@@ -499,31 +643,68 @@ class Check10StripeTests(unittest.TestCase):
 
     @patch("ads_ready_static_helpers.load_team_config", return_value=team_config())
     @patch("ads_ready_static_helpers.stripe_api.get_account_id")
-    def test_matching_account_passes(self, mock_account, _config):
+    @patch("ads_ready_static_helpers.vercel_api.read_vercel_token", return_value="vercel-token")
+    @patch(
+        "ads_ready_static_helpers.vercel_api.get_vercel_env_var",
+        return_value=H.vercel_api.EnvResultFound("sk_mvp"),
+    )
+    def test_matching_account_passes(self, mock_env, _token, mock_account, _config):
         mock_account.return_value = "acct_team"
         with repo(
             {
                 "experiment/experiment.yaml": experiment_yaml("alpha", "stack:\n  payment: stripe\n"),
-                ".env.local": "STRIPE_SECRET_KEY=sk_mvp\n",
+                ".env.local": "STRIPE_SECRET_KEY=sk_personal\n",
+                ".vercel/project.json": '{"projectId":"prj_stripe","orgId":"team_clean"}',
             }
         ) as root:
             passed, _, _ = H.check_stripe_team_account({"mvp_root": str(root)})
         self.assertTrue(passed)
+        mock_env.assert_called_with(
+            "vercel-token",
+            "prj_stripe",
+            "team_clean",
+            "STRIPE_SECRET_KEY",
+            target="production",
+        )
+        mock_account.assert_called_with("sk_mvp")
 
     @patch("ads_ready_static_helpers.load_team_config", return_value=team_config())
     @patch("ads_ready_static_helpers.stripe_api.get_account_id")
-    def test_mismatched_account_fails(self, mock_account, _config):
+    @patch("ads_ready_static_helpers.vercel_api.read_vercel_token", return_value="vercel-token")
+    @patch(
+        "ads_ready_static_helpers.vercel_api.get_vercel_env_var",
+        return_value=H.vercel_api.EnvResultFound("sk_mvp"),
+    )
+    def test_mismatched_account_fails(self, _env, _token, mock_account, _config):
         mock_account.return_value = "acct_personal"
         with repo(
             {
                 "experiment/experiment.yaml": experiment_yaml("alpha", "stack:\n  payment: stripe\n"),
-                ".env.local": "STRIPE_SECRET_KEY=sk_mvp\n",
+                ".vercel/project.json": '{"projectId":"prj_stripe","orgId":"team_clean"}',
             }
         ) as root:
             passed, details, fix = H.check_stripe_team_account({"mvp_root": str(root)})
         self.assertFalse(passed)
         self.assertIn("acct_personal", details)
         self.assertIn("acct_team", fix)
+
+    @patch("ads_ready_static_helpers.load_team_config", return_value=team_config())
+    @patch("ads_ready_static_helpers.vercel_api.read_vercel_token", return_value="vercel-token")
+    @patch("ads_ready_static_helpers.vercel_api.get_vercel_env_var", return_value=H.vercel_api.EnvResultAbsent())
+    @patch("ads_ready_static_helpers.stripe_api.get_account_id")
+    def test_local_stripe_key_does_not_satisfy_check(self, mock_account, _env, _token, _config):
+        with repo(
+            {
+                "experiment/experiment.yaml": experiment_yaml("alpha", "stack:\n  payment: stripe\n"),
+                ".env.local": "STRIPE_SECRET_KEY=sk_mvp\n",
+                ".vercel/project.json": '{"projectId":"prj_stripe","orgId":"team_clean"}',
+            }
+        ) as root:
+            passed, details, fix = H.check_stripe_team_account({"mvp_root": str(root)})
+        self.assertFalse(passed)
+        self.assertIn("diagnostic only", details)
+        self.assertIn("Vercel production env", fix)
+        mock_account.assert_not_called()
 
     @patch("ads_ready_static_helpers.load_team_config", return_value={})
     def test_missing_team_config_fails(self, _config):
@@ -557,6 +738,22 @@ class Check11EventsImplementedTests(unittest.TestCase):
         ) as root:
             passed, _, _ = H.check_events_yaml_all_implemented({"mvp_root": str(root)})
         self.assertTrue(passed)
+
+    def test_unknown_requires_value_fails_as_typo(self):
+        with repo(
+            {
+                "experiment/experiment.yaml": experiment_yaml("alpha"),
+                "experiment/EVENTS.yaml": events_yaml(
+                    "  paid_signup:\n    funnel_stage: monetize\n    requires: [paymnt]\n"
+                ),
+                "src/app/page.tsx": "export default function Page() { return null; }\n",
+            }
+        ) as root:
+            passed, details, fix = H.check_events_yaml_all_implemented({"mvp_root": str(root)})
+        self.assertFalse(passed)
+        self.assertIn("paid_signup", details)
+        self.assertIn("paymnt", details)
+        self.assertIn("typo", fix)
 
 
 class Check12UnauthorizedTrackTests(unittest.TestCase):
