@@ -1166,6 +1166,12 @@ def check_vercel_team_account(ctx: dict) -> tuple[bool, str, str | None]:
             f"Vercel project `{project_id}` was not accessible via API under team `{team_id}`.",
             "Re-link to an existing team Vercel project, or log in with a Vercel account that can access it.",
         )
+    if str(project.get("id") or "") != project_id:
+        return (
+            False,
+            f"Vercel projectId {project_id} in .vercel/project.json does not match any team project by ID. (A team project named {project_id} exists, but matching by name is not strict-safe — fix .vercel/project.json to the correct projectId via vercel link.)",
+            "Run `vercel link` against the team Vercel project so .vercel/project.json contains the correct projectId.",
+        )
     return True, f"Vercel project `{project_id}` is linked to team `{team_id}` and API-accessible.", None
 
 
@@ -1221,6 +1227,15 @@ def _event_requires(event_config: dict) -> list[str]:
     return [str(req) for req in requires if str(req)]
 
 
+def _event_archetypes(event_config: dict) -> list[str]:
+    archetypes = event_config.get("archetypes") or []
+    if isinstance(archetypes, str):
+        archetypes = [archetypes]
+    if not isinstance(archetypes, list):
+        return []
+    return [str(archetype) for archetype in archetypes if str(archetype)]
+
+
 def _known_stack_requirement_keys(ctx: dict) -> set[str]:
     stack = _stack(ctx)
     known = {
@@ -1254,14 +1269,31 @@ def _unknown_event_requires(ctx: dict) -> list[tuple[str, str]]:
     return unknown
 
 
+def _known_archetypes() -> set[str]:
+    archetypes_dir = Path(__file__).resolve().parents[2] / "archetypes"
+    return {
+        path.stem
+        for path in archetypes_dir.glob("*.md")
+        if path.is_file()
+    }
+
+
+def _unknown_event_archetypes(ctx: dict) -> list[tuple[str, str]]:
+    known = _known_archetypes()
+    unknown: list[tuple[str, str]] = []
+    for event_name, event_config in _events_map(ctx).items():
+        for archetype in _event_archetypes(event_config):
+            if archetype not in known:
+                unknown.append((event_name, archetype))
+    return unknown
+
+
 def _event_applies(ctx: dict, event_config: dict) -> bool:
     requires = _event_requires(event_config)
     if any(not _stack_has_requirement(ctx, str(req)) for req in requires):
         return False
-    archetypes = event_config.get("archetypes") or []
-    if isinstance(archetypes, str):
-        archetypes = [archetypes]
-    if archetypes and _archetype(ctx) not in [str(a) for a in archetypes]:
+    archetypes = _event_archetypes(event_config)
+    if archetypes and _archetype(ctx) not in archetypes:
         return False
     return True
 
@@ -1283,6 +1315,12 @@ def check_events_yaml_all_implemented(ctx: dict) -> tuple[bool, str, str | None]
             f"EVENTS.yaml event `{event}` has requires: `{requirement}` which is not a known stack key.",
             f"EVENTS.yaml event {event} has requires: {requirement} which is not a known stack key (typo? add to experiment.yaml stack first).",
         )
+    unknown_archetypes = _unknown_event_archetypes(ctx)
+    if unknown_archetypes:
+        event, archetype = unknown_archetypes[0]
+        known = ", ".join(sorted(_known_archetypes()))
+        message = f"EVENTS.yaml event {event} has archetypes: {archetype} which is not a known archetype (typo? known archetypes: {known})."
+        return False, message, message
     events = sorted(_filtered_events(ctx))
     if not events:
         return True, "EVENTS.yaml has no applicable events.", None

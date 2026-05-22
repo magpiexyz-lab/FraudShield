@@ -630,6 +630,29 @@ class Check9VercelTests(unittest.TestCase):
         self.assertIn("not accessible", details)
         self.assertIn("Re-link", fix)
 
+    def test_project_id_matching_existing_project_name_fails(self):
+        with repo(
+            {
+                "experiment/experiment.yaml": experiment_yaml(
+                    "alpha", "stack:\n  services:\n    - hosting: vercel\n"
+                ),
+                ".vercel/project.json": '{"projectId":"stale-project-name","orgId":"team_clean"}',
+            }
+        ) as root, patch(
+            "ads_ready_static_helpers.load_team_config", return_value=team_config()
+        ), patch(
+            "ads_ready_static_helpers.vercel_api.read_vercel_token", return_value="vercel-token"
+        ), patch(
+            "ads_ready_static_helpers.vercel_api.find_project",
+            return_value={"id": "prj_actual", "name": "stale-project-name"},
+        ):
+            passed, details, fix = H.check_vercel_team_account({"mvp_root": str(root)})
+        self.assertFalse(passed)
+        self.assertIn("stale-project-name", details)
+        self.assertIn("does not match any team project by ID", details)
+        self.assertIn("matching by name is not strict-safe", details)
+        self.assertIn("vercel link", fix)
+
 
 class Check10StripeTests(unittest.TestCase):
     @patch("ads_ready_static_helpers.load_team_config", return_value=team_config())
@@ -753,6 +776,24 @@ class Check11EventsImplementedTests(unittest.TestCase):
         self.assertFalse(passed)
         self.assertIn("paid_signup", details)
         self.assertIn("paymnt", details)
+        self.assertIn("typo", fix)
+
+    def test_unknown_archetypes_value_fails_as_typo(self):
+        with repo(
+            {
+                "experiment/experiment.yaml": experiment_yaml("alpha"),
+                "experiment/EVENTS.yaml": events_yaml(
+                    "  landing_viewed:\n    funnel_stage: landing\n    archetypes: [webap]\n"
+                ),
+                "src/app/page.tsx": "export default function Page() { return null; }\n",
+            }
+        ) as root:
+            passed, details, fix = H.check_events_yaml_all_implemented({"mvp_root": str(root)})
+        self.assertFalse(passed)
+        self.assertIn("landing_viewed", details)
+        self.assertIn("webap", details)
+        self.assertIn("known archetypes", details)
+        self.assertIn("web-app", details)
         self.assertIn("typo", fix)
 
 
