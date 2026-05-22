@@ -325,9 +325,77 @@ def autodetect_vercel_deploy_url(ctx: dict[str, Any]) -> str | None:
     return vercel_api.latest_production_deployment_url(token, project_id, team_id)
 
 
+def _normalize_host(value: str | None) -> str | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    parsed = urlparse(raw if "://" in raw else f"https://{raw}")
+    host = parsed.hostname
+    return host.lower().rstrip(".") if host else None
+
+
+def _team_vercel_domain_aliases(ctx: dict[str, Any]) -> list[str]:
+    try:
+        team_config = H.load_team_config(_root(ctx))
+    except H.TeamConfigLoadError:
+        return []
+    provider = H._team_provider(team_config, "vercel")
+    aliases: list[str] = []
+    for field in ("domain_aliases", "domains", "aliases"):
+        raw = provider.get(field)
+        if isinstance(raw, list):
+            aliases.extend(str(value).strip() for value in raw if value)
+    return [alias for alias in aliases if alias]
+
+
+def _host_in_allowed_set(host: str, allowed_hosts: set[str]) -> bool:
+    if host in allowed_hosts:
+        return True
+    return any(allowed.startswith("*.") and host.endswith(allowed[1:]) for allowed in allowed_hosts)
+
+
+def validate_operator_deploy_url(ctx: dict[str, Any], deploy_url: str) -> str:
+    host = _normalize_host(deploy_url)
+    if not host:
+        raise SmokeSetupError(f"URL {deploy_url} is not a valid URL.")
+
+    token, project_id, team_id = _vercel_identity(ctx)
+    if not token:
+        raise SmokeSetupError(
+            f"Could not validate URL {deploy_url} against the verified Vercel project because Vercel auth is missing."
+        )
+    if not project_id:
+        raise SmokeSetupError(
+            f"Could not validate URL {deploy_url} against the verified Vercel project because the Vercel project ID is missing."
+        )
+
+    try:
+        production_url = vercel_api.latest_production_deployment_url(token, project_id, team_id)
+        project_domains = vercel_api.get_project_domains(token, project_id, team_id)
+    except Exception as exc:
+        raise SmokeSetupError(
+            f"Could not validate URL {deploy_url} against Vercel project {project_id}: {exc}"
+        ) from exc
+
+    allowed_hosts = {
+        normalized
+        for candidate in [production_url, *project_domains, *_team_vercel_domain_aliases(ctx)]
+        if (normalized := _normalize_host(candidate))
+    }
+    if _host_in_allowed_set(host, allowed_hosts):
+        return deploy_url
+
+    raise SmokeSetupError(
+        f"URL {deploy_url} is not a known production deployment or domain of the verified Vercel project {project_id}. "
+        f"Either drop --url and let auto-detect run, or use the verified production URL {production_url}."
+    )
+
+
 def resolve_deploy_url(ctx: dict[str, Any]) -> str | None:
     deploy_url = str(ctx.get("deploy_url") or "").strip()
-    return deploy_url or autodetect_vercel_deploy_url(ctx)
+    if deploy_url:
+        return validate_operator_deploy_url(ctx, deploy_url)
+    return autodetect_vercel_deploy_url(ctx)
 
 
 def playwright_installed(root: Path) -> bool:
@@ -678,7 +746,15 @@ def main(argv: list[str] | None = None) -> int:
         write_skipped(args.output, reason="static_only flag set")
         return 0
 
-    deploy_url = resolve_deploy_url(ctx)
+    try:
+        deploy_url = resolve_deploy_url(ctx)
+    except SmokeSetupError as exc:
+        write_failed(
+            args.output,
+            str(exc),
+            "Drop --url and let auto-detect run, or run `vercel login` and use a known production deployment/domain for the verified Vercel project.",
+        )
+        return 0
     if not deploy_url:
         write_failed(
             args.output,

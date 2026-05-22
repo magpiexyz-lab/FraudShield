@@ -63,7 +63,8 @@ class AdsReadySmokeOrchestratorTests(unittest.TestCase):
                 )
             return rc, json.loads(output.read_text(encoding="utf-8"))
 
-    def test_playwright_not_installed_hard_fails(self):
+    @patch("ads_ready_smoke.validate_operator_deploy_url", return_value="https://alpha.example")
+    def test_playwright_not_installed_hard_fails(self, _validate):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             make_root(root, playwright=False)
@@ -87,6 +88,72 @@ class AdsReadySmokeOrchestratorTests(unittest.TestCase):
         self.assertIn("Could not determine deployed URL", result["checks"][0]["details"])
         self.assertIn("vercel login", result["checks"][0]["fix"])
 
+    @patch("ads_ready_smoke.vercel_api.read_vercel_token", return_value="vercel-token")
+    @patch(
+        "ads_ready_smoke.vercel_api.latest_production_deployment_url",
+        return_value="https://alpha-prod.vercel.app",
+    )
+    @patch("ads_ready_smoke.vercel_api.get_project_domains", return_value=["alpha.example.com"])
+    def test_operator_url_unknown_host_fails(self, _domains, _latest, _token):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            make_root(root, playwright=True)
+            write_json(
+                root / ".vercel" / "project.json",
+                {"projectId": "prj_alpha", "orgId": "team_clean"},
+            )
+            rc, result = self.run_smoke(
+                {"mvp_root": str(root), "deploy_url": "https://personal.example.com"}
+            )
+
+        self.assertEqual(rc, 0)
+        self.assertFalse(result["overall_pass"])
+        self.assertIn(
+            "URL https://personal.example.com is not a known production deployment or domain",
+            result["checks"][0]["details"],
+        )
+        self.assertIn("verified Vercel project prj_alpha", result["checks"][0]["details"])
+        self.assertIn("https://alpha-prod.vercel.app", result["checks"][0]["details"])
+
+    @patch("ads_ready_smoke.vercel_api.read_vercel_token", return_value=None)
+    def test_operator_url_without_vercel_auth_fails(self, _token):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            make_root(root, playwright=True)
+            write_json(
+                root / ".vercel" / "project.json",
+                {"projectId": "prj_alpha", "orgId": "team_clean"},
+            )
+            rc, result = self.run_smoke(
+                {"mvp_root": str(root), "deploy_url": "https://alpha.example.com"}
+            )
+
+        self.assertEqual(rc, 0)
+        self.assertFalse(result["overall_pass"])
+        self.assertIn("Vercel auth is missing", result["checks"][0]["details"])
+
+    @patch("ads_ready_smoke.vercel_api.read_vercel_token", return_value="vercel-token")
+    @patch(
+        "ads_ready_smoke.vercel_api.latest_production_deployment_url",
+        return_value="https://alpha-prod.vercel.app",
+    )
+    @patch("ads_ready_smoke.vercel_api.get_project_domains", return_value=["alpha.example.com"])
+    def test_operator_url_known_project_domain_passes_validation(self, _domains, _latest, _token):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            make_root(root, playwright=True)
+            write_json(
+                root / ".vercel" / "project.json",
+                {"projectId": "prj_alpha", "orgId": "team_clean"},
+            )
+            self.assertEqual(
+                S.resolve_deploy_url(
+                    {"mvp_root": str(root), "deploy_url": "https://alpha.example.com/pricing"}
+                ),
+                "https://alpha.example.com/pricing",
+            )
+
+    @patch("ads_ready_smoke.validate_operator_deploy_url", return_value="https://alpha.example")
     @patch("ads_ready_smoke.time.sleep")
     @patch("ads_ready_smoke.secrets.token_urlsafe", return_value="TOKEN")
     @patch("ads_ready_smoke.run_playwright_smoke", return_value=Path("captured-events.json"))
@@ -108,6 +175,7 @@ class AdsReadySmokeOrchestratorTests(unittest.TestCase):
         _mock_playwright,
         _mock_token,
         _mock_sleep,
+        _mock_validate,
     ):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
@@ -151,10 +219,12 @@ class AdsReadySmokeOrchestratorTests(unittest.TestCase):
         "ads_ready_smoke.discover_posthog_project",
         return_value={"project_id": "2", "api_key": "phx_api", "expected_project_name": "alpha"},
     )
+    @patch("ads_ready_smoke.validate_operator_deploy_url", return_value="https://alpha.example")
     @patch("ads_ready_smoke._posthog_query")
     def test_hogql_timeout_retries_then_fails(
         self,
         mock_posthog_query,
+        _mock_validate,
         _mock_discover,
         _mock_playwright,
         _mock_token,

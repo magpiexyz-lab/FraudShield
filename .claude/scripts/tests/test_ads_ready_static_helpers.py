@@ -955,6 +955,62 @@ class AppliesPredicateTests(unittest.TestCase):
             self.assertTrue(H.applies_if_stack_hosting_vercel(ctx))
             self.assertTrue(H.applies_if_stack_payment_stripe(ctx))
 
+    def test_provider_predicates_fall_back_to_artifacts_when_stack_has_typos(self):
+        with repo(
+            {
+                "experiment/experiment.yaml": experiment_yaml(
+                    "alpha",
+                    "stack:\n"
+                    "  database: supabsae\n"
+                    "  payment: striep\n"
+                    "  services:\n"
+                    "    - hosting: vecel\n",
+                ),
+                ".env.local": (
+                    "NEXT_PUBLIC_SUPABASE_URL=https://abc123.supabase.co\n"
+                    "DATABASE_URL=postgres://user:pass@containers-us-west-1.railway.app:5432/db\n"
+                    "STRIPE_SECRET_KEY=sk_test_local\n"
+                ),
+                ".vercel/project.json": '{"projectId":"prj_artifacts","orgId":"team_clean"}',
+            }
+        ) as root:
+            ctx = {"mvp_root": str(root)}
+            self.assertTrue(H.applies_if_stack_database_supabase(ctx))
+            self.assertTrue(H.applies_if_stack_database_railway(ctx))
+            self.assertTrue(H.applies_if_stack_hosting_vercel(ctx))
+            self.assertTrue(H.applies_if_stack_payment_stripe(ctx))
+
+    @patch("ads_ready_static_helpers.stripe_api.get_account_id", return_value="acct_team")
+    @patch("ads_ready_static_helpers.vercel_api.read_vercel_token", return_value="vercel-token")
+    @patch(
+        "ads_ready_static_helpers.vercel_api.get_vercel_env_var",
+        return_value=H.vercel_api.EnvResultFound("sk_test_mvp"),
+    )
+    @patch("ads_ready_static_helpers.load_team_config", return_value=team_config())
+    def test_stripe_check_applies_and_runs_when_stack_payment_has_typo_but_env_has_key(
+        self,
+        _config,
+        _env,
+        _token,
+        _account,
+    ):
+        with repo(
+            {
+                "experiment/experiment.yaml": experiment_yaml(
+                    "alpha",
+                    "stack:\n  payment: striep\n",
+                ),
+                ".env.local": "STRIPE_SECRET_KEY=sk_test_local\n",
+                ".vercel/project.json": '{"projectId":"prj_stripe","orgId":"team_clean"}',
+            }
+        ) as root:
+            ctx = {"mvp_root": str(root)}
+            self.assertTrue(H.applies_if_stack_payment_stripe(ctx))
+            passed, details, _fix = H.check_10(ctx)
+
+        self.assertTrue(passed)
+        self.assertIn("acct_team", details)
+
     def test_events_yaml_predicate(self):
         self.assertTrue(H.applies_if_events_yaml_exists(fixture_ctx()))
         self.assertFalse(H.applies_if_events_yaml_exists(fixture_ctx("broken_no_analytics_import")))

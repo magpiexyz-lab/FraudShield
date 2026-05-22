@@ -457,8 +457,43 @@ def applies_if_iterate_cross_config_has_signup_events(ctx: dict) -> bool:
     return isinstance(events, list) and bool(events)
 
 
+def _vercel_env_value_matches(ctx: dict, key: str, predicate) -> bool:
+    root = _root(ctx)
+    if not ctx.get("vercel_project_id") and not _read_vercel_project_link(root):
+        return False
+    token, project_id, team_id = _vercel_identity(ctx)
+    if not token or not project_id:
+        return False
+    try:
+        result = vercel_api.get_vercel_env_var(token, project_id, team_id, key, target="production")
+    except Exception:
+        return False
+    return isinstance(result, vercel_api.EnvResultFound) and predicate(result.value)
+
+
+def _env_value_matches(ctx: dict, key: str, predicate) -> bool:
+    local_value = _read_env_file(_root(ctx)).get(key, "")
+    if local_value and predicate(local_value):
+        return True
+    return _vercel_env_value_matches(ctx, key, predicate)
+
+
+def _is_supabase_url(value: str | None) -> bool:
+    return bool(_supabase_project_ref_from_url(value))
+
+
+def _is_railway_database_url(value: str | None) -> bool:
+    return "railway.app" in str(value or "")
+
+
+def _is_stripe_secret_key(value: str | None) -> bool:
+    return str(value or "").startswith(("sk_", "rk_"))
+
+
 def applies_if_stack_database_supabase(ctx: dict) -> bool:
-    return _stack(ctx).get("database") == "supabase"
+    if _stack(ctx).get("database") == "supabase":
+        return True
+    return _env_value_matches(ctx, "NEXT_PUBLIC_SUPABASE_URL", _is_supabase_url)
 
 
 def applies_if_stack_database_railway(ctx: dict) -> bool:
@@ -467,15 +502,19 @@ def applies_if_stack_database_railway(ctx: dict) -> bool:
         return True
     if (root / "railway.json").exists():
         return True
-    return "railway.app" in _read_env_file(root).get("DATABASE_URL", "")
+    return _env_value_matches(ctx, "DATABASE_URL", _is_railway_database_url)
 
 
 def applies_if_stack_hosting_vercel(ctx: dict) -> bool:
-    return "vercel" in _service_values(ctx, "hosting")
+    if "vercel" in _service_values(ctx, "hosting"):
+        return True
+    return (_root(ctx) / ".vercel" / "project.json").exists()
 
 
 def applies_if_stack_payment_stripe(ctx: dict) -> bool:
-    return _stack(ctx).get("payment") == "stripe"
+    if _stack(ctx).get("payment") == "stripe":
+        return True
+    return _env_value_matches(ctx, "STRIPE_SECRET_KEY", _is_stripe_secret_key)
 
 
 def applies_if_events_yaml_exists(ctx: dict) -> bool:

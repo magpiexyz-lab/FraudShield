@@ -152,6 +152,25 @@ class VercelApiTests(unittest.TestCase):
                 vercel_api.latest_production_deployment_url("tok", "prj", "team")
             )
 
+    def test_get_project_domains_parses_names_and_team_id(self):
+        payload = {
+            "domains": [
+                {"name": "app.example.com"},
+                {"domain": "legacy.example.com"},
+                "string.example.com",
+                {"name": ""},
+            ]
+        }
+        with patch("vercel_api._curl_json", return_value=payload) as mock_curl:
+            self.assertEqual(
+                vercel_api.get_project_domains("tok", "prj", "team_123"),
+                ["app.example.com", "legacy.example.com", "string.example.com"],
+            )
+
+        url = mock_curl.call_args[0][1]
+        self.assertIn("/v9/projects/prj/domains", url)
+        self.assertIn("teamId=team_123", url)
+
     @patch("vercel_api.subprocess.run")
     def test_get_vercel_env_var_found_filters_target_empty_and_teamid(self, mock_run):
         payload = {

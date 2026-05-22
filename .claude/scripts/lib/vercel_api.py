@@ -246,3 +246,34 @@ def latest_production_deployment_url(
     if not deployment_url:
         return None
     return f"https://{deployment_url}"
+
+
+def get_project_domains(
+    token: str,
+    project_id: str,
+    team_id: str | None = None,
+) -> list[str]:
+    """Return domain names assigned to a Vercel project."""
+    params: dict[str, str] = {}
+    if team_id:
+        params["teamId"] = team_id
+    query = f"?{urlencode(params)}" if params else ""
+    url = f"https://api.vercel.com/v9/projects/{project_id}/domains{query}"
+
+    body = _curl_json(token, url)
+    raw_domains = body.get("domains", []) if isinstance(body, dict) else body
+    if not isinstance(raw_domains, list):
+        return []
+
+    domains: list[str] = []
+    for item in raw_domains:
+        if isinstance(item, str):
+            name = item
+        elif isinstance(item, dict):
+            name = str(item.get("name") or item.get("domain") or "")
+        else:
+            name = ""
+        name = name.strip()
+        if name:
+            domains.append(name)
+    return domains
