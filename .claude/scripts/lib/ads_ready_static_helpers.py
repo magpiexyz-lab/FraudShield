@@ -867,6 +867,48 @@ def _format_posthog_team_expectation(team_posthog: dict) -> str:
     )
 
 
+def _posthog_server_key_failure(
+    ctx: dict,
+    client_key: str,
+) -> tuple[bool, str, str | None] | None:
+    result = _server_key_result(ctx)
+    if isinstance(result, vercel_api.EnvResultAbsent):
+        return None
+    if isinstance(result, vercel_api.EnvResultError):
+        return (
+            False,
+            f"Could not verify Vercel POSTHOG_SERVER_KEY: {result.reason}. Fix Vercel auth and retry.",
+            "Fix Vercel auth and retry.",
+        )
+    if isinstance(result, vercel_api.EnvResultFound):
+        if result.value == "":
+            message = (
+                "POSTHOG_SERVER_KEY is set to empty string in Vercel prod env. "
+                "JS ?? does NOT fall through on empty string, so server-side events will fail. "
+                "Either unset POSTHOG_SERVER_KEY or set to a real team key."
+            )
+            return False, message, "Unset POSTHOG_SERVER_KEY or set it to a real team key."
+        if result.value == POSTHOG_PLACEHOLDER:
+            message = (
+                "POSTHOG_SERVER_KEY is set to the placeholder phc_TEAM_KEY. "
+                "Server events go to a no-op project. Unset or set to a real team key."
+            )
+            return False, message, "Unset POSTHOG_SERVER_KEY or set it to a real team key."
+        if result.value != client_key:
+            message = (
+                "POSTHOG_SERVER_KEY targets a different PostHog project than "
+                "NEXT_PUBLIC_POSTHOG_KEY. Per stack contract, all events must go to the same "
+                "project. Set POSTHOG_SERVER_KEY to the same value as NEXT_PUBLIC_POSTHOG_KEY, "
+                "or unset it."
+            )
+            return (
+                False,
+                message,
+                "Set POSTHOG_SERVER_KEY to the same value as NEXT_PUBLIC_POSTHOG_KEY, or unset it.",
+            )
+    return None
+
+
 def _resolve_mvp_env_value(ctx: dict, keys: list[str]) -> tuple[str | None, str | None, str | None]:
     root = _root(ctx)
     link = _read_vercel_project_link(root)
@@ -1002,6 +1044,9 @@ def check_posthog_team_key(ctx: dict) -> tuple[bool, str, str | None]:
                 f"Expected {expected}; actual={_mask_secret(key)}."
             ),
         )
+    server_key_failure = _posthog_server_key_failure(ctx, key)
+    if server_key_failure:
+        return server_key_failure
     return (
         True,
         "MVP NEXT_PUBLIC_POSTHOG_KEY matches team-config.yaml.team.posthog.project_api_tokens",
