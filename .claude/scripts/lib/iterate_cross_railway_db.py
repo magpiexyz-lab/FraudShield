@@ -129,7 +129,7 @@ def _check_psql_available() -> str | None:
 def list_railway_projects() -> list[dict]:
     """Enumerate every Railway project + its services in one call.
 
-    Returns: [{id, name, workspace, services: [{id, name}]}, ...]
+    Returns: [{id, name, workspace, workspace_id, services: [{id, name}]}, ...]
     Postgres services are NOT filtered here — caller decides.
     """
     r = subprocess.run(
@@ -150,11 +150,13 @@ def list_railway_projects() -> list[dict]:
             node = edge.get("node") or {}
             if node.get("id") and node.get("name"):
                 svcs.append({"id": node["id"], "name": node["name"]})
+        workspace = p.get("workspace") or {}
         out.append(
             {
                 "id": p.get("id"),
                 "name": p.get("name"),
-                "workspace": (p.get("workspace") or {}).get("name"),
+                "workspace": workspace.get("name") if isinstance(workspace, dict) else None,
+                "workspace_id": workspace.get("id") if isinstance(workspace, dict) else None,
                 "services": svcs,
             }
         )

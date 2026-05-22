@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from check_project_name import main as cpn_main  # noqa: E402
 from derive_pages import derive_scope_pages  # noqa: E402
-from iterate_cross_db import _read_token, list_supabase_projects, normalize_name  # noqa: E402
+from iterate_cross_db import _read_token  # noqa: E402
 from iterate_cross_railway_db import (  # noqa: E402
     _check_railway_auth,
     list_railway_projects,
@@ -106,6 +106,25 @@ def _load_yaml_file(path: Path) -> dict:
     except Exception:
         return {}
     return data if isinstance(data, dict) else {}
+
+
+def load_team_config(skill_root: Path | None = None) -> dict:
+    """Load .claude/team-config.yaml. Returns parsed YAML or empty dict if missing."""
+    candidates: list[Path] = []
+    if skill_root is not None:
+        candidates.append(Path(skill_root).expanduser() / ".claude" / "team-config.yaml")
+    candidates.append(Path.cwd() / ".claude" / "team-config.yaml")
+
+    seen: set[Path] = set()
+    for candidate in candidates:
+        resolved = candidate.resolve()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        data = _load_yaml_file(candidate)
+        if data:
+            return data
+    return {}
 
 
 def _experiment(ctx: dict) -> dict:
@@ -248,6 +267,58 @@ def _read_vercel_project_link(root: Path) -> dict[str, str | None] | None:
     except Exception:
         return None
     return {"projectId": data.get("projectId"), "orgId": data.get("orgId")}
+
+
+TEAM_CONFIG_MISSING_DETAILS = "Team config not found at .claude/team-config.yaml — cannot validate."
+
+
+def _team_config(ctx: dict) -> dict:
+    return load_team_config(_root(ctx))
+
+
+def _team_provider(config: dict, provider: str) -> dict:
+    team = config.get("team") if isinstance(config, dict) else {}
+    if not isinstance(team, dict):
+        return {}
+    section = team.get(provider)
+    return section if isinstance(section, dict) else {}
+
+
+def _team_list(config: dict, provider: str, field: str) -> list[str]:
+    values = _team_provider(config, provider).get(field)
+    if not isinstance(values, list):
+        return []
+    return [str(value) for value in values if value is not None]
+
+
+def _missing_team_config_result() -> tuple[bool, str, str | None]:
+    return (
+        False,
+        TEAM_CONFIG_MISSING_DETAILS,
+        "Add .claude/team-config.yaml with the team's provider identity allowlists, then re-run /ads-ready.",
+    )
+
+
+def _missing_team_section_result(provider: str, field: str) -> tuple[bool, str, str | None]:
+    return (
+        False,
+        f"Team config missing team.{provider}.{field}.",
+        f"Add team.{provider}.{field} to .claude/team-config.yaml, then re-run /ads-ready.",
+    )
+
+
+def _team_values_or_failure(
+    ctx: dict,
+    provider: str,
+    field: str,
+) -> tuple[list[str], tuple[bool, str, str | None] | None]:
+    config = _team_config(ctx)
+    if not config:
+        return [], _missing_team_config_result()
+    values = _team_list(config, provider, field)
+    if not values:
+        return [], _missing_team_section_result(provider, field)
+    return values, None
 
 
 def _vercel_identity(ctx: dict) -> tuple[str | None, str | None, str | None]:
@@ -621,7 +692,7 @@ def _posthog_get(url: str, api_key: str) -> dict:
     except Exception as exc:
         raise RuntimeError(f"malformed PostHog response: {exc}") from exc
     if isinstance(data, dict) and str(data.get("detail", "")).lower().startswith("authentication"):
-        raise PermissionError("PostHog token lacks Organization Read / Project Read scope.")
+        raise PermissionError("PostHog token lacks Project Read scope.")
     return data if isinstance(data, dict) else {}
 
 
@@ -635,20 +706,13 @@ def _next_url(host: str, url: str | None) -> str | None:
 
 def _list_posthog_projects(api_key: str, host: str = POSTHOG_PRIVATE_API_HOST) -> list[dict]:
     projects: list[dict] = []
-    org_url: str | None = f"{host.rstrip()}/api/organizations/"
-    while org_url:
-        org_page = _posthog_get(org_url, api_key)
-        for org in org_page.get("results") or []:
-            if not isinstance(org, dict) or not org.get("id"):
-                continue
-            proj_url: str | None = f"{host.rstrip()}/api/organizations/{org['id']}/projects/"
-            while proj_url:
-                proj_page = _posthog_get(proj_url, api_key)
-                for project in proj_page.get("results") or []:
-                    if isinstance(project, dict):
-                        projects.append(project)
-                proj_url = _next_url(host, proj_page.get("next"))
-        org_url = _next_url(host, org_page.get("next"))
+    project_url: str | None = f"{host.rstrip('/')}/api/projects/"
+    while project_url:
+        project_page = _posthog_get(project_url, api_key)
+        for project in project_page.get("results") or []:
+            if isinstance(project, dict):
+                projects.append(project)
+        project_url = _next_url(host, project_page.get("next"))
     return projects
 
 
@@ -699,40 +763,130 @@ def _server_key_result(ctx: dict) -> Any:
     )
 
 
+def _format_posthog_team_expectation(team_posthog: dict) -> str:
+    project_ids = team_posthog.get("project_ids") if isinstance(team_posthog, dict) else []
+    api_tokens = team_posthog.get("project_api_tokens") if isinstance(team_posthog, dict) else []
+    if not isinstance(project_ids, list):
+        project_ids = []
+    if not isinstance(api_tokens, list):
+        api_tokens = []
+    return f"team.posthog.project_ids={project_ids}; team.posthog.project_api_tokens={api_tokens}"
+
+
+def _vercel_production_env_value(ctx: dict, key: str) -> tuple[str | None, str | None]:
+    token, project_id, team_id = _vercel_identity(ctx)
+    if not token or not project_id:
+        return None, None
+    result = vercel_api.get_vercel_env_var(token, project_id, team_id, key, target="production")
+    if isinstance(result, vercel_api.EnvResultError):
+        return None, result.reason
+    if isinstance(result, vercel_api.EnvResultFound) and result.value:
+        return result.value, None
+    return None, None
+
+
+def _resolve_mvp_env_value(ctx: dict, keys: list[str]) -> tuple[str | None, str | None, str | None]:
+    env = _read_env_file(_root(ctx))
+    for key in keys:
+        value = env.get(key)
+        if value:
+            return value, f".env.local:{key}", None
+    for key in keys:
+        value, error = _vercel_production_env_value(ctx, key)
+        if error:
+            return None, f"vercel:{key}", error
+        if value:
+            return value, f"vercel:{key}", None
+    return None, None, None
+
+
+def _supabase_project_ref_from_url(supabase_url: str | None) -> str | None:
+    match = re.search(r"https://([a-zA-Z0-9-]+)\.supabase\.co", supabase_url or "")
+    return match.group(1) if match else None
+
+
+def _get_supabase_project(project_ref: str, token: str) -> dict:
+    r = subprocess.run(
+        [
+            "curl",
+            "-s",
+            "-w",
+            "\nHTTP_STATUS:%{http_code}",
+            "-H",
+            f"Authorization: Bearer {token}",
+            f"https://api.supabase.com/v1/projects/{project_ref}",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=15,
+    )
+    if r.returncode != 0:
+        raise RuntimeError(f"curl exit {r.returncode}: {r.stderr[:200]}")
+    body_text, _, status_text = (r.stdout or "").rpartition("\nHTTP_STATUS:")
+    if not status_text:
+        body_text = r.stdout or ""
+        status = None
+    else:
+        try:
+            status = int(status_text.strip() or 0)
+        except ValueError:
+            status = None
+    try:
+        data = json.loads(body_text) if body_text.strip() else {}
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"non-json response: {body_text[:200]}") from exc
+    if status and status >= 400:
+        raise RuntimeError(f"HTTP {status}: {json.dumps(data)[:200]}")
+    return data if isinstance(data, dict) else {}
+
+
 def check_posthog_team_key(ctx: dict) -> tuple[bool, str, str | None]:
     key, source, resolved_file = resolve_production_posthog_key(ctx)
     if source not in {"vercel_env_set", "source_fallback"} or not key or key == POSTHOG_PLACEHOLDER:
         return _posthog_source_failure(source, resolved_file)
+
+    config = _team_config(ctx)
+    if not config:
+        return _missing_team_config_result()
+    posthog_config = _team_provider(config, "posthog")
+    team_tokens = _team_list(config, "posthog", "project_api_tokens")
+    if not team_tokens:
+        return _missing_team_section_result("posthog", "project_api_tokens")
+    expected = _format_posthog_team_expectation(posthog_config)
+    if key not in team_tokens:
+        source_label = f"`{resolved_file}` source fallback" if source == "source_fallback" else "Vercel production env"
+        return (
+            False,
+            f"Resolved PostHog key {_mask_secret(key)} from {source_label} is not in team-config. Expected {expected}.",
+            f"Set NEXT_PUBLIC_POSTHOG_KEY in {source_label} to one of team.posthog.project_api_tokens. Expected {expected}.",
+        )
 
     try:
         api_key = _read_posthog_api_key()
     except Exception:
         return (
             False,
-            "PostHog personal API key is missing.",
-            "Save your PostHog personal API key to ~/.posthog/personal-api-key (see iterate-cross state-x0). For /ads-ready, the token needs scopes: Organization Read, Project Read.",
+            f"PostHog personal API key is missing. Expected {expected}.",
+            "Save your PostHog personal API key to ~/.posthog/personal-api-key (see iterate-cross state-x0). For /ads-ready, the token needs Project Read scope; Layer B also needs Query Read.",
         )
 
     try:
         projects = _list_posthog_projects(api_key, str(ctx.get("posthog_api_host") or POSTHOG_PRIVATE_API_HOST))
     except PermissionError as exc:
-        return False, str(exc), "Create a PostHog personal API key with Organization Read and Project Read scopes."
+        return False, f"{exc}. Expected {expected}.", "Create a PostHog personal API key with Project Read scope."
     except Exception as exc:
-        return False, f"PostHog project discovery failed: {exc}", "Confirm PostHog API token scopes and retry."
+        return False, f"PostHog project discovery failed: {exc}. Expected {expected}.", "Confirm PostHog API token scopes and retry."
 
     project_names = [str(p.get("name") or p.get("id") or "<unnamed>") for p in projects]
     client_project = next((p for p in projects if p.get("api_token") == key), None)
     if client_project is None:
-        expected = ", ".join(project_names) or "<no accessible projects>"
-        if source == "source_fallback":
-            fix = (
-                f"MVP's NEXT_PUBLIC_POSTHOG_KEY (from `{resolved_file}`'s source-level fallback) does not match any project accessible by your PostHog account. Expected one of: {expected}. Update the fallback constant in `{resolved_file}`, OR set NEXT_PUBLIC_POSTHOG_KEY in Vercel production env."
-            )
-        else:
-            fix = (
-                f"MVP's NEXT_PUBLIC_POSTHOG_KEY (from Vercel production env) does not match any project accessible by your PostHog account (across all orgs). Expected one of: {expected}. Update the Vercel env var to a team-project key, OR transfer this Vercel project to the team account."
-            )
-        return False, f"Resolved PostHog key {_mask_secret(key)} is not among team projects: {expected}.", fix
+        accessible = ", ".join(project_names) or "<no accessible projects>"
+        return (
+            False,
+            f"Resolved PostHog key {_mask_secret(key)} is in team-config, but is not visible via /api/projects/. Expected {expected}; accessible projects: {accessible}.",
+            "Use a PostHog personal API key that can read the configured team project, then re-run /ads-ready.",
+        )
 
     server_result = _server_key_result(ctx)
     if isinstance(server_result, vercel_api.EnvResultError):
@@ -766,36 +920,64 @@ def check_posthog_team_key(ctx: dict) -> tuple[bool, str, str | None]:
             return (
                 False,
                 f"POSTHOG_SERVER_KEY ({_mask_secret(server_value)}) targets a different PostHog project than NEXT_PUBLIC_POSTHOG_KEY ({_mask_secret(key)}).",
-                f"POSTHOG_SERVER_KEY (`{_mask_secret(server_value)}`) targets a different PostHog project than NEXT_PUBLIC_POSTHOG_KEY (`{_mask_secret(key)}`). Client events go to `{client_name}`, server events go to `{server_name}` - funnel attribution breaks. Set POSTHOG_SERVER_KEY to the same key as NEXT_PUBLIC_POSTHOG_KEY, or unset it.",
+                f"POSTHOG_SERVER_KEY (`{_mask_secret(server_value)}`) targets a different PostHog project than NEXT_PUBLIC_POSTHOG_KEY (`{_mask_secret(key)}`). Client events go to `{client_name}`, server events go to `{server_name}` - funnel attribution breaks. Set POSTHOG_SERVER_KEY to the same key as NEXT_PUBLIC_POSTHOG_KEY, or unset it. Expected {expected}.",
             )
 
     return (
         True,
-        f"Resolved PostHog key matches team project `{client_project.get('name') or client_project.get('id')}`.",
+        f"Resolved PostHog key matches team-config and PostHog project `{client_project.get('name') or client_project.get('id')}`.",
         None,
     )
 
 
 def check_supabase_team_org(ctx: dict) -> tuple[bool, str, str | None]:
-    root = _root(ctx)
-    supabase_url = _read_env_file(root).get("NEXT_PUBLIC_SUPABASE_URL", "")
-    match = re.search(r"https://([a-zA-Z0-9-]+)\.supabase\.co", supabase_url)
-    if not match:
-        return False, "NEXT_PUBLIC_SUPABASE_URL is missing from .env.local.", "Set NEXT_PUBLIC_SUPABASE_URL for the team Supabase project."
-    project_ref = match.group(1)
+    expected_orgs, failure = _team_values_or_failure(ctx, "supabase", "organization_ids")
+    if failure:
+        return failure
+
+    supabase_url, source, env_error = _resolve_mvp_env_value(
+        ctx,
+        ["SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_URL"],
+    )
+    if env_error:
+        return (
+            False,
+            f"Could not read Supabase URL from Vercel production env: {env_error}",
+            "Fix Vercel auth/API access, or set SUPABASE_URL/NEXT_PUBLIC_SUPABASE_URL in .env.local before re-running /ads-ready.",
+        )
+    project_ref = _supabase_project_ref_from_url(supabase_url)
+    if not project_ref:
+        return (
+            False,
+            "SUPABASE_URL/NEXT_PUBLIC_SUPABASE_URL is missing or invalid in .env.local and Vercel production env.",
+            "Set SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL to the team Supabase project URL.",
+        )
     try:
         token = _read_token()
-        projects = list_supabase_projects(token)
     except SystemExit as exc:
         return False, str(exc), "Run `supabase login`."
     except Exception as exc:
-        return False, f"Supabase project list failed: {exc}", "Run `supabase login` and retry."
-    if any(p.get("id") == project_ref for p in projects):
-        return True, f"Supabase project `{project_ref}` is accessible by the operator token.", None
+        return False, f"Supabase token read failed: {exc}", "Run `supabase login` and retry."
+    try:
+        project = _get_supabase_project(project_ref, token)
+    except Exception as exc:
+        return (
+            False,
+            f"Supabase project `{project_ref}` lookup failed: {exc}",
+            "Confirm the Supabase token can read this project and retry.",
+        )
+
+    organization_id = str(project.get("organization_id") or "")
+    if organization_id and organization_id in expected_orgs:
+        return (
+            True,
+            f"Supabase project `{project_ref}` from {source} belongs to configured team org `{organization_id}`.",
+            None,
+        )
     return (
         False,
-        f"Supabase project `{project_ref}` is not accessible by the operator token.",
-        f"Supabase project {project_ref} is not accessible by your token (likely in a personal org). Transfer to team org or invite our shared-org token's account.",
+        f"Supabase project `{project_ref}` belongs to org `{organization_id or '<missing>'}`, not team.supabase.organization_ids={expected_orgs}.",
+        f"Move Supabase project {project_ref} to one of team.supabase.organization_ids={expected_orgs}, or update the MVP Supabase URL.",
     )
 
 
@@ -811,63 +993,91 @@ def _railway_project_id(root: Path) -> str | None:
 
 
 def check_railway_team_workspace(ctx: dict) -> tuple[bool, str, str | None]:
+    expected_workspaces, failure = _team_values_or_failure(ctx, "railway", "workspace_ids")
+    if failure:
+        return failure
+
     auth_error = _check_railway_auth()
     if auth_error:
         return False, auth_error, "Run `! railway login`."
     root = _root(ctx)
     project_id = _railway_project_id(root)
+    if not project_id:
+        return (
+            False,
+            "Railway project ID is missing from railway.json.",
+            "Run `railway link` for the team Railway project so railway.json contains projectId.",
+        )
     projects = list_railway_projects()
-    if project_id and any(p.get("id") == project_id for p in projects):
-        return True, f"Railway project `{project_id}` is accessible.", None
-    name_norm = normalize_name(_mvp_name(ctx))
-    for project in projects:
-        if name_norm and normalize_name(str(project.get("name") or "")) == name_norm:
-            return True, f"Railway project `{project.get('name')}` is accessible.", None
+    project = next((p for p in projects if p.get("id") == project_id), None)
+    if not project:
+        return (
+            False,
+            f"Railway project `{project_id}` is not accessible via `railway list --json`.",
+            "Log in to Railway with an account that can access the configured team project, or re-link the MVP to the team Railway project.",
+        )
+    workspace = project.get("workspace")
+    workspace_id = (
+        workspace.get("id")
+        if isinstance(workspace, dict)
+        else project.get("workspace_id") or project.get("workspaceId")
+    )
+    workspace_id = str(workspace_id or "")
+    if workspace_id in expected_workspaces:
+        return True, f"Railway project `{project_id}` belongs to team workspace `{workspace_id}`.", None
     return (
         False,
-        "Railway project is not accessible in the operator's workspace.",
-        "Railway project not in your team workspace. Transfer to team workspace or accept the invite.",
+        f"Railway project `{project_id}` belongs to workspace `{workspace_id or '<missing>'}`, not team.railway.workspace_ids={expected_workspaces}.",
+        f"Transfer Railway project {project_id} to one of team.railway.workspace_ids={expected_workspaces}, or update railway.json to the team project.",
     )
 
 
 def check_vercel_team_account(ctx: dict) -> tuple[bool, str, str | None]:
-    token = vercel_api.read_vercel_token()
-    if not token:
-        return False, "Vercel CLI token is missing.", "Run `vercel login`."
+    expected_team_ids, failure = _team_values_or_failure(ctx, "vercel", "team_ids")
+    if failure:
+        return failure
+
     link = _read_vercel_project_link(_root(ctx))
-    if link and link.get("projectId"):
-        team_id = link.get("orgId")
-        project_id_or_name = str(link["projectId"])
-    else:
-        team_id = None
-        project_id_or_name = _mvp_name(ctx)
-    project = vercel_api.find_project(token, team_id, project_id_or_name)
-    if project:
-        return True, f"Vercel project `{project_id_or_name}` is accessible in team scope.", None
+    if not link or not link.get("orgId"):
+        return (
+            False,
+            "Vercel project link is missing orgId in .vercel/project.json.",
+            "Run `vercel link` against the team Vercel project so .vercel/project.json contains orgId.",
+        )
+    team_id = str(link["orgId"])
+    project_id = str(link.get("projectId") or "<unknown>")
+    if team_id in expected_team_ids:
+        return True, f"Vercel project `{project_id}` is linked to team `{team_id}`.", None
     return (
         False,
-        f"Vercel project `{project_id_or_name}` is not in operator team scope.",
-        f"Vercel project '{project_id_or_name}' is not in your team scope (likely a personal Vercel account). Transfer to team Vercel account, or re-run `vercel link` against the team's project.",
+        f"Vercel project `{project_id}` is linked to orgId `{team_id}`, not team.vercel.team_ids={expected_team_ids}.",
+        f"Transfer Vercel project {project_id} to one of team.vercel.team_ids={expected_team_ids}, or re-run `vercel link` against the team's project.",
     )
 
 
 def check_stripe_team_account(ctx: dict) -> tuple[bool, str, str | None]:
-    operator_key = stripe_api.read_stripe_key_from_config()
-    if not operator_key:
-        return False, "Stripe CLI auth is missing.", "Run `stripe login`."
-    mvp_key = _read_env_file(_root(ctx)).get("STRIPE_SECRET_KEY")
+    expected_accounts, failure = _team_values_or_failure(ctx, "stripe", "account_ids")
+    if failure:
+        return failure
+
+    mvp_key, _source, env_error = _resolve_mvp_env_value(ctx, ["STRIPE_SECRET_KEY"])
+    if env_error:
+        return (
+            False,
+            f"Could not read STRIPE_SECRET_KEY from Vercel production env: {env_error}",
+            "Fix Vercel auth/API access, or set STRIPE_SECRET_KEY in .env.local before re-running /ads-ready.",
+        )
     if not mvp_key:
-        return False, "STRIPE_SECRET_KEY is missing for a Stripe MVP.", "Set STRIPE_SECRET_KEY in Vercel env."
-    operator_account = stripe_api.get_account_id(operator_key)
+        return False, "STRIPE_SECRET_KEY is missing for a Stripe MVP.", "Set STRIPE_SECRET_KEY in Vercel env or .env.local."
     mvp_account = stripe_api.get_account_id(mvp_key)
-    if not operator_account or not mvp_account:
-        return False, "Could not resolve Stripe account IDs.", "Confirm Stripe API keys and retry."
-    if operator_account == mvp_account:
-        return True, f"Stripe account `{mvp_account}` matches the operator account.", None
+    if not mvp_account:
+        return False, "Could not resolve Stripe account ID from STRIPE_SECRET_KEY.", "Confirm STRIPE_SECRET_KEY and retry."
+    if mvp_account in expected_accounts:
+        return True, f"Stripe account `{mvp_account}` is in team.stripe.account_ids.", None
     return (
         False,
-        f"MVP Stripe account `{mvp_account}` differs from operator account `{operator_account}`.",
-        f"MVP's STRIPE_SECRET_KEY resolves to account {mvp_account} but operator's team Stripe account is {operator_account}. Update Vercel env var.",
+        f"MVP STRIPE_SECRET_KEY resolves to account `{mvp_account}`, not team.stripe.account_ids={expected_accounts}.",
+        f"Set STRIPE_SECRET_KEY to a key for one of team.stripe.account_ids={expected_accounts}.",
     )
 
 

@@ -92,12 +92,17 @@ class AdsReadySmokeOrchestratorTests(unittest.TestCase):
     @patch("ads_ready_smoke.run_playwright_smoke", return_value=Path("captured-events.json"))
     @patch("ads_ready_smoke._read_posthog_api_key", return_value="phx_api")
     @patch("ads_ready_smoke.H.resolve_production_posthog_key", return_value=("phc_REAL", "vercel_env_set", None))
+    @patch(
+        "ads_ready_smoke.H.load_team_config",
+        return_value={"team": {"posthog": {"project_ids": [2], "project_api_tokens": ["phc_REAL"]}}},
+    )
     @patch("ads_ready_smoke._posthog_query")
     @patch("ads_ready_smoke._posthog_get")
     def test_playwright_and_hogql_success(
         self,
         mock_posthog_get,
         mock_posthog_query,
+        _mock_team_config,
         _mock_resolve,
         _mock_read_key,
         _mock_playwright,
@@ -112,9 +117,6 @@ class AdsReadySmokeOrchestratorTests(unittest.TestCase):
                 events="events:\n  visit_landing:\n    funnel_stage: landing\n",
             )
             mock_posthog_get.side_effect = [
-                {"results": [{"id": "org1"}], "next": "/api/organizations/?page=2"},
-                {"results": [{"id": 1, "name": "Other", "api_token": "phc_OTHER"}], "next": None},
-                {"results": [{"id": "org2"}], "next": None},
                 {"results": [{"id": 2, "name": "Team", "api_token": "phc_REAL"}], "next": None},
             ]
             mock_posthog_query.side_effect = [
@@ -130,7 +132,17 @@ class AdsReadySmokeOrchestratorTests(unittest.TestCase):
         self.assertEqual(result["failed_count"], 0)
         self.assertTrue(result["synthetic_gclid"].startswith(SYNTHETIC_GCLID_PREFIX))
         self.assertEqual(mock_posthog_query.call_count, 3)
-        self.assertEqual(mock_posthog_get.call_count, 4)
+        self.assertEqual(mock_posthog_get.call_count, 1)
+
+    @patch("ads_ready_smoke.H.resolve_production_posthog_key", return_value=("phc_REAL", "vercel_env_set", None))
+    @patch("ads_ready_smoke.H.load_team_config", return_value={})
+    def test_discover_posthog_project_missing_team_config_fails(self, _config, _resolve):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            make_root(root, playwright=True)
+            with self.assertRaises(S.SmokeSetupError) as raised:
+                S.discover_posthog_project({"mvp_root": str(root)})
+        self.assertIn("Team config not found", str(raised.exception))
 
     @patch("ads_ready_smoke.time.sleep")
     @patch("ads_ready_smoke.secrets.token_urlsafe", return_value="TOKEN")

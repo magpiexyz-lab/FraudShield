@@ -352,7 +352,7 @@ def _posthog_get(url: str, api_key: str) -> dict[str, Any]:
     except Exception as exc:
         raise SmokeSetupError(f"malformed PostHog response: {exc}") from exc
     if isinstance(data, dict) and str(data.get("detail", "")).lower().startswith("authentication"):
-        raise SmokeSetupError("PostHog token lacks Organization Read / Project Read scope.")
+        raise SmokeSetupError("PostHog token lacks Project Read scope.")
     return data if isinstance(data, dict) else {}
 
 
@@ -366,20 +366,13 @@ def _next_url(host: str, url: str | None) -> str | None:
 
 def list_posthog_projects(api_key: str, host: str = H.POSTHOG_PRIVATE_API_HOST) -> list[dict[str, Any]]:
     projects: list[dict[str, Any]] = []
-    org_url: str | None = f"{host.rstrip('/')}/api/organizations/"
-    while org_url:
-        org_page = _posthog_get(org_url, api_key)
-        for org in org_page.get("results") or []:
-            if not isinstance(org, dict) or not org.get("id"):
-                continue
-            project_url: str | None = f"{host.rstrip('/')}/api/organizations/{org['id']}/projects/"
-            while project_url:
-                project_page = _posthog_get(project_url, api_key)
-                for project in project_page.get("results") or []:
-                    if isinstance(project, dict):
-                        projects.append(project)
-                project_url = _next_url(host, project_page.get("next"))
-        org_url = _next_url(host, org_page.get("next"))
+    project_url: str | None = f"{host.rstrip('/')}/api/projects/"
+    while project_url:
+        project_page = _posthog_get(project_url, api_key)
+        for project in project_page.get("results") or []:
+            if isinstance(project, dict):
+                projects.append(project)
+        project_url = _next_url(host, project_page.get("next"))
     return projects
 
 
@@ -408,11 +401,24 @@ def discover_posthog_project(ctx: dict[str, Any]) -> dict[str, Any]:
     else:
         raise SmokeSetupError(_source_failure_message(source, key, resolved_file))
 
+    team_config = H.load_team_config(_root(ctx))
+    if not team_config:
+        raise SmokeSetupError(H.TEAM_CONFIG_MISSING_DETAILS)
+    team_tokens = H._team_list(team_config, "posthog", "project_api_tokens")
+    if not team_tokens:
+        raise SmokeSetupError("Team config missing team.posthog.project_api_tokens.")
+    if resolved_key not in team_tokens:
+        posthog_config = H._team_provider(team_config, "posthog")
+        expected = H._format_posthog_team_expectation(posthog_config)
+        raise SmokeSetupError(
+            f"Resolved NEXT_PUBLIC_POSTHOG_KEY does not match team-config. Expected {expected}."
+        )
+
     try:
         api_key = _read_posthog_api_key()
     except Exception as exc:
         raise SmokeSetupError(
-            "PostHog project discovery failed. Check ~/.posthog/personal-api-key and token scopes (Organization Read, Project Read)."
+            "PostHog project discovery failed. Check ~/.posthog/personal-api-key and token scopes (Project Read, Query Read)."
         ) from exc
 
     projects = list_posthog_projects(api_key, str(ctx.get("posthog_api_host") or H.POSTHOG_PRIVATE_API_HOST))
