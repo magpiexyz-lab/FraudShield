@@ -63,3 +63,12 @@ coverage/
 # Lock files from other package managers (this project uses npm)
 pnpm-lock.yaml
 yarn.lock
+
+# Codex CLI experiments (per-operator parallel deployment of project config).
+# These are a Codex-flavored mirror of .claude/ (.codex/hooks.json contains
+# hardcoded absolute paths under $HOME — not team-portable as-is). If/when the
+# Codex side is parameterized to use $CLAUDE_PROJECT_DIR and team-shared,
+# remove these entries and check the files in.
+.codex/
+.agents/
+AGENTS.md
