@@ -1,15 +1,7 @@
 thresholds:
-  # GO/NO_GO/INSUFFICIENT decision rule (set 2026-05-21):
-  #   visitors < visitors_floor → INSUFFICIENT (keep running)
-  #   visitors ≥ visitors_floor AND conv ≥ conv_rate_go → GO
-  #   visitors ≥ visitors_floor AND conv < conv_rate_go → NO_GO
-  # Conversion uses signups / visitors where signups is DB-first
-  # (Supabase/Railway ground truth, falling back to PostHog) and
-  # visitors is GA-clicks when available, else PostHog gclid_visitors.
   visitors_floor: 100
   conv_rate_go: 0.06
-  signups_go: 6              # derived: visitors_floor × conv_rate_go (back-compat)
-
+  signups_go: 6
 mvp_mappings:
   x-predict:
     signup_events:
@@ -547,6 +539,13 @@ mvp_mappings:
     classified_by: x2-empty
     classified_at: '2026-05-21T08:59:55Z'
     rationale: No events in catalog
+  kansei:
+    supabase_project_ref: ibcxnmfoeskczdzagtvh
+    signup_events: []
+    classified_by: x2-empty
+    classified_at: '2026-05-22T15:04:30Z'
+    rationale: "Catalog has only visit_landing \u2014 landing-page view, not a signup.\
+      \ No conversion event captured in window. (1 gclid visitor 2026-05-22.)"
 mvp_aliases:
   hospitica:
   - statistica
