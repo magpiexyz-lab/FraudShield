@@ -72,3 +72,6 @@ yarn.lock
 .codex/
 .agents/
 AGENTS.md
+
+# Supabase CLI cache
+supabase/.temp/
