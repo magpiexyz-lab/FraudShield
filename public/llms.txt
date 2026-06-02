@@ -1,0 +1,21 @@
+# FraudShield
+
+> Catch forged pay stubs, bank statements, and invoices in seconds with a forensic fraud score — affordable, self-serve detection built for small operators.
+
+FraudShield is affordable, self-serve AI document-fraud detection for the underserved: small lenders, independent landlords, gig-platform trust teams, and SMB finance staff. Upload a pay stub, bank statement, or invoice and get a forensic fraud score (0–100) in seconds, with an explained per-signal breakdown — metadata forensics, cross-document checks, and known-fraud-template matches.
+
+## Features
+
+- Upload a pay stub, bank statement, or invoice and receive a forensic fraud score in seconds.
+- See a 0–100 fraud score with a per-signal breakdown explaining each forensic finding.
+- Run a live sample scan on the landing page before signing up.
+- Self-serve access — no enterprise sales call or contract.
+- Optional API access for integrating fraud detection into your own workflow.
+- Upgrade for higher scan volume when you hit the free limit.
+
+## Who it's for
+
+- Small and regional lenders and MCA brokers verifying applicant income documents.
+- Independent landlords and property managers screening tenant pay stubs and bank statements.
+- Gig-platform trust & safety teams checking submitted documents at scale.
+- SMB finance and accounts-payable staff reviewing invoices.
