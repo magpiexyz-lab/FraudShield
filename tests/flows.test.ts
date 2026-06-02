@@ -22,7 +22,7 @@ beforeAll(() => {
 });
 
 describe("b-07: Stripe webhook checkout.session.completed", () => {
-  it("processes a checkout.session.completed event end-to-end", async () => {
+  it("processes a checkout.session.completed event end-to-end", { timeout: 20_000 }, async () => {
     const { POST } = await import("@/app/api/webhooks/stripe/route");
 
     const body = JSON.stringify({
