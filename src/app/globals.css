@@ -1,0 +1,215 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * FraudShield — "Forensic Instrument" design system
+ * Color direction: dark-cool, cool-steel temperature (forensic / evidence-lab)
+ * Signature accent: signal-cyan (oklch ~205 hue) — precision instrument, NOT AI-purple
+ * Semantic severity: clear (teal-green) / suspect (amber) / fraud (vermilion)
+ * Tokens consumed by all pages — no per-page color overrides.
+ */
+
+@theme inline {
+    --font-heading: var(--font-heading);
+    --font-sans: var(--font-sans);
+    --font-mono: var(--font-mono);
+
+    /* shadcn token bridge */
+    --color-sidebar-ring: var(--sidebar-ring);
+    --color-sidebar-border: var(--sidebar-border);
+    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+    --color-sidebar-accent: var(--sidebar-accent);
+    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+    --color-sidebar-primary: var(--sidebar-primary);
+    --color-sidebar-foreground: var(--sidebar-foreground);
+    --color-sidebar: var(--sidebar);
+    --color-chart-5: var(--chart-5);
+    --color-chart-4: var(--chart-4);
+    --color-chart-3: var(--chart-3);
+    --color-chart-2: var(--chart-2);
+    --color-chart-1: var(--chart-1);
+    --color-ring: var(--ring);
+    --color-input: var(--input);
+    --color-border: var(--border);
+    --color-destructive: var(--destructive);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-accent: var(--accent);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-muted: var(--muted);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-secondary: var(--secondary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-primary: var(--primary);
+    --color-popover-foreground: var(--popover-foreground);
+    --color-popover: var(--popover);
+    --color-card-foreground: var(--card-foreground);
+    --color-card: var(--card);
+    --color-foreground: var(--foreground);
+    --color-background: var(--background);
+
+    /* FraudShield brand + semantic tokens */
+    --color-signal: var(--signal);
+    --color-signal-foreground: var(--signal-foreground);
+    --color-ink: var(--ink);
+    --color-graphite: var(--graphite);
+    --color-slate-steel: var(--slate-steel);
+    --color-vapor: var(--vapor);
+    --color-clear: var(--clear);
+    --color-clear-foreground: var(--clear-foreground);
+    --color-suspect: var(--suspect);
+    --color-suspect-foreground: var(--suspect-foreground);
+    --color-fraud: var(--fraud);
+    --color-fraud-foreground: var(--fraud-foreground);
+
+    --radius-sm: calc(var(--radius) * 0.55);
+    --radius-md: calc(var(--radius) * 0.75);
+    --radius-lg: var(--radius);
+    --radius-xl: calc(var(--radius) * 1.5);
+    --radius-2xl: calc(var(--radius) * 2);
+    --radius-3xl: calc(var(--radius) * 2.6);
+    --radius-pill: 9999px;
+
+    /* Brand-tinted elevation stack (cool-steel rgba, never neutral gray) */
+    --shadow-light: 0 1px 2px rgba(14, 23, 38, 0.06), 0 2px 4px rgba(14, 23, 38, 0.08);
+    --shadow-medium: 0 4px 8px rgba(14, 23, 38, 0.10), 0 8px 16px rgba(14, 23, 38, 0.14);
+    --shadow-heavy: 0 0 0 1px rgba(56, 189, 207, 0.10), 0 8px 16px rgba(14, 23, 38, 0.20), 0 16px 40px rgba(14, 23, 38, 0.16);
+    --shadow-signal-glow: 0 0 0 1px rgba(56, 189, 207, 0.30), 0 0 24px rgba(56, 189, 207, 0.22);
+}
+
+/*
+ * LIGHT MODE — cool near-white "vapor" base (#f3f6fa territory), graphite ink text.
+ * Used for marketing/landing; product UI defaults to dark for the evidence-lab feel.
+ */
+:root {
+    --background: oklch(0.974 0.004 240);          /* cool near-white #f3f6fa, never pure white */
+    --foreground: oklch(0.205 0.022 250);          /* graphite ink #1a2230, never pure black */
+    --card: oklch(0.992 0.003 240);
+    --card-foreground: oklch(0.205 0.022 250);
+    --popover: oklch(0.992 0.003 240);
+    --popover-foreground: oklch(0.205 0.022 250);
+
+    --primary: oklch(0.205 0.022 250);             /* graphite — authoritative, instrument-grade */
+    --primary-foreground: oklch(0.984 0.004 240);
+
+    --secondary: oklch(0.945 0.006 240);
+    --secondary-foreground: oklch(0.265 0.022 250);
+    --muted: oklch(0.945 0.006 240);
+    --muted-foreground: oklch(0.505 0.018 248);
+
+    --accent: oklch(0.928 0.030 210);              /* faint signal-cyan wash */
+    --accent-foreground: oklch(0.265 0.030 235);
+
+    /* signal-cyan — the CTA + key-action color, used sparingly */
+    --signal: oklch(0.68 0.115 215);               /* forensic signal-cyan */
+    --signal-foreground: oklch(0.145 0.020 250);
+
+    /* fraud-score severity language */
+    --clear: oklch(0.66 0.135 168);                /* clear / authentic — teal-green */
+    --clear-foreground: oklch(0.16 0.02 170);
+    --suspect: oklch(0.78 0.155 78);               /* suspect / review — amber */
+    --suspect-foreground: oklch(0.20 0.04 70);
+    --fraud: oklch(0.585 0.225 26);                /* fraud / forged — vermilion */
+    --fraud-foreground: oklch(0.985 0.01 30);
+    --destructive: oklch(0.585 0.225 26);
+
+    /* neutral scale anchors */
+    --ink: oklch(0.205 0.022 250);
+    --graphite: oklch(0.345 0.020 248);
+    --slate-steel: oklch(0.505 0.018 248);
+    --vapor: oklch(0.974 0.004 240);
+
+    --border: oklch(0.905 0.008 240);
+    --input: oklch(0.905 0.008 240);
+    --ring: oklch(0.68 0.115 215);
+
+    --chart-1: oklch(0.68 0.115 215);              /* signal-cyan */
+    --chart-2: oklch(0.66 0.135 168);              /* clear */
+    --chart-3: oklch(0.78 0.155 78);               /* suspect */
+    --chart-4: oklch(0.585 0.225 26);              /* fraud */
+    --chart-5: oklch(0.505 0.018 248);             /* steel */
+
+    --radius: 0.625rem;
+
+    --sidebar: oklch(0.992 0.003 240);
+    --sidebar-foreground: oklch(0.205 0.022 250);
+    --sidebar-primary: oklch(0.68 0.115 215);
+    --sidebar-primary-foreground: oklch(0.145 0.020 250);
+    --sidebar-accent: oklch(0.945 0.006 240);
+    --sidebar-accent-foreground: oklch(0.265 0.022 250);
+    --sidebar-border: oklch(0.905 0.008 240);
+    --sidebar-ring: oklch(0.68 0.115 215);
+}
+
+/*
+ * DARK MODE — primary product surface. Deep cool ink "evidence lab".
+ * Signal-cyan brightens to carry the eye; severity colors gain luminance.
+ */
+.dark {
+    --background: oklch(0.175 0.022 252);          /* deep cool ink #11151f */
+    --foreground: oklch(0.955 0.006 240);
+    --card: oklch(0.218 0.024 252);                /* raised graphite panel */
+    --card-foreground: oklch(0.955 0.006 240);
+    --popover: oklch(0.218 0.024 252);
+    --popover-foreground: oklch(0.955 0.006 240);
+
+    --primary: oklch(0.72 0.125 215);              /* signal-cyan leads on dark */
+    --primary-foreground: oklch(0.155 0.022 252);
+
+    --secondary: oklch(0.275 0.022 250);
+    --secondary-foreground: oklch(0.955 0.006 240);
+    --muted: oklch(0.275 0.022 250);
+    --muted-foreground: oklch(0.685 0.018 244);
+
+    --accent: oklch(0.305 0.040 222);              /* signal-tinted raised accent */
+    --accent-foreground: oklch(0.955 0.006 240);
+
+    --signal: oklch(0.74 0.130 213);
+    --signal-foreground: oklch(0.155 0.022 252);
+
+    --clear: oklch(0.72 0.140 168);
+    --clear-foreground: oklch(0.155 0.02 170);
+    --suspect: oklch(0.82 0.160 80);
+    --suspect-foreground: oklch(0.20 0.04 70);
+    --fraud: oklch(0.66 0.225 27);
+    --fraud-foreground: oklch(0.985 0.01 30);
+    --destructive: oklch(0.66 0.225 27);
+
+    --ink: oklch(0.175 0.022 252);
+    --graphite: oklch(0.288 0.022 250);
+    --slate-steel: oklch(0.685 0.018 244);
+    --vapor: oklch(0.955 0.006 240);
+
+    --border: oklch(0.92 0.02 220 / 12%);          /* translucent steel ring, not flat gray */
+    --input: oklch(0.92 0.02 220 / 16%);
+    --ring: oklch(0.74 0.130 213);
+
+    --chart-1: oklch(0.74 0.130 213);
+    --chart-2: oklch(0.72 0.140 168);
+    --chart-3: oklch(0.82 0.160 80);
+    --chart-4: oklch(0.66 0.225 27);
+    --chart-5: oklch(0.685 0.018 244);
+
+    --sidebar: oklch(0.198 0.024 252);
+    --sidebar-foreground: oklch(0.955 0.006 240);
+    --sidebar-primary: oklch(0.74 0.130 213);
+    --sidebar-primary-foreground: oklch(0.155 0.022 252);
+    --sidebar-accent: oklch(0.275 0.022 250);
+    --sidebar-accent-foreground: oklch(0.955 0.006 240);
+    --sidebar-border: oklch(0.92 0.02 220 / 12%);
+    --sidebar-ring: oklch(0.74 0.130 213);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+    }
+  body {
+    @apply bg-background text-foreground;
+    }
+  html {
+    @apply font-sans;
+    }
+}
