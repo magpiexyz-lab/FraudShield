@@ -46,6 +46,38 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { plan } = checkoutSchema.parse(body);
 
+    // Bug #2: graceful "Pro upgrade coming soon" path. When Stripe envs are
+    // unwired (e.g., a staging deployment or pre-launch demo without billing),
+    // the route used to fall through to a generic 500 ("We couldn't start
+    // checkout. Please try again.") which read as a transient failure and
+    // burned the demand signal. Detect the not-configured state explicitly
+    // and emit a distinguishable response so the client can swap the CTA
+    // to an inline waitlist form. DEMO_MODE keeps the demo Stripe client
+    // happy path intact for development + e2e.
+    const stripeKey = process.env.STRIPE_SECRET_KEY;
+    // Recognize the canonical placeholder shapes: empty, "placeholder-..."
+    // (used by the demo Supabase client + tests), and "sk_test_..." / similar
+    // literals shipped in .env.example. A real Stripe key is much longer than
+    // 16 chars, so the length floor catches truncated/example values.
+    const stripeNotConfigured =
+      process.env.DEMO_MODE !== "true" &&
+      (!stripeKey ||
+        stripeKey.startsWith("placeholder") ||
+        stripeKey === "sk_test_..." ||
+        stripeKey === "sk_live_..." ||
+        stripeKey.length < 16);
+    if (stripeNotConfigured) {
+      return NextResponse.json(
+        {
+          error: "not_configured",
+          code: "not_configured",
+          message:
+            "Pro upgrade is coming soon. Join the waitlist to be notified.",
+        },
+        { status: 503 },
+      );
+    }
+
     // Server-authoritative price lookup — NEVER trust client-supplied amounts.
     const amount_cents = PLAN_PRICES[plan];
     if (typeof amount_cents !== "number" || amount_cents <= 0) {
