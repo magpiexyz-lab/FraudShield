@@ -10,7 +10,7 @@
 // pay_success event is sent. End-to-end with a real Stripe signature is the
 // responsibility of /verify --post-deploy.
 
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 
 beforeAll(() => {
   // Tell every server-side library to use its demo-mode short-circuit.
@@ -73,6 +73,63 @@ describe("b-07: Stripe webhook checkout.session.completed", () => {
 
     const response = await POST(request);
     expect(response.status).toBe(400);
+  });
+});
+
+describe("auth callback route: post-confirm redirect contract (#5)", () => {
+  // After an email-confirmation click, the user must land on /dashboard
+  // already authenticated — NOT bounced back to /login or the landing page.
+  // The route has an early DEMO_MODE branch that redirects to "/" — we
+  // unset DEMO_MODE for this block so the real success-redirect logic runs,
+  // and rely on placeholder env vars so createServerSupabaseClient falls
+  // back to the demo client internally. The demo auth Proxy returns
+  // {error: null} for exchangeCodeForSession via its catch-all handler.
+
+  let savedDemoMode: string | undefined;
+  beforeAll(() => {
+    savedDemoMode = process.env.DEMO_MODE;
+    delete process.env.DEMO_MODE;
+  });
+  afterAll(() => {
+    if (savedDemoMode !== undefined) process.env.DEMO_MODE = savedDemoMode;
+  });
+
+  // A 20+ char base64url-ish string that matches the codeSchema regex.
+  const MOCK_CODE = "abcdef0123456789ABCDEF_-mockcode01";
+
+  it("redirects to /dashboard by default after successful code exchange", async () => {
+    const { GET } = await import("@/app/auth/callback/route");
+    const request = new Request(
+      `http://localhost/auth/callback?code=${MOCK_CODE}`,
+    );
+    const response = await GET(request);
+    expect([302, 307]).toContain(response.status);
+    const location = response.headers.get("location") ?? "";
+    expect(location).toBe("http://localhost/dashboard");
+  });
+
+  it("honors a same-origin ?next= override", async () => {
+    const { GET } = await import("@/app/auth/callback/route");
+    const request = new Request(
+      `http://localhost/auth/callback?code=${MOCK_CODE}&next=/scan-result`,
+    );
+    const response = await GET(request);
+    expect([302, 307]).toContain(response.status);
+    expect(response.headers.get("location")).toBe(
+      "http://localhost/scan-result",
+    );
+  });
+
+  it("falls back to /dashboard when ?next= is an open-redirect attempt", async () => {
+    const { GET } = await import("@/app/auth/callback/route");
+    const request = new Request(
+      `http://localhost/auth/callback?code=${MOCK_CODE}&next=//evil.com`,
+    );
+    const response = await GET(request);
+    expect([302, 307]).toContain(response.status);
+    const location = response.headers.get("location") ?? "";
+    expect(location).toBe("http://localhost/dashboard");
+    expect(location).not.toContain("evil.com");
   });
 });
 
