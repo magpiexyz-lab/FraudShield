@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { trackDemoView, trackCtaClick } from "@/lib/events";
+import { PLANS } from "@/app/pricing/plans";
 
 /* ------------------------------------------------------------------ *
  * FraudShield landing — "Forensic Instrument" design system.
@@ -452,23 +453,93 @@ function ScanDemo({ onEngage }: { onEngage: () => void }) {
           </span>
         </div>
 
-        {/* document mockup */}
+        {/* document mockup — believable pay-stub built from tokens only */}
         <div className="relative aspect-[5/6] w-full overflow-hidden rounded-[var(--radius-md)] bg-[oklch(0.965_0.006_240)] ring-1 ring-[oklch(0.92_0.02_220_/_18%)]">
-          <div className="flex flex-col gap-2.5 p-5">
-            <div className="mb-2 flex items-center justify-between">
-              <div className="h-2.5 w-24 rounded-full bg-[oklch(0.78_0.012_248)]" />
-              <div className="h-2.5 w-12 rounded-full bg-[oklch(0.84_0.01_248)]" />
+          <div className="flex h-full flex-col gap-3 p-5 text-[oklch(0.20_0.02_252)]">
+            {/* employer header */}
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-heading text-[13px] font-bold leading-tight tracking-[-0.2px] text-[oklch(0.20_0.02_252)]">
+                  Acme Logistics Inc.
+                </p>
+                <p className="font-mono text-[9px] leading-tight text-[oklch(0.45_0.02_252)]">
+                  482 Industrial Way · Reno, NV 89502
+                </p>
+              </div>
+              <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-[oklch(0.50_0.02_252)]">
+                Pay stub
+              </span>
             </div>
-            {Array.from({ length: 9 }).map((_, i) => (
-              <div
-                key={i}
-                className="h-2 rounded-full bg-[oklch(0.88_0.008_248)]"
-                style={{ width: `${[92, 70, 84, 60, 96, 52, 78, 44, 66][i]}%` }}
-              />
-            ))}
-            <div className="mt-3 flex items-center justify-between rounded-[6px] bg-[oklch(0.93_0.008_240)] px-3 py-2">
-              <div className="h-2.5 w-16 rounded-full bg-[oklch(0.7_0.012_248)]" />
-              <div className="h-3 w-20 rounded-full bg-[oklch(0.62_0.02_248)]" />
+
+            <div
+              aria-hidden
+              className="h-px w-full bg-[oklch(0.86_0.012_248)]"
+            />
+
+            {/* employee + period */}
+            <div className="flex flex-col gap-1">
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="font-sans text-[11px] font-medium text-[oklch(0.30_0.02_252)]">
+                  Jordan A. Mitchell
+                </span>
+                <span className="font-mono text-[9px] text-[oklch(0.45_0.02_252)]">
+                  ID 04827
+                </span>
+              </div>
+              <p className="font-mono text-[9px] text-[oklch(0.50_0.02_252)]">
+                Pay period: March 1 &ndash; March 15, 2026
+              </p>
+            </div>
+
+            <div
+              aria-hidden
+              className="h-px w-full bg-[oklch(0.86_0.012_248)]"
+            />
+
+            {/* line items */}
+            <ul className="flex flex-col">
+              {[
+                { label: "Gross pay", amount: "$2,640.00" },
+                { label: "Federal tax", amount: "$316.80" },
+                { label: "State tax", amount: "$92.40" },
+                { label: "FICA", amount: "$201.96" },
+              ].map((row) => (
+                <li
+                  key={row.label}
+                  className="flex items-center justify-between border-b border-[oklch(0.90_0.012_248)] py-1.5 last:border-b-0"
+                >
+                  <span className="font-sans text-[11px] text-[oklch(0.32_0.02_252)]">
+                    {row.label}
+                  </span>
+                  <span className="font-mono text-[11px] tabular-nums text-[oklch(0.28_0.02_252)]">
+                    {row.amount}
+                  </span>
+                </li>
+              ))}
+            </ul>
+
+            <div
+              aria-hidden
+              className="h-px w-full bg-[oklch(0.86_0.012_248)]"
+            />
+
+            {/* net pay — the line a fraudster would alter */}
+            <div
+              className="mt-auto flex items-center justify-between rounded-[6px] px-3 py-2.5"
+              style={{
+                background: "oklch(0.74 0.130 213 / 0.12)",
+                boxShadow: "inset 2px 0 0 0 var(--signal)",
+              }}
+            >
+              <span className="font-heading text-[12px] font-bold uppercase tracking-[0.10em] text-[oklch(0.20_0.02_252)]">
+                Net pay
+              </span>
+              <span
+                className="font-mono text-[15px] font-semibold tabular-nums"
+                style={{ color: "oklch(0.42 0.130 213)" }}
+              >
+                $2,028.84
+              </span>
             </div>
           </div>
 
@@ -722,6 +793,163 @@ const SEGMENTS = [
   "Property managers",
 ];
 
+/* --------------------------- pricing preview --------------------------- */
+
+/**
+ * Compact two-card pricing surface for the landing page. Pulls from the
+ * shared PLANS constant in src/app/pricing/plans.ts — never duplicate the
+ * prices. The Pro CTA routes to /pricing (the full upgrade flow); Free
+ * routes to /signup. Listed below the cards is a link to the full plan
+ * comparison.
+ */
+function PricingPreviewSection({ onCtaClick }: { onCtaClick: () => void }) {
+  return (
+    <section
+      id="pricing"
+      className="relative overflow-hidden border-y border-[oklch(0.92_0.02_220_/_10%)] bg-[oklch(0.155_0.022_252)] py-24"
+    >
+      <div className="mx-auto max-w-5xl px-6">
+        <div className="mb-12 max-w-2xl">
+          <BlurFade>
+            <span className="font-mono text-[12px] uppercase tracking-[0.18em] text-[oklch(0.82_0.10_210)]">
+              Pricing
+            </span>
+          </BlurFade>
+          <BlurFade delay={0.07}>
+            <h2 className="mt-3 font-heading text-[clamp(2rem,4vw,3rem)] font-extrabold leading-[1.08] tracking-[-1.5px] text-foreground">
+              Start free. Upgrade when fraud stops being a guess.
+            </h2>
+          </BlurFade>
+        </div>
+
+        <div className="grid gap-5 sm:grid-cols-2">
+          {PLANS.map((plan, i) => {
+            const isPro = plan.id === "pro";
+            const href = isPro ? "/pricing" : "/signup";
+            const ctaLabel = isPro ? "Choose Pro" : "Start free";
+            // Compact, landing-tier feature blurbs — distinct from the full
+            // pricing page list. Source of truth for prices is still PLANS.
+            const blurb = isPro
+              ? [
+                  "Unlimited document scans",
+                  "Priority support",
+                  "API access (coming soon)",
+                ]
+              : [
+                  `${PLANS[0].features[0].label}`,
+                  "Per-signal breakdown",
+                  "Pay stubs · bank statements · invoices",
+                ];
+            return (
+              <BlurFade key={plan.id} delay={0.14 + i * 0.08}>
+                <article
+                  className={cn(
+                    "relative flex h-full flex-col rounded-[var(--radius-lg)] p-7 ring-1 transition-[transform,box-shadow] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-0.5",
+                    isPro
+                      ? "bg-[oklch(0.218_0.024_252)] ring-[oklch(0.74_0.130_213_/_45%)]"
+                      : "bg-[oklch(0.185_0.022_252)] ring-[oklch(0.92_0.02_220_/_14%)]",
+                  )}
+                  style={
+                    isPro
+                      ? { boxShadow: "var(--shadow-signal-glow)" }
+                      : undefined
+                  }
+                >
+                  {isPro && (
+                    <span
+                      className="absolute -top-3 right-6 rounded-[var(--radius-pill)] px-3 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-primary-foreground"
+                      style={{ background: "oklch(0.74 0.130 213)" }}
+                    >
+                      Most popular
+                    </span>
+                  )}
+                  <header>
+                    <h3 className="font-heading text-[1.5rem] font-bold tracking-[-0.5px] text-foreground">
+                      {plan.name}
+                    </h3>
+                    <p className="mt-1.5 font-sans text-[13.5px] leading-snug text-[oklch(0.84_0.012_244)]">
+                      {plan.tagline}
+                    </p>
+                  </header>
+                  <div className="mt-5 flex items-baseline gap-1.5">
+                    <span className="font-mono text-[2.75rem] font-medium leading-none tabular-nums text-foreground">
+                      ${plan.priceMonthly ?? 0}
+                    </span>
+                    {plan.priceMonthly && plan.priceMonthly > 0 ? (
+                      <span className="font-mono text-[12px] text-[oklch(0.82_0.014_244)]">
+                        / month
+                      </span>
+                    ) : (
+                      <span className="font-mono text-[12px] text-[oklch(0.82_0.014_244)]">
+                        forever
+                      </span>
+                    )}
+                  </div>
+                  <ul className="mt-6 flex flex-col gap-2.5">
+                    {blurb.map((item) => (
+                      <li
+                        key={item}
+                        className="flex items-start gap-2.5 font-sans text-[14px] leading-snug text-[oklch(0.90_0.01_244)]"
+                      >
+                        <svg
+                          viewBox="0 0 16 16"
+                          aria-hidden
+                          className="mt-1 h-3.5 w-3.5 shrink-0"
+                        >
+                          <path
+                            d="M3 8.5l3 3 7-7.5"
+                            fill="none"
+                            stroke="oklch(0.74 0.130 213)"
+                            strokeWidth="1.8"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="mt-7">
+                    <Link
+                      href={href}
+                      onClick={isPro ? undefined : onCtaClick}
+                      className={cn(
+                        "inline-flex w-full items-center justify-center gap-2 rounded-[var(--radius-pill)] py-2.5 font-sans text-[14px] font-semibold transition-[transform,opacity] duration-150 hover:-translate-y-px hover:opacity-95",
+                        isPro
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-[oklch(0.218_0.024_252)] text-foreground ring-1 ring-[oklch(0.92_0.02_220_/_22%)]",
+                      )}
+                      style={
+                        isPro
+                          ? { boxShadow: "var(--shadow-signal-glow)" }
+                          : undefined
+                      }
+                    >
+                      {ctaLabel}
+                    </Link>
+                  </div>
+                </article>
+              </BlurFade>
+            );
+          })}
+        </div>
+
+        <BlurFade delay={0.32}>
+          <p className="mt-8 text-center font-sans text-[13px] text-[oklch(0.82_0.012_244)]">
+            <Link
+              href="/pricing"
+              className="inline-flex items-center gap-1 font-medium text-[oklch(0.82_0.10_210)] transition-colors duration-150 hover:text-foreground"
+            >
+              See full plan details
+              <span aria-hidden>&rarr;</span>
+            </Link>
+          </p>
+        </BlurFade>
+      </div>
+    </section>
+  );
+}
+
 /* --------------------------------- page --------------------------------- */
 
 export function LandingContent(props: LandingContentProps) {
@@ -754,22 +982,36 @@ export function LandingContent(props: LandingContentProps) {
   return (
     <div className="dark min-h-screen bg-background font-sans text-foreground [letter-spacing:-0.1px]">
       {/* ============================= NAV ============================= */}
-      <header className="relative z-20 mx-auto flex max-w-7xl items-center justify-between px-6 py-6">
+      <header className="relative z-20 mx-auto flex max-w-7xl items-center justify-between gap-3 px-6 py-6">
         <div className="flex items-center gap-2.5">
           <FraudShieldMark className="h-7 w-7" />
           <span className="font-heading text-[17px] font-bold tracking-[-0.5px] text-foreground">
             FraudShield
           </span>
         </div>
-        <Link
-          href="/signup"
-          onClick={handleCtaClick}
-          className="rounded-[var(--radius-pill)] bg-primary px-4 py-2 font-sans text-[13px] font-semibold whitespace-nowrap text-primary-foreground transition-[transform,opacity] duration-150 hover:-translate-y-px hover:opacity-95"
-        >
-          {/* Concise nav CTA on small screens; full variant CTA from md up */}
-          <span className="md:hidden">Scan free</span>
-          <span className="hidden md:inline">{variant.cta}</span>
-        </Link>
+        <nav className="flex items-center gap-3 sm:gap-5">
+          <a
+            href="#pricing"
+            className="font-sans text-[13px] font-medium text-[oklch(0.82_0.012_244)] transition-colors duration-150 hover:text-foreground"
+          >
+            Pricing
+          </a>
+          <Link
+            href="/login"
+            className="font-sans text-[13px] font-medium text-[oklch(0.82_0.012_244)] transition-colors duration-150 hover:text-foreground"
+          >
+            Log in
+          </Link>
+          <Link
+            href="/signup"
+            onClick={handleCtaClick}
+            className="rounded-[var(--radius-pill)] bg-primary px-4 py-2 font-sans text-[13px] font-semibold whitespace-nowrap text-primary-foreground transition-[transform,opacity] duration-150 hover:-translate-y-px hover:opacity-95"
+          >
+            {/* Concise nav CTA on small screens; full variant CTA from md up */}
+            <span className="md:hidden">Scan free</span>
+            <span className="hidden md:inline">{variant.cta}</span>
+          </Link>
+        </nav>
       </header>
 
       {/* ============================= HERO ============================= */}
@@ -1074,6 +1316,9 @@ export function LandingContent(props: LandingContentProps) {
           </div>
         </div>
       </section>
+
+      {/* ============================ PRICING ============================ */}
+      <PricingPreviewSection onCtaClick={handleCtaClick} />
 
       {/* ============================ FINAL CTA ============================ */}
       <section className="relative overflow-hidden py-28">

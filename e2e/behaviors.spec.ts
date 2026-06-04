@@ -308,3 +308,45 @@ test.describe("b-08: returning user submits another document", () => {
     },
   );
 });
+
+// =====================================================================
+// bugs #3 + #4 — landing pay-stub mockup + pricing section + header nav
+// =====================================================================
+test.describe("landing bugs #3 + #4: pay-stub mockup, pricing visibility", () => {
+  test.beforeEach(async ({ page }) => {
+    await blockAnalytics(page);
+  });
+
+  test("Landing has a #pricing section with Free, Pro, and $49 visible", async ({ page }) => {
+    await page.goto("/");
+    const pricing = page.locator("section#pricing");
+    await expect(pricing).toBeVisible();
+    await expect(pricing.getByText(/\bFree\b/).first()).toBeVisible();
+    await expect(pricing.getByText(/\bPro\b/).first()).toBeVisible();
+    await expect(pricing.getByText(/\$49/).first()).toBeVisible();
+  });
+
+  test("Header strip has a Pricing link pointing to #pricing", async ({ page }) => {
+    await page.goto("/");
+    const pricingLink = page.getByRole("link", { name: /^pricing$/i }).first();
+    await expect(pricingLink).toBeVisible();
+    await expect(pricingLink).toHaveAttribute("href", "#pricing");
+  });
+
+  test("Header strip has a Log in link pointing to /login", async ({ page }) => {
+    await page.goto("/");
+    const loginLink = page.getByRole("link", { name: /^log in$/i }).first();
+    await expect(loginLink).toBeVisible();
+    await expect(loginLink).toHaveAttribute("href", "/login");
+  });
+
+  test("Demo widget renders Net pay row with a mono $ amount", async ({ page }) => {
+    await page.goto("/");
+    // The pay-stub mockup is inside the live-demo section.
+    const demo = page.locator("section#live-demo");
+    await expect(demo).toBeVisible();
+    await expect(demo.getByText(/net pay/i).first()).toBeVisible();
+    // Look for at least one $ amount on the mockup (e.g. "$1,847.20" or similar).
+    await expect(demo.locator('text=/\\$[0-9][0-9,]*\\.[0-9]{2}/').first()).toBeVisible();
+  });
+});
