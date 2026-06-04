@@ -10,7 +10,7 @@
 // pay_success event is sent. End-to-end with a real Stripe signature is the
 // responsibility of /verify --post-deploy.
 
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 
 beforeAll(() => {
   // Tell every server-side library to use its demo-mode short-circuit.
@@ -76,6 +76,63 @@ describe("b-07: Stripe webhook checkout.session.completed", () => {
   });
 });
 
+describe("auth callback route: post-confirm redirect contract (#5)", () => {
+  // After an email-confirmation click, the user must land on /dashboard
+  // already authenticated — NOT bounced back to /login or the landing page.
+  // The route has an early DEMO_MODE branch that redirects to "/" — we
+  // unset DEMO_MODE for this block so the real success-redirect logic runs,
+  // and rely on placeholder env vars so createServerSupabaseClient falls
+  // back to the demo client internally. The demo auth Proxy returns
+  // {error: null} for exchangeCodeForSession via its catch-all handler.
+
+  let savedDemoMode: string | undefined;
+  beforeAll(() => {
+    savedDemoMode = process.env.DEMO_MODE;
+    delete process.env.DEMO_MODE;
+  });
+  afterAll(() => {
+    if (savedDemoMode !== undefined) process.env.DEMO_MODE = savedDemoMode;
+  });
+
+  // A 20+ char base64url-ish string that matches the codeSchema regex.
+  const MOCK_CODE = "abcdef0123456789ABCDEF_-mockcode01";
+
+  it("redirects to /dashboard by default after successful code exchange", async () => {
+    const { GET } = await import("@/app/auth/callback/route");
+    const request = new Request(
+      `http://localhost/auth/callback?code=${MOCK_CODE}`,
+    );
+    const response = await GET(request);
+    expect([302, 307]).toContain(response.status);
+    const location = response.headers.get("location") ?? "";
+    expect(location).toBe("http://localhost/dashboard");
+  });
+
+  it("honors a same-origin ?next= override", async () => {
+    const { GET } = await import("@/app/auth/callback/route");
+    const request = new Request(
+      `http://localhost/auth/callback?code=${MOCK_CODE}&next=/scan-result`,
+    );
+    const response = await GET(request);
+    expect([302, 307]).toContain(response.status);
+    expect(response.headers.get("location")).toBe(
+      "http://localhost/scan-result",
+    );
+  });
+
+  it("falls back to /dashboard when ?next= is an open-redirect attempt", async () => {
+    const { GET } = await import("@/app/auth/callback/route");
+    const request = new Request(
+      `http://localhost/auth/callback?code=${MOCK_CODE}&next=//evil.com`,
+    );
+    const response = await GET(request);
+    expect([302, 307]).toContain(response.status);
+    const location = response.headers.get("location") ?? "";
+    expect(location).toBe("http://localhost/dashboard");
+    expect(location).not.toContain("evil.com");
+  });
+});
+
 describe("checkout route: server-side price + plan lookup", () => {
   it("rejects checkout requests with no authenticated session", async () => {
     // In DEMO_MODE the supabase server client returns a demo user, so we
@@ -99,5 +156,53 @@ describe("checkout route: server-side price + plan lookup", () => {
     });
     const response = await POST(request);
     expect(response.status).toBe(400);
+  });
+});
+
+// Bug #2: graceful Pro-upgrade UX when Stripe is unconfigured.
+// When STRIPE_SECRET_KEY is unset/placeholder (e.g., a staging deployment
+// without Stripe wired up), POST /api/checkout MUST return a distinguishable
+// "not_configured" response — NOT a generic 500/503 with no code field —
+// so the client can swap to a waitlist form instead of a retry-prompting
+// red error toast.
+describe("checkout route: Stripe-not-configured graceful path (bug #2)", () => {
+  it("returns a structured not_configured response when Stripe envs are placeholders", async () => {
+    // Save + override env. We need DEMO_MODE off and STRIPE_SECRET_KEY absent
+    // to exercise the production "Stripe not wired up" path.
+    const prevDemo = process.env.DEMO_MODE;
+    const prevKey = process.env.STRIPE_SECRET_KEY;
+    process.env.DEMO_MODE = "false";
+    delete process.env.STRIPE_SECRET_KEY;
+    // Reset the module so the route + stripe client re-read env on first call.
+    const vitestGlobal = (await import("vitest")).vi;
+    vitestGlobal.resetModules();
+    try {
+      const { POST } = await import("@/app/api/checkout/route");
+      const request = new Request("http://localhost/api/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plan: "pro" }),
+      });
+      const response = await POST(request);
+      const payload = await response.json();
+
+      // MUST be distinguishable from a generic 500/503. We accept either a 503
+      // with code: "not_configured" or a 200 with status: "coming_soon".
+      const isStructuredNotConfigured =
+        (response.status === 503 && payload.code === "not_configured") ||
+        (response.status === 200 && payload.status === "coming_soon") ||
+        payload.error === "not_configured";
+      expect(isStructuredNotConfigured).toBe(true);
+
+      // MUST carry a user-friendly waitlist-oriented message.
+      expect(typeof payload.message).toBe("string");
+      expect(payload.message.toLowerCase()).toMatch(/waitlist|coming soon|notify/);
+    } finally {
+      if (prevDemo === undefined) delete process.env.DEMO_MODE;
+      else process.env.DEMO_MODE = prevDemo;
+      if (prevKey === undefined) delete process.env.STRIPE_SECRET_KEY;
+      else process.env.STRIPE_SECRET_KEY = prevKey;
+      vitestGlobal.resetModules();
+    }
   });
 });

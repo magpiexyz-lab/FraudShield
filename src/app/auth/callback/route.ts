@@ -39,9 +39,14 @@ export async function GET(request: Request) {
   }
 
   const rawCode = searchParams.get("code");
-  const rawNext = searchParams.get("next") ?? "/";
+  // Bug #5: post-confirm landing must be /dashboard (already logged in),
+  // NOT the marketing landing. Same fallback applies when `next` is missing
+  // OR fails the same-origin open-redirect check.
+  const rawNext = searchParams.get("next") ?? "/dashboard";
   const next =
-    rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "/";
+    rawNext.startsWith("/") && !rawNext.startsWith("//")
+      ? rawNext
+      : "/dashboard";
 
   const parsedCode = rawCode ? codeSchema.safeParse(rawCode) : null;
   if (parsedCode?.success) {

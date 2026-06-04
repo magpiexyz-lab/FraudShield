@@ -35,7 +35,7 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { email } = waitlistSchema.parse(body);
+    const { email, source } = waitlistSchema.parse(body);
 
     // Try to attach the authenticated user when present, but anonymous
     // submissions are explicitly allowed (b-05 fake-door surface).
@@ -51,10 +51,14 @@ export async function POST(request: Request) {
     // Service-role insert — RLS on api_waitlist allows anon INSERT only with
     // user_id = auth.uid() OR NULL, but using the service role here keeps the
     // semantics consistent whether or not the caller is signed in.
+    // Bug #2: persist the `source` field so we can segment the b-05 API-access
+    // demand signal from the Pro-upgrade waitlist demand signal (source:
+    // "pro-upgrade") added when Stripe envs are placeholders.
     const supabase = createServiceRoleClient();
     const { error } = await supabase.from("api_waitlist").insert({
       user_id: userId,
       email,
+      ...(source ? { source } : {}),
     });
 
     if (error) {
