@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { Menu } from "lucide-react";
@@ -14,6 +13,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import type { Session, User } from "@supabase/supabase-js";
+import { BrandLogo } from "@/components/brand-logo";
 
 // Routes where the NavBar is intentionally suppressed:
 //   - "/" (landing) and "/v/<variant>" — the landing page has its own marketing
@@ -111,23 +111,14 @@ export function NavBar() {
     // Force dark "evidence-lab" tokens — every route the NavBar renders on
     // (dashboard, scan-result, pricing) is a dark product surface; the global
     // light :root tokens would create a light-nav-on-dark-page fracture.
+    // Sticky positioning keeps the nav reachable while scrolling long pages
+    // (post-launch bug #1). `backdrop-blur` + 85%-alpha bg keeps the surface
+    // legible without a hard edge when content scrolls beneath it.
     <nav
       aria-label="Primary"
-      className="dark relative z-20 flex items-center justify-between border-b border-border/60 bg-background px-6 py-4 text-foreground"
+      className="dark sticky top-0 z-40 flex items-center justify-between border-b border-border/60 bg-background/85 px-6 py-4 text-foreground backdrop-blur-md supports-[backdrop-filter]:bg-background/70"
     >
-      <Link href="/" className="flex items-center gap-2">
-        {/* Decorative: brand name is announced by the adjacent <span>, so alt="" + aria-hidden prevents double announcement. */}
-        {/* unoptimized: next/image rejects SVG by default — see framework/nextjs.md "When loading SVG assets through next/image". */}
-        <Image
-          src="/images/logo.svg"
-          alt=""
-          aria-hidden
-          width={28}
-          height={28}
-          unoptimized
-        />
-        <span className="font-heading text-xl font-bold tracking-tight">FraudShield</span>
-      </Link>
+      <BrandLogo wordmark wordmarkSize={20} />
       {/* Desktop nav */}
       <div className="hidden md:flex items-center gap-4">
         {navLinks}

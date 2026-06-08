@@ -6,6 +6,7 @@ import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { trackDemoView, trackCtaClick } from "@/lib/events";
 import { PLANS } from "@/app/pricing/plans";
+import { BrandMark } from "@/components/brand-logo";
 
 /* ------------------------------------------------------------------ *
  * FraudShield landing — "Forensic Instrument" design system.
@@ -276,28 +277,9 @@ function NoiseOverlay() {
   );
 }
 
-/* ------------------------------ logo mark ------------------------------ */
-
-function FraudShieldMark({ className }: { className?: string }) {
-  // Shield silhouette built from a scan-line notch — 2-color (cyan + ink).
-  return (
-    <svg viewBox="0 0 32 32" className={className} aria-hidden>
-      <path
-        d="M16 2.5 4.5 7v8.2C4.5 22.4 9.4 28 16 30c6.6-2 11.5-7.6 11.5-14.8V7L16 2.5Z"
-        fill="oklch(0.218 0.024 252)"
-        stroke="oklch(0.74 0.130 213)"
-        strokeWidth="1.6"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M9 16.5h14M9 13h14M9 20h9"
-        stroke="oklch(0.74 0.130 213)"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
+/* logo mark — now sourced from the shared <BrandMark> in
+ * src/components/brand-logo.tsx so the global NavBar, landing header/footer,
+ * and auth shell all render the identical shield (post-launch bug #2). */
 
 /* ------------------------- signature scan demo ------------------------- */
 
@@ -982,13 +964,19 @@ export function LandingContent(props: LandingContentProps) {
   return (
     <div className="dark min-h-screen bg-background font-sans text-foreground [letter-spacing:-0.1px]">
       {/* ============================= NAV ============================= */}
-      <header className="relative z-20 mx-auto flex max-w-7xl items-center justify-between gap-3 px-6 py-6">
-        <div className="flex items-center gap-2.5">
-          <FraudShieldMark className="h-7 w-7" />
+      {/* Sticky header — stays reachable while scrolling long marketing pages
+       * (post-launch bug #1). Backdrop blur + translucent ink bg keeps it
+       * legible without a hard edge over the hero mesh.
+       * The outer wrapper itself is the sticky element; the inner row keeps the
+       * existing max-w / padding rhythm of the rest of the landing. */}
+      <header className="sticky top-0 z-40 border-b border-border/30 bg-background/75 backdrop-blur-md supports-[backdrop-filter]:bg-background/55">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-6 py-4">
+        <Link href="/" aria-label="FraudShield home" className="flex items-center gap-2.5">
+          <BrandMark size={28} />
           <span className="font-heading text-[17px] font-bold tracking-[-0.5px] text-foreground">
             FraudShield
           </span>
-        </div>
+        </Link>
         <nav className="flex items-center gap-3 sm:gap-5">
           <a
             href="#pricing"
@@ -1012,6 +1000,7 @@ export function LandingContent(props: LandingContentProps) {
             <span className="hidden md:inline">{variant.cta}</span>
           </Link>
         </nav>
+        </div>
       </header>
 
       {/* ============================= HERO ============================= */}
@@ -1376,7 +1365,7 @@ export function LandingContent(props: LandingContentProps) {
         />
         <div className="mx-auto flex max-w-7xl flex-col items-start gap-6 px-6 py-12 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
-            <FraudShieldMark className="h-7 w-7" />
+            <BrandMark size={28} />
             <div className="leading-tight">
               <span className="block font-heading text-[16px] font-bold tracking-[-0.5px] text-foreground">
                 FraudShield

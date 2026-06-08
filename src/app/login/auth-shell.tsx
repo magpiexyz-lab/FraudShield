@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { BrandMark } from "@/components/brand-logo";
 
 /**
  * AuthShell — the shared "Forensic Instrument" frame for /signup and /login.
@@ -92,20 +93,9 @@ export function AuthShell({
         >
           <span
             aria-hidden="true"
-            className="grid h-9 w-9 place-items-center rounded-[var(--radius-md)] bg-[var(--signal)]/15 ring-1 ring-[var(--signal)]/30"
+            className="grid h-9 w-9 place-items-center"
           >
-            <svg
-              viewBox="0 0 24 24"
-              className="h-5 w-5 text-[var(--signal)]"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M12 3 4 6v6c0 4.5 3.2 7.6 8 9 4.8-1.4 8-4.5 8-9V6l-8-3Z" />
-              <path d="M9 12h6M12 9v6" />
-            </svg>
+            <BrandMark size={32} />
           </span>
           <span className="font-[family-name:var(--font-heading)] text-xl font-bold tracking-tight">
             FraudShield
@@ -179,20 +169,9 @@ export function AuthShell({
           >
             <span
               aria-hidden="true"
-              className="grid h-8 w-8 place-items-center rounded-[var(--radius-md)] bg-[var(--signal)]/15 ring-1 ring-[var(--signal)]/30"
+              className="grid h-8 w-8 place-items-center"
             >
-              <svg
-                viewBox="0 0 24 24"
-                className="h-4 w-4 text-[var(--signal)]"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M12 3 4 6v6c0 4.5 3.2 7.6 8 9 4.8-1.4 8-4.5 8-9V6l-8-3Z" />
-                <path d="M9 12h6M12 9v6" />
-              </svg>
+              <BrandMark size={28} />
             </span>
             <span className="font-[family-name:var(--font-heading)] text-lg font-bold tracking-tight">
               FraudShield
