@@ -19,7 +19,18 @@ function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const confirmed = searchParams.get("confirmed") === "true";
-  const authError = searchParams.get("error") === "auth";
+  const authErrorCode = searchParams.get("error");
+  const authError = authErrorCode !== null && authErrorCode.length > 0;
+  // Map known error codes (set by /auth/callback) to friendly copy. Unknown
+  // codes fall back to the generic message. Keeps the surface useful without
+  // leaking raw provider error strings to the user.
+  const authErrorMessage = authError
+    ? authErrorCode === "link_invalid_or_expired"
+      ? "That confirmation link is no longer valid — it may have been used already or expired. Request a fresh one below."
+      : authErrorCode === "missing_or_expired_link"
+      ? "We couldn't verify your link. It may have expired — request a new confirmation email by signing up again, or log in if your account is already confirmed."
+      : "Authentication failed. Please log in again."
+    : null;
   // Honor the proxy redirect target; default into the workspace.
   const rawNext = searchParams.get("next");
   const next =
@@ -81,7 +92,7 @@ function LoginForm() {
           role="alert"
           className="rounded-[var(--radius-md)] bg-destructive/10 px-3 py-2 text-sm text-destructive ring-1 ring-destructive/20"
         >
-          Authentication failed. Please log in again.
+          {authErrorMessage}
         </p>
       )}
 
