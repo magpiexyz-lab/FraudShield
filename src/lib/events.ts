@@ -13,6 +13,7 @@ export const EVENT_FUNNEL_MAP: Record<string, string> = {
   checkout_start: "monetize",
   pay_success: "monetize",
   retain_return: "retain",
+  feedback_submitted: "activate",
 } as const;
 
 // --- Event wrappers (generated from experiment/EVENTS.yaml events map) ---
@@ -49,6 +50,14 @@ export function trackSignupComplete() {
 
 export function trackActivate(props: { doc_type: string; fraud_score?: number }) {
   track("activate", { ...props, funnel_stage: "activate" });
+}
+
+export function trackFeedbackSubmitted(props: {
+  source?: string;
+  feedback?: string;
+  activation_action: string;
+}) {
+  track("feedback_submitted", { ...props, funnel_stage: "activate" });
 }
 
 // --- Payment events (only when requires: [payment] matched) ---

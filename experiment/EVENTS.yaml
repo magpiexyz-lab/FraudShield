@@ -26,6 +26,34 @@ events:
         type: string
         required: false
         description: Variant slug from experiment.yaml variants
+      gclid:
+        type: string
+        required: false
+        description: Google Click ID — captured from URL params in src/app/layout.tsx and auto-attached as a PostHog super-property to every subsequent event
+      click_id:
+        type: string
+        required: false
+        description: Generic click ID alias for cross-channel attribution (currently mirrors gclid for Google Ads)
+      utm_source:
+        type: string
+        required: false
+        description: utm_source from URL params — captured pre-hydration in layout.tsx and registered as super-property
+      utm_medium:
+        type: string
+        required: false
+        description: utm_medium from URL params
+      utm_campaign:
+        type: string
+        required: false
+        description: utm_campaign from URL params
+      utm_content:
+        type: string
+        required: false
+        description: utm_content from URL params (used for variant + sitelink attribution)
+      utm_term:
+        type: string
+        required: false
+        description: utm_term from URL params (keyword)
   demo_view:
     funnel_stage: reach
     trigger: Visitor opens or runs the live sample-scan demo on the landing page
@@ -101,3 +129,20 @@ events:
   retain_return:
     funnel_stage: retain
     trigger: A returning user (after 24h) submits another document scan
+
+  feedback_submitted:
+    funnel_stage: activate
+    trigger: User submits post-activation feedback widget
+    properties:
+      source:
+        type: string
+        required: false
+        description: "How the user found the product (google, social, friend, other)"
+      feedback:
+        type: string
+        required: false
+        description: Free-text feedback from the user
+      activation_action:
+        type: string
+        required: true
+        description: What activation action preceded this (from experiment.yaml thesis)
