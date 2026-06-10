@@ -12,6 +12,7 @@ import { ScoreGauge } from "./score-gauge";
 import { SignalBreakdown } from "./signal-breakdown";
 import { ApiAccessDialog } from "./api-access-dialog";
 import { severityOfScore } from "./severity";
+import { FeedbackWidget } from "@/components/feedback-widget";
 
 const DOC_TYPE_LABEL: Record<string, string> = {
   pay_stub: "Pay stub",
@@ -92,6 +93,12 @@ export function ScanResultClient() {
 
   return (
     <div className="dark min-h-screen overflow-x-hidden bg-background text-foreground">
+      <FeedbackWidget
+        show={state === "ready" && scan !== null}
+        activationAction={
+          scan ? `first_scan_${scan.doc_type}` : "first_scan"
+        }
+      />
       {/* page-local choreography keyframes */}
       <style>{`
         @keyframes fs-signal-in {
