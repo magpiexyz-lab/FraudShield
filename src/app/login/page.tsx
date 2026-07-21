@@ -4,6 +4,7 @@ import { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase";
+import { identify } from "@/lib/analytics";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -43,7 +44,7 @@ function LoginForm() {
     setLoading(true);
     setError("");
     const supabase = createClient();
-    const { error: signInError } = await supabase.auth.signInWithPassword({
+    const { data, error: signInError } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
@@ -52,6 +53,8 @@ function LoginForm() {
       setError(signInError.message);
       return;
     }
+    // Stitch the anonymous PostHog distinct_id to the returning user (ads-ready check 13).
+    if (data.user) identify(data.user.id);
     router.push(next);
   }
 
