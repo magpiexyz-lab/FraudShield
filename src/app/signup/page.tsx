@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase";
+import { identify } from "@/lib/analytics";
 import { trackSignupStart, trackSignupComplete } from "@/lib/events";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -55,6 +56,9 @@ export default function SignupPage() {
       return;
     }
     // Confirmed + logged-in immediately (email confirmation disabled).
+    // identify() links the anonymous PostHog distinct_id to the user id so the
+    // signup → activate funnel stitches to one person (ads-ready check 13).
+    if (data.user) identify(data.user.id);
     trackSignupComplete();
     router.push("/dashboard");
   }

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase";
+import { identify } from "@/lib/analytics";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,12 +29,14 @@ export default function ResetPasswordPage() {
     setLoading(true);
     setError("");
     const supabase = createClient();
-    const { error: updateError } = await supabase.auth.updateUser({ password });
+    const { data, error: updateError } = await supabase.auth.updateUser({ password });
     setLoading(false);
     if (updateError) {
       setError(updateError.message);
       return;
     }
+    // Stitch the anonymous PostHog distinct_id to the recovered user (ads-ready check 13).
+    if (data.user) identify(data.user.id);
     router.push("/dashboard");
   }
 
