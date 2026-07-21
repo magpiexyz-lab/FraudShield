@@ -39,7 +39,8 @@ ad_groups:
         - "verify pay stub authenticity"
         - "loan application fraud check"
         - "fake bank statement detection"
-        - "document fraud detection software"
+        # Removed "document fraud detection software" — broad, high-CPC, off-ICP
+        # (enterprise-leaning) term that inflated avg CPC in Phase 1.
       exact: []
       broad: []
     negatives:
@@ -95,7 +96,8 @@ ad_groups:
         - "automated income verification"
         - "ai document fraud detection"
         - "automated bank statement verification"
-        - "document verification api"
+        # Removed "document verification api" — high-competition B2B/dev term with
+        # expensive clicks; API is a fake-door (b-06 waitlist), not a live product.
         - "fast document fraud check"
       exact: []
       broad: []
@@ -325,7 +327,11 @@ conversions:
 # ----------------------------------------------------------------------------
 
 guardrails:
-  max_cpc_cents: 400               # $4.00 max bid per keyword (Phase 1 ceiling)
+  # Phase 1b revision: Phase 1 ran at avg CPC $3.80 → CAC ~$76, above the $49/mo
+  # first-month price. Lowering the bid ceiling to $2.40 targets CAC ≤ ~$49 so the
+  # unit economics clear on a ≤2-month payback. Trade-off: fewer/worse auction wins,
+  # lower volume — re-measure CAC and payback, not just CPC.
+  max_cpc_cents: 240               # $2.40 max bid per keyword (revised Phase 1b ceiling)
   min_daily_clicks: 3              # Below this for 2 days → broaden keywords
   auto_pause_rules:
     - condition: "daily_spend_cents > daily_budget_cents * 1.2"
@@ -334,9 +340,9 @@ guardrails:
     - condition: "ctr < 0.005 AND impressions > 1000"
       action: "pause_ad_group"
       reason: "CTR below 0.5% after 1000 impressions — copy is failing"
-    - condition: "cost_per_click_cents > 800"
+    - condition: "cost_per_click_cents > 500"
       action: "pause_keyword"
-      reason: "CPC exceeded 2x guardrail — keyword is over-competitive"
+      reason: "CPC exceeded ~2x guardrail ($2.40) — keyword is over-competitive"
 
 # ----------------------------------------------------------------------------
 # Thresholds — what success looks like for this Phase 1 campaign.
@@ -345,15 +351,20 @@ guardrails:
 # ----------------------------------------------------------------------------
 
 thresholds:
-  expected_clicks: 70              # $210 / ~$3 avg CPC
-  expected_signups: 4              # 5-6% landing → signup (industry baseline for B2B SaaS Phase 1)
+  expected_clicks: 95              # $210 / ~$2.20 avg CPC (revised bid ceiling)
+  expected_signups: 5              # 5-6% landing → signup (industry baseline for B2B SaaS Phase 1)
   expected_activations: 2          # ~50% signup → first scan
+  # GO is now gated on unit economics, not just CPC: a low CPC that still yields
+  # CAC > payback is not a GO. Judge CAC against LTV (~$49 × months retained),
+  # i.e. payback ≤ ~2 months — NOT against a single month's price.
   go_signal: |
-    >= 2 activations in 7 days from any single variant with CPC < $5
+    >= 2 activations in 7 days from any single variant
+    AND blended CAC yields payback ≤ ~2 months (CAC ≲ ~$98, not first-month $49)
     AND CTR >= 1.5% on at least one ad group
     → Continue to Phase 2 (extend 14 days, scale budget 2x on winning variant)
   no_go_signal: |
     0 activations after 7 days at full budget spend
+    OR CAC implies payback > ~3 months even after the bid-cap cut
     OR CTR < 0.5% across all ad groups after 1000 impressions
     → Pause campaign, reassess messaging or ICP definition before re-launching
 
