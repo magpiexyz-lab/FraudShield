@@ -38,7 +38,7 @@ describe("b-07: Stripe webhook checkout.session.completed", () => {
           metadata: {
             user_id: "demo-user-id",
             plan: "pro",
-            amount_cents: "4900",
+            amount_cents: "6000",
           },
         },
       },

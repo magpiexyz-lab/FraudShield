@@ -258,7 +258,7 @@ variants:
     promise: "Catch forged documents before they cost you money"
     proof: "Metadata forensics plus a fraud-template database that grows with every scan"
     urgency: "AI document fraud jumped ~5x in 2025 — every approval is a gamble"
-    pricing_amount: 49
+    pricing_amount: 60
     pricing_model: subscription
   - slug: seconds-not-hours
     headline: "Verify Documents in Seconds, Not Hours"
@@ -271,7 +271,7 @@ variants:
     promise: "Instant, automated document forensics for small teams"
     proof: "Checks metadata, cross-document consistency, and known fraud templates in one pass"
     urgency: "Every minute spent eyeballing docs is a minute a fraudster counts on"
-    pricing_amount: 49
+    pricing_amount: 60
     pricing_model: subscription
   - slug: built-for-small-operators
     headline: "Bank-Grade Fraud Detection, Small-Business Price"
@@ -284,7 +284,7 @@ variants:
     promise: "Enterprise-quality document forensics priced for small operators"
     proof: "Self-serve — no sales call, no enterprise contract; sign up and scan"
     urgency: "Fraud kits sell for $10; staying unprotected costs far more"
-    pricing_amount: 49
+    pricing_amount: 60
     pricing_model: subscription
 
 # --- 6. Funnel ---

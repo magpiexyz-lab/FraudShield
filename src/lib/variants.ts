@@ -34,7 +34,7 @@ export const VARIANTS: readonly Variant[] = [
     proof:
       "Metadata forensics plus a fraud-template database that grows with every scan",
     urgency: "AI document fraud jumped ~5x in 2025 — every approval is a gamble",
-    pricing_amount: 49,
+    pricing_amount: 60,
     pricing_model: "subscription",
     isDefault: true,
   },
@@ -53,7 +53,7 @@ export const VARIANTS: readonly Variant[] = [
     proof:
       "Checks metadata, cross-document consistency, and known fraud templates in one pass",
     urgency: "Every minute spent eyeballing docs is a minute a fraudster counts on",
-    pricing_amount: 49,
+    pricing_amount: 60,
     pricing_model: "subscription",
     isDefault: false,
   },
@@ -71,7 +71,7 @@ export const VARIANTS: readonly Variant[] = [
     promise: "Enterprise-quality document forensics priced for small operators",
     proof: "Self-serve — no sales call, no enterprise contract; sign up and scan",
     urgency: "Fraud kits sell for $10; staying unprotected costs far more",
-    pricing_amount: 49,
+    pricing_amount: 60,
     pricing_model: "subscription",
     isDefault: false,
   },

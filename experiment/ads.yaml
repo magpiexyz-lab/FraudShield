@@ -72,13 +72,13 @@ ad_groups:
           - "Forensic Pay Stub Verification"
           - "Fraud Score 0-100 in Seconds"
           - "Metadata + Template Forensics"
-          - "Self-Serve, $49/Month"
+          - "Self-Serve, $60/Month"
           - "Free Plan: 3 Scans, No Card"
           - "Trusted by Small Lenders"
         descriptions:
           - "Don't let one fake pay stub turn into a defaulted loan. Verify before you approve."
           - "FraudShield reads PDF metadata and compares against known fraud templates."
-          - "Self-serve from $49/month. No sales call, no $50k enterprise contract."
+          - "Self-serve from $60/month. No sales call, no $50k enterprise contract."
           - "Free plan includes 3 scans. Upload a document and see the fraud score."
         pinned:
           H1: "FraudShield"
@@ -119,7 +119,7 @@ ad_groups:
         descriptions:
           - "Skip the manual review. Drop in a document and get a fraud score instantly."
           - "Checks metadata, cross-document consistency, and known fraud templates in one pass."
-          - "Built for small trust & verification teams. Self-serve from $49/month."
+          - "Built for small trust & verification teams. Self-serve from $60/month."
           - "Every minute spent eyeballing docs is a minute a fraudster counts on."
         pinned:
           H1: "FraudShield"
@@ -131,7 +131,7 @@ ad_groups:
           - "Automated AI Fraud Check"
           - "Forensic Detection in 1 Click"
           - "API + Web Dashboard"
-          - "From $49/mo, No Sales Call"
+          - "From $60/mo, No Sales Call"
           - "Get Your Fraud Score Now"
         descriptions:
           - "Stop guessing whether a PDF was AI-generated. Get a deterministic fraud score in seconds."
@@ -168,14 +168,14 @@ ad_groups:
           - "FraudShield"
           - "Bank-Grade Fraud Detection"
           - "Tooling for Small Operators"
-          - "Self-Serve from $49/Month"
+          - "Self-Serve from $60/Month"
           - "No Sales Call, No Contract"
           - "For Landlords & Small Lenders"
           - "Free Plan: 3 Scans"
           - "Start Scanning Free"
         descriptions:
           - "Forensic tooling big banks use, finally priced for small operators."
-          - "Self-serve from $49/month. Sign up, scan, decide. No enterprise sales process."
+          - "Self-serve from $60/month. Sign up, scan, decide. No enterprise sales process."
           - "Fraud kits sell for $10. Staying unprotected costs far more."
           - "Free plan: 3 scans, no credit card. Upgrade only when you need more volume."
         pinned:
@@ -189,10 +189,10 @@ ad_groups:
           - "Self-Serve Fraud Detection"
           - "Sign Up, Scan, Decide"
           - "No Sales Call Required"
-          - "$49/Month, Cancel Anytime"
+          - "$60/Month, Cancel Anytime"
         descriptions:
           - "Inscribe and Findigs only talk to enterprises. FraudShield is built for the rest of us."
-          - "Sign up self-serve, scan your first document free, decide if it's worth $49/month."
+          - "Sign up self-serve, scan your first document free, decide if it's worth $60/month."
           - "Forensic metadata analysis + AI fraud template database — no sales call needed."
           - "Built specifically for small lenders, landlords, and gig-platform trust teams."
         pinned:
@@ -264,7 +264,7 @@ negative_keywords:
 sitelinks:
   - link_text: "See pricing"
     description_1: "Free plan: 3 scans"
-    description_2: "Pro from $49/month"
+    description_2: "Pro from $60/month"
     final_url: "https://fraudshield.draftlabs.org/pricing?utm_source=google&utm_medium=cpc&utm_campaign=fraudshield-search-v1&utm_content=sitelink_pricing"
 
   - link_text: "Try a live sample"
@@ -355,11 +355,12 @@ thresholds:
   expected_signups: 5              # 5-6% landing → signup (industry baseline for B2B SaaS Phase 1)
   expected_activations: 2          # ~50% signup → first scan
   # GO is now gated on unit economics, not just CPC: a low CPC that still yields
-  # CAC > payback is not a GO. Judge CAC against LTV (~$49 × months retained),
-  # i.e. payback ≤ ~2 months — NOT against a single month's price.
+  # CAC > payback is not a GO. Judge CAC against LTV (~$60 × months retained),
+  # i.e. payback ≤ ~2 months — NOT against a single month's price. Pro price
+  # raised $49 → $60 so that a ~$60 CAC (at ~$3 CPC) clears single-month payback.
   go_signal: |
     >= 2 activations in 7 days from any single variant
-    AND blended CAC yields payback ≤ ~2 months (CAC ≲ ~$98, not first-month $49)
+    AND blended CAC yields payback ≤ ~2 months (CAC ≲ ~$120, not first-month $60)
     AND CTR >= 1.5% on at least one ad group
     → Continue to Phase 2 (extend 14 days, scale budget 2x on winning variant)
   no_go_signal: |
