@@ -343,13 +343,13 @@ test.describe("landing bugs #3 + #4: pay-stub mockup, pricing visibility", () =>
     await blockAnalytics(page);
   });
 
-  test("Landing has a #pricing section with Free, Pro, and $49 visible", async ({ page }) => {
+  test("Landing has a #pricing section with Free, Pro, and $60 visible", async ({ page }) => {
     await page.goto("/");
     const pricing = page.locator("section#pricing");
     await expect(pricing).toBeVisible();
     await expect(pricing.getByText(/\bFree\b/).first()).toBeVisible();
     await expect(pricing.getByText(/\bPro\b/).first()).toBeVisible();
-    await expect(pricing.getByText(/\$49/).first()).toBeVisible();
+    await expect(pricing.getByText(/\$60/).first()).toBeVisible();
   });
 
   test("Header strip has a Pricing link pointing to #pricing", async ({ page }) => {

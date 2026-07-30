@@ -69,5 +69,5 @@ export const FREE_SCAN_QUOTA = 3;
 
 // Plan pricing (server-authoritative — never trust client-provided prices)
 export const PLAN_PRICES: Record<string, number> = {
-  pro: 4900, // $49.00 in cents
+  pro: 6000, // $60.00 in cents
 };
