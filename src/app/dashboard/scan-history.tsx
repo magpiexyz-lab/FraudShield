@@ -3,9 +3,11 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, ImageIcon } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+import { isFullAnalysis } from "@/lib/fraud/analysis-mode";
 import type { ScansRow } from "@/lib/types";
 
 type Severity = "clear" | "suspect" | "fraud";
@@ -134,6 +136,9 @@ export function ScanHistory() {
     <ul className="space-y-3">
       {scans.map((scan) => {
         const severity = severityFor(scan.fraud_score ?? 0);
+        // Image scans never run the deep metadata checks, so their score is a
+        // guaranteed "clear" — show a neutral chip, never a fraud verdict.
+        const fullAnalysis = isFullAnalysis(scan.file_meta?.mime ?? "");
         return (
           <li key={scan.id}>
             <Link
@@ -143,40 +148,52 @@ export function ScanHistory() {
                 "hover:-translate-y-0.5 hover:ring-signal/40 hover:shadow-[var(--shadow-signal-glow)]",
               )}
             >
-              {/* Severity-coded score dial */}
+              {/* Severity-coded score dial — neutral, score-less when limited */}
               <div
                 className={cn(
                   "flex h-12 w-12 shrink-0 items-center justify-center rounded-full font-[family-name:var(--font-mono)] text-sm font-semibold tabular-nums",
-                  severity === "clear" && "bg-clear/15 text-clear ring-1 ring-clear/30",
-                  severity === "suspect" && "bg-suspect/15 text-suspect ring-1 ring-suspect/30",
-                  severity === "fraud" && "bg-fraud/15 text-fraud ring-1 ring-fraud/30",
+                  !fullAnalysis && "bg-muted text-muted-foreground ring-1 ring-border",
+                  fullAnalysis && severity === "clear" && "bg-clear/15 text-clear ring-1 ring-clear/30",
+                  fullAnalysis && severity === "suspect" && "bg-suspect/15 text-suspect ring-1 ring-suspect/30",
+                  fullAnalysis && severity === "fraud" && "bg-fraud/15 text-fraud ring-1 ring-fraud/30",
                 )}
                 aria-hidden="true"
               >
-                {scan.fraud_score ?? 0}
+                {fullAnalysis ? scan.fraud_score ?? 0 : <ImageIcon className="h-4 w-4" />}
               </div>
               <div className="min-w-0 flex-1">
                 <p className="truncate font-medium text-foreground">
                   {docLabel(scan.doc_type)}
                   <span className="sr-only">
                     {" "}
-                    — fraud score {scan.fraud_score ?? 0}, {SEVERITY_LABEL[severity]}
+                    {fullAnalysis
+                      ? `— fraud score ${scan.fraud_score ?? 0}, ${SEVERITY_LABEL[severity]}`
+                      : "— limited analysis, no fraud score available for image files"}
                   </span>
                 </p>
                 <p className="truncate font-[family-name:var(--font-mono)] text-xs text-muted-foreground">
                   {scan.file_meta?.filename ?? "document"} · {relativeTime(scan.created_at)}
                 </p>
               </div>
-              <span
-                className={cn(
-                  "hidden shrink-0 rounded-[var(--radius-pill)] px-2.5 py-1 text-xs font-medium sm:inline-block",
-                  severity === "clear" && "bg-clear/10 text-clear",
-                  severity === "suspect" && "bg-suspect/10 text-suspect",
-                  severity === "fraud" && "bg-fraud/10 text-fraud",
-                )}
-              >
-                {SEVERITY_LABEL[severity]}
-              </span>
+              {fullAnalysis ? (
+                <span
+                  className={cn(
+                    "hidden shrink-0 rounded-[var(--radius-pill)] px-2.5 py-1 text-xs font-medium sm:inline-block",
+                    severity === "clear" && "bg-clear/10 text-clear",
+                    severity === "suspect" && "bg-suspect/10 text-suspect",
+                    severity === "fraud" && "bg-fraud/10 text-fraud",
+                  )}
+                >
+                  {SEVERITY_LABEL[severity]}
+                </span>
+              ) : (
+                <Badge
+                  variant="secondary"
+                  className="hidden h-auto shrink-0 rounded-[var(--radius-pill)] bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground sm:inline-flex"
+                >
+                  Limited
+                </Badge>
+              )}
               <ChevronRight
                 className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-signal"
                 aria-hidden="true"
