@@ -5,8 +5,15 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { buttonVariants } from "@/components/ui/button";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { createClient } from "@/lib/supabase";
+import { cn } from "@/lib/utils";
 import { trackActivate } from "@/lib/events";
+import {
+  isFullAnalysis,
+  LIMITED_ANALYSIS_TITLE,
+  LIMITED_ANALYSIS_BODY,
+} from "@/lib/fraud/analysis-mode";
 import { FREE_SCAN_QUOTA, type FraudSignal, type ScansRow } from "@/lib/types";
 import { ScoreGauge } from "./score-gauge";
 import { SignalBreakdown } from "./signal-breakdown";
@@ -84,7 +91,13 @@ export function ScanResultClient() {
   useEffect(() => {
     if (state === "ready" && scan && !activateFiredRef.current) {
       activateFiredRef.current = true;
-      trackActivate({ doc_type: scan.doc_type, fraud_score: scan.fraud_score });
+      // Image scans only get basic checks — there is no meaningful fraud
+      // score, so omit the property rather than reporting a misleading 0.
+      trackActivate(
+        isFullAnalysis(scan.file_meta?.mime ?? "")
+          ? { doc_type: scan.doc_type, fraud_score: scan.fraud_score }
+          : { doc_type: scan.doc_type },
+      );
     }
   }, [state, scan]);
 
@@ -245,6 +258,9 @@ function ResultView({
   const severity = severityOfScore(scan.fraud_score);
   const meta = scan.file_meta;
   const fraudSignals: FraudSignal[] = scan.signals ?? [];
+  // Only PDFs get deep metadata forensics. For anything else the score is an
+  // arithmetically guaranteed "clear" — so we show no score and no verdict.
+  const fullAnalysis = isFullAnalysis(meta.mime);
 
   return (
     <div className="flex flex-col gap-12">
@@ -254,54 +270,99 @@ function ResultView({
           Forensic result
         </p>
         <h1 className="mt-2 font-heading text-3xl font-bold tracking-tight md:text-4xl">
-          {docLabel} analysis complete
+          {fullAnalysis
+            ? `${docLabel} analysis complete`
+            : `${docLabel} — limited analysis`}
         </h1>
-        <p className="mt-2 max-w-2xl text-base leading-relaxed text-muted-foreground">
-          FraudShield ran metadata forensics, cross-document checks, and
-          template matching on{" "}
-          <span className="font-mono text-foreground">{meta.filename}</span>.
-          Here is the full evidence trail behind the score.
-        </p>
+        {fullAnalysis ? (
+          <p className="mt-2 max-w-2xl text-base leading-relaxed text-muted-foreground">
+            FraudShield ran metadata forensics, cross-document checks, and
+            template matching on{" "}
+            <span className="font-mono text-foreground">{meta.filename}</span>.
+            Here is the full evidence trail behind the score.
+          </p>
+        ) : (
+          <p className="mt-2 max-w-2xl text-base leading-relaxed text-muted-foreground">
+            FraudShield ran only basic checks on{" "}
+            <span className="font-mono text-foreground">{meta.filename}</span>.
+            Metadata forensics and template matching need the original PDF, so
+            no fraud score is available for image files.
+          </p>
+        )}
       </header>
 
       {/* Score + file fingerprint */}
       <section
-        aria-label="Fraud score"
-        className="fs-reveal grid gap-10 rounded-xl bg-card p-8 ring-1 ring-border md:grid-cols-[auto_1fr] md:items-center"
+        aria-label={fullAnalysis ? "Fraud score" : "Analysis scope"}
+        className={cn(
+          "fs-reveal grid gap-10 rounded-xl bg-card p-8 ring-1 ring-border",
+          fullAnalysis && "md:grid-cols-[auto_1fr] md:items-center",
+        )}
         style={{ animation: "fs-blur-in 560ms cubic-bezier(0.22,1,0.36,1) both", animationDelay: "80ms" }}
       >
-        <ScoreGauge score={scan.fraud_score} startDelayMs={300} />
+        {fullAnalysis && (
+          <ScoreGauge score={scan.fraud_score} startDelayMs={300} />
+        )}
 
         <div className="min-w-0">
-          <h2 className="font-heading text-lg font-semibold">
-            What this score means
-          </h2>
-          <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-            {severity === "fraud" &&
-              "Multiple high-weight forensic signals indicate this document was fabricated or heavily altered. Do not approve without independent verification."}
-            {severity === "suspect" &&
-              "Some signals warrant a manual review. Treat this document as unverified until the flagged items are resolved."}
-            {severity === "clear" &&
-              "No strong fraud indicators were found. The document is consistent with an authentic, software-issued original."}
-          </p>
+          {fullAnalysis ? (
+            <>
+              <h2 className="font-heading text-lg font-semibold">
+                What this score means
+              </h2>
+              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                {severity === "fraud" &&
+                  "Multiple high-weight forensic signals indicate this document was fabricated or heavily altered. Do not approve without independent verification."}
+                {severity === "suspect" &&
+                  "Some signals warrant a manual review. Treat this document as unverified until the flagged items are resolved."}
+                {severity === "clear" &&
+                  "No strong fraud indicators were found. The document is consistent with an authentic, software-issued original."}
+              </p>
+            </>
+          ) : (
+            <>
+              <Alert>
+                <AlertTitle className="font-heading text-lg">
+                  {LIMITED_ANALYSIS_TITLE}
+                </AlertTitle>
+                <AlertDescription className="mt-1 leading-relaxed">
+                  {LIMITED_ANALYSIS_BODY}
+                </AlertDescription>
+              </Alert>
+              <Link
+                href="/dashboard"
+                className={`${buttonVariants()} mt-5 h-11 rounded-pill bg-signal px-6 text-signal-foreground hover:bg-signal/90`}
+              >
+                Upload the original PDF
+              </Link>
+            </>
+          )}
 
           {/* File fingerprint — mono metadata, evidence-lab read */}
           <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-3 font-mono text-xs">
             <FingerprintField term="Document" value={docLabel} />
             <FingerprintField term="Type" value={meta.mime} />
-            <FingerprintField
-              term="Producer"
-              value={meta.pdf_producer ?? "—"}
-            />
-            <FingerprintField term="Creator" value={meta.pdf_creator ?? "—"} />
-            <FingerprintField
-              term="Created"
-              value={formatTs(meta.pdf_created)}
-            />
-            <FingerprintField
-              term="Modified"
-              value={formatTs(meta.pdf_modified)}
-            />
+            {/* PDF-only fields — hidden entirely when no deep metadata ran */}
+            {fullAnalysis && (
+              <>
+                <FingerprintField
+                  term="Producer"
+                  value={meta.pdf_producer ?? "—"}
+                />
+                <FingerprintField
+                  term="Creator"
+                  value={meta.pdf_creator ?? "—"}
+                />
+                <FingerprintField
+                  term="Created"
+                  value={formatTs(meta.pdf_created)}
+                />
+                <FingerprintField
+                  term="Modified"
+                  value={formatTs(meta.pdf_modified)}
+                />
+              </>
+            )}
           </dl>
         </div>
       </section>
@@ -321,7 +382,9 @@ function ResultView({
           </span>
         </div>
         <p className="mt-1 mb-5 text-sm text-muted-foreground">
-          Every point in the score traces to a specific, inspectable signal.
+          {fullAnalysis
+            ? "Every point in the score traces to a specific, inspectable signal."
+            : "Every finding from the basic checks is listed here as a specific, inspectable signal."}
         </p>
         {fraudSignals.length > 0 ? (
           <SignalBreakdown signals={fraudSignals} />

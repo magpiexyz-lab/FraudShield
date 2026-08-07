@@ -219,6 +219,72 @@ test.describe("b-04: signed-up user uploads a document and receives a score", ()
       expect(marker).not.toBeNull();
     },
   );
+
+  test(
+    "Image scan renders the limited-analysis state — no score, no clear verdict",
+    async ({ page }) => {
+      test.skip(
+        process.env.DEMO_MODE === "true",
+        "DB-dependent — requires a real scan row; re-run after /deploy",
+      );
+      const { email, password } = getTestCredentials();
+      if (!email || !password) test.skip();
+      await login(page, email, password);
+
+      // Push a real image through /api/scan so the row carries an image mime.
+      // "sample" in the filename trips the one detector an image can reach, so
+      // the breakdown must still list it — limited is not a blank page.
+      const scanId = await page.evaluate(async () => {
+        const b64 =
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+        const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+        const form = new FormData();
+        form.append(
+          "file",
+          new File([bytes], "paystub-sample-photo.png", { type: "image/png" }),
+        );
+        const res = await fetch("/api/scan", { method: "POST", body: form });
+        if (!res.ok) return null;
+        const json = await res.json();
+        return json.id as string;
+      });
+      test.skip(
+        !scanId,
+        "scan API unavailable (auth or quota) in this environment",
+      );
+
+      await page.goto(`/scan-result?id=${scanId}`);
+
+      // The limited state is stated plainly.
+      await expect(
+        page.getByRole("heading", { name: /limited analysis/i }),
+      ).toBeVisible();
+      await expect(
+        page.getByText(/image files only receive basic checks/i),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("link", { name: /upload the original pdf/i }),
+      ).toBeVisible();
+
+      // No fraud score and no clear/suspect/fraud verdict for an image.
+      await expect(
+        page.locator('section[aria-label="Fraud score"]'),
+      ).toHaveCount(0);
+      await expect(page.getByText(/what this score means/i)).toHaveCount(0);
+      await expect(
+        page.getByText(/no strong fraud indicators were found/i),
+      ).toHaveCount(0);
+      await expect(
+        page.getByRole("heading", { name: /analysis complete/i }),
+      ).toHaveCount(0);
+
+      // Signals that DID fire are still listed.
+      await expect(page.getByText(/signal breakdown/i)).toBeVisible();
+      await expect(
+        page.getByText(/filename contains a fraud-related keyword/i),
+      ).toBeVisible();
+    },
+  );
 });
 
 // =====================================================================
