@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AuthShell } from "./auth-shell";
+import { GoogleOAuthButton } from "./oauth-button";
 
 function LoginForm() {
   const [email, setEmail] = useState("");
@@ -261,6 +262,9 @@ function LoginForm() {
               "Log in to your workspace"
             )}
           </Button>
+
+          {/* Honors ?next= so an OAuth login lands where the user was headed. */}
+          <GoogleOAuthButton next={next} label="Continue with Google" />
 
           <p className="text-center text-sm text-muted-foreground">
             Don&rsquo;t have an account?{" "}

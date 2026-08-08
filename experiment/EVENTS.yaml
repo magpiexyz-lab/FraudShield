@@ -85,9 +85,31 @@ events:
   signup_start:
     funnel_stage: activate
     trigger: Signup page mounts / user begins account creation
+    properties:
+      method:
+        type: string
+        required: false
+        description: How the user is signing up (email | google). Fired before the OAuth redirect, which tears down the page.
   signup_complete:
     funnel_stage: activate
-    trigger: Account is successfully created and the user lands on the dashboard
+    trigger: Account is successfully created and the user lands on the dashboard. Fired server-side from /auth/callback, the shared chokepoint for OAuth, email-confirm, and magic-link signups.
+    properties:
+      provider:
+        type: string
+        required: false
+        description: Supabase auth provider that created the account (email | google)
+      method:
+        type: string
+        required: false
+        description: Mirrors provider for funnel consistency with signup_start (email | google)
+      gclid:
+        type: string
+        required: false
+        description: Google Click ID relayed across the OAuth redirect via redirectTo params with a __fs_attr cookie fallback. The server cannot read the sessionStorage copy that layout.tsx captures, so this relay is the only attribution channel for OAuth signups.
+      utm_campaign:
+        type: string
+        required: false
+        description: utm_campaign relayed across the OAuth redirect alongside gclid
   activate:
     funnel_stage: activate
     trigger: User uploads a document and receives their first fraud score

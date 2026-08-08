@@ -229,6 +229,18 @@ behaviors:
       - "retain_return event fires on the second scan"
     level: 3
 
+  - id: b-09
+    hypothesis_id: h-01
+    pages: [signup, login, dashboard]
+    given: "A visitor from a paid ad reaches the signup or login page"
+    when: "They click Continue with Google and approve the Google consent screen"
+    then: "An account is created with no email-verification round-trip and they land on the dashboard, with the originating gclid and utm_campaign preserved across the OAuth redirect"
+    tests:
+      - "Continue with Google button renders on both signup and login"
+      - "gclid and utm_campaign survive the OAuth round-trip and arrive at /auth/callback"
+      - "signup_complete fires server-side with provider=google and the relayed attribution"
+      - "Acquisition gclid and utm_campaign are persisted onto the user record on first signup"
+    level: 2
 # --- 4. Journey ---
 golden_path:
   - step: "Visit landing page"
@@ -311,6 +323,7 @@ stack:
       testing: playwright
   database: supabase
   auth: supabase
+  auth_providers: [google]     # Google OAuth — configured in the Supabase dashboard
   analytics: posthog
   payment: stripe              # Level 3 + monetize hypotheses → payment required
 

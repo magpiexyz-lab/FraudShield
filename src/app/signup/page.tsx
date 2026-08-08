@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AuthShell } from "../login/auth-shell";
+import { GoogleOAuthButton } from "../login/oauth-button";
 
 const PASSWORD_MIN = 8;
 
@@ -177,6 +178,10 @@ export default function SignupPage() {
               "Scan your first document free"
             )}
           </Button>
+
+          {/* Skips the email-confirmation round-trip entirely: Google hands the
+              user back already verified, straight into /dashboard. */}
+          <GoogleOAuthButton next="/dashboard" label="Continue with Google" />
 
           <p className="text-center text-sm text-muted-foreground">
             Already have an account?{" "}

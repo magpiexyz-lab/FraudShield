@@ -15,9 +15,17 @@
 // lands here with the session already set in cookies and NO ?code param.
 
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { z } from "zod";
-import { createServerSupabaseClient } from "@/lib/supabase-server";
+import { createServerSupabaseClient, createServiceRoleClient } from "@/lib/supabase-server";
 import { trackServerEvent } from "@/lib/analytics-server";
+import {
+  ATTRIBUTION_COOKIE,
+  appendAttributionToPath,
+  hasAttribution,
+  resolveRelayedAttribution,
+  type Attribution,
+} from "@/lib/attribution";
 
 const codeSchema = z.string().min(20).max(512).regex(/^[A-Za-z0-9_-]+$/);
 const tokenHashSchema = z.string().min(20).max(512).regex(/^[A-Za-z0-9_-]+$/);
@@ -59,6 +67,39 @@ export async function GET(request: Request) {
   }
 
   const next = safeNext(searchParams.get("next"));
+
+  // Paid-attribution relay. The OAuth hop through Google destroys client state,
+  // and this route fires signup_complete SERVER-side where sessionStorage does
+  // not exist — so the click ids ride back on the redirectTo query params, with
+  // the __fs_attr cookie as fallback for allow-lists that strip unknown params.
+  let relayCookie: string | null = null;
+  try {
+    relayCookie = (await cookies()).get(ATTRIBUTION_COOKIE)?.value ?? null;
+  } catch {
+    // cookies() throws outside a request scope (tests invoke GET directly).
+    // The query-param relay still works; only the cookie fallback is lost.
+  }
+  const attribution = resolveRelayedAttribution(
+    {
+      gclid: searchParams.get("gclid"),
+      utm_campaign: searchParams.get("utm_campaign"),
+    },
+    relayCookie,
+  );
+
+  /**
+   * Redirects into the app, re-appending attribution to the destination so the
+   * pre-hydration capture script in layout.tsx can re-arm sessionStorage, and
+   * clearing the relay cookie now that it has been consumed.
+   */
+  const redirectInto = (destination: string) => {
+    const response = NextResponse.redirect(
+      `${origin}${appendAttributionToPath(destination, attribution)}`,
+    );
+    if (hasAttribution(attribution)) response.cookies.delete(ATTRIBUTION_COOKIE);
+    return response;
+  };
+
   const supabase = await createServerSupabaseClient();
 
   // ── Path 1: PKCE code exchange ────────────────────────────────────────
@@ -68,8 +109,8 @@ export async function GET(request: Request) {
     if (parsed.success) {
       const { error } = await supabase.auth.exchangeCodeForSession(parsed.data);
       if (!error) {
-        await maybeFireSignupComplete(supabase);
-        return NextResponse.redirect(`${origin}${next}`);
+        await maybeFireSignupComplete(supabase, undefined, attribution);
+        return redirectInto(next);
       }
       return NextResponse.redirect(
         `${origin}/login?error=${encodeURIComponent("link_invalid_or_expired")}`,
@@ -91,8 +132,8 @@ export async function GET(request: Request) {
         type: parsedType.data,
       });
       if (!error) {
-        await maybeFireSignupComplete(supabase);
-        return NextResponse.redirect(`${origin}${next}`);
+        await maybeFireSignupComplete(supabase, undefined, attribution);
+        return redirectInto(next);
       }
       return NextResponse.redirect(
         `${origin}/login?error=${encodeURIComponent("link_invalid_or_expired")}`,
@@ -106,8 +147,8 @@ export async function GET(request: Request) {
   // implicit path (post-launch bug #4 root cause).
   const { data: { user } } = await supabase.auth.getUser();
   if (user) {
-    await maybeFireSignupComplete(supabase, user);
-    return NextResponse.redirect(`${origin}${next}`);
+    await maybeFireSignupComplete(supabase, user, attribution);
+    return redirectInto(next);
   }
 
   // ── Path 4: No code, no token_hash, no session — true failure. ───────
@@ -127,6 +168,7 @@ export async function GET(request: Request) {
 async function maybeFireSignupComplete(
   supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>,
   userOverride?: { id: string; created_at: string; app_metadata?: { provider?: string } } | null,
+  attribution: Attribution = {},
 ) {
   try {
     const user = userOverride ?? (await supabase.auth.getUser()).data.user;
@@ -136,8 +178,52 @@ async function maybeFireSignupComplete(
     }
     const provider =
       (user.app_metadata?.provider as string | undefined) ?? "email";
-    await trackServerEvent("signup_complete", user.id, { provider });
+    // Spreading a sanitized object keeps absent values off the payload entirely
+    // rather than sending gclid: undefined.
+    await trackServerEvent("signup_complete", user.id, {
+      provider,
+      method: provider === "google" ? "google" : "email",
+      ...attribution,
+    });
+    await persistAttribution(user.id, attribution);
   } catch {
     // Never let analytics fire interfere with the auth redirect.
+  }
+}
+
+/**
+ * Stamps the acquisition source onto the user record so attribution outlives
+ * the PostHog event stream — needed to answer "which campaign produced the
+ * customers who converted?" months later, after session data is long gone.
+ *
+ * Stored in auth.users.user_metadata (there is no profiles table) via the
+ * service-role client, and written once: the FIRST touch wins, so a later
+ * organic login cannot overwrite the paid click that actually acquired them.
+ */
+async function persistAttribution(userId: string, attribution: Attribution) {
+  if (!hasAttribution(attribution)) return;
+  try {
+    const admin = createServiceRoleClient();
+    // The demo client proxies unknown auth members to a bare function, so
+    // admin.updateUserById is undefined under DEMO_MODE — guard rather than throw.
+    if (typeof admin.auth?.admin?.updateUserById !== "function") return;
+    if (typeof admin.auth?.admin?.getUserById !== "function") return;
+
+    const { data: existing } = await admin.auth.admin.getUserById(userId);
+    const current = (existing?.user?.user_metadata ?? {}) as Record<string, unknown>;
+    if (current.acquisition_gclid || current.acquisition_utm_campaign) return;
+
+    await admin.auth.admin.updateUserById(userId, {
+      user_metadata: {
+        ...current,
+        ...(attribution.gclid ? { acquisition_gclid: attribution.gclid } : {}),
+        ...(attribution.utm_campaign
+          ? { acquisition_utm_campaign: attribution.utm_campaign }
+          : {}),
+        acquisition_recorded_at: new Date().toISOString(),
+      },
+    });
+  } catch {
+    // Attribution persistence is best-effort — never block the auth redirect.
   }
 }
