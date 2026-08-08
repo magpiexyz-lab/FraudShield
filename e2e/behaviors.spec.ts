@@ -285,6 +285,68 @@ test.describe("b-04: signed-up user uploads a document and receives a score", ()
       ).toBeVisible();
     },
   );
+
+  test(
+    "Scan history shows a neutral Limited chip for image rows, severity for PDF rows",
+    async ({ page }) => {
+      test.skip(
+        process.env.DEMO_MODE === "true",
+        "DB-dependent — requires real scan rows; re-run after /deploy",
+      );
+      const { email, password } = getTestCredentials();
+      if (!email || !password) test.skip();
+      await login(page, email, password);
+
+      // Seed one image scan and one PDF scan so both history branches render.
+      // Filenames deliberately avoid the fraud keywords in detectSuspiciousFilename
+      // so the PDF lands in the `clear` band and keeps its usual severity badge.
+      const ids = await page.evaluate(async () => {
+        async function post(bytes: BlobPart, name: string, type: string) {
+          const form = new FormData();
+          form.append("file", new File([bytes], name, { type }));
+          const res = await fetch("/api/scan", { method: "POST", body: form });
+          if (!res.ok) return null;
+          return (await res.json()).id as string;
+        }
+        const png = Uint8Array.from(
+          atob(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+          ),
+          (c) => c.charCodeAt(0),
+        );
+        const pdf = new TextEncoder().encode(
+          `%PDF-1.4
+1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj
+trailer<</Root 1 0 R>>
+%%EOF`,
+        );
+        return {
+          image: await post(png, "payslip-photo.png", "image/png"),
+          pdf: await post(pdf, "payslip-march.pdf", "application/pdf"),
+        };
+      });
+      test.skip(
+        !ids.image || !ids.pdf,
+        "scan API unavailable (auth or quota) in this environment",
+      );
+
+      await page.goto("/dashboard");
+
+      // Image row: neutral "Limited" chip, no severity label, no numeric score.
+      const imageRow = page.locator(`a[href*="${ids.image}"]`);
+      await expect(imageRow).toContainText(/limited/i);
+      await expect(imageRow).not.toContainText(/authentic|review|forged/i);
+      await expect(
+        imageRow.getByText(/no fraud score available for image files/i),
+      ).toHaveCount(1);
+
+      // PDF row is untouched: severity badge + its numeric score still render.
+      const pdfRow = page.locator(`a[href*="${ids.pdf}"]`);
+      await expect(pdfRow).toContainText(/authentic|review|forged/i);
+      await expect(pdfRow).not.toContainText(/limited/i);
+      await expect(pdfRow.getByText(/fraud score \d+/i)).toHaveCount(1);
+    },
+  );
 });
 
 // =====================================================================
