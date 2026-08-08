@@ -43,6 +43,15 @@ export type DocumentMetadata = {
    * PDF), which never fires the missing-EXIF detector.
    */
   exif_present?: boolean;
+  /**
+   * True when the AI content pass (lib/fraud/vision.ts) returned a usable
+   * determination for this image. This is what upgrades an image scan from
+   * partial to full analysis — see lib/fraud/analysis-mode.ts. No detector
+   * below reads it; it is classification state, not evidence.
+   */
+  vision_analyzed?: boolean;
+  /** Outcome of the content pass: "analyzed" | "inconclusive" | "unavailable". */
+  vision_status?: string;
 };
 
 export type ScoringInput = {
@@ -419,14 +428,18 @@ function detectImageCaptureDate(input: ScoringInput): FraudSignal | null {
 
 // ---- Score computation ----
 
-/** Map raw weight sum to a 0–100 score using a sigmoid-like curve */
-function computeScore(totalWeight: number): number {
+/**
+ * Map raw weight sum to a 0–100 score using a sigmoid-like curve.
+ * Exported so vision signals (lib/fraud/vision.ts) can be folded into an
+ * existing result without a second copy of the formula drifting from this one.
+ */
+export function computeScore(totalWeight: number): number {
   // Cap at 100 and clamp to [0, 100]
   return Math.min(100, Math.max(0, Math.round(totalWeight)));
 }
 
-/** Derive severity bucket from score */
-function scoreSeverity(score: number): "clear" | "suspect" | "fraud" {
+/** Derive severity bucket from score. Exported alongside computeScore. */
+export function scoreSeverity(score: number): "clear" | "suspect" | "fraud" {
   if (score >= 67) return "fraud";
   if (score >= 34) return "suspect";
   return "clear";

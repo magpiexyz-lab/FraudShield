@@ -10,9 +10,12 @@ import { createClient } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import { trackActivate } from "@/lib/events";
 import {
+  analysisMode,
   isFullAnalysis,
   LIMITED_ANALYSIS_TITLE,
   LIMITED_ANALYSIS_BODY,
+  VISION_ANALYSIS_BODY,
+  VISION_CLEAR_BODY,
 } from "@/lib/fraud/analysis-mode";
 import { FREE_SCAN_QUOTA, type FraudSignal, type ScansRow } from "@/lib/types";
 import { ScoreGauge } from "./score-gauge";
@@ -91,11 +94,10 @@ export function ScanResultClient() {
   useEffect(() => {
     if (state === "ready" && scan && !activateFiredRef.current) {
       activateFiredRef.current = true;
-      // Image scans get a partial analysis, so their score is not comparable
-      // to a full PDF score — omit the property rather than mixing the two
-      // scales in one funnel metric.
+      // A partial scan's score is not comparable to a complete one — omit the
+      // property rather than mixing the two scales in one funnel metric.
       trackActivate(
-        isFullAnalysis(scan.file_meta?.mime ?? "")
+        isFullAnalysis(scan.file_meta)
           ? { doc_type: scan.doc_type, fraud_score: scan.fraud_score }
           : { doc_type: scan.doc_type },
       );
@@ -259,10 +261,12 @@ function ResultView({
   const severity = severityOfScore(scan.fraud_score);
   const meta = scan.file_meta;
   const fraudSignals: FraudSignal[] = scan.signals ?? [];
-  // Only PDFs get the full document forensics. Images get a partial analysis
-  // from EXIF metadata — real signals, but not a complete picture — so we show
-  // the evidence without presenting a score as a finished verdict.
-  const fullAnalysis = isFullAnalysis(meta.mime);
+  // Three depths, three read-outs. PDFs get document forensics; images get EXIF
+  // plus an AI content pass; an image whose content pass didn't complete gets
+  // EXIF alone — real signals, but not a complete picture, so we show the
+  // evidence without presenting a score as a finished verdict.
+  const mode = analysisMode(meta);
+  const fullAnalysis = mode !== "partial";
 
   return (
     <div className="flex flex-col gap-12">
@@ -276,12 +280,17 @@ function ResultView({
             ? `${docLabel} analysis complete`
             : `${docLabel} — partial analysis`}
         </h1>
-        {fullAnalysis ? (
+        {mode === "full_pdf" ? (
           <p className="mt-2 max-w-2xl text-base leading-relaxed text-muted-foreground">
             FraudShield ran metadata forensics, cross-document checks, and
             template matching on{" "}
             <span className="font-mono text-foreground">{meta.filename}</span>.
             Here is the full evidence trail behind the score.
+          </p>
+        ) : mode === "full_image" ? (
+          <p className="mt-2 max-w-2xl text-base leading-relaxed text-muted-foreground">
+            <span className="font-mono text-foreground">{meta.filename}</span> —{" "}
+            {VISION_ANALYSIS_BODY}
           </p>
         ) : (
           <p className="mt-2 max-w-2xl text-base leading-relaxed text-muted-foreground">
@@ -319,7 +328,12 @@ function ResultView({
                 {severity === "suspect" &&
                   "Some signals warrant a manual review. Treat this document as unverified until the flagged items are resolved."}
                 {severity === "clear" &&
-                  "No strong fraud indicators were found. The document is consistent with an authentic, software-issued original."}
+                  // Never a certification. The PDF wording rests on
+                  // producer/template evidence an image doesn't have, so a
+                  // content-analysed image gets its own honest line.
+                  (mode === "full_image"
+                    ? VISION_CLEAR_BODY
+                    : "No strong fraud indicators were found. The document is consistent with an authentic, software-issued original.")}
               </p>
             </>
           ) : (
@@ -346,7 +360,7 @@ function ResultView({
             <FingerprintField term="Document" value={docLabel} />
             <FingerprintField term="Type" value={meta.mime} />
             {/* PDF-only fields — hidden entirely when no deep metadata ran */}
-            {fullAnalysis && (
+            {mode === "full_pdf" && (
               <>
                 <FingerprintField
                   term="Producer"

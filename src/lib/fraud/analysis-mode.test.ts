@@ -2,9 +2,13 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import {
+  analysisMode,
   isFullAnalysis,
   LIMITED_ANALYSIS_TITLE,
   LIMITED_ANALYSIS_BODY,
+  VISION_ANALYSIS_BODY,
+  VISION_CLEAR_BODY,
+  AI_PRIVACY_DISCLOSURE,
 } from "./analysis-mode";
 import { computeFraudScore, type ScoringInput } from "./score";
 
@@ -15,22 +19,41 @@ const CLEAR_MAX = 33;
 
 describe("isFullAnalysis", () => {
   it("returns true for application/pdf", () => {
-    expect(isFullAnalysis("application/pdf")).toBe(true);
+    expect(isFullAnalysis({ mime: "application/pdf" })).toBe(true);
+    expect(analysisMode({ mime: "application/pdf" })).toBe("full_pdf");
   });
 
   it.each(["image/png", "image/jpeg", "image/webp", "image/heic"])(
-    "returns false for image mime %s",
+    "returns false for image mime %s when the content pass did not complete",
     (mime) => {
-      expect(isFullAnalysis(mime)).toBe(false);
+      expect(isFullAnalysis({ mime })).toBe(false);
+      expect(isFullAnalysis({ mime, vision_analyzed: false })).toBe(false);
+    },
+  );
+
+  it.each(["image/png", "image/jpeg", "image/webp", "image/heic"])(
+    "returns true for image mime %s once the AI content pass produced a determination",
+    (mime) => {
+      expect(isFullAnalysis({ mime, vision_analyzed: true })).toBe(true);
+      expect(analysisMode({ mime, vision_analyzed: true })).toBe("full_image");
     },
   );
 
   it.each(["", "application/octet-stream", "text/plain"])(
     "fails safe to limited for unknown mime %s",
     (mime) => {
-      expect(isFullAnalysis(mime)).toBe(false);
+      expect(isFullAnalysis({ mime })).toBe(false);
+      // A vision flag on a non-image mime must not upgrade it — the content
+      // pass only ever runs on images.
+      expect(isFullAnalysis({ mime, vision_analyzed: true })).toBe(false);
     },
   );
+
+  it("fails safe when file_meta is missing entirely", () => {
+    expect(isFullAnalysis(null)).toBe(false);
+    expect(isFullAnalysis(undefined)).toBe(false);
+    expect(analysisMode(null)).toBe("partial");
+  });
 });
 
 describe("limited-analysis copy constants", () => {
@@ -47,6 +70,42 @@ describe("limited-analysis copy constants", () => {
   it("does not claim images get only basic checks — they now get EXIF forensics", () => {
     expect(LIMITED_ANALYSIS_BODY.toLowerCase()).not.toContain("only receive basic");
     expect(LIMITED_ANALYSIS_BODY.toLowerCase()).toContain("metadata checks");
+  });
+});
+
+describe("content-analysis copy", () => {
+  // The product must never certify a document as real. A "no indicators"
+  // result is the absence of evidence, and the copy has to say so rather than
+  // reading as a clean bill of health.
+  it.each([
+    ["VISION_ANALYSIS_BODY", VISION_ANALYSIS_BODY],
+    ["VISION_CLEAR_BODY", VISION_CLEAR_BODY],
+  ])("%s never asserts the document is genuine", (_name, copy) => {
+    const lower = copy.toLowerCase();
+    for (const claim of [
+      "is authentic",
+      "is genuine",
+      "is real",
+      "verified as authentic",
+      "confirmed authentic",
+    ]) {
+      expect(lower).not.toContain(claim);
+    }
+  });
+
+  it("states what a no-indicators result does not mean", () => {
+    expect(VISION_ANALYSIS_BODY.toLowerCase()).toContain("not that the document has been verified");
+    expect(VISION_CLEAR_BODY.toLowerCase()).toContain("absence of evidence");
+  });
+});
+
+describe("privacy disclosure", () => {
+  it("names the third party documents are sent to", () => {
+    expect(AI_PRIVACY_DISCLOSURE).toContain("Anthropic");
+  });
+
+  it("states that nothing is retained after the scan", () => {
+    expect(AI_PRIVACY_DISCLOSURE.toLowerCase()).toContain("no document is stored");
   });
 });
 
@@ -82,12 +141,25 @@ function parseDeepMetadataMimes(src: string): string[] {
   return m ? [m[1]] : [];
 }
 
-/** Mime prefixes for which the route extracts EXIF metadata. */
+/**
+ * Mime prefixes for which the route extracts EXIF metadata.
+ *
+ * Two accepted spellings: the gate inline in the ternary, or the gate hoisted
+ * into a named const (the route also reuses it for the AI content pass).
+ */
 function parseExifMetadataPrefixes(src: string): string[] {
-  const m = /file\.type\.startsWith\("([^"]+)"\)\s*\?\s*(?:await\s+)?extractImageMetadata/.exec(
-    src,
-  );
-  return m ? [m[1]] : [];
+  const inline =
+    /file\.type\.startsWith\("([^"]+)"\)\s*\?\s*(?:await\s+)?extractImageMetadata/.exec(
+      src,
+    );
+  if (inline) return [inline[1]];
+
+  const named = /(\w+)\s*\?\s*(?:await\s+)?extractImageMetadata/.exec(src);
+  if (!named) return [];
+  const decl = new RegExp(
+    `const\\s+${named[1]}\\s*=\\s*file\\.type\\.startsWith\\("([^"]+)"\\)`,
+  ).exec(src);
+  return decl ? [decl[1]] : [];
 }
 
 const ACCEPTED_MIMES = parseAcceptedMimes(ROUTE_SRC);
@@ -160,8 +232,8 @@ describe("recurrence guard: every accepted mime is classified honestly", () => {
       const max = maxReachableScore(mime);
       if (max > CLEAR_MAX) continue;
       expect(
-        isFullAnalysis(mime),
-        `Accepted mime "${mime}" has a maximum reachable fraud score of ${max}, which can never exceed the 'clear' threshold (${CLEAR_MAX}) — every scan of this type is a guaranteed false negative. It must be classified as limited analysis (isFullAnalysis("${mime}") === false), or the scan route must run deep checks for it.`,
+        isFullAnalysis({ mime }),
+        `Accepted mime "${mime}" has a maximum reachable fraud score of ${max}, which can never exceed the 'clear' threshold (${CLEAR_MAX}) — every scan of this type is a guaranteed false negative. It must be classified as limited analysis (isFullAnalysis({ mime: "${mime}" }) === false), or the scan route must run deep checks for it.`,
       ).toBe(false);
     }
   });

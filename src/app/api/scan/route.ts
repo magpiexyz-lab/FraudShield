@@ -2,12 +2,19 @@
 // compute the forensic fraud score, persist metadata + signals (NOT the raw
 // file), and return the new scan id.
 //
+// Image uploads additionally get an AI content pass (lib/fraud/vision.ts):
+// metadata describes the capture, not the document, so the content is the only
+// thing left to check on a photographed document. The pass is best-effort — on
+// any failure the scan keeps its metadata-only result and is labelled partial.
+//
 // Security:
 //   - Authenticated via Supabase cookie session
 //   - Rate-limited (after auth) per IP — burst protection on Vercel
 //   - Free-scan quota enforced via src/lib/quota.ts
 //   - Sanitized filenames per nextjs.md SK "When handling file uploads"
 //   - Raw documents are NEVER persisted — only file_meta + signals + score
+//   - Images are sent to Anthropic for the content pass (disclosed pre-upload
+//     via AI_PRIVACY_DISCLOSURE); nothing is retained by FraudShield
 //   - Zod input validation; generic { error } on ZodError (OWASP A4-InfoLeakage)
 
 import { NextResponse } from "next/server";
@@ -17,11 +24,18 @@ import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { rateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
 import { computeQuota } from "@/lib/quota";
 import { computeFraudScore } from "@/lib/fraud/score";
+import { analyzeImageForFraud, applyVisionSignals } from "@/lib/fraud/vision";
 import type {
   DocumentMetadata,
   ScoringInput,
 } from "@/lib/fraud/score";
 import type { FraudSignal, SubscriptionsRow } from "@/lib/types";
+
+// sharp (image downscaling) and Buffer are Node APIs — pin the runtime rather
+// than relying on the default. maxDuration covers the AI content pass, which
+// budgets up to 25s of its own before falling back.
+export const runtime = "nodejs";
+export const maxDuration = 60;
 
 // --- request shape ---
 // doc_type is optional and constrained — we infer from filename when absent.
@@ -237,11 +251,10 @@ export async function POST(request: Request) {
   const docType = parsedDocType ?? inferDocType(sanitizedName);
 
   const buf = Buffer.from(await file.arrayBuffer());
+  const isImage = file.type.startsWith("image/");
   const pdfMeta =
     file.type === "application/pdf" ? extractPdfMetadata(buf) : {};
-  const imageMeta = file.type.startsWith("image/")
-    ? await extractImageMetadata(buf)
-    : {};
+  const imageMeta = isImage ? await extractImageMetadata(buf) : {};
 
   const metadata: DocumentMetadata = {
     filename: sanitizedName,
@@ -252,7 +265,25 @@ export async function POST(request: Request) {
   };
 
   const scoringInput: ScoringInput = { metadata, doc_type: docType };
-  const { score, signals } = computeFraudScore(scoringInput);
+  let result = computeFraudScore(scoringInput);
+
+  // 5b. AI content pass — images only. PDFs already get document-level
+  //     forensics; an image's metadata only describes the capture, so the
+  //     content is what remains to check. analyzeImageForFraud never throws:
+  //     on a missing key, timeout, API error, refusal, or inconclusive verdict
+  //     it reports back unanalyzed and the scan stays a partial analysis.
+  if (isImage) {
+    const vision = await analyzeImageForFraud(buf, docType);
+    metadata.vision_status = vision.status;
+    if (vision.analyzed) {
+      // Only a completed determination upgrades the scan to a full analysis
+      // (see lib/fraud/analysis-mode.ts).
+      metadata.vision_analyzed = true;
+      result = applyVisionSignals(result, vision.signals);
+    }
+  }
+
+  const { score, signals } = result;
 
   // Strip the raw file reference — buf goes out of scope and is GC'd.
   const fileMetaForDb = metadata;

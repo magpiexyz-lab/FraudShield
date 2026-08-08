@@ -34,6 +34,14 @@ export type FileMeta = {
   pdf_created?: string;
   pdf_modified?: string;
   page_count?: number;
+  // Image (EXIF) fields — see extractImageMetadata in app/api/scan/route.ts
+  exif_software?: string;
+  exif_datetime_original?: string;
+  exif_present?: boolean;
+  // AI content pass — see lib/fraud/vision.ts. vision_analyzed is what
+  // lib/fraud/analysis-mode.ts classifies an image scan as full analysis on.
+  vision_analyzed?: boolean;
+  vision_status?: string;
 };
 
 // --- subscriptions ---

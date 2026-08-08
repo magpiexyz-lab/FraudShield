@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { FileUp, FileText, ShieldCheck, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { AI_PRIVACY_DISCLOSURE } from "@/lib/fraud/analysis-mode";
 
 // Accepted document types — pay stub, bank statement, invoice.
 // PDF + common raster image formats. Client-side gate only; the
@@ -226,6 +227,10 @@ export function UploadZone({ quotaRemaining }: { quotaRemaining: number }) {
                 Pay stub, bank statement, or invoice. PDF or image, up to 10&nbsp;MB.
                 Files are analyzed in seconds and never stored.
               </p>
+              <p className="mx-auto max-w-md text-xs text-muted-foreground">
+                Images also get an AI content review — see the note below before
+                you upload.
+              </p>
             </div>
             <Button
               onClick={() => inputRef.current?.click()}
@@ -237,6 +242,13 @@ export function UploadZone({ quotaRemaining }: { quotaRemaining: number }) {
           </div>
         )}
       </div>
+
+      {/* Third-party processing disclosure. Kept outside the drop zone so it
+          stays visible once a file is selected — the moment before the user
+          commits their document is when this has to be readable. */}
+      <p className="text-xs leading-relaxed text-muted-foreground">
+        {AI_PRIVACY_DISCLOSURE}
+      </p>
 
       {/* WCAG 4.1.3: always-mounted live region; visibility toggles via class.
           Uses destructive token (form-error semantics), NOT fraud severity —

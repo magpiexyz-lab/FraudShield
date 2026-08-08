@@ -136,9 +136,10 @@ export function ScanHistory() {
     <ul className="space-y-3">
       {scans.map((scan) => {
         const severity = severityFor(scan.fraud_score ?? 0);
-        // Image scans get EXIF metadata checks but not the full document
-        // forensics — show a neutral chip rather than a verdict-coded score.
-        const fullAnalysis = isFullAnalysis(scan.file_meta?.mime ?? "");
+        // A partial scan (an image whose AI content pass did not complete) got
+        // EXIF metadata checks only — show a neutral chip rather than a
+        // verdict-coded score.
+        const fullAnalysis = isFullAnalysis(scan.file_meta);
         return (
           <li key={scan.id}>
             <Link
