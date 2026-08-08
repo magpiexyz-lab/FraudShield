@@ -91,8 +91,9 @@ export function ScanResultClient() {
   useEffect(() => {
     if (state === "ready" && scan && !activateFiredRef.current) {
       activateFiredRef.current = true;
-      // Image scans only get basic checks — there is no meaningful fraud
-      // score, so omit the property rather than reporting a misleading 0.
+      // Image scans get a partial analysis, so their score is not comparable
+      // to a full PDF score — omit the property rather than mixing the two
+      // scales in one funnel metric.
       trackActivate(
         isFullAnalysis(scan.file_meta?.mime ?? "")
           ? { doc_type: scan.doc_type, fraud_score: scan.fraud_score }
@@ -258,8 +259,9 @@ function ResultView({
   const severity = severityOfScore(scan.fraud_score);
   const meta = scan.file_meta;
   const fraudSignals: FraudSignal[] = scan.signals ?? [];
-  // Only PDFs get deep metadata forensics. For anything else the score is an
-  // arithmetically guaranteed "clear" — so we show no score and no verdict.
+  // Only PDFs get the full document forensics. Images get a partial analysis
+  // from EXIF metadata — real signals, but not a complete picture — so we show
+  // the evidence without presenting a score as a finished verdict.
   const fullAnalysis = isFullAnalysis(meta.mime);
 
   return (
@@ -272,7 +274,7 @@ function ResultView({
         <h1 className="mt-2 font-heading text-3xl font-bold tracking-tight md:text-4xl">
           {fullAnalysis
             ? `${docLabel} analysis complete`
-            : `${docLabel} — limited analysis`}
+            : `${docLabel} — partial analysis`}
         </h1>
         {fullAnalysis ? (
           <p className="mt-2 max-w-2xl text-base leading-relaxed text-muted-foreground">
@@ -283,10 +285,11 @@ function ResultView({
           </p>
         ) : (
           <p className="mt-2 max-w-2xl text-base leading-relaxed text-muted-foreground">
-            FraudShield ran only basic checks on{" "}
-            <span className="font-mono text-foreground">{meta.filename}</span>.
-            Metadata forensics and template matching need the original PDF, so
-            no fraud score is available for image files.
+            FraudShield ran image metadata forensics on{" "}
+            <span className="font-mono text-foreground">{meta.filename}</span> —
+            the evidence below is what the file&rsquo;s EXIF data reveals.
+            Producer fingerprinting and template matching have no image
+            equivalent, so this is a partial result rather than a final verdict.
           </p>
         )}
       </header>
@@ -384,7 +387,7 @@ function ResultView({
         <p className="mt-1 mb-5 text-sm text-muted-foreground">
           {fullAnalysis
             ? "Every point in the score traces to a specific, inspectable signal."
-            : "Every finding from the basic checks is listed here as a specific, inspectable signal."}
+            : "Every finding from the image metadata checks is listed here as a specific, inspectable signal."}
         </p>
         {fraudSignals.length > 0 ? (
           <SignalBreakdown signals={fraudSignals} />

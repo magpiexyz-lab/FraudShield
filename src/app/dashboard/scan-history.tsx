@@ -136,8 +136,8 @@ export function ScanHistory() {
     <ul className="space-y-3">
       {scans.map((scan) => {
         const severity = severityFor(scan.fraud_score ?? 0);
-        // Image scans never run the deep metadata checks, so their score is a
-        // guaranteed "clear" — show a neutral chip, never a fraud verdict.
+        // Image scans get EXIF metadata checks but not the full document
+        // forensics — show a neutral chip rather than a verdict-coded score.
         const fullAnalysis = isFullAnalysis(scan.file_meta?.mime ?? "");
         return (
           <li key={scan.id}>
@@ -168,7 +168,7 @@ export function ScanHistory() {
                     {" "}
                     {fullAnalysis
                       ? `— fraud score ${scan.fraud_score ?? 0}, ${SEVERITY_LABEL[severity]}`
-                      : "— limited analysis, no fraud score available for image files"}
+                      : "— partial analysis, image metadata checks only"}
                   </span>
                 </p>
                 <p className="truncate font-[family-name:var(--font-mono)] text-xs text-muted-foreground">
