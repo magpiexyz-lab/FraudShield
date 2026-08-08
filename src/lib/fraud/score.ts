@@ -33,6 +33,16 @@ export type DocumentMetadata = {
   pdf_modified?: string;
   /** Number of pages */
   page_count?: number;
+  /** EXIF Software tag on an image (e.g., "Adobe Photoshop 25.0") — the image analog of pdf_producer */
+  exif_software?: string;
+  /** EXIF DateTimeOriginal — when the photo was captured (ISO string) */
+  exif_datetime_original?: string;
+  /**
+   * Whether the image carried any EXIF block at all. Only set for images the
+   * route attempted extraction on; `undefined` means "not attempted" (e.g. a
+   * PDF), which never fires the missing-EXIF detector.
+   */
+  exif_present?: boolean;
 };
 
 export type ScoringInput = {
@@ -103,11 +113,38 @@ const AI_PDF_LIBRARY_PATTERNS = [
   /jspdf/i,
 ];
 
+// Image-editing software written into the EXIF Software tag. The image analog
+// of KNOWN_FRAUD_PRODUCERS: a photographed or scanned financial document should
+// carry a camera, phone, or scanner in this field — an editor here means the
+// pixels passed through a tool that can alter figures.
+const IMAGE_EDITOR_PATTERNS = [
+  /photoshop/i,
+  /gimp/i,
+  /paint\.net/i,
+  /affinity\s*(photo|designer)/i,
+  /pixelmator/i,
+  /photopea/i,
+  /picsart/i,
+  /snapseed/i,
+  /lightroom/i,
+  /illustrator/i,
+  /inkscape/i,
+  /krita/i,
+  /canva/i,
+  /befunky/i,
+  /fotor/i,
+];
+
 // ---- Detection helpers ----
 
 /** Normalize a string for case-insensitive matching */
 function norm(s: string | undefined): string {
   return (s ?? "").toLowerCase().trim();
+}
+
+/** Whether this scan is an image upload (EXIF detectors are image-only) */
+function isImageMime(mime: string): boolean {
+  return mime.startsWith("image/");
 }
 
 /**
@@ -315,6 +352,71 @@ function detectUnusualFileSize(input: ScoringInput): FraudSignal | null {
   return null;
 }
 
+// ---- Image (EXIF) signal detectors ----
+// The image counterparts of the PDF detectors above. All three are gated on an
+// image MIME so a PDF upload can never trip them.
+
+function detectImageEditorSoftware(input: ScoringInput): FraudSignal | null {
+  if (!isImageMime(input.metadata.mime)) return null;
+  const software = norm(input.metadata.exif_software);
+  if (!software) return null;
+
+  for (const pattern of IMAGE_EDITOR_PATTERNS) {
+    if (pattern.test(software)) {
+      return {
+        id: "image_editor_software",
+        label: "Image was re-saved by photo-editing software",
+        severity: "fraud",
+        detail: `The image's EXIF Software tag reads "${input.metadata.exif_software}" — a photo or graphic editor. A genuine photo or scan of a ${input.doc_type.replace("_", " ")} carries the capturing camera, phone, or scanner in this field. An editor here means the image was opened in a tool capable of altering the figures on the document.`,
+        weight: 30,
+      };
+    }
+  }
+  return null;
+}
+
+function detectMissingExif(input: ScoringInput): FraudSignal | null {
+  if (!isImageMime(input.metadata.mime)) return null;
+  // Strictly `false` — `undefined` means extraction was never attempted.
+  if (input.metadata.exif_present !== false) return null;
+
+  return {
+    id: "missing_exif_metadata",
+    label: "Image carries no EXIF metadata",
+    severity: "suspect",
+    detail: "The image contains no EXIF block at all. Cameras and phones always write capture metadata, so its total absence points to a screenshot, an export from a design or editing tool, or a file whose metadata was deliberately stripped — none of which is a photograph of an original document.",
+    weight: 15,
+  };
+}
+
+function detectImageCaptureDate(input: ScoringInput): FraudSignal | null {
+  if (!isImageMime(input.metadata.mime)) return null;
+  const captured = input.metadata.exif_datetime_original;
+  if (!captured) return null;
+
+  if (isFutureDate(captured)) {
+    return {
+      id: "image_future_capture",
+      label: "Image capture date is in the future",
+      severity: "fraud",
+      detail: `The image's EXIF DateTimeOriginal is ${captured}, which is in the future. A photo cannot be taken later than the moment it is uploaded — this indicates the capture timestamp was manipulated.`,
+      weight: 35,
+    };
+  }
+
+  if (isRecentlyCreated(captured)) {
+    return {
+      id: "image_recent_capture",
+      label: "Image captured within the last 7 days",
+      severity: "suspect",
+      detail: `The image was captured on ${captured}. A document photographed immediately before submission — rather than an existing record kept on file — is a pattern seen in fabricated submissions.`,
+      weight: 12,
+    };
+  }
+
+  return null;
+}
+
 // ---- Score computation ----
 
 /** Map raw weight sum to a 0–100 score using a sigmoid-like curve */
@@ -351,6 +453,9 @@ export function computeFraudScore(input: ScoringInput): ScoringResult {
     detectAnomalousModification,
     detectSuspiciousFilename,
     detectUnusualFileSize,
+    detectImageEditorSoftware,
+    detectMissingExif,
+    detectImageCaptureDate,
   ];
 
   const signals: FraudSignal[] = [];

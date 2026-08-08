@@ -180,10 +180,12 @@ behaviors:
     pages: [dashboard, scan-result]
     given: "A signed-up user is on the dashboard"
     when: "They upload a pay stub, bank statement, or invoice and submit it for analysis"
-    then: "FraudShield runs metadata forensics, cross-document checks, and template matching and returns a fraud score in seconds"
+    then: "FraudShield runs metadata forensics, cross-document checks, and template matching and returns a fraud score in seconds. PDFs get the full document forensics (producer/creator fingerprinting, template matching, timestamp analysis). Images get a partial analysis from EXIF metadata — editing software in the Software tag, DateTimeOriginal capture date, and absence of EXIF as a screenshot or stripped-metadata signal — and are labelled as partial rather than presented as a complete verdict"
     tests:
       - "Upload accepts PDF and image files and rejects unsupported types"
       - "Scan result renders a 0-100 fraud score with a per-signal breakdown"
+      - "Image uploads produce EXIF-derived signals (editor software, capture date, missing EXIF) instead of an empty breakdown"
+      - "Image results are labelled partial analysis and direct the user to upload the original PDF for full forensics"
       - "activate event fires when the first fraud score is delivered"
     level: 2
   - id: b-05

@@ -1,14 +1,18 @@
 /**
  * Analysis-mode classification — pure, testable module.
  *
- * The scan API accepts images as well as PDFs, but only PDFs get deep metadata
- * extraction (producer, creator, creation/modification dates, page count). Of
- * the 8 detectors in ./score.ts, 7 need that metadata — so an image's maximum
- * reachable score is 10, which always lands in the `clear` bucket (0–33). That
- * makes an image "clear" verdict an arithmetically guaranteed false negative.
+ * The scan API accepts images as well as PDFs. Images now get their own
+ * metadata pass — the EXIF Software tag, DateTimeOriginal, and absence-of-EXIF
+ * feed three real detectors in ./score.ts, so an image scan can reach the
+ * `suspect` and `fraud` buckets on its own evidence. That is a *partial*
+ * analysis, not a full one: the document-level forensics in ./score.ts (PDF
+ * producer/creator fingerprinting, template matching, creation-vs-modification
+ * timestamp analysis, page and size heuristics) have no image equivalent and
+ * still require the original PDF.
  *
  * Surfaces therefore ask this module whether a scan received a *full* forensic
- * analysis before showing a score or a clear/suspect/fraud verdict.
+ * analysis, so a partial result is labelled as such rather than presented as a
+ * complete verdict.
  *
  * No I/O, no side-effects — safe to unit test.
  */
@@ -35,8 +39,8 @@ export function isFullAnalysis(mime: string): boolean {
 // ---- User-facing copy for the limited-analysis state ----
 
 /** Heading for the limited-analysis notice. */
-export const LIMITED_ANALYSIS_TITLE = "Limited analysis";
+export const LIMITED_ANALYSIS_TITLE = "Partial analysis";
 
 /** Body copy for the limited-analysis notice. */
 export const LIMITED_ANALYSIS_BODY =
-  "Image files only receive basic checks today. For the full forensic scan, upload the original PDF.";
+  "Image files receive metadata checks — editing software, capture date, and stripped or missing EXIF. Full document forensics, including producer fingerprinting and template matching, needs the original PDF.";
