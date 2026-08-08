@@ -40,12 +40,12 @@ export function trackApiInterestClick(props?: { doc_type?: string }) {
 
 // activate
 
-export function trackSignupStart() {
-  track("signup_start", { funnel_stage: "activate" });
+export function trackSignupStart(props?: { method?: "email" | "google" }) {
+  track("signup_start", { ...props, funnel_stage: "activate" });
 }
 
-export function trackSignupComplete() {
-  track("signup_complete", { funnel_stage: "activate" });
+export function trackSignupComplete(props?: { method?: "email" | "google" }) {
+  track("signup_complete", { ...props, funnel_stage: "activate" });
 }
 
 export function trackActivate(props: { doc_type: string; fraud_score?: number }) {
