@@ -39,7 +39,10 @@ def main():
     scores = entry.get("dimension_scores", {})
 
     if scores.get("Q_build", 0) > 0:
-        ok = os.path.exists(".runs/build-result.json") and             json.load(open(".runs/build-result.json")).get("exit_code") == 0
+        ok = (
+            os.path.exists(".runs/build-result.json")
+            and json.load(open(".runs/build-result.json")).get("exit_code") == 0
+        )
         if not ok:
             fail("Q_build>0 but build failed")
 
@@ -84,6 +87,5 @@ if __name__ == "__main__":
     try:
         main()
     except AssertionError as exc:
-        sys.stderr.write(str(exc) + "
-")
+        sys.stderr.write(str(exc) + "\n")
         sys.exit(1)
