@@ -26,7 +26,7 @@ embed:
 
 **VERIFY:**
 ```bash
-head -1 .runs/verify-report.md | grep -q '^---$'
+python3 -c "assert open('.runs/verify-report.md').readline().strip()=='---', 'verify-report.md missing frontmatter'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:
