@@ -328,6 +328,11 @@ stack:
   auth_providers: [google]     # Google OAuth — configured in the Supabase dashboard
   analytics: posthog
   payment: stripe              # Level 3 + monetize hypotheses → payment required
+  ai: anthropic                # Claude Opus 5 vision — content analysis for image
+                               # uploads, where metadata forensics cannot score the
+                               # document itself (src/lib/fraud/vision.ts).
+                               # Requires ANTHROPIC_API_KEY; absent key degrades
+                               # image scans to the partial (EXIF-only) analysis.
 
 target_geo: [US, GB, CA, AU, NZ]
 
