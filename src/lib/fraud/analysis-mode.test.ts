@@ -35,13 +35,18 @@ describe("isFullAnalysis", () => {
 
 describe("limited-analysis copy constants", () => {
   it("exports the approved title", () => {
-    expect(LIMITED_ANALYSIS_TITLE).toBe("Limited analysis");
+    expect(LIMITED_ANALYSIS_TITLE).toBe("Partial analysis");
   });
 
   it("exports the approved body", () => {
     expect(LIMITED_ANALYSIS_BODY).toBe(
-      "Image files only receive basic checks today. For the full forensic scan, upload the original PDF.",
+      "Image files receive metadata checks — editing software, capture date, and stripped or missing EXIF. Full document forensics, including producer fingerprinting and template matching, needs the original PDF.",
     );
+  });
+
+  it("does not claim images get only basic checks — they now get EXIF forensics", () => {
+    expect(LIMITED_ANALYSIS_BODY.toLowerCase()).not.toContain("only receive basic");
+    expect(LIMITED_ANALYSIS_BODY.toLowerCase()).toContain("metadata checks");
   });
 });
 
@@ -71,24 +76,35 @@ function parseAcceptedMimes(src: string): string[] {
   return [...block.matchAll(/"([^"]+)"/g)].map((m) => m[1]);
 }
 
-/** Mimes for which the route actually extracts deep document metadata. */
+/** Mimes for which the route actually extracts deep PDF metadata. */
 function parseDeepMetadataMimes(src: string): string[] {
   const m = /file\.type === "([^"]+)"\s*\?\s*extractPdfMetadata/.exec(src);
   return m ? [m[1]] : [];
 }
 
+/** Mime prefixes for which the route extracts EXIF metadata. */
+function parseExifMetadataPrefixes(src: string): string[] {
+  const m = /file\.type\.startsWith\("([^"]+)"\)\s*\?\s*(?:await\s+)?extractImageMetadata/.exec(
+    src,
+  );
+  return m ? [m[1]] : [];
+}
+
 const ACCEPTED_MIMES = parseAcceptedMimes(ROUTE_SRC);
 const DEEP_METADATA_MIMES = parseDeepMetadataMimes(ROUTE_SRC);
+const EXIF_METADATA_PREFIXES = parseExifMetadataPrefixes(ROUTE_SRC);
 
 /**
  * Worst-case score reachable for a mime, given what the scan route can
  * actually supply to the scoring engine. Every field that could trip a
- * detector is populated; pdf_* fields are only supplied for mimes the route
- * extracts deep metadata from (the route leaves them undefined otherwise).
+ * detector is populated, but only the fields the route really extracts for
+ * that mime: pdf_* for the deep-metadata mime, exif_* for mimes matching an
+ * EXIF prefix. Everything else the route leaves undefined.
  */
 function maxReachableScore(mime: string): number {
   const future = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString();
   const deep = DEEP_METADATA_MIMES.includes(mime);
+  const exif = EXIF_METADATA_PREFIXES.some((p) => mime.startsWith(p));
   const input: ScoringInput = {
     metadata: {
       // suspicious filename (+10) and unusually small file (PDF-only, +12)
@@ -102,6 +118,13 @@ function maxReachableScore(mime: string): number {
             pdf_created: future, // future + recently created
             pdf_modified: future, // anomalous modification
             page_count: 1,
+          }
+        : {}),
+      ...(exif
+        ? {
+            exif_software: "Adobe Photoshop 25.0", // editing software (+30)
+            exif_datetime_original: future, // future capture (+35)
+            exif_present: true,
           }
         : {}),
     },
@@ -122,6 +145,13 @@ describe("recurrence guard: every accepted mime is classified honestly", () => {
     expect(
       DEEP_METADATA_MIMES.length,
       `Failed to parse the extractPdfMetadata condition out of ${ROUTE_PATH}. Update this guard instead of letting it pass vacuously.`,
+    ).toBeGreaterThan(0);
+  });
+
+  it("parses a non-empty EXIF-metadata prefix list from the scan route", () => {
+    expect(
+      EXIF_METADATA_PREFIXES.length,
+      `Failed to parse the extractImageMetadata condition out of ${ROUTE_PATH}. Update this guard instead of letting it pass vacuously.`,
     ).toBeGreaterThan(0);
   });
 

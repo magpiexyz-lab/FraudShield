@@ -12,6 +12,7 @@
 
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import exifr from "exifr";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { rateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
 import { computeQuota } from "@/lib/quota";
@@ -99,6 +100,49 @@ function extractPdfMetadata(buf: Buffer): Partial<DocumentMetadata> {
 
   const pageCount = (slice.match(/\/Type\s*\/Page[^s]/g) ?? []).length;
   if (pageCount > 0) meta.page_count = pageCount;
+
+  return meta;
+}
+
+// Best-effort EXIF extraction for image uploads. Pulls the forensic fields the
+// image detectors in lib/fraud/score.ts consume: the Software tag (the image
+// analog of /Producer), DateTimeOriginal, and whether any EXIF block existed at
+// all — an empty EXIF is itself a signal (screenshot / editor export / stripped).
+// A file we cannot parse is reported as EXIF-absent rather than throwing.
+async function extractImageMetadata(
+  buf: Buffer,
+): Promise<Partial<DocumentMetadata>> {
+  const meta: Partial<DocumentMetadata> = { exif_present: false };
+
+  let tags: Record<string, unknown> | undefined;
+  try {
+    tags =
+      // tiff covers IFD0 (where Software lives); exif covers DateTimeOriginal.
+      (await exifr.parse(buf, { tiff: true, exif: true })) ?? undefined;
+  } catch {
+    return meta;
+  }
+  if (!tags || Object.keys(tags).length === 0) return meta;
+
+  meta.exif_present = true;
+
+  // Software is user-controlled text — cap its length before it reaches the
+  // signal detail string that the UI renders.
+  const software = tags.Software;
+  if (typeof software === "string" && software.trim()) {
+    meta.exif_software = software.trim().slice(0, 200);
+  }
+
+  // exifr returns Date objects for EXIF date tags when parseable.
+  const captured = tags.DateTimeOriginal;
+  if (captured instanceof Date && !Number.isNaN(captured.getTime())) {
+    meta.exif_datetime_original = captured.toISOString();
+  } else if (typeof captured === "string") {
+    const parsed = new Date(captured);
+    if (!Number.isNaN(parsed.getTime())) {
+      meta.exif_datetime_original = parsed.toISOString();
+    }
+  }
 
   return meta;
 }
@@ -195,12 +239,16 @@ export async function POST(request: Request) {
   const buf = Buffer.from(await file.arrayBuffer());
   const pdfMeta =
     file.type === "application/pdf" ? extractPdfMetadata(buf) : {};
+  const imageMeta = file.type.startsWith("image/")
+    ? await extractImageMetadata(buf)
+    : {};
 
   const metadata: DocumentMetadata = {
     filename: sanitizedName,
     mime: file.type || "application/octet-stream",
     size: file.size,
     ...pdfMeta,
+    ...imageMeta,
   };
 
   const scoringInput: ScoringInput = { metadata, doc_type: docType };
