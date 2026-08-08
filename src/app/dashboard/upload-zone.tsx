@@ -227,9 +227,13 @@ export function UploadZone({ quotaRemaining }: { quotaRemaining: number }) {
                 Pay stub, bank statement, or invoice. PDF or image, up to 10&nbsp;MB.
                 Files are analyzed in seconds and never stored.
               </p>
+              {/* States the substance rather than pointing at it: a spatial
+                  reference assumes a viewport and a reading order, and is a
+                  weak cue for a screen-reader user. The full disclosure below
+                  the drop zone stays on screen in every state. */}
               <p className="mx-auto max-w-md text-xs text-muted-foreground">
-                Images also get an AI content review — see the note below before
-                you upload.
+                Images are sent to Anthropic for AI review of the document&rsquo;s
+                content.
               </p>
             </div>
             <Button
