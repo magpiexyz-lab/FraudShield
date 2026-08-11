@@ -63,6 +63,30 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { plan, gclid, utm_campaign, distinct_id } = payIntentSchema.parse(body);
 
+    // 3. Activation gate, enforced HERE rather than only in the UI.
+    //
+    // Phase 2 measures whether people who USED the product will pay for it. A
+    // signed-up user who never received a fraud score has no idea what they
+    // would be buying, so counting their click would measure curiosity instead
+    // of value and inflate the numerator. Every surface render-guards the CTA,
+    // but a client guard is cosmetic — this check is what makes the gate hold,
+    // and it keeps the rule in one place now that the offer appears on both
+    // /scan-result and /pricing.
+    //
+    // Deliberately placed after zod parsing rather than before: a malformed body
+    // should still answer 400 rather than 403, so the validation contract stays
+    // observable. Auth and rate limiting already ran above.
+    const { count: scanCount, error: scanCountError } = await supabase
+      .from("scans")
+      .select("id", { count: "exact", head: true });
+    if (scanCountError) {
+      console.error("[pay-intent] activation lookup error:", scanCountError);
+      return NextResponse.json({ error: "Failed to record interest" }, { status: 500 });
+    }
+    if (!scanCount || scanCount < 1) {
+      return NextResponse.json({ error: "Not activated" }, { status: 403 });
+    }
+
     // 3. Server-authoritative price. NEVER trust a client-supplied amount.
     const price_cents = PLAN_PRICES[plan];
 
