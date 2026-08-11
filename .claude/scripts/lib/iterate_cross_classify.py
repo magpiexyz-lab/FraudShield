@@ -10,6 +10,11 @@ Subcommands:
   finalize   Read updated config + data.json + signup-counts.json (from PostHog query
              between persist and finalize) → fill data.json signup_events + signups,
              run sanity check, print summary, exit 1 if any suspect found.
+  persist-owner
+             Persist only mvp_mappings.<name>.owner (+ owner_note provenance) from
+             x4 owner-backfill proposals. Skips rows that already have an owner;
+             validates against team_roster (departed members rejected — the remap
+             to the operator happens at propose time in iterate_cross_owner_infer).
 
 Why a helper script (not inline state-file Python):
 
@@ -59,6 +64,8 @@ EXCLUDED_PATTERNS = [
     re.compile(r"^outreach_click$", re.IGNORECASE),
     re.compile(r"^model_recommended$", re.IGNORECASE),  # UI suggestion, not commitment
 ]
+
+VALID_LIFECYCLE_STATUSES = {"active", "killed", "promoted"}
 
 
 def is_excluded(event_name: str) -> bool:
@@ -246,6 +253,7 @@ def merge_orphan_overlap(
     orphan_rows: list[list],
     overlap_counts: dict[str, dict],
     threshold: float = 0.70,
+    aliases: dict[str, str] | None = None,
 ) -> tuple[list[list], list[list], list[dict]]:
     """Merge orphan rows into canonical rows when gclid overlap exceeds threshold.
 
@@ -278,6 +286,10 @@ def merge_orphan_overlap(
     Low-overlap orphans (< threshold) AND orphans with no matching canonical
     name pass through as remaining_orphans -> MISSING_PROJECT_NAME verdict.
 
+    `aliases` (optional, `_load_aliases` shape) adds an `alias_orphan_host`
+    fallback when the direct match_key scan finds no orphan for a canonical
+    (#2073); direct matches always win.
+
     Idempotent: re-applying to already-merged input leaves the `partial_tracking_pct`
     field intact (since orphan row was already removed in the first pass).
     """
@@ -300,6 +312,19 @@ def merge_orphan_overlap(
             if match_key(orphan_host) == canon_norm:
                 matched_orphan = orphan_row
                 break
+
+        if matched_orphan is None and aliases:
+            # Alias fallback (#2073): same first-wins dict collapse as the
+            # pair builder, restricted to hosts not consumed by a direct merge.
+            orph_by_key: dict[str, str] = {}
+            for orphan_row in orphan_rows:
+                if orphan_row and orphan_row[0] not in consumed_orphans:
+                    orph_by_key.setdefault(match_key(orphan_row[0]), orphan_row[0])
+            alias_host = alias_orphan_host(canon_name, orph_by_key, aliases)
+            if alias_host is not None:
+                matched_orphan = next(
+                    r for r in orphan_rows if r and r[0] == alias_host
+                )
 
         if matched_orphan is None:
             merged.append(list(canonical_row))
@@ -361,6 +386,157 @@ def merge_orphan_overlap(
     return merged, remaining, audit
 
 
+ORPHAN_NAME_PREFIX = "__orphan_"
+ORPHAN_NAME_SUFFIX = "__"
+
+
+def orphan_host_from_name(name: str) -> str | None:
+    """Extract `<host>` from a `__orphan_<host>__` MVP record name."""
+    if (
+        isinstance(name, str)
+        and name.startswith(ORPHAN_NAME_PREFIX)
+        and name.endswith(ORPHAN_NAME_SUFFIX)
+        and len(name) > len(ORPHAN_NAME_PREFIX) + len(ORPHAN_NAME_SUFFIX)
+    ):
+        return name[len(ORPHAN_NAME_PREFIX):-len(ORPHAN_NAME_SUFFIX)]
+    return None
+
+
+def alias_orphan_host(
+    canonical_name: str,
+    orph_by_key: dict[str, str],
+    aliases: dict[str, str] | None = None,
+) -> str | None:
+    """Alias fallback for canonical <-> orphan host matching (#2073).
+
+    `aliases` is the `ga_campaign_aliases` map with match_key-normalized keys
+    (the `_load_aliases` contract). A canonical whose own match_key differs
+    from its deploy host prefix (project_name `museai-studio`, host `museai`)
+    can still pair when an alias key resolving to that canonical equals an
+    orphan host key. Only prefix-style alias keys can ever match a host key;
+    full-campaign-name keys (e.g. `pubchecksearchvalidationv1`) never equal a
+    host prefix and fall through harmlessly. Sorted iteration keeps the
+    first-match deterministic when several alias keys map to one canonical.
+    """
+    if not aliases:
+        return None
+    canon_key = match_key(canonical_name)
+    for alias_key, target in sorted(aliases.items()):
+        if match_key(target) == canon_key and alias_key in orph_by_key:
+            return orph_by_key[alias_key]
+    return None
+
+
+def build_orphan_pairs(
+    mvps: list[dict],
+    aliases: dict[str, str] | None = None,
+) -> list[tuple[str, str]]:
+    """(canonical, orphan_host) pairs sharing a match_key, from MVP dict records.
+
+    Dict-shaped sibling of the state-x0 pair builder (which works on raw
+    discovery rows): canonical names come from non-orphan records, hosts from
+    `__orphan_<host>__` records. First orphan wins per key, mirroring x0's
+    dict-collapse behavior.
+
+    `aliases` (optional, `_load_aliases` shape) adds an `alias_orphan_host`
+    fallback for canonicals with no direct-key pair; direct matches always win
+    and claimed orphan keys are never re-paired via alias.
+    """
+    orph_by_key: dict[str, str] = {}
+    for m in mvps:
+        host = orphan_host_from_name(str(m.get("name") or ""))
+        if host is None:
+            continue
+        orph_by_key.setdefault(match_key(host), host)
+    pairs: list[tuple[str, str]] = []
+    unpaired: list[str] = []
+    claimed_hosts: set[str] = set()
+    for m in mvps:
+        name = str(m.get("name") or "")
+        if not name or orphan_host_from_name(name) is not None or m.get("orphan"):
+            continue
+        host = orph_by_key.get(match_key(name))
+        if host is not None:
+            pairs.append((name, host))
+            claimed_hosts.add(host)
+        else:
+            unpaired.append(name)
+    if aliases:
+        unclaimed = {k: h for k, h in orph_by_key.items() if h not in claimed_hosts}
+        for name in unpaired:
+            host = alias_orphan_host(name, unclaimed, aliases)
+            if host is not None:
+                pairs.append((name, host))
+                del unclaimed[match_key(host)]
+    return pairs
+
+
+def apply_orphan_merge_to_mvps(
+    mvps: list[dict],
+    overlap_counts: dict[str, dict],
+    threshold: float = 0.70,
+    aliases: dict[str, str] | None = None,
+) -> tuple[list[dict], list[dict]]:
+    """Run `merge_orphan_overlap` semantics over MVP dict records (state-x5).
+
+    x5's context records are dicts with more fields than the 5-col phase-1
+    discovery rows (`merge_orphan_overlap` writes partial_tracking_pct at
+    index 5 — feeding 6-col x5 rows directly would clobber `last_seen`), so
+    this adapter builds throwaway 5-col rows for the pure function and maps
+    the audit back onto the dicts: merged canonicals get
+    `partial_tracking_pct`, consumed orphan dicts are dropped, every other
+    record passes through untouched with order preserved.
+
+    Returns (new_mvps, audit).
+    """
+    canon_rows: list[list] = []
+    orphan_rows: list[list] = []
+    for m in mvps:
+        name = str(m.get("name") or "")
+        host = orphan_host_from_name(name)
+        if host is not None:
+            orphan_rows.append([host, m.get("gclid_visitors", 0)])
+        elif name and not m.get("orphan"):
+            row = [
+                name,
+                m.get("sample_utm_campaign"),
+                m.get("gclid_visitors", 0),
+                m.get("first_seen"),
+                m.get("last_seen"),
+            ]
+            if m.get("partial_tracking_pct") is not None:
+                row.append(m.get("partial_tracking_pct"))
+            canon_rows.append(row)
+
+    _, _, audit = merge_orphan_overlap(
+        canon_rows,
+        orphan_rows,
+        overlap_counts,
+        threshold=threshold,
+        aliases=aliases,
+    )
+
+    pct_by_canonical = {
+        entry["canonical"]: entry["partial_tracking_pct"]
+        for entry in audit
+        if entry.get("action") == "merged"
+    }
+    consumed_hosts = {
+        entry["orphan_host"] for entry in audit if entry.get("action") == "merged"
+    }
+
+    new_mvps: list[dict] = []
+    for m in mvps:
+        name = str(m.get("name") or "")
+        host = orphan_host_from_name(name)
+        if host is not None and host in consumed_hosts:
+            continue
+        if name in pct_by_canonical:
+            m["partial_tracking_pct"] = pct_by_canonical[name]
+        new_mvps.append(m)
+    return new_mvps, audit
+
+
 def cmd_merge_orphan_overlap(args: argparse.Namespace) -> int:
     """CLI subcommand: merge orphan rows into canonicals where gclid overlap >= threshold.
 
@@ -387,9 +563,16 @@ def cmd_merge_orphan_overlap(args: argparse.Namespace) -> int:
 
     config = load_yaml(args.config)
     threshold = (config or {}).get("orphan_merge_overlap_threshold", 0.70)
+    # ga_campaign_aliases keys normalized exactly as iterate_cross_ga._load_aliases
+    # does (classify cannot import ga — ga imports classify; #2073).
+    aliases = {
+        match_key(k): v
+        for k, v in ((config or {}).get("ga_campaign_aliases") or {}).items()
+        if v
+    }
 
     merged, remaining, audit = merge_orphan_overlap(
-        disc_rows, orph_rows, overlap_data, threshold=threshold
+        disc_rows, orph_rows, overlap_data, threshold=threshold, aliases=aliases
     )
 
     disc["results"] = merged
@@ -478,6 +661,148 @@ def dump_yaml(data: dict, path: str) -> None:
     import yaml
     with open(path, "w") as f:
         yaml.safe_dump(data, f, sort_keys=False, default_flow_style=False)
+
+
+def persist_lifecycle_updates(
+    config_path: str,
+    updates: list[dict],
+    now_iso: str | None = None,
+    dry_run: bool = False,
+) -> dict:
+    """Write only mvp_mappings.<name>.lifecycle_status fields.
+
+    This is deliberately separate from cmd_persist(), which owns signup-event
+    classification and must keep respecting classified_by: operator locks.
+    Lifecycle updates are an independent operator decision and must not mutate
+    signup_events, classified_by, classified_at, or rationale.
+    """
+    config = load_yaml(config_path)
+    config.setdefault("mvp_mappings", {})
+    mappings = config["mvp_mappings"]
+    now_iso = now_iso or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    written = []
+    for update in updates:
+        name = update.get("name") or update.get("mvp")
+        status = update.get("lifecycle_status") or update.get("status")
+        if not name:
+            raise ValueError(f"Lifecycle update missing name: {update!r}")
+        if status not in VALID_LIFECYCLE_STATUSES:
+            raise ValueError(
+                f"Invalid lifecycle_status for {name}: {status!r}; "
+                f"expected one of {sorted(VALID_LIFECYCLE_STATUSES)}"
+            )
+        entry = dict(mappings.get(name) or {})
+        entry["lifecycle_status"] = status
+        entry["lifecycle_status_at"] = update.get("lifecycle_status_at") or update.get("status_at") or now_iso
+        mappings[name] = entry
+        written.append(name)
+
+    if not dry_run:
+        dump_yaml(config, config_path)
+    return {"written": written, "dry_run": dry_run}
+
+
+def persist_owner_updates(
+    config_path: str,
+    updates: list[dict],
+    now_iso: str | None = None,
+    dry_run: bool = False,
+) -> dict:
+    """Write only mvp_mappings.<name>.owner (+ owner_note provenance).
+
+    Deliberately separate from cmd_persist() (signup fields) and
+    persist_lifecycle_updates() (lifecycle fields). Owner rows that already
+    have an owner are skipped, never overwritten — this makes re-running a
+    stale proposals file idempotent and preserves operator manual edits made
+    between propose and confirm. Owner values must be active team_roster
+    members: unknown names and departed members raise ValueError (the
+    departed→operator remap belongs at propose time, not persist time).
+    """
+    config = load_yaml(config_path)
+    config.setdefault("mvp_mappings", {})
+    mappings = config["mvp_mappings"]
+    roster = config.get("team_roster") or {}
+    valid_owners = {
+        k for k, v in roster.items()
+        if k != "_meta" and not (isinstance(v, dict) and v.get("status") == "departed")
+    }
+    now_iso = now_iso or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    written = []
+    skipped_existing = []
+    for update in updates:
+        name = update.get("name") or update.get("mvp")
+        owner = update.get("owner")
+        if not name or not owner:
+            raise ValueError(f"Owner update missing name or owner: {update!r}")
+        if valid_owners and owner not in valid_owners:
+            raise ValueError(
+                f"Invalid owner for {name}: {owner!r}; "
+                f"expected an active team_roster member ({sorted(valid_owners)})"
+            )
+        if (mappings.get(name) or {}).get("owner"):
+            skipped_existing.append(name)
+            continue
+        entry = dict(mappings.get(name) or {})
+        entry["owner"] = owner
+        entry["owner_note"] = update.get("owner_note") or (
+            f"inferred from repo commit history "
+            f"({update.get('confidence', 'unknown')} confidence, operator-confirmed {now_iso[:10]})"
+        )
+        mappings[name] = entry
+        written.append(name)
+
+    if not dry_run:
+        dump_yaml(config, config_path)
+    return {"written": written, "skipped_existing": skipped_existing, "dry_run": dry_run}
+
+
+OVERRIDE_FIELDS = ("cpc_exception", "channel_waiver", "backend_keep")
+
+
+def persist_override_updates(
+    config_path: str,
+    field: str,
+    updates: list[dict],
+    now_iso: str | None = None,
+    dry_run: bool = False,
+) -> dict:
+    """Write only mvp_mappings.<name>.<field> blocks (cpc_exception | channel_waiver | backend_keep).
+
+    Mirrors persist_lifecycle_updates: an independent operator decision that must
+    NOT mutate signup_events/classified_by/classified_at/rationale/lifecycle_status.
+    Each block requires a 'reason' and is stamped with granted_by/granted_at for
+    auditability. cpc_exception suppresses cpc_over_cap (and may carry
+    max_cpc_override); channel_waiver suppresses channel_starved; backend_keep
+    suppresses zombie_backend (a killed MVP whose live backend is deliberately
+    kept — e.g. a shared multi-purpose project).
+    """
+    if field not in OVERRIDE_FIELDS:
+        raise ValueError(f"Unsupported override field: {field!r}; expected one of {OVERRIDE_FIELDS}")
+    config = load_yaml(config_path)
+    config.setdefault("mvp_mappings", {})
+    mappings = config["mvp_mappings"]
+    now_iso = now_iso or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    written = []
+    for update in updates:
+        name = update.get("name") or update.get("mvp")
+        if not name:
+            raise ValueError(f"Override update missing name: {update!r}")
+        block = dict(update.get(field) or update.get("block") or {})
+        if not block.get("reason"):
+            raise ValueError(f"{field} for {name} requires a non-empty 'reason'")
+        block.setdefault("granted_by", update.get("granted_by") or "operator")
+        block.setdefault("granted_at", update.get("granted_at") or now_iso)
+        entry = dict(mappings.get(name) or {})
+        entry[field] = block
+        mappings[name] = entry
+        written.append(name)
+
+    if not dry_run:
+        dump_yaml(config, config_path)
+    return {"written": written, "dry_run": dry_run}
 
 
 # ---------- Subcommand: prepare ----------
@@ -634,6 +959,140 @@ def cmd_persist(args) -> int:
         + (" (dry-run)" if dry_run else "")
     )
     return 0
+
+
+# ---------- Subcommand: persist-lifecycle ----------
+
+def cmd_persist_lifecycle(args) -> int:
+    """Persist lifecycle_status/lifecycle_status_at with its own confirmation."""
+    updates: list[dict]
+    if getattr(args, "input", None):
+        payload = json.load(open(args.input))
+        updates = payload.get("updates") if isinstance(payload, dict) else payload
+        if not isinstance(updates, list):
+            raise SystemExit("Lifecycle input must be a list or {updates: [...]}")
+    else:
+        if not args.name or not args.status:
+            raise SystemExit("persist-lifecycle requires --input or both --name and --status")
+        updates = [{
+            "name": args.name,
+            "lifecycle_status": args.status,
+            "lifecycle_status_at": args.status_at,
+        }]
+
+    dry_run = getattr(args, "dry_run", False)
+    if not getattr(args, "confirm", False) and not dry_run:
+        print("Lifecycle updates require --confirm; no config written.", file=sys.stderr)
+        return 2
+
+    result = persist_lifecycle_updates(
+        args.config,
+        updates,
+        now_iso=getattr(args, "status_at", None),
+        dry_run=dry_run,
+    )
+    summary = {
+        "written": result["written"],
+        "dry_run": dry_run,
+        "updates": updates,
+    }
+    if getattr(args, "summary", None) and not dry_run:
+        json.dump(summary, open(args.summary, "w"), indent=2)
+
+    print(
+        f"persist-lifecycle: {len(result['written'])} written"
+        + (" (dry-run)" if dry_run else "")
+    )
+    return 0
+
+
+# ---------- Subcommand: persist-owner ----------
+
+def cmd_persist_owner(args) -> int:
+    """Persist owner/owner_note with its own confirmation."""
+    updates: list[dict]
+    if getattr(args, "input", None):
+        payload = json.load(open(args.input))
+        updates = payload.get("updates") if isinstance(payload, dict) else payload
+        if not isinstance(updates, list):
+            raise SystemExit("Owner input must be a list or {updates: [...]}")
+    else:
+        if not args.name or not args.owner:
+            raise SystemExit("persist-owner requires --input or both --name and --owner")
+        updates = [{
+            "name": args.name,
+            "owner": args.owner,
+            "owner_note": getattr(args, "note", None),
+        }]
+
+    dry_run = getattr(args, "dry_run", False)
+    if not getattr(args, "confirm", False) and not dry_run:
+        print("Owner updates require --confirm; no config written.", file=sys.stderr)
+        return 2
+
+    result = persist_owner_updates(args.config, updates, dry_run=dry_run)
+    summary = {
+        "written": result["written"],
+        "skipped_existing": result["skipped_existing"],
+        "dry_run": dry_run,
+        "updates": updates,
+    }
+    if getattr(args, "summary", None) and not dry_run:
+        json.dump(summary, open(args.summary, "w"), indent=2)
+
+    print(
+        f"persist-owner: {len(result['written'])} written, "
+        f"{len(result['skipped_existing'])} skipped (already owned)"
+        + (" (dry-run)" if dry_run else "")
+    )
+    return 0
+
+
+# ---------- Subcommands: persist-cpc-exception / persist-channel-waiver ----------
+
+def _override_updates_from_args(args, field: str) -> list[dict]:
+    if getattr(args, "input", None):
+        payload = json.load(open(args.input))
+        updates = payload.get("updates") if isinstance(payload, dict) else payload
+        if not isinstance(updates, list):
+            raise SystemExit(f"{field} input must be a list or {{updates: [...]}}")
+        return updates
+    if not args.name or not getattr(args, "reason", None):
+        raise SystemExit(
+            f"persist-{field.replace('_', '-')} requires --input or both --name and --reason"
+        )
+    block: dict = {"reason": args.reason}
+    if getattr(args, "expires_at", None):
+        block["expires_at"] = args.expires_at
+    if field == "cpc_exception" and getattr(args, "max_cpc_override", None) is not None:
+        block["max_cpc_override"] = args.max_cpc_override
+    return [{"name": args.name, field: block}]
+
+
+def _run_persist_override(args, field: str) -> int:
+    updates = _override_updates_from_args(args, field)
+    dry_run = getattr(args, "dry_run", False)
+    if not getattr(args, "confirm", False) and not dry_run:
+        print(f"{field} updates require --confirm; no config written.", file=sys.stderr)
+        return 2
+    result = persist_override_updates(args.config, field, updates, dry_run=dry_run)
+    print(
+        f"persist-{field.replace('_', '-')}: {len(result['written'])} written"
+        + (" (dry-run)" if dry_run else "")
+    )
+    return 0
+
+
+def cmd_persist_cpc_exception(args) -> int:
+    return _run_persist_override(args, "cpc_exception")
+
+
+def cmd_persist_channel_waiver(args) -> int:
+    return _run_persist_override(args, "channel_waiver")
+
+
+def cmd_persist_backend_keep(args) -> int:
+    return _run_persist_override(args, "backend_keep")
 
 
 # ---------- Subcommand: finalize ----------
@@ -795,6 +1254,84 @@ def main(argv: list[str] | None = None) -> int:
     p_persist.add_argument("--summary", default=".runs/_iterate-cross-classify-persist-summary.json")
     p_persist.add_argument("--dry-run", action="store_true")
     p_persist.set_defaults(func=cmd_persist)
+
+    p_life = sub.add_parser(
+        "persist-lifecycle",
+        help="Persist only mvp_mappings.<name>.lifecycle_status fields.",
+    )
+    p_life.add_argument("--input", default=None,
+                        help="JSON list or {updates: [...]} of lifecycle updates.")
+    p_life.add_argument("--name", default=None)
+    p_life.add_argument("--status", default=None, choices=sorted(VALID_LIFECYCLE_STATUSES))
+    p_life.add_argument("--status-at", default=None)
+    p_life.add_argument("--config", default="experiment/iterate-cross-config.yaml")
+    p_life.add_argument("--summary", default=".runs/_iterate-cross-lifecycle-persist-summary.json")
+    p_life.add_argument("--confirm", action="store_true",
+                        help="Required to write lifecycle updates.")
+    p_life.add_argument("--dry-run", action="store_true")
+    p_life.set_defaults(func=cmd_persist_lifecycle)
+
+    p_owner = sub.add_parser(
+        "persist-owner",
+        help="Persist only mvp_mappings.<name>.owner (+ owner_note provenance).",
+    )
+    p_owner.add_argument("--input", default=None,
+                         help="JSON list or {updates: [...]} of owner updates.")
+    p_owner.add_argument("--name", default=None)
+    p_owner.add_argument("--owner", default=None)
+    p_owner.add_argument("--note", default=None,
+                         help="owner_note override for --name mode.")
+    p_owner.add_argument("--config", default="experiment/iterate-cross-config.yaml")
+    p_owner.add_argument("--summary", default=".runs/_iterate-cross-owner-persist-summary.json")
+    p_owner.add_argument("--confirm", action="store_true",
+                         help="Required to write owner updates.")
+    p_owner.add_argument("--dry-run", action="store_true")
+    p_owner.set_defaults(func=cmd_persist_owner)
+
+    p_cpc = sub.add_parser(
+        "persist-cpc-exception",
+        help="Persist only mvp_mappings.<name>.cpc_exception (suppresses cpc_over_cap).",
+    )
+    p_cpc.add_argument("--input", default=None,
+                       help="JSON list or {updates: [...]} of cpc_exception updates.")
+    p_cpc.add_argument("--name", default=None)
+    p_cpc.add_argument("--reason", default=None, help="Why a higher CPC is justified (required).")
+    p_cpc.add_argument("--max-cpc-override", dest="max_cpc_override", type=float, default=None,
+                       help="USD cap for this MVP (raises the effective cap).")
+    p_cpc.add_argument("--expires-at", dest="expires_at", default=None)
+    p_cpc.add_argument("--config", default="experiment/iterate-cross-config.yaml")
+    p_cpc.add_argument("--confirm", action="store_true", help="Required to write the exception.")
+    p_cpc.add_argument("--dry-run", action="store_true")
+    p_cpc.set_defaults(func=cmd_persist_cpc_exception)
+
+    p_waiver = sub.add_parser(
+        "persist-channel-waiver",
+        help="Persist only mvp_mappings.<name>.channel_waiver (suppresses channel_starved).",
+    )
+    p_waiver.add_argument("--input", default=None,
+                          help="JSON list or {updates: [...]} of channel_waiver updates.")
+    p_waiver.add_argument("--name", default=None)
+    p_waiver.add_argument("--reason", default=None, help="Why keep a thin-channel MVP alive (required).")
+    p_waiver.add_argument("--expires-at", dest="expires_at", default=None)
+    p_waiver.add_argument("--config", default="experiment/iterate-cross-config.yaml")
+    p_waiver.add_argument("--confirm", action="store_true", help="Required to write the waiver.")
+    p_waiver.add_argument("--dry-run", action="store_true")
+    p_waiver.set_defaults(func=cmd_persist_channel_waiver)
+
+    p_keep = sub.add_parser(
+        "persist-backend-keep",
+        help="Persist only mvp_mappings.<name>.backend_keep (suppresses zombie_backend for a killed MVP whose live backend is deliberately kept).",
+    )
+    p_keep.add_argument("--input", default=None,
+                        help="JSON list or {updates: [...]} of backend_keep updates.")
+    p_keep.add_argument("--name", default=None)
+    p_keep.add_argument("--reason", default=None,
+                        help="Why the backend stays despite the kill (required).")
+    p_keep.add_argument("--expires-at", dest="expires_at", default=None)
+    p_keep.add_argument("--config", default="experiment/iterate-cross-config.yaml")
+    p_keep.add_argument("--confirm", action="store_true", help="Required to write the waiver.")
+    p_keep.add_argument("--dry-run", action="store_true")
+    p_keep.set_defaults(func=cmd_persist_backend_keep)
 
     p_final = sub.add_parser("finalize")
     p_final.add_argument("--data", default=".runs/iterate-cross-data.json")

@@ -16,15 +16,11 @@ Read the archetype file at `.claude/archetypes/<type>.md` (type from experiment.
 
 If surface ≠ none: verify the surface stack file exists at `.claude/stacks/surface/<surface_type>.md`. If missing, stop: "Surface type resolved to `<surface_type>`, but the stack file `.claude/stacks/surface/<surface_type>.md` does not exist. Set `stack.surface` explicitly in experiment.yaml to one of: `none`, `co-located`, `detached`." Then proceed regardless of archetype. Follow `.claude/patterns/branch.md`. Branch: `chore/distribute`.
 
-Parse `$ARGUMENTS` for `--phase 1` or `--phase 2`. If no `--phase` flag is present, default to phase 1. Store the parsed phase value (integer: 1 or 2) for inclusion in the context file.
+Distribute is Phase-1-only. Always store phase `1` in the context file for audit-trail stability.
 
 Merge distribute-specific fields into context:
 ```bash
-# Parse phase from $ARGUMENTS (default: 1)
-PHASE=1
-if echo "$ARGUMENTS" | grep -qE '\-\-phase\s+2'; then PHASE=2; fi
-
-bash .claude/scripts/init-context.sh distribute "{\"phase\":$PHASE}"
+bash .claude/scripts/init-context.sh distribute '{"phase":1}'
 ```
 
 > **Branch cleanup on failure:** Any "stop" below leaves you on a feature branch. Append cleanup boilerplate per `.claude/patterns/branch-cleanup-error-template.md` (Variant A, branch=`chore/distribute`, recovery: 'address the prerequisite, then re-run `/distribute`') to every stop message.
@@ -57,12 +53,12 @@ If surface is `none`: skill has terminated with user guidance. No further states
 If surface ≠ `none`:
 - Current branch is `chore/distribute` (or `chore/distribute-N` if prior branch exists)
 - Branch is not `main`
-- `.runs/distribute-context.json` exists with `phase` field
+- `.runs/distribute-context.json` exists with `phase` set to `1`
 - `.runs/distribute-preconditions.json` written with field: `deployed_url`
 
 **VERIFY:**
 ```bash
-test -f .runs/distribute-context.json && python3 -c "import json; ctx=json.load(open('.runs/distribute-context.json')); assert 'phase' in ctx, 'phase missing'; assert ctx['phase'] in (1,2), 'phase must be 1 or 2'" && python3 -c "import json; p=json.load(open('.runs/distribute-preconditions.json')); assert p.get('deployed_url')"
+test -f .runs/distribute-context.json && python3 -c "import json; ctx=json.load(open('.runs/distribute-context.json')); assert 'phase' in ctx, 'phase missing'; assert ctx['phase'] == 1, 'phase must be 1'" && python3 -c "import json; p=json.load(open('.runs/distribute-preconditions.json')); assert p.get('deployed_url')"
 ```
 
 **STATE TRACKING:** After postconditions pass (surface ≠ none only), mark this state complete:

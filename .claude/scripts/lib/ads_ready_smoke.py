@@ -27,6 +27,12 @@ from iterate_cross_posthog_batch import _posthog_query  # noqa: E402
 CHECK_20_NAME = "Synthetic gclid arrives at PostHog"
 CHECK_21_NAME = "Golden-path landing event fires"
 CHECK_22_NAME = "No double-firing of critical events"
+CHECK_23_NAME = "utm_campaign captured on ingested event"
+CHECK_24_NAME = "All probe events carry project_name"
+# Probe utm_campaign value for the synthetic smoke. MUST NOT contain "phase2"
+# (the default phase-2 verdict filter is %phase2%). The synthetic gclid prefix
+# already excludes the probe from every paid verdict; this is belt-and-suspenders.
+SYNTHETIC_UTM_CAMPAIGN = "ads-ready-smoke"
 CHECK_9_ID = 9
 CHECK_9_NAME = "Vercel deployment in team account"
 VERCEL_LINK_FIX = (
@@ -42,6 +48,27 @@ class SmokeSetupError(RuntimeError):
 
 def _utc_now() -> str:
     return _dt.datetime.now(_dt.timezone.utc).isoformat()
+
+
+def _git_head() -> str | None:
+    try:
+        proc = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            capture_output=True,
+            check=False,
+            text=True,
+        )
+    except Exception:
+        return None
+    if proc.returncode != 0:
+        return None
+    head = proc.stdout.strip()
+    return head or None
+
+
+def _phase(ctx: dict[str, Any] | None) -> str:
+    data = ctx or {}
+    return str(data.get("phase") or ("phase-2" if data.get("phase_2") else "phase-1"))
 
 
 def _root(ctx: dict[str, Any]) -> Path:
@@ -86,6 +113,7 @@ def _check(
 def _result_output(
     checks: list[dict[str, Any]],
     *,
+    ctx: dict[str, Any] | None = None,
     deploy_url: str | None = None,
     synthetic_gclid: str | None = None,
     skipped: bool = False,
@@ -104,6 +132,8 @@ def _result_output(
         "skill": "ads-ready",
         "layer": "B",
         "timestamp": _utc_now(),
+        "phase": _phase(ctx),
+        "git_head": _git_head(),
         "checks": checks,
         "overall_pass": None if skipped else len(failed) == 0,
         "applicable_count": len(checks),
@@ -127,14 +157,21 @@ def _write_result(path: str, output: dict[str, Any]) -> None:
     print_summary(output, stream=sys.stderr)
 
 
-def write_skipped(path: str, reason: str = "static_only flag set") -> None:
+def write_skipped(
+    path: str,
+    reason: str = "static_only flag set",
+    ctx: dict[str, Any] | None = None,
+) -> None:
     checks = [
         _check(20, CHECK_20_NAME, None, f"Skipped: {reason}", None, skipped=True),
         _check(21, CHECK_21_NAME, None, f"Skipped: {reason}", None, skipped=True),
         _check(22, CHECK_22_NAME, None, f"Skipped: {reason}", None, skipped=True),
+        _check(23, CHECK_23_NAME, None, f"Skipped: {reason}", None, skipped=True),
+        _check(24, CHECK_24_NAME, None, f"Skipped: {reason}", None, skipped=True),
     ]
     output = _result_output(
         checks,
+        ctx=ctx,
         skipped=True,
         skip_reason=f"{reason}; Layer B not run",
     )
@@ -150,6 +187,7 @@ def write_failed(
     details: str,
     fix: str | None,
     *,
+    ctx: dict[str, Any] | None = None,
     deploy_url: str | None = None,
     synthetic_gclid: str | None = None,
 ) -> None:
@@ -171,11 +209,28 @@ def write_failed(
             None,
             skipped=True,
         ),
+        _check(
+            23,
+            CHECK_23_NAME,
+            None,
+            "Skipped because Layer B setup failed.",
+            None,
+            skipped=True,
+        ),
+        _check(
+            24,
+            CHECK_24_NAME,
+            None,
+            "Skipped because Layer B setup failed.",
+            None,
+            skipped=True,
+        ),
     ]
     _write_result(
         path,
         _result_output(
             checks,
+            ctx=ctx,
             deploy_url=deploy_url,
             synthetic_gclid=synthetic_gclid,
         ),
@@ -600,6 +655,7 @@ def run_playwright_smoke(root: Path, deploy_url: str, synthetic_gclid: str) -> P
         {
             "ADS_READY_DEPLOY_URL": deploy_url.rstrip("/"),
             "ADS_READY_GCLID": synthetic_gclid,
+            "ADS_READY_UTM_CAMPAIGN": SYNTHETIC_UTM_CAMPAIGN,
             "ADS_READY_OUTPUT_DIR": str(SMOKE_DIR),
         }
     )
@@ -631,7 +687,8 @@ def _query(sql: str, values: dict[str, Any], posthog: dict[str, Any]) -> list[An
 def _event_query_sql() -> str:
     return """
 SELECT event, properties.project_name AS pn,
-       coalesce(toString(properties.$session_entry_gclid), toString(properties.gclid)) AS g
+       coalesce(toString(properties.$session_entry_gclid), toString(properties.gclid)) AS g,
+       toString(properties.utm_campaign) AS uc
 FROM events
 WHERE (
     properties.gclid = {syn}
@@ -806,6 +863,98 @@ def run_check_22_no_double_fire(
     )
 
 
+def run_check_23_utm_campaign(rows: list[Any], expected_utm: str) -> dict[str, Any]:
+    """Assert the synthetic probe's utm_campaign was captured on the ingested event.
+
+    Reuses the rows already fetched by Check 20 (no extra PostHog round-trip).
+    """
+    if not rows:
+        return _check(
+            23,
+            CHECK_23_NAME,
+            False,
+            "No event rows for the synthetic gclid, so utm_campaign capture could not be confirmed.",
+            "Check 20 must pass first (the synthetic event must arrive in PostHog), then re-run /ads-ready.",
+        )
+    utm_values = {str(_row_value(row, "uc", 3) or "") for row in rows}
+    if expected_utm in utm_values:
+        return _check(
+            23,
+            CHECK_23_NAME,
+            True,
+            f"utm_campaign `{expected_utm}` was captured on the ingested event.",
+            None,
+        )
+    observed = sorted(v for v in utm_values if v) or ["(empty/NULL)"]
+    return _check(
+        23,
+        CHECK_23_NAME,
+        False,
+        f"Synthetic gclid arrived, but utm_campaign was {observed} instead of `{expected_utm}`.",
+        "The landing page is not capturing utm_campaign from the URL onto the analytics event. "
+        "Read utm params from the URL and register them as PostHog super properties (see the "
+        "analytics stack file's UTM capture pattern), then re-run /ads-ready. (This is the app-side "
+        "capture check; a real Google Ads Final URL that omits utm_campaign is a separate post-launch "
+        "issue caught by /iterate --check.)",
+    )
+
+
+def run_check_24_attribution_universality(rows: list[Any], expected_pn: str) -> dict[str, Any]:
+    """Assert EVERY probe-gclid event carries the expected project_name.
+
+    Check 20 is a membership test (`expected_pn in project_names`) — it passes
+    even when SDK auto-events ($pageleave, $web_vitals, $autocapture) arrive
+    with an empty project_name because the deployed analytics.ts only enriches
+    track() calls and never registers the identity as a session super-property.
+    Those unattributed events are the `__orphan_<host>__` rows in
+    /iterate --cross. Reuses the rows already fetched by Check 20 (no extra
+    PostHog round-trip).
+    """
+    if not rows:
+        return _check(
+            24,
+            CHECK_24_NAME,
+            False,
+            "No event rows for the synthetic gclid, so attribution universality could not be confirmed.",
+            "Check 20 must pass first (the synthetic event must arrive in PostHog), then re-run /ads-ready.",
+        )
+    if not expected_pn:
+        return _check(
+            24,
+            CHECK_24_NAME,
+            True,
+            "No expected project_name configured; universality comparison skipped.",
+            None,
+        )
+    violations = []
+    for row in rows:
+        event = str(_row_value(row, "event", 0) or "")
+        pn = str(_row_value(row, "pn", 1) or "")
+        if pn != expected_pn:
+            violations.append((event, pn or "(empty)"))
+    if not violations:
+        return _check(
+            24,
+            CHECK_24_NAME,
+            True,
+            f"All {len(rows)} probe events carry project_name `{expected_pn}`.",
+            None,
+        )
+    shown = ", ".join(f"{event}={pn}" for event, pn in violations[:5])
+    more = f" (+{len(violations) - 5} more)" if len(violations) > 5 else ""
+    return _check(
+        24,
+        CHECK_24_NAME,
+        False,
+        f"{len(violations)} of {len(rows)} probe events lack project_name `{expected_pn}`: {shown}{more}.",
+        "SDK auto-events bypass track() enrichment — the deployed analytics.ts is missing the "
+        "project identity session super-property. Run /upgrade to sync the template, apply the "
+        "`ph.register_for_session({ project_name, project_owner })` line from analytics/posthog.md's "
+        "canonical loaded callback via /change, redeploy, then re-run /ads-ready. "
+        "See magpiexyz-lab/mvp-template#1828.",
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--context", required=True)
@@ -815,14 +964,14 @@ def main(argv: list[str] | None = None) -> int:
 
     ctx = _read_json(args.context)
     if ctx.get("static_only"):
-        write_skipped(args.output, reason="static_only flag set")
+        write_skipped(args.output, reason="static_only flag set", ctx=ctx)
         return 0
 
     static_result = _read_json(args.static_result)
     vercel_gate_failure = _static_vercel_gate_failure(static_result)
     if vercel_gate_failure:
         details, fix = vercel_gate_failure
-        write_failed(args.output, details, fix)
+        write_failed(args.output, details, fix, ctx=ctx)
         return 0
 
     try:
@@ -832,6 +981,7 @@ def main(argv: list[str] | None = None) -> int:
             args.output,
             str(exc),
             _url_setup_fix(exc),
+            ctx=ctx,
         )
         return 0
     if not deploy_url:
@@ -839,6 +989,7 @@ def main(argv: list[str] | None = None) -> int:
             args.output,
             "Could not determine deployed URL. Pass --url, or log into Vercel CLI.",
             "Pass --url after Check 9 passes, or run `vercel login` and `vercel link` against the team Vercel project.",
+            ctx=ctx,
         )
         return 0
 
@@ -848,6 +999,7 @@ def main(argv: list[str] | None = None) -> int:
             args.output,
             "Playwright is required for Layer B.",
             "Playwright is required for Layer B. Run `npm install --save-dev @playwright/test && npx playwright install chromium` in the MVP repo, then re-run /ads-ready.",
+            ctx=ctx,
             deploy_url=deploy_url,
         )
         return 0
@@ -861,22 +1013,29 @@ def main(argv: list[str] | None = None) -> int:
             args.output,
             str(exc),
             "Fix the Layer B setup issue and re-run /ads-ready.",
+            ctx=ctx,
             deploy_url=deploy_url,
         )
         return 0
 
-    check_20, _rows = run_check_20_synthetic_gclid(
+    check_20, rows = run_check_20_synthetic_gclid(
         synthetic_gclid,
         posthog,
         expected_pn=str(posthog.get("expected_project_name") or ""),
     )
     check_21 = run_check_21_golden_path_events(synthetic_gclid, posthog, ctx)
     check_22 = run_check_22_no_double_fire(synthetic_gclid, posthog, ctx)
+    check_23 = run_check_23_utm_campaign(rows, SYNTHETIC_UTM_CAMPAIGN)
+    check_24 = run_check_24_attribution_universality(
+        rows,
+        str(posthog.get("expected_project_name") or ""),
+    )
 
     _write_result(
         args.output,
         _result_output(
-            [check_20, check_21, check_22],
+            [check_20, check_21, check_22, check_23, check_24],
+            ctx=ctx,
             deploy_url=deploy_url,
             synthetic_gclid=synthetic_gclid,
         ),

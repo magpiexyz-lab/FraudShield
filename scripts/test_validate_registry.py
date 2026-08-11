@@ -172,6 +172,8 @@ KNOWN_OBJECT_ENTRIES = {
     # Wave B entries — other skills
     ("iterate-check", "c3"),
     ("observe", "1"),
+    ("ads-ready", "0"),
+    ("ads-ready", "1"),
     # #1331 — solve.1 migrated from string to object form (verify+artifact+lifecycle)
     # to declare .runs/solve-challenge.json + transient-cross-skill lifecycle so
     # artifact-transience-solve coherence rule is satisfied and the new
@@ -195,10 +197,12 @@ KNOWN_OBJECT_ENTRIES = {
     ("rollback", "99"),
     ("iterate-check", "99"),
     ("iterate-cross", "99"),
+    ("iterate-cross-phase2", "99"),
     ("iterate", "99"),
     ("retro", "99"),
     ("observe", "99"),
     ("audit", "99"),
+    ("ads-ready", "99"),
 }
 
 # State IDs that refer to shared state files in .claude/patterns/ rather than
@@ -303,12 +307,24 @@ def _extract_advance_state_calls(filepath):
             if stripped.startswith("#"):
                 continue
             m = re.search(
-                r'(?:bash\s+\S*/|\./)advance-state\.sh\s+([a-z][-a-z]*)\s+([a-z0-9_]+)',
+                r'(?:bash\s+\S*/|\./)advance-state\.sh\s+([a-z][a-z0-9_-]*)\s+([a-z0-9_]+)',
                 stripped,
             )
             if m:
                 results.append((m.group(1), m.group(2)))
     return results
+
+
+def test_extract_advance_state_calls_accepts_digit_mode_skill(tmp_path):
+    state_file = tmp_path / "state-x5-pay-intent-verdict.md"
+    state_file.write_text(
+        "```bash\n"
+        "bash .claude/scripts/advance-state.sh iterate-cross-phase2 x5\n"
+        "```\n"
+    )
+    assert _extract_advance_state_calls(str(state_file)) == [
+        ("iterate-cross-phase2", "x5")
+    ]
 
 
 class TestForwardSync:

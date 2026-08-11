@@ -18,7 +18,7 @@ All skills except `/optimize-prompt` (stateless utility, no state machine).
 | **full** | `/bootstrap`, `/change`, `/distribute`, `/resolve`, `/review` | embed:verify OR critic/challenger agents + diffs |
 | **code** | `/deploy`, `/spec`, `/upgrade` | Diffs exist, no critic agents |
 | **process** | `/solve` | Critic agents, no diffs |
-| **audit-only** | `/audit`, `/iterate`, `/retro`, `/rollback`, `/teardown` | No agents, no diffs |
+| **audit-only** | `/ads-ready`, `/audit`, `/iterate`, `/retro`, `/rollback`, `/teardown` | No agents, no diffs |
 
 ## Step 0: State completion check — HANDLED BY FINALIZE
 

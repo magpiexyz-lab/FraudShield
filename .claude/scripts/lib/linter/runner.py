@@ -84,6 +84,7 @@ def main() -> int:
         SKILL_DIR_MAP = {
             "iterate-check": "iterate",
             "iterate-cross": "iterate",
+            "iterate-cross-phase2": "iterate",
         }
         directory = SKILL_DIR_MAP.get(skill, skill)
         pattern = os.path.join(skills_dir, directory, f"state-{state_id}-*.md")
@@ -3283,14 +3284,26 @@ def main() -> int:
             if elapsed_days > soak_days:
                 tracker = entry.get("tracker", "<no tracker>")
                 mode_env = entry.get("mode_env", "<no mode_env>")
+                # The flip mechanism differs by gate kind: GATE_EVIDENCE_*
+                # rules are declarative (durable flip = severity "block" in
+                # gate-evidence-rules.json; the env var is a runtime
+                # override), while CONSULTATION_DENY is a raw env check in
+                # verify-recurrence-guard.py accepting "1" or "deny".
+                if mode_env.startswith("GATE_EVIDENCE_"):
+                    flip_how = (
+                        f'set the rule\'s severity to "block" in '
+                        f".claude/patterns/gate-evidence-rules.json "
+                        f"(or export {mode_env}=deny)"
+                    )
+                else:
+                    flip_how = f"export {mode_env}=1"
                 out.append(
                     f"  [{rid}] GECR rule {rule_id!r} cutover OVERDUE: "
                     f"elapsed {elapsed_days}d > {soak_days}d soak window, "
                     f"flip_pr_required still true. Tracker: {tracker}. "
-                    f"Either: (a) file the deny-flip PR (set {mode_env}=deny "
-                    f"in the rule's severity AND set flip_pr_required:false "
-                    f"in {criteria_rel}), OR (b) extend soak_window_min_days "
-                    f"with explicit rationale."
+                    f"Either: (a) file the deny-flip PR ({flip_how} AND set "
+                    f"flip_pr_required:false in {criteria_rel}), OR (b) "
+                    f"extend soak_window_min_days with explicit rationale."
                 )
         return out
 

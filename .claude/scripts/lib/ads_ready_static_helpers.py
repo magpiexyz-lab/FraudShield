@@ -41,6 +41,7 @@ SOURCE_FALLBACK_FILES = [
 ]
 
 SOURCE_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"]
+ROUTE_EXTENSIONS = SOURCE_EXTENSIONS
 ANALYTICS_TARGETS = {
     "src/lib/analytics.ts",
     "src/lib/analytics.tsx",
@@ -51,9 +52,14 @@ ANALYTICS_TARGETS = {
 RAW_POSTHOG_RE = re.compile(r"\bposthog\.(capture|identify|init|register|reset)\s*\(")
 IMPORT_FROM_RE = re.compile(r"\bfrom\s+['\"]([^'\"]+)['\"]")
 IMPORT_SIDE_EFFECT_RE = re.compile(r"\bimport\s+['\"]([^'\"]+)['\"]")
+REQUIRE_RE = re.compile(r"\brequire\s*\(\s*['\"]([^'\"]+)['\"]\s*\)")
 TRACK_RAW_RE = re.compile(r"\btrack\(\s*['\"]([^'\"]+)['\"]")
 TRACK_WRAPPER_RE = re.compile(r"\btrack([A-Z][A-Za-z0-9_]*)\s*\(")
 TRACKING_CALL_RE = re.compile(r"\b(?:track|identify|reset)\s*\(|\btrack[A-Z]\w+\s*\(")
+PAYMENT_PROVIDER_IMPORT_RE = re.compile(
+    r"(^stripe$|^@stripe/|stripe-js|checkout|paypal|braintree|paddle|lemonsqueezy)",
+    re.IGNORECASE,
+)
 
 POSTHOG_ENV_FALLBACK_RE = re.compile(
     r"process\.env\.NEXT_PUBLIC_POSTHOG_KEY\s*\?\?\s*['\"]([^'\"]+)['\"]"
@@ -208,9 +214,9 @@ def _is_excluded_source(root: Path, path: Path, include_events: bool = True) -> 
         return True
     if include_events and rel == "src/lib/events.ts":
         return True
-    if name.endswith((".test.ts", ".test.tsx", ".spec.ts", ".spec.tsx")):
+    if re.search(r"\.(?:test|spec)\.(?:ts|tsx|js|jsx|mjs|cjs)$", name):
         return True
-    if name.endswith(".stories.tsx"):
+    if re.search(r"\.stories\.(?:ts|tsx|js|jsx|mjs|cjs)$", name):
         return True
     if ".storybook" in parts or "__tests__" in parts or "__mocks__" in parts:
         return True
@@ -220,9 +226,9 @@ def _is_excluded_source(root: Path, path: Path, include_events: bool = True) -> 
 def _is_excluded_traversal_path(path: Path) -> bool:
     name = path.name
     parts = set(path.parts)
-    if name.endswith((".test.ts", ".test.tsx", ".spec.ts", ".spec.tsx")):
+    if re.search(r"\.(?:test|spec)\.(?:ts|tsx|js|jsx|mjs|cjs)$", name):
         return True
-    if name.endswith(".stories.tsx"):
+    if re.search(r"\.stories\.(?:ts|tsx|js|jsx|mjs|cjs)$", name):
         return True
     if ".storybook" in parts or "__tests__" in parts or "__mocks__" in parts:
         return True
@@ -233,7 +239,9 @@ def _source_files(root: Path, include_events: bool = True) -> list[Path]:
     src = root / "src"
     if not src.exists():
         return []
-    files = list(src.rglob("*.ts")) + list(src.rglob("*.tsx"))
+    files: list[Path] = []
+    for ext in SOURCE_EXTENSIONS:
+        files.extend(src.rglob(f"*{ext}"))
     return [
         path
         for path in sorted(files)
@@ -260,6 +268,58 @@ def _event_call_patterns(event: str) -> tuple[re.Pattern[str], re.Pattern[str]]:
 def _file_has_event_call(text: str, event: str) -> bool:
     raw, wrapper = _event_call_patterns(event)
     return bool(raw.search(text) or wrapper.search(text))
+
+
+def _truthy(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value or "").strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _extract_call_args(text: str, callee: str) -> list[str]:
+    args: list[str] = []
+    pattern = re.compile(rf"\b{re.escape(callee)}\s*\(")
+    for match in pattern.finditer(text):
+        start = match.end()
+        depth = 1
+        i = start
+        quote: str | None = None
+        escape = False
+        while i < len(text):
+            ch = text[i]
+            if quote:
+                if escape:
+                    escape = False
+                elif ch == "\\":
+                    escape = True
+                elif ch == quote:
+                    quote = None
+                i += 1
+                continue
+            if ch in {"'", '"', "`"}:
+                quote = ch
+            elif ch == "(":
+                depth += 1
+            elif ch == ")":
+                depth -= 1
+                if depth == 0:
+                    args.append(text[start:i])
+                    break
+            i += 1
+    return args
+
+
+def _track_event_call_args(text: str, event: str) -> list[str]:
+    args: list[str] = []
+    for call_args in _extract_call_args(text, "track"):
+        if re.match(rf"\s*['\"]{re.escape(event)}['\"]\s*,", call_args):
+            args.append(call_args)
+    args.extend(_extract_call_args(text, f"track{_pascal_case(event)}"))
+    return args
+
+
+def _source_files_matching(root: Path, predicate) -> list[Path]:
+    return [path for path in _source_files(root) if predicate(_read_text(path))]
 
 
 def _read_posthog_api_key() -> str:
@@ -521,6 +581,10 @@ def applies_if_events_yaml_exists(ctx: dict) -> bool:
     return _path(ctx, "experiment/EVENTS.yaml").exists()
 
 
+def applies_if_phase_2(ctx: dict) -> bool:
+    return _truthy(ctx.get("phase_2"))
+
+
 def check_project_name_drift(ctx: dict) -> tuple[bool, str, str | None]:
     stderr = io.StringIO()
     with contextlib.redirect_stderr(stderr):
@@ -653,7 +717,7 @@ def _resolve_import(root: Path, importer: Path, spec: str, aliases: list[tuple[s
 
 
 def _import_specs(text: str) -> list[str]:
-    return IMPORT_FROM_RE.findall(text) + IMPORT_SIDE_EFFECT_RE.findall(text)
+    return IMPORT_FROM_RE.findall(text) + IMPORT_SIDE_EFFECT_RE.findall(text) + REQUIRE_RE.findall(text)
 
 
 def _landing_roots(ctx: dict) -> list[Path]:
@@ -1339,6 +1403,312 @@ def _filtered_events(ctx: dict) -> set[str]:
         for name, config in _events_map(ctx).items()
         if _event_applies(ctx, config)
     }
+
+
+def _event_property_required(event_config: dict, prop_name: str) -> bool:
+    properties = event_config.get("properties") or {}
+    if not isinstance(properties, dict):
+        return False
+    prop = properties.get(prop_name)
+    if not isinstance(prop, dict):
+        return False
+    return _truthy(prop.get("required"))
+
+
+def _event_property_type(event_config: dict, prop_name: str) -> str | None:
+    properties = event_config.get("properties") or {}
+    if not isinstance(properties, dict):
+        return None
+    prop = properties.get(prop_name)
+    if not isinstance(prop, dict):
+        return None
+    prop_type = prop.get("type")
+    return str(prop_type) if prop_type is not None else None
+
+
+def check_phase2_pay_intent_event_and_callsite(ctx: dict) -> tuple[bool, str, str | None]:
+    event_config = _events_map(ctx).get("pay_intent")
+    if not isinstance(event_config, dict):
+        return (
+            False,
+            "experiment/EVENTS.yaml does not define `pay_intent`.",
+            "Add `pay_intent` to experiment/EVENTS.yaml with funnel_stage: monetize and required properties `price_cents` and `utm_campaign`.",
+        )
+    if str(event_config.get("funnel_stage") or "") != "monetize":
+        return (
+            False,
+            "`pay_intent` must use funnel_stage: monetize.",
+            "Set experiment/EVENTS.yaml events.pay_intent.funnel_stage to `monetize`.",
+        )
+    if "payment" in _event_requires(event_config):
+        return (
+            False,
+            "`pay_intent` must not have requires: [payment]; it is a fake-door monetize event.",
+            "Remove `payment` from experiment/EVENTS.yaml events.pay_intent.requires.",
+        )
+    if not _event_property_required(event_config, "utm_campaign"):
+        return (
+            False,
+            "`pay_intent` must define properties.utm_campaign.required: true.",
+            "Add `utm_campaign: { type: string, required: true }` under experiment/EVENTS.yaml events.pay_intent.properties.",
+        )
+    if not _event_property_required(event_config, "price_cents"):
+        return (
+            False,
+            "`pay_intent` must define properties.price_cents.required: true.",
+            "Add `price_cents: { type: number, required: true }` under experiment/EVENTS.yaml events.pay_intent.properties.",
+        )
+    if _event_property_type(event_config, "price_cents") != "number":
+        return (
+            False,
+            "`pay_intent` must define properties.price_cents.type: number.",
+            "Set experiment/EVENTS.yaml events.pay_intent.properties.price_cents to `{ type: number, required: true }`.",
+        )
+
+    root = _root(ctx)
+    callsites: list[str] = []
+    missing_args: list[str] = []
+    for path in _source_files(root):
+        text = _read_text(path)
+        for args in _track_event_call_args(text, "pay_intent"):
+            rel = _rel(root, path)
+            callsites.append(rel)
+            missing = []
+            if not re.search(r"\butm_campaign\b", args):
+                missing.append("utm_campaign")
+            if not re.search(r"\bprice_cents\b", args):
+                missing.append("price_cents")
+            if not missing:
+                return True, f"{rel} tracks pay_intent and passes utm_campaign + price_cents.", None
+            missing_args.append(f"{rel} (missing: {', '.join(missing)})")
+
+    if callsites:
+        listed = ", ".join(sorted(set(missing_args or callsites)))
+        return (
+            False,
+            f"`pay_intent` callsite(s) omit required attribution/price arguments: {listed}.",
+            "Pass both `utm_campaign` and `price_cents` at the fake-door callsite, e.g. `trackPayIntent({ plan, price_cents, gclid, utm_campaign })`.",
+        )
+    return (
+        False,
+        "No `trackPayIntent(...)` or `track('pay_intent', ...)` callsite found outside analytics wrappers.",
+        "Call `trackPayIntent({ plan, price_cents, gclid, utm_campaign })` when the fake-door Upgrade CTA is clicked.",
+    )
+
+
+def _pay_intent_route_files(root: Path) -> list[Path]:
+    candidates: list[Path] = []
+    for ext in ROUTE_EXTENSIONS:
+        candidates.append(root / "src" / "app" / "api" / "pay-intent" / f"route{ext}")
+        candidates.append(root / "src" / "pages" / "api" / f"pay-intent{ext}")
+    return [path for path in candidates if path.exists() and path.is_file()]
+
+
+def _has_post_handler(text: str) -> bool:
+    return bool(
+        re.search(r"\bexport\s+(?:async\s+)?function\s+POST\s*\(", text)
+        or re.search(r"\bPOST\s*[:=]\s*(?:async\s*)?(?:function\s*)?\(", text)
+        or re.search(r"\breq\.method\s*={2,3}\s*['\"]POST['\"]", text)
+        or re.search(r"\brequest\.method\s*={2,3}\s*['\"]POST['\"]", text)
+    )
+
+
+def _route_inserts_pay_intent_with_attribution(text: str) -> bool:
+    return bool(
+        re.search(r"\bpay_intent\b", text)
+        and re.search(r"(?:\.insert\s*\(|\binsert\b)", text, re.IGNORECASE)
+        and re.search(r"\bgclid\b", text)
+        and re.search(r"\butm_campaign\b", text)
+    )
+
+
+def check_phase2_pay_intent_route(ctx: dict) -> tuple[bool, str, str | None]:
+    root = _root(ctx)
+    route_files = _pay_intent_route_files(root)
+    if not route_files:
+        return (
+            False,
+            "No POST /api/pay-intent route file found.",
+            "Add src/app/api/pay-intent/route.ts with an exported POST handler that inserts a pay_intent row including gclid and utm_campaign.",
+        )
+    for path in route_files:
+        text = _read_text(path)
+        rel = _rel(root, path)
+        if _has_post_handler(text) and _route_inserts_pay_intent_with_attribution(text):
+            return True, f"{rel} exports POST and inserts pay_intent with gclid + utm_campaign.", None
+    listed = ", ".join(_rel(root, path) for path in route_files)
+    return (
+        False,
+        f"pay-intent route exists but does not prove POST insertion with both gclid and utm_campaign: {listed}.",
+        "Ensure the POST /api/pay-intent handler inserts into `pay_intent` and includes both `gclid` and `utm_campaign` in the inserted row.",
+    )
+
+
+def _sql_files(root: Path) -> list[Path]:
+    excluded = {".git", "node_modules", ".next", "dist", "build"}
+    return [
+        path
+        for path in sorted(root.rglob("*.sql"))
+        if path.is_file() and not (excluded & set(path.parts))
+    ]
+
+
+def _migration_defines_pay_intent_table(text: str) -> bool:
+    return bool(
+        re.search(
+            r"\bcreate\s+table(?:\s+if\s+not\s+exists)?\s+(?:public\.)?pay_intent\b",
+            text,
+            re.IGNORECASE,
+        )
+    )
+
+
+def _migration_has_pay_intent_rls(text: str) -> bool:
+    return bool(
+        re.search(
+            r"\balter\s+table\s+(?:public\.)?pay_intent\s+enable\s+row\s+level\s+security\b",
+            text,
+            re.IGNORECASE,
+        )
+    )
+
+
+def check_phase2_pay_intent_migration(ctx: dict) -> tuple[bool, str, str | None]:
+    root = _root(ctx)
+    candidates: list[str] = []
+    for path in _sql_files(root):
+        text = _read_text(path)
+        if "pay_intent" not in text:
+            continue
+        candidates.append(_rel(root, path))
+        has_table = _migration_defines_pay_intent_table(text)
+        has_columns = bool(re.search(r"\bgclid\b", text) and re.search(r"\butm_campaign\b", text))
+        has_fk = bool(
+            re.search(r"\breferences\s+auth\.users\s*\(\s*id\s*\)", text, re.IGNORECASE)
+        )
+        has_rls = _migration_has_pay_intent_rls(text)
+        if has_table and has_columns and has_fk and has_rls:
+            return True, f"{_rel(root, path)} defines pay_intent attribution columns, auth.users FK, and RLS.", None
+    if candidates:
+        listed = ", ".join(candidates)
+        return (
+            False,
+            f"pay_intent migration found but missing gclid, utm_campaign, auth.users(id) FK, or RLS: {listed}.",
+            "Update the pay_intent migration to include gclid and utm_campaign columns, `user_id uuid references auth.users(id)`, and `alter table pay_intent enable row level security`.",
+        )
+    return (
+        False,
+        "No SQL migration defining `pay_intent` was found.",
+        "Add a Supabase migration for `pay_intent` with gclid, utm_campaign, `user_id` FK to auth.users(id), and RLS enabled.",
+    )
+
+
+def _fake_door_cta_candidates(root: Path) -> list[Path]:
+    return _source_files_matching(
+        root,
+        lambda text: bool(
+            re.search(r"\bupgrade\b", text, re.IGNORECASE)
+            and re.search(r"(trackPayIntent|pay[-_]intent|/api/pay-intent)", text)
+        ),
+    )
+
+
+def _fake_door_entry_files(root: Path) -> list[Path]:
+    entries = set(_pay_intent_route_files(root))
+    entries.update(_fake_door_cta_candidates(root))
+    entries.update(
+        _source_files_matching(
+            root,
+            lambda text: bool(re.search(r"(trackPayIntent|/api/pay-intent)", text)),
+        )
+    )
+    return sorted(entries)
+
+
+def _has_auth_activation_render_guard(text: str) -> bool:
+    auth = re.search(
+        r"\b(user|currentUser|authUser|session|isAuthenticated|authenticated|auth)\b",
+        text,
+        re.IGNORECASE,
+    )
+    activation = re.search(
+        r"\b(hasActivated|isActivated|activated|activation|activatedAt|valueDelivered|completedActivation|hasCompleted(?:Onboarding|Setup))\b",
+        text,
+    )
+    render_guard = re.search(r"\breturn\s+(?:null|false)\b", text) or re.search(
+        r"\b(canUpgrade|canShowUpgrade|showUpgrade|eligibleForUpgrade)\b\s*&&",
+        text,
+    )
+    combined_guard = re.search(
+        r"\b(user|currentUser|authUser|session|isAuthenticated|authenticated)\b[\s\S]{0,240}&&[\s\S]{0,240}\b(hasActivated|isActivated|activated|activation|valueDelivered|completedActivation)\b",
+        text,
+    ) or re.search(
+        r"\b(hasActivated|isActivated|activated|activation|valueDelivered|completedActivation)\b[\s\S]{0,240}&&[\s\S]{0,240}\b(user|currentUser|authUser|session|isAuthenticated|authenticated)\b",
+        text,
+    )
+    return bool(auth and activation and (render_guard or combined_guard))
+
+
+def check_phase2_upgrade_cta_guard(ctx: dict) -> tuple[bool, str, str | None]:
+    root = _root(ctx)
+    candidates = _fake_door_cta_candidates(root)
+    if not candidates:
+        return (
+            False,
+            "No fake-door Upgrade CTA source file was found.",
+            "Add an Upgrade CTA that calls `trackPayIntent` and POSTs to `/api/pay-intent`, visible only after auth and activation.",
+        )
+    for path in candidates:
+        text = _read_text(path)
+        if _has_auth_activation_render_guard(text):
+            return True, f"{_rel(root, path)} guards the Upgrade CTA with auth and activation signals.", None
+    listed = ", ".join(_rel(root, path) for path in candidates)
+    return (
+        False,
+        f"Upgrade CTA found without an auth + activation render guard: {listed}.",
+        "Render the fake-door Upgrade CTA only after the user is authenticated and has reached activation; do not mount it unconditionally.",
+    )
+
+
+def _is_payment_provider_import(spec: str) -> bool:
+    if spec.startswith(".") or spec.startswith("@/"):
+        return False
+    return bool(PAYMENT_PROVIDER_IMPORT_RE.search(spec))
+
+
+def check_phase2_no_payment_provider_on_fake_door_path(ctx: dict) -> tuple[bool, str, str | None]:
+    root = _root(ctx)
+    entries = _fake_door_entry_files(root)
+    if not entries:
+        return (
+            False,
+            "No fake-door CTA or /api/pay-intent route path was found.",
+            "Add the fake-door CTA and POST /api/pay-intent route before running `/ads-ready phase-2`.",
+        )
+
+    aliases = _load_tsconfig_paths(root)
+    queue = [path.resolve() for path in entries]
+    visited: set[Path] = set()
+    cap = 200
+    while queue and len(visited) < cap:
+        current = queue.pop(0)
+        if current in visited or not current.exists():
+            continue
+        visited.add(current)
+        text = _read_text(current)
+        for spec in _import_specs(text):
+            if _is_payment_provider_import(spec):
+                return (
+                    False,
+                    f"{_rel(root, current)} imports payment provider SDK `{spec}` from the fake-door path.",
+                    "Remove Stripe/checkout/payment SDK imports from the fake-door CTA and /api/pay-intent route path; Phase 2 records intent only and must not open checkout or charge.",
+                )
+            resolved = _resolve_import(root, current, spec, aliases)
+            if resolved and resolved.resolve() not in visited and len(visited) + len(queue) < cap:
+                queue.append(resolved.resolve())
+
+    listed = ", ".join(sorted(_rel(root, path) for path in entries))
+    return True, f"No payment provider import reachable from fake-door entry path(s): {listed}.", None
 
 
 def check_events_yaml_all_implemented(ctx: dict) -> tuple[bool, str, str | None]:

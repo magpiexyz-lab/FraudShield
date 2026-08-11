@@ -2,9 +2,10 @@
 assumes: [framework/nextjs, database/supabase, auth/supabase, analytics/posthog]
 packages:
   runtime: []
-  dev: ["@playwright/test", "@axe-core/playwright", "pixelmatch", "pngjs"]
+  dev: ["@playwright/test", "@axe-core/playwright", "pixelmatch", "pngjs", "vitest", "@vitest/coverage-v8"]
 files:
   - playwright.config.ts
+  - vitest.config.ts  # unit/API tests (Rule 4) — Playwright covers e2e only; see "Unit Tests (vitest)"
   - e2e/global-setup.ts  # conditional: only when all assumes are met
   - e2e/global-teardown.ts  # conditional: only when all assumes are met
   - e2e/prod-auth.setup.ts  # conditional: only when all assumes are met (used by /deploy production testing)
@@ -18,7 +19,7 @@ env:
   client: []
 ci_placeholders: {}
 clean:
-  files: [playwright.config.ts]
+  files: [playwright.config.ts, vitest.config.ts]
   dirs: [e2e, test-results, playwright-report, blob-report]
 gitignore: [/test-results/, /playwright-report/, /blob-report/, /e2e/.auth.json]
 ---
@@ -39,7 +40,58 @@ These are NOT required for the No-Auth Fallback path.
 ```bash
 npm install -D @playwright/test
 npx playwright install chromium
+npm install -D vitest @vitest/coverage-v8
 ```
+
+## Unit Tests (vitest)
+
+Playwright covers e2e/browser tests ONLY. Unit and API tests — mandatory for
+business logic under CLAUDE.md Rule 4, and the tests the TDD flow
+(`patterns/tdd.md`, implementer agents) produces — run on vitest, which this
+stack provisions alongside Playwright. This is the Archetype-Feature Matrix
+design ("Browser tests (Playwright)" and "API/unit tests (Vitest)" are
+separate rows, both ✅ for web-app): the two runners coexist, they are not
+alternatives. `tests/flows.test.ts` (system/cron behavior integration tests,
+below) runs on this same vitest setup.
+
+Do NOT hand-roll another unit runner (e.g. `node --test`): CI's unit-test
+gate runs vitest when `vitest.config.*` exists, else `npm run test:unit` —
+anything else is silently skipped with only a CI warning annotation.
+
+### `vitest.config.ts` — unit/API test configuration
+```ts
+import { defineConfig } from "vitest/config";
+import path from "path";
+
+export default defineConfig({
+  test: {
+    globals: true,
+    environment: "node",
+    include: ["src/**/*.test.ts", "tests/**/*.test.ts"],
+    exclude: ["e2e/**", "node_modules/**"],
+    coverage: {
+      provider: "v8",
+      include: ["src/**/*.ts"],
+      exclude: ["src/**/*.test.ts", "src/**/*.d.ts"],
+    },
+  },
+  resolve: {
+    alias: { "@": path.resolve(__dirname, "./src") },
+  },
+});
+```
+The `exclude: ["e2e/**"]` line is load-bearing — without it vitest tries to
+collect Playwright spec files and fails on the `@playwright/test` imports.
+
+### package.json scripts
+```json
+{
+  "test:unit": "vitest run",
+  "test:e2e": "playwright test"
+}
+```
+`test:unit` is the name CI probes when no vitest config is found — keep it
+even if you customize the config location.
 
 ## Files to Create
 
@@ -858,6 +910,11 @@ test.describe.serial("Funnel smoke test", () => {
 ```
 - No `getTestCredentials` or `login` imports — tests as anonymous visitor
 - See funnel.spec.ts (above) for the full user journey test template
+
+### `vitest.config.ts` — unchanged on this path
+Unit/API tests are auth-path-independent: the same config and `test:unit`
+script from "Unit Tests (vitest)" above apply verbatim on the fallback path.
+CI's unit-test gate runs them identically either way.
 
 ### No-Auth CI Job Template
 When using the No-Auth Fallback path, use this CI template instead of the full-auth version above. It omits the local Supabase lifecycle (no Docker, no `supabase start/stop`). A step-level `hashFiles()` probe gates the run on `playwright.config.ts` existence — do NOT use job-level `if: hashFiles(...)`, which is rejected by actionlint and causes GitHub Actions to fail the workflow at parse time.

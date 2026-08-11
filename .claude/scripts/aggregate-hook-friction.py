@@ -1,8 +1,21 @@
 #!/usr/bin/env python3
 """Aggregate .runs/hook-friction.jsonl into .runs/hook-friction-summary.json.
 
-Per-hook block counts + sample reasons (max 3 unique). Filters to the
-current run_id when one is resolvable from .runs/<skill>-context.json.
+Per-hook block counts + sample reasons (max 3 unique). STRICTLY scoped to the
+current run_id resolved from .runs/<skill>-context.json (#1895): rows whose
+run_id differs — including EMPTY run_id (orphan rows from hook self-tests,
+between-runs friction, pre-init denials) — never enter the summary. When no
+active run is resolvable at all, an explicit empty summary with run_id null
+is written; the persistent jsonl is NEVER aggregated unscoped.
+
+The summary carries `aggregated_at` (UTC ISO) so consumers can tell tail
+truncation from genuine quiet: friction rows time-stamped after
+`aggregated_at` (e.g. the observer agent's own spawn passing
+skill-agent-gate.sh) are structurally invisible to this snapshot —
+check-observation-artifacts.sh surfaces them as rows_after_cutoff.
+Invoked at lifecycle-finalize.sh Step 2.6 (first pass) and re-run by
+observation-phase.md Step 2d (epilogue tail refresh); idempotent — each
+invocation rebuilds the summary from scratch.
 
 Used as Step 5a Q2 evidence (#1128 Layer 6). The summary is what the
 Step 5a evaluator reads; the raw .jsonl stays as audit trail.
@@ -27,6 +40,7 @@ import re
 import subprocess
 import sys
 from collections import defaultdict
+from datetime import datetime, timezone
 
 # Round-2 Concern 6: normalize denial reasons before grouping
 _NORMALIZE_PATTERNS = [
@@ -179,6 +193,7 @@ VALID_ACTION_TYPES = (
 
 def main():
     rid = _active_run_id()
+    aggregated_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     summary = defaultdict(lambda: {"count": 0, "sample_reasons": [], "_seen": set()})
     normalized = defaultdict(lambda: {"count": 0, "sample_raw_reasons": [], "_seen_raw": set()})
     # #1393 r3 — surface action_type discrimination at the consumer layer so
@@ -190,17 +205,29 @@ def main():
     path = '.runs/hook-friction.jsonl'
     out_path = '.runs/hook-friction-summary.json'
 
-    if not os.path.isfile(path):
+    def _write_empty():
         try:
             os.makedirs('.runs', exist_ok=True)
             with open(out_path, 'w') as f:
                 json.dump({
-                    "run_id": rid, "hooks": {}, "total": 0,
+                    "run_id": rid or None, "hooks": {}, "total": 0,
                     "normalized_groups": {},
                     "action_type_counts": action_type_counts,
+                    "aggregated_at": aggregated_at,
                 }, f, indent=2)
         except Exception:
             pass
+
+    if not os.path.isfile(path):
+        _write_empty()
+        return 0
+
+    if not rid:
+        # #1895: no active run resolvable (between runs, post advance-state 99,
+        # corrupted contexts). The jsonl is a persistent cross-run trail — an
+        # unscoped pass would count every historical run's rows, so write an
+        # explicit empty summary instead of aggregating everything.
+        _write_empty()
         return 0
 
     try:
@@ -213,7 +240,10 @@ def main():
                     e = json.loads(line)
                 except Exception:
                     continue
-                if rid and e.get('run_id') and e.get('run_id') != rid:
+                # #1895: STRICT run scoping. Empty run_id rows (hook self-tests,
+                # between-runs friction) previously slipped past the truthiness
+                # guard and inflated every run's total.
+                if e.get('run_id') != rid:
                     continue
                 h = e.get('hook', 'unknown')
                 r = (e.get('reason') or '')[:300]
@@ -242,6 +272,9 @@ def main():
         "normalized_groups": {},
         # #1393 r3 — top-level breakdown so consumers don't need to re-parse raw .jsonl.
         "action_type_counts": action_type_counts,
+        # #1895: snapshot cutoff — rows appended after this instant are not in
+        # this summary (check-observation-artifacts.sh reports them).
+        "aggregated_at": aggregated_at,
     }
     for h, v in summary.items():
         out["hooks"][h] = {"count": v["count"], "sample_reasons": v["sample_reasons"]}

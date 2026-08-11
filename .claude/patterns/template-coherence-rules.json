@@ -134,7 +134,8 @@
         ".claude/hooks/lib-artifacts.sh",
         ".claude/scripts/compliance-audit.py",
         ".claude/hooks/patterns-saved-gate.sh",
-        ".claude/hooks/skill-agent-gate.sh"
+        ".claude/hooks/skill-agent-gate.sh",
+        ".claude/scripts/check-observation-artifacts.sh"
       ],
       "description": "AOC v1 R3: every fix-count consumer must reference fix-ledger.jsonl as canonical source (closes #1048). Consumers that regex fix-log.md without also referencing the ledger are flagged as stale."
     },

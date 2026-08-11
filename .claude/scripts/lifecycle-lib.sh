@@ -61,14 +61,80 @@ print('%s-%s'%(sk,am) if am and am!='default' else sk)
 # Maps mode-qualified skill names to their .claude/skills/ directory and mode.
 # - iterate-check → iterate check
 # - iterate-cross → iterate cross
-# - fallback → {skill}
+# - iterate-cross-phase2 → iterate cross-phase2
+# The fallback arm derives the split from the filesystem so future modes and
+# skills resolve without extending the case list (issue #1990: an unresolved
+# mode-qualified key made lifecycle-finalize.sh read the wrong command file and
+# manifest, defeating the analysis-only delivery gate):
+# - a name whose .claude/skills/<name>/skill.yaml exists is a plain skill
+#   (covers legitimately hyphenated skills like ads-ready)
+# - otherwise hyphen segments are stripped right-to-left; the first base whose
+#   skill.yaml exists wins, with the candidate mode validated against the
+#   base's .runs/<base>-lifecycle.json modes when that manifest is readable
+#   (mismatch → warn and keep scanning; manifest missing/unreadable → accept,
+#   fail-open — this is a resolution aid, not a gate)
+# - no match → the name is echoed unchanged (previous behavior)
 resolve_skill_dir() {
   local skill="$1"
   case "$skill" in
     iterate-check) echo "iterate check" ;;
     iterate-cross) echo "iterate cross" ;;
-    *) echo "$skill" ;;
+    iterate-cross-phase2) echo "iterate cross-phase2" ;;
+    *)
+      local root="${PROJECT_DIR:-.}"
+      if [[ -f "$root/.claude/skills/$skill/skill.yaml" ]]; then
+        echo "$skill"
+        return
+      fi
+      local base="$skill" mode=""
+      while [[ "$base" == *-* ]]; do
+        base="${base%-*}"
+        mode="${skill#"$base"-}"
+        if [[ -f "$root/.claude/skills/$base/skill.yaml" ]]; then
+          local manifest="$root/.runs/${base}-lifecycle.json"
+          if [[ -f "$manifest" ]]; then
+            local mode_known
+            mode_known=$(python3 -c "
+import json, sys
+try:
+    m = json.load(open(sys.argv[1]))
+    print('yes' if sys.argv[2] in (m.get('modes') or {}) else 'no')
+except Exception:
+    print('yes')
+" "$manifest" "$mode" 2>/dev/null || echo "yes")
+            if [[ "$mode_known" == "no" ]]; then
+              echo "WARN: resolve_skill_dir: '$mode' is not a declared mode of '$base' — continuing scan" >&2
+              continue
+            fi
+          fi
+          echo "$base $mode"
+          return
+        fi
+      done
+      echo "$skill"
+      ;;
   esac
+}
+
+# --- resolve_default_branch ---
+# Outputs the repo's default branch name (stdout). No gh dependency:
+# origin/HEAD symbolic ref → origin/main → origin/master → literal "main".
+resolve_default_branch() {
+  local head_ref
+  head_ref=$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null || true)
+  if [[ -n "$head_ref" ]]; then
+    echo "${head_ref#origin/}"
+    return
+  fi
+  if git show-ref --verify --quiet refs/remotes/origin/main; then
+    echo "main"
+    return
+  fi
+  if git show-ref --verify --quiet refs/remotes/origin/master; then
+    echo "master"
+    return
+  fi
+  echo "main"
 }
 
 # --- resolve_framework_manifest <skill> ---

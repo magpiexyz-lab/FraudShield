@@ -235,7 +235,10 @@ def check_62_trace_framework_completeness() -> list[str]:
 
     # Skills excluded from Q-score check:
     # - verify: uses own STATE 7 --raw mechanism
-    excluded_qscore = {"verify"}
+    # - ads-ready: deterministic pre-flight verification gate (pass/fail) — no
+    #   variable-quality deliverable to score; correctness is covered by the
+    #   ads_ready_static / ads_ready_smoke test suites, not a self-assessed q-score
+    excluded_qscore = {"verify", "ads-ready"}
     # Skills excluded from epilogue categorization:
     # - verify: own mechanism
     # - optimize-prompt: stateless (no state files, won't appear)

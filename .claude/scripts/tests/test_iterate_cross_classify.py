@@ -23,6 +23,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
 
 from iterate_cross_classify import (  # noqa: E402
     EXCLUDED_PATTERNS,
+    alias_orphan_host,
+    apply_orphan_merge_to_mvps,
+    build_orphan_pairs,
+    cmd_merge_orphan_overlap,
     cmd_finalize,
     cmd_persist,
     cmd_prepare,
@@ -31,6 +35,9 @@ from iterate_cross_classify import (  # noqa: E402
     kebab_normalize,
     match_key,
     merge_orphan_overlap,
+    persist_lifecycle_updates,
+    persist_override_updates,
+    persist_owner_updates,
 )
 
 
@@ -253,6 +260,94 @@ def test_persist_respects_operator_override():
 
         summary = json.load(open(summary_p))
         assert "locked_mvp" in summary["skipped_operator"]
+
+
+def test_lifecycle_writer_is_separate_from_signup_operator_lock():
+    with tempfile.TemporaryDirectory() as td:
+        config_p = os.path.join(td, "config.yaml")
+        try:
+            import yaml
+            yaml.safe_dump({
+                "mvp_mappings": {
+                    "locked_mvp": {
+                        "signup_events": ["operator_picked_event"],
+                        "classified_by": "operator",
+                        "classified_at": "2026-05-01T00:00:00Z",
+                        "owner": "alice",
+                    }
+                }
+            }, open(config_p, "w"))
+        except ImportError:
+            return
+
+        result = persist_lifecycle_updates(
+            config_p,
+            [{"name": "locked_mvp", "lifecycle_status": "killed"}],
+            now_iso="2026-06-25T00:00:00Z",
+        )
+
+        assert result["written"] == ["locked_mvp"]
+        config_after = yaml.safe_load(open(config_p))
+        locked = config_after["mvp_mappings"]["locked_mvp"]
+        assert locked["signup_events"] == ["operator_picked_event"]
+        assert locked["classified_by"] == "operator"
+        assert locked["classified_at"] == "2026-05-01T00:00:00Z"
+        assert locked["owner"] == "alice"
+        assert locked["lifecycle_status"] == "killed"
+        assert locked["lifecycle_status_at"] == "2026-06-25T00:00:00Z"
+
+
+def test_lifecycle_writer_rejects_invalid_status():
+    with tempfile.TemporaryDirectory() as td:
+        config_p = os.path.join(td, "config.yaml")
+        try:
+            import yaml
+            yaml.safe_dump({"mvp_mappings": {}}, open(config_p, "w"))
+        except ImportError:
+            return
+        try:
+            persist_lifecycle_updates(config_p, [{"name": "m", "lifecycle_status": "paused"}])
+            assert False, "expected invalid lifecycle_status to raise"
+        except ValueError as exc:
+            assert "Invalid lifecycle_status" in str(exc)
+
+
+def test_lifecycle_writer_promoted_round_trip_preserves_classification():
+    # The x4 promote-proposal flow reuses persist-lifecycle verbatim: "promoted"
+    # must persist with a timestamp while signup classification keys stay
+    # untouched (same contract the kill flow pins above).
+    with tempfile.TemporaryDirectory() as td:
+        config_p = os.path.join(td, "config.yaml")
+        try:
+            import yaml
+            yaml.safe_dump({
+                "mvp_mappings": {
+                    "handpick": {
+                        "signup_events": ["form_submitted"],
+                        "classified_by": "x2-whitelist",
+                        "classified_at": "2026-05-12T04:43:23Z",
+                        "supabase_project_ref": "qpwyuhtgoftbmujbrzmz",
+                    }
+                }
+            }, open(config_p, "w"))
+        except ImportError:
+            return
+
+        result = persist_lifecycle_updates(
+            config_p,
+            [{"name": "handpick", "lifecycle_status": "promoted",
+              "lifecycle_status_at": "2026-06-16T15:24:40Z"}],
+        )
+
+        assert result["written"] == ["handpick"]
+        config_after = yaml.safe_load(open(config_p))
+        row = config_after["mvp_mappings"]["handpick"]
+        assert row["lifecycle_status"] == "promoted"
+        assert row["lifecycle_status_at"] == "2026-06-16T15:24:40Z"
+        assert row["signup_events"] == ["form_submitted"]
+        assert row["classified_by"] == "x2-whitelist"
+        assert row["classified_at"] == "2026-05-12T04:43:23Z"
+        assert row["supabase_project_ref"] == "qpwyuhtgoftbmujbrzmz"
 
 
 def test_persist_filters_llm_excluded_events():
@@ -687,6 +782,418 @@ def test_merge_orphan_no_overlap_data_kept_separate():
     assert len(merged) == 1
     assert len(merged[0]) == 5
     assert len(remaining) == 1
+
+
+# ---------- CPC discipline: persist-cpc-exception / persist-channel-waiver ----------
+
+def _write_cfg(extra=""):
+    f = tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False)
+    f.write("mvp_mappings:\n  dvara:\n    signup_events: [signup_complete]\n"
+            "    classified_by: operator\n    lifecycle_status: active\n" + extra)
+    f.close()
+    return f.name
+
+
+def test_persist_cpc_exception_writes_block_with_audit():
+    import yaml
+    path = _write_cfg()
+    try:
+        res = persist_override_updates(path, "cpc_exception", [
+            {"name": "bayt-labs", "cpc_exception": {"reason": "high LTV", "max_cpc_override": 5.0}},
+        ])
+        assert res["written"] == ["bayt-labs"]
+        cfg = yaml.safe_load(open(path))
+        exc = cfg["mvp_mappings"]["bayt-labs"]["cpc_exception"]
+        assert exc["max_cpc_override"] == 5.0
+        assert exc["granted_by"] == "operator"
+        assert exc["granted_at"]  # stamped
+    finally:
+        os.unlink(path)
+
+
+def test_persist_backend_keep_writes_block_with_audit():
+    import yaml
+    path = _write_cfg()
+    try:
+        res = persist_override_updates(path, "backend_keep", [
+            {"name": "dvara", "backend_keep": {"reason": "shared backend hosts other work"}},
+        ])
+        assert res["written"] == ["dvara"]
+        cfg = yaml.safe_load(open(path))
+        keep = cfg["mvp_mappings"]["dvara"]["backend_keep"]
+        assert keep["reason"] == "shared backend hosts other work"
+        assert keep["granted_by"] == "operator"
+        assert keep["granted_at"]  # stamped
+    finally:
+        os.unlink(path)
+
+
+def test_persist_override_preserves_existing_fields():
+    import yaml
+    path = _write_cfg()
+    try:
+        persist_override_updates(path, "channel_waiver", [
+            {"name": "dvara", "channel_waiver": {"reason": "strategic keep"}},
+        ])
+        cfg = yaml.safe_load(open(path))
+        entry = cfg["mvp_mappings"]["dvara"]
+        # The waiver is added WITHOUT clobbering signup/classification fields.
+        assert entry["channel_waiver"]["reason"] == "strategic keep"
+        assert entry["signup_events"] == ["signup_complete"]
+        assert entry["classified_by"] == "operator"
+        assert entry["lifecycle_status"] == "active"
+    finally:
+        os.unlink(path)
+
+
+def test_persist_override_requires_reason():
+    path = _write_cfg()
+    try:
+        raised = False
+        try:
+            persist_override_updates(path, "cpc_exception", [{"name": "x", "cpc_exception": {}}])
+        except ValueError:
+            raised = True
+        assert raised
+    finally:
+        os.unlink(path)
+
+
+def test_persist_override_rejects_unknown_field():
+    path = _write_cfg()
+    try:
+        raised = False
+        try:
+            persist_override_updates(path, "bogus_field", [{"name": "x"}])
+        except ValueError:
+            raised = True
+        assert raised
+    finally:
+        os.unlink(path)
+
+
+
+# ---------- build_orphan_pairs / apply_orphan_merge_to_mvps (state-x5 adapter) ----------
+
+def _x5_mvps():
+    return [
+        {
+            "name": "neuralpost",
+            "sample_utm_campaign": "neuralpost-search-phase2-v1",
+            "gclid_visitors": 63,
+            "gclid_visitors_phase2": 63,
+            "phase2_events": 113,
+            "first_seen": "2026-06-29T03:35:03Z",
+            "last_seen": "2026-07-14T22:26:20Z",
+            "pay_intents": 0,
+        },
+        {"name": "handpick", "gclid_visitors": 197, "last_seen": "2026-07-14T19:29:50Z"},
+        {"name": "__orphan_neuralpost__", "orphan": True, "gclid_visitors": 16},
+        {"name": "__orphan_unknown__", "orphan": True, "gclid_visitors": 2},
+    ]
+
+
+def _x5_overlap():
+    return {
+        "neuralpost": {
+            "orphan_host": "neuralpost",
+            "canonical_gclids": 63,
+            "orphan_gclids": 16,
+            "overlap": 15,
+        }
+    }
+
+
+def test_build_orphan_pairs_matches_alphanumeric_keys_and_ignores_non_orphans():
+    mvps = _x5_mvps() + [
+        {"name": "x-predict", "gclid_visitors": 5},
+        {"name": "__orphan_xpredict__", "orphan": True, "gclid_visitors": 3},
+    ]
+    pairs = build_orphan_pairs(mvps)
+    assert ("neuralpost", "neuralpost") in pairs
+    assert ("x-predict", "xpredict") in pairs  # hyphen variant via match_key
+    assert all(canon != "handpick" for canon, _ in pairs)  # no orphan -> no pair
+    assert all(host != "unknown" for _, host in pairs)
+
+
+def test_apply_orphan_merge_high_overlap_drops_orphan_and_stamps_pct():
+    merged, audit = apply_orphan_merge_to_mvps(_x5_mvps(), _x5_overlap(), threshold=0.70)
+    names = [m["name"] for m in merged]
+    assert "__orphan_neuralpost__" not in names
+    assert "__orphan_unknown__" in names  # unmatched orphan passes through
+    neural = next(m for m in merged if m["name"] == "neuralpost")
+    assert neural["partial_tracking_pct"] == round((16 - 15) / 16, 4)
+    merged_entries = [a for a in audit if a.get("action") == "merged"]
+    assert len(merged_entries) == 1 and merged_entries[0]["canonical"] == "neuralpost"
+
+
+def test_apply_orphan_merge_low_overlap_and_no_data_keep_orphan_rows():
+    low = {
+        "neuralpost": {
+            "orphan_host": "neuralpost",
+            "canonical_gclids": 63,
+            "orphan_gclids": 16,
+            "overlap": 3,
+        }
+    }
+    merged, audit = apply_orphan_merge_to_mvps(_x5_mvps(), low, threshold=0.70)
+    assert any(m["name"] == "__orphan_neuralpost__" for m in merged)
+    assert any(a.get("action") == "kept-separate-low-overlap" for a in audit)
+
+    merged2, audit2 = apply_orphan_merge_to_mvps(_x5_mvps(), {}, threshold=0.70)
+    assert any(m["name"] == "__orphan_neuralpost__" for m in merged2)
+    assert not [a for a in audit2 if a.get("action") == "merged"]
+
+
+def test_apply_orphan_merge_preserves_canonical_fields_and_order():
+    mvps = _x5_mvps()
+    merged, _ = apply_orphan_merge_to_mvps([dict(m) for m in mvps], _x5_overlap())
+    neural = merged[0]
+    # Guard against the 6-col row clobber: merge_orphan_overlap writes pct at
+    # index 5 of 5-col adapter rows; dict fields must survive byte-identical.
+    assert neural["name"] == "neuralpost"
+    assert neural["last_seen"] == "2026-07-14T22:26:20Z"
+    assert neural["gclid_visitors_phase2"] == 63
+    assert neural["phase2_events"] == 113
+    assert neural["pay_intents"] == 0
+    assert [m["name"] for m in merged] == ["neuralpost", "handpick", "__orphan_unknown__"]
+
+
+def test_apply_orphan_merge_idempotent_on_second_apply():
+    merged, _ = apply_orphan_merge_to_mvps(_x5_mvps(), _x5_overlap())
+    again, audit = apply_orphan_merge_to_mvps([dict(m) for m in merged], _x5_overlap())
+    assert [m["name"] for m in again] == [m["name"] for m in merged]
+    neural = next(m for m in again if m["name"] == "neuralpost")
+    assert neural["partial_tracking_pct"] == round((16 - 15) / 16, 4)
+
+
+# ---------- ga_campaign_aliases fallback in orphan pairing (#2073) ----------
+
+_MUSEAI_ALIASES = {"museai": "museai-studio"}
+
+
+def _museai_mvps():
+    return [
+        {
+            "name": "museai-studio",
+            "sample_utm_campaign": "museai-search-phase2-v1",
+            "gclid_visitors": 165,
+            "first_seen": "2026-07-17T04:06:07Z",
+            "last_seen": "2026-08-01T02:13:37Z",
+        },
+        {"name": "__orphan_museai__", "orphan": True, "gclid_visitors": 137},
+    ]
+
+
+def _museai_overlap():
+    return {
+        "museai-studio": {
+            "orphan_host": "museai",
+            "canonical_gclids": 160,
+            "orphan_gclids": 130,
+            "overlap": 125,
+        }
+    }
+
+
+def test_alias_orphan_host_resolves_and_is_deterministic():
+    orph_by_key = {"museai": "museai"}
+    assert alias_orphan_host("museai-studio", orph_by_key, _MUSEAI_ALIASES) == "museai"
+    assert alias_orphan_host("museai-studio", orph_by_key, None) is None
+    assert alias_orphan_host("museai-studio", orph_by_key, {}) is None
+    assert alias_orphan_host("handpick", orph_by_key, _MUSEAI_ALIASES) is None
+    # Two alias keys resolving to the same canonical, both hosts present:
+    # sorted iteration makes the lexicographically-first key win.
+    two = {"museai": "museai-studio", "museaiapp": "museai-studio"}
+    hosts = {"museai": "museai", "museaiapp": "museai-app"}
+    assert alias_orphan_host("museai-studio", hosts, two) == "museai"
+
+
+def test_build_orphan_pairs_alias_fallback_museai_shape():
+    assert build_orphan_pairs(_museai_mvps()) == []  # no aliases: key mismatch
+    pairs = build_orphan_pairs(_museai_mvps(), aliases=_MUSEAI_ALIASES)
+    assert pairs == [("museai-studio", "museai")]
+
+
+def test_build_orphan_pairs_direct_match_precedes_alias_and_no_steal():
+    # handpick's own key matches its orphan; a bogus alias also points there.
+    mvps = [
+        {"name": "handpick", "gclid_visitors": 10},
+        {"name": "renamed-thing", "gclid_visitors": 5},
+        {"name": "__orphan_handpick__", "orphan": True, "gclid_visitors": 4},
+    ]
+    pairs = build_orphan_pairs(mvps, aliases={"handpick": "renamed-thing"})
+    # Direct pair wins; the claimed orphan is not re-paired via the alias.
+    assert pairs == [("handpick", "handpick")]
+
+
+def test_merge_orphan_overlap_alias_fallback_merges_and_stamps_pct():
+    disc = [["museai-studio", "museai-search-phase2-v1", 165, "a", "b"]]
+    orph = [["museai", 137]]
+    merged, remaining, audit = merge_orphan_overlap(
+        disc, orph, _museai_overlap(), threshold=0.70, aliases=_MUSEAI_ALIASES
+    )
+    assert remaining == []
+    assert merged[0][5] == round((130 - 125) / 130, 4)
+    assert audit[0]["action"] == "merged"
+    # Without aliases the same input keeps the orphan separate.
+    merged2, remaining2, audit2 = merge_orphan_overlap(
+        disc, orph, _museai_overlap(), threshold=0.70
+    )
+    assert [r[0] for r in remaining2] == ["museai"]
+    assert not [a for a in audit2 if a.get("action") == "merged"]
+
+
+def test_apply_orphan_merge_alias_museai_end_to_end():
+    merged, audit = apply_orphan_merge_to_mvps(
+        _museai_mvps(), _museai_overlap(), threshold=0.70, aliases=_MUSEAI_ALIASES
+    )
+    names = [m["name"] for m in merged]
+    assert names == ["museai-studio"]
+    assert merged[0]["partial_tracking_pct"] == round((130 - 125) / 130, 4)
+    assert audit[0]["canonical"] == "museai-studio"
+    # aliases omitted: both rows survive untouched (pre-#2073 behavior).
+    kept, _ = apply_orphan_merge_to_mvps(_museai_mvps(), _museai_overlap())
+    assert [m["name"] for m in kept] == ["museai-studio", "__orphan_museai__"]
+
+
+def test_cmd_merge_orphan_overlap_reads_ga_campaign_aliases():
+    with tempfile.TemporaryDirectory() as td:
+        disc_p = os.path.join(td, "discover.json")
+        orph_p = os.path.join(td, "orphan.json")
+        over_p = os.path.join(td, "overlap.json")
+        cfg_p = os.path.join(td, "config.yaml")
+        json.dump(
+            {"results": [["museai-studio", "museai-search-phase2-v1", 165, "a", "b"]]},
+            open(disc_p, "w"),
+        )
+        json.dump({"results": [["museai", 137]]}, open(orph_p, "w"))
+        json.dump({"by_canonical": _museai_overlap()}, open(over_p, "w"))
+        with open(cfg_p, "w") as fh:
+            fh.write(
+                "orphan_merge_overlap_threshold: 0.70\n"
+                "ga_campaign_aliases:\n"
+                "  museai: museai-studio\n"
+            )
+        rc = cmd_merge_orphan_overlap(Args(
+            discovery=disc_p, orphan=orph_p, overlap=over_p, config=cfg_p,
+        ))
+        assert rc == 0
+        disc_out = json.load(open(disc_p))
+        orph_out = json.load(open(orph_p))
+        assert orph_out["results"] == []
+        assert disc_out["results"][0][5] == round((130 - 125) / 130, 4)
+        assert disc_out["orphan_merge_audit"][0]["action"] == "merged"
+
+
+# ---------- persist-owner (x4 owner backfill writer) ----------
+
+_OWNER_ROSTER = {
+    "_meta": {"note": "test"},
+    "lee": {"github": "balflee", "email": "lee@magpiexyz.io"},
+    "radlin": {"github": "Radz112", "email": None},
+    "priyanshu": {"github": "pcentric", "status": "departed"},
+    "alan": {"github": "alanmagpie", "note": "operator"},
+}
+
+
+def _owner_cfg(td, mappings):
+    try:
+        import yaml
+    except ImportError:
+        return None
+    config_p = os.path.join(td, "config.yaml")
+    yaml.safe_dump(
+        {"mvp_mappings": mappings, "team_roster": _OWNER_ROSTER}, open(config_p, "w")
+    )
+    return config_p
+
+
+def test_persist_owner_writes_owner_and_note():
+    with tempfile.TemporaryDirectory() as td:
+        config_p = _owner_cfg(td, {
+            "m1": {"signup_events": ["signed_up"], "classified_by": "operator",
+                   "lifecycle_status": "killed"},
+        })
+        if config_p is None:
+            return
+        import yaml
+        result = persist_owner_updates(
+            config_p,
+            [{"name": "m1", "owner": "radlin",
+              "owner_note": "inferred from m1 commit history (first+majority=Radz112, high confidence, 2026-07-22)"},
+             {"name": "m2", "owner": "lee"}],  # no owner_note → synthesized default
+            now_iso="2026-07-22T00:00:00Z",
+        )
+        assert result["written"] == ["m1", "m2"]
+        after = yaml.safe_load(open(config_p))["mvp_mappings"]
+        assert after["m1"]["owner"] == "radlin"
+        assert "first+majority=Radz112" in after["m1"]["owner_note"]
+        # signup + lifecycle fields untouched
+        assert after["m1"]["signup_events"] == ["signed_up"]
+        assert after["m1"]["classified_by"] == "operator"
+        assert after["m1"]["lifecycle_status"] == "killed"
+        assert after["m2"]["owner"] == "lee"
+        assert "operator-confirmed 2026-07-22" in after["m2"]["owner_note"]
+
+
+def test_persist_owner_skips_existing_owner():
+    with tempfile.TemporaryDirectory() as td:
+        config_p = _owner_cfg(td, {"m1": {"owner": "lee"}})
+        if config_p is None:
+            return
+        import yaml
+        result = persist_owner_updates(config_p, [{"name": "m1", "owner": "radlin"}])
+        assert result["written"] == []
+        assert result["skipped_existing"] == ["m1"]
+        assert yaml.safe_load(open(config_p))["mvp_mappings"]["m1"]["owner"] == "lee"
+
+
+def test_persist_owner_rejects_unknown_and_departed():
+    with tempfile.TemporaryDirectory() as td:
+        config_p = _owner_cfg(td, {"m1": {}})
+        if config_p is None:
+            return
+        for bad in ("nobody", "priyanshu"):
+            try:
+                persist_owner_updates(config_p, [{"name": "m1", "owner": bad}])
+                assert False, f"expected ValueError for owner {bad!r}"
+            except ValueError as exc:
+                assert "Invalid owner" in str(exc)
+
+
+def test_cmd_persist_owner_confirm_gate():
+    import iterate_cross_classify as C
+    with tempfile.TemporaryDirectory() as td:
+        config_p = _owner_cfg(td, {"m1": {}})
+        if config_p is None:
+            return
+        import yaml
+        props_p = os.path.join(td, "props.json")
+        json.dump({"updates": [{"name": "m1", "owner": "lee"}]}, open(props_p, "w"))
+        summary_p = os.path.join(td, "summary.json")
+
+        # No --confirm → rc 2, config unchanged
+        rc = C.main(["persist-owner", "--input", props_p, "--config", config_p,
+                     "--summary", summary_p])
+        assert rc == 2
+        assert "owner" not in yaml.safe_load(open(config_p))["mvp_mappings"]["m1"]
+
+        # --dry-run → rc 0, still unchanged
+        rc = C.main(["persist-owner", "--input", props_p, "--config", config_p,
+                     "--summary", summary_p, "--dry-run"])
+        assert rc == 0
+        assert "owner" not in yaml.safe_load(open(config_p))["mvp_mappings"]["m1"]
+        assert not os.path.exists(summary_p)  # summary only on real writes
+
+        # --confirm → written + summary
+        rc = C.main(["persist-owner", "--input", props_p, "--config", config_p,
+                     "--summary", summary_p, "--confirm"])
+        assert rc == 0
+        assert yaml.safe_load(open(config_p))["mvp_mappings"]["m1"]["owner"] == "lee"
+        summary = json.load(open(summary_p))
+        assert summary["written"] == ["m1"]
+        assert summary["skipped_existing"] == []
 
 
 # Self-runner

@@ -6,7 +6,47 @@
 
 **ACTIONS:**
 
-Present a summary:
+### Ads reminder (print-only — no gate)
+
+Before the summary, check for ad campaigns tied to this MVP:
+
+```bash
+if [ -f experiment/ads.yaml ]; then
+  python3 - <<'PY'
+try:
+    import yaml
+    ads = yaml.safe_load(open('experiment/ads.yaml')) or {}
+except Exception:
+    ads = {}
+ids = []
+def walk(node):
+    if isinstance(node, dict):
+        for k, v in node.items():
+            if k == 'campaign_id' and v:
+                ids.append(str(v))
+            else:
+                walk(v)
+    elif isinstance(node, list):
+        for item in node:
+            walk(item)
+walk(ads)
+if ids:
+    print("⚠ REMINDER: this MVP has Google Ads campaign(s) recorded in experiment/ads.yaml:")
+    for cid in ids:
+        print(f"   campaign_id: {cid}")
+    print("   Ask the Team Lead to PAUSE them in the Google Ads UI before/with this teardown —")
+    print("   the /iterate --cross teardown reconcile will keep the obligation OPEN (ADS:unknown)")
+    print("   until the operator records the pause via confirm-ads.")
+PY
+fi
+```
+
+This is deliberately a reminder, NOT a hard gate — MVP owners usually lack
+Google Ads access, and a gate here would either block cleanup or invite false
+declarations. The authoritative ads check lives in the operator repo's
+`/iterate --cross` state-x4b (keyed `confirm-ads` confirmation).
+
+### Present a summary:
 
 ```
 ## Teardown Plan

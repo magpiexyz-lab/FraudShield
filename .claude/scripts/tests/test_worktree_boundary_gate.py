@@ -19,13 +19,95 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[3]
 HOOK_SRC = ROOT / ".claude/hooks/worktree-boundary-gate.sh"
+
+
+def _force_rmtree(path) -> None:
+    """rmtree that actually works on git fixtures, on every platform.
+
+    Two real-world failure modes this handles:
+    - Windows: git marks files under .git/objects read-only; rmtree cannot
+      delete them and the previous `ignore_errors=True` swallowed the failure
+      — every test method silently leaked its full fixture tree under
+      ~/.cache/wbgate-tests/ (the Lee 2026-08 accumulation). Fix: chmod the
+      failing path writable and retry.
+    - Everywhere: `git commit` in setUp can spawn background maintenance
+      (`gc --auto`) that repacks loose objects WHILE tearDown walks the tree
+      — rmtree then reports ENOENT for a just-vanished .git/objects/* entry.
+      A handler that raises on that aborts the entire walk and leaks the
+      whole fixture; a vanished entry is success, so it is skipped.
+
+    Mechanics (each layer earned by an observed failure mode):
+    - chmod is 0o700, never bare S_IWRITE: replacing a DIRECTORY's mode with
+      write-only strips read+execute and locks the walk (and every later
+      attempt) out of it — the d-w------- leak shape.
+    - a top-down pre-pass makes every dir traversable BEFORE rmtree descends
+      (fixes dirs whose perms already block scandir; onexc cannot resume a
+      walk into a dir it failed to list).
+    - up to 3 delete passes with a short backoff: background gc RECREATES
+      pack files behind the walk, so the first pass can end ENOTEMPTY; a
+      later pass runs after gc exits. The handler never raises — an abort
+      mid-walk leaks everything not yet visited.
+    """
+    path = str(path)
+    if not os.path.lexists(path):
+        return
+
+    def _handler(func, failed_path, exc):
+        if isinstance(exc, FileNotFoundError):
+            return  # entry vanished mid-walk (e.g. git background gc) — done
+        try:
+            os.chmod(failed_path, 0o700)
+            func(failed_path)
+        except OSError:
+            pass  # leave it for a later pass / the post-check; never abort
+
+    try:
+        os.chmod(path, 0o700)
+    except OSError:
+        pass
+    for root, dirs, _files in os.walk(path, topdown=True, onerror=lambda e: None):
+        for d in dirs:
+            sub = os.path.join(root, d)
+            if not os.path.islink(sub):
+                try:
+                    os.chmod(sub, 0o700)
+                except OSError:
+                    pass
+
+    for attempt in range(3):
+        if sys.version_info >= (3, 12):
+            shutil.rmtree(path, onexc=_handler)
+        else:  # onerror deprecated on 3.12+, required before
+            shutil.rmtree(path, onerror=lambda f, p, ei: _handler(f, p, ei[1]))
+        if not os.path.lexists(path):
+            return
+        time.sleep(0.2 * (attempt + 1))
+    print(f"WARN: wbgate fixture cleanup left residue at {path}")
+
+
+def _sweep_stale_fixtures(parent: Path, max_age_hours: float = 24) -> None:
+    """Best-effort removal of leaked test_wbgate_* dirs older than the gate.
+
+    Self-heals machines where a crashed/interrupted run (or the pre-fix
+    Windows silent-leak bug) left fixtures behind. The age gate keeps the
+    sweep from racing a concurrent pytest worker's live fixture (-n 2 runs).
+    """
+    try:
+        cutoff = time.time() - max_age_hours * 3600
+        for entry in parent.glob("test_wbgate_*"):
+            if entry.stat().st_mtime < cutoff:
+                _force_rmtree(entry)
+    except OSError:
+        pass
 
 
 def _git(*args: str, cwd: Path) -> subprocess.CompletedProcess:
@@ -55,6 +137,7 @@ class TestWorktreeBoundaryGate(unittest.TestCase):
         # break unless both sides are realpath. Tests assert exact strings.
         fixtures_parent = Path.home() / ".cache" / "wbgate-tests"
         fixtures_parent.mkdir(parents=True, exist_ok=True)
+        _sweep_stale_fixtures(fixtures_parent)
         self.tmp = Path(
             os.path.realpath(
                 tempfile.mkdtemp(prefix="test_wbgate_", dir=str(fixtures_parent))
@@ -85,7 +168,7 @@ class TestWorktreeBoundaryGate(unittest.TestCase):
         self.hook = self.main / ".claude/hooks/worktree-boundary-gate.sh"
 
     def tearDown(self) -> None:
-        shutil.rmtree(self.tmp, ignore_errors=True)
+        _force_rmtree(self.tmp)
 
     def _invoke(
         self,
@@ -280,6 +363,44 @@ class TestWorktreeBoundaryGate(unittest.TestCase):
         target = link / ".claude" / "via-sym.md"
         rc, err = self._invoke(str(target))
         self.assertEqual(rc, 0, f"symlinked-alias path must resolve and allow; stderr={err}")
+
+
+class TestFixtureCleanup(unittest.TestCase):
+    """The cleanup helpers themselves (no git fixtures needed)."""
+
+    def test_force_rmtree_removes_read_only_files(self):
+        # Reproduces the Windows leak shape: a nested read-only file (git
+        # object perms). On Windows the plain rmtree fails here and the chmod
+        # handler must kick in; on POSIX this proves the helper is harmless.
+        tmp = Path(tempfile.mkdtemp(prefix="wbgate-helper-"))
+        nested = tmp / "repo" / ".git" / "objects"
+        nested.mkdir(parents=True)
+        ro = nested / "pack-deadbeef.pack"
+        ro.write_text("x")
+        ro.chmod(0o444)
+        _force_rmtree(tmp)
+        self.assertFalse(tmp.exists(), "read-only tree must be fully removed")
+
+    def test_sweep_removes_stale_keeps_fresh(self):
+        parent = Path(tempfile.mkdtemp(prefix="wbgate-sweep-"))
+        try:
+            stale = parent / "test_wbgate_stale"
+            (stale / "junk").mkdir(parents=True)
+            old = time.time() - 48 * 3600
+            os.utime(stale, (old, old))
+            fresh = parent / "test_wbgate_fresh"
+            fresh.mkdir()
+            unrelated = parent / "not-a-fixture"
+            unrelated.mkdir()
+            os.utime(unrelated, (old, old))
+
+            _sweep_stale_fixtures(parent, max_age_hours=24)
+
+            self.assertFalse(stale.exists(), "48h-old fixture must be swept")
+            self.assertTrue(fresh.exists(), "fresh fixture must survive (live-run race guard)")
+            self.assertTrue(unrelated.exists(), "sweep must only touch test_wbgate_* entries")
+        finally:
+            _force_rmtree(parent)
 
 
 if __name__ == "__main__":

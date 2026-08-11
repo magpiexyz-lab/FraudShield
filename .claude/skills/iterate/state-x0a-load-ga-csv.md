@@ -53,7 +53,14 @@ How to export (~30 seconds):
   2. Set the date range to last ${WINDOW_DAYS} days
      (matches window_days in experiment/iterate-cross-config.yaml)
   3. Make sure the columns include at minimum: Campaign, Clicks
-     (recommended: + Account, Conversions, Impr.)
+     (recommended: + Account, Conversions)
+     (Impr. is needed for stalled-cause diagnosis -- without it, stalled
+      campaigns read "no telemetry"; use the plain Impr. count column,
+      not Impr. (Top) % / Impr. (Abs. Top) %)
+     (for CPC discipline: + Cost, Currency code, Start date — see note below)
+     (deliverability: + Campaign status, Status, Status reasons -- without
+      them x4b cannot auto-verify "ads stopped" (csv_paused) and every
+      killed MVP needs a manual confirm-ads)
   4. Click Download icon -> CSV
   5. Save the file as: .runs/iterate-cross-ga-clicks.csv (overwrite if present)
   6. Re-run /iterate --cross
@@ -83,26 +90,116 @@ fi
 python3 .claude/scripts/lib/iterate_cross_ga.py validate-csv \
   --ga-csv "$CSV" \
   --context .runs/iterate-cross-context.json || exit 1
+
+# Consume-time fingerprint: x4a's runs-archive step re-hashes the CSV at
+# persist time and flags csv_changed_since_consume on mismatch — this stamp
+# converts "the archived CSV is the one the verdicts consumed" from an
+# assumption into a checked invariant. Context is gate-readable → write via
+# the canonical writer (read-mode open of the ctx is fine).
+CTX=.runs/iterate-cross-context.json
+PAYLOAD=$(python3 -c "
+import hashlib, json
+sha = hashlib.sha256(open('.runs/iterate-cross-ga-clicks.csv', 'rb').read()).hexdigest()
+ctx = json.load(open('$CTX'))
+ctx['ga_csv_sha256'] = sha
+print(json.dumps(ctx))
+")
+bash .claude/scripts/lib/write-gate-artifact.sh \
+  --path "$CTX" \
+  --payload "$PAYLOAD" \
+  --skill iterate-cross
+echo "GA CSV consume-time fingerprint stamped (ga_csv_sha256)"
 ```
 
 Column requirements (preamble-aware header detection; exact header matches win
 before substring matches so `Campaign status` cannot shadow `Campaign`):
 - **Required:** `Campaign`, `Clicks`
-- **Optional but recommended:** `Account`, `Conversions` (or `Conv.`), `Impr.`
+- **Optional but recommended:** `Account`, `Conversions` (or `Conv.`)
+- **Stalled-cause diagnosis (strongly recommended):** `Impr.` — without it,
+  stalled campaigns render `no_telemetry` instead of `zero_serve`/`weak_demand`
+- **CPC discipline (optional):** `Cost`, `Currency code`, `Start date`
+- **Deliverability (strongly recommended):** `Campaign status`, `Status`,
+  `Status reasons` — see the deliverability note below
 
 The parser is column-order agnostic (header-indexed), strips UTF-8 BOM, skips
 summary footer rows (starting with `Total`), and strips thousands separators
 (`1,082` → 1082). A header-only CSV is accepted with a soft warning (legitimate
 case: the date window captured zero paid clicks).
 
+**CPC-discipline columns (optional, additive — old exports keep working):**
+- `Cost` → per-MVP `ga_cpc = ga_cost / ga_clicks`. Drives the `cpc_over_cap`
+  flag (the operator approval worklist) in state-x3/x4. **When `Cost` is absent,
+  `ga_cpc` is null and the CPC flags simply do not compute** (graceful — never a
+  false signal).
+- `Currency code` → CPC is normalized to USD via `fx_to_usd` before comparison
+  against `thresholds.max_cpc` (operator chose USD basis; see state-x3). Missing
+  rate → compared in native units + a low-severity `cpc_currency_unmapped` note.
+- `Start date` → per-MVP `campaign_first_date` (earliest across the MVP's
+  campaigns). Drives the `channel_starved` NO-GO candidate (aged in-cap campaign
+  still under `channel_floor` clicks) and the stalled triage's age gate. Without
+  it, neither can fire (no GA-side campaign age; PostHog timestamps are
+  intentionally NOT used). Phase-1 tolerates its absence (the ledger
+  `first_seen_in_ledger` fallback covers the age gate); **`--cross --phase2`
+  HARD-REQUIRES Start date VALUES** — state-x5 STOPs when no phase2 row
+  yields a `campaign_first_date` (header-only checks pass on exports whose
+  Start date cells are empty, so the assert is on values, not the header).
+- `Impr.` → per-MVP `ga_impressions` (blended sum across the MVP's campaigns;
+  null when the column is absent). Drives the stalled-cause split in state-x3
+  (`zero_serve` = losing auctions, vs `weak_demand` = serving but no clicks).
+  Only the plain count column works — percentage variants (`Impr. (Top) %`,
+  `Impr. (Abs. Top) %`) are rates, and the parser ignores them.
+
+**Deliverability columns (optional, additive — old exports keep working):**
+- `Campaign status` (on/off switch: Enabled/Paused/Removed), `Status` (serving
+  state: Eligible, Eligible (Limited)/(Learning), Ended, Paused, Removed, …)
+  and `Status reasons` → per-MVP `ga_campaign_status_detail` (per-campaign
+  statuses + normalized `stopped|active|unknown`) and `ga_ads_all_stopped`
+  (true ⇔ every campaign verifiably stopped). Headers are matched EXACT-only,
+  so `Status` can never substring-bind to `Campaign status` (the #1482
+  surface). `normalize_campaign_status` (iterate_cross_ga.py — single source
+  of truth, reuse it for #1878) judges "stopped" by whitelist: switch Paused/
+  Removed or serving Ended/Paused/Removed. **Enabled+Ended does NOT deliver**
+  — serving state matters, not just the switch. Anything unrecognized
+  (localized UI values, empty cells) counts as alive: the failure direction is
+  an extra reminder, never a silent close-out.
+- Consumers: x4b's `csv_paused` ads evidence (auto-closes the "confirm ads
+  paused" line for killed MVPs) + the STILL_SERVING worklist, and the
+  money-leak action wording split ("still deliverable — pause NOW" vs
+  "already stopped — tail traffic"). **When the columns are absent,
+  `ga_ads_all_stopped` is null and x4b falls back to manual `confirm-ads`**
+  (graceful, mirrors the Cost degradation above). Unmatched campaigns carry
+  `status_normalized` into `_iterate-cross-ga-unmatched.json`; any
+  unattributable campaign not verifiably stopped blocks `csv_paused`
+  fleet-wide (conservative — an unbucketable live ad could belong to anyone).
+
 ### Step 1: Merge
 
+Resolve the phase2 campaign pattern from operator config first — the SAME
+`phase2.utm_campaign_like` key x5 include-scopes with. x0a passes it as an
+EXCLUDE so Phase 1 and Phase 2 partition the paid clicks instead of
+double-counting the phase2 slice in both denominators:
+
 ```bash
+PHASE2_LIKE=$(python3 -c "
+import os
+try:
+    import yaml
+except ImportError:
+    yaml = None
+cfg = {}
+p = 'experiment/iterate-cross-config.yaml'
+if yaml is not None and os.path.exists(p):
+    cfg = yaml.safe_load(open(p)) or {}
+phase2 = cfg.get('phase2') or {}
+print(phase2.get('utm_campaign_like') or '%phase2%')
+")
+
 python3 .claude/scripts/lib/iterate_cross_ga.py merge \
   --ga-csv "$CSV" \
   --context .runs/iterate-cross-context.json \
   --config experiment/iterate-cross-config.yaml \
-  --unmatched-out .runs/_iterate-cross-ga-unmatched.json
+  --unmatched-out .runs/_iterate-cross-ga-unmatched.json \
+  --phase-exclude "$PHASE2_LIKE"
 ```
 
 The merge:
@@ -110,15 +207,53 @@ The merge:
   (xpredict → x-predict, brigent-search-v2 → brigent), honoring operator
   `ga_campaign_aliases` for names that don't substring-match (StaylicaAi-Lew
   → stylica-ai, PubCheck → verify).
+- **Phase-2 split** (`--phase-exclude`): campaigns matching the pattern still
+  count in the blended `ga_clicks`/`ga_cost` (capture_rate and the
+  `cpc_over_cap` worklist keep the full paid picture) but ALSO accumulate into
+  `ga_clicks_phase2` / `ga_cost_phase2` / `ga_campaigns_phase2`, and the merge
+  prints one `phase-exclude: <mvp> excluded <N> clicks ...` summary line per
+  affected MVP. state-x3 uses `ga_clicks - ga_clicks_phase2` as the Phase-1
+  conversion denominator. Operator escape hatch for a Phase-1 campaign whose
+  name contains the phase2 token: `phase2.exclude_exempt_campaigns` (exact
+  names, default empty). An empty pattern excludes nothing (never inverts).
+  The applied pattern is stamped into context as `ga_phase_exclude_applied`
+  (asserted by VERIFY so the flag can't silently drop off this command).
+- **Deliverability**: every MVP gets `ga_campaign_status_detail` (collected
+  BEFORE the pre-relaunch drop — a dropped old flight can still spend) and
+  tri-state `ga_ads_all_stopped`; unmatched entries carry `status_normalized`.
+  The merge prints an `ads-status: N active / M stopped / K unknown;
+  unmatched_active=X` summary line.
+- **Account attribution**: every bucketed record gets `ga_accounts` — the
+  sorted distinct `Account` values across its campaigns (collected pre-drop,
+  like status; empty cells skipped). The MCC sub-account names the member who
+  launched the campaign, so this is the owner signal for orphan/ga_only rows
+  that have no repo to infer from. The operator maps account names to roster
+  members once via top-level `ads_accounts:` in the config; x4's owner-infer
+  consumes it as the ads-account channel (see state-x4).
 - Auto-creates `ga_only: true` MVP records for campaigns with no PostHog
   presence (state-x1a's `ga_clicks_without_ph_traffic` flag picks these up;
-  state-x3 emits `GA_NO_PH_TRACKING` verdict for them).
+  state-x3 emits `GA_NO_PH_TRACKING` verdict for them). The record's `owner`
+  is inherited from `mvp_mappings.<name>.owner` when present — same rule as
+  state-x0 canonical records — so a mapped ga_only MVP never renders as
+  unassigned in the team message.
 - Folds into orphan rows when the GA campaign name match_keys to an orphan
   host (e.g., `Hospitica-search-v2` → `__orphan_hospitica__`).
 - Writes unmatched campaigns to `.runs/_iterate-cross-ga-unmatched.json`
   (placeholder names like `Campaign #1` land here — operator triages).
 - Sets `ga_clicks=0` on every existing MVP record even when CSV is header-only,
   so the x0a VERIFY postcondition holds.
+- **Phase-1 relaunch** (`mvp_mappings.<name>.phase1_relaunch_at`): the merge
+  reads each MVP's relaunch date from config (via `_load_relaunch_map`, no CLI
+  flag needed) and DROPS any campaign bucketed to that MVP whose **Start date**
+  sorts before the cut — so a failed first flight's clicks/cost no longer
+  pollute the re-test denominator. Dropped campaigns print a
+  `relaunch: dropped pre-relaunch campaign ...` line and land in the unmatched
+  file with `reason=pre-relaunch`. **Relaunch therefore requires a NEW campaign
+  name** (e.g. `mooncub-search-v2`) whose Start date is on/after the relaunch
+  date; a campaign with a missing/blank Start date under an active relaunch is
+  conservatively dropped (never silently re-counted). The date math lives in
+  `.claude/scripts/lib/iterate_cross_relaunch.py` (single source of truth; also
+  used by state-x0b DB and state-x2 signup scoping).
 - Idempotent: re-running with the same CSV overwrites `ga_clicks` cleanly.
 
 ### Step 2: Review unmatched (operator triage hint)
@@ -139,7 +274,7 @@ operator to rename them in Google Ads first.
 **VERIFY:** see `state-registry.json` entry for `iterate-cross.x0a`.
 
 ```bash
-python3 -c "import json, os; d=json.load(open('.runs/iterate-cross-context.json')); ms=d.get('mvps',[]); assert isinstance(ms, list) and len(ms)>0, 'mvps empty'; bad=[m.get('name','?') for m in ms if 'ga_clicks' not in m]; assert not bad, 'MVPs missing ga_clicks (CSV merge sets ga_clicks=0 on every MVP even for header-only zero-click CSV): %s' % bad; assert os.path.isfile('.runs/_iterate-cross-ga-unmatched.json'), 'unmatched triage file missing (x0a postcondition)'"
+python3 -c "import json, os; d=json.load(open('.runs/iterate-cross-context.json')); ms=d.get('mvps',[]); assert isinstance(ms, list) and len(ms)>0, 'mvps empty'; bad=[m.get('name','?') for m in ms if 'ga_clicks' not in m]; assert not bad, 'MVPs missing ga_clicks (CSV merge sets ga_clicks=0 on every MVP even for header-only zero-click CSV): %s' % bad; assert os.path.isfile('.runs/_iterate-cross-ga-unmatched.json'), 'unmatched triage file missing (x0a postcondition)'; assert (d.get('ga_phase_exclude_applied') or '').strip(), 'ga_phase_exclude_applied missing/empty (state-x0a merge must pass --phase-exclude with the phase2.utm_campaign_like pattern)'"
 ```
 <!-- VERIFY=true: real assertion lives in state-registry.json; this line is the per-Rule-13 placeholder -->
 

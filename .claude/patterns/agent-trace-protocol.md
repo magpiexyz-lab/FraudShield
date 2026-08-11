@@ -102,7 +102,7 @@ Agents may add fields beyond the base schema to capture agent-specific metrics:
 
 | Agent | Extra field | Type | Description |
 |-------|------------|------|-------------|
-| observer | `fixes_evaluated` | number | Count of fixes evaluated from fix-log |
+| observer | `fixes_evaluated` | number | Count of fixes evaluated for the CURRENT run (fix-ledger rows scoped to the active run_id; fix-log.md is a whole-history render and must not be counted directly) |
 | build-info-collector | `files_collected` | number | Count of files in diff collection |
 | design-critic | `review_method` | enum | `"rendered-authed"` / `"rendered-demo"` / `"source-only"` / `"unknown"` — render classification from `.claude/patterns/render-review-detection.md` |
 | design-critic | `review_evidence` | object | `{requested_route, final_url, auth_source, fallback_reason, content_density, expected_destination}` — see render-review-detection.md |

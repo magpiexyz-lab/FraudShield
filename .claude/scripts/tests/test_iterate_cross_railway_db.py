@@ -24,6 +24,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
 import iterate_cross_railway_db as rw  # noqa: E402
 
 
+VALID_GCLID = "Cj0KCQjw" + ("a" * 40)
+JUNK_GCLID = "manual-test-gclid"
+
+
 class ProjectsWithPostgresTests(unittest.TestCase):
     def test_filters_postgres_only(self):
         projs = [
@@ -100,6 +104,22 @@ class DiscoverSignupTablesPgTests(unittest.TestCase):
         self.assertIn("users", names)
         self.assertNotIn("team_members", names)
         self.assertNotIn("billing_users", names)
+
+    @patch("iterate_cross_railway_db._psql_query")
+    def test_detects_gclid_column_name(self, mock_psql):
+        mock_psql.return_value = {
+            "rows": [
+                ["waitlist", "id,email,created_at,gclid"],
+                ["users", "id,email,created_at,click_id"],
+                ["signups", "id,email,created_at"],
+            ],
+            "error": None,
+        }
+        tables = rw.discover_signup_tables_pg("postgresql://fake")
+        by_name = {t["table"]: t for t in tables}
+        self.assertEqual(by_name["waitlist"]["gclid_column"], "gclid")
+        self.assertEqual(by_name["users"]["gclid_column"], "click_id")
+        self.assertIsNone(by_name["signups"]["gclid_column"])
 
 
 class QueryMvpGroundTruthRailwayTests(unittest.TestCase):
@@ -203,6 +223,226 @@ class QueryMvpGroundTruthRailwayTests(unittest.TestCase):
         self.assertEqual(result["db_signups_team"], 1)
         self.assertEqual(result["db_signups_test"], 1)
         self.assertEqual(result["db_first_signup_at"], "2026-05-03T00:00:00+00:00")
+
+    @patch("iterate_cross_railway_db._psql_query")
+    def test_gclid_table_computes_paid_count_and_attribution(self, mock_psql):
+        mock_psql.side_effect = [
+            {"rows": [["waitlist", "id,email,created_at,gclid"]], "error": None},
+            {"rows": [
+                ["paid@customer.com", "2026-05-01T00:00:00+00:00", VALID_GCLID],
+                ["organic@customer.com", "2026-05-02T00:00:00+00:00", ""],
+                ["fixture@example.com", "2026-05-03T00:00:00+00:00", VALID_GCLID],
+            ], "error": None},
+        ]
+        result = rw.query_mvp_ground_truth_railway(
+            "postgresql://fake", 90, config={"email_filter": {"rules": {}}},
+        )
+        self.assertEqual(result["db_signups_raw"], 3)
+        self.assertEqual(result["db_signups_real"], 2)
+        self.assertEqual(result["db_signups_paid"], 1)
+        self.assertEqual(result["db_attribution"], "gclid_shape")
+        self.assertEqual(result["gclid_column"], "gclid")
+
+    @patch("iterate_cross_railway_db._psql_query")
+    def test_click_id_only_table_queries_detected_column(self, mock_psql):
+        mock_psql.side_effect = [
+            {"rows": [["waitlist", "id,email,created_at,click_id"]], "error": None},
+            {"rows": [["paid@customer.com", "2026-05-01T00:00:00+00:00", VALID_GCLID]], "error": None},
+        ]
+        result = rw.query_mvp_ground_truth_railway(
+            "postgresql://fake", 30, config={"email_filter": {"rules": {}}},
+        )
+        select_sql = mock_psql.call_args_list[1].args[1]
+        self.assertIn('"click_id"', select_sql)
+        self.assertNotIn('"gclid"', select_sql)
+        self.assertEqual(result["gclid_column"], "click_id")
+        self.assertEqual(result["db_signups_paid"], 1)
+
+    @patch("iterate_cross_railway_db._psql_query")
+    def test_no_timestamp_gclid_table_never_yields_paid_count(self, mock_psql):
+        mock_psql.side_effect = [
+            {"rows": [["waitlist", "id,email,gclid"]], "error": None},
+            {"rows": [["paid@customer.com", "", VALID_GCLID]], "error": None},
+        ]
+        result = rw.query_mvp_ground_truth_railway(
+            "postgresql://fake", 30, config={"email_filter": {"rules": {}}},
+        )
+        select_sql = mock_psql.call_args_list[1].args[1]
+        self.assertIn('"gclid"', select_sql)
+        self.assertNotIn("INTERVAL '30 days'", select_sql)
+        self.assertEqual(result["db_signups_real"], 1)
+        self.assertIsNone(result["db_signups_paid"])
+        self.assertEqual(result["db_attribution"], "window")
+
+    @patch("iterate_cross_railway_db._psql_query")
+    def test_junk_gclid_not_counted_as_paid(self, mock_psql):
+        mock_psql.side_effect = [
+            {"rows": [["waitlist", "id,email,created_at,gclid"]], "error": None},
+            {"rows": [["buyer@customer.com", "2026-05-01T00:00:00+00:00", JUNK_GCLID]], "error": None},
+        ]
+        result = rw.query_mvp_ground_truth_railway(
+            "postgresql://fake", 90, config={"email_filter": {"rules": {}}},
+        )
+        self.assertEqual(result["db_signups_real"], 1)
+        self.assertEqual(result["db_signups_paid"], 0)
+        # Evidence-based attribution: junk gclid = no proof, stays window.
+        self.assertEqual(result["db_attribution"], "window")
+
+    @patch("iterate_cross_railway_db._psql_query")
+    def test_cap_never_drops_gclid_table(self, mock_psql):
+        mock_psql.side_effect = [
+            {"rows": [
+                *[[f"signup_{i}", "id,email,created_at"] for i in range(5)],
+                ["profiles", "id,email,created_at,gclid"],
+            ], "error": None},
+            {"rows": [["paid@customer.com", "2026-05-01T00:00:00+00:00", VALID_GCLID]], "error": None},
+            *[
+                {"rows": [[f"user{i}@customer.com", "2026-05-02T00:00:00+00:00"]], "error": None}
+                for i in range(5)
+            ],
+        ]
+        result = rw.query_mvp_ground_truth_railway(
+            "postgresql://fake", 90, config={"email_filter": {"rules": {}}},
+        )
+        queried_sql = "\n".join(call.args[1] for call in mock_psql.call_args_list)
+        self.assertIn('FROM public."profiles"', queried_sql)
+        # gclid table survives the cap and feeds paid into the union; the
+        # top-contributor label goes to the highest-priority 1-real tie.
+        self.assertEqual(result["db_signups_table"], "railway:public.signup_0")
+        self.assertEqual(result["db_signups_real"], 6)
+        self.assertEqual(result["db_signups_paid"], 1)
+        self.assertEqual(result["db_attribution"], "gclid_shape")
+
+    @patch("iterate_cross_railway_db._psql_query")
+    def test_gclid_table_beats_larger_non_gclid_table(self, mock_psql):
+        mock_psql.side_effect = [
+            {"rows": [
+                ["signups", "id,email,created_at"],
+                ["waitlist", "id,email,created_at,gclid"],
+            ], "error": None},
+            {"rows": [
+                ["paid@customer.com", "2026-05-01T00:00:00+00:00", VALID_GCLID],
+            ], "error": None},
+            {"rows": [
+                [f"user{i}@customer.com", "2026-05-02T00:00:00+00:00"]
+                for i in range(20)
+            ], "error": None},
+        ]
+        result = rw.query_mvp_ground_truth_railway(
+            "postgresql://fake", 90, config={"email_filter": {"rules": {}}},
+        )
+        # Union: 20 signups reals + 1 waitlist paid real = 21; paid evidence
+        # survives, top contributor labels the row.
+        self.assertEqual(result["db_signups_table"], "railway:public.signups")
+        self.assertEqual(result["db_signups_real"], 21)
+        self.assertEqual(result["db_signups_paid"], 1)
+        self.assertEqual(result["db_attribution"], "gclid_shape")
+
+    @patch("iterate_cross_railway_db._psql_query")
+    def test_count_primary_priority_tiebreak_regression(self, mock_psql):
+        mock_psql.side_effect = [
+            {"rows": [
+                ["signup", "id,email,created_at"],
+                ["waitlist", "id,email,created_at"],
+            ], "error": None},
+            {"rows": [["one@customer.com", "2026-05-01T00:00:00+00:00"]], "error": None},
+            {"rows": [
+                [f"user{i}@customer.com", "2026-05-02T00:00:00+00:00"]
+                for i in range(12)
+            ], "error": None},
+        ]
+        result = rw.query_mvp_ground_truth_railway(
+            "postgresql://fake", 90, config={"email_filter": {"rules": {}}},
+        )
+        # Union of both tables (1 + 12 reals); top contributor labels the row.
+        self.assertEqual(result["db_signups_table"], "railway:public.waitlist")
+        self.assertEqual(result["db_signups_real"], 13)
+        self.assertEqual(result["priority"], 0)
+
+    @patch("iterate_cross_railway_db._psql_query")
+    def test_select_signups_pg_marks_legacy_count(self, mock_psql):
+        """Aggregate (count-shaped) responses must carry the legacy_count
+        marker (mirrors the Supabase twins) so the union path can exclude
+        their synthetic placeholder rows."""
+        mock_psql.return_value = {"rows": [["7", "2026-05-01T00:00:00+00:00"]], "error": None}
+        result = rw.select_signups_in_window_pg("postgresql://fake", "waitlist", "created_at", 90)
+        self.assertEqual(result["legacy_count"], 7)
+        self.assertEqual(result["legacy_first_at"], "2026-05-01T00:00:00+00:00")
+        self.assertEqual(len(result["rows"]), 7)
+
+    @patch("iterate_cross_railway_db._psql_query")
+    def test_union_dedupes_same_email_across_two_tables(self, mock_psql):
+        mock_psql.side_effect = [
+            {"rows": [
+                ["waitlist", "id,email,created_at"],
+                ["users", "id,email,created_at"],
+            ], "error": None},
+            {"rows": [
+                ["J.oe+promo@gmail.com", "2026-04-20T00:00:00+00:00"],
+                ["waitonly@customer.com", "2026-05-03T00:00:00+00:00"],
+            ], "error": None},
+            {"rows": [
+                ["joe@gmail.com", "2026-05-01T00:00:00+00:00"],
+                ["solo@customer.com", "2026-05-02T00:00:00+00:00"],
+            ], "error": None},
+        ]
+        result = rw.query_mvp_ground_truth_railway(
+            "postgresql://fake", 90, config={"email_filter": {"rules": {}}},
+        )
+        # gmail dot/plus variant dedupes: 4 rows → 3 distinct people
+        self.assertEqual(result["db_signups_real"], 3)
+        self.assertIsNone(result["db_signups_paid"])
+        self.assertEqual(result["db_attribution"], "window")
+        self.assertEqual(result["db_union_tables"], ["public.waitlist", "public.users"])
+        self.assertEqual(result["db_signups_table"], "railway:public.waitlist")
+
+    @patch("iterate_cross_railway_db._psql_query")
+    def test_gclid_dead_table_with_reals_unions_second_table_perky_shape(self, mock_psql):
+        """gclid column present but never populated: paid must be int 0 with
+        window attribution, and the second table's reals must not be masked."""
+        mock_psql.side_effect = [
+            {"rows": [
+                ["users", "id,email,created_at,gclid"],
+                ["waitlist", "id,email,created_at"],
+            ], "error": None},
+            # gclid table ranks first in the probe order; all gclids empty
+            {"rows": [
+                [f"user{i}@customer.com", "2026-06-01T00:00:00+00:00", ""]
+                for i in range(5)
+            ], "error": None},
+            {"rows": [
+                [f"user{i}@customer.com", "2026-06-01T00:00:00+00:00"]
+                for i in range(9)
+            ], "error": None},
+        ]
+        result = rw.query_mvp_ground_truth_railway(
+            "postgresql://fake", 365, config={"email_filter": {"rules": {}}},
+        )
+        self.assertEqual(result["db_signups_real"], 9)
+        self.assertEqual(result["db_signups_paid"], 0)
+        self.assertEqual(result["db_attribution"], "window")
+        self.assertEqual(result["db_signups_table"], "railway:public.waitlist")
+        self.assertEqual(result["db_union_tables"], ["public.waitlist", "public.users"])
+
+    @patch("iterate_cross_railway_db._psql_query")
+    def test_legacy_synthetic_rows_never_enter_union(self, mock_psql):
+        """Count-shaped responses from BOTH tables: their identical synthetic
+        emails must not dedupe against each other via the union."""
+        mock_psql.side_effect = [
+            {"rows": [
+                ["waitlist", "id,email,created_at"],
+                ["users", "id,email,created_at"],
+            ], "error": None},
+            {"rows": [["5", "2026-05-02T00:00:00+00:00"]], "error": None},
+            {"rows": [["23", "2026-05-01T00:00:00+00:00"]], "error": None},
+        ]
+        result = rw.query_mvp_ground_truth_railway(
+            "postgresql://fake", 90, config={"email_filter": {"rules": {}}},
+        )
+        self.assertEqual(result["db_union_tables"], [])
+        self.assertEqual(result["db_signups_table"], "railway:public.users")
+        self.assertEqual(result["db_signups_real"], 23)
+        self.assertEqual(result["db_breakdown"]["public.waitlist"], 5)
 
 
 class CheckPsqlAvailableTests(unittest.TestCase):
@@ -446,6 +686,56 @@ class MergeIntoContextTests(unittest.TestCase):
             self.assertEqual(json.load(open(ctx)), original)
 
     @patch("iterate_cross_railway_db._check_railway_auth", return_value=None)
+    @patch("iterate_cross_railway_db._check_psql_available", return_value=None)
+    @patch("iterate_cross_railway_db.list_railway_projects")
+    @patch("iterate_cross_railway_db.get_database_url")
+    @patch("iterate_cross_railway_db._psql_query")
+    def test_product_domain_filter_threads_through_railway_merge(
+        self, mock_psql, mock_url, mock_list, *_,
+    ):
+        mock_list.return_value = [
+            {"id": "rp1", "name": "alpha", "workspace": "w",
+             "services": [{"id": "s", "name": "Postgres"}]},
+        ]
+        mock_url.return_value = {"url": "postgresql://fake", "error": None}
+        mock_psql.side_effect = [
+            {"rows": [["waitlist", "id,email,created_at"]], "error": None},
+            {"rows": [
+                ["founder@alpha.dev", "2026-05-01T00:00:00+00:00"],
+                ["buyer@customer.io", "2026-05-02T00:00:00+00:00"],
+            ], "error": None},
+        ]
+        with tempfile.TemporaryDirectory() as t:
+            ctx = self._write_context(t, [
+                {"name": "alpha", "db_signups": None, "db_unmapped_reason": "no_match"},
+            ])
+            cfg = os.path.join(t, "cfg.yaml")
+            import yaml as _yaml
+            with open(cfg, "w") as f:
+                _yaml.safe_dump({
+                    "mvp_mappings": {
+                        "alpha": {
+                            "railway_project_id": "rp1",
+                            "railway_service_name": "Postgres",
+                            "deploy_domain": "alpha.dev",
+                        },
+                    },
+                    "email_filter": {"rules": {}},
+                }, f)
+
+            result = rw.merge_into_context(ctx, cfg, auto_confirm=True)
+            updated = json.load(open(ctx))["mvps"][0]
+
+        self.assertEqual(result["queried"], 1)
+        self.assertEqual(updated["db_signups_raw"], 2)
+        self.assertEqual(updated["db_signups_real"], 1)
+        self.assertEqual(updated["db_signups_test"], 1)
+        self.assertTrue(any(
+            row.get("reason") == "product-own-domain"
+            for row in updated["db_signups_filter_audit"]
+        ))
+
+    @patch("iterate_cross_railway_db._check_railway_auth", return_value=None)
     @patch("iterate_cross_railway_db.list_railway_projects")
     def test_no_candidates_when_supabase_covered_everything(self, mock_list, _mock_auth):
         mock_list.return_value = [
@@ -542,6 +832,7 @@ class MergeIntoContextTests(unittest.TestCase):
             "beta": "no_token",
             "gamma": "no_email_column",
             "delta": "project_deleted",
+            "killed": "project_deleted",
             "epsilon": "query_error",
             "zeta": "forbidden",
         }
@@ -560,7 +851,12 @@ class MergeIntoContextTests(unittest.TestCase):
         }
         with tempfile.TemporaryDirectory() as t:
             ctx = self._write_context(t, [
-                {"name": name, "db_signups": None, "db_unmapped_reason": reason}
+                {
+                    "name": name,
+                    "db_signups": None,
+                    "db_unmapped_reason": reason,
+                    "lifecycle_status": "killed" if name == "killed" else "active",
+                }
                 for name, reason in reasons.items()
             ])
             cfg = self._write_config(t)
@@ -569,9 +865,36 @@ class MergeIntoContextTests(unittest.TestCase):
         self.assertEqual(mock_q.call_count, 4)
         for name in ["alpha", "beta", "gamma", "delta"]:
             self.assertEqual(updated[name]["db_source"], "railway")
-        for name in ["epsilon", "zeta"]:
+        for name in ["killed", "epsilon", "zeta"]:
             self.assertIsNone(updated[name]["db_signups"])
             self.assertNotIn("db_source", updated[name])
+        self.assertEqual(updated["killed"]["lifecycle_status"], "killed")
+
+    @patch("iterate_cross_railway_db._check_railway_auth", return_value=None)
+    @patch("iterate_cross_railway_db._check_psql_available", return_value=None)
+    @patch("iterate_cross_railway_db.list_railway_projects")
+    def test_project_deleted_preserved_when_railway_also_misses(
+        self, mock_list, *_,
+    ):
+        # The workspace has a Postgres project, but its name matches neither MVP,
+        # so both fall into the no-Railway-match branch. The definitive Supabase
+        # "project_deleted" signal must survive (x4 money-leak / archived /
+        # kill-proposal key on it); only the weaker "no_match" is downgraded to
+        # "no_match_neither".
+        mock_list.return_value = [
+            {"id": "rp-unrelated", "name": "totally-different-xyz", "workspace": "w",
+             "services": [{"id": "s", "name": "Postgres"}]},
+        ]
+        with tempfile.TemporaryDirectory() as t:
+            ctx = self._write_context(t, [
+                {"name": "leasebrief", "db_signups": None, "db_unmapped_reason": "project_deleted"},
+                {"name": "ctrl-nomatch", "db_signups": None, "db_unmapped_reason": "no_match"},
+            ])
+            cfg = self._write_config(t)
+            rw.merge_into_context(ctx, cfg, auto_confirm=True)
+            updated = {m["name"]: m for m in json.load(open(ctx))["mvps"]}
+        self.assertEqual(updated["leasebrief"]["db_unmapped_reason"], "project_deleted")
+        self.assertEqual(updated["ctrl-nomatch"]["db_unmapped_reason"], "no_match_neither")
 
 
 class GetDatabaseUrlTests(unittest.TestCase):

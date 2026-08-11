@@ -58,8 +58,11 @@ jobs:
     # 28s, test_markdown_cross_file_line_reference.py 26s,
     # test_worktree_boundary_gate.py 14s, test_agent_trace_write_guard.py
     # 12s) take 80+s alone, leaving little headroom for the rest. 7 min
-    # restores the same ~30% headroom 5min had at the 3min era.
-    timeout-minutes: 7
+    # restored ~30% headroom at the time, but by 2026-08 the slow-runner mode
+    # sat at 6m44s-7m11s — inside the cap's noise band, killing green runs
+    # (#2021; PR #2154 was killed twice with all steps passing). 10 min
+    # clears the observed slow mode by minutes, not seconds.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
@@ -94,7 +97,10 @@ jobs:
         # imagehash + Pillow added (#1272 hard-block validators): Pillow is
         # ~3MB, imagehash is ~50KB. CI install ~3s. Used by
         # .claude/scripts/lib/phash.py for image-evidence validation.
-        run: pip3 install pyyaml pytest imagehash Pillow
+        # python-docx exercises the iterate-cross x4 .docx report happy path; it is
+        # an OPTIONAL runtime dep (the report skips gracefully when absent) so it is
+        # installed here for tests only, NOT in any runtime bootstrap.
+        run: pip3 install pyyaml pytest imagehash Pillow python-docx
 
       # Configure a default git identity AND init.defaultBranch=main.
       # - identity: tests do `git init` + `git commit --allow-empty` in
@@ -255,10 +261,18 @@ jobs:
 
       - name: Unit tests
         run: |
-          if [ -f vitest.config.ts ]; then
+          # Gate on the runner artifacts, then on the declared unit-test
+          # script — never key on one stack's config file alone: a repo whose
+          # unit tests use another runner (e.g. node --test) would be silently
+          # skipped with a green log (hid a 6-day P0 on one MVP). test:unit is
+          # probed instead of test because npm-init placeholder test scripts
+          # exit 1 and would fail unrelated repos.
+          if ls vitest.config.* >/dev/null 2>&1; then
             npx vitest run
+          elif [ -f package.json ] && node -e "process.exit(require('./package.json').scripts?.['test:unit'] ? 0 : 1)" 2>/dev/null; then
+            npm run test:unit
           else
-            echo "No vitest.config.ts found — skipping unit tests"
+            echo "::warning::No unit-test runner detected (no vitest.config.*, no test:unit script) — unit tests were NOT run."
           fi
 
   e2e:

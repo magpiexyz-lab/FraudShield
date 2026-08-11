@@ -219,8 +219,9 @@ def main(argv: list[str] | None = None) -> int:
         # heuristic: ≥2 content-token overlap with the canonicalized symptom
         # AND ≥1 file overlap), `solve-trace.json.prior_failure_consultation`
         # MUST have a matching entry with `consulted_via != "skipped"` OR a
-        # `skip_justification` of ≥40 chars. Soak in warn mode initially:
-        # CONSULTATION_SOAK=1 downgrades failures to stderr warnings.
+        # `skip_justification` of ≥40 chars. Default is warn-only;
+        # CONSULTATION_DENY in {"1", "deny"} promotes to a hard block
+        # (Phase C cutover per .claude/patterns/gecr-cutover-criteria.json).
         dossier_path = ".runs/prior-failure-dossier.json"
         if (os.path.isfile(dossier_path)
                 and pa.get("problem_type") == "defect"):
@@ -271,12 +272,14 @@ def main(argv: list[str] | None = None) -> int:
                         "OR `skip_justification` ≥40 chars. See "
                         "`.claude/agents/solve-critic.md` vector 4 amendment."
                     )
-                    # Soak/deny mode: CONSULTATION_DENY=1 promotes the gate to a
-                    # hard block (Phase C cutover trigger per
-                    # .claude/patterns/gecr-cutover-criteria.json). Default
-                    # during soak: warn-only — surface the gap without blocking
-                    # PR merge so designers see the contract before enforcement.
-                    if os.environ.get("CONSULTATION_DENY") == "1":
+                    # Soak/deny mode: CONSULTATION_DENY in {"1", "deny"}
+                    # promotes the gate to a hard block (Phase C cutover per
+                    # .claude/patterns/gecr-cutover-criteria.json; "deny"
+                    # accepted because the gecr-cutover-overdue linter message
+                    # historically suggested that spelling). Default during
+                    # soak: warn-only — surface the gap without blocking PR
+                    # merge so designers see the contract before enforcement.
+                    if os.environ.get("CONSULTATION_DENY", "") in ("1", "deny"):
                         print(f"VERIFY FAIL: {full_msg}", file=sys.stderr)
                         return 1
                     print(f"VERIFY WARN: {full_msg}", file=sys.stderr)

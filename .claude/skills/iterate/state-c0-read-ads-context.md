@@ -18,7 +18,10 @@
    - `campaign_name`
    - `landing_url`
    - `campaign_id` (if present)
-   - `budget.total_budget_cents`, `budget.daily_budget_cents`, `budget.duration_days`
+   - `phase` (if present — 1 or 2; written by `/distribute` Step 7 for Phase 1, by the Phase 2 Playbook §5 prompt for Phase 2)
+   - `campaign_created_at` (if present — YYYY-MM-DD)
+   - `dayzero_probe_passed_at` (if present — YYYY-MM-DD; Phase 2 day-0 relay probe PASS date)
+   - `budget.total_budget_cents`, `budget.daily_budget_cents`, `budget.duration_days`, `budget.click_target`
    - `guardrails.max_cpc_cents`
    - `thresholds` (all fields)
 
@@ -28,13 +31,22 @@
 4. If `campaign_id` is absent from ads.yaml, STOP:
    > "No `campaign_id` in ads.yaml -- campaign not yet created. Complete `/distribute` STATE 9 to create the campaign, then run `/iterate --check`."
 
-5. Read `experiment/experiment.yaml`. Extract `name` and `type` (archetype, default `web-app`).
+5. If `phase` from ads.yaml is `2` AND `dayzero_probe_passed_at` is absent, STOP:
+   > "Phase 2 requires a recorded day-0 probe. Run the relay probe per the Phase 2 Playbook §5 step 10 (walk the deployed funnel with the probe URL; verify `pay_intent` lands in PostHog AND the Supabase table), then record the PASS date in `experiment/ads.yaml` as `dayzero_probe_passed_at: "YYYY-MM-DD"` via the §5 step 11 prompt, and re-run `/iterate --check`."
 
-### Compute campaign age
+6. Read `experiment/experiment.yaml`. Extract `name` and `type` (archetype, default `web-app`).
 
-Calculate `campaign_age_days`:
-- If `.runs/distribute-context.json` exists, read its `timestamp` field and compute days elapsed from that date to today. Also read its `phase` field (1 or 2) to pass to the context file
-- Otherwise, ask the user: "When did you launch the campaign? (provide date or number of days ago)"
+### Resolve phase and campaign age (ads.yaml is the primary source)
+
+Resolve `phase` (priority order — ads.yaml wins because `.runs/distribute-context.json` is a transient Phase-1 artifact that goes stale the moment the Phase 2 campaign replaces the Phase 1 one in ads.yaml):
+1. `phase` from ads.yaml (step 2 above), if present
+2. Else `phase` from `.runs/distribute-context.json`, if that file exists
+3. Else `null`
+
+Calculate `campaign_age_days` (same priority):
+1. If ads.yaml has `campaign_created_at`, compute days elapsed from that date to today
+2. Else if `.runs/distribute-context.json` exists, use its `timestamp` field
+3. Otherwise, ask the user: "When did you launch the campaign? (provide date or number of days ago)"
 
 ### Verify Chrome MCP availability
 
@@ -52,13 +64,14 @@ If no `mcp__claude-in-chrome__*` tools are returned, STOP and show the setup gui
 ### Merge ads-specific fields into context
 
 ```bash
-bash .claude/scripts/init-context.sh iterate-check "{\"mode\":\"check\",\"channel\":\"<channel from ads.yaml>\",\"campaign_name\":\"<campaign_name>\",\"campaign_id\":\"<campaign_id>\",\"campaign_age_days\":<N>,\"phase\":<1 or 2 from distribute-context.json, or null if unavailable>,\"budget_total_cents\":<N>,\"budget_daily_cents\":<N>,\"max_cpc_cents\":<N>,\"completed_states\":[\"c0\"]}"
+bash .claude/scripts/init-context.sh iterate-check "{\"mode\":\"check\",\"channel\":\"<channel from ads.yaml>\",\"campaign_name\":\"<campaign_name>\",\"campaign_id\":\"<campaign_id>\",\"campaign_created_at\":<campaign_created_at JSON string or null>,\"campaign_age_days\":<N>,\"phase\":<resolved phase: ads.yaml first, then distribute-context.json, else null>,\"budget_total_cents\":<N>,\"budget_daily_cents\":<N>,\"max_cpc_cents\":<N>,\"completed_states\":[\"c0\"]}"
 ```
 
-Replace all `<placeholder>` values with actual data read from ads.yaml and experiment.yaml. The base fields (`skill`, `branch`, `timestamp`, `run_id`) are already set by lifecycle-init.sh. The `completed_states:["c0"]` override replaces the default `[0]` to use iterate-check's string state IDs.
+Replace all `<placeholder>` values with actual data read from ads.yaml and experiment.yaml. Use a valid JSON string for `campaign_created_at` when present (for example `"2026-06-11"`), otherwise `null`. The base fields (`skill`, `branch`, `timestamp`, `run_id`) are already set by lifecycle-init.sh. The `completed_states:["c0"]` override replaces the default `[0]` to use iterate-check's string state IDs.
 
 **POSTCONDITIONS:**
 - `experiment/ads.yaml` read, channel is `google-ads`, `campaign_id` exists
+- If ads.yaml `phase` is 2: `dayzero_probe_passed_at` present (day-0 probe recorded)
 - Campaign age computed
 - Chrome MCP tools verified available via ToolSearch
 - `.runs/iterate-check-context.json` exists

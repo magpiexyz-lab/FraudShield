@@ -60,7 +60,9 @@ class AdsReadySmokeOrchestratorTests(unittest.TestCase):
             output = base / "smoke.json"
             write_json(context, ctx)
             write_json(static_path, static_result or {"overall_pass": True})
-            with patch("sys.stderr", new=io.StringIO()):
+            with patch.object(S, "_git_head", return_value="test-head"), patch(
+                "sys.stderr", new=io.StringIO()
+            ):
                 rc = S.main(
                     [
                         "--context",
@@ -97,6 +99,8 @@ class AdsReadySmokeOrchestratorTests(unittest.TestCase):
 
         self.assertEqual(rc, 0)
         self.assertFalse(result["overall_pass"])
+        self.assertEqual(result["phase"], "phase-1")
+        self.assertEqual(result["git_head"], "test-head")
         self.assertIn("Could not determine deployed URL", result["checks"][0]["details"])
         self.assertIn("vercel login", result["checks"][0]["fix"])
 
@@ -234,19 +238,72 @@ class AdsReadySmokeOrchestratorTests(unittest.TestCase):
                 {"results": [{"id": 2, "name": "Team", "api_token": "phc_REAL"}], "next": None},
             ]
             mock_posthog_query.side_effect = [
-                {"results": [["visit_landing", "alpha", SYNTHETIC_GCLID_PREFIX + "TOKEN"]]},
-                {"results": [["visit_landing", "alpha", SYNTHETIC_GCLID_PREFIX + "TOKEN"]]},
+                {"results": [["visit_landing", "alpha", SYNTHETIC_GCLID_PREFIX + "TOKEN", S.SYNTHETIC_UTM_CAMPAIGN]]},
+                {"results": [["visit_landing", "alpha", SYNTHETIC_GCLID_PREFIX + "TOKEN", S.SYNTHETIC_UTM_CAMPAIGN]]},
+                {"results": [["visit_landing", 1]]},
+            ]
+            rc, result = self.run_smoke(
+                {"mvp_root": str(root), "deploy_url": "https://alpha.example", "phase": "phase-2"}
+            )
+
+        self.assertEqual(rc, 0)
+        self.assertTrue(result["overall_pass"])
+        self.assertEqual(result["phase"], "phase-2")
+        self.assertEqual(result["git_head"], "test-head")
+        self.assertEqual(result["passed_count"], 5)
+        self.assertEqual(result["failed_count"], 0)
+        self.assertTrue(result["synthetic_gclid"].startswith(SYNTHETIC_GCLID_PREFIX))
+        self.assertEqual(mock_posthog_query.call_count, 3)
+        self.assertEqual(mock_posthog_get.call_count, 1)
+
+    @patch("ads_ready_smoke.time.sleep")
+    @patch("ads_ready_smoke.secrets.token_urlsafe", return_value="TOKEN")
+    @patch("ads_ready_smoke.run_playwright_smoke", return_value=Path("captured-events.json"))
+    @patch(
+        "ads_ready_smoke.discover_posthog_project",
+        return_value={"project_id": "2", "api_key": "phx_api", "expected_project_name": "alpha"},
+    )
+    @patch("ads_ready_smoke.validate_operator_deploy_url", return_value="https://alpha.example")
+    @patch("ads_ready_smoke._posthog_query")
+    def test_check_24_fails_when_auto_event_lacks_project_name(
+        self,
+        mock_posthog_query,
+        _mock_validate,
+        _mock_discover,
+        _mock_playwright,
+        _mock_token,
+        _mock_sleep,
+    ):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            make_root(
+                root,
+                playwright=True,
+                events="events:\n  visit_landing:\n    funnel_stage: landing\n",
+            )
+            write_vercel_link(root)
+            # visit_landing carries project_name (track() enrichment) but the
+            # SDK auto-event $pageleave arrives with an empty pn — Check 20's
+            # membership test passes while Check 24 must fail.
+            probe_rows = [
+                ["visit_landing", "alpha", SYNTHETIC_GCLID_PREFIX + "TOKEN", S.SYNTHETIC_UTM_CAMPAIGN],
+                ["$pageleave", "", SYNTHETIC_GCLID_PREFIX + "TOKEN", S.SYNTHETIC_UTM_CAMPAIGN],
+            ]
+            mock_posthog_query.side_effect = [
+                {"results": probe_rows},
+                {"results": probe_rows},
                 {"results": [["visit_landing", 1]]},
             ]
             rc, result = self.run_smoke({"mvp_root": str(root), "deploy_url": "https://alpha.example"})
 
         self.assertEqual(rc, 0)
-        self.assertTrue(result["overall_pass"])
-        self.assertEqual(result["passed_count"], 3)
-        self.assertEqual(result["failed_count"], 0)
-        self.assertTrue(result["synthetic_gclid"].startswith(SYNTHETIC_GCLID_PREFIX))
-        self.assertEqual(mock_posthog_query.call_count, 3)
-        self.assertEqual(mock_posthog_get.call_count, 1)
+        self.assertFalse(result["overall_pass"])
+        by_id = {check["id"]: check for check in result["checks"]}
+        self.assertTrue(by_id[20]["passed"])
+        self.assertFalse(by_id[24]["passed"])
+        self.assertIn("$pageleave", by_id[24]["details"])
+        self.assertIn("register_for_session", by_id[24]["fix"])
+        self.assertIn("#1828", by_id[24]["fix"])
 
     @patch("ads_ready_smoke.H.resolve_production_posthog_key", return_value=("phc_REAL", "vercel_env_set", None))
     @patch("ads_ready_smoke.H.load_team_config", return_value={})
@@ -299,14 +356,16 @@ class AdsReadySmokeOrchestratorTests(unittest.TestCase):
         self.assertEqual(mock_sleep.call_count, 2)
         self.assertEqual(mock_posthog_query.call_count, 4)
 
-    def test_static_only_writes_three_skipped_checks(self):
-        rc, result = self.run_smoke({"static_only": True})
+    def test_static_only_writes_five_skipped_checks(self):
+        rc, result = self.run_smoke({"static_only": True, "phase": "phase-2", "phase_2": True})
 
         self.assertEqual(rc, 0)
         self.assertTrue(result["skipped"])
         self.assertIsNone(result["overall_pass"])
-        self.assertEqual(result["skipped_count"], 3)
-        self.assertEqual([check["id"] for check in result["checks"]], [20, 21, 22])
+        self.assertEqual(result["phase"], "phase-2")
+        self.assertEqual(result["git_head"], "test-head")
+        self.assertEqual(result["skipped_count"], 5)
+        self.assertEqual([check["id"] for check in result["checks"]], [20, 21, 22, 23, 24])
         self.assertTrue(all(check["skipped"] for check in result["checks"]))
 
 

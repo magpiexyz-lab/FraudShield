@@ -4,8 +4,39 @@ PostHog-based MVP discovery. No Google Ads / Chrome MCP dependency.
 
 **PRECONDITIONS:**
 - `~/.posthog/personal-api-key` exists and has scope `query:read` and `project:read`
+- Supabase auth resolvable (`supabase login` / `SUPABASE_ACCESS_TOKEN` / `~/.supabase/access-token`) — unless `require_db_ground_truth: false`
+- Railway CLI installed and logged in (`railway whoami`) — unless `require_db_ground_truth: false`
+- Vercel token resolvable (`vercel login` CLI auth, `$VERCEL_TOKEN`, or `~/.vercel/api-token`) — no bypass; the owner-resolution channel silently mis-attributes without it
 
 **ACTIONS:**
+
+### Step 0: Auth preflight (fail fast)
+
+Every credential the run needs is checked up front, and ALL missing ones are
+listed at once — a mid-run credential failure wastes the whole discovery pass,
+and a silently-off Vercel channel mis-attributes owners (the 2026-07-27
+tripcraft/vernis/kansei incident). Supabase/Railway soften to warnings under
+`require_db_ground_truth: false`; PostHog and Vercel are always hard.
+
+```bash
+set +e
+PREFLIGHT_PAYLOAD=$(python3 .claude/scripts/lib/iterate_cross_auth.py --mode cross --emit-payload)
+PREFLIGHT_RC=$?
+set -e
+[ -n "$PREFLIGHT_PAYLOAD" ] || { echo "STOP: auth preflight crashed (no payload)" >&2; exit 1; }
+bash .claude/scripts/lib/write-gate-artifact.sh \
+  --path .runs/iterate-cross-auth-preflight.json \
+  --payload "$PREFLIGHT_PAYLOAD" \
+  --skill iterate-cross
+if [ "$PREFLIGHT_RC" -ne 0 ]; then
+  echo "STOP: auth preflight failed — the checklist above lists every missing login and its fix. Log in, then re-run /iterate --cross." >&2
+  exit 1
+fi
+```
+
+The checklist (stderr) names each missing service with its exact login
+command. The state-x0b DB gate stays in place as defense-in-depth but should
+never fire on a preflighted run.
 
 ### Read PostHog credentials
 
@@ -13,13 +44,8 @@ PostHog-based MVP discovery. No Google Ads / Chrome MCP dependency.
 POSTHOG_API_KEY=$(cat ~/.posthog/personal-api-key 2>/dev/null)
 ```
 
-If the file does not exist, STOP:
-> "PostHog personal API key not found at `~/.posthog/personal-api-key`."
-> "Create one at https://us.posthog.com/settings/user-api-keys (scope: Query Read, Project Read), then save it:"
-> "```"
-> "mkdir -p ~/.posthog && echo 'phx_YOUR_KEY' > ~/.posthog/personal-api-key"
-> "```"
-> "Then re-run `/iterate --cross`."
+Key presence was already enforced by Step 0; if this read comes back empty
+anyway, re-run the preflight instead of continuing.
 
 ### Discover PostHog project ID
 
@@ -39,7 +65,14 @@ window_days: 90              # how far back to look
 phase_filter:
   utm_campaign_like: ""      # empty = all gclid traffic; e.g. "%-search-v%" = Phase 1 Manual CPC convention
   fallback_all_gclid: true   # if utm_campaign_like has no matches for an MVP, count all gclid traffic
-mvp_mappings: {}             # per-MVP overrides (signup_events, owner, deploy_domain)
+mvp_mappings: {}             # per-MVP overrides (signup_events, owner, deploy_domain,
+                             #   phase1_relaunch_at: "YYYY-MM-DD" to re-test a failed
+                             #   MVP — Phase-1 eval then ignores all data before that
+                             #   date (GA/DB/PostHog windows raise to max(window,
+                             #   relaunch); relaunch needs a fresh v2 campaign name).
+                             #   phase2_relaunch_at: same cut for the Phase-2 verdict
+                             #   (x5): pre-relaunch phase2 clicks/pay-intents drop.
+                             #   See .claude/scripts/lib/iterate_cross_relaunch.py)
 thresholds:
   visitors_floor: 100
   conv_rate_go: 0.06
@@ -62,18 +95,21 @@ If `phase_filter.utm_campaign_like` is set, x0 surfaces both:
 
 Query distinct `project_name` values with gclid traffic in the time window. `project_name` is the canonical MVP identifier (set verbatim from `experiment.yaml.name` by `/bootstrap` STATE 3 — see `.claude/scripts/lib/validate_experiment_yaml.py`). Events without `project_name` are orphaned and surfaced separately for triage.
 
-**Paid-traffic gclid filter** — uses `.claude/scripts/lib/gclid_filter.py` `PAID_GCLID_FILTER` (length > 40 AND prefix in `Cj`/`EAI`/`CIa`). Real Google Ads gclids start with these prefixes and are 60-120 chars. Operator manual-test gclids (e.g., `analytics-verify-2026050720272` at 32 chars, `MANUAL_VERIFY_CHECK` at 19 chars) fail one or both checks. Filter ALSO reads from `properties.gclid` as fallback when `$session_entry_gclid` is empty (handles legacy deploys where PostHog SDK init lost the race to Next.js router URL cleanup — see `.claude/stacks/analytics/posthog.md` "Paid-attribution capture" section). The filter is the single source of truth in `gclid_filter.py`; all 5 query sites (state-x0/x1/x2/c2) read from it — do NOT inline the rule.
+**Paid-traffic gclid filter** — uses `.claude/scripts/lib/gclid_filter.py` `PAID_GCLID_FILTER` (length > 40 AND prefix in `Cj`/`EAI`/`CIa`). Real Google Ads gclids start with these prefixes and are 60-120 chars. Operator manual-test gclids (e.g., `analytics-verify-2026050720272` at 32 chars, `MANUAL_VERIFY_CHECK` at 19 chars) fail one or both checks. Filter ALSO reads from `properties.gclid` as fallback when `$session_entry_gclid` is empty (handles legacy deploys where PostHog SDK init lost the race to Next.js router URL cleanup — see `.claude/stacks/analytics/posthog.md` "Paid-attribution capture" section). The filter is the single source of truth in `gclid_filter.py`; all 4 query sites (state-x0 canonical + orphan, state-x1, state-x2) read from it — do NOT inline the rule.
+
+**PostHog query tuning** — long windows (365d) exceed HogQL's max-execution-time at the library's 30s default, so every query below reads `posthog_query.max_time_seconds` from the operator config (default 120). See `experiment/iterate-cross-config.example.yaml` for the full `posthog_query:` block.
 
 ```bash
-WINDOW_DAYS=$(python3 -c "
+read -r WINDOW_DAYS PH_MAX_TIME <<< "$(python3 -c "
 import yaml, os
 cfg = {}
 if os.path.exists('experiment/iterate-cross-config.yaml'):
     cfg = yaml.safe_load(open('experiment/iterate-cross-config.yaml')) or {}
-print(cfg.get('window_days', 90))
-")
+pq = cfg.get('posthog_query') or {}
+print(cfg.get('window_days', 90), pq.get('max_time_seconds', 120))
+")"
 
-python3 - "$POSTHOG_PROJECT_ID" "$WINDOW_DAYS" <<'PY'
+python3 - "$POSTHOG_PROJECT_ID" "$WINDOW_DAYS" "$PH_MAX_TIME" <<'PY'
 import json, os, sys
 sys.path.insert(0, '.claude/scripts/lib')
 from gclid_filter import PAID_GCLID_FILTER
@@ -81,6 +117,7 @@ from iterate_cross_posthog_batch import paginate_discovery_query
 
 project_id = sys.argv[1]
 window_days = int(sys.argv[2])
+max_time_seconds = int(sys.argv[3])
 api_key = open(os.path.expanduser('~/.posthog/personal-api-key')).read().strip()
 sql = (
     "SELECT properties.project_name AS mvp_key, "
@@ -100,6 +137,7 @@ rows, metadata = paginate_discovery_query(
     project_id,
     api_key,
     page_size=200,
+    max_time_seconds=max_time_seconds,
 )
 payload = {"results": rows, "_canonical_pagination_status": metadata}
 json.dump(payload, open('.runs/_iterate-cross-discover.json', 'w'))
@@ -112,16 +150,18 @@ if os.path.exists(context_path):
 PY
 ```
 
-The production path must page this query with
+The production path must run this query through
 `.claude/scripts/lib/iterate_cross_posthog_batch.py::paginate_discovery_query`
-instead of relying on the visible `LIMIT 200`. The helper stamps
-`_canonical_pagination_status` into context and keeps fetching until a short
-page proves the result set is complete.
+instead of relying on the visible `LIMIT 200`. The helper issues a single
+OFFSET-free query capped at `page_size * max_pages` (personal API keys reject
+OFFSET; this GROUP BY aggregate is bounded by the number of MVPs), stamps
+`_canonical_pagination_status` into context, and proves completeness with a
+short page (raising if the cap is ever hit).
 
 Parallel sibling query — count gclid events with NULL/empty `project_name`. These get surfaced in the operator confirmation message; they are NOT auto-keyed by URL anymore (the previous `splitByChar(domain($current_url))[1]` fallback created cross-pollution between similarly-named MVPs):
 
 ```bash
-python3 - "$POSTHOG_PROJECT_ID" "$WINDOW_DAYS" <<'PY'
+python3 - "$POSTHOG_PROJECT_ID" "$WINDOW_DAYS" "$PH_MAX_TIME" <<'PY'
 import json, os, sys
 sys.path.insert(0, '.claude/scripts/lib')
 from gclid_filter import PAID_GCLID_FILTER
@@ -129,6 +169,7 @@ from iterate_cross_posthog_batch import paginate_discovery_query
 
 project_id = sys.argv[1]
 window_days = int(sys.argv[2])
+max_time_seconds = int(sys.argv[3])
 api_key = open(os.path.expanduser('~/.posthog/personal-api-key')).read().strip()
 sql = (
     "SELECT splitByChar('.', domain(coalesce(properties.$current_url, '')))[1] AS host_prefix, "
@@ -145,6 +186,7 @@ rows, metadata = paginate_discovery_query(
     project_id,
     api_key,
     page_size=50,
+    max_time_seconds=max_time_seconds,
 )
 payload = {"results": rows, "_orphan_pagination_status": metadata}
 json.dump(payload, open('.runs/_iterate-cross-orphan.json', 'w'))
@@ -158,8 +200,8 @@ PY
 ```
 
 The orphan query uses the same helper with a page size of 50 and stamps
-`_orphan_pagination_status` into context. A result set of exactly 50 rows is
-not complete until the next page has been queried.
+`_orphan_pagination_status` into context. The single capped fetch returns up to
+`50 * max_pages` rows; a short page proves completeness.
 
 Parse results into MVP records. Each MVP gets:
 - `name` — `mvp_key` from query (always equals `properties.project_name` — never URL-derived)
@@ -176,7 +218,9 @@ Add one synthetic MVP record per orphan host:
 - `name` — `__orphan_<host_prefix>__` (sentinel form; double-underscore prefix avoids collision with kebab-case MVP names)
 - `gclid_visitors` — from orphan query
 - `orphan` — `true`
-- All other fields null
+- All other fields null. (`owner` is backfilled at x1 by `iterate_cross_propagate`
+  from `mvp_mappings.__orphan_<host>__.owner` when the operator has confirmed an
+  ads-account owner proposal — see state-x4's owner backfill.)
 
 These orphan records propagate the `missing_project_name` flag through x1a → verdict pipeline so the operator can see which deploys are missing tracking.
 
@@ -195,22 +239,40 @@ The script reads `mvp_aliases:` from the config, sums visitor counts into the ca
 
 ### Detect orphan/canonical gclid overlap (merge same-deploy partial tracking)
 
-For each (canonical MVP name, orphan host) pair with matching alphanumeric keys (after stripping hyphens — e.g., `x-predict` matches `xpredict`), query PostHog for the gclid intersection. High overlap (≥70% by default; tunable via `orphan_merge_overlap_threshold` in config) means same deploy with partial page tracking — merge orphan into canonical (don't double-count). Low overlap means genuinely independent broken deploy — keep separate as MISSING_PROJECT_NAME.
+For each (canonical MVP name, orphan host) pair with matching alphanumeric keys (after stripping hyphens — e.g., `x-predict` matches `xpredict`; when direct keys differ, a `ga_campaign_aliases` entry resolving to the canonical also pairs — e.g., host `museai` pairs with `museai-studio` via the `museai` alias), query PostHog for the gclid intersection. High overlap (≥70% by default; tunable via `orphan_merge_overlap_threshold` in config) means same deploy with partial page tracking — merge orphan into canonical (don't double-count). Low overlap means genuinely independent broken deploy — keep separate as MISSING_PROJECT_NAME.
 
 The overlap query MUST run per-MVP serially. UNION ALL of 7+ subqueries hits HogQL's max-execution-time at ~6s; one query per pair at ~500ms each is comfortably under the timeout.
 
+On long windows (365d) individual pairs still time out, and PostHog then applies a server-side circuit breaker ("This query failed the same way 4 times in a row … It can run again in about 4 minutes") that makes immediate retries fail instantly. The library call below therefore runs cooldown-resume passes: pairs that fail a pass sleep `posthog_query.overlap_failure_sleep_seconds` before the next pair, and remaining failures are retried in up to `posthog_query.overlap_max_passes` passes separated by `posthog_query.overlap_cooldown_seconds` (≈ the breaker window). The per-pair cache in `.runs/_iterate-cross-overlap.json` resumes both across passes and across invocations — if pairs are still unresolved after the final pass, re-running state-x0 continues from the cache instead of starting over.
+
 ```bash
-# Step 1: identify (canonical, orphan_host) pairs that share an alphanumeric key.
+# Step 1: identify (canonical, orphan_host) pairs that share an alphanumeric
+# key, with a ga_campaign_aliases fallback for renamed/handover MVPs whose
+# project_name no longer flattens to the deploy host prefix (#2073).
 python3 - <<'PY'
 import json, re, sys
 sys.path.insert(0, '.claude/scripts/lib')
-from iterate_cross_classify import match_key
+from iterate_cross_classify import alias_orphan_host, match_key
 
 disc = json.load(open('.runs/_iterate-cross-discover.json'))
 orph = json.load(open('.runs/_iterate-cross-orphan.json'))
 
+aliases = {}
+try:
+    import yaml
+    cfg = yaml.safe_load(open('experiment/iterate-cross-config.yaml')) or {}
+    aliases = {
+        match_key(k): v
+        for k, v in (cfg.get('ga_campaign_aliases') or {}).items()
+        if v
+    }
+except Exception:
+    aliases = {}
+
 pairs = []
 orph_by_key = {match_key(r[0]): r[0] for r in orph.get('results', []) if r}
+claimed = set()
+unpaired = []
 for cr in disc.get('results', []):
     if not cr:
         continue
@@ -218,64 +280,64 @@ for cr in disc.get('results', []):
     canon_key = match_key(canon)
     if canon_key in orph_by_key:
         pairs.append((canon, orph_by_key[canon_key]))
+        claimed.add(orph_by_key[canon_key])
+    else:
+        unpaired.append(canon)
+unclaimed = {k: h for k, h in orph_by_key.items() if h not in claimed}
+for canon in unpaired:
+    host = alias_orphan_host(canon, unclaimed, aliases)
+    if host is not None:
+        pairs.append((canon, host))
+        del unclaimed[match_key(host)]
 
 with open('.runs/_iterate-cross-overlap-pairs.json', 'w') as f:
     json.dump(pairs, f)
 print(f"overlap-pairs: {len(pairs)} canonical/orphan matches to query")
 PY
 
-# Step 2: query overlap serially for each pair.
+# Step 2: query overlap via the shared library implementation
+# (iterate_cross_posthog_batch.compute_orphan_overlap — the same code path
+# state-x5 uses; per-pair caching + cooldown-resume live there).
 # IMPORTANT: pass POSTHOG_PROJECT_ID and WINDOW_DAYS via sys.argv because the
 # context.json (which iterate-cross-context.json) is NOT written until later in
 # state-x0 (the "Merge cross-specific fields into context" step at the end).
 # These two bash variables are set earlier in state-x0 and remain in scope.
-python3 - "$POSTHOG_PROJECT_ID" "$WINDOW_DAYS" <<'PY'
-import json, os, subprocess, sys
+python3 - "$POSTHOG_PROJECT_ID" "$WINDOW_DAYS" <<'OVERLAP_PY'
+import json, os, sys
 sys.path.insert(0, '.claude/scripts/lib')
-from gclid_filter import PAID_GCLID_FILTER
+try:
+    import yaml
+except ImportError:
+    yaml = None
+from iterate_cross_posthog_batch import compute_orphan_overlap
 
 project_id = sys.argv[1]
 window_days = int(sys.argv[2])
 api_key = open(os.path.expanduser('~/.posthog/personal-api-key')).read().strip()
-pairs = json.load(open('.runs/_iterate-cross-overlap-pairs.json'))
+pairs = [tuple(p) for p in json.load(open('.runs/_iterate-cross-overlap-pairs.json'))]
 
-by_canonical = {}
-for canon, orphan_host in pairs:
-    sql = (
-        f"WITH c AS (SELECT DISTINCT toString(coalesce(properties.$session_entry_gclid, properties.gclid)) AS g "
-        f"FROM events WHERE properties.project_name = {{cn}} AND {PAID_GCLID_FILTER} "
-        f"AND timestamp >= now() - INTERVAL {window_days} DAY), "
-        f"o AS (SELECT DISTINCT toString(coalesce(properties.$session_entry_gclid, properties.gclid)) AS g "
-        f"FROM events WHERE (properties.project_name IS NULL OR properties.project_name = '') AND {PAID_GCLID_FILTER} "
-        f"AND splitByChar('.', domain(coalesce(properties.$current_url, '')))[1] = {{oh}} "
-        f"AND timestamp >= now() - INTERVAL {window_days} DAY) "
-        f"SELECT (SELECT count() FROM c) AS canonical_gclids, "
-        f"(SELECT count() FROM o) AS orphan_gclids, "
-        f"(SELECT count() FROM (SELECT g FROM c INTERSECT SELECT g FROM o)) AS overlap"
-    )
-    body = {"query": {"kind": "HogQLQuery", "query": sql, "values": {"cn": canon, "oh": orphan_host}}}
-    r = subprocess.run(
-        ["curl", "-s", "-X", "POST", f"https://us.i.posthog.com/api/projects/{project_id}/query/",
-         "-H", "Content-Type: application/json",
-         "-H", f"Authorization: Bearer {api_key}",
-         "--data", json.dumps(body)],
-        capture_output=True, text=True, check=False,
-    )
-    try:
-        resp = json.loads(r.stdout)
-        row = (resp.get('results') or [[0, 0, 0]])[0]
-        by_canonical[canon] = {
-            'orphan_host': orphan_host,
-            'canonical_gclids': row[0],
-            'orphan_gclids': row[1],
-            'overlap': row[2],
-        }
-    except Exception as e:
-        print(f"WARN: overlap query failed for {canon}/{orphan_host}: {e}", file=sys.stderr)
+cfg = {}
+if yaml is not None and os.path.exists('experiment/iterate-cross-config.yaml'):
+    cfg = yaml.safe_load(open('experiment/iterate-cross-config.yaml')) or {}
+pq = cfg.get('posthog_query') or {}
 
-json.dump({'by_canonical': by_canonical}, open('.runs/_iterate-cross-overlap.json', 'w'), indent=2)
-print(f"overlap-query: queried {len(pairs)} pairs, {len(by_canonical)} succeeded")
-PY
+by_canonical = compute_orphan_overlap(
+    pairs,
+    project_id,
+    api_key,
+    window_days,
+    cache_path='.runs/_iterate-cross-overlap.json',
+    max_time_seconds=int(pq.get('max_time_seconds', 120)),
+    cooldown_seconds=int(pq.get('overlap_cooldown_seconds', 300)),
+    failure_sleep_seconds=int(pq.get('overlap_failure_sleep_seconds', 20)),
+    max_passes=int(pq.get('overlap_max_passes', 3)),
+)
+failed = [(c, o) for c, o in pairs if (by_canonical.get(c) or {}).get('orphan_host') != o]
+print(f"overlap-query: {len(by_canonical)}/{len(pairs)} pairs resolved, {len(failed)} failed")
+if failed:
+    print("WARN: unresolved pairs (re-run state-x0 to resume from cache): "
+          + ", ".join(f"{c}/{o}" for c, o in failed), file=sys.stderr)
+OVERLAP_PY
 
 # Step 3: merge orphans whose overlap >= threshold into canonical rows.
 python3 .claude/scripts/lib/iterate_cross_classify.py merge-orphan-overlap \
@@ -360,7 +422,7 @@ The base fields (`skill`, `branch`, `timestamp`, `run_id`) are already set by li
 **VERIFY:** see `state-registry.json` entry for `iterate-cross.x0`.
 
 ```bash
-python3 -c "import json; d=json.load(open('.runs/iterate-cross-context.json')); ms=d.get('mvps',[]); assert isinstance(ms, list) and len(ms)>0, 'mvps empty'; bad=[m.get('name','?') for m in ms if not m.get('name') or 'gclid_visitors' not in m]; assert not bad, 'MVPs missing required fields: %s' % bad; assert d.get('_canonical_pagination_status',{}).get('status') == 'complete', 'canonical pagination incomplete'; assert d.get('_orphan_pagination_status',{}).get('status') == 'complete', 'orphan pagination incomplete'"
+python3 -c "import json; d=json.load(open('.runs/iterate-cross-context.json')); ms=d.get('mvps',[]); assert isinstance(ms, list) and len(ms)>0, 'mvps empty'; bad=[m.get('name','?') for m in ms if not m.get('name') or 'gclid_visitors' not in m]; assert not bad, 'MVPs missing required fields: %s' % bad; assert d.get('_canonical_pagination_status',{}).get('status') == 'complete', 'canonical pagination incomplete'; assert d.get('_orphan_pagination_status',{}).get('status') == 'complete', 'orphan pagination incomplete'; import os; assert os.path.isfile('.runs/iterate-cross-auth-preflight.json'), 'auth preflight artifact missing (state-x0 Step 0 did not run)'; ap=json.load(open('.runs/iterate-cross-auth-preflight.json')); assert ap.get('mode')=='cross' and ap.get('all_required_ok') is True, 'auth preflight failed: mode=%s missing=%s' % (ap.get('mode'), ap.get('missing'))"
 ```
 <!-- VERIFY=true: real assertion lives in state-registry.json; this line is the per-Rule-13 placeholder -->
 

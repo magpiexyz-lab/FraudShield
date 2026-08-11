@@ -91,6 +91,7 @@ import json, os, sys, yaml
 sys.path.insert(0, '.claude/scripts/lib')
 from gclid_filter import PAID_GCLID_FILTER  # single source of truth; see gclid_filter.py
 from iterate_cross_posthog_batch import run_union_batches
+from iterate_cross_relaunch import posthog_lower_bound_expr, relaunch_at_for
 
 config = yaml.safe_load(open('experiment/iterate-cross-config.yaml')) or {}
 mappings = config.get('mvp_mappings') or {}
@@ -133,21 +134,28 @@ for i, mvp in enumerate(data['mvps']):
     # AND coalesces $session_entry_gclid with properties.gclid for legacy
     # deploys where SDK init lost the race to URL cleanup.
     # Same filter applied in state-x0/state-x1/state-c2 — keep in sync.
+    #
+    # Per-MVP Phase-1 relaunch: when this MVP has phase1_relaunch_at set, the
+    # lower time bound rises to max(window, relaunch) so the failed first
+    # flight's signups are excluded from the re-test count (iterate_cross_relaunch).
+    lower = posthog_lower_bound_expr(window_days, relaunch_at_for(mvp['name'], mappings))
     parts.append(
         f"SELECT {{{pj}}} AS mvp_key, "
         f"count(DISTINCT IF({sg_expr}, distinct_id, NULL)) AS signups "
         f"FROM events "
         f"WHERE {PAID_GCLID_FILTER} "
-        f"AND timestamp >= now() - INTERVAL {window_days} DAY "
+        f"AND timestamp >= {lower} "
         f"AND properties.project_name = {{{pj}}}"
     )
 
+pq = config.get('posthog_query') or {}
 rows, metadata = run_union_batches(
     parts,
     values,
     project_id,
     api_key,
-    batch_size=20,
+    batch_size=int(pq.get('union_batch_size_signup', 10)),
+    max_time_seconds=int(pq.get('max_time_seconds', 120)),
 )
 json.dump(
     {"results": rows, "_x2_signup_batches_status": metadata},
@@ -160,16 +168,18 @@ PY
 bash .claude/scripts/lib/write-gate-artifact.sh \
   --path .runs/iterate-cross-data.json \
   --payload "$PAYLOAD" \
-  --skill iterate
+  --skill iterate-cross
 ```
 
 The production path must build the per-MVP signup-count subqueries as `parts`
 and execute them through
-`.claude/scripts/lib/iterate_cross_posthog_batch.py::run_union_batches` with a
-batch size of 20 or smaller. The concatenated result is written to
-`.runs/_iterate-cross-signups-out.json` and the returned metadata is stamped in
-`.runs/iterate-cross-data.json` as `_x2_signup_batches_status`; VERIFY requires
-`complete: true`.
+`.claude/scripts/lib/iterate_cross_posthog_batch.py::run_union_batches` with the
+batch size from `posthog_query.union_batch_size_signup` (default 10 — these
+unions are lighter than x1's catalog scan but still time out at 20 on 365-day
+windows) and `posthog_query.max_time_seconds` (default 120). The concatenated
+result is written to `.runs/_iterate-cross-signups-out.json` and the returned
+metadata is stamped in `.runs/iterate-cross-data.json` as
+`_x2_signup_batches_status`; VERIFY requires `complete: true`.
 
 ### Step 5: Finalize (update data.json + sanity check + summary)
 

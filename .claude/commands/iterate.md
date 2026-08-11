@@ -22,11 +22,13 @@ Parse `$ARGUMENTS` for mode flags:
 | _(none)_ | default |
 | `--check` | check |
 | `--cross` | cross |
+| `--cross --phase2` | cross-phase2 |
 
 ## Lifecycle
 
 1. Initialize based on detected mode:
    - If `--check`: Run `bash .claude/scripts/lifecycle-init.sh iterate '{"mode":"check"}'`
+   - If `--cross --phase2`: Run `bash .claude/scripts/lifecycle-init.sh iterate '{"mode":"cross-phase2"}'`
    - If `--cross`: Run `bash .claude/scripts/lifecycle-init.sh iterate '{"mode":"cross"}'`
    - Otherwise: Run `bash .claude/scripts/lifecycle-init.sh iterate`
 2. State execution loop:

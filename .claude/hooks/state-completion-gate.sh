@@ -293,7 +293,14 @@ fi
 # traces, merge artifacts, and non-manifest agents.
 # This is the Option B universal check — works for ALL skills, zero config.
 SPAWN_LOG="$PROJECT_DIR/.runs/agent-spawn-log.jsonl"
-_SCG_MANIFEST=$(resolve_framework_manifest "$SKILL")
+# $SKILL from the advance-state.sh arg can be mode-qualified (iterate-cross);
+# the framework manifest is base-named — resolve through the base skill or
+# this provenance check fail-opens for mode-qualified runs (#1990 closure
+# flag). NOTE: resolve_context_path "$SKILL" earlier in this file and the
+# '$SKILL' + '-context.json' path inside the python below are CORRECT with
+# the qualified name (context files ARE mode-qualified) — do not "fix" them.
+read -r _SCG_BASE_SKILL _SCG_SKILL_MODE <<< "$(resolve_skill_dir "$SKILL")"
+_SCG_MANIFEST=$(resolve_framework_manifest "$_SCG_BASE_SKILL")
 if [[ -f "$SPAWN_LOG" && -f "$_SCG_MANIFEST" ]]; then
   PROVENANCE_RESULT=$(python3 -c "
 import json, glob, os, sys
@@ -350,7 +357,12 @@ for tf in sorted(glob.glob(os.path.join(traces_dir, '*.json'))):
     # write-recovery-trace.sh preconditions), so they SHOULD pass the
     # universal provenance check below. Semantic validity of a recovery
     # trace is owned by verify-report-gate.sh / validate-recovery.sh.
-    # See also the lead-merge exemption in the "base == bn" block below.
+    # See also the lead-merge exemption in the base-equals-bn block below.
+    # (Plain words only in this comment: an inner double quote inside this
+    # double-quoted python3 -c string word-splits the code into multiple
+    # argv entries, truncating the program at that point — the SyntaxError
+    # was then swallowed by 2>/dev/null and the whole provenance check
+    # silently never ran.)
     # Skip traces from prior runs (stale run_id)
     trace_run_id = td.get('run_id', '')
     if current_run_id and trace_run_id and trace_run_id != current_run_id: continue

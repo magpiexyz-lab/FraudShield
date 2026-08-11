@@ -121,27 +121,37 @@ describe("API integration", () => {
 ```json
 {
   "test": "vitest run",
+  "test:unit": "vitest run",
   "test:watch": "vitest",
   "test:coverage": "vitest run --coverage"
 }
 ```
+`test:unit` is the template-wide unit-test script name: CI's unit-test gate
+falls back to it when no `vitest.config.*` is present (custom runners,
+relocated configs). Keep it defined even though the config-first CI branch
+normally handles vitest repos.
 
 ## CI Integration
 
-Vitest runs in the existing `build` CI job after lint, or in a dedicated test job. Since vitest tests are fast (no browser, no Docker), they fit in the build job:
+The template's `ci.yml` build job already runs unit tests — no manual step
+needed. The shipped gate:
 
 ```yaml
-  # Add after the Lint step in the build job:
-  - name: Test
+  - name: Unit tests
     run: |
-      if [ -f package.json ] && node -e "process.exit(require('./package.json').scripts?.test ? 0 : 1)" 2>/dev/null; then
-        npm test
+      if ls vitest.config.* >/dev/null 2>&1; then
+        npx vitest run
+      elif [ -f package.json ] && node -e "process.exit(require('./package.json').scripts?.['test:unit'] ? 0 : 1)" 2>/dev/null; then
+        npm run test:unit
       else
-        echo "No test script found — skipping"
+        echo "::warning::No unit-test runner detected (no vitest.config.*, no test:unit script) — unit tests were NOT run."
       fi
 ```
 
-No additional CI env vars or services needed — vitest runs entirely in-process.
+A vitest repo takes the first branch. The `test:unit` fallback exists for
+non-vitest runners; the else branch is a loud CI annotation, never a silent
+green skip. No additional CI env vars or services needed — vitest runs
+entirely in-process.
 
 ## Bootstrap Smoke Tests
 

@@ -168,7 +168,7 @@ The root `route.ts` is created only when surface is `co-located` (the default fo
 
 Google Ads sends users with `?gclid=EAI...` in the URL. Next.js client-side router may call `replaceState()` during hydration to strip query params (depending on page-level code). PostHog SDK loads lazily via `import("posthog-js").then()` — if the SDK loses the race against URL cleanup, `$session_entry_gclid` is empty and the click is unattributable. Observed in production: foundrygraph 0.5% gclid capture, pingback 14%, report-pilot 24% (vs healthy stylica-ai 96%, x-predict 91%).
 
-Mitigation: an inline `<Script>` in `<head>` captures `gclid` and `utm_*` synchronously into `sessionStorage` BEFORE any React/Next.js code runs. The `loaded` callback in `analytics.ts` reads from sessionStorage and registers as super-properties via `posthog.register()`. `/iterate --cross` uses `coalesce($session_entry_gclid, properties.gclid)` to attribute via whichever capture path succeeded — see `.claude/scripts/lib/gclid_filter.py`.
+Mitigation: an inline `<Script>` in `<head>` captures `gclid` and `utm_*` synchronously into `sessionStorage` BEFORE any React/Next.js code runs. The `loaded` callback in `analytics.ts` reads from sessionStorage and registers as super-properties via `posthog.register()` (it also registers `project_name`/`project_owner` as session super-properties so SDK auto-events stay attributable — see analytics/posthog.md). `/iterate --cross` uses `coalesce($session_entry_gclid, properties.gclid)` to attribute via whichever capture path succeeded — see `.claude/scripts/lib/gclid_filter.py`.
 
 Wire the Script element into `src/app/layout.tsx` (added by scaffold-wire Step 5c when `stack.analytics: posthog`). `strategy="beforeInteractive"` automatically hoists the script into the document `<head>` and guarantees execution before React hydration — placement inside the JSX tree (inside `<body>` as a sibling of `{children}`, OR inside an explicit `<head>` if the layout defines one) does not affect when it runs. The convention is to keep it as the first child of `<body>` for readability:
 
@@ -202,7 +202,7 @@ import Script from "next/script";
 
 Notes:
 - The 40-char + prefix filter at the source means PostHog never receives operator test gclids — `properties.gclid` is always clean.
-- The `loaded` callback in `analytics.ts` reads `__ph_gclid` / `__ph_utm_*` from sessionStorage and stamps every event automatically; no per-event code change needed.
+- The `loaded` callback in `analytics.ts` reads `__ph_gclid` / `__ph_utm_*` from sessionStorage and stamps every event automatically (alongside the `project_name`/`project_owner` session super-properties); no per-event code change needed.
 - This script is wired into layout.tsx by `.claude/procedures/wire.md` Step 5c — only when `stack.analytics: posthog` is configured.
 - Storage key prefix `__ph_` (double underscore) namespaces these private keys from any application-level sessionStorage usage and signals "do not touch — internal analytics" to readers.
 

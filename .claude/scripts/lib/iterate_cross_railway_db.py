@@ -39,7 +39,15 @@ Schema written into each mvp record (additive — preserves Supabase fields)
   railway_service_name    str | None  (which Postgres service won)
   railway_service_id      str | None
   db_signups              int | None  (set ONLY if previously None; never overwrites)
-  db_signups_table        str | None  (prefixed with `railway:` when Railway-sourced)
+  db_signups_paid         int | None  (union real emails with a valid POPULATED
+                                       gclid; 0 = column exists, none validate;
+                                       None = no gclid column on any table)
+  db_attribution          str | None  ("gclid_shape" iff db_signups_paid > 0,
+                                       else "window"; None = unmapped)
+  db_signups_table        str | None  (top real contributor, prefixed with
+                                       `railway:` when Railway-sourced)
+  db_union_tables         list[str]   (tables contributing >=1 real email to
+                                       the cross-table union; [] otherwise)
   db_first_signup_at      str | None
   db_unmapped_reason      str | None  (refined: 'no_match' becomes 'no_match_neither'
                                        when Railway also lacks a match)
@@ -77,8 +85,12 @@ from iterate_cross_db import (  # noqa: E402
     allow_railway_fallback,
     fuzzy_match_projects,
     normalize_name,
+    _detected_gclid_column,
+    _priority_value,
+    _rank_signup_tables_for_probe,
+    _union_ground_truth,
 )
-from iterate_cross_email_filter import filter_signups  # noqa: E402
+from iterate_cross_email_filter import filter_signups, internal_domains_for_mvp  # noqa: E402
 
 try:
     import yaml
@@ -280,11 +292,13 @@ def discover_signup_tables_pg(db_url: str) -> list[dict]:
                 break
         if priority is None:
             continue
+        gclid_column = _detected_gclid_column(columns)
         candidates.append({
             "table": table_name,
             "columns": columns,
             "timestamp_column": ts_col,
             "priority": priority,
+            "gclid_column": gclid_column,
         })
 
     candidates.sort(key=lambda c: c["priority"])
@@ -321,17 +335,22 @@ def count_signups_in_window_pg(
 
 
 def select_signups_in_window_pg(
-    db_url: str, table: str, timestamp_column: str | None, window_days: int,
+    db_url: str,
+    table: str,
+    timestamp_column: str | None,
+    window_days: int,
+    gclid_column: str | None = None,
 ) -> dict:
+    gclid_select = f', "{gclid_column}"' if gclid_column else ""
     if timestamp_column:
         sql = (
-            f'SELECT email, "{timestamp_column}"::text AS signup_at '
+            f'SELECT email, "{timestamp_column}"::text AS signup_at{gclid_select} '
             f'FROM public."{table}" '
             f"WHERE \"{timestamp_column}\" >= now() - INTERVAL '{window_days} days'"
         )
         window_filtered = True
     else:
-        sql = f'SELECT email, NULL::text AS signup_at FROM public."{table}"'
+        sql = f'SELECT email, NULL::text AS signup_at{gclid_select} FROM public."{table}"'
         window_filtered = False
     r = _psql_query(db_url, sql)
     if r["error"]:
@@ -340,28 +359,56 @@ def select_signups_in_window_pg(
     for row in r["rows"]:
         if len(row) >= 1 and str(row[0]).isdigit():
             first_at = row[1] if len(row) >= 2 and row[1] else None
+            # legacy_count marks synthetic placeholder rows (mirrors the
+            # Supabase twins) so the union path can keep them count-only —
+            # their identical emails would otherwise collide across tables.
             return {
                 "rows": [
                     {"email": f"legacy-{i}@legacy-count.invalid-real", "signup_at": first_at}
                     for i in range(int(row[0]))
                 ],
                 "window_filtered": window_filtered,
+                "legacy_count": int(row[0]),
+                "legacy_first_at": first_at,
             }
         if len(row) >= 2:
-            rows.append({"email": row[0], "signup_at": row[1] or None})
+            parsed = {"email": row[0], "signup_at": row[1] or None}
+            if gclid_column:
+                parsed["gclid"] = row[2] if len(row) >= 3 and row[2] else None
+            rows.append(parsed)
         elif len(row) == 1:
             rows.append({"email": row[0], "signup_at": None})
     return {"rows": rows, "window_filtered": window_filtered}
 
 
-def _filtered_pg_result(table_name: str, rows: list[dict], config: dict, windowed: bool) -> dict:
-    filtered = filter_signups(rows, config)
+def _filtered_pg_result(
+    table_name: str,
+    rows: list[dict],
+    config: dict,
+    windowed: bool,
+    priority: int | None = None,
+    gclid_column: str | None = None,
+    internal_domains=(),
+) -> dict:
+    filtered = filter_signups(rows, config, internal_domains=internal_domains)
+    paid = None
+    attribution = "window"
+    if windowed and gclid_column:
+        paid = filtered["paid"] if filtered.get("paid") is not None else 0
+        # Evidence-based attribution (mirrors _filtered_table_result): the
+        # gclid_shape label requires a populated valid gclid, not just the column.
+        if paid > 0:
+            attribution = "gclid_shape"
     return {
         "table": table_name,
+        "priority": _priority_value({"priority": priority}),
+        "gclid_column": gclid_column,
         "db_signups_raw": filtered["raw"],
         "db_signups_real": filtered["real"],
         "db_signups_team": filtered["team"],
         "db_signups_test": filtered["test"],
+        "db_signups_paid": paid,
+        "db_attribution": attribution,
         "db_signups_filter_audit": filtered["audit"],
         "db_signups_real_windowed": windowed,
         "db_first_signup_at": filtered["first_real_signup_at"],
@@ -373,6 +420,7 @@ def query_mvp_ground_truth_railway(
     window_days: int,
     operator_override_table: str | None = None,
     config: dict | None = None,
+    internal_domains=(),
 ) -> dict:
     """Full ground-truth probe for one MVP via Railway Postgres.
 
@@ -383,8 +431,11 @@ def query_mvp_ground_truth_railway(
     Returns:
       {db_signups, db_signups_table, db_first_signup_at, db_breakdown, errors}
 
-    Same "biggest table wins" rule as Supabase. db_signups_table is prefixed
-    with `railway:` so x3 / x4 can tell which source produced the number.
+    Same union-dedupe winner rule as Supabase: windowed email tables merge
+    into one gmail-normalized deduped candidate (db_attribution="gclid_shape"
+    only when db_signups_paid > 0), which competes with legacy/count-only
+    candidates on (real, raw, -priority). db_signups_table is prefixed with
+    `railway:` so x3 / x4 can tell which source produced the number.
     """
     config = config or {}
     errors: list[str] = []
@@ -406,6 +457,8 @@ def query_mvp_ground_truth_railway(
                 "db_signups": None,
                 "db_signups_raw": None,
                 "db_signups_real": None,
+                "db_signups_paid": None,
+                "db_attribution": None,
                 "db_signups_team": 0,
                 "db_signups_test": 0,
                 "db_signups_filter_audit": [],
@@ -426,6 +479,7 @@ def query_mvp_ground_truth_railway(
         if not table_meta or "email" not in (table_meta.get("columns") or []):
             return {
                 "db_signups": None, "db_signups_raw": None, "db_signups_real": None,
+                "db_signups_paid": None, "db_attribution": None,
                 "db_signups_team": 0, "db_signups_test": 0,
                 "db_signups_filter_audit": [], "db_signups_real_windowed": None,
                 "db_signups_table": f"railway:public.{table_only}",
@@ -434,13 +488,16 @@ def query_mvp_ground_truth_railway(
                 "errors": ["no email column"],
             }
         ts_col = table_meta["timestamp_column"]
-        result = select_signups_in_window_pg(db_url, table_only, ts_col, window_days)
+        gclid_column = table_meta.get("gclid_column")
+        result = select_signups_in_window_pg(db_url, table_only, ts_col, window_days, gclid_column)
         if result.get("error"):
             errors.append(f"public.{table_only}: {result['error']}")
             return {
                 "db_signups": None,
                 "db_signups_raw": None,
                 "db_signups_real": None,
+                "db_signups_paid": None,
+                "db_attribution": None,
                 "db_signups_team": 0,
                 "db_signups_test": 0,
                 "db_signups_filter_audit": [],
@@ -451,7 +508,15 @@ def query_mvp_ground_truth_railway(
                 "db_unmapped_reason": "query_error",
                 "errors": errors,
             }
-        row = _filtered_pg_result(f"public.{table_only}", result["rows"], config, bool(result["window_filtered"]))
+        row = _filtered_pg_result(
+            f"public.{table_only}",
+            result["rows"],
+            config,
+            bool(result["window_filtered"]),
+            priority=table_meta.get("priority"),
+            gclid_column=gclid_column,
+            internal_domains=internal_domains,
+        )
         breakdown = {row["table"]: row["db_signups_raw"]}
         return {
             **row,
@@ -468,6 +533,8 @@ def query_mvp_ground_truth_railway(
             "db_signups": None,
             "db_signups_raw": None,
             "db_signups_real": None,
+            "db_signups_paid": None,
+            "db_attribution": None,
             "db_signups_team": 0,
             "db_signups_test": 0,
             "db_signups_filter_audit": [],
@@ -479,22 +546,48 @@ def query_mvp_ground_truth_railway(
             "errors": ["no signup-shape tables in public schema"],
         }
 
-    for t in tables[:5]:  # cap at 5 like Supabase path
+    union_inputs: list[dict] = []
+    for t in _rank_signup_tables_for_probe(tables):
         if "email" not in (t.get("columns") or []):
             continue
-        r = select_signups_in_window_pg(db_url, t["table"], t["timestamp_column"], window_days)
+        r = select_signups_in_window_pg(
+            db_url,
+            t["table"],
+            t["timestamp_column"],
+            window_days,
+            t.get("gclid_column"),
+        )
         if r.get("error"):
             errors.append(f"public.{t['table']}: {r['error']}")
             continue
-        candidates.append(_filtered_pg_result(
-            f"public.{t['table']}", r["rows"], config, bool(r["window_filtered"])
-        ))
+        table_candidate = _filtered_pg_result(
+            f"public.{t['table']}",
+            r["rows"],
+            config,
+            bool(r["window_filtered"]),
+            priority=t.get("priority"),
+            gclid_column=t.get("gclid_column"),
+            internal_domains=internal_domains,
+        )
+        candidates.append(table_candidate)
+        # Union membership mirrors the Supabase path: windowed, real email
+        # rows only — legacy-count synthetic rows stay count-only.
+        if r.get("legacy_count") is None and r["window_filtered"]:
+            union_inputs.append({
+                "table": f"public.{t['table']}",
+                "rows": r["rows"],
+                "priority": t.get("priority"),
+                "gclid_column": t.get("gclid_column"),
+                "candidate": table_candidate,
+            })
 
     if not candidates:
         return {
             "db_signups": None,
             "db_signups_raw": None,
             "db_signups_real": None,
+            "db_signups_paid": None,
+            "db_attribution": None,
             "db_signups_team": 0,
             "db_signups_test": 0,
             "db_signups_filter_audit": [],
@@ -506,13 +599,28 @@ def query_mvp_ground_truth_railway(
             "errors": errors or ["all table queries failed"],
         }
 
-    winner = max(candidates, key=lambda r: (r["db_signups_real"], r["db_signups_raw"]))
+    # Same union-vs-residual competition as the Supabase path (see
+    # query_mvp_ground_truth): windowed email tables merge into one deduped
+    # candidate; legacy-count candidates compete on (real, raw, -priority).
+    union_cand = _union_ground_truth(union_inputs, config, internal_domains)
+    union_member_tables = {i["table"] for i in union_inputs}
+    residual = [c for c in candidates if c["table"] not in union_member_tables]
+    pool = ([union_cand] if union_cand else []) + residual
+    winner = max(
+        pool,
+        key=lambda c: (
+            c["db_signups_real"],
+            c["db_signups_raw"],
+            -_priority_value(c),
+        ),
+    )
     breakdown = {r["table"]: r["db_signups_raw"] for r in candidates}
     return {
         **winner,
         "db_signups": winner["db_signups_raw"],
         "db_signups_table": f"railway:{winner['table']}",
         "db_breakdown": breakdown,
+        "db_union_tables": winner.get("db_union_tables") or [],
         "db_unmapped_reason": None,
         "errors": errors or None,
     }
@@ -552,20 +660,33 @@ def merge_into_context(
     mappings = config.get("mvp_mappings") or {}
     window_days = ctx.get("window_days", 90)
 
+    for mvp in ctx.get("mvps", []):
+        mapping = mappings.get(mvp.get("name")) or {}
+        mvp["lifecycle_status"] = mapping.get("lifecycle_status") or mvp.get("lifecycle_status") or "active"
+        if mapping.get("lifecycle_status_at"):
+            mvp["lifecycle_status_at"] = mapping.get("lifecycle_status_at")
+
     # Only target MVPs that need a fallback. Orphans excluded (no project_name).
     candidates = [
         m for m in ctx["mvps"]
         if not m.get("orphan")
+        and m.get("lifecycle_status") != "killed"
         and m.get("db_signups") is None
         and allow_railway_fallback(m.get("db_unmapped_reason"))
     ]
     if not candidates:
+        if not dry_run:
+            with open(context_path, "w") as f:
+                json.dump(ctx, f, indent=2)
         return {"step": "no_candidates", "queried": 0, "unmapped": 0, "errors": 0}
 
     # Enumerate Railway projects with Postgres.
     all_projects = list_railway_projects()
     pg_projects = projects_with_postgres(all_projects)
     if not pg_projects:
+        if not dry_run:
+            with open(context_path, "w") as f:
+                json.dump(ctx, f, indent=2)
         return {"step": "no_postgres_projects", "queried": 0, "unmapped": len(candidates), "errors": 0}
 
     # Fuzzy-match candidate MVPs against Postgres-bearing projects.
@@ -636,9 +757,15 @@ def merge_into_context(
         mapping = mappings.get(cand["name"]) or {}
         project_id = mapping.get("railway_project_id")
         if not project_id:
-            # No Railway match either → upgrade the reason from no_match
-            # to no_match_neither so x4 / future runs can tell.
-            mvp["db_unmapped_reason"] = "no_match_neither"
+            # No Railway match either. Preserve definitive/policy signals
+            # (project_deleted = observed deletion; archived_killed = killed
+            # policy skip) — only the weaker "no_match" becomes
+            # "no_match_neither". Overwriting them here blinds the
+            # money-leak / archived / kill-proposal logic that keys on them.
+            # (archived_killed rows are already excluded from candidates by
+            # the lifecycle filter above; listed here as divergence-safety.)
+            if mvp.get("db_unmapped_reason") not in ("project_deleted", "archived_killed"):
+                mvp["db_unmapped_reason"] = "no_match_neither"
             refined_unmapped += 1
             continue
 
@@ -662,16 +789,27 @@ def merge_into_context(
             if not url_r["url"]:
                 mvp["db_unmapped_reason"] = "railway_service_missing"
                 mvp["db_signups_real"] = None
+                mvp["db_signups_paid"] = None
+                mvp["db_attribution"] = None
                 mvp["db_errors"] = (mvp.get("db_errors") or []) + [f"railway: {url_r['error']}"]
                 errors_total += 1
                 continue
 
         override = mapping.get("db_signup_table")
-        gt = query_mvp_ground_truth_railway(url_r["url"], window_days, override, config)
+        internal_domains = internal_domains_for_mvp(config, cand["name"])
+        gt = query_mvp_ground_truth_railway(
+            url_r["url"],
+            window_days,
+            override,
+            config,
+            internal_domains=internal_domains,
+        )
         if gt["db_signups"] is None:
             mvp["db_errors"] = (mvp.get("db_errors") or []) + (gt.get("errors") or [])
             mvp["db_unmapped_reason"] = gt.get("db_unmapped_reason") or "query_error"
             mvp["db_signups_real"] = None
+            mvp["db_signups_paid"] = None
+            mvp["db_attribution"] = None
             errors_total += 1
             continue
 
@@ -680,6 +818,8 @@ def merge_into_context(
         mvp["db_signups"] = gt["db_signups"]
         mvp["db_signups_raw"] = gt.get("db_signups_raw")
         mvp["db_signups_real"] = gt.get("db_signups_real")
+        mvp["db_signups_paid"] = gt.get("db_signups_paid")
+        mvp["db_attribution"] = gt.get("db_attribution")
         mvp["db_signups_team"] = gt.get("db_signups_team", 0)
         mvp["db_signups_test"] = gt.get("db_signups_test", 0)
         mvp["db_signups_filter_audit"] = gt.get("db_signups_filter_audit", [])
@@ -687,6 +827,7 @@ def merge_into_context(
         mvp["db_signups_table"] = gt["db_signups_table"]
         mvp["db_first_signup_at"] = gt["db_first_signup_at"]
         mvp["db_breakdown"] = gt["db_breakdown"]
+        mvp["db_union_tables"] = gt.get("db_union_tables", [])
         mvp["db_unmapped_reason"] = None
         mvp["db_source"] = "railway"
         mvp["railway_project_id"] = project_id

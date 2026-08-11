@@ -57,7 +57,7 @@ Meta auto-appends `fbclid` to the landing URL when a user clicks an ad. Capture 
 
 1. Install the Meta Pixel on the landing page
 2. Configure the Conversions API (CAPI) for server-side event deduplication
-3. Map the `activate` event → Meta standard event (`Lead` or custom conversion)
+3. Map the `signup_complete` event → Meta standard event (`Lead` or custom conversion)
 4. Verify with Meta Events Manager → Test Events tool
 
 Import method: Meta Pixel (client-side) + Conversions API (server-side, recommended for reliability).
@@ -130,8 +130,8 @@ budget:
   bidding_strategy: lowest_cost
 
 conversions:
-  primary_action: activate
-  secondary_actions: [signup_complete]
+  primary_action: signup_complete
+  secondary_actions: [activate]
   import_method: meta_pixel_and_capi
 
 guardrails:
@@ -161,7 +161,7 @@ thresholds:
 3. **Add payment method** — credit card or PayPal
 4. **Install Meta Pixel** on the landing page
 5. **Configure Conversions API** — see analytics stack file for server-side integration
-6. **Create custom conversion** — Events Manager → Custom Conversions → map `activate` event
+6. **Create custom conversion** — Events Manager → Custom Conversions → map `signup_complete` event
 7. **Verify** — use Meta Events Manager → Test Events to confirm pixel fires
 
 ### Dashboard Filter

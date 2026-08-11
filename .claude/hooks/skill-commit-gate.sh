@@ -36,7 +36,15 @@ if [[ -z "$ACTIVE_SKILL" ]]; then
 fi
 
 # ── Load manifest ──
-MANIFEST=$(resolve_framework_manifest "$ACTIVE_SKILL")
+# ACTIVE_SKILL is the context.json `skill` field, which is MODE-QUALIFIED for
+# mode-qualified runs (iterate-cross), while the framework manifest file is
+# named after the BASE skill only (iterate). Resolving with the qualified name
+# pointed at a nonexistent path and fail-opened the whole hook for those runs
+# (flagged in #1990's closure; same fix pattern as lifecycle-finalize.sh's
+# resolution preamble). Registry keys and ctx paths still want the QUALIFIED
+# name — only the manifest resolution uses the base skill.
+read -r BASE_SKILL _SKILL_MODE <<< "$(resolve_skill_dir "$ACTIVE_SKILL")"
+MANIFEST=$(resolve_framework_manifest "$BASE_SKILL")
 
 if [[ ! -f "$MANIFEST" ]]; then
   # No manifest = no active skill lifecycle — allow
@@ -71,7 +79,9 @@ check_block_verdicts
 check_skill_completion "$ACTIVE_SKILL" "$CTX"
 
 # ── Convention gate: .claude/skills/<skill>/gates/commit.sh ──
-GATE_SCRIPT="$PROJECT_DIR/.claude/skills/$ACTIVE_SKILL/gates/commit.sh"
+# Skill DIRECTORIES are base-named (.claude/skills/iterate/, no iterate-cross/),
+# so the gate path uses BASE_SKILL; the exported SKILL env stays qualified.
+GATE_SCRIPT="$PROJECT_DIR/.claude/skills/$BASE_SKILL/gates/commit.sh"
 
 if [[ -f "$GATE_SCRIPT" ]]; then
   export PAYLOAD SKILL="$ACTIVE_SKILL" PROJECT_DIR BRANCH COMMAND

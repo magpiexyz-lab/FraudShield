@@ -75,15 +75,19 @@ fi
 # c. Generate template file list
 cat .claude/template-owned-dirs.txt | grep -v '^#' | grep -v '^$' | xargs -I{} find {} -type f 2>/dev/null | sort
 
-# d. Aggregate hook-friction.jsonl is now produced unconditionally by
-#    lifecycle-finalize.sh Step 2.6 (#1226). The summary is the 4th evidence
-#    channel for the Step 5a Q2 retrospective. Verify the artifact is present
-#    when this jsonl has rows for the current run_id — its absence is a hard
+# d. Refresh hook-friction-summary.json (#1895 tail fix). lifecycle-finalize.sh
+#    Step 2.6 remains the canonical FIRST aggregation, but friction keeps
+#    accruing after finalize returns (epilogue steps, evidence-envelope
+#    writes). Re-running here — idempotent, full rebuild, strictly scoped to
+#    the active run_id — makes the summary the observer reads at Step 4 cover
+#    everything up to just before the envelope is written. The observer's own
+#    spawn still lands after this instant; check-observation-artifacts.sh
+#    reports those as rows_after_cutoff (vs the summary's aggregated_at)
+#    instead of letting the truncation pass silently. The summary is the 4th
+#    evidence channel for the Step 5a Q2 retrospective; its absence is a hard
 #    failure surfaced by check-observation-artifacts.sh and compliance-audit's
 #    check_q2_evidence_complete.
-if [[ -s .runs/hook-friction.jsonl ]] && [[ ! -f .runs/hook-friction-summary.json ]]; then
-  echo "WARN: observation-phase Step 2d — hook-friction-summary.json missing despite non-empty hook-friction.jsonl (lifecycle-finalize.sh Step 2.6 should have aggregated)" >&2
-fi
+python3 .claude/scripts/aggregate-hook-friction.py >/dev/null 2>&1 || true
 
 # e. (#1255) Expanded evidence sources — the observer must consult these
 #    when present. The observer agent's trace MUST list paths it consulted
@@ -142,11 +146,27 @@ Record proof that the evidence scan was performed:
 
 ```bash
 python3 -c "
-import json, os, glob, datetime
+import json, os, glob, datetime, sys
 fix_log_lines = 0
 if os.path.exists('.runs/fix-log.md'):
     with open('.runs/fix-log.md') as f:
         fix_log_lines = max(0, len([l for l in f.readlines() if l.strip()]) - 1)
+# fix_log_entries counts the WHOLE-HISTORY render (informational; the ledger
+# is append-only across runs). The run-scoped sibling below is what the
+# Step 3 fast path keys on.
+current_run_rows = -1
+try:
+    sys.path.insert(0, '.claude/scripts/lib')
+    from runs_reader import read_jsonl
+    # state-99 Step 0 exports RUN_ID; Step 2.6 later derives SOURCE_RUN_ID —
+    # accept either (informational field, best-effort).
+    rid = os.environ.get('SOURCE_RUN_ID') or os.environ.get('RUN_ID', '')
+    if rid:
+        current_run_rows = len(read_jsonl('.runs/fix-ledger.jsonl',
+                                          scope='current-run',
+                                          current_run_id=rid).rows)
+except Exception:
+    pass
 trace_fixes = 0
 for tf in glob.glob('.runs/agent-traces/*.json'):
     try:
@@ -156,11 +176,15 @@ for tf in glob.glob('.runs/agent-traces/*.json'):
     except: pass
 json.dump({
     'fix_log_entries': fix_log_lines,
+    'fix_ledger_rows_current_run': current_run_rows,
     'trace_fixes_found': trace_fixes,
     'checked_at': datetime.datetime.now(datetime.timezone.utc).isoformat()
 }, open('.runs/observe-evidence-check.json', 'w'), indent=2)
 "
 ```
+
+(`fix_ledger_rows_current_run` is `-1` when the active run_id could not be
+resolved — informational only, never a gate input.)
 
 ## Step 2.6: Write Observation Evidence Envelope (AOC v1.2 — closes #1259)
 
@@ -220,8 +244,8 @@ Under post-completion conditions, supply `--source-run-id <ID>
 
 ## Step 3: Fast-Path Evaluation
 
-If `.runs/observer-diffs.txt` is empty AND `.runs/fix-log.md` has no entries
-(or does not exist) AND no agent traces contain fixes:
+If `.runs/observer-diffs.txt` is empty AND `.runs/fix-ledger.jsonl` has no
+rows for the ACTIVE run_id AND no agent traces contain fixes:
 
 Write `.runs/observe-result.json`:
 ```json
@@ -237,6 +261,37 @@ Write `.runs/observe-result.json`:
 If scope is `process` or `audit-only`, also add `"strategy": "execution-audit"`.
 
 **DONE.** Zero overhead on the happy path.
+
+**Why the fix condition is run_id-scoped (issue #2009):** the ledger is
+append-only across runs by design (registered `fix-ledger` channel in
+`cross-run-channels.json`) and `fix-log.md` is a whole-history render that
+lifecycle-finalize.sh regenerates at every termination — so `fix-log.md` MAY
+be non-empty on a perfectly clean fast path, and testing it would disable the
+fast path forever after the first run that recorded a fix. Count ledger rows
+instead, scoped to the active run:
+
+```bash
+CURRENT_RUN_FIXES=$(python3 -c "
+import sys
+sys.path.insert(0, '.claude/scripts/lib')
+from runs_reader import read_jsonl
+rid = '$SOURCE_RUN_ID'  # from Step 2.6; empty when unresolvable
+if rid:
+    r = read_jsonl('.runs/fix-ledger.jsonl', scope='current-run', current_run_id=rid)
+else:
+    # Degraded identity: require an entirely empty ledger (the pre-#2009
+    # behavior) — the fast path is a privilege, never fail-open.
+    r = read_jsonl('.runs/fix-ledger.jsonl', scope='cross-run-by-design',
+                   cross_run_channel='fix-ledger')
+print(len(r.rows))
+")
+```
+
+Rows with an empty/missing `run_id` are historical (HC2 — skipped by the
+current-run scope). This condition MUST stay semantically identical to the
+`FAST_PATH` derivation in `check-observation-artifacts.sh` (state-99 Step 2a
+re-derives it independently; divergence means Step 3 fires the fast path
+while the checker demands the Step 5a/5b artifacts and flips `pass=false`).
 
 ## Step 4: Code Observation
 

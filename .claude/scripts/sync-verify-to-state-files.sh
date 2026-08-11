@@ -29,6 +29,7 @@ SKIP_KEYS = {"trace_schemas"}
 SKILL_DIR_MAP = {
     "iterate-check": "iterate",
     "iterate-cross": "iterate",
+    "iterate-cross-phase2": "iterate",
 }
 
 updated = 0

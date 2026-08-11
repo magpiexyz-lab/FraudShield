@@ -87,9 +87,9 @@ Add `feedback_submitted` to experiment/EVENTS.yaml `events` map:
 
 ### 3e: Ad-readiness verification
 
-Post-implementation checks. Read `phase` from `.runs/distribute-context.json` and `channel` from `.runs/distribute-preconditions.json`.
+Post-implementation checks. Read `channel` from `.runs/distribute-preconditions.json`.
 
-**Phase 1 + google-ads: BLOCKING. Phase 2 + google-ads: WARNING (non-blocking). Other channels: skip.**
+**google-ads: BLOCKING. Other channels: skip.**
 
 Checks:
 
@@ -176,7 +176,7 @@ This checkpoint is mandatory. Do not skip it.
 - `feedback_submitted` event added to experiment/EVENTS.yaml
 - Feedback widget implemented per archetype (web-app: React component, service/cli: inline HTML)
 - project_name fixed if mismatch was recorded in preconditions
-- Ad-readiness checks passed (Phase 1 + google-ads: blocking; Phase 2 + google-ads: warnings noted)
+- Ad-readiness checks passed (google-ads: blocking; other channels: skipped)
 - `.runs/distribute-impl-step-check.json` exists with at least 1 completed step
 
 **VERIFY:**
