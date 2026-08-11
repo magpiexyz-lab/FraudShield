@@ -305,8 +305,12 @@ export async function POST(request: Request) {
 
     if (error || !data) {
       console.error("[scan] insert error:", error);
+      const detail =
+        process.env.NODE_ENV === "production"
+          ? undefined
+          : error?.message || "No row returned from the scan insert";
       return NextResponse.json(
-        { error: "Failed to record scan" },
+        { error: "Failed to record scan", ...(detail ? { detail } : {}) },
         { status: 500 },
       );
     }
