@@ -441,8 +441,13 @@ function ResultView({
                 quota for your team.
               </p>
             </div>
+            {/* Points at the Upgrade CTA further down THIS page, not /pricing.
+                Linking out sent the user to a card that told them to scan a
+                document — the one thing a quota-exhausted user cannot do — and
+                then back here again. The offer they can actually act on is a
+                few hundred pixels below. */}
             <Link
-              href="/pricing"
+              href="#upgrade-pro"
               className={`${buttonVariants()} h-11 shrink-0 rounded-pill bg-signal px-6 text-signal-foreground hover:bg-signal/90`}
             >
               Upgrade to keep scanning

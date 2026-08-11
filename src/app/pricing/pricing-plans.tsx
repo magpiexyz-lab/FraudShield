@@ -325,6 +325,14 @@ function PlanCard({
  * split the measurement across two paths and re-ask for an email the user has
  * already given us, which the Phase 2 brief forbids. So this points at the
  * in-product CTA rather than competing with it.
+ *
+ * It MUST point at /scan-result, not /dashboard. The users who reach this card
+ * are overwhelmingly people who just hit the free-scan wall — every quota-exhausted
+ * prompt in the app routes here. Sending them to the dashboard told them to scan a
+ * document, which is precisely what they are blocked from doing: a dead end for the
+ * highest-intent cohort in the experiment (30% of Phase 1 signups burned their full
+ * quota in one sitting). /scan-result renders their last result, where hasActivated
+ * is already true and the counted Upgrade CTA is waiting.
  */
 function ProUpgradePointer() {
   return (
@@ -333,17 +341,17 @@ function ProUpgradePointer() {
         Pro is opening up soon
       </p>
       <p className="mt-2 text-sm text-muted-foreground">
-        Scan a document, then use the upgrade option on your results page to join
-        the early-access list.
+        Open your latest scan result and use the upgrade option there to join the
+        early-access list.
       </p>
       <Link
-        href="/dashboard"
+        href="/scan-result"
         className={cn(
           buttonVariants({ variant: "outline" }),
           "mt-4 h-11 rounded-full px-6",
         )}
       >
-        Scan a document
+        See my latest result
       </Link>
     </div>
   );

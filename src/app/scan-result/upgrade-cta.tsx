@@ -87,7 +87,7 @@ export function UpgradeCta({
   }
 
   return (
-    <div className="mt-8 rounded-lg border border-border bg-card p-6">
+    <div id="upgrade-pro" className="mt-8 scroll-mt-8 rounded-lg border border-border bg-card p-6">
       <div aria-live="polite">
         {status === "done" ? (
           <div>
