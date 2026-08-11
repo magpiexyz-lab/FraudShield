@@ -284,3 +284,39 @@ describe("b-10: POST /api/pay-intent (fake-door pay intent)", () => {
     expect("price_cents" in parsed).toBe(false);
   });
 });
+
+// The activation gate on POST /api/pay-intent.
+//
+// Phase 2 counts intent from people who USED the product. The CTA is
+// render-guarded on both /scan-result and /pricing, but a client guard is
+// cosmetic — this route is what actually enforces it, which matters now that
+// two surfaces can fire the event.
+//
+// DEMO_MODE's demo user has no scans rows, so it stands in for a signed-up but
+// never-activated user. That also means the b-10 tests above exercise this 403
+// path rather than a real insert; they assert status < 500 for that reason.
+describe("b-10: pay-intent activation gate", () => {
+  it("rejects a signed-in user who has never received a fraud score", async () => {
+    const { POST } = await import("@/app/api/pay-intent/route");
+    const request = new Request("http://localhost/api/pay-intent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ plan: "pro", utm_campaign: "fraudshield-search-phase2-v1" }),
+    });
+    const response = await POST(request);
+    expect(response.status).toBe(403);
+  });
+
+  it("still answers 400 for a malformed body, not 403", async () => {
+    // Validation runs before the activation lookup on purpose, so the input
+    // contract stays observable regardless of activation state.
+    const { POST } = await import("@/app/api/pay-intent/route");
+    const request = new Request("http://localhost/api/pay-intent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ plan: "not-a-real-plan" }),
+    });
+    const response = await POST(request);
+    expect(response.status).toBe(400);
+  });
+});

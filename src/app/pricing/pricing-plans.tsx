@@ -8,18 +8,28 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { trackCheckoutStart } from "@/lib/events";
+import { trackCheckoutStart, trackPayIntent } from "@/lib/events";
+import { getDistinctId } from "@/lib/analytics";
+import { readAttribution } from "@/lib/attribution";
+import { createClient } from "@/lib/supabase";
+import { PLAN_PRICES } from "@/lib/types";
 import { PLANS, PAID_PLAN_ID, type PlanTier } from "./plans";
 
-// Bug #2: when /api/checkout returns { code: "not_configured" } (Stripe envs
-// are placeholders / not yet wired up), we swap the Pro CTA from "Choose Pro"
-// to an inline waitlist form so we still capture the demand signal instead of
-// burning the click on a red transient-error toast.
+// While the Google Ads Phase 2 value screen runs, "Choose Pro" IS the pay-intent
+// signal — it is the most explicit thing a user can do short of paying, and it
+// happens at the moment they decide. Routing them elsewhere to click a second
+// button lost people exactly there.
+//
+// The activation gate still holds: pay_intent only fires for a user who has
+// received a fraud score, and /api/pay-intent enforces that server-side too. A
+// user who has not scanned anything sees "try it first" instead, which is
+// actionable for them — they still have free scans.
 type CheckoutState =
   | "idle"
   | "redirecting"
   | "error"
-  | "not_configured";
+  | "recorded"
+  | "needs_activation";
 
 /**
  * ScrollReveal — IntersectionObserver-driven wrapper used by the pricing page
@@ -91,48 +101,82 @@ export function ScrollReveal({
 export function PricingPlans() {
   const [state, setState] = useState<CheckoutState>("idle");
   const [errorMsg, setErrorMsg] = useState("");
-  const [notConfiguredMsg, setNotConfiguredMsg] = useState("");
+  // null while loading. /pricing is login-gated by the middleware, so every
+  // visitor here is authenticated — what varies is whether they have activated.
+  const [user, setUser] = useState<string | null>(null);
+  const [hasActivated, setHasActivated] = useState<boolean | null>(null);
+  const firedRef = useRef(false);
 
-  async function startCheckout() {
+  useEffect(() => {
+    let cancelled = false;
+    async function loadActivation() {
+      try {
+        const supabase = createClient();
+        const {
+          data: { user: authUser },
+        } = await supabase.auth.getUser();
+        // RLS scopes this to the current user, so the count is their own scans.
+        const { count } = await supabase
+          .from("scans")
+          .select("id", { count: "exact", head: true });
+        if (cancelled) return;
+        setUser(authUser?.id ?? null);
+        setHasActivated((count ?? 0) > 0);
+      } catch {
+        if (!cancelled) setHasActivated(false);
+      }
+    }
+    loadActivation();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function onChoosePro() {
+    // Render guard: only an authenticated, activated user can express pay intent.
+    if (!user || !hasActivated) {
+      setState("needs_activation");
+      return;
+    }
+    if (firedRef.current) return;
+    firedRef.current = true;
     setState("redirecting");
     setErrorMsg("");
-    // Fire the monetize event before leaving the app — never send a price; the
-    // /api/checkout route looks up PLAN_PRICES server-side.
+
+    // checkout_start still fires: the user did begin the upgrade flow, and this
+    // remains the monetize entry point once real payment returns in Phase 3.
     trackCheckoutStart({ plan: PAID_PLAN_ID });
+
+    // utm_campaign is passed explicitly rather than left to PostHog's
+    // super-property, which is registered from sessionStorage and does not
+    // survive a return visit.
+    const attribution = readAttribution(
+      typeof window === "undefined" ? "" : window.location.search,
+      typeof window === "undefined" ? null : window.sessionStorage,
+    );
+    trackPayIntent({
+      plan: PAID_PLAN_ID,
+      price_cents: PLAN_PRICES[PAID_PLAN_ID],
+      gclid: attribution.gclid,
+      utm_campaign: attribution.utm_campaign ?? "",
+    });
+
     try {
-      const res = await fetch("/api/checkout", {
+      await fetch("/api/pay-intent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan: PAID_PLAN_ID }),
+        body: JSON.stringify({
+          plan: PAID_PLAN_ID,
+          gclid: attribution.gclid,
+          utm_campaign: attribution.utm_campaign,
+          distinct_id: getDistinctId(),
+        }),
       });
-      // Bug #2: graceful "Pro upgrade coming soon" path — when the route
-      // detects unconfigured Stripe envs, it emits a structured 503 with
-      // code: "not_configured". Swap the CTA to an inline waitlist instead
-      // of showing a retry-prompting red error.
-      if (res.status === 503) {
-        let payload: { code?: string; message?: string } = {};
-        try {
-          payload = (await res.json()) as { code?: string; message?: string };
-        } catch {
-          // fall through to generic error below
-        }
-        if (payload.code === "not_configured") {
-          setState("not_configured");
-          setNotConfiguredMsg(
-            payload.message ??
-              "Pro upgrade is coming soon. Join the waitlist to be notified.",
-          );
-          return;
-        }
-      }
-      if (!res.ok) throw new Error(`Checkout failed (${res.status})`);
-      const data: { url?: string } = await res.json();
-      if (!data.url) throw new Error("No checkout URL returned");
-      window.location.assign(data.url);
     } catch {
-      setState("error");
-      setErrorMsg("We couldn't start checkout. Please try again.");
+      // The analytics event already fired, which is the primary signal. A failed
+      // row write must not show an error for something that cost them nothing.
     }
+    setState("recorded");
   }
 
   return (
@@ -145,10 +189,7 @@ export function PricingPlans() {
             // staggered, in-place reveal (translate + opacity, never bare fade)
             style={{ animationDelay: `${index * 90}ms` }}
             checkoutState={plan.id === PAID_PLAN_ID ? state : "idle"}
-            onUpgrade={plan.id === PAID_PLAN_ID ? startCheckout : undefined}
-            notConfiguredMsg={
-              plan.id === PAID_PLAN_ID ? notConfiguredMsg : ""
-            }
+            onUpgrade={plan.id === PAID_PLAN_ID ? onChoosePro : undefined}
           />
         ))}
       </div>
@@ -179,17 +220,16 @@ function PlanCard({
   plan,
   checkoutState,
   onUpgrade,
-  notConfiguredMsg,
   style,
 }: {
   plan: PlanTier;
   checkoutState: CheckoutState;
   onUpgrade?: () => void;
-  notConfiguredMsg?: string;
   style?: React.CSSProperties;
 }) {
   const redirecting = checkoutState === "redirecting";
-  const notConfigured = checkoutState === "not_configured";
+  const recorded = checkoutState === "recorded";
+  const needsActivation = checkoutState === "needs_activation";
 
   return (
     <div
@@ -205,18 +245,17 @@ function PlanCard({
     >
       {plan.featured && (
         <Badge className="absolute -top-3 right-7 border-transparent bg-signal px-3 py-1 font-mono text-[0.7rem] tracking-wide text-signal-foreground uppercase">
-          {notConfigured ? "Coming soon" : "Most popular"}
+          {recorded ? "You're on the list" : "Most popular"}
         </Badge>
       )}
 
       <header className="space-y-1.5">
         <h2 className="font-heading text-2xl font-semibold tracking-tight text-foreground">
-          {notConfigured ? "Pro upgrade — coming soon" : plan.name}
+          {recorded ? "You're on the Pro early-access list" : plan.name}
         </h2>
         <p className="text-sm leading-relaxed text-muted-foreground">
-          {notConfigured
-            ? (notConfiguredMsg ||
-              "Pro upgrade is coming soon. Join the waitlist to be notified.")
+          {recorded
+            ? "We'll email you when it's live. You have not been charged."
             : plan.tagline}
         </p>
       </header>
@@ -271,14 +310,16 @@ function PlanCard({
 
       <div className="mt-8">
         {onUpgrade ? (
-          notConfigured ? (
-            <ProUpgradePointer />
+          recorded ? (
+            <ProEarlyAccessConfirmation />
+          ) : needsActivation ? (
+            <TryItFirstPointer />
           ) : (
             <Button
               type="button"
               onClick={onUpgrade}
               disabled={redirecting}
-              aria-label={redirecting ? "Redirecting to secure checkout" : plan.cta}
+              aria-label={redirecting ? "Recording your interest" : plan.cta}
               className={cn(
                 "h-12 w-full rounded-full bg-signal text-base font-semibold text-signal-foreground",
                 "transition-all duration-200 hover:bg-signal/90 hover:shadow-[var(--shadow-signal-glow)]",
@@ -288,7 +329,7 @@ function PlanCard({
               {redirecting ? (
                 <>
                   <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-                  <span>Securing checkout…</span>
+                  <span>One moment…</span>
                 </>
               ) : (
                 <>
@@ -316,42 +357,50 @@ function PlanCard({
 }
 
 /**
- * Rendered in the Pro card slot when /api/checkout reports Stripe is not yet
- * configured.
- *
- * This previously collected an email via /api/waitlist. It no longer does. While
- * the Google Ads Phase 2 value screen is running, the ONLY Pro-upgrade signal is
- * the activation-gated fake door on /scan-result — a second capture here would
- * split the measurement across two paths and re-ask for an email the user has
- * already given us, which the Phase 2 brief forbids. So this points at the
- * in-product CTA rather than competing with it.
- *
- * It MUST point at /scan-result, not /dashboard. The users who reach this card
- * are overwhelmingly people who just hit the free-scan wall — every quota-exhausted
- * prompt in the app routes here. Sending them to the dashboard told them to scan a
- * document, which is precisely what they are blocked from doing: a dead end for the
- * highest-intent cohort in the experiment (30% of Phase 1 signups burned their full
- * quota in one sitting). /scan-result renders their last result, where hasActivated
- * is already true and the counted Upgrade CTA is waiting.
+ * Shown in the Pro card after a pay_intent has been recorded. This is the honest
+ * confirmation the Phase 2 brief requires: no charge, no checkout, and we do NOT
+ * ask for an email — the user is signed in, so we already have it.
  */
-function ProUpgradePointer() {
+function ProEarlyAccessConfirmation() {
   return (
     <div className="rounded-2xl border border-signal/30 bg-signal/5 p-5 text-center">
       <p className="text-sm font-medium text-foreground">
-        Pro is opening up soon
+        You&apos;re on the Pro early-access list
       </p>
       <p className="mt-2 text-sm text-muted-foreground">
-        Open your latest scan result and use the upgrade option there to join the
-        early-access list.
+        We&apos;ll email you when it&apos;s live. You have not been charged.
+      </p>
+    </div>
+  );
+}
+
+/**
+ * Shown when a signed-in user who has never received a fraud score clicks
+ * "Choose Pro".
+ *
+ * Their click is not counted, deliberately: Phase 2 measures whether people who
+ * USED the product will pay for it, and someone who has not scanned anything has
+ * no idea what they would be buying. Counting them would measure curiosity.
+ *
+ * Unlike the quota-exhausted case, this is not a dead end — they still have free
+ * scans, so "try it first" is something they can actually act on.
+ */
+function TryItFirstPointer() {
+  return (
+    <div className="rounded-2xl border border-border bg-card/60 p-5 text-center">
+      <p className="text-sm font-medium text-foreground">Try it first</p>
+      <p className="mt-2 text-sm text-muted-foreground">
+        Scan a document free and see a real fraud score. The upgrade option is
+        waiting on your results page.
       </p>
       <Link
-        href="/scan-result"
+        href="/dashboard"
         className={cn(
           buttonVariants({ variant: "outline" }),
           "mt-4 h-11 rounded-full px-6",
         )}
       >
-        See my latest result
+        Scan a document free
       </Link>
     </div>
   );
