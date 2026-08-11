@@ -55,7 +55,12 @@ if os.path.exists(reg_path):
     else:
         verify_cmd = str(entry)
     if verify_cmd and verify_cmd != 'true':
-        r = subprocess.run(verify_cmd, shell=True, capture_output=True)
+        # Windows portability: shell=True routes through cmd.exe and breaks
+        # POSIX one-liners (grep -rq, python3 -c "..."). Force bash explicitly.
+        if os.name == 'nt':
+            r = subprocess.run(['bash', '-c', verify_cmd], capture_output=True)
+        else:
+            r = subprocess.run(verify_cmd, shell=True, capture_output=True)
         if r.returncode != 0:
             sys.stderr.write('advance-state: verify failed for $SKILL.' + state + ': ' + verify_cmd + chr(10))
             if r.stderr:
