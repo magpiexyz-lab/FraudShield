@@ -24,9 +24,13 @@ import {
   encodeAttributionCookie,
   readAttribution,
   resolveRelayedAttribution,
+  resolvePayIntentAttribution,
   sanitizeGclid,
+  sanitizeGclidRelaxed,
   sanitizeUtmCampaign,
   writeAttributionCookie,
+  ACQUISITION_GCLID_KEY,
+  ACQUISITION_UTM_CAMPAIGN_KEY,
 } from "./attribution";
 
 // A realistic Google click id: 40+ chars with a real prefix. Using something
@@ -174,5 +178,104 @@ describe("attribution validation", () => {
     const documentRef = { cookie: "" };
     writeAttributionCookie({}, documentRef);
     expect(documentRef.cookie).toBe("");
+  });
+});
+
+// --- Phase 2 fake-door attribution -----------------------------------------
+//
+// The day-0 relay probe is mandatory before a Phase 2 campaign may launch, and
+// it deliberately uses a gclid that is NOT a real Google click id. These tests
+// pin the two properties that make the probe possible without weakening the
+// analytics capture path.
+
+const PROBE_GCLID = "probe-20260811";
+const PROBE_CAMPAIGN = "dayzero-probe";
+const PHASE2_CAMPAIGN = "fraudshield-search-phase2-v1";
+
+describe("sanitizeGclidRelaxed", () => {
+  it("accepts the day-0 probe gclid that the strict gate rejects", () => {
+    // This asymmetry IS the feature: without it the probe can never pass, and
+    // make distribute refuses a phase-2 config with no recorded probe date.
+    expect(sanitizeGclid(PROBE_GCLID)).toBeUndefined();
+    expect(sanitizeGclidRelaxed(PROBE_GCLID)).toBe(PROBE_GCLID);
+  });
+
+  it("still accepts a real Google click id unchanged", () => {
+    expect(sanitizeGclidRelaxed(REAL_GCLID)).toBe(REAL_GCLID);
+  });
+
+  it("still rejects invalid charset and over-length input", () => {
+    expect(sanitizeGclidRelaxed("has spaces")).toBeUndefined();
+    expect(sanitizeGclidRelaxed("semi;colon")).toBeUndefined();
+    expect(sanitizeGclidRelaxed("a".repeat(513))).toBeUndefined();
+    expect(sanitizeGclidRelaxed("")).toBeUndefined();
+    expect(sanitizeGclidRelaxed(null)).toBeUndefined();
+  });
+
+  it("leaves the strict gate untouched for the analytics capture path", () => {
+    expect(sanitizeGclid(REAL_GCLID)).toBe(REAL_GCLID);
+    expect(sanitizeGclid("short")).toBeUndefined();
+    expect(sanitizeGclid("X".repeat(64))).toBeUndefined(); // right length, wrong prefix
+  });
+});
+
+describe("resolvePayIntentAttribution", () => {
+  it("prefers the server-persisted user record over the client value", () => {
+    const result = resolvePayIntentAttribution(
+      {
+        [ACQUISITION_GCLID_KEY]: REAL_GCLID,
+        [ACQUISITION_UTM_CAMPAIGN_KEY]: PHASE2_CAMPAIGN,
+      },
+      { gclid: "CjwKspoofedspoofedspoofedspoofedspoofedspoofed", utm_campaign: "attacker-campaign" },
+    );
+    expect(result.gclid).toBe(REAL_GCLID);
+    expect(result.utm_campaign).toBe(PHASE2_CAMPAIGN);
+    expect(result.source).toBe("user_record");
+  });
+
+  it("falls back to the client value when the user record is empty", () => {
+    // The day-0 probe lands here: the strict sanitizer stopped its gclid from
+    // ever reaching user_metadata, so the client read is the only source.
+    const result = resolvePayIntentAttribution(
+      {},
+      { gclid: PROBE_GCLID, utm_campaign: PROBE_CAMPAIGN },
+    );
+    expect(result.gclid).toBe(PROBE_GCLID);
+    expect(result.utm_campaign).toBe(PROBE_CAMPAIGN);
+    expect(result.source).toBe("client");
+  });
+
+  it("reports source 'none' when neither source has anything", () => {
+    const result = resolvePayIntentAttribution({}, {});
+    expect(result.gclid).toBeUndefined();
+    expect(result.utm_campaign).toBeUndefined();
+    expect(result.source).toBe("none");
+  });
+
+  it("treats a user record holding only a campaign as authoritative", () => {
+    // A probe user DOES get acquisition_utm_campaign persisted (it passes the
+    // campaign sanitizer) while its gclid does not — so the record wins and the
+    // gclid is simply absent rather than silently taken from the client.
+    const result = resolvePayIntentAttribution(
+      { [ACQUISITION_UTM_CAMPAIGN_KEY]: PROBE_CAMPAIGN },
+      { gclid: PROBE_GCLID, utm_campaign: PROBE_CAMPAIGN },
+    );
+    expect(result.utm_campaign).toBe(PROBE_CAMPAIGN);
+    expect(result.gclid).toBeUndefined();
+    expect(result.source).toBe("user_record");
+  });
+
+  it("ignores non-string and malformed metadata without throwing", () => {
+    const result = resolvePayIntentAttribution(
+      { [ACQUISITION_GCLID_KEY]: 42, [ACQUISITION_UTM_CAMPAIGN_KEY]: { nested: true } },
+      { gclid: REAL_GCLID, utm_campaign: PHASE2_CAMPAIGN },
+    );
+    expect(result.source).toBe("client");
+    expect(result.gclid).toBe(REAL_GCLID);
+  });
+
+  it("handles null metadata and null client attribution", () => {
+    expect(resolvePayIntentAttribution(null, null).source).toBe("none");
+    expect(resolvePayIntentAttribution(undefined, undefined).source).toBe("none");
   });
 });

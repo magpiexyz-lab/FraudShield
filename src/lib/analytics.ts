@@ -151,6 +151,27 @@ export function identify(userId: string, traits?: Record<string, unknown>) {
   pending.push((client: unknown) => (client as { identify: (id: string, t?: unknown) => void }).identify(userId, traits));
 }
 
+/**
+ * The analytics distinct id for the current browser, or undefined when PostHog
+ * has not loaded (SSR, misconfigured key, blocked script).
+ *
+ * Exposed here rather than letting callers reach for `posthog` directly: the
+ * `pay_intent` DB row stores `distinct_id` so a Phase 2 row can be tied back to
+ * its PostHog event, and CLAUDE.md Rule 2 requires all provider access to go
+ * through this library. Returns undefined rather than throwing — a missing
+ * distinct id must never block the fake-door write.
+ */
+export function getDistinctId(): string | undefined {
+  init();
+  if (isMisconfigured || status !== "ready" || !posthog) return undefined;
+  try {
+    const id = (posthog as { get_distinct_id?: () => string }).get_distinct_id?.();
+    return typeof id === "string" && id.length > 0 ? id : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function reset() {
   init();
   if (isMisconfigured || status === "failed") return;

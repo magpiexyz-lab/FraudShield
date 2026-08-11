@@ -124,6 +124,32 @@ events:
         description: Returned fraud score (0-100)
 
   # --- monetize ---
+  # Fake door for the Google Ads Phase 2 value screen. Deliberately has NO
+  # `requires: [payment]` — it fires on an Upgrade click that never charges, so
+  # it must stay independent of whether the payment stack is wired.
+  pay_intent:
+    funnel_stage: monetize
+    trigger: User clicks the fake-door Upgrade CTA (post-activation). No charge.
+    properties:
+      plan:
+        type: string
+        required: true
+        description: Plan the user expressed intent to buy
+      price_cents:
+        type: number
+        required: true
+        description: Reference price shown (not charged), in USD cents
+      gclid:
+        type: string
+        required: false
+        description: Google click id relayed from the landing page via the user record
+      utm_campaign:
+        type: string
+        required: true
+        description: >-
+          Campaign that produced the click. REQUIRED so the Phase 2 verdict can
+          isolate phase2 traffic — pass "" when there is no campaign. Must be
+          passed explicitly, never inherited from a PostHog super-property.
   checkout_start:
     funnel_stage: monetize
     trigger: User clicks 'Upgrade' and begins Stripe checkout

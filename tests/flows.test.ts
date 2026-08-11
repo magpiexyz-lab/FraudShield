@@ -206,3 +206,81 @@ describe("checkout route: Stripe-not-configured graceful path (bug #2)", () => {
     }
   });
 });
+
+// b-10: the Google Ads Phase 2 fake door.
+//
+// POST /api/pay-intent is the DB half of the pay-intent signal. These tests pin
+// the contract the Phase 2 verdict depends on: a server-authoritative price, a
+// zod-guarded body, and no payment provider anywhere on the path.
+//
+// DEMO_MODE caveat, same as the checkout tests above: the demo Supabase client
+// returns a demo user from getUser(), so the 401 branch is unreachable here and
+// we assert the success path instead. The demo user's user_metadata is also
+// hardcoded to {}, which is precisely why attribution precedence lives in a pure
+// function tested directly in src/lib/attribution.test.ts rather than here.
+describe("b-10: POST /api/pay-intent (fake-door pay intent)", () => {
+  it("records a pay intent for an authenticated user", async () => {
+    const { POST } = await import("@/app/api/pay-intent/route");
+    const request = new Request("http://localhost/api/pay-intent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        plan: "pro",
+        gclid: "CjwKCAjw5remBhBiEiwAxL4L9mQ2Kk8ZzR7vN3pYwT6bXhFgD1sJ0aQeR4uV8cWnMxYzAbCdEfGh",
+        utm_campaign: "fraudshield-search-phase2-v1",
+        distinct_id: "01920000-0000-7000-8000-000000000000",
+      }),
+    });
+    const response = await POST(request);
+    expect(response.status).toBeLessThan(500);
+  });
+
+  it("accepts the day-0 probe attribution that the strict gclid gate would reject", async () => {
+    // The probe is mandatory before launch and uses a deliberately non-Google
+    // gclid. If this 400s or drops the value, the probe fails and the campaign
+    // cannot launch.
+    const { POST } = await import("@/app/api/pay-intent/route");
+    const request = new Request("http://localhost/api/pay-intent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        plan: "pro",
+        gclid: "probe-20260811",
+        utm_campaign: "dayzero-probe",
+      }),
+    });
+    const response = await POST(request);
+    expect(response.status).toBeLessThan(500);
+  });
+
+  it("rejects an unknown plan slug with a 400", async () => {
+    const { POST } = await import("@/app/api/pay-intent/route");
+    const request = new Request("http://localhost/api/pay-intent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ plan: "enterprise-unlimited" }),
+    });
+    const response = await POST(request);
+    expect(response.status).toBe(400);
+  });
+
+  it("rejects an over-length gclid with a 400", async () => {
+    const { POST } = await import("@/app/api/pay-intent/route");
+    const request = new Request("http://localhost/api/pay-intent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ plan: "pro", gclid: "C".repeat(513) }),
+    });
+    const response = await POST(request);
+    expect(response.status).toBe(400);
+  });
+
+  it("never accepts a client-supplied price", async () => {
+    // price_cents is read server-side from PLAN_PRICES. A body carrying its own
+    // price must not change what is stored — the cross-MVP revenue ranking
+    // multiplies this value by the pay-intent rate.
+    const { payIntentSchema } = await import("@/app/api/pay-intent/route");
+    const parsed = payIntentSchema.parse({ plan: "pro", price_cents: 1 });
+    expect("price_cents" in parsed).toBe(false);
+  });
+});

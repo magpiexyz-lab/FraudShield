@@ -69,6 +69,31 @@ export function sanitizeGclid(raw: string | null | undefined): string | undefine
   return value;
 }
 
+/**
+ * Relaxed gclid validation, used ONLY by the Phase 2 `pay_intent` fake door.
+ *
+ * `sanitizeGclid` above enforces the real-Google-click-id shape (>=40 chars,
+ * Cj/EAI/CIa prefix). That is correct for analytics capture, but it makes the
+ * MANDATORY day-0 relay probe impossible: the probe walks the funnel with
+ * `?gclid=probe-<YYYYMMDD>` and its verification requires that exact value to
+ * appear on the pay_intent row. Routed through the strict gate the value is
+ * dropped, the probe fails, `dayzero_probe_passed_at` never gets recorded, and
+ * `make distribute` refuses the phase-2 config — the campaign cannot launch.
+ *
+ * Relaxing here is safe because strictness at this layer is redundant: the
+ * verdict pipeline applies its own paid-gclid filter (length > 40 plus the same
+ * prefix set) when computing the numerator, so a probe- or test-shaped value can
+ * never be counted as paid traffic no matter what we store. Charset and length
+ * caps are still enforced — this is untrusted input off the wire.
+ */
+export function sanitizeGclidRelaxed(raw: string | null | undefined): string | undefined {
+  if (!raw) return undefined;
+  const value = raw.trim();
+  if (value.length === 0 || value.length > GCLID_MAX_LENGTH) return undefined;
+  if (!GCLID_CHARSET.test(value)) return undefined;
+  return value;
+}
+
 /** Returns a safe utm_campaign, or undefined when it is missing or malformed. */
 export function sanitizeUtmCampaign(raw: string | null | undefined): string | undefined {
   if (!raw) return undefined;
@@ -184,6 +209,68 @@ export function writeAttributionCookie(
   documentRef.cookie =
     `${ATTRIBUTION_COOKIE}=${encodeAttributionCookie(attribution)}` +
     `; Path=/; Max-Age=${ATTRIBUTION_COOKIE_MAX_AGE}; SameSite=Lax${secure}`;
+}
+
+/** Keys `persistAttribution` writes onto `auth.users.user_metadata` at signup. */
+export const ACQUISITION_GCLID_KEY = "acquisition_gclid";
+export const ACQUISITION_UTM_CAMPAIGN_KEY = "acquisition_utm_campaign";
+
+/** Which source supplied the attribution stored on a pay_intent row. */
+export type AttributionSource = "user_record" | "client" | "none";
+
+export type PayIntentAttribution = Attribution & { source: AttributionSource };
+
+/**
+ * Resolves the attribution to stamp on a `pay_intent` event and row.
+ *
+ * Two sources, neither complete on its own:
+ *
+ *   - The user record (`acquisition_*` in user_metadata) is the trustworthy one,
+ *     written server-side at signup. But `persistAttribution` only runs within
+ *     60s of account creation and only when attribution was present, so organic
+ *     users — and the day-0 probe, whose gclid the strict sanitizer rejects —
+ *     have nothing there.
+ *   - The client value, read at click time from the URL or sessionStorage, fills
+ *     those gaps but is attacker-controllable.
+ *
+ * The user record therefore wins whenever it has anything, and the client value
+ * is a fallback rather than an override. An earlier revision REJECTED client
+ * values matching the phase2 campaign pattern to close the forgery vector, but
+ * that silently discarded genuine pay-intents: `persistAttribution` is wrapped
+ * in a bare catch, so its failure is invisible, and the resulting data loss
+ * lands precisely on the measurement this exists to produce. Accepting the
+ * fallback and recording `source` keeps the data and leaves any pollution
+ * detectable after the fact.
+ *
+ * Pure and dependency-free so it is unit-testable — the demo Supabase client
+ * hardcodes `user_metadata` to `{}`, so this logic is unreachable from a
+ * route-level test.
+ */
+export function resolvePayIntentAttribution(
+  userMetadata: Record<string, unknown> | null | undefined,
+  clientAttribution: { gclid?: string | null; utm_campaign?: string | null } | null | undefined,
+): PayIntentAttribution {
+  const meta = userMetadata ?? {};
+  const readMeta = (key: string) => {
+    const value = meta[key];
+    return typeof value === "string" ? value : null;
+  };
+
+  const fromRecord: Attribution = {};
+  const recordGclid = sanitizeGclidRelaxed(readMeta(ACQUISITION_GCLID_KEY));
+  if (recordGclid) fromRecord.gclid = recordGclid;
+  const recordCampaign = sanitizeUtmCampaign(readMeta(ACQUISITION_UTM_CAMPAIGN_KEY));
+  if (recordCampaign) fromRecord.utm_campaign = recordCampaign;
+  if (hasAttribution(fromRecord)) return { ...fromRecord, source: "user_record" };
+
+  const fromClient: Attribution = {};
+  const clientGclid = sanitizeGclidRelaxed(clientAttribution?.gclid);
+  if (clientGclid) fromClient.gclid = clientGclid;
+  const clientCampaign = sanitizeUtmCampaign(clientAttribution?.utm_campaign);
+  if (clientCampaign) fromClient.utm_campaign = clientCampaign;
+  if (hasAttribution(fromClient)) return { ...fromClient, source: "client" };
+
+  return { source: "none" };
 }
 
 /**
