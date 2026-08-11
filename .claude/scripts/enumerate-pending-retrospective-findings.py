@@ -106,9 +106,12 @@ def _candidates_from_hook_friction(rid: str) -> list[dict]:
     except Exception:
         return []
 
-    if data.get("run_id") and rid and data.get("run_id") != rid:
-        # Summary is for a different run — defensive, since aggregator
-        # already scopes; treat as empty rather than incorrect.
+    if rid and data.get("run_id") != rid:
+        # Summary is for a different run (or unscoped: run_id null/empty) —
+        # defensive, since the aggregator already scopes; treat as empty
+        # rather than incorrect. #1895: an empty/null summary run_id must NOT
+        # slip past this guard — a stale unscoped summary would mint
+        # high-confidence candidates from other runs' friction.
         return []
 
     out: list[dict] = []

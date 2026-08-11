@@ -23,12 +23,24 @@ Read `.runs/iterate-check-context.json`, `.runs/iterate-check-health.json`, and 
 | Avg CPC | $[X] |
 | Spend | $[X] of $[total_budget] |
 | Conversions | [N] |
+| Tracking | [If tracking_pulse.evaluated: 24h capture [X]% (or skipped), lifetime capture [Y]%; if not evaluated: monitoring unavailable: [skip_reason] -- fix to restore the daily tracking check] |
+
+### Stop Rule
+- Paid clicks: [clicks] / [click_target]
+- Spend: $[spend] / $[total_budget]
+- End date: [active / ended]. If ended before clicks or cap fired, recommend extending by `(cap - spent) / daily_budget` days or stopping consciously.
 
 ### Issues Found: [N]
 [For each issue:]
 - **[issue_type]**: [action_taken -- auto-fixed / needs manual intervention / recommendation]
   [description of what was done or recommended]
   [If issue_type is campaign_paused: add context -- "This is expected during Phase 1 Day -2/-1 protocol" when phase == 1 AND campaign age < 48h, or "Campaign was unpaused after ad approval" when auto-fixed, or "Ads still under review -- re-run /iterate --check tomorrow" when phase == 1 AND age >= 48h AND ads not approved, or "Campaign paused by user -- resume manually if intended" when not Phase 1]
+  [If issue_type is stop_clicks_target_met: "Pause the campaign if still serving and report to your Team Lead (the lead runs /iterate --cross)."]
+  [If issue_type is stop_budget_cap_reached: "Pause the campaign if still serving; short clicks are an affordability signal."]
+  [If issue_type is campaign_ended or stop_extend_recommended: "Extend the End date by the reported headroom, or stop consciously."]
+  [If issue_type is tracking_degraded: "Re-run /ads-ready against the current deploy and fix before trusting any verdict. Do NOT pause the campaign for this."]
+  [If issue_type is tracking_utm_missing: "The Google Ads Final URL is missing the utm_campaign suffix (paid traffic reaches PostHog but is untagged) -- /ads-ready cannot catch this. Set the campaign-level Final URL suffix per Phase 2 playbook §5 step 6. Spend is invisible to the verdict until fixed; pause if it persists."]
+  [If issue_type is monitoring_unavailable: "Fix PostHog key/project resolution so the daily tracking check is restored."]
 
 [If no issues:]
 - No issues found. Campaign is running as expected.
@@ -39,9 +51,10 @@ Read `.runs/iterate-check-context.json`, `.runs/iterate-check-health.json`, and 
 - No-go signal: [thresholds.no_go_signal from ads.yaml]
 
 ### Next Steps
-- Next health check: Day [campaign_age_days + 2] -- run `/iterate --check`
+- Next health check: tomorrow -- run `/iterate --check` daily until a stop condition fires
 - For full funnel analysis: run `/iterate` (without --check) when you have enough conversion data
 - If campaign was paused: review recommendations above before resuming
+- If a stop-rule recommendation is present: resolve it before the next health check
 ```
 
 Determine the **Status** value:

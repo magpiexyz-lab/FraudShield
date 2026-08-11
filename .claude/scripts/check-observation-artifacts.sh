@@ -190,15 +190,23 @@ else:
 " 2>/dev/null || echo "unknown")
 
 # ── Fast-path detection ──
-# observation-phase.md Step 3 exits early when: no diffs, no fix-log entries,
-# no agent trace fixes. In that case, only observe-result.json is written
-# (verdict "clean") and Steps 4-7 are skipped — no 5a/5b artifacts expected.
+# observation-phase.md Step 3 exits early when: no diffs, no CURRENT-RUN
+# fix-ledger rows, no agent trace fixes. In that case, only observe-result.json
+# is written (verdict "clean") and Steps 4-7 are skipped — no 5a/5b artifacts
+# expected. The ledger is append-only across runs by design (registered
+# cross-run channel) and fix-log.md is a whole-history render, so the fix
+# condition is run_id-scoped: rows from PRIOR runs must not disqualify a
+# zero-fix run (issue #2009). Rows with an empty/missing run_id are historical.
+# When RUN_ID is unresolvable the check degrades to requiring an entirely
+# empty ledger — byte-identical to the pre-#2009 behavior, never looser.
+# This derivation MUST stay semantically identical to observation-phase.md
+# Step 3 (each site derives independently; divergence = doc fires fast path
+# while this checker demands the 5a/5b artifacts).
 FAST_PATH=$(python3 -c "
-import json, os, glob
+import json, os, sys, glob
 
 observe_path = '$RUNS_DIR/observe-result.json'
 diffs_path = '$RUNS_DIR/observer-diffs.txt'
-fixlog_path = '$RUNS_DIR/fix-log.md'
 
 # Must have observe-result.json with verdict 'clean'
 if not os.path.exists(observe_path):
@@ -214,13 +222,20 @@ if os.path.exists(diffs_path) and os.path.getsize(diffs_path) > 0:
     print('false')
     raise SystemExit
 
-# Fix-log must have no entries (skip header lines starting with # or empty)
-if os.path.exists(fixlog_path):
-    with open(fixlog_path) as f:
-        entries = [l for l in f if l.strip() and not l.strip().startswith('#')]
-    if entries:
-        print('false')
-        raise SystemExit
+# Fix-ledger must have no rows for the ACTIVE run (prior-run rows are
+# historical). Unresolvable RUN_ID degrades to whole-ledger emptiness.
+sys.path.insert(0, os.path.join('$PROJECT_DIR', '.claude/scripts/lib'))
+from runs_reader import read_jsonl
+rid = '$RUN_ID'
+if rid:
+    r = read_jsonl('.runs/fix-ledger.jsonl', scope='current-run',
+                   current_run_id=rid, project_dir='$PROJECT_DIR')
+else:
+    r = read_jsonl('.runs/fix-ledger.jsonl', scope='cross-run-by-design',
+                   cross_run_channel='fix-ledger', project_dir='$PROJECT_DIR')
+if r.rows:
+    print('false')
+    raise SystemExit
 
 # Agent traces must have no fixes
 for tf in glob.glob('$RUNS_DIR/agent-traces/*.json'):
@@ -349,6 +364,39 @@ if [[ ${#MISSING[@]} -gt 0 ]]; then
   PASS="false"
 fi
 
+# ── Friction-summary tail visibility (#1895, all scopes, WARN-only) ──
+# The summary is a snapshot cut at its `aggregated_at`; friction appended
+# after that instant (the observer's own spawn passing skill-agent-gate.sh is
+# structurally always in this class) is invisible to every summary consumer.
+# Surface the truncation as a number instead of letting it pass silently.
+# Never flips PASS — an irreducible tail exists on every run by construction.
+ROWS_AFTER_CUTOFF=$(python3 -c "
+import json, os
+sp = '$RUNS_DIR/hook-friction-summary.json'
+fp = '$RUNS_DIR/hook-friction.jsonl'
+rid = '$RUN_ID'
+n = 0
+try:
+    cutoff = (json.load(open(sp)).get('aggregated_at') or '') if os.path.isfile(sp) else ''
+    if cutoff and rid and os.path.isfile(fp):
+        with open(fp) as f:
+            for line in f:
+                line = line.strip()
+                if not line: continue
+                try:
+                    e = json.loads(line)
+                except Exception:
+                    continue
+                if e.get('run_id') == rid and (e.get('timestamp') or '') > cutoff:
+                    n += 1
+except Exception:
+    n = 0
+print(n)
+" 2>/dev/null || echo "0")
+if [[ "$ROWS_AFTER_CUTOFF" != "0" ]]; then
+  echo "WARN: observation-enforcement: $ROWS_AFTER_CUTOFF run-scoped friction row(s) postdate hook-friction-summary.json aggregated_at — the summary consumers saw is truncated (#1895 tail; expected ≥1 from the observer's own spawn)" >&2
+fi
+
 # ── Retrospective-completeness gate (#1276 + #1393) ──
 # Runs AFTER observation-phase Step 5a has written retrospective-result.json
 # (contrast: lifecycle-finalize.sh Step 1 runs BEFORE observation, so the
@@ -415,6 +463,63 @@ if [[ "$SCOPE" == "full" || "$SCOPE" == "process" ]]; then
   fi
 fi
 
+# ── GECR gate-evidence soak invocation (#1855 remediation; tracker #2013) ──
+# Wires the previously call-site-less GATE_EVIDENCE rules into the epilogue in
+# WARN mode so their deny_flip_trigger evidence bars finally become attainable
+# (the original 30-day soak was vacuous: verify-gate-evidence.py had no runtime
+# caller, so zero candidates were structurally possible). Runs only on
+# full/process scopes (where the Step 5a enumerator artifacts exist) and only
+# when the script is present (degraded fixtures skip cleanly). NEVER blocks:
+# per-rule statuses are recorded into the enforcement artifact's gate_evidence
+# key — the durable soak record — and echoed as WARN framing on stderr.
+# Blocking wiring is explicitly the future flip PR's job (severity "block" in
+# gate-evidence-rules.json per the criteria-file rationale). Not written to
+# hook-friction: this is not a hook and must not distort the Q2 channel.
+GATE_EVIDENCE_JSON="{}"
+if [[ "$SCOPE" == "full" || "$SCOPE" == "process" ]] \
+  && [[ -f "$PROJECT_DIR/.claude/scripts/verify-gate-evidence.py" ]]; then
+  GATE_EVIDENCE_JSON=$(python3 - "$PROJECT_DIR" <<'GEEOF'
+import json, subprocess, sys
+
+project_dir = sys.argv[1]
+statuses = {}
+for rule_id in ("recovery-path-skip-pairing", "sparse-trace-pairing"):
+    try:
+        r = subprocess.run(
+            ["python3", ".claude/scripts/verify-gate-evidence.py",
+             "--rule-id", rule_id, "--gate-id", "check-observation-artifacts"],
+            cwd=project_dir, capture_output=True, text=True, timeout=120,
+        )
+        out = r.stdout + r.stderr
+        if r.returncode == 2:
+            status = "error"
+        elif r.returncode == 1:
+            status = "deny"
+        elif "verify-gate-evidence: WARN" in out or "verify-gate-evidence: BLOCK" in out:
+            status = "warn"
+        elif "verify-gate-evidence: SKIP" in out:
+            status = "skip"
+        else:
+            status = "pass"
+        statuses[rule_id] = status
+        if status not in ("pass", "skip"):
+            print(
+                f"WARN: observation-enforcement: gate-evidence {rule_id} -> "
+                f"{status}: {out.strip()[:400]}",
+                file=sys.stderr,
+            )
+    except Exception as exc:
+        statuses[rule_id] = "error"
+        print(
+            f"WARN: observation-enforcement: gate-evidence {rule_id} "
+            f"invocation failed: {exc}",
+            file=sys.stderr,
+        )
+print(json.dumps(statuses))
+GEEOF
+  ) || GATE_EVIDENCE_JSON="{}"
+fi
+
 # ── Anomaly-audit-evidence gate (prose-gate observation-phase-step5c-anomaly-audit) ──
 # Deterministic invocation of anomaly-audit-evidence.py replaces the prose-only
 # "Step 5c-validate" invocation in observation-phase.md (closes the meta-failure
@@ -443,15 +548,20 @@ for m in "${MISSING[@]+"${MISSING[@]}"}"; do
 done
 
 # Build payload (without identity fields — write-gate-artifact.sh stamps them)
-PAYLOAD=$(MISSING_STR_ENV="$MISSING_STR" SCOPE_ENV="$SCOPE" FAST_PATH_ENV="$FAST_PATH" python3 <<'PYEOF'
+PAYLOAD=$(MISSING_STR_ENV="$MISSING_STR" SCOPE_ENV="$SCOPE" FAST_PATH_ENV="$FAST_PATH" GATE_EVIDENCE_ENV="$GATE_EVIDENCE_JSON" python3 <<'PYEOF'
 import json, os
 missing_raw = os.environ['MISSING_STR_ENV'].strip()
 missing = [m for m in missing_raw.split('\n') if m] if missing_raw else []
+try:
+    gate_evidence = json.loads(os.environ.get('GATE_EVIDENCE_ENV') or '{}')
+except json.JSONDecodeError:
+    gate_evidence = {}
 payload = {
     'pass': len(missing) == 0,
     'missing': missing,
     'scope': os.environ['SCOPE_ENV'],
     'fast_path': os.environ['FAST_PATH_ENV'] == 'true',
+    'gate_evidence': gate_evidence,
 }
 print(json.dumps(payload))
 PYEOF

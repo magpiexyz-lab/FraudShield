@@ -152,7 +152,16 @@
 
 **VERIFY:**
 ```bash
-python3 .claude/scripts/verify-state-7b-qscore.py
+head -1 .runs/verify-report.md | grep -q '^---$' && tail -1 .runs/verify-history.jsonl | python3 -c 'import json,sys,os,glob,subprocess; e=json.loads(sys.stdin.read()); ds=e.get("dimension_scores",{}); assert not(ds.get("Q_build",0)>0) or (os.path.exists(".runs/build-result.json") and json.load(open(".runs/build-result.json")).get("exit_code")==0), "Q_build>0 but build failed"; assert not(ds.get("Q_security",0)>0) or glob.glob(".runs/agent-traces/security-*.json"), "Q_security>0 but no security traces"; assert not(ds.get("Q_design",0)>0) or os.path.exists(".runs/agent-traces/design-critic.json"), "Q_design>0 but no design-critic trace"; hgf=e.get("hard_gate_failure",False)
+def _dc_sanc(p):
+    return p.endswith("design-critic.json") and subprocess.run(["python3",".claude/scripts/check-design-critic-sanctioned.py",p],capture_output=True).returncode==0
+for p,vk,vv,ex in [(".runs/agent-traces/design-critic.json","verdict",["unresolved"],None),(".runs/agent-traces/ux-journeyer.json","verdict",["blocked"],[("unresolved_dead_ends",0)]),(".runs/agent-traces/security-fixer.json","verdict",["partial"],[("unresolved_critical",0)]),(".runs/agent-traces/quality-fixer.json","verdict",["partial"],[("unresolved_critical",0)])]:
+    if not os.path.exists(p): continue
+    t=json.load(open(p))
+    n=t.get(vk) in vv or t.get("recovery",False) or any(t.get(ek,0)>ev for ek,ev in (ex or []))
+    if not n: continue
+    if _dc_sanc(p): continue
+    if not hgf: raise AssertionError(p+" requires hard_gate_failure=true")'
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

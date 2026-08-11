@@ -62,11 +62,18 @@ except Exception:
 ### Step 1 — Delivery & recheck
 
 Run finalize: delivers for code-writing skills (commit → push → PR →
-auto-merge), no-ops for analysis-only skills. Writes `.runs/verify-recheck.json`.
+auto-merge), no-ops for analysis-only skills that produced no delivery
+artifacts, and treats analysis-only runs WITH artifacts as deliberate record
+deliveries (the default-branch guard in finalize enforces PR-first — see
+`.claude/patterns/auto-merge.md`). Writes `.runs/verify-recheck.json`.
 
 ```bash
-bash .claude/scripts/lifecycle-finalize.sh $SKILL
+bash .claude/scripts/lifecycle-finalize.sh "$SKILL_KEY"
 ```
+
+Pass the `$SKILL_KEY` derived at Step 0 — finalize normalizes mode-qualified
+keys (e.g. `iterate-cross`) down to the base skill internally when resolving
+the manifest and command file.
 
 Self-reference note: `lifecycle-finalize.sh` Step 2 reruns every state's
 VERIFY as a warn-only audit. It explicitly skips `state_id == "99"`

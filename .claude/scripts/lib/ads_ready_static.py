@@ -7,6 +7,7 @@ import argparse
 import datetime as _dt
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -70,6 +71,36 @@ CHECKS = [
         H.applies_if_events_yaml_exists,
     ),
     (13, "identify() reachable from signup handler", H.check_identify_in_signup, None),
+    (
+        "P2-a",
+        "pay_intent event and callsite pass utm_campaign",
+        H.check_phase2_pay_intent_event_and_callsite,
+        H.applies_if_phase_2,
+    ),
+    (
+        "P2-b",
+        "POST /api/pay-intent inserts gclid and utm_campaign",
+        H.check_phase2_pay_intent_route,
+        H.applies_if_phase_2,
+    ),
+    (
+        "P2-c",
+        "pay_intent migration has attribution, auth FK, and RLS",
+        H.check_phase2_pay_intent_migration,
+        H.applies_if_phase_2,
+    ),
+    (
+        "P2-d",
+        "Upgrade CTA is auth and activation guarded",
+        H.check_phase2_upgrade_cta_guard,
+        H.applies_if_phase_2,
+    ),
+    (
+        "P2-e",
+        "No payment provider import reachable from fake-door path",
+        H.check_phase2_no_payment_provider_on_fake_door_path,
+        H.applies_if_phase_2,
+    ),
 ]
 
 
@@ -82,6 +113,27 @@ def _utc_now() -> str:
     return _dt.datetime.now(_dt.timezone.utc).isoformat()
 
 
+def _git_head() -> str | None:
+    try:
+        proc = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            capture_output=True,
+            check=False,
+            text=True,
+        )
+    except Exception:
+        return None
+    if proc.returncode != 0:
+        return None
+    head = proc.stdout.strip()
+    return head or None
+
+
+def _phase(ctx: dict[str, Any] | None) -> str:
+    data = ctx or {}
+    return str(data.get("phase") or ("phase-2" if data.get("phase_2") else "phase-1"))
+
+
 def _read_json(path: str) -> dict[str, Any]:
     with open(path, encoding="utf-8") as fh:
         data = json.load(fh)
@@ -89,7 +141,7 @@ def _read_json(path: str) -> dict[str, Any]:
 
 
 def _check_result(
-    check_id: int,
+    check_id: int | str,
     name: str,
     applicable: bool,
     passed: bool | None,
@@ -120,11 +172,13 @@ def _summarize(results: list[dict[str, Any]]) -> dict[str, int | bool]:
     }
 
 
-def _build_output(results: list[dict[str, Any]]) -> dict[str, Any]:
+def _build_output(results: list[dict[str, Any]], ctx: dict[str, Any] | None = None) -> dict[str, Any]:
     output: dict[str, Any] = {
         "skill": "ads-ready",
         "layer": "A",
         "timestamp": _utc_now(),
+        "phase": _phase(ctx),
+        "git_head": _git_head(),
         "checks": results,
     }
     output.update(_summarize(results))
@@ -221,7 +275,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         ctx = _read_json(args.context)
-        output = _build_output(run_checks(ctx))
+        output = _build_output(run_checks(ctx), ctx)
     except Exception as exc:
         output = _build_output(
             [
@@ -233,7 +287,8 @@ def main(argv: list[str] | None = None) -> int:
                     f"INTERNAL ERROR: {exc}",
                     "Report to template maintainer.",
                 )
-            ]
+            ],
+            None,
         )
 
     _write_output(args.output, output)

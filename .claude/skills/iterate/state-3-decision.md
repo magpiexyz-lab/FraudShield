@@ -124,11 +124,13 @@ Common patterns:
 
 Present recommendations in priority order (highest impact first).
 
-### Ads Decision (if ads.yaml exists and day 7 or budget exhausted)
+### Ads Decision (if ads.yaml exists and a stop condition fired)
 
 If `experiment/ads.yaml` exists but the user reported no ads data in STATE 1 (campaign not yet launched), skip this section and instead note: "Ads config generated but campaign not yet launched. Create the campaign in your distribution channel's platform using `experiment/ads.yaml`, then return to `/iterate` after a few days of data."
 
-If `experiment/ads.yaml` exists and the campaign has been running for the full `budget.duration_days` or `budget.total_budget_cents` is exhausted, present a go/no-go decision:
+If `experiment/ads.yaml` exists and the campaign reached `budget.click_target` paid clicks, OR exhausted `budget.total_budget_cents`, OR ended at its End date, present a go/no-go decision:
+
+If the End date was reached with clicks below `budget.click_target` and spend below `budget.total_budget_cents`, say that the calendar alone is not a verdict deadline. Recommend extending the End date by `(cap - spent) / daily_budget` days, or stopping consciously.
 
 | Signal | Interpretation | Action |
 |--------|---------------|--------|

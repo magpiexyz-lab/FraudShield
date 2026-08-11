@@ -23,12 +23,7 @@ This skill generates `experiment/ads.yaml` with targeting, ad creative, budgets,
 
 ## Arguments
 
-Parse `$ARGUMENTS` for:
-- **Phase flag**: `--phase 1` or `--phase 2` (default: `1`)
-  - Phase 1: Standardized Playbook settings (manual CPC, phrase match, search only, $140/7 days, 2 RSAs, 1 ad group, 50 universal negative keywords). Google Ads only — other channels ignore the phase flag.
-  - Phase 2: Extended campaign ($500/14 days), eligible for automated bidding and customized settings based on Phase 1 learnings.
-
-If `$ARGUMENTS` contains no `--phase` flag, default to phase 1.
+`/distribute` is Phase-1-only. It generates standardized Playbook settings (manual CPC, phrase match, search only, $20/day under a $250 MAX cap, 7-day nominal window set as the End date, stop at 100 clicks or the cap, 2 RSAs, 1 ad group, 50 universal negative keywords) for Google Ads.
 
 ## Lifecycle
 
@@ -92,7 +87,7 @@ Channel availability depends on the experiment's plan tier and budget:
 **Selection factors:**
 - Experiment type: B2B → LinkedIn (manual) + Google Ads + email; B2C → Meta Ads + Reddit + Twitter
 - Target audience: developer tools → Reddit + Twitter organic; consumer → Meta Ads + email
-- Budget constraints: <$100 → organic only; $100-500 → 1-2 paid channels; >$500 → multi-channel
+- Budget constraints: <$100 → organic only; $100-500 → 1-2 paid channels; larger budgets → multi-channel
 
 ### Budget Allocation
 

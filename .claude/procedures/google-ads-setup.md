@@ -68,9 +68,11 @@ Do this once per team member (not per MVP):
 
 All MVPs for this member will use this same account. Separate MVPs by campaigns (naming: `{idea.name}-search-v{N}`).
 
-## Step 6: Set Up Offline Conversion Import
+## Step 6: Optional Phase 3 Offline Conversion Import Prep
 
-In the member's child account, for each MVP:
+Skip this for Phase 1 and Phase 2 Manual CPC screens. Those verdicts come from PostHog/DB plus Google Ads clicks, so they need gclid capture and UTM attribution, not Google Ads conversion import.
+
+When an MVP moves to Phase 3 smart bidding, set up conversion actions in the member's child account:
 
 1. Go to Tools & Settings -> Conversions -> New conversion action
 2. Select "Import" -> "Other data sources or CRMs"
@@ -79,9 +81,11 @@ In the member's child account, for each MVP:
    - `{idea.name}-signup` (secondary, category: Sign-up)
 4. Set the conversion window to match `budget.duration_days` from ads.yaml
 
-## Step 7: Connect Analytics Provider to Google Ads
+## Step 7: Optional Phase 3 Analytics Provider Connection
 
 > The steps below use PostHog as an example. Adapt to your analytics provider.
+
+Skip this for Phase 1 and Phase 2. Use it only when Phase 3 smart bidding needs offline conversions imported into Google Ads.
 
 1. In your analytics provider, go to Data pipelines / Destinations
 2. Add "Google Ads Offline Conversions" destination
@@ -90,7 +94,7 @@ In the member's child account, for each MVP:
    - `activate` -> `{idea.name}-activate`
    - `signup_complete` -> `{idea.name}-signup`
 5. Use `gclid` from event properties as the click identifier
-6. Test with a manual conversion to verify the pipeline
+6. Test with a manual conversion when preparing Phase 3 smart bidding
 
 ## Phase 2: API Automation
 

@@ -8,6 +8,43 @@ delivery artifacts (`.runs/commit-message.txt`, `.runs/pr-title.txt`,
 This document defines the procedure that `lifecycle-finalize.sh` implements.
 The PR exists for audit trail (Rule 1) and is merged immediately after creation.
 
+## Default-Branch Guard (before any commit)
+
+Delivery must never commit on the repository's default branch (issue #1990:
+an analysis-mode skill whose init created no feature branch had its run
+record committed and pushed directly to main). Before `git add`, finalize
+invokes `.claude/scripts/lib/delivery-branch-guard.sh`, which:
+
+- derives the default branch once via `resolve_default_branch` in
+  `lifecycle-lib.sh` (origin/HEAD symbolic ref, then origin/main, then
+  origin/master, then the literal `main`) — the same derived value replaces
+  every previously hardcoded `main` in finalize;
+- is a no-op on any non-default branch (code-writing skills already sit on
+  their init-created branch);
+- on the default branch with a clean tree in sync with origin, reports
+  skip-no-changes so no empty chore branch or guaranteed-empty PR is created;
+- otherwise creates and checks out `chore/<skill>-delivery-<UTC stamp>`
+  (collisions append `-2`..`-5`; exhaustion is a hard failure), using the
+  bundled checkout chain from `branch.md` so `update-context-branch.sh`
+  propagates the context's `branch` field in the same command chain;
+- exits non-zero when safety cannot be guaranteed — finalize then records
+  `branch-guard-failed` and does NOT commit.
+
+**Analysis-only record deliveries.** An analysis-only skill (per the command
+file's `type:` frontmatter, resolved through the BASE skill name so
+mode-qualified keys like `iterate-cross` work) skips delivery only when it
+produced no delivery artifacts. Artifacts present at finalize were
+necessarily written during this run — lifecycle-init deletes them at every
+non-embed skill start — so they are treated as a deliberate record delivery
+(e.g. iterate-cross committing its config + decision-ledger mutations), with
+the guard enforcing PR-first.
+
+**Degrade, never abort.** Every delivery stage after the gates (`git commit`,
+`git push`, `gh pr create`, the post-merge checkout/pull) converts failure
+into a recorded delivery status instead of aborting the script, so the
+verify-recheck artifact and transient-service teardown always run. The #1990
+incident aborted mid-delivery after the push had landed, skipping both.
+
 ## Safety Gates
 
 Run all three gates in order. If ANY gate fails, leave the PR open and report
@@ -46,7 +83,7 @@ review which may miss secrets that deterministic scanning catches.
 
 ```bash
 if command -v make >/dev/null 2>&1; then
-  MERGE_BASE=$(git merge-base origin/main HEAD 2>/dev/null || git merge-base main HEAD 2>/dev/null || echo "")
+  MERGE_BASE=$(git merge-base "origin/$DEFAULT_BRANCH" HEAD 2>/dev/null || git merge-base "$DEFAULT_BRANCH" HEAD 2>/dev/null || echo "")
   if [[ -z "$MERGE_BASE" ]]; then
     LINT_TARGET="lint-template-full"   # unknown state → fail-closed
   else
@@ -137,10 +174,13 @@ If `gh pr merge` fails:
 
 ```bash
 if [[ "$(bash .claude/scripts/lib/in-worktree.sh)" == "false" ]]; then
-  git checkout main && git pull
+  { git checkout "$DEFAULT_BRANCH" && git pull; } || \
+    echo "WARN: post-merge checkout/pull failed — resolve manually" >&2
   git branch -d "$FEATURE_BRANCH" 2>/dev/null || true
 fi
 # In worktree: skip local checkout — ExitWorktree handles cleanup.
+# A checkout/pull failure warns and continues — the recheck artifact and
+# transient teardown must still run.
 ```
 
 After merge completes:
@@ -157,6 +197,22 @@ Skills skip auto-merge entirely when:
   - `gitleaks` — Gate 2 detected a potential secret
   - `template-lint` — Gate 3 `make lint-template` failed on a `.claude/` diff
   - `merge-failed` — `gh pr merge` itself returned non-zero
+
+In every `pr-created:*` outcome the session stays on the (possibly
+guard-created) feature branch and the local branch is not deleted — the
+operator reviews and merges manually, which is the standing practice while
+Gate 3 trips on pre-existing template-lint debt.
+
+Delivery-stage statuses (degrade-not-abort; recorded in
+`verify-recheck.json.delivery_status` and echoed as `DELIVERY=<status>`):
+  - `skipped-no-changes` — guard found a clean default branch in sync with
+    origin; nothing to deliver
+  - `branch-guard-failed` — the guard could not guarantee a safe branch;
+    nothing was committed
+  - `commit-failed` / `push-failed` — the corresponding git stage failed;
+    later stages skipped
+  - `pr-create-failed` — the branch is pushed but `gh pr create` failed;
+    open the PR manually
 
 ## Regression Guards
 

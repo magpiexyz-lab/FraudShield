@@ -322,6 +322,10 @@ STALE_ARTIFACTS=(
   # /solve run; cleared at the start of each new skill run so stale prior-run
   # data does not leak into the next solve.1 VERIFY.
   "$PROJECT_DIR/.runs/solve-challenge.json"
+  # Auth preflight verdict from /iterate --cross state-x0/x5 Step 0. A stale
+  # all_required_ok:true from a prior run must never satisfy a new run's
+  # VERIFY (registry entries are string-form, so no lifecycle declaration).
+  "$PROJECT_DIR/.runs/iterate-cross-auth-preflight.json"
 )
 
 # --- Slice 5b: UNION with registry-derived transient-cross-skill artifacts ---

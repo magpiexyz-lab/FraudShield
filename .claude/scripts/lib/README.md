@@ -18,6 +18,42 @@ Helpers NOT intended for reuse (one-off utilities, single-caller adapters) shoul
 
 ## Stack Knowledge
 
+### Iterate-cross Phase-1 relaunch window
+```yaml
+id: iterate-cross-phase1-relaunch-window
+maturity: stable
+anti_pattern: false
+composite_identity:
+  root_cause_class: phase1-relaunch-pools-failed-flight-with-retest-window
+  divergence_pattern: stale-denominator-drags-conversion-rate-across-a-relaunch
+  stack_scope: scripts/lib/iterate_cross_relaunch
+composite_identity_hash: d83d723d702b
+symptom_keywords: [iterate-cross, phase1_relaunch_at, relaunch, retest, stale-denominator, window-lower-bound, greatest, campaign-start-date]
+confidence_score: 0.85
+occurrence_count: 1
+linked_issues: []
+first_seen: 2026-07-20
+last_seen: 2026-07-20
+graduated_to: null
+prevention_mechanism: |
+  iterate_cross_relaunch.py is the single source of truth for per-MVP Phase-1
+  relaunch date math. parse_relaunch_at validates the ISO config value;
+  posthog_lower_bound_expr / postgres_lower_bound_expr emit a
+  max(rolling-window, relaunch) lower bound for HogQL and Postgres queries;
+  campaign_passes_relaunch decides whether a GA campaign's Start date qualifies.
+  Every consumer (state-x0a GA merge, state-x0b DB ground truth, state-x2
+  PostHog signup count) calls these helpers — the date/window logic is never
+  inlined at a call site, so a relaunched MVP is scored on relaunch-onward data
+  consistently across all three surfaces.
+fix_template: |
+  To scope any windowed Phase-1 query to a relaunch date, read the MVP's
+  phase1_relaunch_at (relaunch_at_for), then replace the literal
+  `now() - INTERVAL <n> DAY` / `now() - INTERVAL '<n> days'` lower bound with
+  posthog_lower_bound_expr / postgres_lower_bound_expr. For GA campaign
+  attribution, gate each campaign on campaign_passes_relaunch(start_date,
+  relaunch_at). Never compare dates or build the greatest() expression inline.
+```
+
 ### Iterate-cross redacted email signup filter
 ```yaml
 id: iterate-cross-redacted-email-signup-filter
@@ -41,7 +77,7 @@ prevention_mechanism: |
   rows into real/team/test using operator-owned config, reserved test
   domains, team domains, Gmail normalization, and plus-alias handling.
   It returns only aggregate counts and redacted audit entries so .runs
-  artifacts, Telegram output, and HTML reports never persist full emails.
+  artifacts, team-message output, and HTML reports never persist full emails.
 fix_template: |
   When a DB ground-truth integration reads signup rows, select email-bearing
   rows instead of count(*), call filter_signups(rows, config), and persist:
@@ -59,7 +95,7 @@ composite_identity:
   root_cause_class: mvp-database-project-lives-outside-team-org
   divergence_pattern: operator-cannot-validate-or-query-supabase-ground-truth-before-ads
   stack_scope: scripts/lib/iterate_cross_db
-composite_identity_hash: 3ec889a7087d
+composite_identity_hash: c9a2765ab3f8
 symptom_keywords: [supabase, management-api, project-ref, team-org, db-signups, ads-ready, iterate-cross]
 confidence_score: 0.85
 occurrence_count: 2
@@ -80,6 +116,43 @@ fix_template: |
   list_supabase_projects(token). Pass only when the project ref appears in the
   returned project list. Missing token is an operator auth failure; do not
   silently skip the ownership check.
+```
+
+### Railway Postgres ground-truth access (CLI + psql)
+```yaml
+id: railway-postgres-ground-truth-access
+maturity: stable
+anti_pattern: false
+composite_identity:
+  root_cause_class: mvp-database-hosted-on-railway-not-supabase
+  divergence_pattern: db-ground-truth-pass-skips-railway-backed-mvps
+  stack_scope: scripts/lib/iterate_cross_railway_db
+composite_identity_hash: 39daffc8b416
+symptom_keywords: [railway, psql, database-public-url, pay-intent, db-signups, iterate-cross, phase2]
+confidence_score: 0.85
+occurrence_count: 2
+linked_issues: []
+first_seen: 2026-07-27
+last_seen: 2026-07-27
+graduated_to: null
+prevention_mechanism: |
+  iterate_cross_railway_db owns the canonical Railway access path: CLI auth
+  probe (_check_railway_auth), psql availability probe (_check_psql_available),
+  per-project DATABASE_PUBLIC_URL resolution inside a tempdir
+  (get_database_url — never links the caller's cwd), and tab-separated SQL
+  execution (_psql_query). Any pass that needs Railway-hosted Postgres ground
+  truth (state-x0b signups, x5 phase2 pay-intents) must import these helpers
+  instead of shelling out to railway/psql directly — duplicate subprocess
+  plumbing drifts on auth failure modes and URL preference
+  (DATABASE_PUBLIC_URL over the internal DATABASE_URL).
+fix_template: |
+  Import _check_railway_auth / _check_psql_available / get_database_url /
+  _psql_query from iterate_cross_railway_db. Gate the pass on both probes
+  (auth, psql) and degrade to a non-halting per-MVP reason when either fails.
+  Resolve the DB URL per MVP from mvp_mappings.<name>.railway_project_id
+  (+ railway_service_name, default "Postgres"); treat a missing URL as
+  railway_service_missing, never as an empty dataset. Run SQL only via
+  _psql_query and parse its tab-rows ("" means NULL).
 ```
 
 ### gate-evidence cross-reference protocol (GECR)
@@ -624,9 +697,9 @@ fix_template: |
     JSON
 
   The Python-side validator `is_real_gclid(s)` mirrors the SQL rule for
-  unit-testable checks. All 5 historical query sites (state-x0 canonical,
-  state-x0 orphan, state-x1, state-x2, state-c2) already read from this
-  helper. Any new query MUST follow the same pattern.
+  unit-testable checks. All 4 query sites (state-x0 canonical, state-x0
+  orphan, state-x1, state-x2) already read from this helper — state-c2 has
+  no PostHog queries. Any new query MUST follow the same pattern.
 ```
 
 ### iterate-cross PostHog query batching helper
@@ -649,20 +722,35 @@ graduated_to: null
 prevention_mechanism: |
   iterate_cross_posthog_batch.py is the canonical execution helper for
   /iterate --cross PostHog queries that can grow with portfolio size. Discovery
-  queries must use paginate_discovery_query() so LIMIT/OFFSET pages continue
-  until a short page proves completeness. Per-MVP UNION ALL query groups must
-  use run_union_batches() so HogQL execution stays under timeout limits while
-  preserving one concatenated results payload for downstream state code.
+  queries must use paginate_discovery_query(), which issues a single OFFSET-free
+  query capped at page_size * max_pages and proves completeness with a short
+  page. (Personal API keys — the auth /iterate --cross requires — reject OFFSET;
+  these GROUP BY aggregates are one-row-per-MVP/host and bounded, so a capped
+  LIMIT-only fetch is both correct and complete. It raises if the cap is hit.)
+  Per-MVP UNION ALL query groups must use run_union_batches() so HogQL execution
+  stays under timeout limits while preserving one concatenated results payload
+  for downstream state code. Per-pair overlap queries must use
+  compute_orphan_overlap(), whose multi-pass cooldown-resume (cooldown_seconds /
+  failure_sleep_seconds / max_passes + the per-pair cache) absorbs the PostHog
+  server-side circuit breaker that long windows trip ("query failed the same
+  way 4 times in a row ... can run again in about 4 minutes").
 fix_template: |
   In state bash, build the SQL parts in Python, import the helper from
-  .claude/scripts/lib, and call:
+  .claude/scripts/lib, read the posthog_query block from the operator config
+  (experiment/iterate-cross-config.example.yaml documents it), and call:
 
-    rows, metadata = paginate_discovery_query(sql, values, project_id, api_key, page_size=200)
-    rows, metadata = run_union_batches(parts, values, project_id, api_key, batch_size=20)
+    pq = (cfg.get('posthog_query') or {})
+    rows, metadata = paginate_discovery_query(sql, values, project_id, api_key,
+        page_size=200, max_time_seconds=int(pq.get('max_time_seconds', 120)))
+    rows, metadata = run_union_batches(parts, values, project_id, api_key,
+        batch_size=int(pq.get('union_batch_size_catalog', 5)),
+        max_time_seconds=int(pq.get('max_time_seconds', 120)))
 
-  Write raw artifacts as {"results": rows, "<state_status_key>": metadata}
-  and propagate the metadata into the gate-readable context/data artifact
-  through the standard state artifact writer.
+  Long windows (365d) need the small batch sizes and the raised timeout —
+  never write a bare batch_size=20 literal into a state file. Write raw
+  artifacts as {"results": rows, "<state_status_key>": metadata} and propagate
+  the metadata into the gate-readable context/data artifact through the
+  standard state artifact writer.
 ```
 
 ### shared selector for per-page design-critic traces (epoch suffix routing)
@@ -1176,6 +1264,58 @@ fix_template: |
   Callers (production):
     - state-x0 orphan-overlap merge (`.claude/skills/iterate/state-x0-discover-mvps.md`)
     - state-x0a GA bucketing (`.claude/scripts/lib/iterate_cross_ga.py`)
+    - state-x5 orphan pair/merge + foreign campaigns (`.claude/skills/iterate/state-x5-pay-intent-verdict.md`)
+```
+
+### campaign→MVP attribution single surface (iterate_cross_ga)
+```yaml
+id: iterate-cross-campaign-attribution-surface
+maturity: stable
+anti_pattern: false
+composite_identity:
+  root_cause_class: campaign-attribution-logic-reimplemented-per-consumer
+  divergence_pattern: hand-rolled-campaign-name-matching-instead-of-bucket-campaign
+  stack_scope: scripts/lib/iterate_cross_ga
+composite_identity_hash: 08a72097f03a
+symptom_keywords: [bucket-campaign, ga-campaign-aliases, utm-campaign, owner-map, campaign-attribution, iterate-cross, alias-resolution, orphan-owner]
+confidence_score: 0.9
+occurrence_count: 1
+linked_issues: [2073]
+first_seen: 2026-08-03
+last_seen: 2026-08-03
+graduated_to: null
+prevention_mechanism: |
+  `iterate_cross_ga` is the single campaign-attribution surface for
+  /iterate --cross: `bucket_campaign(campaign_name, mvp_keys, aliases)`
+  resolves a Google Ads campaign / `utm_campaign` string to an MVP
+  (placeholder guard → ad-suffix strip → substring longest-wins → alias on
+  full and stripped keys → ga-only auto-create), with `_load_aliases`
+  (match_key-normalized `ga_campaign_aliases`) and `_load_owner_map`
+  (`mvp_mappings.<name>.owner`) as its config loaders. The GA click merge,
+  foreign-campaign detection, and the team-message orphan-owner resolver
+  (#2073) all route through it. A consumer that re-implements campaign
+  matching (substring checks, its own alias table, ad-hoc suffix stripping)
+  drifts from this ladder and splits or misroutes attribution.
+fix_template: |
+  When mapping a campaign or utm_campaign string to an MVP or its owner:
+
+    # Wrong — hand-rolled matching, drifts from the shared ladder:
+    if campaign.startswith(mvp_name): ...
+
+    # Right — reuse the attribution surface:
+    import sys; sys.path.insert(0, '.claude/scripts/lib')
+    from iterate_cross_ga import bucket_campaign, _load_aliases, _load_owner_map
+    aliases = _load_aliases('experiment/iterate-cross-config.yaml')
+    mvp, reason = bucket_campaign(campaign, mvp_keys, aliases)
+    owner = _load_owner_map('experiment/iterate-cross-config.yaml').get(mvp)
+
+  Note: `_load_aliases`, not `iterate_cross_verdicts.load_config` — the
+  latter copies only DEFAULT_CONFIG keys and silently drops
+  `ga_campaign_aliases`.
+
+  Callers (production):
+    - state-x5 Steps 3b/4/5.6/7 (`.claude/skills/iterate/state-x5-pay-intent-verdict.md`)
+    - team-message orphan-owner resolver (`.claude/scripts/lib/iterate_cross_verdicts.py`)
 ```
 
 ### prose-gate effective-mode resolution with snapshot + per-gate override
@@ -1306,7 +1446,7 @@ composite_identity:
   root_cause_class: deployment-account-and-env-resolution-drift
   divergence_pattern: callers-hand-roll-vercel-cli-auth-project-env-lookups
   stack_scope: scripts/lib/vercel_api
-composite_identity_hash: 7d6df93a7e31
+composite_identity_hash: bc18155df4da
 symptom_keywords: [vercel, project-link, teamId, production-env, NEXT_PUBLIC_POSTHOG_KEY, deployment-url, ads-ready]
 confidence_score: 0.85
 occurrence_count: 1
@@ -1335,6 +1475,250 @@ fix_template: |
     - .claude/scripts/lib/ads_ready_smoke.py
 ```
 
+### iterate-cross decision report (.docx bucketing + NO_GO reason)
+```yaml
+id: iterate-cross-decision-report-docx
+maturity: stable
+anti_pattern: false
+composite_identity:
+  root_cause_class: report-rendering-needs-optional-heavy-dependency
+  divergence_pattern: docx-bucket-and-no-go-reason-logic-shared-by-report-and-ledger
+  stack_scope: scripts/lib/iterate_cross_docx
+composite_identity_hash: fab6ba0e5c6b
+symptom_keywords: [iterate-cross, docx, decision-report, python-docx, optional-dependency, bucket-scores, no-go-reason, verdict-report, x4, x4a]
+confidence_score: 0.85
+occurrence_count: 2
+linked_issues: []
+first_seen: 2026-06-29
+last_seen: 2026-06-29
+graduated_to: null
+prevention_mechanism: |
+  iterate_cross_docx owns the canonical partition of a scored MVP into the
+  four report buckets (GO / NO_GO / INSUF / FIX TRACKING via bucket_scores,
+  precedence FIX > NO_GO > GO > INSUF with a seen-guard) and the canonical
+  NO_GO explanation string (no_go_reason: deleted backend > CPC unit-economics
+  > low conversion > under floor). Both the .docx report (reached via
+  iterate_cross_verdicts.py --emit-docx) and the decision ledger
+  (iterate_cross_ledger.py, which records the same "why" per NO_GO row) import
+  these helpers from here, so the report and the persisted ledger can never
+  disagree on which bucket a verdict lands in or why a NO_GO was stopped.
+  python-docx is isolated behind _import_docx(); the pure bucket/marker/reason
+  helpers stay importable (and unit-testable) on machines without the dep, and
+  emit_docx() returns (False, msg) instead of raising when it is absent so the
+  pipeline degrades gracefully.
+fix_template: |
+  When another consumer needs the cross-MVP verdict buckets or the human-
+  readable NO_GO reason, import bucket_scores / no_go_reason / mvp_cell_markers
+  from iterate_cross_docx — do NOT re-derive the precedence or the reason
+  branches inline (that is the drift this entry prevents). Any new optional
+  rendering backend must go behind its own _import_*() guard and return a
+  (bool, message) tuple, never raise, so state-x4 stays best-effort.
+```
+
+### iterate-cross per-MVP GitHub repo fetch + fuzzy-match
+```yaml
+id: iterate-cross-github-repo-fetch
+maturity: stable
+anti_pattern: false
+composite_identity:
+  root_cause_class: per-mvp-github-repo-fetch-and-fuzzy-match
+  divergence_pattern: repo-fetch-helpers-reused-across-pricing-and-ledger-enrichment
+  stack_scope: scripts/lib/iterate_cross_pricing
+composite_identity_hash: e5db136698d1
+symptom_keywords: [iterate-cross, github, gh-api, resolve-repo, fetch-file, list-org-repos, magpiexyz-lab, fuzzy-match, x0c, x4a, pricing, ledger]
+confidence_score: 0.85
+occurrence_count: 2
+linked_issues: []
+first_seen: 2026-06-29
+last_seen: 2026-06-29
+graduated_to: null
+prevention_mechanism: |
+  iterate_cross_pricing owns the canonical path from a canonical MVP name to a
+  magpiexyz-lab GitHub repo and its file contents: resolve_repo() (github_repo
+  override > repo_aliases > match_key fuzzy match), list_org_repos(), and
+  fetch_file() (gh api repos/{org}/{repo}/contents/{path} + base64 decode via
+  the mockable _gh() transport). state-x0c (price discovery) and
+  iterate_cross_ledger (x4a description enrichment) both reach repos through
+  these helpers, so the two flows resolve the same repo for a given MVP and
+  share one mock surface (_gh) in tests.
+fix_template: |
+  When a template script needs an MVP's repo or a file from it, call
+  resolve_repo(name, list_org_repos(), mappings, repo_aliases) then
+  fetch_file(repo, path) from iterate_cross_pricing — do NOT shell out to gh
+  directly or re-implement the name→repo fuzzy match. Treat a None return
+  (gh absent / repo unmatched / 404) as best-effort empty, never an error.
+```
+
+### iterate-cross decision ledgers (phase-1 canonical + phase-2 raw-keyed upserts)
+```yaml
+id: iterate-cross-ledger-durable-upserts
+maturity: stable
+anti_pattern: false
+composite_identity:
+  root_cause_class: verdict-ground-truth-destroyed-by-infra-teardown
+  divergence_pattern: per-mvp-upsert-ledger-with-freeze-and-sticky-fields
+  stack_scope: scripts/lib/iterate_cross_ledger
+composite_identity_hash: d023fac8b724
+symptom_keywords: [decision-ledger, phase2, upsert, freeze, archived_at, verdict-history, raw-key, mvp-canonical, run-id, stalled-streak]
+confidence_score: 0.9
+occurrence_count: 1
+linked_issues: []
+first_seen: 2026-08-07
+last_seen: 2026-08-07
+graduated_to: null
+prevention_mechanism: |
+  iterate_cross_ledger.py owns both git-tracked decision ledgers. Phase 1
+  (experiment/mvp-decision-ledger.jsonl): canonical-keyed upsert_row with
+  sticky what_it_does/tags, reversible freeze (archived_at) on
+  kill/DB-delete, change-only verdict_history (now metric-carrying), and
+  spend/CAC + ga_campaigns + run_id/persisted_at in current_snapshot.
+  Phase 2 (experiment/phase2-decision-ledger.jsonl, cmd persist-phase2):
+  RAW-name keys matching annotate_stalled's prev_ledger.get(score["name"])
+  lookup (phase2 never runs the x0 alias merge — canonical keys would
+  silently miss aliased MVPs), mvp_canonical stamped as a field,
+  assert_no_alias_key_collision at write, NO lifecycle_status stamping,
+  freeze keyed on config mvp_mappings lifecycle_status == killed, spend
+  whitelisted from the phase2 CONTEXT (scores carry no cost fields; the
+  *_phase2 slices are structurally empty under --phase-filter).
+fix_template: |
+  When persisting per-key verdict state that a later run must read back:
+
+    1. Key the writer in the READER's key space (verify the exact lookup
+       expression before choosing canonicalization) and stamp the other
+       identity as a field, never as the key.
+    2. Pass --now from the SAME clock the reader compares against
+       (phase2: x5's reference_now = max last_seen), and stamp
+       run_id/persisted_at so a distinct run with a frozen data clock is
+       distinguishable from a same-run re-persist.
+    3. Freeze AFTER snapshotting so the locked row is the pre-teardown
+       ground truth; never overwrite a frozen row.
+    4. append_history dedups on verdict+why ONLY — extra metric keys on
+       entries are safe and make the file self-sufficient for trend reads.
+
+  Callers (production):
+    - .claude/skills/iterate/state-x4a-persist-ledger.md (prepare/persist)
+    - .claude/skills/iterate/state-x5a-persist-phase2-ledger.md (persist-phase2)
+```
+
+### iterate-cross run-metrics telemetry + raw-evidence archive (Tier 2/3 persistence)
+```yaml
+id: iterate-cross-runlog-persistence-tiers
+maturity: stable
+anti_pattern: false
+composite_identity:
+  root_cause_class: transient-run-artifacts-lost-before-git-persistence
+  divergence_pattern: per-run-overwrite-of-gitignored-scores-and-csv
+  stack_scope: scripts/lib/iterate_cross_runlog
+composite_identity_hash: 779ad93e0174
+symptom_keywords: [run-metrics, runs-archive, jsonl, append-only, pii-guard, sha256, ga-csv, phase2, persistence, merge-union]
+confidence_score: 0.9
+occurrence_count: 1
+linked_issues: []
+first_seen: 2026-08-07
+last_seen: 2026-08-07
+graduated_to: null
+prevention_mechanism: |
+  iterate_cross_runlog.py is the single writer surface for the two
+  non-ledger persistence tiers of /iterate --cross: Tier 2
+  (experiment/iterate-cross-run-metrics.jsonl — append-only, one line per
+  run x MVP, whitelist projection, orphans included) and Tier 3
+  (experiment/runs-archive/<wall-clock-UTC>-<mode>/ + index.jsonl —
+  python-only raw copies with sha256 and consume-time fingerprint check).
+  Every outbound byte stream passes an email-regex PII guard that decodes
+  UTF-16 first (GA CSVs are UTF-16LE — a raw-bytes scan is blind through
+  the interleaved NULs); projection helpers reject *_audit / email* field
+  names so upstream schema changes cannot smuggle audit rows into git.
+fix_template: |
+  When a skill's per-run artifacts must survive .runs/ overwrites and land
+  in git durably:
+
+    1. Ledgers (per-key upsert) answer "what is the state of X" — they are
+       NOT time series. Add an append-only jsonl (one line per run x key,
+       whitelisted fields) for trends, and a raw-file archive for
+       reproducibility. Different shapes, different files.
+    2. Write from python, never `cp` a gated .runs/*.json in bash — the
+       gate-artifact-bash-write-guard awk matches source paths too and the
+       friction rows poison the deny-cutover soak signal.
+    3. Declare merge=union in .gitattributes for the append-only files and
+       make readers dedupe on the natural key ((run_id, phase, mvp)) —
+       union merges duplicate lines by design.
+    4. Fingerprint operator-supplied inputs at consume time (sha256 into
+       the run context via write-gate-artifact.sh) and re-check at archive
+       time: mismatch = WARN + archive the actual bytes + a
+       csv_changed_since_consume flag, never a block.
+    5. Hard-fail on PII (decode UTF-16 before scanning); whitelist
+       projection over whole-file copies for anything sourced from
+       artifacts that carry *_filter_audit rows.
+
+  Usage:
+    import sys
+    sys.path.insert(0, ".claude/scripts/lib")
+    from iterate_cross_runlog import (
+        append_run_metrics, archive_run_files, build_run_metrics_row)
+    rows = [build_run_metrics_row(phase, run_id, ref, persisted_at, score,
+                                  ctx_mvp=..., mvp_canonical=...) ...]
+    append_run_metrics(rows)
+    archive_run_files(mode, [(src, dst_name), ...], run_id,
+                      expected_csv_sha=ctx.get("ga_csv_sha256"))
+
+  Callers (production):
+    - .claude/skills/iterate/state-x4a-persist-ledger.md (phase 1)
+    - .claude/skills/iterate/state-x5a-persist-phase2-ledger.md (phase 2)
+```
+
+### iterate-cross early pass (worst-case floor bound early stop)
+```yaml
+id: iterate-cross-early-pass-worst-case-bound
+maturity: raw
+anti_pattern: false
+composite_identity:
+  root_cause_class: mechanical-click-floor-spend-after-verdict-locked
+  divergence_pattern: sub-floor-insuf-despite-floor-guaranteed-bar
+  stack_scope: scripts/lib/iterate_cross_verdicts
+composite_identity_hash: ab5538e06222
+symptom_keywords: [early-pass, worst-case-bound, click-floor, insufficient-data, futility, phase1, phase2, verdict, db-trusted]
+confidence_score: 0.8
+occurrence_count: 1
+linked_issues: ["#2152"]
+first_seen: 2026-08-07
+last_seen: 2026-08-07
+graduated_to: null
+prevention_mechanism: |
+  Both verdict ladders (compute_headline_verdict rung 4, and the sub-floor
+  branch of compute_pay_intent_verdict) carry an early-pass escape: when the
+  DB-trusted numerator already reaches ceil(bar x floor) with a nonzero paid
+  denominator, the conversion rate clears the GO gate even if every remaining
+  click to the floor converts at 0%, so the verdict is GO immediately —
+  metrics.early_pass = "worst_case_floor_bound" plus a phase1_early_pass /
+  pay_intent_early_pass info flag carrying the arithmetic. The sentinel is
+  whitelisted into the Tier-2 run-metrics rows and both ledger snapshots so
+  batch readers can tell a floor-guaranteed early GO from an at-floor GO.
+fix_template: |
+  Early exits from a sequential test must be SYMMETRIC and must demand
+  STRONGER evidence than the at-floor verdict (the floor itself is dilution
+  protection):
+
+    1. Failure side (existing): zero-intent futility — 0 intents + wiring
+       proven + clicks >= ceil(3/theta2) -> early NO_GO (rule of three).
+    2. Success side (#2152): DB-trusted conversions >= ceil(bar x floor)
+       with clicks > 0 -> early GO. PostHog-sourced numerators wait for the
+       floor (a small-sample PH spike may be an attribution glitch — the
+       8-visitor/6-signup dead-link incident), and organic conversions with
+       zero paid clicks never fire it.
+    3. Keep the verdict LABEL unchanged (GO / NO_GO) and record the "why"
+       in a metrics sentinel + an info tracking_sanity_flag — a new label
+       would touch every allowed-verdict registry set, sort order, action
+       template, and docx bucket twin for zero decision value.
+    4. Thresholds are DERIVED from the existing bar/floor config keys —
+       no new knobs; operators tune the bar or the floor, never a third
+       number that can drift out of sync.
+
+  Callers (production):
+    - .claude/scripts/lib/iterate_cross_verdicts.py (both ladders)
+    - consumers: iterate_cross_runlog._METRIC_KEYS, iterate_cross_ledger
+      current_snapshot / phase2_current_snapshot (additive early_pass field)
+```
+
 ## Existing helpers (no Stack Knowledge — single-caller or in-flux)
 
 These helpers are below the `lib_helper_stack_knowledge_required` rule's `caller_threshold: 2` (per narrow consumption_patterns excluding tests/), so they don't yet need a Stack Knowledge entry. Add an entry only when the helper crosses 2+ production callers.
@@ -1346,7 +1730,8 @@ These helpers are below the `lib_helper_stack_knowledge_required` rule's `caller
 - `decompose-bash-chain.py` — standalone script invoked via subprocess (no Python imports)
 - `derive_slot_intent.py` — slot intent derivation for image generation (1 caller: scaffold-init.md)
 - `dossier_builder.py` — RMG v2 prior-failure dossier builder (1 caller: solve-reasoning.md)
-- `iterate_cross_verdicts.py` — /iterate cross-skill verdict aggregation (subprocess-only)
+- `iterate_cross_owner_infer.py` — owner inference from repo commit history for x4 owner-backfill proposals (1 caller: state-x4-rank-recommend.md)
+- `iterate_cross_verdicts.py` — /iterate cross-skill verdict aggregation (1 caller: state-x5-pay-intent-verdict.md)
 - `observer_evidence_families.py` — observer evidence family manifest (1 caller: write-observation-evidence.py)
 - `slot_intent_schema.py` — manual JSON schema validator (1 caller: scaffold-init.md)
 - `stack_knowledge_audit.py` — nightly stack-knowledge issue filing (subprocess-only)

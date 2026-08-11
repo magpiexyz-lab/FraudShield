@@ -57,6 +57,64 @@ def events_yaml(events: str) -> str:
     return "events:\n" + events
 
 
+def phase2_fixture_files(overrides: dict[str, str] | None = None) -> dict[str, str]:
+    files = {
+        "experiment/experiment.yaml": experiment_yaml("alpha"),
+        "experiment/EVENTS.yaml": events_yaml(
+            "  pay_intent:\n"
+            "    funnel_stage: monetize\n"
+            "    properties:\n"
+            "      plan: { type: string, required: true }\n"
+            "      price_cents: { type: number, required: true }\n"
+            "      gclid: { type: string, required: false }\n"
+            "      utm_campaign: { type: string, required: true }\n"
+        ),
+        "tsconfig.json": '{"compilerOptions":{"paths":{"@/*":["src/*"]}}}',
+        "src/lib/analytics.ts": "export function track(_event: string, _props?: unknown) {}\n",
+        "src/lib/events.ts": (
+            'import { track } from "./analytics";\n'
+            "export function trackPayIntent(props: { plan: string; price_cents: number; gclid?: string; utm_campaign: string }) {\n"
+            '  track("pay_intent", { ...props, funnel_stage: "monetize" });\n'
+            "}\n"
+        ),
+        "src/lib/supabase/server.ts": "export function createClient() { return { from: () => ({ insert: async () => null }) }; }\n",
+        "src/components/UpgradeCTA.tsx": (
+            'import { trackPayIntent } from "@/lib/events";\n'
+            "export function UpgradeCTA({ user, hasActivated, gclid, utm_campaign }) {\n"
+            "  const canUpgrade = user && hasActivated;\n"
+            "  if (!canUpgrade) return null;\n"
+            "  async function onClick() {\n"
+            '    trackPayIntent({ plan: "pro", price_cents: 1900, gclid, utm_campaign });\n'
+            '    await fetch("/api/pay-intent", { method: "POST", body: JSON.stringify({ gclid, utm_campaign }) });\n'
+            "  }\n"
+            "  return <button onClick={onClick}>Upgrade to Pro</button>;\n"
+            "}\n"
+        ),
+        "src/app/api/pay-intent/route.ts": (
+            'import { createClient } from "@/lib/supabase/server";\n'
+            "export async function POST(request: Request) {\n"
+            "  const { gclid, utm_campaign } = await request.json();\n"
+            "  const supabase = createClient();\n"
+            '  await supabase.from("pay_intent").insert({ user_id: "user_1", gclid, utm_campaign });\n'
+            "  return Response.json({ ok: true });\n"
+            "}\n"
+        ),
+        "supabase/migrations/20260601000000_pay_intent.sql": (
+            "create table public.pay_intent (\n"
+            "  id uuid primary key,\n"
+            "  user_id uuid references auth.users(id),\n"
+            "  gclid text,\n"
+            "  utm_campaign text,\n"
+            "  created_at timestamptz default now()\n"
+            ");\n"
+            "alter table public.pay_intent enable row level security;\n"
+        ),
+    }
+    if overrides:
+        files.update(overrides)
+    return files
+
+
 def team_config(**overrides) -> dict:
     config = {
         "team": {
@@ -838,6 +896,212 @@ class Check11EventsImplementedTests(unittest.TestCase):
         self.assertIn("known archetypes", details)
         self.assertIn("web-app", details)
         self.assertIn("typo", fix)
+
+
+class Phase2StaticChecksTests(unittest.TestCase):
+    def test_p2_a_clean_fixture_passes(self):
+        with repo(phase2_fixture_files()) as root:
+            passed, details, _ = H.check_phase2_pay_intent_event_and_callsite({"mvp_root": str(root)})
+        self.assertTrue(passed)
+        self.assertIn("utm_campaign", details)
+        self.assertIn("price_cents", details)
+
+    def test_p2_a_missing_price_cents_event_property_fails(self):
+        with repo(
+            phase2_fixture_files(
+                {
+                    "experiment/EVENTS.yaml": events_yaml(
+                        "  pay_intent:\n"
+                        "    funnel_stage: monetize\n"
+                        "    properties:\n"
+                        "      plan: { type: string, required: true }\n"
+                        "      gclid: { type: string, required: false }\n"
+                        "      utm_campaign: { type: string, required: true }\n"
+                    )
+                }
+            )
+        ) as root:
+            passed, details, fix = H.check_phase2_pay_intent_event_and_callsite({"mvp_root": str(root)})
+        self.assertFalse(passed)
+        self.assertIn("price_cents", details)
+        self.assertIn("required", details)
+        self.assertIn("price_cents", fix)
+
+    def test_p2_a_price_cents_string_type_fails(self):
+        with repo(
+            phase2_fixture_files(
+                {
+                    "experiment/EVENTS.yaml": events_yaml(
+                        "  pay_intent:\n"
+                        "    funnel_stage: monetize\n"
+                        "    properties:\n"
+                        "      plan: { type: string, required: true }\n"
+                        "      price_cents: { type: string, required: true }\n"
+                        "      gclid: { type: string, required: false }\n"
+                        "      utm_campaign: { type: string, required: true }\n"
+                    )
+                }
+            )
+        ) as root:
+            passed, details, fix = H.check_phase2_pay_intent_event_and_callsite({"mvp_root": str(root)})
+        self.assertFalse(passed)
+        self.assertIn("price_cents.type", details)
+        self.assertIn("number", details)
+        self.assertIn("type: number", fix)
+
+    def test_p2_a_missing_utm_campaign_call_arg_fails(self):
+        with repo(
+            phase2_fixture_files(
+                {
+                    "src/components/UpgradeCTA.tsx": (
+                        'import { trackPayIntent } from "@/lib/events";\n'
+                        "export function UpgradeCTA({ user, hasActivated, gclid, utm_campaign }) {\n"
+                        "  const canUpgrade = user && hasActivated;\n"
+                        "  if (!canUpgrade) return null;\n"
+                        '  trackPayIntent({ plan: "pro", price_cents: 1900, gclid });\n'
+                        "  return <button>Upgrade to Pro</button>;\n"
+                        "}\n"
+                    )
+                }
+            )
+        ) as root:
+            passed, details, fix = H.check_phase2_pay_intent_event_and_callsite({"mvp_root": str(root)})
+        self.assertFalse(passed)
+        self.assertIn("utm_campaign", details)
+        self.assertIn("trackPayIntent", fix)
+
+    def test_p2_a_missing_price_cents_call_arg_fails(self):
+        with repo(
+            phase2_fixture_files(
+                {
+                    "src/components/UpgradeCTA.tsx": (
+                        'import { trackPayIntent } from "@/lib/events";\n'
+                        "export function UpgradeCTA({ user, hasActivated, gclid, utm_campaign }) {\n"
+                        "  const canUpgrade = user && hasActivated;\n"
+                        "  if (!canUpgrade) return null;\n"
+                        '  trackPayIntent({ plan: "pro", gclid, utm_campaign });\n'
+                        "  return <button>Upgrade to Pro</button>;\n"
+                        "}\n"
+                    )
+                }
+            )
+        ) as root:
+            passed, details, fix = H.check_phase2_pay_intent_event_and_callsite({"mvp_root": str(root)})
+        self.assertFalse(passed)
+        self.assertIn("price_cents", details)
+        self.assertIn("price_cents", fix)
+
+    def test_p2_b_clean_fixture_passes(self):
+        with repo(phase2_fixture_files()) as root:
+            passed, details, _ = H.check_phase2_pay_intent_route({"mvp_root": str(root)})
+        self.assertTrue(passed)
+        self.assertIn("/api/pay-intent", details)
+
+    def test_p2_b_missing_utm_campaign_row_value_fails(self):
+        with repo(
+            phase2_fixture_files(
+                {
+                    "src/app/api/pay-intent/route.ts": (
+                        "export async function POST(request: Request) {\n"
+                        "  const { gclid } = await request.json();\n"
+                        '  await supabase.from("pay_intent").insert({ user_id: "user_1", gclid });\n'
+                        "  return Response.json({ ok: true });\n"
+                        "}\n"
+                    )
+                }
+            )
+        ) as root:
+            passed, details, fix = H.check_phase2_pay_intent_route({"mvp_root": str(root)})
+        self.assertFalse(passed)
+        self.assertIn("utm_campaign", details)
+        self.assertIn("insert", fix)
+
+    def test_p2_c_clean_fixture_passes(self):
+        with repo(phase2_fixture_files()) as root:
+            passed, details, _ = H.check_phase2_pay_intent_migration({"mvp_root": str(root)})
+        self.assertTrue(passed)
+        self.assertIn("auth.users", details)
+
+    def test_p2_c_missing_rls_fails(self):
+        with repo(
+            phase2_fixture_files(
+                {
+                    "supabase/migrations/20260601000000_pay_intent.sql": (
+                        "create table public.pay_intent (\n"
+                        "  id uuid primary key,\n"
+                        "  user_id uuid references auth.users(id),\n"
+                        "  gclid text,\n"
+                        "  utm_campaign text\n"
+                        ");\n"
+                    )
+                }
+            )
+        ) as root:
+            passed, details, fix = H.check_phase2_pay_intent_migration({"mvp_root": str(root)})
+        self.assertFalse(passed)
+        self.assertIn("RLS", details)
+        self.assertIn("row level security", fix)
+
+    def test_p2_d_clean_fixture_passes(self):
+        with repo(phase2_fixture_files()) as root:
+            passed, details, _ = H.check_phase2_upgrade_cta_guard({"mvp_root": str(root)})
+        self.assertTrue(passed)
+        self.assertIn("guards", details)
+
+    def test_p2_d_unconditional_upgrade_fails(self):
+        with repo(
+            phase2_fixture_files(
+                {
+                    "src/components/UpgradeCTA.tsx": (
+                        'import { trackPayIntent } from "@/lib/events";\n'
+                        "export function UpgradeCTA({ gclid, utm_campaign }) {\n"
+                        '  trackPayIntent({ plan: "pro", price_cents: 1900, gclid, utm_campaign });\n'
+                        "  return <button>Upgrade to Pro</button>;\n"
+                        "}\n"
+                    )
+                }
+            )
+        ) as root:
+            passed, details, fix = H.check_phase2_upgrade_cta_guard({"mvp_root": str(root)})
+        self.assertFalse(passed)
+        self.assertIn("render guard", details)
+        self.assertIn("authenticated", fix)
+
+    def test_p2_e_clean_fixture_passes(self):
+        with repo(phase2_fixture_files({"src/lib/unrelated-billing.ts": 'import Stripe from "stripe";\n'})) as root:
+            passed, details, _ = H.check_phase2_no_payment_provider_on_fake_door_path(
+                {"mvp_root": str(root)}
+            )
+        self.assertTrue(passed)
+        self.assertIn("No payment provider import", details)
+
+    def test_p2_e_reachable_stripe_import_fails(self):
+        with repo(
+            phase2_fixture_files(
+                {
+                    "src/lib/checkout.ts": 'import Stripe from "stripe";\nexport const stripe = Stripe;\n',
+                    "src/app/api/pay-intent/route.ts": (
+                        'import { stripe } from "@/lib/checkout";\n'
+                        "export async function POST(request: Request) {\n"
+                        "  const { gclid, utm_campaign } = await request.json();\n"
+                        "  void stripe;\n"
+                        '  await supabase.from("pay_intent").insert({ user_id: "user_1", gclid, utm_campaign });\n'
+                        "  return Response.json({ ok: true });\n"
+                        "}\n"
+                    ),
+                }
+            )
+        ) as root:
+            passed, details, fix = H.check_phase2_no_payment_provider_on_fake_door_path(
+                {"mvp_root": str(root)}
+            )
+        self.assertFalse(passed)
+        self.assertIn("stripe", details.lower())
+        self.assertIn("Remove", fix)
+
+    def test_phase2_predicate(self):
+        self.assertFalse(H.applies_if_phase_2({"phase_2": False}))
+        self.assertTrue(H.applies_if_phase_2({"phase_2": True}))
 
 
 class Check12UnauthorizedTrackTests(unittest.TestCase):

@@ -53,7 +53,7 @@ Twitter auto-appends `twclid` to the landing URL when a user clicks an ad. Captu
 
 1. Install the Twitter pixel (or use server-side conversion API)
 2. Set up a Website Tag in Twitter Ads → Events Manager
-3. Map the `activate` event → Twitter conversion event
+3. Map the `signup_complete` event → Twitter conversion event
 4. Verify with a test conversion
 
 Import method: Twitter Pixel (client-side) or Conversions API (server-side).
@@ -126,8 +126,8 @@ budget:
   bidding_strategy: cpe  # or cpm
 
 conversions:
-  primary_action: activate
-  secondary_actions: [signup_complete]
+  primary_action: signup_complete
+  secondary_actions: [activate]
   import_method: twitter_pixel
 
 guardrails:
@@ -156,7 +156,7 @@ thresholds:
 2. **Add payment method** — credit card or IO
 3. **Install Twitter pixel** on the landing page (or configure Conversions API)
 4. **Create conversion event** — Events Manager → New Event → Website visits / Custom event
-5. **Map events** — `activate` event → Twitter conversion event
+5. **Map events** — `signup_complete` event → Twitter conversion event
 6. **Verify** — use Twitter's Event Manager to confirm pixel is firing
 
 ### Dashboard Filter

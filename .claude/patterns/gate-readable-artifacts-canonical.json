@@ -1,6 +1,6 @@
 {
-  "$comment": "GRAIM v2 — gate-readable artifacts that MUST carry {skill, run_id, written_at}. Auto-derived from state-registry.json VERIFY blocks. DO NOT EDIT MANUALLY — re-run derive-graim-manifest.py.",
-  "$jsonl_carveout": "#1393 r3 Item 2 — `.jsonl` telemetry is a known non-canonical class. The regex carve-out at derive-graim-manifest.py:RE_RUNS_JSON (negative lookahead `(?![a-zA-Z0-9])`) is load-bearing — see that file's module docstring. New telemetry: pick `.jsonl` extension, document per-line schema in writer docstring, do NOT register here. Enforced by template-coherence-rules.json rule `derive-graim-manifest-carveout-pin`.",
+  "$comment": "GRAIM v2 \u2014 gate-readable artifacts that MUST carry {skill, run_id, written_at}. Auto-derived from state-registry.json VERIFY blocks. DO NOT EDIT MANUALLY \u2014 re-run derive-graim-manifest.py.",
+  "$jsonl_carveout": "#1393 r3 Item 2 \u2014 `.jsonl` telemetry is a known non-canonical class. The regex carve-out at derive-graim-manifest.py:RE_RUNS_JSON (negative lookahead `(?![a-zA-Z0-9])`) is load-bearing \u2014 see that file's module docstring. New telemetry: pick `.jsonl` extension, document per-line schema in writer docstring, do NOT register here. Enforced by template-coherence-rules.json rule `derive-graim-manifest-carveout-pin`.",
   "version": "1.0",
   "generated_at": "2026-04-30T11:14:14Z",
   "generator": ".claude/scripts/derive-graim-manifest.py",
@@ -106,7 +106,7 @@
         ".claude/scripts/merge-scaffold-pages-traces.py"
       ],
       "scope": "transient-cross-skill",
-      "rationale": "Lead-merge aggregate trace produced by merge-scaffold-pages-traces.py (allowlisted in agent-trace-write-guard.sh:181). Bypasses write-agent-trace.sh — pre-AOC-v1.1 legacy aggregate, see merge script comment lines 18-22 for full lead-merge invariant retrofit deferred. Slice 3.2 enrolls in GRAIM canonical manifest; full identity stamping comes when this aggregate is upgraded to AOC v1.1 lead-merge contract."
+      "rationale": "Lead-merge aggregate trace produced by merge-scaffold-pages-traces.py (allowlisted in agent-trace-write-guard.sh:181). Bypasses write-agent-trace.sh \u2014 pre-AOC-v1.1 legacy aggregate, see merge script comment lines 18-22 for full lead-merge invariant retrofit deferred. Slice 3.2 enrolls in GRAIM canonical manifest; full identity stamping comes when this aggregate is upgraded to AOC v1.1 lead-merge contract."
     },
     {
       "path": ".runs/agent-traces/security-fixer.json",
@@ -720,6 +720,40 @@
       "rationale": "Operator triage file for Google Ads campaigns that bucket logic could not map to an MVP (placeholders like 'Campaign #1'). Written unconditionally by iterate_cross_ga.py merge subcommand so x0a VERIFY can assert presence."
     },
     {
+      "path": ".runs/_iterate-cross-phase2-ga-unmatched.json",
+      "consumers": [
+        "state-registry:iterate-cross-phase2.x5"
+      ],
+      "writers": [
+        ".claude/scripts/lib/iterate_cross_ga.py"
+      ],
+      "scope": "transient-cross-skill",
+      "rationale": "Operator triage file for Phase 2 Google Ads campaigns that bucket logic could not map to an MVP. Written by iterate_cross_ga.py merge subcommand so x5 VERIFY can assert presence."
+    },
+    {
+      "path": ".runs/_iterate-cross-phase2-db-unmatched.json",
+      "consumers": [
+        "state-registry:iterate-cross-phase2.x5"
+      ],
+      "writers": [
+        ".claude/scripts/lib/iterate_cross_phase2_db.py"
+      ],
+      "scope": "transient-cross-skill",
+      "rationale": "Operator triage file for Phase 2 Supabase pay_intent rows that could not provide trusted DB counts. Written unconditionally by iterate_cross_phase2_db.py merge subcommand so x5 VERIFY can assert presence and run-token freshness."
+    },
+    {
+      "path": ".runs/iterate-cross-auth-preflight.json",
+      "consumers": [
+        "state-registry:iterate-cross.x0",
+        "state-registry:iterate-cross-phase2.x5"
+      ],
+      "writers": [
+        ".claude/scripts/lib/write-gate-artifact.sh"
+      ],
+      "scope": "transient-cross-skill",
+      "rationale": "Auth preflight verdict (state-x0/x5 Step 0). Written via write-gate-artifact.sh so VERIFY can assert all_required_ok and mode; purged by lifecycle-init so a stale pass never satisfies a new run."
+    },
+    {
       "path": ".runs/iterate-cross-context.json",
       "consumers": [
         "state-registry:iterate-cross.x0",
@@ -762,6 +796,59 @@
       ],
       "scope": "transient-cross-skill",
       "rationale": "Read by VERIFY blocks in skills: iterate-cross."
+    },
+    {
+      "path": ".runs/iterate-cross-teardown-obligations.json",
+      "consumers": [
+        "state-registry:iterate-cross.x4b"
+      ],
+      "writers": [
+        ".claude/scripts/lib/iterate_cross_teardown.py"
+      ],
+      "scope": "transient-cross-skill",
+      "rationale": "Read by VERIFY blocks in skills: iterate-cross."
+    },
+    {
+      "path": ".runs/iterate-cross-census.json",
+      "consumers": [
+        "state-registry:iterate-cross.x4c"
+      ],
+      "writers": [
+        ".claude/scripts/lib/iterate_cross_census.py"
+      ],
+      "scope": "transient-cross-skill",
+      "rationale": "Read by VERIFY blocks in skills: iterate-cross."
+    },
+    {
+      "path": ".runs/iterate-cross-phase2-context.json",
+      "consumers": [
+        "state-registry:iterate-cross-phase2.x5"
+      ],
+      "writers": [],
+      "scope": "transient-cross-skill",
+      "rationale": "Read by VERIFY blocks in skills: iterate-cross-phase2."
+    },
+    {
+      "path": ".runs/iterate-cross-phase2-issues.json",
+      "consumers": [
+        "state-registry:iterate-cross-phase2.x5"
+      ],
+      "writers": [
+        ".claude/scripts/lib/write-gate-artifact.sh"
+      ],
+      "scope": "transient-cross-skill",
+      "rationale": "Read by VERIFY blocks in skills: iterate-cross-phase2."
+    },
+    {
+      "path": ".runs/iterate-cross-phase2-scores.json",
+      "consumers": [
+        "state-registry:iterate-cross-phase2.x5"
+      ],
+      "writers": [
+        ".claude/scripts/lib/write-gate-artifact.sh"
+      ],
+      "scope": "transient-cross-skill",
+      "rationale": "Read by VERIFY blocks in skills: iterate-cross-phase2."
     },
     {
       "path": ".runs/iterate-data.json",
@@ -822,14 +909,14 @@
     {
       "path": ".runs/observation-evidence.json",
       "consumers": [
-        "observation-phase.md (Step 4 — observer reads envelope)",
+        "observation-phase.md (Step 4 \u2014 observer reads envelope)",
         "compliance-audit.py:check_lead_deliverable_compliance"
       ],
       "writers": [
         ".claude/scripts/write-observation-evidence.py"
       ],
       "scope": "transient-cross-skill",
-      "rationale": "AOC v1.2 (closes #1259): unified observer evidence envelope. Observer reads ONLY this artifact in Step 4; the envelope schema is the input contract. Promoted from gate-readable-artifacts-pending-review.json (was 'no_reader' / 'exempt (telemetry-only)') because it now has TWO real consumers: observer (via prompt) and compliance-audit (sibling-required for retrospective-result.json). Direct Write/Edit blocked by gate-artifact-write-gate.sh — must go through write-observation-evidence.py which routes through write-gate-artifact.sh canonical writer."
+      "rationale": "AOC v1.2 (closes #1259): unified observer evidence envelope. Observer reads ONLY this artifact in Step 4; the envelope schema is the input contract. Promoted from gate-readable-artifacts-pending-review.json (was 'no_reader' / 'exempt (telemetry-only)') because it now has TWO real consumers: observer (via prompt) and compliance-audit (sibling-required for retrospective-result.json). Direct Write/Edit blocked by gate-artifact-write-gate.sh \u2014 must go through write-observation-evidence.py which routes through write-gate-artifact.sh canonical writer."
     },
     {
       "path": ".runs/observe-context.json",
@@ -908,7 +995,7 @@
       ],
       "writers": [],
       "scope": "transient-cross-skill",
-      "rationale": "Pipeline-orchestrator phase signal read by phase-boundary-gate.sh. KNOWN CAVEAT: run-skill.sh currently writes the equivalent signal to '.claude/pipeline-phase.json' (not .runs/), so the .runs/ path has no live writer in-tree — phase-boundary-gate.sh fails-open when the file is absent. Writer migration to write-gate-artifact.sh + path unification deferred to follow-up PR (path discrepancy pre-dates GRAIM v2). Slice 3.2 enrolls the canonical reader path so promotion-regression detection covers it."
+      "rationale": "Pipeline-orchestrator phase signal read by phase-boundary-gate.sh. KNOWN CAVEAT: run-skill.sh currently writes the equivalent signal to '.claude/pipeline-phase.json' (not .runs/), so the .runs/ path has no live writer in-tree \u2014 phase-boundary-gate.sh fails-open when the file is absent. Writer migration to write-gate-artifact.sh + path unification deferred to follow-up PR (path discrepancy pre-dates GRAIM v2). Slice 3.2 enrolls the canonical reader path so promotion-regression detection covers it."
     },
     {
       "path": ".runs/plan-validation.json",
@@ -1029,7 +1116,7 @@
         ".claude/scripts/resolve-snippet-precheck.py"
       ],
       "scope": "transient-per-issue",
-      "rationale": "Per-issue verification_snippet pre-check verdict (M5 — fixes M3 consumer's hand-wave hash derivation). Wildcard <issue> in path because one artifact per issue."
+      "rationale": "Per-issue verification_snippet pre-check verdict (M5 \u2014 fixes M3 consumer's hand-wave hash derivation). Wildcard <issue> in path because one artifact per issue."
     },
     {
       "path": ".runs/resolve-tier-floors.json",
@@ -1040,7 +1127,7 @@
         ".claude/scripts/resolve-tier-floors.py"
       ],
       "scope": "transient-cross-skill",
-      "rationale": "Tier-floor classifier output (M2 — PR #1397 retro). Cross-checks reproduction.method against file-class minimum tiers; warn-mode in M2 launch, deny-mode in follow-up PR."
+      "rationale": "Tier-floor classifier output (M2 \u2014 PR #1397 retro). Cross-checks reproduction.method against file-class minimum tiers; warn-mode in M2 launch, deny-mode in follow-up PR."
     },
     {
       "path": ".runs/resolve-triage.json",
@@ -1184,7 +1271,7 @@
         ".claude/scripts/lib/write-gate-artifact.sh"
       ],
       "scope": "transient-cross-skill",
-      "rationale": "#1331 — /solve challenge artifact (closes contract from solve-reasoning.md Phase 5: 'Store in the caller's challenge artifact: /solve: .runs/solve-challenge.json'). Counts {critic_rounds, round_1_type_a_count, round_2_type_a_count} read by solve.1 VERIFY for archival-existence cross-check. Manually enrolled to canonical (Slice 3.2 pattern); written via canonical writer with {skill, run_id, written_at} stamping."
+      "rationale": "#1331 \u2014 /solve challenge artifact (closes contract from solve-reasoning.md Phase 5: 'Store in the caller's challenge artifact: /solve: .runs/solve-challenge.json'). Counts {critic_rounds, round_1_type_a_count, round_2_type_a_count} read by solve.1 VERIFY for archival-existence cross-check. Manually enrolled to canonical (Slice 3.2 pattern); written via canonical writer with {skill, run_id, written_at} stamping."
     },
     {
       "path": ".runs/solve-context.json",
@@ -1296,7 +1383,7 @@
         ".claude/scripts/migrate-legacy-traces.py"
       ],
       "scope": "transient-cross-skill",
-      "rationale": "Fail-closed signal from migrate-legacy-traces.py — verify-report-gate.sh refuses to proceed when unresolved_count > 0. Slice 3.2: writer in migrate-legacy-traces.py migrated from inline json.dump to write-gate-artifact.sh subprocess (with json.dump fallback when the canonical writer cannot resolve identity)."
+      "rationale": "Fail-closed signal from migrate-legacy-traces.py \u2014 verify-report-gate.sh refuses to proceed when unresolved_count > 0. Slice 3.2: writer in migrate-legacy-traces.py migrated from inline json.dump to write-gate-artifact.sh subprocess (with json.dump fallback when the canonical writer cannot resolve identity)."
     },
     {
       "path": ".runs/upgrade-context.json",

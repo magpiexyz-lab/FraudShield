@@ -12,6 +12,9 @@ channel: google-ads
 campaign_name: quickbill-search-v1  # auto: {idea.name}-search-v{N}
 project_name: quickbill              # from experiment.yaml name
 landing_url: https://quickbill.vercel.app  # deployed URL
+phase: 1                             # 1 or 2; /distribute writes 1, the Phase 2 Playbook §5 prompt rewrites to 2 (/iterate --check reads this first)
+campaign_created_at: "2026-06-10"    # YYYY-MM-DD; campaign age source for /iterate --check
+# dayzero_probe_passed_at: "2026-06-30"  # Phase 2 only — day-0 relay probe PASS date; REQUIRED when phase: 2 (Playbook §5 steps 10-11)
 
 # --- Keywords ---
 # AI-researched from experiment.yaml problem/solution/target_user
@@ -74,9 +77,11 @@ sitelinks:
 
 # --- Budget & Bidding ---
 budget:
-  daily_budget_cents: 1500          # $15/day
-  total_budget_cents: 10000         # $100 total cap (max 50000 without override)
-  duration_days: 5                  # experiment duration
+  daily_budget_cents: 2000          # pacing default; $20/day for Phase 1/2
+  total_budget_cents: 25000         # = click_target x guardrails.max_cpc_cents; max 75000 validator bound (Team-Lead-approved premium raise: set cap_override_approved_by + raised guardrails.max_cpc_cents; absolute max 200000)
+  duration_days: 7                  # nominal window; set as campaign End date; extend manually
+  click_target: 100                 # stop condition A; Phase 1 default = iterate-cross visitors_floor
+  initial_max_cpc_cents: 140        # default starting bid; raise stepwise only on volume shortfall
   bidding_strategy: manual_cpc    # Phase 1; see google-ads.md Phase 1 Playbook for progression
 
 # --- Targeting ---
@@ -88,21 +93,27 @@ targeting:
   # No demographic or audience targeting initially — let Google optimize
 
 # --- Conversion Tracking ---
+# Phase 3 conversion-action reference only. Phase 1/2 Manual CPC screens
+# measure through PostHog/DB plus Google Ads clicks and do not import conversions.
 conversions:
-  primary_action: activate          # experiment/EVENTS.yaml event to optimize for
+  primary_action: signup_complete   # experiment/EVENTS.yaml event to optimize for
   secondary_actions:
-    - signup_complete               # intermediate funnel step
+    - activate                      # activation funnel step
   import_method: posthog_webhook    # PostHog -> Google Ads Offline Conversions
 
 # --- Guardrails ---
 guardrails:
-  max_cpc_cents: 500                # never bid more than $5/click
+  max_cpc_cents: 250                # CPC ceiling (= total_budget_cents / click_target); never bid above
   min_daily_clicks: 3               # alert if fewer than 3 clicks/day after day 2
   auto_pause_rules:
     - condition: total_spend >= total_budget_cents
       action: pause_campaign
-    - condition: days_elapsed >= duration_days
+    - condition: clicks >= click_target
       action: pause_campaign
+      note: "stop A: run /iterate --cross for the verdict"
+    - condition: end_date reached AND clicks < click_target AND total_spend < total_budget_cents
+      action: extend_end_date
+      note: "manual operator decision; headroom = (cap - spent) / daily"
     - condition: ctr < 0.01 AND impressions > 500
       action: alert_low_ctr
     - condition: cost_per_conversion_cents > 2000 AND conversions >= 5
@@ -141,11 +152,11 @@ guardrails:
 # --- Thresholds (AI-generated per MVP) ---
 # Generated from experiment.yaml thesis, funnel thresholds, budget
 thresholds:
-  expected_clicks: 70               # $100 / ~$1.40 avg CPC for SaaS keywords
+  expected_clicks: 100              # click_target for the Phase 1 verdict floor
   expected_signups: 7               # ~10% landing->signup (conservative for cold traffic)
   expected_activations: 2           # ~30% signup->activate (new product, high friction)
-  go_signal: "3+ activations from paid traffic in 5 days"
-  no_go_signal: "0 activations after $50 spend, or <1% CTR after 500 impressions"
+  go_signal: "3+ activations from paid traffic after 100 paid clicks or the $250 cap"
+  no_go_signal: "0 activations after $125 spend, or <1% CTR after 500 impressions"
 
 # --- Alternative Channel Schemas ---
 # When using /distribute with a different channel, the config schema changes.
@@ -187,8 +198,8 @@ thresholds:
 #   bidding_strategy: cpe
 #
 # conversions:
-#   primary_action: activate
-#   secondary_actions: [signup_complete]
+#   primary_action: signup_complete
+#   secondary_actions: [activate]
 #   import_method: twitter_pixel
 #
 # guardrails:
@@ -235,8 +246,8 @@ thresholds:
 #   bidding_strategy: cpc
 #
 # conversions:
-#   primary_action: activate
-#   secondary_actions: [signup_complete]
+#   primary_action: signup_complete
+#   secondary_actions: [activate]
 #   import_method: reddit_pixel
 #
 # guardrails:

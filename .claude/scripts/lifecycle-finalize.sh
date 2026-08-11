@@ -25,10 +25,27 @@ PROJECT_DIR="$(git rev-parse --show-toplevel 2>/dev/null || echo "${CLAUDE_PROJE
 
 # Source lifecycle-lib first so resolve_framework_manifest is available below.
 source "$(dirname "$0")/lifecycle-lib.sh"
-MANIFEST=$(resolve_framework_manifest "$SKILL")
 
-# Determine context file — mode-aware for iterate --check/--cross
-CTX=$(resolve_context_path "$SKILL" "$MANIFEST")
+# Normalize a mode-qualified invocation (state-99 passes SKILL_KEY, e.g.
+# "iterate-cross") down to the base skill that owns the manifest and command
+# file. Issue #1990: resolving these paths with the qualified name pointed at
+# nonexistent files, silently degrading the state-completion check and the
+# analysis-only delivery gate.
+read -r BASE_SKILL SKILL_MODE <<< "$(resolve_skill_dir "$SKILL")"
+SKILL_MODE="${SKILL_MODE:-}"
+MANIFEST=$(resolve_framework_manifest "$BASE_SKILL")
+
+# Determine context file — the qualified path wins when it exists (state-99
+# callers), else derive from the base skill's manifest active_mode. Immune to
+# a stale active_mode when the caller passed the qualified name.
+CTX="$PROJECT_DIR/.runs/${SKILL}-context.json"
+if [[ ! -f "$CTX" ]]; then
+  CTX=$(resolve_context_path "$BASE_SKILL" "$MANIFEST")
+fi
+
+# Default branch derived once for every downstream git operation (previously
+# hardcoded "main" throughout).
+DEFAULT_BRANCH=$(resolve_default_branch)
 
 if [[ ! -f "$CTX" ]]; then
   echo "ERROR: lifecycle-finalize.sh — $CTX not found" >&2
@@ -80,8 +97,14 @@ if [[ -n "$HAS_BRANCH" ]]; then
 fi
 
 # --- Step 2: Rerun ALL state VERIFY commands (unconditional, warn-only) ---
-# Determine registry key — mode-aware for iterate --check/--cross
-REGISTRY_SKILL=$(resolve_registry_key "$SKILL" "$MANIFEST")
+# Determine registry key — mode-aware for iterate --check/--cross. A caller
+# that already passed the mode-qualified key is authoritative (survives a
+# missing manifest, where resolve_registry_key would fall back to the base).
+if [[ "$SKILL" != "$BASE_SKILL" ]]; then
+  REGISTRY_SKILL="$SKILL"
+else
+  REGISTRY_SKILL=$(resolve_registry_key "$SKILL" "$MANIFEST")
+fi
 
 python3 -c "
 import json, subprocess, sys, os
@@ -199,16 +222,15 @@ if [[ -d "$PROJECT_DIR/.runs/agent-traces" ]]; then
 fi
 
 # --- Step 2.6: Aggregate hook-friction.jsonl into hook-friction-summary.json (#1226) ---
-# Canonical owner of aggregate-hook-friction.py invocation. Always runs when
-# .runs/hook-friction.jsonl is non-empty so the Q2 4th evidence channel is
-# always available to the lead retrospective (Step 5a in observation-phase.md).
-# Idempotent: aggregator overwrites the summary file each run. Filtered by
-# current run_id inside the aggregator. Replaces the previously-conditional
-# call inside observation-phase.md Step 2d, which the lead could skip and
-# silently produce a falsely-clean retrospective.
-if [[ -s "$PROJECT_DIR/.runs/hook-friction.jsonl" ]]; then
-  python3 "$PROJECT_DIR/.claude/scripts/aggregate-hook-friction.py" >/dev/null 2>&1 || true
-fi
+# Canonical FIRST aggregation (unconditional — the aggregator writes a fresh
+# empty summary when the jsonl is missing, so a friction-free run can never
+# inherit the previous run's stale summary). Strictly scoped to the active
+# run_id inside the aggregator (#1895). observation-phase.md Step 2d re-runs
+# it as an epilogue tail refresh (idempotent full rebuild) so the observer
+# sees friction generated after this point; if the lead skips 2d, only the
+# tail refresh is lost — this first pass keeps the Q2 4th evidence channel
+# available to the Step 5a retrospective regardless.
+python3 "$PROJECT_DIR/.claude/scripts/aggregate-hook-friction.py" >/dev/null 2>&1 || true
 
 # --- Step 3: Q-score — read q-dimensions.json, call write-q-score.py ---
 Q_DIMS_PATH="$PROJECT_DIR/.runs/q-dimensions.json"
@@ -249,7 +271,7 @@ fi
 EPILOGUE_STRATEGY="B"
 if [[ -n "$HAS_BRANCH" ]]; then
   # Check for committed diffs relative to main
-  MERGE_BASE=$(git merge-base main HEAD 2>/dev/null || echo "")
+  MERGE_BASE=$(git merge-base "$DEFAULT_BRANCH" HEAD 2>/dev/null || echo "")
   if [[ -n "$MERGE_BASE" ]] && ! git diff --quiet "$MERGE_BASE"...HEAD 2>/dev/null; then
     EPILOGUE_STRATEGY="A"
     # Collect evidence: diffs for observer
@@ -382,7 +404,7 @@ fi
 # and branch on `analysis-only`. /solve --defect emits forward-looking
 # recurrence guards; the next /resolve cycle materializes the artifact.
 SKILL_TYPE=""
-SKILL_CMD_FILE="$PROJECT_DIR/.claude/commands/$SKILL.md"
+SKILL_CMD_FILE="$PROJECT_DIR/.claude/commands/$BASE_SKILL.md"
 if [[ -f "$SKILL_CMD_FILE" ]]; then
   SKILL_TYPE=$(python3 -c "
 import sys, re
@@ -443,7 +465,7 @@ except Exception:
   if [[ "$IS_DEFECT" == "1" ]]; then
     MERGE_BASE_REF="${MERGE_BASE:-}"
     if [[ -z "$MERGE_BASE_REF" ]]; then
-      MERGE_BASE_REF=$(git -C "$PROJECT_DIR" merge-base origin/main HEAD 2>/dev/null || echo "main")
+      MERGE_BASE_REF=$(git -C "$PROJECT_DIR" merge-base "origin/$DEFAULT_BRANCH" HEAD 2>/dev/null || echo "$DEFAULT_BRANCH")
     fi
     RMG_FLAGS=()
     if [[ "$SKILL_TYPE" == "analysis-only" ]]; then
@@ -459,7 +481,7 @@ except Exception:
           --merge-base "$MERGE_BASE_REF" \
           "${RMG_FLAGS[@]+"${RMG_FLAGS[@]}"}" >&2; then
       echo "BLOCK: RMG v2 typed-guard artifact check failed at lifecycle-finalize Step 4.6." >&2
-      echo "Re-run: python3 .claude/scripts/verify-rmg-guard-artifact-in-diff.py --trace .runs/solve-trace.json --merge-base \$(git merge-base origin/main HEAD)" >&2
+      echo "Re-run: python3 .claude/scripts/verify-rmg-guard-artifact-in-diff.py --trace .runs/solve-trace.json --merge-base \$(git merge-base origin/$DEFAULT_BRANCH HEAD)" >&2
       exit 1
     fi
   fi
@@ -536,7 +558,7 @@ if [[ -d "$PROJECT_DIR/.runs/agent-traces" ]]; then
   python3 "$PROJECT_DIR/.claude/scripts/lib/agent-trace-schema-validator.py" >/dev/null 2>&1 || true
 fi
 
-# --- Step 5: Delivery (code-writing skills only) ---
+# --- Step 5: Delivery (code-writing skills + deliberate record deliveries) ---
 DELIVERY_STATUS="none"
 COMMIT_MSG="$PROJECT_DIR/.runs/commit-message.txt"
 PR_TITLE="$PROJECT_DIR/.runs/pr-title.txt"
@@ -544,12 +566,17 @@ PR_BODY="$PROJECT_DIR/.runs/pr-body.md"
 SKIP_FLAG="$PROJECT_DIR/.runs/delivery-skip.flag"
 
 # SKILL_TYPE was already derived at the Step 4.6 prelude above. Reuse it here.
-# Skill-type gate — analysis-only skills MUST never ship code even if stale
-# delivery artifacts are present (see observation #1004). Fail-closed: on read
-# error SKILL_TYPE is empty, falling through to existing gates so a malformed
-# frontmatter does not block legitimate code-writing skills.
-if [[ "$SKILL_TYPE" == "analysis-only" ]]; then
-  echo "INFO: $SKILL is analysis-only — skipping delivery (stale delivery artifacts ignored)" >&2
+# Skill-type gate — analysis-only skills skip delivery when they produced no
+# delivery artifacts. The #1004 stale-artifact hazard this gate originally
+# closed is now handled upstream: lifecycle-init deletes all delivery
+# artifacts at the start of every non-embed run, so commit-message.txt present
+# here was written during THIS run — a deliberate record delivery (e.g.
+# iterate-cross committing its config + decision-ledger mutations). The
+# branch guard below enforces PR-first for it. Fail-open on read error:
+# SKILL_TYPE empty falls through to existing gates so a malformed frontmatter
+# does not block legitimate code-writing skills.
+if [[ "$SKILL_TYPE" == "analysis-only" && ! -f "$COMMIT_MSG" ]]; then
+  echo "INFO: $SKILL is analysis-only with no delivery artifacts — skipping delivery" >&2
   DELIVERY_STATUS="skipped-analysis-only"
   echo "DELIVERY=skipped-analysis-only"
 elif [[ -f "$SKIP_FLAG" ]]; then
@@ -627,25 +654,65 @@ if d.get('exit_code') != 0:
     exit 1
   fi
 
-  # --- Git delivery ---
-  git add -A
-  if ! git diff --cached --quiet 2>/dev/null; then
-    git commit -m "$(cat "$COMMIT_MSG")"
+  # --- Delivery branch guard (issue #1990) ---
+  # Refuses to commit on the default branch: creates a chore/<skill>-delivery-*
+  # branch when needed (lib/delivery-branch-guard.sh). Every failure from here
+  # on degrades to a recorded delivery status instead of aborting the script —
+  # Steps 6/7 must always run (the #1990 incident aborted mid-Step-5 after the
+  # push had already landed).
+  DELIVERY_HALT=""
+  GUARD_OUT=""
+  if ! GUARD_OUT=$(bash "$PROJECT_DIR/.claude/scripts/lib/delivery-branch-guard.sh" "$SKILL" "$DEFAULT_BRANCH"); then
+    echo "WARN: delivery branch guard could not guarantee a safe branch — delivery halted before any commit" >&2
+    DELIVERY_HALT="branch-guard-failed"
+  elif [[ "$GUARD_OUT" == "GUARD=skip-no-changes" ]]; then
+    echo "INFO: clean tree on $DEFAULT_BRANCH in sync with origin — nothing to deliver" >&2
+    DELIVERY_HALT="skipped-no-changes"
+  elif [[ "$GUARD_OUT" == GUARD=branched:* ]]; then
+    echo "INFO: delivery branch guard created ${GUARD_OUT#GUARD=branched:}" >&2
   fi
-  # Large initial commits (bootstrap: 170+ files) can exceed default http.postBuffer (1MB)
-  git config --local http.postBuffer 52428800  # 50MB
-  git push -u origin HEAD
+  if [[ -z "$DELIVERY_HALT" && "$SKILL_TYPE" == "analysis-only" ]]; then
+    echo "INFO: analysis-only $SKILL supplied fresh delivery artifacts — treating as deliberate record delivery (PR-first enforced by the branch guard)" >&2
+  fi
+
+  # --- Git delivery ---
+  if [[ -z "$DELIVERY_HALT" ]]; then
+    git add -A
+    if ! git diff --cached --quiet 2>/dev/null; then
+      if ! git commit -m "$(cat "$COMMIT_MSG")"; then
+        echo "WARN: git commit failed — delivery halted" >&2
+        DELIVERY_HALT="commit-failed"
+      fi
+    fi
+  fi
+  if [[ -z "$DELIVERY_HALT" ]]; then
+    # Large initial commits (bootstrap: 170+ files) can exceed default http.postBuffer (1MB)
+    git config --local http.postBuffer 52428800  # 50MB
+    if ! git push -u origin HEAD; then
+      echo "WARN: git push failed — delivery halted (commit remains local)" >&2
+      DELIVERY_HALT="push-failed"
+    fi
+  fi
 
   # --- PR creation (only if pr-title.txt exists) ---
-  if [[ -f "$PR_TITLE" ]]; then
+  if [[ -n "$DELIVERY_HALT" ]]; then
+    DELIVERY_STATUS="$DELIVERY_HALT"
+    echo "DELIVERY=$DELIVERY_HALT"
+  elif [[ -f "$PR_TITLE" ]]; then
     PR_TITLE_VAL=$(cat "$PR_TITLE")
-    gh pr create --title "$PR_TITLE_VAL" --body-file "$PR_BODY"
 
     # --- Auto-merge (per .claude/patterns/auto-merge.md) ---
     SKIP_MERGE=""
+    PR_CREATE_FAILED=""
+    if ! gh pr create --title "$PR_TITLE_VAL" --body-file "$PR_BODY"; then
+      # The push already landed; a PR-create failure must not abort the script.
+      echo "WARN: gh pr create failed — branch is pushed; open the PR manually" >&2
+      PR_CREATE_FAILED="true"
+      SKIP_MERGE="pr-create-failed"
+    fi
 
     # Guard 1: Migration guard
-    if gh pr diff --name-only 2>/dev/null | grep -q '^supabase/migrations/'; then
+    if [[ -z "$SKIP_MERGE" ]] && gh pr diff --name-only 2>/dev/null | grep -q '^supabase/migrations/'; then
       echo "INFO: PR contains database migrations — skipping auto-merge" >&2
       SKIP_MERGE="migrations"
     fi
@@ -671,7 +738,7 @@ if d.get('exit_code') != 0:
     # and feedback_gh_pr_merge_auto_fallback memory.
     if [[ -z "$SKIP_MERGE" ]] && command -v make >/dev/null 2>&1; then
       LINT_TARGET=""
-      MERGE_BASE=$(git merge-base origin/main HEAD 2>/dev/null || git merge-base main HEAD 2>/dev/null || echo "")
+      MERGE_BASE=$(git merge-base "origin/$DEFAULT_BRANCH" HEAD 2>/dev/null || git merge-base "$DEFAULT_BRANCH" HEAD 2>/dev/null || echo "")
       if [[ -z "$MERGE_BASE" ]]; then
         LINT_TARGET="lint-template-full"
         echo "INFO: merge-base not resolvable — running lint-template-full (fail-closed)" >&2
@@ -710,13 +777,18 @@ if d.get('exit_code') != 0:
       fi
     fi
 
-    # Post-merge (FEATURE_BRANCH captured on line 300 before merge)
+    # Post-merge (FEATURE_BRANCH captured just before the merge above). A
+    # checkout/pull failure here must not abort Steps 6/7 — warn and continue.
     if [[ -z "$SKIP_MERGE" && "$(bash .claude/scripts/lib/in-worktree.sh)" == "false" ]]; then
-      git checkout main && git pull
+      { git checkout "$DEFAULT_BRANCH" && git pull; } || \
+        echo "WARN: post-merge checkout/pull of $DEFAULT_BRANCH failed — resolve manually" >&2
       git branch -d "$FEATURE_BRANCH" 2>/dev/null || true
     fi
 
-    if [[ -z "$SKIP_MERGE" ]]; then
+    if [[ -n "$PR_CREATE_FAILED" ]]; then
+      DELIVERY_STATUS="pr-create-failed"
+      echo "DELIVERY=pr-create-failed"
+    elif [[ -z "$SKIP_MERGE" ]]; then
       DELIVERY_STATUS="merged"
       echo "DELIVERY=merged"
     else

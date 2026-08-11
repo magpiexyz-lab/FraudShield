@@ -102,10 +102,9 @@
    - Store as hypothesis context for State 4 GENERATE. If the file does not exist, skip — all subsequent states work without it.
    - Write `hypothesis_loaded: true/false` to preconditions
 
-5. **PageSpeed check (Phase 1 only):**
-   - Read `phase` from `.runs/distribute-context.json`. If phase is 1:
-     1. Read the deployed URL from preconditions
-     2. Query PageSpeed Insights API:
+5. **PageSpeed check:**
+   - Read the deployed URL from preconditions
+   - Query PageSpeed Insights API:
         ```bash
         SCORE=$(curl --max-time 30 -s "https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=$DEPLOYED_URL&strategy=mobile&category=performance" | python3 -c "
         import json, sys
@@ -115,18 +114,17 @@
         ")
         echo "PageSpeed mobile score: $SCORE"
         ```
-     3. If score >= 70: log "PageSpeed mobile: [score]/100 (meets Phase 1 threshold)"
-     4. If score < 70: WARN (non-blocking): "PageSpeed mobile: [score]/100 (below Phase 1 threshold of 70). Ads may underperform with slow landing pages. Consider running `/change improve landing page performance` before enabling the campaign."
-     5. If curl fails (network error, timeout): WARN (non-blocking): "PageSpeed check failed (network error). Verify manually at https://pagespeed.web.dev/"
+   - If score >= 70: log "PageSpeed mobile: [score]/100 (meets Phase 1 threshold)"
+   - If score < 70: WARN (non-blocking): "PageSpeed mobile: [score]/100 (below Phase 1 threshold of 70). Ads may underperform with slow landing pages. Consider running `/change improve landing page performance` before enabling the campaign."
+   - If curl fails (network error, timeout): WARN (non-blocking): "PageSpeed check failed (network error). Verify manually at https://pagespeed.web.dev/"
    - This is a WARNING, not a blocker — the skill continues regardless of the score.
-   - If phase is not 1, skip this check.
-   - Write `pagespeed_score` to preconditions (integer score, or `null` if skipped/failed)
+   - Write `pagespeed_score` to preconditions (integer score, or `null` if failed)
 
 **POSTCONDITIONS:**
 - project_name check completed (verified or mismatch recorded)
 - Live analytics verification passed
 - Hypothesis loaded or skipped
-- PageSpeed checked (Phase 1) or skipped
+- PageSpeed checked or failed with warning
 - `.runs/distribute-preconditions.json` updated with: `project_name_verified`, `project_name_mismatch`, `analytics_live`, `hypothesis_loaded`, `pagespeed_score`
 
 Update the preconditions artifact:

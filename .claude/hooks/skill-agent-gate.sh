@@ -181,7 +181,12 @@ with open('$_SAG_DEGRADED_LOG', 'a') as f:
 fi
 
 # ── Load manifest and check if agent is declared ──
-MANIFEST=$(resolve_framework_manifest "$ACTIVE_SKILL")
+# ACTIVE_SKILL can be mode-qualified (iterate-cross) while the framework
+# manifest file is named after the BASE skill only — resolve through the
+# base skill or the gate fail-opens for every mode-qualified run (flagged in
+# #1990's closure; same pattern as lifecycle-finalize.sh / advance-state.sh).
+read -r BASE_SKILL _SKILL_MODE <<< "$(resolve_skill_dir "$ACTIVE_SKILL")"
+MANIFEST=$(resolve_framework_manifest "$BASE_SKILL")
 
 if [[ ! -f "$MANIFEST" ]]; then
   # No manifest = no active skill lifecycle — allow.
@@ -328,7 +333,8 @@ while IFS= read -r line; do
 done <<< "$DECL_ERRORS"
 
 # ── Convention gate: .claude/skills/<skill>/gates/<subagent>.sh ──
-GATE_SCRIPT="$PROJECT_DIR/.claude/skills/$ACTIVE_SKILL/gates/$SUBAGENT_TYPE.sh"
+# Skill directories are base-named — use BASE_SKILL for the gate path.
+GATE_SCRIPT="$PROJECT_DIR/.claude/skills/$BASE_SKILL/gates/$SUBAGENT_TYPE.sh"
 
 if [[ -f "$GATE_SCRIPT" ]]; then
   export PAYLOAD SUBAGENT_TYPE PROJECT_DIR TRACES_DIR

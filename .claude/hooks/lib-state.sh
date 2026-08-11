@@ -32,11 +32,16 @@ except: print('')
 get_required_states() {
   local skill="$1"
   local project_dir="${CLAUDE_PROJECT_DIR:-.}"
-  # Map mode-qualified skill names to directory + mode
+  # Map mode-qualified skill names to directory + mode. The canonical resolver
+  # for this mapping is resolve_skill_dir in .claude/scripts/lifecycle-lib.sh
+  # (filesystem-derived fallback for future modes); this local case list is kept
+  # to avoid a hooks-lib -> scripts-lib dependency edge — extend BOTH when
+  # adding a mode. Unknown modes fail open here (empty states -> no-op check).
   local skill_dir="$skill" mode=""
   case "$skill" in
     iterate-check) skill_dir="iterate"; mode="check" ;;
     iterate-cross) skill_dir="iterate"; mode="cross" ;;
+    iterate-cross-phase2) skill_dir="iterate"; mode="cross-phase2" ;;
   esac
   local skill_yaml="$project_dir/.claude/skills/$skill_dir/skill.yaml"
   [[ ! -f "$skill_yaml" ]] && { echo ""; return; }
@@ -57,8 +62,8 @@ else:
     if m:
         states = [s.strip().strip('\"').strip(\"'\") for s in m.group(1).split(',')]
         print(' '.join(states))
-else:
-    print('')
+    else:
+        print('')
 " 2>/dev/null || echo ""
 }
 
@@ -236,11 +241,14 @@ else:
 get_observation_gate() {
   local skill="$1"
   local field="$2"
-  # Map mode-qualified skill names to directory
+  # Map mode-qualified skill names to directory. Canonical resolver:
+  # resolve_skill_dir in .claude/scripts/lifecycle-lib.sh — extend BOTH when
+  # adding a mode (see get_required_states above for why this stays local).
   local skill_dir="$skill"
   case "$skill" in
     iterate-check) skill_dir="iterate" ;;
     iterate-cross) skill_dir="iterate" ;;
+    iterate-cross-phase2) skill_dir="iterate" ;;
   esac
   local skill_yaml="${CLAUDE_PROJECT_DIR:-.}/.claude/skills/$skill_dir/skill.yaml"
   [[ ! -f "$skill_yaml" ]] && { echo ""; return; }

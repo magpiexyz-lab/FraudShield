@@ -43,6 +43,7 @@ def _read_skill_states(skill):
     SKILL_DIR_MAP = {
         "iterate-check": ("iterate", "check"),
         "iterate-cross": ("iterate", "cross"),
+        "iterate-cross-phase2": ("iterate", "cross-phase2"),
         "iterate":       ("iterate", "default"),
     }
     mode = None
@@ -137,48 +138,71 @@ def check_artifact_mtime(skill):
 
 
 # --- Check (b): Fix-log count matching (AOC v1 FLS v1 authoritative) ---
-def check_fix_log_count(skill):
+def check_fix_log_count(skill, run_id):
     # AOC v1: .runs/fix-ledger.jsonl is the authoritative per-fix ledger.
-    # Transitional dual-check falls back to fix-log.md prose regex when
-    # ledger is absent.
+    # The ledger is append-only ACROSS runs by design (registered fix-ledger
+    # cross-run channel), while the observer evaluates the current run — so
+    # the comparison must count only rows whose run_id matches the active run
+    # (same defect class as #1417b / #2009; a whole-file count is a
+    # guaranteed false anomaly after the first run that ever recorded a fix,
+    # and one false anomaly resets audit-sample's decay ladder). Rows without
+    # a run_id are legacy/historical (HC2) and excluded from the count.
+    # The former fix-log.md prose fallback is gone: lifecycle-finalize
+    # Step 2.5 writes the ledger unconditionally, fix-log.md is a
+    # whole-history render that cannot be run-scoped, and the old regex no
+    # longer matched the current render format anyway.
     ledger_path = os.path.join(RUNS_DIR, "fix-ledger.jsonl")
-    fix_log_path = os.path.join(RUNS_DIR, "fix-log.md")
 
-    fix_count = None
-    source = None
-    if os.path.exists(ledger_path):
-        try:
-            with open(ledger_path) as f:
-                fix_count = sum(1 for line in f if line.strip())
-            source = "ledger"
-        except OSError:
-            fix_count = None
-    if fix_count is None:
-        if not os.path.exists(fix_log_path):
-            return {"name": "fix_log_count", "result": "skip",
-                    "detail": "no fix-ledger.jsonl and no fix-log.md"}
-        try:
-            with open(fix_log_path) as f:
-                content = f.read()
-            fix_count = len(re.findall(r"^\*\*Fix \d+\*\*", content, re.MULTILINE))
-            source = "prose"
-        except OSError:
-            return {"name": "fix_log_count", "result": "skip",
-                    "detail": "cannot read fix-log.md"}
+    if not run_id:
+        return {"name": "fix_log_count", "result": "skip",
+                "detail": "run_id unavailable — cannot run-scope the fix count"}
+    if not os.path.exists(ledger_path):
+        return {"name": "fix_log_count", "result": "skip",
+                "detail": "no fix-ledger.jsonl; fix-log.md is a whole-history render and cannot be run-scoped"}
+
+    fix_count = 0
+    skipped_missing_runid = 0
+    other_run_rows = 0
+    try:
+        with open(ledger_path) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                rid = row.get("run_id")
+                if not rid:
+                    skipped_missing_runid += 1
+                elif rid == run_id:
+                    fix_count += 1
+                else:
+                    other_run_rows += 1
+    except OSError:
+        return {"name": "fix_log_count", "result": "skip",
+                "detail": "cannot read fix-ledger.jsonl"}
 
     # Find observer trace fixes_evaluated
     observer_path = os.path.join(RUNS_DIR, "agent-traces", "observer.json")
     observer = load_json(observer_path)
     if not observer or "fixes_evaluated" not in observer:
         return {"name": "fix_log_count", "result": "skip",
-                "detail": f"{source} has {fix_count} entries but no observer trace with fixes_evaluated"}
+                "detail": f"ledger has {fix_count} current-run entries but no observer trace with fixes_evaluated"}
+    observer_run_id = observer.get("run_id")
+    if observer_run_id and observer_run_id != run_id:
+        return {"name": "fix_log_count", "result": "skip",
+                "detail": f"stale observer trace (run_id {observer_run_id} != active {run_id})"}
 
+    scope_note = (f" (run-scoped; {other_run_rows} prior-run, "
+                  f"{skipped_missing_runid} legacy no-run_id rows excluded)")
     observer_count = observer.get("fixes_evaluated", 0)
     if fix_count != observer_count:
         return {"name": "fix_log_count", "result": "fail",
-                "detail": f"{source} has {fix_count} entries but observer.fixes_evaluated={observer_count}"}
+                "detail": f"ledger has {fix_count} current-run entries but observer.fixes_evaluated={observer_count}{scope_note}"}
     return {"name": "fix_log_count", "result": "pass",
-            "detail": f"{source} and observer agree: {fix_count} entries"}
+            "detail": f"ledger and observer agree: {fix_count} current-run entries{scope_note}"}
 
 
 # --- Check (c): Behavior claims ---
@@ -727,7 +751,8 @@ def check_q2_evidence_complete(skill, run_id):
     if not os.path.isfile(summary_path):
         failures.append(
             f"hook-friction-summary.json missing despite {run_rows} run-scoped friction event(s) "
-            f"— aggregate-hook-friction.py did not run (lifecycle-finalize.sh Step 2d should run it)"
+            f"— aggregate-hook-friction.py did not run (lifecycle-finalize.sh Step 2.6 first pass; "
+            f"observation-phase.md Step 2d tail refresh)"
         )
 
     retro_path = os.path.join(RUNS_DIR, "retrospective-result.json")
@@ -833,7 +858,7 @@ def main():
 
     checks = [
         check_artifact_mtime(args.skill),
-        check_fix_log_count(args.skill),
+        check_fix_log_count(args.skill, args.run_id),
         check_behavior_claims(args.skill),
         check_checks_completeness(args.skill),
         check_gate_enforcement(args.skill),

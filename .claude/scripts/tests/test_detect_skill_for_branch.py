@@ -164,6 +164,15 @@ class TestDetectSkillForBranch(unittest.TestCase):
         self.assertEqual(result, "verify",
                          msg="orphan-child fallback must return the child when no top-level match exists")
 
+    def test_mode_qualified_context_returns_qualified_name(self):
+        # Mode-qualified runs write context files whose `skill` field is the
+        # qualified key (iterate-cross) — detection must return it verbatim
+        # (hooks then derive the BASE skill via resolve_skill_dir only for
+        # the framework-manifest path; #1990 follow-up).
+        self._write_ctx("iterate-cross", branch="main")
+        result = call_detect(self.tmp, "main", "false")
+        self.assertEqual(result, "iterate-cross")
+
     def test_no_match_returns_empty(self):
         """No contexts on the queried branch → empty return."""
         self._write_ctx("change", completed=True, ts_offset=0, branch="other-branch")

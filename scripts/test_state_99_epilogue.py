@@ -29,7 +29,7 @@ PATTERNS_EPILOGUE = REPO_ROOT / ".claude" / "patterns" / "state-99-epilogue.md"
 LIFECYCLE_SKILLS = [
     "verify", "bootstrap", "change", "review", "resolve", "distribute",
     "deploy", "teardown", "spec", "rollback", "iterate", "iterate-check",
-    "iterate-cross", "retro", "solve", "observe", "audit", "upgrade",
+    "iterate-cross", "iterate-cross-phase2", "retro", "solve", "observe", "audit", "upgrade",
 ]
 
 
@@ -262,9 +262,9 @@ class TestT2_EmbedSkip:
 # ── T1b: skill.yaml states include 99 ─────────────────────────────────────
 
 class TestT1b_SkillYamlStateLists:
-    @pytest.mark.parametrize("skill", [s for s in LIFECYCLE_SKILLS if s not in ("iterate-check", "iterate-cross")])
+    @pytest.mark.parametrize("skill", [s for s in LIFECYCLE_SKILLS if s not in ("iterate-check", "iterate-cross", "iterate-cross-phase2")])
     def test_skill_yaml_includes_99(self, skill):
-        yaml_path = REPO_ROOT / ".claude" / "skills" / (skill if skill != "iterate-check" and skill != "iterate-cross" else "iterate") / "skill.yaml"
+        yaml_path = REPO_ROOT / ".claude" / "skills" / (skill if skill not in ("iterate-check", "iterate-cross", "iterate-cross-phase2") else "iterate") / "skill.yaml"
         if not yaml_path.exists():
             pytest.skip(f"{yaml_path} not found (non-lifecycle skill?)")
         import yaml

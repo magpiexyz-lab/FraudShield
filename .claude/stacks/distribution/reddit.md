@@ -49,7 +49,7 @@ Reddit appends `rdt_cid` to the landing URL when a user clicks an ad. Capture it
 
 1. Install the Reddit Pixel on the landing page
 2. Set up conversion events in Reddit Ads → Events Manager
-3. Map the `activate` event → Reddit conversion event
+3. Map the `signup_complete` event → Reddit conversion event
 4. Verify with Reddit Pixel Helper browser extension
 
 Import method: Reddit Pixel (client-side) or Conversions API (server-side).
@@ -120,8 +120,8 @@ budget:
   bidding_strategy: cpc  # or cpm
 
 conversions:
-  primary_action: activate
-  secondary_actions: [signup_complete]
+  primary_action: signup_complete
+  secondary_actions: [activate]
   import_method: reddit_pixel
 
 guardrails:
@@ -150,7 +150,7 @@ thresholds:
 2. **Add payment method** — credit card
 3. **Install Reddit Pixel** on the landing page
 4. **Create conversion event** — Events Manager → New Conversion → custom event
-5. **Map events** — `activate` event → Reddit conversion event
+5. **Map events** — `signup_complete` event → Reddit conversion event
 6. **Verify** — use Reddit Pixel Helper to confirm pixel is firing
 
 ### Dashboard Filter

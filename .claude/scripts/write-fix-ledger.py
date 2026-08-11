@@ -552,10 +552,17 @@ def main():
 
     # ---- Default consolidate mode ----
     if not os.path.isdir(TRACES_DIR):
-        # Nothing to consolidate — create empty ledger for presence checks.
-        if not args.dry_run:
+        # Nothing to consolidate. Ensure the file exists for presence checks,
+        # but NEVER truncate an existing ledger — --lead-fix rows written
+        # before consolidation (agentless skills have no traces dir) must
+        # survive, matching the up-to-date branch below.
+        existing = load_existing_ledger()
+        if not args.dry_run and not os.path.isfile(LEDGER_PATH):
             atomic_write([])
-        print("write-fix-ledger: no traces dir, wrote empty ledger")
+        print(
+            f"write-fix-ledger: no traces dir, nothing to consolidate "
+            f"({len(existing)} existing rows preserved)"
+        )
         return 0
 
     existing = load_existing_ledger()

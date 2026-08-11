@@ -2,7 +2,7 @@
 
 **PRECONDITIONS:**
 - STATE 0 is complete and Layer A passed.
-- `.runs/ads-ready-context.json` exists with `static_only` and `deploy_url` keys.
+- `.runs/ads-ready-context.json` exists with `static_only`, `phase`, `phase_2`, and `deploy_url` keys.
 - When `static_only` is true, this state still runs and writes a skipped Layer B result artifact.
 
 **ACTIONS:**

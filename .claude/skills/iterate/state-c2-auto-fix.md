@@ -35,9 +35,11 @@ Read `campaign_age_days` from `.runs/iterate-check-context.json`. For each issue
 **If campaign age < 48 hours:**
 - Navigate to campaign **Keywords** tab via Chrome MCP
 - Check each keyword's **Max CPC** vs the **Top of page bid (high range)** estimate shown by Google
-- If Max CPC is below the suggested high range, increase it to match the high range
+- Read `guardrails.max_cpc_cents` from `experiment/ads.yaml`
+- If Max CPC is below the suggested high range, increase it to `min(top-of-page high range, guardrails.max_cpc_cents)`
+- If the ceiling binds, record that the suggested high range exceeded the affordability ceiling and the bid was capped
 - Via Chrome MCP: click the keyword's bid, update the value, save
-- Record: "Raised max CPC on {N} keywords to match suggested high range"
+- Record: "Raised max CPC on {N} keywords toward suggested high range, capped at guardrails.max_cpc_cents where needed"
 
 **If campaign age >= 48 hours and < 72 hours:**
 - Switch all Phrase Match keywords to Broad Match:
@@ -117,6 +119,8 @@ Read `campaign_age_days` from `.runs/iterate-check-context.json`. For each issue
 
 Read `phase` from `.runs/iterate-check-context.json`. If `phase` is `1`, follow the Phase 1 protocol below. If `phase` is `2`, `null`, or absent, follow the "NOT Phase 1" branch.
 
+Before any Phase 1 unpause, read the actual status from the health issue. Continue only when the actual status is exactly **Paused**. If the status is **Ended** or any other non-paused status, do NOT unpause; record: "Campaign status is {status}; skipping campaign_paused auto-fix. Ended campaigns require the campaign_ended / stop_extend_recommended path."
+
 **If Phase 1 protocol (phase == 1):**
 
 Check ad approval status first:
@@ -126,7 +130,7 @@ Check ad approval status first:
 **If all ads approved AND campaign age >= 48 hours:**
 - Unpause the campaign via Chrome MCP: Campaign Settings > Status > Enabled
 - Notify the user:
-  > "All ads approved. Campaign unpaused and now active. Monitor with `/iterate --check` on Days 1 and 3."
+  > "All ads approved. Campaign unpaused and now active. Monitor daily with `/iterate --check` until a stop condition fires."
 - Record: "Campaign unpaused -- all ads approved after {age} hours"
 
 **If some ads still disapproved or in review:**
@@ -145,6 +149,42 @@ Check ad approval status first:
 
 ---
 
+#### Issue: `stop_clicks_target_met`
+
+No Chrome MCP UI action. Record `action_taken: "recommended"` with: "Paid clicks reached `budget.click_target`; pause the campaign if it is still serving, then report to your Team Lead — the lead runs `/iterate --cross` for the cross-MVP verdict." Never pause, unpause, or edit the End date from this handler.
+
+---
+
+#### Issue: `stop_budget_cap_reached`
+
+No Chrome MCP UI action. Record `action_taken: "recommended"` with: "Spend reached `budget.total_budget_cents`; pause the campaign if it is still serving. If clicks are below `budget.click_target`, treat this as an affordability signal and consider NO_GO." Never pause, unpause, or edit the End date from this handler.
+
+---
+
+#### Issues: `campaign_ended` / `stop_extend_recommended`
+
+No Chrome MCP UI action. Record `action_taken: "recommended"` with: "Campaign End date was reached before clicks or cap fired; extend the End date by `(cap - spent) / daily_budget` days, or stop consciously." Never pause, unpause, or edit the End date from this handler.
+
+---
+
+#### Issue: `tracking_degraded`
+
+No Chrome MCP UI action. Record `action_taken: "recommended"` with: "App-side tracking appears degraded. Re-run `/ads-ready` against the current deploy and fix before trusting any verdict. If the degraded signal persists after `/ads-ready` passes, report it to your Team Lead. Do NOT pause the campaign for this." Never pause, unpause, edit bids, edit budgets, or edit the End date from this handler.
+
+---
+
+#### Issue: `tracking_utm_missing`
+
+No Chrome MCP UI action. Record `action_taken: "recommended"` with: "The campaign is spending and paid traffic is reaching PostHog, but none is tagged with this campaign's `utm_campaign` — the Google Ads Final URL is missing the `utm_campaign` suffix (NOT an app-side bug; `/ads-ready` cannot catch it). Fix per the Phase 2 playbook §5 step 6: set the campaign-level Final URL suffix to `utm_source=google&utm_medium=cpc&utm_campaign=<campaign_name>`. Until fixed, this campaign's spend is invisible to the Phase 2 verdict. If this persists on the next `/iterate --check` while spend continues, pause the campaign until the Final URL is fixed." Never pause, unpause, edit bids, edit budgets, or edit the End date from this handler (pausing is the operator's call).
+
+---
+
+#### Issue: `monitoring_unavailable`
+
+No Chrome MCP UI action. Record `action_taken: "recommended"` with: "The daily tracking monitor could not run. Fix the PostHog personal API key or project resolution so `/iterate --check` can restore the tracking pulse." Never pause, unpause, edit bids, edit budgets, or edit the End date from this handler.
+
+---
+
 #### Issue: `budget_anomaly`
 
 **If campaign age <= 2 days AND spend > 50% of total budget:**
@@ -159,112 +199,6 @@ Check ad approval status first:
 - If `zero_impressions` is also flagged, that issue handler covers the fix
 - If impressions exist but spend is low, it may indicate low bid competitiveness
 - Record: "Underspend detected -- {spend_pct}% of expected. Check bid competitiveness."
-
----
-
-#### Post-fix: gclid offline conversion import
-
-After processing all health issues, import offline conversions from PostHog to Google Ads. This runs on every `--check` cycle and is incremental.
-
-**Skip conditions** (check all before proceeding):
-- Channel in ads.yaml is not `google-ads` → skip
-- `~/.posthog/personal-api-key` does not exist → skip, log "Skipping gclid import — PostHog API key not configured"
-- Chrome MCP tools unavailable → skip, log "Skipping gclid import — Chrome MCP not available"
-
-**Step 1: Determine import window**
-
-Read `last_gclid_import_at` from `.runs/iterate-check-context.json`. If absent (first run), use campaign start date from ads.yaml. If neither exists, use 30 days ago.
-
-**Step 2: Query PostHog for conversions with gclid**
-
-Read PostHog credentials and project ID per the Auto Query procedure in `.claude/stacks/analytics/posthog.md`.
-
-HogQL query — join reach events (have gclid) with demand events (conversion) by distinct_id:
-```sql
-SELECT
-  reach.properties.gclid AS gclid,
-  min(demand.timestamp) AS conversion_time
-FROM events AS demand
-INNER JOIN events AS reach
-  ON demand.distinct_id = reach.distinct_id
-  AND reach.properties.funnel_stage = 'reach'
-  AND reach.properties.gclid IS NOT NULL
-  AND length(toString(reach.properties.gclid)) > 40
-  AND (startsWith(toString(reach.properties.gclid), 'Cj')
-       OR startsWith(toString(reach.properties.gclid), 'EAI')
-       OR startsWith(toString(reach.properties.gclid), 'CIa'))
-  AND NOT startsWith(toString(reach.properties.gclid), 'Cj0KCQjw_ads_ready_synthetic_')
-WHERE demand.properties.project_name = {project_name}
-  AND demand.properties.funnel_stage = 'demand'
-  AND demand.timestamp > {last_import_at}
-GROUP BY gclid
-```
-
-Note: gclid is captured on the reach event (landing page), not on the demand event (signup). The join by distinct_id links "which user clicked the ad" to "which user converted."
-
-**gclid filter (length > 40 AND prefix in `Cj`/`EAI`/`CIa`, excluding `Cj0KCQjw_ads_ready_synthetic_`)** — uses the same rule as `.claude/scripts/lib/gclid_filter.py` `PAID_GCLID_FILTER`, inlined here because c2's JOIN reads `reach.properties.gclid` directly (no `coalesce` fallback; the join condition is already specific to this column). Excludes operator manual-test traffic (e.g. `analytics-verify-2026050720272` 32-char string that slipped past the prior `length>30` rule, `MANUAL_VERIFY_CHECK`, `test123`) and `/ads-ready` synthetic smoke-test gclids. Real Google Ads gclids start with `Cj0KCQ`/`CjwKCAjw`/`EAIaIQob` and are 60-120 chars. Without this filter, the offline-conversion CSV would include fake gclids and fail Google Ads validation or pollute the campaign conversion data. Same filter (modulo the `coalesce` fallback) applied in `state-x0`, `state-x1`, and `state-x2` via `gclid_filter.py` — keep in sync.
-
-If query returns 0 rows → log "No new conversions with gclid since last import" → skip to Write fixes artifact.
-
-**Step 3: Generate CSV**
-
-Format results as Google Ads offline conversion CSV:
-```csv
-Google Click ID,Conversion Name,Conversion Time
-{gclid},MVP Signup,{conversion_time in yyyy-MM-dd HH:mm:ss format}
-```
-
-Rules:
-- Conversion Name must match: `MVP Signup` (created in /distribute state-6 Step 0)
-- Conversion Time: `yyyy-MM-dd HH:mm:ss` format (UTC)
-- Deduplicate by gclid (one conversion per click)
-- Write to `/tmp/gclid-import-{timestamp}.csv`
-
-**Step 4: Upload via Chrome MCP**
-
-1. Navigate to **Tools & Settings** → **Measurement** → **Conversions**
-2. Click **Uploads** tab
-3. Click **"+" (Upload)**
-4. Select **"Upload a file"** → choose the CSV from Step 3
-5. Click **"Upload and apply"**
-6. Wait for processing (status: "Processing" → "Done" or "Partially applied")
-7. Read result:
-   - "Done": record number of conversions imported
-   - "Partially applied": read error details, log them (expired gclids are expected, not errors)
-
-If Chrome MCP cannot handle file upload dialog, fallback: copy CSV content → use "paste" upload option in the Google Ads UI.
-
-After upload (success or failure), clean up the CSV file:
-```bash
-rm -f /tmp/gclid-import-*.csv
-```
-
-**Step 5: Update import timestamp**
-
-```bash
-PAYLOAD=$(python3 -c "
-import json
-from datetime import datetime
-ctx = json.load(open('.runs/iterate-check-context.json'))
-ctx['last_gclid_import_at'] = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
-print(json.dumps(ctx))
-")
-bash .claude/scripts/lib/write-gate-artifact.sh \
-  --path .runs/iterate-check-context.json \
-  --payload "$PAYLOAD" \
-  --skill iterate
-```
-
-**Step 6: Record in fixes**
-
-Add gclid_import entry:
-```json
-{
-  "issue_type": "gclid_import",
-  "action_taken": "applied",
-  "description": "Uploaded {N} offline conversions to Google Ads. {M} accepted, {K} rejected."
-}
-```
 
 ---
 

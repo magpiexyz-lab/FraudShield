@@ -1,6 +1,6 @@
 # Iterate Cross — Debug Prompt Templates
 
-These prompt templates are referenced by `state-x4-rank-recommend.md` (and embedded into the per-owner Telegram artifact emitted by `iterate_cross_verdicts.py --emit-telegram`). Each section heading **must** be the verdict name verbatim — the parser in `iterate_cross_verdicts.py:parse_debug_prompts()` keys on `## <VERDICT>` exactly.
+These prompt templates are referenced by `state-x4-rank-recommend.md` Section C: for each NO_DATA / GA_NO_PH_TRACKING row, the lead surfaces the matching section in the conversation. Each section heading **must** be the verdict name verbatim so the lead can match by `## <VERDICT>`.
 
 Owners copy-paste these into Claude Code from their MVP repo to diagnose the verdict.
 

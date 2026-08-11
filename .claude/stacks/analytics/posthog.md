@@ -122,6 +122,17 @@ function init(): void {
         // defeats the lazy-import goal.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         loaded: (ph: any) => {
+          // Session super-property: stamps project identity on EVERY event this
+          // session emits — including SDK auto-events ($pageleave, $web_vitals,
+          // $autocapture, $exception, $identify) that bypass track()'s per-event
+          // enrichment and would otherwise land in the shared PostHog project
+          // with no owner (the __orphan_<host>__ rows in /iterate --cross).
+          // register_for_session, NOT register: sessionStorage is origin-scoped,
+          // so identity can never leak across subdomain deploys through the
+          // eTLD+1 cookie fallback, and a project rename never leaves a stale
+          // persisted value. Outside the try below — it must not be skipped
+          // when sessionStorage is unavailable.
+          ph.register_for_session({ project_name: PROJECT_NAME, project_owner: PROJECT_OWNER });
           try {
             const g = sessionStorage.getItem("__ph_gclid");
             if (g) ph.register({ gclid: g });
@@ -580,7 +591,7 @@ per-tool opt-out. Both default to tracking-enabled (absent = opt-in).
 ## Patterns
 - Client-side tracking goes through `src/lib/analytics.ts` — never import posthog-js directly in pages or components
 - Server-side tracking (webhooks, API routes) goes through `src/lib/analytics-server.ts` — never import posthog-node directly in route handlers
-- `track()` auto-attaches `project_name` and `project_owner` to every event
+- `track()` auto-attaches `project_name` and `project_owner` to every event; the `loaded` callback additionally registers both as **session super-properties** (`register_for_session`) so SDK auto-events (`$pageleave`, `$web_vitals`, `$autocapture`, `$exception`, `$identify`) carry them too — without this, auto-events are unattributable orphans in the shared analytics project
 - All projects in the company share the same analytics project — these properties distinguish experiments
 - If you rename the project in experiment.yaml (`name` field), update the `PROJECT_NAME` and `PROJECT_OWNER` constants in both `src/lib/analytics.ts` and `src/lib/analytics-server.ts`. `/verify` and `/bootstrap` enforce `PROJECT_NAME` equality via `.claude/scripts/lib/check_project_name.py` — drift will fail the pipeline with a clear fix message; `PROJECT_OWNER` is checked only for unreplaced `"TODO"` placeholders.
 - Every event in experiment/EVENTS.yaml must have a `funnel_stage`. The analytics library generates typed wrappers for all events in the EVENTS.yaml `events` map. Cross-MVP funnel analysis queries by `funnel_stage` (with `count(DISTINCT distinct_id)` dedup), not by event name — this allows each MVP to define events that fit its domain while remaining comparable at the funnel level.
@@ -608,9 +619,10 @@ posthog.init(POSTHOG_KEY, {
     request_batching: false,   // Force immediate per-event XHR (batching delays events past assertion time)
   }),
   // See canonical analytics.ts above for the loaded callback that registers
-  // gclid + utm_* super-properties read from sessionStorage (populated by
-  // the inline <Script> in layout.tsx — see framework/nextjs.md).
-  loaded: (ph) => { /* gclid/utm super-property registration */ },
+  // project_name/project_owner as session super-properties, plus gclid + utm_*
+  // super-properties read from sessionStorage (populated by the inline
+  // <Script> in layout.tsx — see framework/nextjs.md).
+  loaded: (ph) => { /* project identity + gclid/utm super-property registration */ },
 });
 ```
 

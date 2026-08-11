@@ -124,7 +124,7 @@ PY
 bash .claude/scripts/lib/write-gate-artifact.sh \
   --path .runs/iterate-cross-data-issues.json \
   --payload "$PAYLOAD" \
-  --skill iterate
+  --skill iterate-cross
 ```
 
 ### Summary report

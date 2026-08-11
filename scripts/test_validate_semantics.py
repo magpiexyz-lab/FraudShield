@@ -1,5 +1,6 @@
 """Tests for validate-semantics.py check functions."""
 
+import datetime
 import json
 import os
 import subprocess
@@ -491,34 +492,87 @@ The `payment` event category in the analytics stack.
 # ---------------------------------------------------------------------------
 
 
+def _valid_google_ads(total_budget_cents=10000):
+    return {
+        "channel": "google-ads",
+        "campaign_name": "test-campaign",
+        "project_name": "test",
+        "landing_url": "https://example.com",
+        "budget": {"total_budget_cents": total_budget_cents},
+        "targeting": {"location": "US"},
+        "conversions": {"goal": "signup"},
+        "guardrails": {"max_cpc_cents": 100},
+        "thresholds": {
+            "expected_activations": 10,
+            "go_signal": "CPA < $5",
+            "no_go_signal": "CPA > $20",
+        },
+        "keywords": {
+            "exact": ["a", "b", "c"],
+            "phrase": ["d", "e"],
+            "broad": ["f"],
+            "negative": ["g", "h"],
+        },
+        "ads": [
+            {"headlines": ["h1", "h2", "h3", "h4", "h5"], "descriptions": ["d1", "d2"]},
+            {"headlines": ["h1", "h2", "h3", "h4", "h5"], "descriptions": ["d1", "d2"]},
+        ],
+    }
+
+
+def _google_ads_with(total_budget_cents=10000, budget_extra=None, guardrails_max_cpc=100):
+    ads = _valid_google_ads(total_budget_cents)
+    if budget_extra is not None:
+        ads["budget"].update(budget_extra)
+    ads["guardrails"]["max_cpc_cents"] = guardrails_max_cpc
+    return ads
+
+
+def _valid_twitter_ads(total_budget_cents=5000, budget_extra=None):
+    budget = {"total_budget_cents": total_budget_cents}
+    if budget_extra is not None:
+        budget.update(budget_extra)
+    return {
+        "channel": "twitter",
+        "campaign_name": "test",
+        "project_name": "test",
+        "landing_url": "https://example.com",
+        "budget": budget,
+        "targeting": {},
+        "conversions": {},
+        "guardrails": {},
+        "thresholds": {
+            "expected_activations": 5,
+            "go_signal": "good",
+            "no_go_signal": "bad",
+        },
+        "tweets": [
+            {"text": "Tweet 1"},
+            {"text": "Tweet 2"},
+        ],
+    }
+
+
+def _phase2_google_ads(**overrides):
+    ads = _valid_google_ads()
+    ads["campaign_name"] = "test-search-phase2-v1"
+    ads["phase"] = 2
+    ads["dayzero_probe_passed_at"] = "2026-07-29"
+    ads.update(overrides)
+    return ads
+
+
 class TestCheck38AdsYamlSchema:
     def test_passes_with_valid_google_ads(self):
-        ads = {
-            "channel": "google-ads",
-            "campaign_name": "test-campaign",
-            "project_name": "test",
-            "landing_url": "https://example.com",
-            "budget": {"total_budget_cents": 10000},
-            "targeting": {"location": "US"},
-            "conversions": {"goal": "signup"},
-            "guardrails": {"max_cpc_cents": 100},
-            "thresholds": {
-                "expected_activations": 10,
-                "go_signal": "CPA < $5",
-                "no_go_signal": "CPA > $20",
-            },
-            "keywords": {
-                "exact": ["a", "b", "c"],
-                "phrase": ["d", "e"],
-                "broad": ["f"],
-                "negative": ["g", "h"],
-            },
-            "ads": [
-                {"headlines": ["h1", "h2", "h3", "h4", "h5"], "descriptions": ["d1", "d2"]},
-                {"headlines": ["h1", "h2", "h3", "h4", "h5"], "descriptions": ["d1", "d2"]},
-            ],
-        }
-        errors = vs.check_38_ads_yaml_schema(ads, "ads.yaml")
+        errors = vs.check_38_ads_yaml_schema(_valid_google_ads(), "ads.yaml")
+        assert errors == []
+
+    def test_passes_phase1_budget_cap(self):
+        errors = vs.check_38_ads_yaml_schema(_valid_google_ads(25000), "ads.yaml")
+        assert errors == []
+
+    def test_passes_phase2_budget_cap(self):
+        errors = vs.check_38_ads_yaml_schema(_valid_google_ads(75000), "ads.yaml")
         assert errors == []
 
     def test_fails_missing_required_key(self):
@@ -527,28 +581,119 @@ class TestCheck38AdsYamlSchema:
         assert any("missing required key" in e for e in errors)
 
     def test_fails_budget_too_high(self):
-        ads = {
-            "channel": "google-ads",
-            "campaign_name": "test",
-            "project_name": "test",
-            "landing_url": "https://example.com",
-            "budget": {"total_budget_cents": 60000},
-            "targeting": {},
-            "conversions": {},
-            "guardrails": {"max_cpc_cents": 100},
-            "thresholds": {
-                "expected_activations": 10,
-                "go_signal": "good",
-                "no_go_signal": "bad",
-            },
-            "keywords": {"exact": ["a", "b", "c"], "phrase": ["d", "e"], "broad": ["f"], "negative": ["g", "h"]},
-            "ads": [
-                {"headlines": list("abcde"), "descriptions": ["x", "y"]},
-                {"headlines": list("abcde"), "descriptions": ["x", "y"]},
-            ],
-        }
+        errors = vs.check_38_ads_yaml_schema(_valid_google_ads(80000), "ads.yaml")
+        assert any("exceeds max 75000" in e for e in errors)
+
+    def test_fails_above_bound_without_override(self):
+        errors = vs.check_38_ads_yaml_schema(_valid_google_ads(76000), "ads.yaml")
+        assert any("exceeds max 75000" in e and "Team Lead" in e for e in errors)
+
+    def test_fails_raised_ceiling_without_override(self):
+        ads = _google_ads_with(
+            50000,
+            budget_extra={"click_target": 100},
+            guardrails_max_cpc=500,
+        )
         errors = vs.check_38_ads_yaml_schema(ads, "ads.yaml")
-        assert any("exceeds max 50000" in e for e in errors)
+        assert any(
+            "budget.cap_override_approved_by" in e
+            and "Team Lead" in e
+            and "> $50/mo" in e
+            for e in errors
+        )
+
+    def test_passes_coherent_raise_with_override(self):
+        phase2_ads = _google_ads_with(
+            150000,
+            budget_extra={"click_target": 300, "cap_override_approved_by": "Taylor"},
+            guardrails_max_cpc=500,
+        )
+        assert vs.check_38_ads_yaml_schema(phase2_ads, "ads.yaml") == []
+
+        phase1_ads = _google_ads_with(
+            50000,
+            budget_extra={"click_target": 100, "cap_override_approved_by": "Taylor"},
+            guardrails_max_cpc=500,
+        )
+        assert vs.check_38_ads_yaml_schema(phase1_ads, "ads.yaml") == []
+
+    def test_fails_incoherent_bundle_with_override(self):
+        ads = _google_ads_with(
+            120000,
+            budget_extra={"click_target": 300, "cap_override_approved_by": "Taylor"},
+            guardrails_max_cpc=500,
+        )
+        errors = vs.check_38_ads_yaml_schema(ads, "ads.yaml")
+        assert any("bundle identity" in e for e in errors)
+
+    def test_fails_above_absolute_max_with_override(self):
+        ads = _google_ads_with(
+            210000,
+            budget_extra={"click_target": 300, "cap_override_approved_by": "Taylor"},
+            guardrails_max_cpc=700,
+        )
+        errors = vs.check_38_ads_yaml_schema(ads, "ads.yaml")
+        assert any("absolute max 200000" in e for e in errors)
+
+    def test_fails_invalid_override_type(self):
+        for invalid_override in (True, ""):
+            ads = _google_ads_with(
+                150000,
+                budget_extra={"cap_override_approved_by": invalid_override},
+            )
+            errors = vs.check_38_ads_yaml_schema(ads, "ads.yaml")
+            assert any("cap_override_approved_by" in e and "who approved the raise" in e for e in errors)
+            assert any("exceeds max 75000" in e for e in errors)
+
+    def test_fails_malformed_total_type(self):
+        for malformed_total in ("150000", True):
+            errors = vs.check_38_ads_yaml_schema(_valid_google_ads(malformed_total), "ads.yaml")
+            assert any("budget.total_budget_cents must be an integer cents value" in e for e in errors)
+
+    def test_override_rejected_on_other_channels(self):
+        over_bound = _valid_twitter_ads(
+            150000,
+            budget_extra={"cap_override_approved_by": "Taylor"},
+        )
+        errors = vs.check_38_ads_yaml_schema(over_bound, "ads.yaml")
+        assert any("only supported for google-ads" in e for e in errors)
+        assert any("exceeds max 75000" in e for e in errors)
+
+        under_bound = _valid_twitter_ads(
+            50000,
+            budget_extra={"cap_override_approved_by": "Taylor"},
+        )
+        errors = vs.check_38_ads_yaml_schema(under_bound, "ads.yaml")
+        assert errors == [
+            "[38] ads.yaml: budget.cap_override_approved_by is only supported for google-ads"
+        ]
+
+    def test_fails_override_without_valid_click_target(self):
+        for budget_extra in (
+            {"cap_override_approved_by": "Taylor"},
+            {"click_target": 150, "cap_override_approved_by": "Taylor"},
+            {"click_target": True, "cap_override_approved_by": "Taylor"},
+        ):
+            ads = _google_ads_with(
+                150000,
+                budget_extra=budget_extra,
+                guardrails_max_cpc=500,
+            )
+            errors = vs.check_38_ads_yaml_schema(ads, "ads.yaml")
+            assert any("cap override requires budget.click_target" in e for e in errors)
+
+    def test_fails_bool_max_cpc(self):
+        plain_ads = _google_ads_with(guardrails_max_cpc=True)
+        errors = vs.check_38_ads_yaml_schema(plain_ads, "ads.yaml")
+        assert any("guardrails.max_cpc_cents must be an integer > 0" in e for e in errors)
+
+        override_ads = _google_ads_with(
+            150000,
+            budget_extra={"click_target": 300, "cap_override_approved_by": "Taylor"},
+            guardrails_max_cpc=True,
+        )
+        errors = vs.check_38_ads_yaml_schema(override_ads, "ads.yaml")
+        assert any("guardrails.max_cpc_cents must be an integer > 0" in e for e in errors)
 
     def test_passes_twitter_channel(self):
         ads = {
@@ -596,6 +741,60 @@ class TestCheck38AdsYamlSchema:
         errors = vs.check_38_ads_yaml_schema(ads, "ads.yaml")
         assert any("exceeds 280 chars" in e for e in errors)
 
+    # --- phase / dayzero_probe_passed_at (Phase 2 gate) ---
+
+    def test_phase_absent_no_new_requirements(self):
+        errors = vs.check_38_ads_yaml_schema(_valid_google_ads(), "ads.yaml")
+        assert not any("phase" in e or "dayzero" in e for e in errors)
+
+    def test_fails_phase_invalid_value(self):
+        for bad in (3, 0, "2", True):
+            ads = _valid_google_ads()
+            ads["phase"] = bad
+            errors = vs.check_38_ads_yaml_schema(ads, "ads.yaml")
+            assert any("phase must be 1 or 2" in e for e in errors), f"phase={bad!r}"
+
+    def test_passes_phase1_no_probe_required(self):
+        ads = _valid_google_ads()
+        ads["phase"] = 1
+        errors = vs.check_38_ads_yaml_schema(ads, "ads.yaml")
+        assert errors == []
+
+    def test_fails_phase2_without_probe_field(self):
+        ads = _phase2_google_ads()
+        del ads["dayzero_probe_passed_at"]
+        errors = vs.check_38_ads_yaml_schema(ads, "ads.yaml")
+        assert any(
+            "dayzero_probe_passed_at" in e and "§5 step 10" in e for e in errors
+        )
+
+    def test_passes_phase2_with_valid_probe(self):
+        errors = vs.check_38_ads_yaml_schema(_phase2_google_ads(), "ads.yaml")
+        assert errors == []
+
+    def test_passes_phase2_probe_as_yaml_date(self):
+        # Unquoted YYYY-MM-DD in YAML loads as datetime.date, not str.
+        ads = _phase2_google_ads(dayzero_probe_passed_at=datetime.date(2026, 7, 29))
+        errors = vs.check_38_ads_yaml_schema(ads, "ads.yaml")
+        assert errors == []
+
+    def test_fails_phase2_invalid_probe_value(self):
+        for bad in ("07/29/2026", 20260729, True, ""):
+            ads = _phase2_google_ads(dayzero_probe_passed_at=bad)
+            errors = vs.check_38_ads_yaml_schema(ads, "ads.yaml")
+            assert any("must be a YYYY-MM-DD" in e for e in errors), f"probe={bad!r}"
+
+    def test_fails_phase2_campaign_name_missing_token(self):
+        ads = _phase2_google_ads(campaign_name="test-campaign")
+        errors = vs.check_38_ads_yaml_schema(ads, "ads.yaml")
+        assert any("'phase2' token" in e for e in errors)
+
+    def test_phase2_requirements_google_ads_only(self):
+        ads = _valid_twitter_ads()
+        ads["phase"] = 2
+        errors = vs.check_38_ads_yaml_schema(ads, "ads.yaml")
+        assert not any("dayzero" in e or "phase2' token" in e for e in errors)
+
 
 # ---------------------------------------------------------------------------
 # Check 39: Ads Campaign Name Matches idea Name
@@ -619,6 +818,44 @@ class TestCheck39AdsCampaignName:
         )
         assert len(errors) == 1
         assert "does not start with" in errors[0]
+
+
+# ---------------------------------------------------------------------------
+# check_ads_for_distribute: `make distribute` composition (38 + 39)
+# ---------------------------------------------------------------------------
+
+
+class TestCheckAdsForDistribute:
+    def _write_experiment(self, tmp_path, content):
+        path = tmp_path / "experiment.yaml"
+        path.write_text(content)
+        return str(path)
+
+    def test_composes_38_and_39(self, tmp_path):
+        exp = self._write_experiment(tmp_path, "name: other-app\n")
+        errors = vs.check_ads_for_distribute(_valid_google_ads(), "ads.yaml", exp)
+        assert any(e.startswith("[39]") for e in errors)
+        ads = _valid_google_ads()
+        del ads["keywords"]
+        errors = vs.check_ads_for_distribute(ads, "ads.yaml", exp)
+        assert any(e.startswith("[38]") for e in errors)
+        assert any(e.startswith("[39]") for e in errors)
+
+    def test_prefix_pass(self, tmp_path):
+        exp = self._write_experiment(tmp_path, "name: test\n")
+        errors = vs.check_ads_for_distribute(_valid_google_ads(), "ads.yaml", exp)
+        assert errors == []
+
+    def test_experiment_yaml_missing_graceful(self, tmp_path):
+        missing = str(tmp_path / "nonexistent.yaml")
+        errors = vs.check_ads_for_distribute(_valid_google_ads(), "ads.yaml", missing)
+        assert errors == []
+        assert not any(e.startswith("[39]") for e in errors)
+
+    def test_experiment_yaml_malformed_graceful(self, tmp_path):
+        exp = self._write_experiment(tmp_path, "{{{:\n  - broken")
+        errors = vs.check_ads_for_distribute(_valid_google_ads(), "ads.yaml", exp)
+        assert not any(e.startswith("[39]") for e in errors)
 
 
 # ---------------------------------------------------------------------------

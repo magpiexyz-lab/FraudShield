@@ -10,8 +10,60 @@ Campaign metadata (`campaign_id`, `campaign_url`) is committed to the feature br
 
 ### 6a: Check for existing campaign
 
-1. If `experiment/ads.yaml` has a `campaign_id` field → campaign already created (idempotent), skip to **6j**
-2. If not → proceed to **6b**
+1. If `experiment/ads.yaml` has a `campaign_id` field → campaign already created (idempotent); proceed to **6l** on the existing-campaign branch, then skip to **6j**
+2. If not → proceed to **6l** on the new-campaign branch, then continue to **6b**
+
+### 6l: ads-ready launch gate
+
+This gate applies before campaign creation. It records to `.runs/distribute-context.json` via the canonical writer; `.claude/scripts/lib/check_ads_ready_gate.py` only emits merged JSON and never writes the context file directly.
+
+Read `channel` and `campaign_id` from `experiment/ads.yaml`.
+
+**Existing campaign path (`campaign_id` present):**
+
+```bash
+PAYLOAD=$(python3 .claude/scripts/lib/check_ads_ready_gate.py --emit-record --skip existing_campaign)
+bash .claude/scripts/lib/write-gate-artifact.sh \
+  --path .runs/distribute-context.json \
+  --payload "$PAYLOAD" \
+  --skill distribute
+```
+
+Proceed directly to **6j**. The ads-ready gate is a pre-creation gate; existing campaigns are governed by the audit and pre-launch review from here.
+
+**Non-google channel path (`channel` is not `google-ads`):**
+
+```bash
+PAYLOAD=$(python3 .claude/scripts/lib/check_ads_ready_gate.py --emit-record --skip channel_not_google_ads)
+bash .claude/scripts/lib/write-gate-artifact.sh \
+  --path .runs/distribute-context.json \
+  --payload "$PAYLOAD" \
+  --skill distribute
+```
+
+Proceed to **6b**. This mirrors **6d**: Google Ads has the standardized campaign settings path; other channels use their own approval flow.
+
+**New Google Ads campaign path (`channel: google-ads`, no `campaign_id`):**
+
+```bash
+python3 .claude/scripts/lib/check_ads_ready_gate.py
+```
+
+If the command exits non-zero, STOP with the script's remediation. Do not open Chrome MCP or create a campaign. The remediation is:
+
+> Run `/ads-ready phase-1` after the latest deploy, then re-run `/distribute` -- it resumes at the campaign step.
+
+On pass, record the gate result:
+
+```bash
+PAYLOAD=$(python3 .claude/scripts/lib/check_ads_ready_gate.py --emit-record)
+bash .claude/scripts/lib/write-gate-artifact.sh \
+  --path .runs/distribute-context.json \
+  --payload "$PAYLOAD" \
+  --skill distribute
+```
+
+Then proceed to **6b**.
 
 ### 6b: Verify Chrome MCP availability
 
@@ -37,22 +89,22 @@ If no `mcp__claude-in-chrome__*` tools are returned, STOP and show the setup gui
 3. Verify the user is in their sub-account (not the MCC top level):
    - If at MCC level, tell the user to navigate to their sub-account first
 
-### 6d: Campaign approval gate (Phase 2 / non-google-ads only)
+### 6d: Campaign approval gate (non-google-ads only)
 
-Read `phase` from `.runs/distribute-context.json`. Read `channel` from `experiment/ads.yaml`.
+Read `channel` from `experiment/ads.yaml`.
 
-If phase is 1 AND channel is `google-ads`:
+If channel is `google-ads`:
 - Skip this step. Log: "Phase 1 Playbook: standardized campaign settings — skipping campaign approval gate."
 - Proceed directly to **6e**.
 
-If phase is 2, or channel is not `google-ads`:
+If channel is not `google-ads`:
 - **STOP.** Show a campaign creation preview:
 
 > **Ready to create campaign via Chrome**
 > - **Channel:** {channel}
 > - **Campaign name:** {campaign_name}
-> - **Budget:** ${total_budget_cents / 100} over {duration_days} days (${daily_budget_cents / 100}/day)
-> - **Bidding:** Manual CPC, max ${max_cpc_cents / 100}
+> - **Budget:** ${daily_budget_cents / 100}/day, {duration_days}-day nominal End date, ${total_budget_cents / 100} MAX cap; stop at {click_target} clicks or the cap
+> - **Bidding:** Manual CPC, initial max ${initial_max_cpc_cents / 100}; ceiling ${max_cpc_cents / 100}
 > - **Keywords:** {keyword count} keywords (Phrase Match)
 > - **Ads:** {number of RSAs} Responsive Search Ads
 > - **Geo:** {target_geo}
@@ -96,9 +148,11 @@ json.dump(data, open(f, 'w'), indent=2)
 
 Replace `<STEP_KEY>`, `<action>`, and `<evidence>` with the actual values for each sub-step. The `> **Record evidence:**` callouts below specify the key and expected content.
 
-**Step 0: Ensure Conversion Action exists**
+**Step 0 (optional, skip by default): Phase 3 Conversion Action prep**
 
-Before creating the campaign, verify the sub-account has the required conversion action for offline import:
+Phase 1 uses Manual CPC and `/iterate --cross` computes the verdict from PostHog/DB plus Google Ads clicks, so campaign creation does not require a Google Ads conversion action. Skip this step for Phase 1 and Phase 2 screens.
+
+Only run this step if the operator explicitly wants Phase 3 smart-bidding prep:
 
 1. Navigate to **Tools & Settings** (wrench icon) → **Measurement** → **Conversions** via Chrome MCP
 2. Scan the conversion actions list for one named `MVP Signup`
@@ -117,8 +171,6 @@ Before creating the campaign, verify the sub-account has the required conversion
 
 This step is idempotent — on re-runs, Step 0 checks first and skips if the action exists. The action is per sub-account (not per campaign) because Google Ads uses the gclid to auto-attribute conversions to the correct campaign.
 
-> **Record evidence:** step=`conversion_action`, action="Checked/created conversion action", evidence="<what you saw: e.g., 'MVP Signup conversion action found in list' or 'Created MVP Signup conversion action, verified it appears in list'>"
-
 **Step 1: Start new campaign**
 - Click "+ New campaign" button
 - Select "Create a campaign without a goal's guidance" (to avoid Smart Campaign defaults)
@@ -132,12 +184,14 @@ This step is idempotent — on re-runs, Step 0 checks first and skips if the act
 - Location options: Select "Presence: People in or regularly in your targeted locations"
 - Languages: English
 - Budget: Set daily budget to `${daily_budget_cents / 100}`
+- Start and end dates: set End date = start date + `duration_days` from ads.yaml (Campaign settings -> Show more settings if collapsed)
 - Bidding: Select "Manual CPC" — uncheck "Help increase conversions with Enhanced CPC"
-- Set default max CPC bid to `${max_cpc_cents / 100}`
+- Set default max CPC bid to `${initial_max_cpc_cents / 100}`
 
-> **Record evidence (2 entries):**
+> **Record evidence (3 entries):**
 > - step=`campaign_settings`, action="Set bidding to Manual CPC, disabled Enhanced CPC", evidence="<what you saw: e.g., 'Bidding section shows Manual CPC selected, Enhanced CPC checkbox unchecked, max CPC set to $X.XX'>"
 > - step=`network_settings`, action="Unchecked Search Partners and Display Network", evidence="<what you saw: e.g., 'Networks section shows only Google Search checked, Search partners unchecked, Display Network unchecked'>"
+> - step=`end_date`, action="Set campaign End date", evidence="<what you saw: e.g., 'End date shows YYYY-MM-DD = start date + {duration_days}d'>"
 
 **Step 3: Ad group**
 - Ad group name: `{campaign_name}-ag1`
@@ -180,7 +234,10 @@ This step is idempotent — on re-runs, Step 0 checks first and skips if the act
   ```yaml
   campaign_id: "<campaign_id>"
   campaign_url: "<dashboard_url>"
+  phase: 1
+  campaign_created_at: "<YYYY-MM-DD, today>"
   ```
+  `phase` + `campaign_created_at` are what `/iterate --check` c0 reads first to resolve the campaign's phase and age (no dependency on the transient distribute context). The Phase 2 Playbook §5 prompt later rewrites these to `phase: 2` + the Phase 2 creation date.
 
 **Step 7.5: Capture and upload Image Assets**
 
@@ -325,9 +382,10 @@ Read `.runs/distribute-campaign-evidence.json` and cross-check against `experime
 > 5. Both RSAs are created with pinned headlines? (y/n)
 > 6. Negative keywords are added at campaign level? (y/n)
 > 7. Campaign status is PAUSED? (y/n)
-> 8. Sitelinks created in campaign Assets tab (if ads.yaml has sitelinks)? (y/n/N/A)
+> 8. End date is set to start date + `budget.duration_days`? (y/n)
+> 9. Sitelinks created in campaign Assets tab (if ads.yaml has sitelinks)? (y/n/N/A)
 
-Record all responses. Treat "N/A" on item 8 as a pass (no sitelinks configured). If any is "n": STOP and ask user to fix in Google Ads UI, then re-confirm. Write audit result:
+Record all responses. Treat "N/A" on item 9 as a pass (no sitelinks configured). If any is "n": STOP and ask user to fix in Google Ads UI, then re-confirm. Write audit result:
 
 ```bash
 PAYLOAD=$(python3 -c "
@@ -377,18 +435,19 @@ Use `campaign_url` from `experiment/ads.yaml` as the starting point.
 
 1. Navigate to campaign Settings page (click "Settings" in left nav or navigate via campaign_url)
 2. Read the accessibility tree via `mcp__claude-in-chrome__read_page` with `filter: "all"`
-3. Extract 4 settings:
+3. Extract 5 settings:
    - **Bidding strategy**: Find Bidding section → combobox/listbox/dropdown selected value, or text following the "Bid strategy type" label. Expected: contains "Manual CPC" (not "Maximize clicks", not "Maximize conversions")
    - **Enhanced CPC**: Within the Bidding section, find checkbox labeled "Enhanced CPC" or "Help increase conversions with Enhanced CPC". Read its `checked` state. Expected: `false` (unchecked)
    - **Daily budget**: Find Budget section → read input or text value showing daily budget amount. Expected: matches `budget.daily_budget_cents / 100` from ads.yaml
    - **Networks**: Find Networks section → locate "Search partners" and "Display Network" checkbox elements. Read both `checked` states. Expected: both `false` (unchecked)
+   - **Start date and End date**: Find campaign date settings and read both values from the UI. Expected: `end_date - start_date == budget.duration_days`
 
 **Page 2: Ad Group**
 
 1. Navigate to Ad groups tab → click into `{campaign_name}-ag1` (the ad group created in Step 3 of 6e)
 2. Read the accessibility tree
 3. Extract:
-   - **Default max CPC**: Find "Default max. CPC" or "Max. CPC bid" input/text value. Expected: matches `guardrails.max_cpc_cents / 100` from ads.yaml
+   - **Default max CPC**: Find "Default max. CPC" or "Max. CPC bid" input/text value. Expected: matches `budget.initial_max_cpc_cents / 100` from ads.yaml
 
 **Page 3: Keywords Tab**
 
@@ -416,6 +475,7 @@ readback = {
         'enhanced_cpc': {'expected': False, 'actual': False, 'pass': True},
         'daily_budget': {'expected': '<EXPECTED>', 'actual': '<ACTUAL>', 'pass': True},
         'networks': {'expected': {'search_partners': False, 'display_network': False}, 'actual': {'search_partners': False, 'display_network': False}, 'pass': True},
+        'end_date': {'expected': {'duration_days': '<DURATION_DAYS>'}, 'actual': {'start_date': '<START_DATE>', 'end_date': '<END_DATE>'}, 'pass': True},
         'max_cpc': {'expected': '<EXPECTED>', 'actual': '<ACTUAL>', 'pass': True},
         'keywords_match_type': {'expected': 'Phrase match', 'actual': '<ACTUAL>', 'pass': True}
     },
@@ -426,15 +486,15 @@ print(f'Read-back: {readback[\"status\"]} — {sum(1 for s in readback[\"setting
 "
 ```
 
-> **Record evidence:** step=`readback_verification`, action="Read back campaign settings via Chrome MCP", evidence="<summary of all 6 settings read and their values, e.g., 'Read 3 pages: Settings (bidding=Manual CPC, eCPC=OFF, budget=$20.00, networks=Search only), Ad group (max CPC=$2.50), Keywords (all Phrase match). 6/6 settings match ads.yaml.'>"
+> **Record evidence:** step=`readback_verification`, action="Read back campaign settings via Chrome MCP", evidence="<summary of all 7 settings read and their values, e.g., 'Read 3 pages: Settings (bidding=Manual CPC, eCPC=OFF, budget=$20.00, networks=Search only, end date=start+7d), Ad group (initial max CPC=$1.40), Keywords (all Phrase match). 7/7 settings match ads.yaml.'>"
 
-**Required evidence checks (8 total, plus 6 readback checks when read-back completes):**
+**Required evidence checks (8 total, plus 7 readback checks when read-back completes):**
 
 | # | Check Name | Evidence Key | Expected | Cross-check with ads.yaml |
 |---|-----------|-------------|----------|--------------------------|
-| 1 | conversion_action | `conversion_action` | non-empty evidence | -- |
-| 2 | campaign_settings | `campaign_settings` | evidence mentions "Manual CPC" | `budget.bidding_strategy == manual_cpc` |
-| 3 | network_settings | `network_settings` | evidence mentions "Search only" or unchecked Partners/Display | -- |
+| 1 | campaign_settings | `campaign_settings` | evidence mentions "Manual CPC" | `budget.bidding_strategy == manual_cpc` |
+| 2 | network_settings | `network_settings` | evidence mentions "Search only" or unchecked Partners/Display | -- |
+| 3 | end_date | `end_date` | evidence mentions the End date | read-back confirms End date - Start date == `budget.duration_days` |
 | 4 | keywords_count | `keywords` | evidence count > 0 | count matches `len(keywords.phrase)` from ads.yaml |
 | 5 | rsa_1 | `rsa_1` | non-empty evidence | -- |
 | 6 | rsa_2 | `rsa_2` | non-empty evidence | -- |
@@ -453,13 +513,13 @@ entries = {e['step']: e for e in evidence.get('entries', [])}
 ads = yaml.safe_load(open('experiment/ads.yaml')) or {}
 
 required_keys = [
-    'conversion_action', 'campaign_settings', 'network_settings',
-    'keywords', 'rsa_1', 'rsa_2', 'negative_keywords', 'campaign_status'
+    'campaign_settings', 'network_settings', 'end_date', 'keywords', 'rsa_1',
+    'rsa_2', 'negative_keywords', 'campaign_status'
 ]
 
 checks = []
 
-# Check: all 8 evidence entries exist with non-empty evidence
+# Check: all required evidence entries exist with non-empty evidence
 for key in required_keys:
     entry = entries.get(key, {})
     has_evidence = bool(entry.get('evidence', '').strip())
@@ -528,6 +588,15 @@ if readback.get('status') == 'completed':
     rb_settings = readback.get('settings', {})
     readback_completed = True
 
+    def _parse_ui_date(value):
+        value = str(value or '').strip()
+        for fmt in ('%Y-%m-%d', '%b %d, %Y', '%B %d, %Y', '%m/%d/%Y'):
+            try:
+                return datetime.datetime.strptime(value, fmt).date()
+            except ValueError:
+                pass
+        return None
+
     # Readback check 1: Bidding strategy
     rb_bid = rb_settings.get('bidding_strategy', {})
     expects_manual = ads.get('budget', {}).get('bidding_strategy', '') == 'manual_cpc' or ads.get('playbook', {}).get('bidding_strategy', '') == 'manual_cpc'
@@ -575,9 +644,25 @@ if readback.get('status') == 'completed':
         'pass': sp == False and dn == False
     })
 
-    # Readback check 5: Max CPC
+    # Readback check 5: End date
+    rb_end = rb_settings.get('end_date', {})
+    duration_days = int(ads.get('budget', {}).get('duration_days', 0) or 0)
+    actual_dates = rb_end.get('actual', {}) if isinstance(rb_end.get('actual', {}), dict) else {}
+    start_raw = actual_dates.get('start_date', '')
+    end_raw = actual_dates.get('end_date', '')
+    start_date = _parse_ui_date(start_raw)
+    end_date = _parse_ui_date(end_raw)
+    delta_days = (end_date - start_date).days if start_date and end_date else None
+    checks.append({
+        'name': 'readback_end_date',
+        'expected': f'end_date - start_date == {duration_days} days',
+        'actual': f'start={start_raw}, end={end_raw}, delta={delta_days}',
+        'pass': duration_days > 0 and delta_days == duration_days
+    })
+
+    # Readback check 6: Max CPC
     rb_cpc = rb_settings.get('max_cpc', {})
-    expected_cpc = ads.get('guardrails', {}).get('max_cpc_cents', 0) / 100
+    expected_cpc = ads.get('budget', {}).get('initial_max_cpc_cents', 0) / 100
     actual_cpc_str = str(rb_cpc.get('actual', ''))
     try:
         actual_cpc = float(actual_cpc_str.replace('$','').replace(',',''))
@@ -590,7 +675,7 @@ if readback.get('status') == 'completed':
         'pass': abs(actual_cpc - expected_cpc) < 0.02
     })
 
-    # Readback check 6: Match type
+    # Readback check 7: Match type
     rb_match = rb_settings.get('keywords_match_type', {})
     checks.append({
         'name': 'readback_match_type',
@@ -660,12 +745,13 @@ Read critical settings from `experiment/ads.yaml` and display:
 > |---|---------|---------------|----------------|
 > | 1 | Bidding strategy | **Manual CPC** | Settings > Bidding |
 > | 2 | Enhanced CPC | **OFF** | Settings > Bidding > Enhanced CPC checkbox |
-> | 3 | Max CPC | **${max_cpc_cents / 100}** | Ad group > Default max CPC |
+> | 3 | Initial max CPC | **${initial_max_cpc_cents / 100}** (ceiling = **${max_cpc_cents / 100}**; raises allowed up to it) | Ad group > Default max CPC |
 > | 4 | Daily budget | **${daily_budget_cents / 100}/day** | Settings > Budget |
-> | 5 | Networks | **Google Search only** | Settings > Networks (Search Partners OFF, Display OFF) |
-> | 6 | Locations | **{target_geo}** | Settings > Locations |
-> | 7 | Keywords | **{N} keywords, Phrase Match** | Keywords tab |
-> | 8 | Campaign status | **Paused** | Campaign dashboard |
+> | 5 | End date | **Start date + {duration_days} days** | Settings > Start and end dates |
+> | 6 | Networks | **Google Search only** | Settings > Networks (Search Partners OFF, Display OFF) |
+> | 7 | Locations | **{target_geo}** | Settings > Locations |
+> | 8 | Keywords | **{N} keywords, Phrase Match** | Keywords tab |
+> | 9 | Campaign status | **Paused** | Campaign dashboard |
 >
 > Reply **confirmed** after checking, or tell me what needs to be fixed.
 
@@ -691,8 +777,6 @@ print('Pre-launch review confirmed by user')
 
 ### 6f: Phase 1 launch protocol
 
-Read `phase` from `.runs/distribute-context.json`. If phase is 1:
-
 1. Campaign was created in PAUSED status (standard).
 2. Compute the recommended unpause date (48 hours from campaign creation):
    ```bash
@@ -710,12 +794,12 @@ Read `phase` from `.runs/distribute-context.json`. If phase is 1:
      recommended_unpause: "<YYYY-MM-DD HH:MM UTC>"
      pre_launch_checklist:
        - "Check ad approval status (24-48h after creation)"
-       - "Verify conversion tracking with test click"
+       - "Verify gclid capture / analytics attribution on a test click"
        - "Confirm PageSpeed >= 70 mobile"
+       - "End date set = start + {duration_days} days (fail-safe)"
+       - "Stop rule: pause at clicks >= {click_target} and report to your Team Lead (lead runs /iterate --cross), or pause at spend >= ${total_budget_cents / 100} cap; End date reached with neither -> extend (headroom = (cap - spent) / daily)"
    ```
 4. Commit the updated `experiment/ads.yaml` to the current feature branch and push (updates the open PR).
-
-If phase is not 1, skip this step.
 
 ### 6g: Commit campaign metadata and push
 
@@ -752,31 +836,21 @@ If auto-merge succeeds, prepend to the 6i message: "Distribution PR auto-merged 
 
 ### 6i: Next steps
 
-Read `phase` from `.runs/distribute-context.json`.
-
-**If phase is 1:**
-
 > Your Phase 1 campaign is created in PAUSED mode. Follow the Day -2 / -1 / 0 protocol:
 >
 > **Day -2 (today):** Campaign created and paused. Ads are being reviewed by Google.
 > **Day -1 (tomorrow):** Run `/iterate --check` to verify ad approval status. If any ads are disapproved, it will auto-fix them.
 > **Day 0 ({recommended_unpause_date}):** Run `/iterate --check` — if all ads are approved, it will unpause the campaign automatically. If ads are still disapproved or in review, re-run `/iterate --check` the next day. Most ads are approved within 24-48 hours. If still disapproved after 48 hours, review and adjust ad copy in the ad platform dashboard, or contact platform support.
 >
-> **During Phase 1 (Days 1-5):**
-> 1. Run `/iterate --check` on Days 1 and 3 to monitor campaign performance.
-> 2. It will automatically fix issues: add negative keywords, raise CPC if zero impressions, etc.
-> 3. Do NOT change bidding strategy during Phase 1 — stay on Manual CPC.
+> **During Phase 1 (daily until a stop condition fires):**
+> 1. Run `/iterate --check` daily to monitor clicks, spend, End date, and campaign health.
+> 2. Auto-fixes may add negative keywords and raise keyword bids on volume shortfall, capped at the $2.50 ceiling. If a keyword still has zero impressions ~24h after its bid raise, `/iterate --check` may switch that keyword to Broad Match.
+> 3. Stop when paid clicks >= {click_target} (pause and report to your Team Lead — they run `/iterate --cross`) or spend >= ${total_budget_cents / 100} (pause + report; short clicks are an affordability signal).
+> 4. If the End date arrives with clicks below target and spend below cap, extend the End date consciously using headroom `(cap - spent) / daily_budget`.
+> 5. Do NOT change bidding strategy during Phase 1 — stay on Manual CPC.
 >
 > **After Phase 1:**
-> Your Team Lead will run `/iterate --cross` to compare all MVPs and decide which advance to Phase 2.
-
-**If phase is 2 (or no phase):**
-
-> Your distribution campaign is ready. Next steps:
-> 1. **Enable the campaign** — it was created in PAUSED status. After verifying conversion tracking, enable it in the ad platform dashboard.
-> 2. **Verify conversion tracking** by clicking your own ad and completing the activation flow.
-> 3. **Monitor performance** — after a few days, run `/iterate` to analyze metrics.
-> 4. **After `/iterate` feedback** — if changes recommended, run `/change`. Campaign can keep running during changes.
+> Your Team Lead will run `/iterate --cross` to compare all MVPs and decide which advance to the manual Phase 2 Playbook.
 
 ### Completion checkpoint
 
@@ -789,6 +863,12 @@ ads = {}
 if os.path.exists('experiment/ads.yaml'):
     import yaml
     ads = yaml.safe_load(open('experiment/ads.yaml')) or {}
+context = {}
+if os.path.exists('.runs/distribute-context.json'):
+    context = json.load(open('.runs/distribute-context.json')) or {}
+ads_ready_gate = context.get('ads_ready_gate') if isinstance(context, dict) else {}
+if isinstance(ads_ready_gate, dict) and (ads_ready_gate.get('passed') or ads_ready_gate.get('skipped')):
+    steps.append('6l')
 manual = ads.get('manual_creation', False)
 has_evidence = os.path.exists('.runs/distribute-campaign-evidence.json')
 if ads.get('campaign_id') and (has_evidence or manual):
@@ -819,7 +899,7 @@ print(json.dumps({
         'campaign_id': str(ads.get('campaign_id', '')),
         'image_assets_uploaded': str(ads.get('image_assets_uploaded', 'false')),
         'sitelink_assets_created': str(bool(ads.get('sitelinks', []))),
-        'phase': json.load(open('.runs/distribute-context.json')).get('phase', 0) if os.path.exists('.runs/distribute-context.json') else 0,
+        'phase': 1,
         'audit_passed': str(os.path.exists(audit_file) and (json.load(open(audit_file)).get('all_passed', False) or json.load(open(audit_file)).get('manual_creation', False))) if os.path.exists(audit_file) else 'false',
         'readback_completed': str(json.load(open(audit_file)).get('readback_completed', False)) if os.path.exists(audit_file) else 'false'
     }
@@ -839,11 +919,11 @@ This checkpoint is mandatory. Do not skip it.
 - Chrome MCP read-back completed (`.runs/distribute-campaign-audit.json` with `readback_completed: true`) or manual_creation path
 - User confirmed pre-launch settings review (`.runs/distribute-campaign-audit.json` with `user_confirmed: true`)
 - PR auto-merged to main (or intentionally skipped with reason)
-- `.runs/distribute-step-check.json` exists with steps 6a, 6e, 6j, 6k, 6f completed
+- `.runs/distribute-step-check.json` exists with steps 6a, 6l, 6e, 6j, 6k, 6f completed
 
 **VERIFY:**
 ```bash
-grep -q 'campaign_id' experiment/ads.yaml 2>/dev/null && python3 -c "import json; s=set(json.load(open('.runs/distribute-step-check.json')).get('steps_completed',[])); required={'6a','6e','6j','6k','6f'}; assert required.issubset(s), f'missing steps: {required - s}'" && python3 -c "import json; d=json.load(open('.runs/distribute-campaign-audit.json')); assert d.get('all_passed')==True or d.get('manual_creation')==True, 'campaign audit not passed'; assert d.get('user_confirmed')==True, 'user has not confirmed pre-launch settings review'" && python3 -c "import json; d=json.load(open('.runs/distribute-campaign-audit.json')); m=d.get('manual_creation',False); assert d.get('readback_completed')==True or m==True, 'readback not completed and not manual creation'"
+grep -q 'campaign_id' experiment/ads.yaml 2>/dev/null && python3 -c "import json; s=set(json.load(open('.runs/distribute-step-check.json')).get('steps_completed',[])); required={'6a','6l','6e','6j','6k','6f'}; assert required.issubset(s), f'missing steps: {required - s}'" && python3 -c "import json; d=json.load(open('.runs/distribute-campaign-audit.json')); assert d.get('all_passed')==True or d.get('manual_creation')==True, 'campaign audit not passed'; assert d.get('user_confirmed')==True, 'user has not confirmed pre-launch settings review'" && python3 -c "import json; d=json.load(open('.runs/distribute-campaign-audit.json')); m=d.get('manual_creation',False); assert d.get('readback_completed')==True or m==True, 'readback not completed and not manual creation'"
 ```
 
 **STATE TRACKING:** After postconditions pass, mark this state complete:

@@ -1,7 +1,7 @@
 # STATE 0: STATIC_CHECKS
 
 **PRECONDITIONS:**
-- `.runs/ads-ready-context.json` exists with `static_only` and `deploy_url` keys injected by the dispatcher's step 3 via `init-context.sh`.
+- `.runs/ads-ready-context.json` exists with `static_only`, `phase`, `phase_2`, and `deploy_url` keys injected by the dispatcher's step 3 via `init-context.sh`.
 - PostHog API token is available at `~/.posthog/personal-api-key`.
 
 **ACTIONS:**
