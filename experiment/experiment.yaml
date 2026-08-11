@@ -243,6 +243,19 @@ behaviors:
       - "signup_complete fires server-side with provider=google and the relayed attribution"
       - "Acquisition gclid and utm_campaign are persisted onto the user record on first signup"
     level: 2
+
+  - id: b-10
+    hypothesis_id: h-04
+    pages: [scan-result]
+    given: "A signed-in user has received a fraud score"
+    when: "They click the fake-door 'Upgrade to Pro' CTA on the result page"
+    then: "A pay_intent event and a pay_intent row are recorded with the relayed gclid and utm_campaign, and they see an honest early-access confirmation — no charge, no checkout, and no second request for their email"
+    tests:
+      - "The Upgrade CTA is hidden until the user is both signed in and activated"
+      - "pay_intent fires with plan, price_cents, gclid and utm_campaign passed explicitly"
+      - "POST /api/pay-intent inserts one row with a server-authoritative price_cents"
+      - "The attribution relay prefers the user record and falls back to the client value"
+    level: 3
 # --- 4. Journey ---
 golden_path:
   - step: "Visit landing page"

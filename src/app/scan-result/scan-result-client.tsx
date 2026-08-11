@@ -21,6 +21,7 @@ import { FREE_SCAN_QUOTA, type FraudSignal, type ScansRow } from "@/lib/types";
 import { ScoreGauge } from "./score-gauge";
 import { SignalBreakdown } from "./signal-breakdown";
 import { ApiAccessDialog } from "./api-access-dialog";
+import { UpgradeCta } from "./upgrade-cta";
 import { severityOfScore } from "./severity";
 import { FeedbackWidget } from "@/components/feedback-widget";
 
@@ -107,6 +108,12 @@ export function ScanResultClient() {
   const overFreeLimit =
     scansUsed !== null && scansUsed >= FREE_SCAN_QUOTA;
 
+  // Activation for the Phase 2 fake door: this user has received a fraud score.
+  // Deliberately NOT "over the free limit" — gating the Upgrade CTA on quota
+  // exhaustion would restrict the pay-intent numerator to the ~30% of users who
+  // burn all three scans, tripling the click cost per observed intent.
+  const hasActivated = state === "ready" && scan !== null;
+
   return (
     <div className="dark min-h-screen overflow-x-hidden bg-background text-foreground">
       <FeedbackWidget
@@ -162,11 +169,16 @@ export function ScanResultClient() {
           <EmptyState />
         ) : (
           scan && (
-            <ResultView
-              scan={scan}
-              scansUsed={scansUsed ?? 0}
-              overFreeLimit={overFreeLimit}
-            />
+            <>
+              <ResultView
+                scan={scan}
+                scansUsed={scansUsed ?? 0}
+                overFreeLimit={overFreeLimit}
+              />
+              {/* Phase 2 fake door. Sits after the result because the offer only
+                  makes sense once the user has seen what they would be buying. */}
+              <UpgradeCta user={scan.user_id} hasActivated={hasActivated} />
+            </>
           )
         )}
       </div>

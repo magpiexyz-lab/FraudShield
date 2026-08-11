@@ -10,6 +10,7 @@ export const EVENT_FUNNEL_MAP: Record<string, string> = {
   signup_start: "activate",
   signup_complete: "activate",
   activate: "activate",
+  pay_intent: "monetize",
   checkout_start: "monetize",
   pay_success: "monetize",
   retain_return: "retain",
@@ -58,6 +59,28 @@ export function trackFeedbackSubmitted(props: {
   activation_action: string;
 }) {
   track("feedback_submitted", { ...props, funnel_stage: "activate" });
+}
+
+// monetize — fake door (no payment stack dependency)
+
+/**
+ * Google Ads Phase 2 value screen. Fires when an activated user clicks the
+ * fake-door Upgrade CTA. Nobody is charged.
+ *
+ * `utm_campaign` is a required argument rather than an optional one on purpose:
+ * the Phase 2 verdict isolates its numerator on this property, and PostHog's
+ * `utm_campaign` super-property is registered from sessionStorage, which does
+ * not survive a return visit. `pay_intent` is a deep-funnel event that can fire
+ * days after the ad click, so the value must be passed explicitly. Pass "" when
+ * there is genuinely no campaign.
+ */
+export function trackPayIntent(props: {
+  plan: string;
+  price_cents: number;
+  gclid?: string;
+  utm_campaign: string;
+}) {
+  track("pay_intent", { ...props, funnel_stage: "monetize" });
 }
 
 // --- Payment events (only when requires: [payment] matched) ---

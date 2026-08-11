@@ -272,7 +272,7 @@ function PlanCard({
       <div className="mt-8">
         {onUpgrade ? (
           notConfigured ? (
-            <ProWaitlistForm />
+            <ProUpgradePointer />
           ) : (
             <Button
               type="button"
@@ -316,108 +316,35 @@ function PlanCard({
 }
 
 /**
- * Bug #2 — Inline waitlist form rendered in the Pro card slot when
- * /api/checkout reports Stripe is not yet configured. Reuses the same
- * Forensic Instrument visual tokens (signal-cyan + glass) so the swap
- * is in-place rather than a jarring modal. Posts to the existing
- * /api/waitlist route with source: "pro-upgrade" — the row itself is
- * the demand signal (no new analytics events per the bug-fix plan).
+ * Rendered in the Pro card slot when /api/checkout reports Stripe is not yet
+ * configured.
+ *
+ * This previously collected an email via /api/waitlist. It no longer does. While
+ * the Google Ads Phase 2 value screen is running, the ONLY Pro-upgrade signal is
+ * the activation-gated fake door on /scan-result — a second capture here would
+ * split the measurement across two paths and re-ask for an email the user has
+ * already given us, which the Phase 2 brief forbids. So this points at the
+ * in-product CTA rather than competing with it.
  */
-function ProWaitlistForm() {
-  type SubmitState = "idle" | "submitting" | "success" | "error";
-  const [email, setEmail] = useState("");
-  const [submitState, setSubmitState] = useState<SubmitState>("idle");
-  const [errorMsg, setErrorMsg] = useState("");
-
-  async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (submitState === "submitting" || submitState === "success") return;
-    const trimmed = email.trim();
-    if (!trimmed) {
-      setSubmitState("error");
-      setErrorMsg("Enter your email to join the waitlist.");
-      return;
-    }
-    setSubmitState("submitting");
-    setErrorMsg("");
-    try {
-      const res = await fetch("/api/waitlist", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: trimmed, source: "pro-upgrade" }),
-      });
-      if (res.status === 201 || res.ok) {
-        setSubmitState("success");
-        return;
-      }
-      throw new Error(`waitlist failed (${res.status})`);
-    } catch {
-      setSubmitState("error");
-      setErrorMsg("Couldn't join the waitlist. Please try again.");
-    }
-  }
-
-  if (submitState === "success") {
-    return (
-      <p
-        role="status"
-        className={cn(
-          "flex items-center justify-center gap-2 rounded-full px-4 py-3 text-sm font-medium",
-          "bg-signal/10 text-signal",
-        )}
-      >
-        <Check className="size-4" aria-hidden="true" />
-        You&apos;re on the list — we&apos;ll email you when Pro launches.
-      </p>
-    );
-  }
-
+function ProUpgradePointer() {
   return (
-    <form onSubmit={onSubmit} className="flex flex-col gap-2" noValidate>
-      <label htmlFor="pro-waitlist-email" className="sr-only">
-        Email address for Pro upgrade waitlist
-      </label>
-      <Input
-        id="pro-waitlist-email"
-        type="email"
-        inputMode="email"
-        autoComplete="email"
-        required
-        placeholder="you@company.com"
-        value={email}
-        onChange={(e) => {
-          setEmail(e.target.value);
-          if (submitState === "error") setSubmitState("idle");
-        }}
-        className="h-12 rounded-full border-border/70 bg-background/60 px-5 text-base"
-        aria-invalid={submitState === "error" ? "true" : undefined}
-      />
-      <Button
-        type="submit"
-        disabled={submitState === "submitting"}
+    <div className="rounded-2xl border border-signal/30 bg-signal/5 p-5 text-center">
+      <p className="text-sm font-medium text-foreground">
+        Pro is opening up soon
+      </p>
+      <p className="mt-2 text-sm text-muted-foreground">
+        Scan a document, then use the upgrade option on your results page to join
+        the early-access list.
+      </p>
+      <Link
+        href="/dashboard"
         className={cn(
-          "h-12 w-full rounded-full bg-signal text-base font-semibold text-signal-foreground",
-          "transition-all duration-200 hover:bg-signal/90 hover:shadow-[var(--shadow-signal-glow)]",
-          "focus-visible:ring-signal/50",
+          buttonVariants({ variant: "outline" }),
+          "mt-4 h-11 rounded-full px-6",
         )}
       >
-        {submitState === "submitting" ? (
-          <>
-            <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-            <span>Adding you…</span>
-          </>
-        ) : (
-          <>
-            <BellRing className="size-4" aria-hidden="true" />
-            <span>Notify me</span>
-          </>
-        )}
-      </Button>
-      {submitState === "error" && errorMsg ? (
-        <p role="alert" className="text-xs font-medium text-fraud">
-          {errorMsg}
-        </p>
-      ) : null}
-    </form>
+        Scan a document
+      </Link>
+    </div>
   );
 }
