@@ -7,8 +7,6 @@ import Link from "next/link";
 import { FileUp, FileText, ShieldCheck, X, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { AI_PRIVACY_DISCLOSURE } from "@/lib/fraud/analysis-mode";
-import { HowItWorks } from "./how-it-works";
 import type { CreateScanResponse } from "@/app/api/scan/route";
 
 // Accepted document types — pay stub, bank statement, invoice.
@@ -337,7 +335,7 @@ export function UploadZone({
   const showSummary = status === "done";
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex h-full flex-col gap-4">
       <input
         ref={inputRef}
         type="file"
@@ -358,7 +356,7 @@ export function UploadZone({
         onDragLeave={() => setDragging(false)}
         onDrop={onDrop}
         className={cn(
-          "relative w-full overflow-hidden rounded-[var(--radius-lg)] p-6 transition-all duration-200 sm:p-8",
+          "relative flex w-full flex-1 flex-col justify-center overflow-hidden rounded-[var(--radius-lg)] p-6 transition-all duration-200 sm:p-8",
           "bg-card ring-1 ring-border",
           dragging && "ring-2 ring-signal shadow-[var(--shadow-signal-glow)]",
           quotaExhausted && "opacity-60",
@@ -544,15 +542,6 @@ export function UploadZone({
           </div>
         )}
       </div>
-
-      {entries.length === 0 && status !== "scanning" && <HowItWorks />}
-
-      {/* Third-party processing disclosure. Kept outside the drop zone so it
-          stays visible once a file is selected — the moment before the user
-          commits their document is when this has to be readable. */}
-      <p className="text-xs leading-relaxed text-muted-foreground">
-        {AI_PRIVACY_DISCLOSURE}
-      </p>
 
       {/* WCAG 4.1.3: always-mounted live region; visibility toggles via class.
           Uses destructive token (form-error semantics), NOT fraud severity —

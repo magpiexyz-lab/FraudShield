@@ -45,7 +45,7 @@ export function WhatWeCheck() {
   return (
     <aside
       aria-labelledby="what-we-check-heading"
-      className="rounded-[var(--radius-lg)] bg-card/60 p-5 ring-1 ring-border lg:sticky lg:top-6 lg:self-start"
+      className="flex h-full flex-col rounded-[var(--radius-lg)] bg-card/60 p-5 ring-1 ring-border"
     >
       <h3
         id="what-we-check-heading"
@@ -54,7 +54,7 @@ export function WhatWeCheck() {
         What we check
       </h3>
 
-      <ul className="mt-4 space-y-3.5">
+      <ul className="mt-4 flex flex-1 flex-col justify-between gap-4">
         {CHECKS.map(({ icon: Icon, title, body }) => (
           <li key={title} className="flex gap-3">
             <span
@@ -64,14 +64,14 @@ export function WhatWeCheck() {
               <Icon className="size-3.5" />
             </span>
             <div className="space-y-0.5">
-              <p className="text-sm font-medium text-foreground">{title}</p>
-              <p className="text-xs leading-relaxed text-muted-foreground">{body}</p>
+              <p className="text-base font-medium text-foreground">{title}</p>
+              <p className="text-sm leading-relaxed text-muted-foreground">{body}</p>
             </div>
           </li>
         ))}
       </ul>
 
-      <p className="mt-4 border-t border-border pt-3.5 text-xs leading-relaxed text-muted-foreground">
+      <p className="mt-4 border-t border-border pt-4 text-sm leading-relaxed text-muted-foreground">
         A score alone is not a decision. FraudShield shows the evidence behind every
         signal so you can judge it yourself.
       </p>
