@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { FREE_SCAN_QUOTA, type SubscriptionsRow } from "@/lib/types";
 import { UploadZone } from "./upload-zone";
 import { ScanHistory } from "./scan-history";
+import { WhatWeCheck } from "./what-we-check";
 
 type QuotaState = {
   used: number;
@@ -118,10 +119,16 @@ export default function DashboardPage() {
             <h2 id="upload-heading" className="sr-only">
               Upload a document for analysis
             </h2>
-            <UploadZone
-              quotaRemaining={quota.loading ? FREE_SCAN_QUOTA : remaining}
-              onScansCompleted={() => setQuotaEpoch((n) => n + 1)}
-            />
+            {/* Two columns on wide screens: the drop zone was centred in a
+                container far wider than itself, leaving dead space either side
+                of the primary action. */}
+            <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_19rem]">
+              <UploadZone
+                quotaRemaining={quota.loading ? FREE_SCAN_QUOTA : remaining}
+                onScansCompleted={() => setQuotaEpoch((n) => n + 1)}
+              />
+              <WhatWeCheck />
+            </div>
           </section>
 
           {/* Scan history */}
