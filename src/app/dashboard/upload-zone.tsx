@@ -8,6 +8,7 @@ import { FileUp, FileText, ShieldCheck, X, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { AI_PRIVACY_DISCLOSURE } from "@/lib/fraud/analysis-mode";
+import { HowItWorks } from "./how-it-works";
 import type { CreateScanResponse } from "@/app/api/scan/route";
 
 // Accepted document types — pay stub, bank statement, invoice.
@@ -357,7 +358,7 @@ export function UploadZone({
         onDragLeave={() => setDragging(false)}
         onDrop={onDrop}
         className={cn(
-          "relative flex w-full flex-1 flex-col justify-center overflow-hidden rounded-[var(--radius-lg)] p-6 transition-all duration-200 sm:p-8",
+          "relative w-full overflow-hidden rounded-[var(--radius-lg)] p-6 transition-all duration-200 sm:p-8",
           "bg-card ring-1 ring-border",
           dragging && "ring-2 ring-signal shadow-[var(--shadow-signal-glow)]",
           quotaExhausted && "opacity-60",
@@ -497,15 +498,15 @@ export function UploadZone({
             </div>
           </div>
         ) : (
-          <div className="relative flex flex-col items-center gap-4 text-center">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-signal/12 ring-1 ring-signal/25">
-              <FileUp className="h-7 w-7 text-signal" aria-hidden="true" />
+          <div className="relative flex flex-col items-center gap-5 py-2 text-center">
+            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-signal/12 ring-1 ring-signal/25">
+              <FileUp className="h-9 w-9 text-signal" aria-hidden="true" />
             </div>
-            <div className="space-y-1.5">
-              <p className="text-lg font-semibold text-foreground font-[family-name:var(--font-heading)]">
+            <div className="space-y-2">
+              <p className="text-2xl font-semibold text-foreground font-[family-name:var(--font-heading)] sm:text-3xl">
                 Drop documents to scan
               </p>
-              <p className="mx-auto max-w-md text-sm text-muted-foreground">
+              <p className="mx-auto max-w-lg text-base leading-relaxed text-muted-foreground">
                 Pay stubs, bank statements, or invoices. PDF or image, up to
                 10&nbsp;MB each, {MAX_FILES} at a time. Files are analyzed in seconds
                 and never stored.
@@ -514,7 +515,7 @@ export function UploadZone({
                   reference assumes a viewport and a reading order, and is a
                   weak cue for a screen-reader user. The full disclosure below
                   the drop zone stays on screen in every state. */}
-              <p className="mx-auto max-w-md text-xs text-muted-foreground">
+              <p className="mx-auto max-w-lg text-sm text-muted-foreground">
                 Images are sent to Anthropic for AI review of the document&rsquo;s
                 content.
               </p>
@@ -522,13 +523,29 @@ export function UploadZone({
             <Button
               onClick={() => inputRef.current?.click()}
               disabled={quotaExhausted}
-              className="h-11 rounded-[var(--radius-pill)] bg-signal text-signal-foreground hover:bg-signal/90 hover:shadow-[var(--shadow-signal-glow)]"
+              className="h-12 rounded-[var(--radius-pill)] bg-signal px-8 text-base font-semibold text-signal-foreground hover:bg-signal/90 hover:shadow-[var(--shadow-signal-glow)]"
             >
               Select documents
             </Button>
+
+            <ul
+              aria-label="Accepted file formats"
+              className="flex flex-wrap items-center justify-center gap-2"
+            >
+              {["PDF", "PNG", "JPG", "WEBP"].map((ext) => (
+                <li
+                  key={ext}
+                  className="rounded-full bg-muted/50 px-2.5 py-1 font-[family-name:var(--font-mono)] text-[0.7rem] tracking-wide text-muted-foreground ring-1 ring-border"
+                >
+                  {ext}
+                </li>
+              ))}
+            </ul>
           </div>
         )}
       </div>
+
+      {entries.length === 0 && status !== "scanning" && <HowItWorks />}
 
       {/* Third-party processing disclosure. Kept outside the drop zone so it
           stays visible once a file is selected — the moment before the user
