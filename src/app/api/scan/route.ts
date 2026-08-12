@@ -25,6 +25,7 @@ import { rateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
 import { computeQuota } from "@/lib/quota";
 import { computeFraudScore } from "@/lib/fraud/score";
 import { analyzeImageForFraud, applyVisionSignals } from "@/lib/fraud/vision";
+import { isFullAnalysis } from "@/lib/fraud/analysis-mode";
 import type {
   DocumentMetadata,
   ScoringInput,
@@ -218,9 +219,14 @@ export async function POST(request: Request) {
 
   // 4. Quota check — enforce free-scan limit before doing any analysis.
   try {
+    // Only scans that produced a verdict consume the free allowance. A partial
+    // image analysis returns EXIF evidence but no fraud score, and charging a
+    // free scan for a non-answer penalises exactly the users who photograph
+    // documents instead of exporting PDFs. See 005_scans_counts_toward_quota.sql.
     const { count } = await supabase
       .from("scans")
-      .select("id", { count: "exact", head: true });
+      .select("id", { count: "exact", head: true })
+      .eq("counts_toward_quota", true);
 
     const { data: sub } = await supabase
       .from("subscriptions")
@@ -299,6 +305,10 @@ export async function POST(request: Request) {
         fraud_score: score,
         signals: signalsForDb,
         file_meta: fileMetaForDb,
+        // A scan spends a free scan only when it produced a verdict. Written
+        // here rather than derived on read so the decision is visible in the
+        // data and the quota check stays a plain indexed count.
+        counts_toward_quota: isFullAnalysis(fileMetaForDb),
       })
       .select("id")
       .single();

@@ -57,9 +57,13 @@ export function ScanResultClient() {
           : query.order("created_at", { ascending: false }).limit(1);
 
         const { data } = await query.maybeSingle();
+        // Matches the server-side quota check in /api/scan: a partial image
+        // analysis returns evidence but no verdict, so it does not spend a free
+        // scan and must not trigger the free-limit prompt.
         const { count } = await supabase
           .from("scans")
-          .select("id", { count: "exact", head: true });
+          .select("id", { count: "exact", head: true })
+          .eq("counts_toward_quota", true);
 
         if (cancelled) return;
 

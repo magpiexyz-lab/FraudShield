@@ -238,3 +238,19 @@ describe("recurrence guard: every accepted mime is classified honestly", () => {
     }
   });
 });
+
+describe("free-scan quota semantics", () => {
+  it("charges a free scan only when the scan produced a verdict", () => {
+    // scans.counts_toward_quota is written from isFullAnalysis at insert time
+    // (src/app/api/scan/route.ts, migration 005). A partial image analysis
+    // returns EXIF evidence but no fraud score, and spending one of three free
+    // scans on a non-answer penalises exactly the users who photograph
+    // documents rather than exporting PDFs.
+    expect(isFullAnalysis({ mime: "application/pdf" })).toBe(true);
+    expect(isFullAnalysis({ mime: "image/jpeg", vision_analyzed: true })).toBe(true);
+
+    // These two are the refunded cases.
+    expect(isFullAnalysis({ mime: "image/jpeg" })).toBe(false);
+    expect(isFullAnalysis({ mime: "image/png", vision_analyzed: false })).toBe(false);
+  });
+});

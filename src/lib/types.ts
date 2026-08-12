@@ -12,6 +12,10 @@ export type ScansRow = {
   fraud_score: number;            // 0–100 integer
   signals: FraudSignal[];         // jsonb: per-signal breakdown
   file_meta: FileMeta;            // jsonb: filename, mime, size, pdf metadata
+  // False when the scan produced a partial analysis (an image whose AI content
+  // pass did not complete). Those return EXIF evidence but no fraud score, so
+  // they do not spend one of the free scans.
+  counts_toward_quota: boolean;
   created_at: string;             // timestamptz
 };
 

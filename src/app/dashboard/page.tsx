@@ -31,7 +31,11 @@ export default function DashboardPage() {
       // Used = count of this user's scans (RLS scopes to the current user).
       const { count } = await supabase
         .from("scans")
-        .select("id", { count: "exact", head: true });
+        // Must match the server-side quota check in /api/scan — partial image
+        // analyses do not consume a free scan, so the meter must not show them
+        // as spent.
+        .select("id", { count: "exact", head: true })
+        .eq("counts_toward_quota", true);
 
       // Quota total: paid subscription raises it; otherwise the free allowance.
       const { data: sub } = await supabase
