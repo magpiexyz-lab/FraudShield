@@ -336,7 +336,7 @@ export function UploadZone({
   const showSummary = status === "done";
 
   return (
-    <div className="space-y-4">
+    <div className="flex h-full flex-col gap-4">
       <input
         ref={inputRef}
         type="file"
@@ -357,7 +357,7 @@ export function UploadZone({
         onDragLeave={() => setDragging(false)}
         onDrop={onDrop}
         className={cn(
-          "relative w-full overflow-hidden rounded-[var(--radius-lg)] p-6 transition-all duration-200 sm:p-8",
+          "relative flex w-full flex-1 flex-col justify-center overflow-hidden rounded-[var(--radius-lg)] p-6 transition-all duration-200 sm:p-8",
           "bg-card ring-1 ring-border",
           dragging && "ring-2 ring-signal shadow-[var(--shadow-signal-glow)]",
           quotaExhausted && "opacity-60",
