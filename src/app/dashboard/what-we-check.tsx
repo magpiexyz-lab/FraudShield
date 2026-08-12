@@ -47,7 +47,7 @@ export function WhatWeCheck() {
         What we check
       </h3>
 
-      <ul className="mt-4 space-y-4">
+      <ul className="mt-4 space-y-3.5">
         {CHECKS.map(({ icon: Icon, title, body }) => (
           <li key={title} className="flex gap-3">
             <span
@@ -64,7 +64,7 @@ export function WhatWeCheck() {
         ))}
       </ul>
 
-      <p className="mt-5 border-t border-border pt-4 text-xs leading-relaxed text-muted-foreground">
+      <p className="mt-4 border-t border-border pt-3.5 text-xs leading-relaxed text-muted-foreground">
         A score alone is not a decision. FraudShield shows the evidence behind every
         signal so you can judge it yourself.
       </p>
