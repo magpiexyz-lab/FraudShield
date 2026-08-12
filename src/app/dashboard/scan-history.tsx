@@ -82,7 +82,7 @@ export function ScanHistory() {
         {[0, 1, 2].map((i) => (
           <div
             key={i}
-            className="flex items-center gap-4 rounded-[var(--radius-lg)] bg-card p-4 ring-1 ring-border"
+            className="flex items-center gap-3 rounded-[var(--radius-lg)] bg-card p-3 ring-1 ring-border"
             style={{ animationDelay: `${i * 90}ms` }}
           >
             <div className="h-10 w-10 shrink-0 animate-pulse rounded-full bg-muted" />
@@ -145,14 +145,14 @@ export function ScanHistory() {
             <Link
               href={`/scan-result?id=${encodeURIComponent(scan.id)}`}
               className={cn(
-                "group flex items-center gap-4 rounded-[var(--radius-lg)] bg-card p-4 ring-1 ring-border transition-all duration-150",
+                "group flex items-center gap-3 rounded-[var(--radius-lg)] bg-card p-3 ring-1 ring-border transition-all duration-150",
                 "hover:-translate-y-0.5 hover:ring-signal/40 hover:shadow-[var(--shadow-signal-glow)]",
               )}
             >
               {/* Severity-coded score dial — neutral, score-less when limited */}
               <div
                 className={cn(
-                  "flex h-12 w-12 shrink-0 items-center justify-center rounded-full font-[family-name:var(--font-mono)] text-sm font-semibold tabular-nums",
+                  "flex h-10 w-10 shrink-0 items-center justify-center rounded-full font-[family-name:var(--font-mono)] text-sm font-semibold tabular-nums",
                   !fullAnalysis && "bg-muted text-muted-foreground ring-1 ring-border",
                   fullAnalysis && severity === "clear" && "bg-clear/15 text-clear ring-1 ring-clear/30",
                   fullAnalysis && severity === "suspect" && "bg-suspect/15 text-suspect ring-1 ring-suspect/30",
