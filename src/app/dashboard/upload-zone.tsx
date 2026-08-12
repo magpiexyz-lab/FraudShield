@@ -356,7 +356,7 @@ export function UploadZone({
         onDragLeave={() => setDragging(false)}
         onDrop={onDrop}
         className={cn(
-          "relative flex w-full flex-1 flex-col justify-center overflow-hidden rounded-[var(--radius-lg)] p-6 transition-all duration-200 sm:p-8",
+          "relative flex w-full flex-1 flex-col justify-center overflow-hidden rounded-[var(--radius-lg)] p-5 transition-all duration-200 sm:p-6",
           "bg-card ring-1 ring-border",
           dragging && "ring-2 ring-signal shadow-[var(--shadow-signal-glow)]",
           quotaExhausted && "opacity-60",
@@ -496,15 +496,15 @@ export function UploadZone({
             </div>
           </div>
         ) : (
-          <div className="relative flex flex-col items-center gap-5 py-2 text-center">
-            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-signal/12 ring-1 ring-signal/25">
-              <FileUp className="h-9 w-9 text-signal" aria-hidden="true" />
+          <div className="relative flex flex-col items-center gap-4 text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-signal/12 ring-1 ring-signal/25">
+              <FileUp className="h-6 w-6 text-signal" aria-hidden="true" />
             </div>
             <div className="space-y-2">
-              <p className="text-2xl font-semibold text-foreground font-[family-name:var(--font-heading)] sm:text-3xl">
+              <p className="text-xl font-semibold text-foreground font-[family-name:var(--font-heading)]">
                 Drop documents to scan
               </p>
-              <p className="mx-auto max-w-lg text-base leading-relaxed text-muted-foreground">
+              <p className="mx-auto max-w-md text-sm leading-relaxed text-muted-foreground">
                 Pay stubs, bank statements, or invoices. PDF or image, up to
                 10&nbsp;MB each, {MAX_FILES} at a time. Files are analyzed in seconds
                 and never stored.
@@ -513,7 +513,7 @@ export function UploadZone({
                   reference assumes a viewport and a reading order, and is a
                   weak cue for a screen-reader user. The full disclosure below
                   the drop zone stays on screen in every state. */}
-              <p className="mx-auto max-w-lg text-sm text-muted-foreground">
+              <p className="mx-auto max-w-md text-xs text-muted-foreground">
                 Images are sent to Anthropic for AI review of the document&rsquo;s
                 content.
               </p>
@@ -521,7 +521,7 @@ export function UploadZone({
             <Button
               onClick={() => inputRef.current?.click()}
               disabled={quotaExhausted}
-              className="h-12 rounded-[var(--radius-pill)] bg-signal px-8 text-base font-semibold text-signal-foreground hover:bg-signal/90 hover:shadow-[var(--shadow-signal-glow)]"
+              className="h-11 rounded-[var(--radius-pill)] bg-signal px-7 text-sm font-semibold text-signal-foreground hover:bg-signal/90 hover:shadow-[var(--shadow-signal-glow)]"
             >
               Select documents
             </Button>

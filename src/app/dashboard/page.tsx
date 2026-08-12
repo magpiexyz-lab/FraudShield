@@ -88,7 +88,7 @@ export default function DashboardPage() {
 
         <div className="relative mx-auto max-w-5xl px-5 py-10 sm:px-8 sm:py-14">
           {/* Header */}
-          <header className="mb-10">
+          <header className="mb-7">
             <div className="flex flex-wrap items-end justify-between gap-4">
               <div>
                 <p className="flex items-center gap-2 font-[family-name:var(--font-mono)] text-xs uppercase tracking-[0.2em] text-signal">
@@ -117,14 +117,14 @@ export default function DashboardPage() {
           </header>
 
           {/* Primary task: upload + scan */}
-          <section aria-labelledby="upload-heading" className="mb-10">
+          <section aria-labelledby="upload-heading" className="mb-8">
             <h2 id="upload-heading" className="sr-only">
               Upload a document for analysis
             </h2>
             {/* Two columns on wide screens: the drop zone was centred in a
                 container far wider than itself, leaving dead space either side
                 of the primary action. */}
-            <div className="grid items-stretch gap-5 lg:grid-cols-[minmax(0,1fr)_19rem]">
+            <div className="grid items-stretch gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
               <UploadZone
                 quotaRemaining={quota.loading ? FREE_SCAN_QUOTA : remaining}
                 onScansCompleted={() => setQuotaEpoch((n) => n + 1)}
@@ -135,7 +135,7 @@ export default function DashboardPage() {
             {/* Full width, below both columns. Inside the upload column this
                 made that side far taller than the panel and left a large empty
                 rectangle under it. */}
-            <HowItWorks className="mt-5" />
+            <HowItWorks className="mt-4" />
 
             {/* Moved out of the upload column so the two cards above can end on
                 the same line. It still sits above the fold on the page a user
