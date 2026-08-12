@@ -79,6 +79,16 @@ export type StripeEventsRow = {
 // Default free scan allowance before requiring a subscription
 export const FREE_SCAN_QUOTA = 3;
 
+// Monthly scan allowance on the paid plan.
+//
+// Pro was originally sold as "unlimited", which is unsafe here: every image
+// scan makes a vision API call, so unlimited scanning at a flat price means
+// unbounded cost per customer. A cap bounds the worst case without touching the
+// price — 200 scans is roughly $6-20 of API cost against a $60 plan, and for a
+// small lender it is ~10 documents a working day, so real users should never
+// reach it.
+export const PRO_SCAN_QUOTA = 200;
+
 // Plan pricing (server-authoritative — never trust client-provided prices)
 export const PLAN_PRICES: Record<string, number> = {
   pro: 6000, // $60.00 in cents

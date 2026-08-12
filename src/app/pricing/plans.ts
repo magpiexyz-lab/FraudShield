@@ -3,7 +3,7 @@
 // (FREE_SCAN_QUOTA, PLAN_PRICES). The /api/checkout route re-reads PLAN_PRICES
 // server-side — the client never sends a price (see .claude/stacks/payment/stripe.md).
 
-import { FREE_SCAN_QUOTA, PLAN_PRICES } from "@/lib/types";
+import { FREE_SCAN_QUOTA, PLAN_PRICES, PRO_SCAN_QUOTA } from "@/lib/types";
 
 export type PlanTier = {
   id: string; // matches a key in PLAN_PRICES when paid; "free" for the free tier
@@ -43,12 +43,12 @@ export const PLANS: ReadonlyArray<PlanTier> = [
   {
     id: "pro",
     name: "Pro",
-    tagline: "Unlimited scanning for teams that review every day.",
+    tagline: "For teams reviewing documents every day.",
     priceMonthly: PRO_PRICE_MONTHLY,
     featured: true,
     cta: "Choose Pro",
     features: [
-      { label: "Unlimited document scans", included: true },
+      { label: `${PRO_SCAN_QUOTA} document scans / month`, included: true },
       { label: "0–100 forensic fraud score", included: true },
       { label: "Per-signal breakdown & explanations", included: true },
       { label: "Pay stubs, bank statements & invoices", included: true },

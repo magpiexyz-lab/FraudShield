@@ -165,7 +165,7 @@ export function UploadZone({ quotaRemaining }: { quotaRemaining: number }) {
         onDragLeave={() => setDragging(false)}
         onDrop={onDrop}
         className={cn(
-          "relative overflow-hidden rounded-[var(--radius-lg)] p-8 transition-all duration-200",
+          "relative mx-auto w-full max-w-3xl overflow-hidden rounded-[var(--radius-lg)] p-6 transition-all duration-200 sm:p-8",
           "bg-card ring-1 ring-border",
           dragging && "ring-2 ring-signal shadow-[var(--shadow-signal-glow)]",
           quotaExhausted && "opacity-60",

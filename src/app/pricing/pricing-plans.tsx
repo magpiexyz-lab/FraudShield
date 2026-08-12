@@ -180,8 +180,8 @@ export function PricingPlans() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="grid gap-6 md:grid-cols-2">
+    <div className="space-y-5">
+      <div className="grid gap-5 md:grid-cols-2">
         {PLANS.map((plan, index) => (
           <PlanCard
             key={plan.id}
@@ -193,6 +193,8 @@ export function PricingPlans() {
           />
         ))}
       </div>
+
+      <EnterpriseBand />
 
       {/* Unconditionally-mounted live region (WCAG 4.1.3): text toggles, container stays. */}
       <p
@@ -235,7 +237,7 @@ function PlanCard({
     <div
       style={style}
       className={cn(
-        "group relative flex flex-col rounded-xl p-7 sm:p-8",
+        "group relative flex flex-col rounded-xl p-5 sm:p-6",
         "fs-reveal", // staggered entrance, defined in globals-scoped style below
         plan.featured
           ? // glass panel raised with signal-cyan ring + glow (no flat border on dark)
@@ -249,8 +251,8 @@ function PlanCard({
         </Badge>
       )}
 
-      <header className="space-y-1.5">
-        <h2 className="font-heading text-2xl font-semibold tracking-tight text-foreground">
+      <header className="space-y-1">
+        <h2 className="font-heading text-xl font-semibold tracking-tight text-foreground">
           {recorded ? "You're on the Pro early-access list" : plan.name}
         </h2>
         <p className="text-sm leading-relaxed text-muted-foreground">
@@ -260,9 +262,9 @@ function PlanCard({
         </p>
       </header>
 
-      <div className="mt-6 flex items-baseline gap-1.5">
+      <div className="mt-4 flex items-baseline gap-1.5">
         {plan.priceMonthly === 0 ? (
-          <span className="font-mono text-5xl font-medium tracking-tight text-foreground tabular-nums">
+          <span className="font-mono text-4xl font-medium tracking-tight text-foreground tabular-nums">
             $0
           </span>
         ) : (
@@ -277,7 +279,7 @@ function PlanCard({
 
       <Separator className="my-6 bg-border" />
 
-      <ul className="flex-1 space-y-3" aria-label={`${plan.name} plan features`}>
+      <ul className="flex-1 space-y-2" aria-label={`${plan.name} plan features`}>
         {plan.features.map((feature) => (
           <li
             key={feature.label}
@@ -308,7 +310,7 @@ function PlanCard({
         ))}
       </ul>
 
-      <div className="mt-8">
+      <div className="mt-6">
         {onUpgrade ? (
           recorded ? (
             <ProEarlyAccessConfirmation />
@@ -402,6 +404,62 @@ function TryItFirstPointer() {
       >
         Scan a document free
       </Link>
+    </div>
+  );
+}
+
+/**
+ * Enterprise band.
+ *
+ * Deliberately not a third price card: volume, SLAs and integration shape are
+ * negotiated, and putting a number on them would either understate the deal or
+ * scare off the buyer. It is also a different motion — Pro is self-serve, this
+ * is a conversation.
+ *
+ * A mailto rather than a form: the visitor is already signed in, so a form
+ * would ask for details we hold, and an email arrives somewhere a human
+ * actually reads. Intentionally fires no analytics event — adding one mid-run
+ * would mean a new EVENTS.yaml entry and another signal competing with
+ * pay_intent during the Phase 2 screen.
+ */
+function EnterpriseBand() {
+  const subject = encodeURIComponent("FraudShield — Enterprise enquiry");
+  const body = encodeURIComponent(
+    [
+      "Hi FraudShield team,",
+      "",
+      "We'd like to talk about using FraudShield at volume.",
+      "",
+      "Roughly how many documents we review each month:",
+      "How our team reviews them today:",
+      "Anything we'd need it to connect to:",
+      "",
+      "Thanks,",
+    ].join("\n"),
+  );
+
+  return (
+    <div className="rounded-xl border border-border/60 bg-card/40 p-5 backdrop-blur-sm sm:p-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-1">
+          <h3 className="font-heading text-lg font-semibold tracking-tight text-foreground">
+            Enterprise
+          </h3>
+          <p className="max-w-xl text-sm leading-relaxed text-muted-foreground">
+            Higher volume, API access, or a workflow of your own? Tell us how your
+            team reviews documents and we&apos;ll put together something that fits.
+          </p>
+        </div>
+        <a
+          href={`mailto:lathiya@magpiexyz.io?subject=${subject}&body=${body}`}
+          className={cn(
+            buttonVariants({ variant: "outline" }),
+            "h-11 shrink-0 rounded-full px-6",
+          )}
+        >
+          Talk to us
+        </a>
+      </div>
     </div>
   );
 }
