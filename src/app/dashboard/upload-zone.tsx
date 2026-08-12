@@ -8,6 +8,7 @@ import { FileUp, FileText, ShieldCheck, X, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { AI_PRIVACY_DISCLOSURE } from "@/lib/fraud/analysis-mode";
+import { HowItWorks } from "./how-it-works";
 import type { CreateScanResponse } from "@/app/api/scan/route";
 
 // Accepted document types — pay stub, bank statement, invoice.
@@ -357,7 +358,7 @@ export function UploadZone({
         onDragLeave={() => setDragging(false)}
         onDrop={onDrop}
         className={cn(
-          "relative flex w-full flex-1 flex-col justify-center overflow-hidden rounded-[var(--radius-lg)] p-6 transition-all duration-200 sm:p-8",
+          "relative w-full overflow-hidden rounded-[var(--radius-lg)] p-6 transition-all duration-200 sm:p-8",
           "bg-card ring-1 ring-border",
           dragging && "ring-2 ring-signal shadow-[var(--shadow-signal-glow)]",
           quotaExhausted && "opacity-60",
@@ -526,9 +527,25 @@ export function UploadZone({
             >
               Select documents
             </Button>
+
+            <ul
+              aria-label="Accepted file formats"
+              className="flex flex-wrap items-center justify-center gap-2"
+            >
+              {["PDF", "PNG", "JPG", "WEBP"].map((ext) => (
+                <li
+                  key={ext}
+                  className="rounded-full bg-muted/50 px-2.5 py-1 font-[family-name:var(--font-mono)] text-[0.7rem] tracking-wide text-muted-foreground ring-1 ring-border"
+                >
+                  {ext}
+                </li>
+              ))}
+            </ul>
           </div>
         )}
       </div>
+
+      {entries.length === 0 && status !== "scanning" && <HowItWorks />}
 
       {/* Third-party processing disclosure. Kept outside the drop zone so it
           stays visible once a file is selected — the moment before the user
