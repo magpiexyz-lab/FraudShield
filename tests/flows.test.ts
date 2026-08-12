@@ -320,3 +320,56 @@ describe("b-10: pay-intent activation gate", () => {
     expect(response.status).toBe(400);
   });
 });
+
+// Enterprise intake. The route is the only writer — enterprise_leads has no
+// client insert policy — so its guards are what stand between the sales
+// pipeline and anyone with a session.
+describe("enterprise lead intake", () => {
+  it("rejects an entirely empty enquiry", async () => {
+    const { POST } = await import("@/app/api/enterprise-lead/route");
+    const request = new Request("http://localhost/api/enterprise-lead", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    const response = await POST(request);
+    expect(response.status).toBe(400);
+  });
+
+  it("rejects an unknown volume band", async () => {
+    const { POST } = await import("@/app/api/enterprise-lead/route");
+    const request = new Request("http://localhost/api/enterprise-lead", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ monthly_volume: "a-million-ish" }),
+    });
+    const response = await POST(request);
+    expect(response.status).toBe(400);
+  });
+
+  it("never accepts an email from the request body", async () => {
+    // The submitter is signed in, so the address comes off the session. Taking
+    // it from the body would let a lead be filed under someone else's email.
+    const { enterpriseLeadSchema } = await import("@/app/api/enterprise-lead/route");
+    const parsed = enterpriseLeadSchema.parse({
+      company: "Acme",
+      email: "attacker@example.com",
+    });
+    expect("email" in parsed).toBe(false);
+  });
+
+  it("accepts a well-formed enquiry", async () => {
+    const { POST } = await import("@/app/api/enterprise-lead/route");
+    const request = new Request("http://localhost/api/enterprise-lead", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        company: "Acme Lending",
+        monthly_volume: "500-2000",
+        message: "Two underwriters review by eye today.",
+      }),
+    });
+    const response = await POST(request);
+    expect(response.status).toBeLessThan(500);
+  });
+});

@@ -357,7 +357,7 @@ export function UploadZone({
         onDragLeave={() => setDragging(false)}
         onDrop={onDrop}
         className={cn(
-          "relative mx-auto w-full max-w-3xl overflow-hidden rounded-[var(--radius-lg)] p-6 transition-all duration-200 sm:p-8",
+          "relative w-full overflow-hidden rounded-[var(--radius-lg)] p-6 transition-all duration-200 sm:p-8",
           "bg-card ring-1 ring-border",
           dragging && "ring-2 ring-signal shadow-[var(--shadow-signal-glow)]",
           quotaExhausted && "opacity-60",

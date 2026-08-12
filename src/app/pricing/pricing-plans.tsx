@@ -413,53 +413,200 @@ function TryItFirstPointer() {
  *
  * Deliberately not a third price card: volume, SLAs and integration shape are
  * negotiated, and putting a number on them would either understate the deal or
- * scare off the buyer. It is also a different motion — Pro is self-serve, this
+ * scare the buyer off. It is also a different motion - Pro is self-serve, this
  * is a conversation.
  *
- * A mailto rather than a form: the visitor is already signed in, so a form
- * would ask for details we hold, and an email arrives somewhere a human
- * actually reads. Intentionally fires no analytics event — adding one mid-run
- * would mean a new EVENTS.yaml entry and another signal competing with
- * pay_intent during the Phase 2 screen.
+ * An intake form rather than a mailto. A mailto leaves the lead in one person's
+ * inbox with nothing queryable behind it, and it loses the qualifying answers
+ * that decide how the conversation should start.
+ *
+ * Three fields only. Email is never asked for - the visitor is signed in, so we
+ * already have it, and the route reads it off the session rather than the body.
+ * Intentionally fires no analytics event: the row is the signal, and a new
+ * event mid-run would compete with pay_intent during the Phase 2 screen.
  */
 function EnterpriseBand() {
-  const subject = encodeURIComponent("FraudShield — Enterprise enquiry");
-  const body = encodeURIComponent(
-    [
-      "Hi FraudShield team,",
-      "",
-      "We'd like to talk about using FraudShield at volume.",
-      "",
-      "Roughly how many documents we review each month:",
-      "How our team reviews them today:",
-      "Anything we'd need it to connect to:",
-      "",
-      "Thanks,",
-    ].join("\n"),
-  );
+  type SubmitState = "idle" | "open" | "submitting" | "sent" | "error";
+  const [submitState, setSubmitState] = useState<SubmitState>("idle");
+  const [company, setCompany] = useState("");
+  const [volume, setVolume] = useState("");
+  const [message, setMessage] = useState("");
+  const [errorMsg, setErrorMsg] = useState("");
+
+  const sending = submitState === "submitting";
+
+  async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (sending) return;
+    // Something has to be said. The route rejects an all-empty body too; this
+    // just avoids a pointless round trip.
+    if (!company.trim() && !volume && !message.trim()) {
+      setErrorMsg("Tell us a little about your team so we know where to start.");
+      setSubmitState("error");
+      return;
+    }
+    setSubmitState("submitting");
+    setErrorMsg("");
+    try {
+      const res = await fetch("/api/enterprise-lead", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          company: company.trim() || undefined,
+          monthly_volume: volume || undefined,
+          message: message.trim() || undefined,
+        }),
+      });
+      if (!res.ok) throw new Error("send failed");
+      setSubmitState("sent");
+    } catch {
+      setSubmitState("error");
+      setErrorMsg("We couldn&apos;t send that. Please try again.");
+    }
+  }
 
   return (
     <div className="rounded-xl border border-border/60 bg-card/40 p-5 backdrop-blur-sm sm:p-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      {submitState === "sent" ? (
         <div className="space-y-1">
           <h3 className="font-heading text-lg font-semibold tracking-tight text-foreground">
-            Enterprise
+            Thanks &mdash; we&apos;ll be in touch
           </h3>
-          <p className="max-w-xl text-sm leading-relaxed text-muted-foreground">
-            Higher volume, API access, or a workflow of your own? Tell us how your
-            team reviews documents and we&apos;ll put together something that fits.
+          <p className="text-sm text-muted-foreground">
+            We&apos;ll reply to the address on your account. Nothing has been charged.
           </p>
         </div>
-        <a
-          href={`mailto:lathiya@magpiexyz.io?subject=${subject}&body=${body}`}
-          className={cn(
-            buttonVariants({ variant: "outline" }),
-            "h-11 shrink-0 rounded-full px-6",
-          )}
-        >
-          Talk to us
-        </a>
-      </div>
+      ) : submitState === "idle" ? (
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1">
+            <h3 className="font-heading text-lg font-semibold tracking-tight text-foreground">
+              Enterprise
+            </h3>
+            <p className="max-w-xl text-sm leading-relaxed text-muted-foreground">
+              Higher volume, API access, or a workflow of your own? Tell us how your
+              team reviews documents and we&apos;ll put together something that fits.
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setSubmitState("open")}
+            className="h-11 shrink-0 rounded-full px-6"
+          >
+            Talk to us
+          </Button>
+        </div>
+      ) : (
+        <form onSubmit={onSubmit} className="space-y-4">
+          <div className="space-y-1">
+            <h3 className="font-heading text-lg font-semibold tracking-tight text-foreground">
+              Enterprise
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              Three questions, then we&apos;ll come back to you.
+            </p>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <label
+                htmlFor="ent-company"
+                className="text-xs font-medium text-muted-foreground"
+              >
+                Company
+              </label>
+              <Input
+                id="ent-company"
+                value={company}
+                onChange={(e) => setCompany(e.target.value)}
+                maxLength={120}
+                placeholder="Acme Lending"
+                disabled={sending}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label
+                htmlFor="ent-volume"
+                className="text-xs font-medium text-muted-foreground"
+              >
+                Documents reviewed per month
+              </label>
+              <select
+                id="ent-volume"
+                value={volume}
+                onChange={(e) => setVolume(e.target.value)}
+                disabled={sending}
+                className="h-9 w-full rounded-[var(--radius-md)] border border-border bg-background px-3 text-sm text-foreground"
+              >
+                <option value="">Select a range</option>
+                <option value="under-100">Under 100</option>
+                <option value="100-500">100 &ndash; 500</option>
+                <option value="500-2000">500 &ndash; 2,000</option>
+                <option value="over-2000">Over 2,000</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <label
+              htmlFor="ent-message"
+              className="text-xs font-medium text-muted-foreground"
+            >
+              How does your team review documents today, and does this need to
+              connect to anything?
+            </label>
+            <textarea
+              id="ent-message"
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              maxLength={2000}
+              rows={3}
+              disabled={sending}
+              className="w-full rounded-[var(--radius-md)] border border-border bg-background px-3 py-2 text-sm text-foreground"
+              placeholder="Two underwriters review by eye today. We would want it alongside our loan origination system."
+            />
+          </div>
+
+          <div className="flex items-center gap-3">
+            <Button
+              type="submit"
+              disabled={sending}
+              className="h-11 rounded-full bg-signal px-6 text-signal-foreground hover:bg-signal/90"
+            >
+              {sending ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                  <span>Sending&hellip;</span>
+                </>
+              ) : (
+                <span>Send enquiry</span>
+              )}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setSubmitState("idle")}
+              disabled={sending}
+              className="h-11 text-muted-foreground hover:text-foreground"
+            >
+              Cancel
+            </Button>
+          </div>
+        </form>
+      )}
+
+      {/* Always mounted so the state change is announced, per WCAG 4.1.3. */}
+      <p
+        role="alert"
+        aria-live="assertive"
+        className={
+          submitState === "error"
+            ? "mt-3 flex items-center gap-2 text-sm font-medium text-destructive"
+            : "sr-only"
+        }
+      >
+        {submitState === "error" ? errorMsg : ""}
+      </p>
     </div>
   );
 }
