@@ -11,6 +11,7 @@ import { UploadZone } from "./upload-zone";
 import { ScanHistory } from "./scan-history";
 import { WhatWeCheck } from "./what-we-check";
 import { HowItWorks } from "./how-it-works";
+import { AI_PRIVACY_DISCLOSURE } from "@/lib/fraud/analysis-mode";
 
 type QuotaState = {
   used: number;
@@ -123,7 +124,7 @@ export default function DashboardPage() {
             {/* Two columns on wide screens: the drop zone was centred in a
                 container far wider than itself, leaving dead space either side
                 of the primary action. */}
-            <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_19rem]">
+            <div className="grid items-stretch gap-5 lg:grid-cols-[minmax(0,1fr)_19rem]">
               <UploadZone
                 quotaRemaining={quota.loading ? FREE_SCAN_QUOTA : remaining}
                 onScansCompleted={() => setQuotaEpoch((n) => n + 1)}
@@ -135,6 +136,13 @@ export default function DashboardPage() {
                 made that side far taller than the panel and left a large empty
                 rectangle under it. */}
             <HowItWorks className="mt-5" />
+
+            {/* Moved out of the upload column so the two cards above can end on
+                the same line. It still sits above the fold on the page a user
+                reads before committing a document. */}
+            <p className="mt-4 text-xs leading-relaxed text-muted-foreground">
+              {AI_PRIVACY_DISCLOSURE}
+            </p>
           </section>
 
           {/* Scan history */}
