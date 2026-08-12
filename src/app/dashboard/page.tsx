@@ -10,6 +10,7 @@ import { FREE_SCAN_QUOTA, type SubscriptionsRow } from "@/lib/types";
 import { UploadZone } from "./upload-zone";
 import { ScanHistory } from "./scan-history";
 import { WhatWeCheck } from "./what-we-check";
+import { HowItWorks } from "./how-it-works";
 
 type QuotaState = {
   used: number;
@@ -129,6 +130,11 @@ export default function DashboardPage() {
               />
               <WhatWeCheck />
             </div>
+
+            {/* Full width, below both columns. Inside the upload column this
+                made that side far taller than the panel and left a large empty
+                rectangle under it. */}
+            <HowItWorks className="mt-5" />
           </section>
 
           {/* Scan history */}

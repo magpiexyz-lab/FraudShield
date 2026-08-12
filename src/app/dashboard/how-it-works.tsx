@@ -1,12 +1,12 @@
 import { Upload, ScanSearch, Gauge } from "lucide-react";
 
 /**
- * Sits under the drop zone.
+ * Full-width band under the upload grid.
  *
- * The drop target was stretched to fill its column, which left the button
- * floating in a large empty box — a void reads as broken, not spacious. The
- * box is back to its natural size and this fills the remaining column height
- * with something worth reading.
+ * It lived inside the upload column at first, which made that column much
+ * taller than the panel beside it and left a large empty rectangle under the
+ * panel. Three cards across the full width balance the two columns and use
+ * the horizontal space that was empty anyway.
  *
  * Three steps, because the question a first-time user has at this exact moment
  * is "what happens after I hand over a document, and how long does it take".
@@ -29,11 +29,11 @@ const STEPS = [
   },
 ] as const;
 
-export function HowItWorks() {
+export function HowItWorks({ className }: { className?: string }) {
   return (
     <ol
       aria-label="How a scan works"
-      className="grid gap-3 sm:grid-cols-3"
+      className={`grid gap-3 sm:grid-cols-3 ${className ?? ""}`}
     >
       {STEPS.map(({ icon: Icon, title, body }, index) => (
         <li

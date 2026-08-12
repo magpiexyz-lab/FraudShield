@@ -8,7 +8,6 @@ import { FileUp, FileText, ShieldCheck, X, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { AI_PRIVACY_DISCLOSURE } from "@/lib/fraud/analysis-mode";
-import { HowItWorks } from "./how-it-works";
 import type { CreateScanResponse } from "@/app/api/scan/route";
 
 // Accepted document types — pay stub, bank statement, invoice.
@@ -544,8 +543,6 @@ export function UploadZone({
           </div>
         )}
       </div>
-
-      {entries.length === 0 && status !== "scanning" && <HowItWorks />}
 
       {/* Third-party processing disclosure. Kept outside the drop zone so it
           stays visible once a file is selected — the moment before the user
