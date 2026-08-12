@@ -22,6 +22,10 @@ export default function DashboardPage() {
     total: FREE_SCAN_QUOTA,
     loading: true,
   });
+  // Bumped when a scan batch finishes. This page reads its quota from the
+  // client, so router.refresh() cannot re-run the fetch below on its own —
+  // the counter is what re-runs it.
+  const [quotaEpoch, setQuotaEpoch] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -60,7 +64,7 @@ export default function DashboardPage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [quotaEpoch]);
 
   const remaining = Math.max(quota.total - quota.used, 0);
   const isPaid = quota.total > FREE_SCAN_QUOTA;
@@ -114,7 +118,10 @@ export default function DashboardPage() {
             <h2 id="upload-heading" className="sr-only">
               Upload a document for analysis
             </h2>
-            <UploadZone quotaRemaining={quota.loading ? FREE_SCAN_QUOTA : remaining} />
+            <UploadZone
+              quotaRemaining={quota.loading ? FREE_SCAN_QUOTA : remaining}
+              onScansCompleted={() => setQuotaEpoch((n) => n + 1)}
+            />
           </section>
 
           {/* Scan history */}
