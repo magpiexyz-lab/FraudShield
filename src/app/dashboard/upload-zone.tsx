@@ -211,7 +211,20 @@ export function UploadZone({
     setError("");
     setQuotaNotice("");
 
+    // Two counters, because they answer different questions.
+    //   scanned  — documents that produced a result. Drives the "X of Y" copy.
+    //   charged  — documents that actually spent a free scan. Drives the stop.
+    // They diverge on partial image analyses: those return a result but the
+    // server does not charge them (migration 005). Counting a partial against
+    // the budget would tell a user to upgrade when they have spent nothing —
+    // and it would land on image uploaders, the exact people that change was
+    // written to protect.
     let scanned = 0;
+    let charged = 0;
+    // Captured at the break rather than read back off `queue` afterwards:
+    // `queue` is a snapshot, and patch() replaces objects in state instead of
+    // mutating it, so the snapshot never sees the "skipped" status.
+    let skippedForQuota = 0;
     let stoppedForQuota = false;
     let lastScanId = "";
     let failures = 0;
@@ -219,8 +232,9 @@ export function UploadZone({
     for (let i = 0; i < total; i++) {
       const entry = queue[i];
 
-      if (scanned >= budget) {
+      if (charged >= budget) {
         stoppedForQuota = true;
+        skippedForQuota = total - i;
         for (let j = i; j < total; j++) patch(queue[j].key, { status: "skipped" });
         break;
       }
@@ -240,6 +254,7 @@ export function UploadZone({
         // ran out — stop here rather than firing the rest into a wall.
         if (res.status === 402) {
           stoppedForQuota = true;
+          skippedForQuota = total - i;
           for (let j = i; j < total; j++) patch(queue[j].key, { status: "skipped" });
           break;
         }
@@ -259,6 +274,10 @@ export function UploadZone({
         }
 
         scanned += 1;
+        // The server is authoritative on whether this spent a free scan.
+        // Absent field (older deploy) is treated as charged — erring toward
+        // stopping early rather than overrunning the allowance.
+        if (result.counts_toward_quota !== false) charged += 1;
         lastScanId = result.id;
         patch(entry.key, {
           status: "done",
@@ -281,7 +300,10 @@ export function UploadZone({
     setProgressAnnouncement("");
 
     if (stoppedForQuota) {
-      const remaining = total - scanned;
+      // What an upgrade would actually unlock: the files never attempted. Not
+      // total - scanned, which would fold in failures that were attempted and
+      // overstate the offer.
+      const remaining = skippedForQuota;
       setQuotaNotice(
         `${scanned} of ${total} scanned — upgrade to Pro to scan the remaining ${remaining}.`,
       );
