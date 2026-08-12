@@ -115,14 +115,14 @@ export default function DashboardPage() {
           </header>
 
           {/* Primary task: upload + scan */}
-          <section aria-labelledby="upload-heading" className="mb-12">
+          <section aria-labelledby="upload-heading" className="mb-10">
             <h2 id="upload-heading" className="sr-only">
               Upload a document for analysis
             </h2>
             {/* Two columns on wide screens: the drop zone was centred in a
                 container far wider than itself, leaving dead space either side
                 of the primary action. */}
-            <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_19rem]">
+            <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_19rem]">
               <UploadZone
                 quotaRemaining={quota.loading ? FREE_SCAN_QUOTA : remaining}
                 onScansCompleted={() => setQuotaEpoch((n) => n + 1)}
