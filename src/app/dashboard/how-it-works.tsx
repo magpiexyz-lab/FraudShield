@@ -38,7 +38,7 @@ export function HowItWorks({ className }: { className?: string }) {
       {STEPS.map(({ icon: Icon, title, body }, index) => (
         <li
           key={title}
-          className="rounded-[var(--radius-md)] bg-card/50 p-3.5 ring-1 ring-border"
+          className="rounded-[var(--radius-md)] bg-card/50 p-3 ring-1 ring-border"
         >
           <div className="flex items-center gap-2">
             <span
