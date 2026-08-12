@@ -10,6 +10,13 @@ import { FileSearch, Clock, PenLine, Camera } from "lucide-react";
  *
  * Every item maps to a signal the scoring engine really produces
  * (src/lib/fraud/score.ts) — no aspirational capabilities.
+ *
+ * lg:self-start stops the card being stretched to the row height. The left
+ * column is taller now, and stretching just moves the void inside the panel —
+ * a card with a blank third at the bottom reads as a loading state that never
+ * finished. Ending at its own content leaves plain page background, which
+ * reads as deliberate. lg:sticky then keeps it in view as the scan list
+ * scrolls past, so the space earns something instead of just being empty.
  */
 const CHECKS = [
   {
@@ -38,7 +45,7 @@ export function WhatWeCheck() {
   return (
     <aside
       aria-labelledby="what-we-check-heading"
-      className="rounded-[var(--radius-lg)] bg-card/60 p-5 ring-1 ring-border"
+      className="rounded-[var(--radius-lg)] bg-card/60 p-5 ring-1 ring-border lg:sticky lg:top-6 lg:self-start"
     >
       <h3
         id="what-we-check-heading"
