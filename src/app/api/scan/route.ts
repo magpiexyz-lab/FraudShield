@@ -45,7 +45,13 @@ export const createScanSchema = z.object({
     .enum(["pay_stub", "bank_statement", "invoice"])
     .optional(),
 });
-export type CreateScanResponse = { id: string };
+// The score and quota outcome come back with the id so a multi-document upload
+// can render a summary without re-fetching every row it just created.
+export type CreateScanResponse = {
+  id: string;
+  fraud_score: number;
+  counts_toward_quota: boolean;
+};
 
 // Server-side accepted MIME + size cap (client also checks; the server is the
 // authoritative gate).
@@ -325,7 +331,11 @@ export async function POST(request: Request) {
       );
     }
 
-    const response: CreateScanResponse = { id: data.id as string };
+    const response: CreateScanResponse = {
+      id: data.id as string,
+      fraud_score: score,
+      counts_toward_quota: isFullAnalysis(fileMetaForDb),
+    };
     return NextResponse.json(response, { status: 201 });
   } catch (e) {
     if (e instanceof z.ZodError) {
