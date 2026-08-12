@@ -337,7 +337,7 @@ export function UploadZone({
   const showSummary = status === "done";
 
   return (
-    <div className="flex h-full flex-col gap-4">
+    <div className="flex flex-col gap-4">
       <input
         ref={inputRef}
         type="file"
