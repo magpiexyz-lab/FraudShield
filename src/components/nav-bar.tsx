@@ -22,6 +22,20 @@ import { BrandLogo } from "@/components/brand-logo";
 const SUPPRESSED_PREFIXES = ["/v/", "/auth/"];
 const SUPPRESSED_EXACT = new Set(["/", "/signup", "/login"]);
 
+/**
+ * The header surface, shared by the signed-in NavBar and the landing header.
+ *
+ * These two drifted apart — different border alpha, different background alpha,
+ * and only one of them forcing dark tokens — so the bar looked like it belonged
+ * to a different site depending on which page you were on. Defined once here
+ * and imported by the landing header so they cannot separate again.
+ *
+ * `dark` is deliberate: every route either header renders on is a dark surface,
+ * and the global light :root tokens would produce a light nav on a dark page.
+ */
+export const HEADER_SURFACE =
+  "dark sticky top-0 z-40 border-b border-border/60 bg-background/85 text-foreground backdrop-blur-md supports-[backdrop-filter]:bg-background/70";
+
 export function NavBar() {
   const pathname = usePathname();
   const [user, setUser] = useState<User | null>(null);
@@ -116,7 +130,7 @@ export function NavBar() {
     // legible without a hard edge when content scrolls beneath it.
     <nav
       aria-label="Primary"
-      className="dark sticky top-0 z-40 flex items-center justify-between border-b border-border/60 bg-background/85 px-6 py-4 text-foreground backdrop-blur-md supports-[backdrop-filter]:bg-background/70"
+      className={`${HEADER_SURFACE} flex items-center justify-between px-6 py-4`}
     >
       <BrandLogo wordmark wordmarkSize={20} />
       {/* Desktop nav */}

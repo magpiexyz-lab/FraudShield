@@ -93,17 +93,17 @@ export function AuthShell({
         >
           <span
             aria-hidden="true"
-            className="grid h-9 w-9 place-items-center"
+            className="grid h-11 w-11 place-items-center"
           >
-            <BrandMark size={32} />
+            <BrandMark size={40} />
           </span>
-          <span className="font-[family-name:var(--font-heading)] text-xl font-bold tracking-tight">
+          <span className="font-[family-name:var(--font-heading)] text-2xl font-bold tracking-tight">
             FraudShield
           </span>
         </Link>
 
         {/* z-10: forensic copy + signal markers */}
-        <div className="relative z-10 max-w-md space-y-8">
+        <div className="relative z-10 my-auto max-w-md space-y-8">
           <p className="font-[family-name:var(--font-heading)] text-3xl font-semibold leading-[1.12] tracking-tight">
             Forensic fraud scores in seconds — before you approve.
           </p>

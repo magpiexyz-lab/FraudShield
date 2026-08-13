@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { trackDemoView, trackCtaClick } from "@/lib/events";
 import { PLANS } from "@/app/pricing/plans";
 import { BrandMark } from "@/components/brand-logo";
+import { HEADER_SURFACE } from "@/components/nav-bar";
 
 /* ------------------------------------------------------------------ *
  * FraudShield landing — "Forensic Instrument" design system.
@@ -969,11 +970,11 @@ export function LandingContent(props: LandingContentProps) {
        * legible without a hard edge over the hero mesh.
        * The outer wrapper itself is the sticky element; the inner row keeps the
        * existing max-w / padding rhythm of the rest of the landing. */}
-      <header className="sticky top-0 z-40 border-b border-border/30 bg-background/75 backdrop-blur-md supports-[backdrop-filter]:bg-background/55">
+      <header className={HEADER_SURFACE}>
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-6 py-4">
         <Link href="/" aria-label="FraudShield home" className="flex items-center gap-2.5">
-          <BrandMark size={28} />
-          <span className="font-heading text-[17px] font-bold tracking-[-0.5px] text-foreground">
+          <BrandMark size={30} />
+          <span className="font-heading text-xl font-bold tracking-[-0.5px] text-foreground">
             FraudShield
           </span>
         </Link>
