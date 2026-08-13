@@ -25,16 +25,24 @@ const SUPPRESSED_EXACT = new Set(["/", "/signup", "/login"]);
 /**
  * The header surface, shared by the signed-in NavBar and the landing header.
  *
- * These two drifted apart — different border alpha, different background alpha,
- * and only one of them forcing dark tokens — so the bar looked like it belonged
- * to a different site depending on which page you were on. Defined once here
- * and imported by the landing header so they cannot separate again.
+ * Defined once here and imported by the landing header so the two cannot drift.
+ *
+ * OPAQUE on purpose. It was translucent with a backdrop blur, which rendered as
+ * two different colours: the landing header sits inside a dark section so it
+ * blurred over dark, while this NavBar mounts straight into <body> — which
+ * carries the light :root background — so the same class composited 70% dark
+ * over white and came out grey. Same code, different result, depending only on
+ * what happened to sit behind it.
+ *
+ * bg-card rather than bg-background: one step lighter than the page beneath it
+ * (0.218 vs 0.175 lightness), so the bar reads as its own surface instead of
+ * dissolving into the page — and it reads identically on every route.
  *
  * `dark` is deliberate: every route either header renders on is a dark surface,
  * and the global light :root tokens would produce a light nav on a dark page.
  */
 export const HEADER_SURFACE =
-  "dark sticky top-0 z-40 border-b border-border/60 bg-background/85 text-foreground backdrop-blur-md supports-[backdrop-filter]:bg-background/70";
+  "dark sticky top-0 z-40 border-b border-border bg-card text-foreground";
 
 export function NavBar() {
   const pathname = usePathname();
