@@ -269,10 +269,17 @@ notes_phase2:
     undercount and bias toward a false NO_GO. OPEN ACTION: confirm fraudshield has a Supabase mapping in
     the centrally-managed iterate-cross config so pay_intent_source resolves to db_real, not ph. PostHog
     is for funnel shape only and must never supply either side of the GO/NO-GO arithmetic.'
-  tracking_capture_rate: 'The ~67% figure raised by the TL on 2026-08-17 is capture_rate =
-    gclid_visitors / ga_clicks, a template diagnostic computed in iterate_cross_verdicts.py -- PostHog
-    sessions over Google Ads clicks. It measures client-side capture loss (bounce before hydration,
-    privacy browsers, invalid-click credits), NOT verdict accuracy. Raising it is a diagnostics
-    improvement, not decision protection -- see verdict_sourcing above.'
+  tracking_capture_rate: 'WITHDRAWN -- do not act on this. The ~67% raised by the TL on 2026-08-17 was
+    2 PostHog paid visitors over 3 Google Ads clicks, all-time on this campaign at ~6 days old. A single
+    bounce before hydration explains it entirely; the sample cannot support any conclusion and the TL
+    retracted the flag the same day. No tracking defect has been measured on fraudshield.
+    DEFINITION (verified in iterate_cross_verdicts.py): capture_rate = gclid_visitors / ga_clicks --
+    PostHog paid visitors carrying a gclid, over Google Ads clicks. It measures client-side capture loss
+    (bounce before hydration, privacy browsers, invalid-click credits), NOT verdict accuracy; the verdict
+    denominator is ga_clicks either way -- see verdict_sourcing above.
+    RE-READ at ~100 clicks (~8 days into the SGD 81/day sprint), not before. Healthy is 85-90%+ (botscore
+    reads 94%). Only if it is genuinely below ~85% at that volume is a fix warranted -- the candidate is
+    server-side paid-click capture in src/proxy.ts, which would record the click before any client JS
+    runs. Deliberately NOT built in Aug 2026: there was no evidence of a problem to fix.'
   ad_strength: Average, deliberately. H1 and H2 are pinned so the product name and value prop always appear,
     which caps Ad Strength. Ad Strength is a Google content recommendation and does not affect the auction.
