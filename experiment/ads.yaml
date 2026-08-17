@@ -253,9 +253,26 @@ notes_phase2:
     budget was raised from SGD 100 to 135. Only ~SGD 45/day of inventory exists at a SGD 1.90 bid, so
     volume is constrained by bid and Ad Rank, not budget. Raising the daily budget buys nothing; raising
     the bid or improving Quality Score does.
-  known_attribution_gap: 'Returning Phase-1 users who click a Phase-2 ad and LOG IN rather than sign up
-    never receive Phase-2 attribution: persistAttribution runs only on the signup path and is first-touch-wins.
-    Their clicks count in the denominator while their pay_intents cannot reach the numerator, biasing
-    the measured rate downward. A GO is trustworthy; a marginal NO_GO may understate reality.'
+  known_attribution_gap: 'FIXED 2026-08-17 (branch fix/phase2-verdict-sourcing). Returning Phase-1 users
+    who clicked a Phase-2 ad and LOGGED IN rather than signing up never received Phase-2 attribution:
+    persistAttribution ran only inside the fresh-signup branch, and acquisition_* is first-touch-wins.
+    Their clicks counted in the denominator while their pay_intents were dropped from the numerator as
+    unattributed, biasing the measured rate downward. persistAttribution now runs on every authenticated
+    callback and records last_touch_gclid / last_touch_utm_campaign alongside the first-touch pair;
+    resolvePayIntentAttribution prefers last touch. NOT retroactive -- users who logged in before this
+    shipped keep their old attribution, so clicks from 11-17 Aug may still be under-attributed.'
+  verdict_sourcing: 'Verified against .claude/scripts/lib/iterate_cross_verdicts.py on 2026-08-17.
+    DENOMINATOR is ga_clicks, read from the Google Ads CSV export -- not PostHog. pay_intent_rate =
+    pay_intents / ga_clicks, so the ~67% client-side tracking gap cannot inflate the measured rate; that
+    half is already immune. NUMERATOR is db_pay_intents_paid (the paid-gclid subset of public.pay_intent)
+    when is_trusted_db_pay_intents passes, otherwise it falls back to PostHog event counts, which
+    undercount and bias toward a false NO_GO. OPEN ACTION: confirm fraudshield has a Supabase mapping in
+    the centrally-managed iterate-cross config so pay_intent_source resolves to db_real, not ph. PostHog
+    is for funnel shape only and must never supply either side of the GO/NO-GO arithmetic.'
+  tracking_capture_rate: 'The ~67% figure raised by the TL on 2026-08-17 is capture_rate =
+    gclid_visitors / ga_clicks, a template diagnostic computed in iterate_cross_verdicts.py -- PostHog
+    sessions over Google Ads clicks. It measures client-side capture loss (bounce before hydration,
+    privacy browsers, invalid-click credits), NOT verdict accuracy. Raising it is a diagnostics
+    improvement, not decision protection -- see verdict_sourcing above.'
   ad_strength: Average, deliberately. H1 and H2 are pinned so the product name and value prop always appear,
     which caps Ad Strength. Ad Strength is a Google content recommendation and does not affect the auction.

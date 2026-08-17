@@ -211,25 +211,51 @@ export function writeAttributionCookie(
     `; Path=/; Max-Age=${ATTRIBUTION_COOKIE_MAX_AGE}; SameSite=Lax${secure}`;
 }
 
-/** Keys `persistAttribution` writes onto `auth.users.user_metadata` at signup. */
+/** First-touch keys `persistAttribution` writes onto `auth.users.user_metadata`. */
 export const ACQUISITION_GCLID_KEY = "acquisition_gclid";
 export const ACQUISITION_UTM_CAMPAIGN_KEY = "acquisition_utm_campaign";
 
+/**
+ * Last-touch keys, rewritten on EVERY authenticated callback rather than once.
+ *
+ * The acquisition_* pair is deliberately first-touch-wins: it answers "which
+ * campaign acquired this customer?" months later, and a later organic login
+ * must not overwrite the paid click that actually won them. That is the right
+ * rule for lifetime attribution and the wrong one for a phase-scoped ad test.
+ *
+ * A Phase-1 user who clicks a Phase-2 ad and LOGS IN rather than signing up
+ * keeps their Phase-1 acquisition values forever, so their pay_intent row
+ * carries a Phase-1 gclid. The cross-MVP verdict filters the numerator to the
+ * paid-gclid subset for the campaign under test, drops that row as
+ * unattributed, and the click still counts in the denominator — biasing the
+ * measured rate DOWN. A marginal NO_GO can be an artefact of this alone.
+ *
+ * Recording last-touch alongside first-touch answers both questions without
+ * either overwriting the other.
+ */
+export const LAST_TOUCH_GCLID_KEY = "last_touch_gclid";
+export const LAST_TOUCH_UTM_CAMPAIGN_KEY = "last_touch_utm_campaign";
+
 /** Which source supplied the attribution stored on a pay_intent row. */
-export type AttributionSource = "user_record" | "client" | "none";
+export type AttributionSource = "last_touch" | "user_record" | "client" | "none";
 
 export type PayIntentAttribution = Attribution & { source: AttributionSource };
 
 /**
  * Resolves the attribution to stamp on a `pay_intent` event and row.
  *
- * Two sources, neither complete on its own:
+ * Three sources, none complete on its own, in precedence order:
  *
- *   - The user record (`acquisition_*` in user_metadata) is the trustworthy one,
- *     written server-side at signup. But `persistAttribution` only runs within
- *     60s of account creation and only when attribution was present, so organic
- *     users — and the day-0 probe, whose gclid the strict sanitizer rejects —
- *     have nothing there.
+ *   - Last touch (`last_touch_*`) is the campaign that produced THIS visit,
+ *     which is exactly what a phase-scoped ad test measures. Server-written on
+ *     every authenticated callback, so it is no less trustworthy than the
+ *     acquisition pair it now precedes.
+ *   - The user record (`acquisition_*` in user_metadata) is first-touch and
+ *     also server-written, but it is frozen at signup: a returning user's
+ *     Phase-2 click can never appear there. It remains the fallback for users
+ *     who signed up before last-touch existed. `persistAttribution` only runs
+ *     when attribution was present, so organic users — and the day-0 probe,
+ *     whose gclid the strict sanitizer rejects — have nothing in either.
  *   - The client value, read at click time from the URL or sessionStorage, fills
  *     those gaps but is attacker-controllable.
  *
@@ -256,11 +282,19 @@ export function resolvePayIntentAttribution(
     return typeof value === "string" ? value : null;
   };
 
-  const fromRecord: Attribution = {};
-  const recordGclid = sanitizeGclidRelaxed(readMeta(ACQUISITION_GCLID_KEY));
-  if (recordGclid) fromRecord.gclid = recordGclid;
-  const recordCampaign = sanitizeUtmCampaign(readMeta(ACQUISITION_UTM_CAMPAIGN_KEY));
-  if (recordCampaign) fromRecord.utm_campaign = recordCampaign;
+  const readPair = (gclidKey: string, campaignKey: string): Attribution => {
+    const pair: Attribution = {};
+    const gclid = sanitizeGclidRelaxed(readMeta(gclidKey));
+    if (gclid) pair.gclid = gclid;
+    const campaign = sanitizeUtmCampaign(readMeta(campaignKey));
+    if (campaign) pair.utm_campaign = campaign;
+    return pair;
+  };
+
+  const fromLastTouch = readPair(LAST_TOUCH_GCLID_KEY, LAST_TOUCH_UTM_CAMPAIGN_KEY);
+  if (hasAttribution(fromLastTouch)) return { ...fromLastTouch, source: "last_touch" };
+
+  const fromRecord = readPair(ACQUISITION_GCLID_KEY, ACQUISITION_UTM_CAMPAIGN_KEY);
   if (hasAttribution(fromRecord)) return { ...fromRecord, source: "user_record" };
 
   const fromClient: Attribution = {};
