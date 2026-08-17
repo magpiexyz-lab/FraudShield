@@ -20,7 +20,11 @@ import { z } from "zod";
 import { createServerSupabaseClient, createServiceRoleClient } from "@/lib/supabase-server";
 import { trackServerEvent } from "@/lib/analytics-server";
 import {
+  ACQUISITION_GCLID_KEY,
+  ACQUISITION_UTM_CAMPAIGN_KEY,
   ATTRIBUTION_COOKIE,
+  LAST_TOUCH_GCLID_KEY,
+  LAST_TOUCH_UTM_CAMPAIGN_KEY,
   appendAttributionToPath,
   hasAttribution,
   resolveRelayedAttribution,
@@ -109,7 +113,7 @@ export async function GET(request: Request) {
     if (parsed.success) {
       const { error } = await supabase.auth.exchangeCodeForSession(parsed.data);
       if (!error) {
-        await maybeFireSignupComplete(supabase, undefined, attribution);
+        await onAuthenticated(supabase, undefined, attribution);
         return redirectInto(next);
       }
       return NextResponse.redirect(
@@ -132,7 +136,7 @@ export async function GET(request: Request) {
         type: parsedType.data,
       });
       if (!error) {
-        await maybeFireSignupComplete(supabase, undefined, attribution);
+        await onAuthenticated(supabase, undefined, attribution);
         return redirectInto(next);
       }
       return NextResponse.redirect(
@@ -147,7 +151,7 @@ export async function GET(request: Request) {
   // implicit path (post-launch bug #4 root cause).
   const { data: { user } } = await supabase.auth.getUser();
   if (user) {
-    await maybeFireSignupComplete(supabase, user, attribution);
+    await onAuthenticated(supabase, user, attribution);
     return redirectInto(next);
   }
 
@@ -158,14 +162,25 @@ export async function GET(request: Request) {
 }
 
 /**
- * Fires server-side signup_complete for fresh signups (created within the
- * last SIGNUP_RECENCY_MS). Shared chokepoint that the client-side
- * trackSignupComplete cannot cover for email-confirm / OAuth / magic-link.
+ * Runs after any successful authentication through this route — OAuth, magic
+ * link, email confirmation, or password recovery.
+ *
+ * Two jobs with deliberately different conditions:
+ *
+ *   1. Persist attribution — ALWAYS. This is the fix for the known Phase-2
+ *      measurement gap: attribution used to be written only inside the fresh-
+ *      signup branch, so a returning user who clicked a paid ad and logged in
+ *      never had that touch recorded. Their click counted in the verdict's
+ *      denominator while their pay_intent, still carrying the older campaign,
+ *      was dropped from the numerator as unattributed.
+ *   2. Fire signup_complete — only for accounts created within
+ *      SIGNUP_RECENCY_MS. Shared chokepoint the client-side trackSignupComplete
+ *      cannot cover for email-confirm / OAuth / magic-link.
  *
  * Pass `userOverride` to avoid a second getUser() round-trip when the caller
  * already has the user object.
  */
-async function maybeFireSignupComplete(
+async function onAuthenticated(
   supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>,
   userOverride?: { id: string; created_at: string; app_metadata?: { provider?: string } } | null,
   attribution: Attribution = {},
@@ -173,6 +188,9 @@ async function maybeFireSignupComplete(
   try {
     const user = userOverride ?? (await supabase.auth.getUser()).data.user;
     if (!user) return;
+
+    await persistAttribution(user.id, attribution);
+
     if (Date.now() - new Date(user.created_at).getTime() >= SIGNUP_RECENCY_MS) {
       return;
     }
@@ -185,20 +203,24 @@ async function maybeFireSignupComplete(
       method: provider === "google" ? "google" : "email",
       ...attribution,
     });
-    await persistAttribution(user.id, attribution);
   } catch {
     // Never let analytics fire interfere with the auth redirect.
   }
 }
 
 /**
- * Stamps the acquisition source onto the user record so attribution outlives
- * the PostHog event stream — needed to answer "which campaign produced the
- * customers who converted?" months later, after session data is long gone.
+ * Stamps the attribution for this visit onto the user record so it outlives the
+ * PostHog event stream — needed to answer "which campaign produced the customers
+ * who converted?" months later, after session data is long gone.
  *
  * Stored in auth.users.user_metadata (there is no profiles table) via the
- * service-role client, and written once: the FIRST touch wins, so a later
- * organic login cannot overwrite the paid click that actually acquired them.
+ * service-role client, under two pairs with different overwrite rules:
+ *
+ *   - acquisition_* — FIRST touch, written once. A later organic login must not
+ *     overwrite the paid click that actually acquired the user.
+ *   - last_touch_*  — rewritten whenever a visit arrives carrying attribution,
+ *     so a returning user's new campaign is recorded without destroying the
+ *     first-touch answer. This is what a phase-scoped ad test measures.
  */
 async function persistAttribution(userId: string, attribution: Attribution) {
   if (!hasAttribution(attribution)) return;
@@ -211,16 +233,45 @@ async function persistAttribution(userId: string, attribution: Attribution) {
 
     const { data: existing } = await admin.auth.admin.getUserById(userId);
     const current = (existing?.user?.user_metadata ?? {}) as Record<string, unknown>;
-    if (current.acquisition_gclid || current.acquisition_utm_campaign) return;
 
+    const hasFirstTouch = Boolean(
+      current[ACQUISITION_GCLID_KEY] || current[ACQUISITION_UTM_CAMPAIGN_KEY],
+    );
+    // Only fields actually present are compared: an attribution carrying just a
+    // campaign must not be treated as "changed" because it has no gclid to match.
+    const lastTouchUnchanged =
+      (!attribution.gclid || current[LAST_TOUCH_GCLID_KEY] === attribution.gclid) &&
+      (!attribution.utm_campaign ||
+        current[LAST_TOUCH_UTM_CAMPAIGN_KEY] === attribution.utm_campaign);
+
+    // This now runs on every authenticated callback, not just fresh signups, so
+    // the common case is a repeat login with nothing new to record. Skip the
+    // write rather than churning user_metadata on every visit.
+    if (hasFirstTouch && lastTouchUnchanged) return;
+
+    const recordedAt = new Date().toISOString();
     await admin.auth.admin.updateUserById(userId, {
       user_metadata: {
         ...current,
-        ...(attribution.gclid ? { acquisition_gclid: attribution.gclid } : {}),
+        ...(hasFirstTouch
+          ? {}
+          : {
+              ...(attribution.gclid
+                ? { [ACQUISITION_GCLID_KEY]: attribution.gclid }
+                : {}),
+              ...(attribution.utm_campaign
+                ? { [ACQUISITION_UTM_CAMPAIGN_KEY]: attribution.utm_campaign }
+                : {}),
+              acquisition_recorded_at: recordedAt,
+            }),
+        // Written unconditionally. Absent fields are left alone rather than
+        // nulled — a campaign-only visit must not erase a previously recorded
+        // gclid.
+        ...(attribution.gclid ? { [LAST_TOUCH_GCLID_KEY]: attribution.gclid } : {}),
         ...(attribution.utm_campaign
-          ? { acquisition_utm_campaign: attribution.utm_campaign }
+          ? { [LAST_TOUCH_UTM_CAMPAIGN_KEY]: attribution.utm_campaign }
           : {}),
-        acquisition_recorded_at: new Date().toISOString(),
+        last_touch_recorded_at: recordedAt,
       },
     });
   } catch {

@@ -31,6 +31,8 @@ import {
   writeAttributionCookie,
   ACQUISITION_GCLID_KEY,
   ACQUISITION_UTM_CAMPAIGN_KEY,
+  LAST_TOUCH_GCLID_KEY,
+  LAST_TOUCH_UTM_CAMPAIGN_KEY,
 } from "./attribution";
 
 // A realistic Google click id: 40+ chars with a real prefix. Using something
@@ -277,5 +279,92 @@ describe("resolvePayIntentAttribution", () => {
   it("handles null metadata and null client attribution", () => {
     expect(resolvePayIntentAttribution(null, null).source).toBe("none");
     expect(resolvePayIntentAttribution(undefined, undefined).source).toBe("none");
+  });
+});
+
+describe("resolvePayIntentAttribution — last-touch precedence", () => {
+  // A Phase-1 click id, distinct from REAL_GCLID so the assertions can tell
+  // which of the two pairs actually won.
+  const PHASE1_GCLID =
+    "CjwKCAjwPHASE1oldertouchZzR7vN3pYwT6bXhFgD1sJ0aQeR4uV8cWnMxYzAbCdEfGh";
+
+  it("prefers last touch over the frozen first-touch record", () => {
+    // The exact bug this fixes: a Phase-1 user clicks a Phase-2 ad and LOGS IN
+    // rather than signing up. acquisition_* is first-touch-wins so it still
+    // holds Phase 1 forever. Without last-touch the pay_intent row carries a
+    // Phase-1 gclid, the verdict's paid-gclid filter drops it as unattributed,
+    // and the click still counts in the denominator — biasing the rate down.
+    const result = resolvePayIntentAttribution(
+      {
+        [ACQUISITION_GCLID_KEY]: PHASE1_GCLID,
+        [ACQUISITION_UTM_CAMPAIGN_KEY]: REAL_CAMPAIGN,
+        [LAST_TOUCH_GCLID_KEY]: REAL_GCLID,
+        [LAST_TOUCH_UTM_CAMPAIGN_KEY]: PHASE2_CAMPAIGN,
+      },
+      {},
+    );
+    expect(result.gclid).toBe(REAL_GCLID);
+    expect(result.utm_campaign).toBe(PHASE2_CAMPAIGN);
+    expect(result.source).toBe("last_touch");
+  });
+
+  it("falls back to first touch for users predating last-touch", () => {
+    // Accounts created before this change have acquisition_* and nothing else;
+    // they must keep resolving exactly as they did before.
+    const result = resolvePayIntentAttribution(
+      {
+        [ACQUISITION_GCLID_KEY]: REAL_GCLID,
+        [ACQUISITION_UTM_CAMPAIGN_KEY]: PHASE2_CAMPAIGN,
+      },
+      {},
+    );
+    expect(result.gclid).toBe(REAL_GCLID);
+    expect(result.utm_campaign).toBe(PHASE2_CAMPAIGN);
+    expect(result.source).toBe("user_record");
+  });
+
+  it("prefers a server-written last touch over an attacker-supplied client value", () => {
+    const result = resolvePayIntentAttribution(
+      {
+        [LAST_TOUCH_GCLID_KEY]: REAL_GCLID,
+        [LAST_TOUCH_UTM_CAMPAIGN_KEY]: PHASE2_CAMPAIGN,
+      },
+      {
+        gclid: "CjwKspoofedspoofedspoofedspoofedspoofedspoofed",
+        utm_campaign: "attacker-campaign",
+      },
+    );
+    expect(result.gclid).toBe(REAL_GCLID);
+    expect(result.utm_campaign).toBe(PHASE2_CAMPAIGN);
+    expect(result.source).toBe("last_touch");
+  });
+
+  it("ignores malformed last-touch values and falls through to first touch", () => {
+    const result = resolvePayIntentAttribution(
+      {
+        [LAST_TOUCH_GCLID_KEY]: { nested: true },
+        [LAST_TOUCH_UTM_CAMPAIGN_KEY]: "has spaces and !!",
+        [ACQUISITION_GCLID_KEY]: REAL_GCLID,
+      },
+      {},
+    );
+    expect(result.gclid).toBe(REAL_GCLID);
+    expect(result.source).toBe("user_record");
+  });
+
+  it("uses a campaign-only last touch without borrowing the first-touch gclid", () => {
+    // A visit that carried only utm_campaign must not silently pair that
+    // campaign with an older click id — that would fabricate an attribution
+    // pair no single visit ever produced.
+    const result = resolvePayIntentAttribution(
+      {
+        [ACQUISITION_GCLID_KEY]: PHASE1_GCLID,
+        [LAST_TOUCH_UTM_CAMPAIGN_KEY]: PHASE2_CAMPAIGN,
+      },
+      {},
+    );
+    expect(result.utm_campaign).toBe(PHASE2_CAMPAIGN);
+    expect(result.gclid).toBeUndefined();
+    expect(result.source).toBe("last_touch");
   });
 });
