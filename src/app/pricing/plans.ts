@@ -63,3 +63,4 @@ export const PLANS: ReadonlyArray<PlanTier> = [
 // The single paid tier the upgrade CTA submits to /api/checkout.
 export const PAID_PLAN_ID = "pro";
 export const FREE_QUOTA = FREE_SCAN_QUOTA;
+export const PRO_QUOTA = PRO_SCAN_QUOTA;

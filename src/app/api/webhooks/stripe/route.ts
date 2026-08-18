@@ -14,12 +14,14 @@ import type Stripe from "stripe";
 import { getStripe } from "@/lib/stripe";
 import { createServiceRoleClient } from "@/lib/supabase-server";
 import { trackServerEvent } from "@/lib/analytics-server";
-import { PLAN_PRICES } from "@/lib/types";
+import { PLAN_PRICES, PRO_SCAN_QUOTA } from "@/lib/types";
 
-// Paid subscriptions raise scan quota well above the free allowance.
-// Adjust per-plan if/when more tiers are added.
+// Paid subscriptions raise scan quota above the free allowance. Sourced from
+// PRO_SCAN_QUOTA rather than restated: this held 9999 ("effectively unlimited")
+// after the plan moved to a 200/month cap, so an actual subscriber would have
+// been granted 50x what the pricing page sells them.
 const PLAN_SCAN_QUOTA: Record<string, number> = {
-  pro: 9999, // effectively unlimited within billing period
+  pro: PRO_SCAN_QUOTA,
 };
 
 export async function POST(request: Request) {
