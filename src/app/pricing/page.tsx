@@ -8,16 +8,14 @@ import {
 } from "@/components/ui/accordion";
 import { buttonVariants } from "@/components/ui/button";
 import { PricingPlans, ScrollReveal } from "./pricing-plans";
-import { FREE_QUOTA } from "./plans";
+import { FREE_QUOTA, PRO_QUOTA } from "./plans";
 
 export const metadata: Metadata = {
   title: "Pricing | FraudShield",
-  description:
-    "Start free with forensic document fraud detection, then upgrade to Pro for unlimited scans. Self-serve, affordable, no enterprise sales call.",
+  description: `Start free with forensic document fraud detection, then upgrade to Pro for ${PRO_QUOTA} scans a month. Self-serve, affordable, no enterprise sales call.`,
   openGraph: {
     title: "Pricing | FraudShield",
-    description:
-      "Start free with forensic document fraud detection, then upgrade to Pro for unlimited scans.",
+    description: `Start free with forensic document fraud detection, then upgrade to Pro for ${PRO_QUOTA} scans a month.`,
     type: "website",
     url: "/pricing",
   },

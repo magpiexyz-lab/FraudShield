@@ -811,10 +811,13 @@ function PricingPreviewSection({ onCtaClick }: { onCtaClick: () => void }) {
             const href = isPro ? "/pricing" : "/signup";
             const ctaLabel = isPro ? "Choose Pro" : "Start free";
             // Compact, landing-tier feature blurbs — distinct from the full
-            // pricing page list. Source of truth for prices is still PLANS.
+            // pricing page list. The scan cap is read from PLANS, not restated:
+            // it was hardcoded here as "Unlimited" and survived the move to a
+            // 200/month cap, so paid traffic landed on a page promising
+            // something the pricing page contradicted one click later.
             const blurb = isPro
               ? [
-                  "Unlimited document scans",
+                  plan.features[0].label,
                   "Priority support",
                   "API access (coming soon)",
                 ]
