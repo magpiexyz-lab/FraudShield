@@ -9,13 +9,18 @@ import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { createClient } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import { trackActivate } from "@/lib/events";
+import { Check, ShieldCheck } from "lucide-react";
 import {
   analysisMode,
   isFullAnalysis,
+  CHECKS_PERFORMED,
   LIMITED_ANALYSIS_TITLE,
   LIMITED_ANALYSIS_BODY,
+  NO_INDICATORS_BODY,
+  NO_INDICATORS_TITLE,
   VISION_ANALYSIS_BODY,
   VISION_CLEAR_BODY,
+  type AnalysisMode,
 } from "@/lib/fraud/analysis-mode";
 import { FREE_SCAN_QUOTA, type FraudSignal, type ScansRow } from "@/lib/types";
 import { ScoreGauge } from "./score-gauge";
@@ -283,6 +288,11 @@ function ResultView({
   // evidence without presenting a score as a finished verdict.
   const mode = analysisMode(meta);
   const fullAnalysis = mode !== "partial";
+  // Zero signals has two causes that must NOT read the same way. A scan that
+  // ran and found nothing is a successful clean result; a row with no analysis
+  // on record is missing data. `file_meta.mime` is written by the scan route on
+  // every completed scan, so its presence is what separates them.
+  const scanCompleted = Boolean(meta && typeof meta.mime === "string");
 
   return (
     <div className="flex flex-col gap-12">
@@ -400,6 +410,44 @@ function ResultView({
         </div>
       </section>
 
+      {/* Upgrade prompt — b-06 entry, only when the free-scan limit is hit.
+          Sits ABOVE the signal breakdown: a quota-exhausted user has already
+          read their score, and the breakdown below can run a full screen,
+          which pushed the only offer they can act on off the fold. */}
+      {overFreeLimit && (
+        <section
+          aria-label="Upgrade"
+          className="rounded-xl bg-card p-6 ring-1 ring-suspect/40 md:p-8"
+        >
+          <div className="flex flex-col items-start justify-between gap-5 md:flex-row md:items-center">
+            <div>
+              <p className="font-mono text-xs uppercase tracking-wider text-suspect">
+                Free scans used
+              </p>
+              <h2 className="mt-1.5 font-heading text-xl font-semibold">
+                You&apos;ve used all {FREE_SCAN_QUOTA} free scans
+              </h2>
+              <p className="mt-1 max-w-md text-sm text-muted-foreground">
+                Upgrade to keep scanning documents and unlock higher monthly
+                quota for your team.
+              </p>
+            </div>
+            {/* Anchors to the Upgrade CTA further down THIS page, not /pricing.
+                Linking out sent the user to a card that told them to scan a
+                document — the one thing a quota-exhausted user cannot do — and
+                then back here again. It stays an anchor rather than a second
+                UpgradeCta because that component owns fire-once pay_intent
+                state; two instances could record the same intent twice. */}
+            <Link
+              href="#upgrade-pro"
+              className={`${buttonVariants()} h-11 shrink-0 rounded-pill bg-signal px-6 text-signal-foreground hover:bg-signal/90`}
+            >
+              Upgrade to keep scanning
+            </Link>
+          </div>
+        </section>
+      )}
+
       {/* Per-signal breakdown — the explainability that IS the product */}
       <section
         aria-label="Forensic signals"
@@ -421,44 +469,12 @@ function ResultView({
         </p>
         {fraudSignals.length > 0 ? (
           <SignalBreakdown signals={fraudSignals} />
+        ) : scanCompleted ? (
+          <NoIndicatorsFound mode={mode} />
         ) : (
           <EmptySignals />
         )}
       </section>
-
-      {/* Upgrade prompt — b-06 entry, only when the free-scan limit is hit */}
-      {overFreeLimit && (
-        <section
-          aria-label="Upgrade"
-          className="rounded-xl bg-card p-6 ring-1 ring-suspect/40 md:p-8"
-        >
-          <div className="flex flex-col items-start justify-between gap-5 md:flex-row md:items-center">
-            <div>
-              <p className="font-mono text-xs uppercase tracking-wider text-suspect">
-                Free scans used
-              </p>
-              <h2 className="mt-1.5 font-heading text-xl font-semibold">
-                You&apos;ve used all {FREE_SCAN_QUOTA} free scans
-              </h2>
-              <p className="mt-1 max-w-md text-sm text-muted-foreground">
-                Upgrade to keep scanning documents and unlock higher monthly
-                quota for your team.
-              </p>
-            </div>
-            {/* Points at the Upgrade CTA further down THIS page, not /pricing.
-                Linking out sent the user to a card that told them to scan a
-                document — the one thing a quota-exhausted user cannot do — and
-                then back here again. The offer they can actually act on is a
-                few hundred pixels below. */}
-            <Link
-              href="#upgrade-pro"
-              className={`${buttonVariants()} h-11 shrink-0 rounded-pill bg-signal px-6 text-signal-foreground hover:bg-signal/90`}
-            >
-              Upgrade to keep scanning
-            </Link>
-          </div>
-        </section>
-      )}
 
       {/* Next actions */}
       <section
@@ -497,6 +513,41 @@ function FingerprintField({ term, value }: { term: string; value: string }) {
   );
 }
 
+/**
+ * Shown when a scan completed and produced no signals — the common case for a
+ * genuine document. Names every check that ran so a clean result still shows
+ * the work behind it, instead of the empty "no data" panel this replaced.
+ */
+function NoIndicatorsFound({ mode }: { mode: AnalysisMode }) {
+  return (
+    <div className="rounded-xl bg-card p-6 ring-1 ring-border md:p-7">
+      <div className="flex items-start gap-3">
+        <span
+          aria-hidden="true"
+          className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-clear/12 text-clear ring-1 ring-clear/25"
+        >
+          <ShieldCheck className="size-4" />
+        </span>
+        <div>
+          <p className="font-heading text-lg font-medium">{NO_INDICATORS_TITLE}</p>
+          <p className="mt-1 max-w-xl text-sm leading-relaxed text-muted-foreground">
+            {NO_INDICATORS_BODY}
+          </p>
+        </div>
+      </div>
+      <ul className="mt-5 grid gap-2.5 border-t border-border pt-5 sm:grid-cols-2">
+        {CHECKS_PERFORMED[mode].map((check) => (
+          <li key={check} className="flex items-start gap-2.5 text-sm">
+            <Check className="mt-0.5 size-4 shrink-0 text-clear" aria-hidden="true" />
+            <span className="text-muted-foreground">{check}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** Genuinely no analysis on record — an old row, or a scan that never stored one. */
 function EmptySignals() {
   return (
     <div className="flex flex-col items-center justify-center rounded-xl bg-card py-12 text-center ring-1 ring-border">
