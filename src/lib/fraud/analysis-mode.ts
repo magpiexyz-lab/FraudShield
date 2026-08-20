@@ -102,6 +102,48 @@ export const VISION_ANALYSIS_BODY =
 export const VISION_CLEAR_BODY =
   "No fraud indicators were found in this document's metadata or its content. That is the absence of evidence rather than proof of authenticity — a well-made forgery can leave nothing visible to find.";
 
+// ---- User-facing copy: a scan that returned no signals ----
+
+/**
+ * The checks that actually ran, per analysis depth.
+ *
+ * A clean document is the COMMON case, and it used to render as an empty panel
+ * reading "No signal data on this scan — run a fresh scan from your dashboard".
+ * That describes a failure, not a successful result: the scan worked and found
+ * nothing. Listing what was inspected is the only evidence of work a clean scan
+ * can show, and on the result surface it is the entire demonstration of value.
+ *
+ * Wording follows the rule in this module's header — these say what was
+ * INSPECTED, never that the document is genuine.
+ */
+export const CHECKS_PERFORMED: Record<AnalysisMode, ReadonlyArray<string>> = {
+  full_pdf: [
+    "Producer and creator software fingerprinting",
+    "Creation and modification timeline consistency",
+    "Editable form fields left live in the document",
+    "Known fraud-template matching",
+  ],
+  full_image: [
+    "EXIF capture date and editing-software traces",
+    "Stripped or missing metadata",
+    "AI content review — arithmetic, typography, alignment, editing artifacts",
+  ],
+  partial: [
+    "EXIF capture date and editing-software traces",
+    "Stripped or missing metadata",
+  ],
+};
+
+/** Heading for a completed scan that produced no signals. */
+export const NO_INDICATORS_TITLE = "No fraud indicators found";
+
+/**
+ * Body for the no-signals result. Holds the same line as VISION_CLEAR_BODY:
+ * absence of evidence, never a clean bill of health.
+ */
+export const NO_INDICATORS_BODY =
+  "Every check below ran and returned nothing. That is the absence of evidence rather than proof of authenticity — a well-made forgery can leave nothing to find.";
+
 // ---- Privacy disclosure ----
 
 /**

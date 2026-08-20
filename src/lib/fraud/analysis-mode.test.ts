@@ -9,6 +9,10 @@ import {
   VISION_ANALYSIS_BODY,
   VISION_CLEAR_BODY,
   AI_PRIVACY_DISCLOSURE,
+  CHECKS_PERFORMED,
+  NO_INDICATORS_BODY,
+  NO_INDICATORS_TITLE,
+  type AnalysisMode,
 } from "./analysis-mode";
 import { computeFraudScore, type ScoringInput } from "./score";
 
@@ -252,5 +256,56 @@ describe("free-scan quota semantics", () => {
     // These two are the refunded cases.
     expect(isFullAnalysis({ mime: "image/jpeg" })).toBe(false);
     expect(isFullAnalysis({ mime: "image/png", vision_analyzed: false })).toBe(false);
+  });
+});
+
+describe("no-signals result copy", () => {
+  const MODES: AnalysisMode[] = ["full_pdf", "full_image", "partial"];
+
+  it("names at least two checks for every analysis depth", () => {
+    // The scan-result surface renders CHECKS_PERFORMED[mode] whenever a
+    // completed scan produced no signals. An empty list there would reproduce
+    // the exact bug this replaced: a clean document rendering as a blank panel
+    // that reads like the scan failed.
+    for (const mode of MODES) {
+      expect(CHECKS_PERFORMED[mode].length).toBeGreaterThanOrEqual(2);
+      for (const check of CHECKS_PERFORMED[mode]) {
+        expect(check.trim().length).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it("does not offer a metadata-only scan the checks it never ran", () => {
+    // `partial` is EXIF alone: the content pass did not produce a
+    // determination. Listing an AI content review there would claim evidence
+    // that does not exist.
+    const partial = CHECKS_PERFORMED.partial.join(" ").toLowerCase();
+    expect(partial).not.toContain("ai content");
+    expect(partial).not.toContain("template");
+
+    // full_image DID complete the content pass, so it must say so.
+    expect(CHECKS_PERFORMED.full_image.join(" ").toLowerCase()).toContain("ai content");
+  });
+
+  it("reserves document-level forensics for the PDF path", () => {
+    // Producer fingerprinting and template matching need the original PDF;
+    // an image cannot be checked for either.
+    const pdf = CHECKS_PERFORMED.full_pdf.join(" ").toLowerCase();
+    expect(pdf).toContain("producer");
+    expect(pdf).toContain("template");
+
+    for (const mode of ["full_image", "partial"] as AnalysisMode[]) {
+      expect(CHECKS_PERFORMED[mode].join(" ").toLowerCase()).not.toContain("producer");
+    }
+  });
+
+  it("states absence of evidence rather than authenticity", () => {
+    // Same rule the rest of this module follows: no result from this product
+    // certifies a document as genuine, and the no-signals panel is the copy
+    // most likely to be read as exactly that.
+    expect(NO_INDICATORS_BODY.toLowerCase()).toContain("absence of evidence");
+    expect(NO_INDICATORS_TITLE.toLowerCase()).not.toContain("authentic");
+    expect(NO_INDICATORS_TITLE.toLowerCase()).not.toContain("genuine");
+    expect(NO_INDICATORS_TITLE.toLowerCase()).not.toContain("verified");
   });
 });
