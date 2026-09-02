@@ -1,40 +1,53 @@
 channel: google-ads
-campaign_name: fraudshield-search-phase2-v1
+campaign_name: fraudshield-search-phase2-v2
 project_name: fraudshield
-landing_url: https://fraudshield.draftlabs.org/?utm_source=google&utm_medium=cpc&utm_campaign=fraudshield-search-phase2-v1
+landing_url: https://fraudshield.draftlabs.org/?utm_source=google&utm_medium=cpc&utm_campaign=fraudshield-search-phase2-v2
 phase: 2
-campaign_id: '24130691947'
-campaign_url: https://ads.google.com/aw/overview?campaignId=24130691947
-campaign_created_at: '2026-08-11'
-dayzero_probe_passed_at: '2026-08-11'
+campaign_id: ''
+campaign_url: ''
+campaign_created_at: ''
+dayzero_probe_passed_at: ''
+# Rebuilt from v1's search-keyword report, not carried over wholesale. Eleven of
+# v1's phrases came back "Not eligible -- rarely served": nobody searches them.
+# They were written the way we describe the product, not the way a buyer types.
+# Dropped: verify pay stub authenticity / loan application fraud check / instant
+# pay stub verification / automated bank statement verification / fast document
+# fraud check / affordable fraud detection software / document fraud detection
+# for landlords / fraud detection for small lenders / alternative to inscribe /
+# alternative to findigs / small business document verification.
 keywords:
   exact:
-  - fake pay stub detection
   - detect fake pay stubs
+  - paystub checker
+  - fake paystub detector
+  - fake check stub checker
+  - fake check stub detector
+  - verify pay stubs
+  - check stub verification
+  - fake pay stub detection
   - fake bank statement detection
   phrase:
-  - fake pay stub detection
+  # "fake check stub" was v1's highest-volume keyword: 19 clicks, 185 impressions,
+  # 10.27% CTR. The "check stub" family is the American synonym and was missing
+  # from v1's original list entirely.
+  - fake check stub
+  - check stub detector
+  - check stub fraud
+  - fake document detection
   - pay stub fraud detection
+  - paystub fraud detection
+  - fake pay stub detection
   - detect fake pay stubs
-  - verify pay stub authenticity
-  - loan application fraud check
-  - fake bank statement detection
   - automated document fraud detection
-  - instant pay stub verification
-  - automated income verification
-  - ai document fraud detection
-  - automated bank statement verification
-  - fast document fraud check
+  - fake bank statement detection
   - fraud detection for small business
-  - affordable fraud detection software
-  - document fraud detection for landlords
-  - fraud detection for small lenders
-  - alternative to inscribe
-  - alternative to findigs
-  - small business document verification
+  # Snappt is a direct competitor in rental fraud screening and its name appeared
+  # unprompted in v1's search terms.
+  - snappt alternative
   broad:
   - pay stub fraud detection
   negative:
+  # Informational / non-buyer intent
   - free
   - how to
   - what is
@@ -43,10 +56,16 @@ keywords:
   - example
   - template
   - sample
+  - wiki
+  - wikipedia
+  - definition
+  - meaning
+  - pdf
   - course
   - training
   - certification
   - degree
+  # Job seekers, not document reviewers
   - salary
   - job
   - jobs
@@ -55,45 +74,68 @@ keywords:
   - hiring
   - intern
   - internship
+  # Wrong segment
   - enterprise
   - corporate
   - fortune 500
   - government
   - federal
+  - bank fraud prevention
+  - enterprise fraud detection
+  # Freeware / DIY
   - download
   - open source
   - github
   - stackoverflow
   - reddit
-  - review
-  - reviews
-  - comparison
-  - vs
-  - versus
   - cheap
   - cheapest
   - discount
   - coupon
   - promo
+  - free document verification
+  - free fraud detection
+  # Reputation research, not purchase intent
   - scam
   - complaint
   - lawsuit
-  - wiki
-  - wikipedia
-  - definition
-  - meaning
-  - pdf
-  - free pay stub generator
-  - make fake pay stub
-  - fake pay stub maker
+  # People trying to CREATE fake documents. v1's search terms were full of these
+  # ("real check stub maker", "print fake check stubs", "how can i fake proof of
+  # income"). The ad copy repels most of them, but they still cost impressions.
+  - maker
+  - creator
+  - generator
+  - create
+  - make
+  - diy
+  - editor
+  - mock
+  - build your
+  - self generated
+  - print
   - novelty pay stub
-  - free document verification
+  # Forensic handwriting analysis -- a different industry entirely. v1 spent
+  # SGD 33 (100% of one ad group) on questioned-document-examiner traffic before
+  # this was caught.
+  - handwriting
+  - signature
+  - questioned document
+  - document examiner
+  - expert witness
+  - asqde
+  - forensic writing
+  - near me
+  - how much does
+  # HR paperwork, not fraud detection
+  - verification letter
+  - verification form
+  - verification of employment
   - manual document review
   - outsource document review
   - document scanner app
-  - free fraud detection
-  - enterprise fraud detection
-  - bank fraud prevention
+  # NOTE: vs / versus / comparison / review / reviews were negatives in v1 and are
+  # deliberately NOT here. They blocked competitor-alternative searches, which is
+  # the one high-intent segment v1 proved exists (snappt queries).
 ads:
 - headlines:
   - FraudShield
@@ -150,9 +192,9 @@ sitelinks:
   final_url: https://fraudshield.draftlabs.org/#live-demo
   description_1: See a real fraud score
   description_2: No signup needed to view
-- link_text: Start free - 3 scans
+- link_text: Start free - 1 scan
   final_url: https://fraudshield.draftlabs.org/signup
-  description_1: 3 document scans, no card
+  description_1: 1 document scan, no card
   description_2: Results in seconds
 - link_text: Sign in
   final_url: https://fraudshield.draftlabs.org/login
@@ -187,17 +229,33 @@ conversions:
 
     '
 budget:
-  click_target: 300
-  total_budget_cents: 150000
-  daily_budget_cents: 10000
-  duration_days: 15
-  initial_max_cpc_cents: 140
+  # v2's stop condition is measured in ASKS, not clicks -- see thresholds.pass_bar.
+  # click_target is kept because the validator and cross-MVP readers expect it,
+  # and is set to the clicks needed to reach 75 asks at v1's funnel (~28% of
+  # clicks produced a paywall render). RE-DERIVE from the real
+  # paywall_shown/click ratio after 2-3 days: 28% comes from v1, whose /pricing
+  # sat behind the auth wall and was unreachable for signed-out visitors, so the
+  # true v2 rate should be higher and this number too pessimistic.
+  click_target: 270
+  total_budget_cents: 130000
+  daily_budget_cents: 3500
+  duration_days: 38
+  # v1 opened at 140 (SGD 1.90) and produced 3 clicks in 6 days: Google reported
+  # first-page bids of SGD 5.76-12.96 for these keywords, so the campaign was
+  # priced out of the auction entirely. Open v2 at the approved ceiling -- the
+  # measured avg CPC once it was serving was SGD 6.54, just under it.
+  initial_max_cpc_cents: 500
   bidding_strategy: manual_cpc
-  cap_override_approved_by: Draft Lab (Alan)
-  duration_note: '15 days, not the playbook''s 21. The playbook pairs 21 days with a USD 20/day budget
-    so daily x duration stays under the cap. At the approved USD 100/day, 21 days would permit USD 2,100
-    -- USD 600 past the approved cap. 15 x 100 = 1500 exactly restores the fail-safe. The end date is
-    a fail-safe, not a deadline: stop at 300 clicks or the cap, and extend the date if neither is hit.'
+  # NOT re-approved for v2. Alan's USD 1,500 authorisation covered v1, which
+  # spent SGD 1,380 of it before being paused at 211 clicks with zero
+  # pay-intents. The figures above are what the ask-based bar requires, not an
+  # approved cap.
+  cap_override_approved_by: PENDING -- v1 consumed the prior authorisation
+  duration_note: 'v2 runs at USD 35/day (SGD 47) per the fleet re-fly brief.
+    38 x 35 = USD 1,330, which is what reaching 75 asks costs at the SGD 6.54
+    CPC v1 measured and an estimated 28% ask-per-click rate. The end date is a
+    fail-safe, not a deadline: stop on the pass bar, and re-derive the date once
+    the real ask rate is known.'
 guardrails:
   max_cpc_cents: 500
   min_daily_clicks: 3
@@ -212,19 +270,27 @@ guardrails:
     action: pause_keyword
     reason: CPC exceeded ~2x guardrail ($2.40) — keyword is over-competitive
 thresholds:
-  expected_clicks: 300
-  expected_signups: 150
-  expected_activations: 6
-  go_signal: 'pay_intent rate >= 0.02 of paid clicks (theta_2) over >= 300 clicks
-
-    -> GO: eligible for Phase 3, ranked by revenue_intent_per_click
-
-    '
-  no_go_signal: 'pay_intent rate < 0.02 over >= 300 clicks -> NO_GO (vanity: used free, will not pay)
-
-    OR spend reaches the $1,500 cap below 300 clicks -> affordability signal
-
-    '
+  expected_clicks: 270
+  expected_signups: 62
+  expected_activations: 3
+  # The v2 denominator is ASKS (paywall_shown), not clicks. v1 could not tell
+  # "nobody wants to pay" from "nobody was ever asked" -- both look like a zero
+  # rate -- and that ambiguity is what it died on: 211 clicks, ~35 scanners, 0
+  # pay-intents, with the full report given away free and the CTA a screen below
+  # the fold.
+  pass_bar:
+    denominator: paywall_shown from real users (probe+%@draftlabs.org excluded)
+    promote: '>= 75 asks AND >= 3 pay_intents'
+    kill: 0 pay_intents across >= 30 asks
+    note: >-
+      The kill rule resolves far sooner than the promote rule -- ~30 asks versus
+      75 -- so a failure lands in about a week while a pass takes the full run.
+      Do not read an early sub-75 number as a promote failure.
+  go_signal: '>= 3 pay_intents over >= 75 asks (paywall_shown) -> GO: eligible
+    for Phase 3, ranked by revenue_intent_per_click'
+  no_go_signal: '0 pay_intents across >= 30 asks -> NO_GO (saw the price, did
+    not buy). OR spend reaches the approved cap before 30 asks -> inconclusive,
+    NOT a verdict: the ask was never put to enough people.'
 currency: SGD
 currency_note: 'The Google Ads account bills in SGD but every approved figure below is USD, derived from
   the USD 60/mo reference price. Entered into Google Ads at ~1.35 SGD/USD: bid SGD 1.90, daily SGD 135,
@@ -233,7 +299,7 @@ currency_note: 'The Google Ads account bills in SGD but every approved figure be
   SGD (~USD 2.85), which means the Phase 1b bid cut may have been triggered by a currency mismatch rather
   than real payback failure.'
 callouts:
-- 'Free plan: 3 scans'
+- 1 free scan, no card
 - No sales call
 - Results in seconds
 - Cancel anytime
@@ -247,6 +313,22 @@ structured_snippet:
   - Invoices
   - Income verification
 notes_phase2:
+  v1_outcome: 'NO_GO on offer v1, closed 2026-09-01 at 211 clicks / SGD 1,380 spent.
+    0 pay-intents from ~35 people who saw a fraud score. The pay_intent write path
+    was verified working twice (11-12 Aug test rows, and a manual click on 24 Aug),
+    so the zero is a real signal, not a broken button. Every row in public.pay_intent
+    is pre-launch testing, a manual verification, or the nightly probe -- filter on
+    utm_campaign AND exclude probe+%@draftlabs.org before counting anything.
+    Diagnosis: the full signal breakdown was free and the upgrade CTA sat a screen
+    below it, so nobody had a reason to pay OR a visible price. v2 gates the
+    breakdown and cuts free scans 3 -> 1 (PR #36).
+    COMPETING EXPLANATION, unresolved: v1''s search terms were dominated by one-off
+    questions -- "is this document real", "how can you tell if a pay stub is fake",
+    "can apartments tell if paystubs are fake" -- while every keyword aimed at
+    recurring buyers came back rarely-served. If the demand is genuinely one-off,
+    a USD 60/month subscription is the wrong shape regardless of where the paywall
+    sits, and a per-document price is the untested lever. v2 tests the paywall
+    hypothesis only; it does not test that one.'
   google_forecast_at_launch: 165 clicks/week at SGD 1.91 avg CPC (~USD 1.41), SGD 315/week spend. Implies
     300 clicks in ~13 days for ~USD 433 -- well inside both the 15-day end date and the USD 1,500 cap.
   market_is_rank_limited: Google recommended SGD 45/day and its forecast did not change when the daily
