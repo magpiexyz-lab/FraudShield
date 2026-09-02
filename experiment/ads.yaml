@@ -3,10 +3,10 @@ campaign_name: fraudshield-search-phase2-v2
 project_name: fraudshield
 landing_url: https://fraudshield.draftlabs.org/?utm_source=google&utm_medium=cpc&utm_campaign=fraudshield-search-phase2-v2
 phase: 2
-campaign_id: ''
-campaign_url: ''
-campaign_created_at: ''
-dayzero_probe_passed_at: ''
+campaign_id: '24208078253'
+campaign_url: https://ads.google.com/aw/overview?campaignId=24208078253
+campaign_created_at: '2026-09-02'
+dayzero_probe_passed_at: '2026-09-02'
 # Rebuilt from v1's search-keyword report, not carried over wholesale. Eleven of
 # v1's phrases came back "Not eligible -- rarely served": nobody searches them.
 # They were written the way we describe the product, not the way a buyer types.
@@ -237,9 +237,9 @@ budget:
   # sat behind the auth wall and was unreachable for signed-out visitors, so the
   # true v2 rate should be higher and this number too pessimistic.
   click_target: 270
-  total_budget_cents: 130000
+  total_budget_cents: 150000
   daily_budget_cents: 3500
-  duration_days: 38
+  duration_days: 43
   # v1 opened at 140 (SGD 1.90) and produced 3 clicks in 6 days: Google reported
   # first-page bids of SGD 5.76-12.96 for these keywords, so the campaign was
   # priced out of the auction entirely. Open v2 at the approved ceiling -- the
@@ -250,7 +250,7 @@ budget:
   # spent SGD 1,380 of it before being paused at 211 clicks with zero
   # pay-intents. The figures above are what the ask-based bar requires, not an
   # approved cap.
-  cap_override_approved_by: PENDING -- v1 consumed the prior authorisation
+  cap_override_approved_by: re-approved for v2 at USD 1,500 (confirmed 2026-09-02)
   duration_note: 'v2 runs at USD 35/day (SGD 47) per the fleet re-fly brief.
     38 x 35 = USD 1,330, which is what reaching 75 asks costs at the SGD 6.54
     CPC v1 measured and an estimated 28% ask-per-click rate. The end date is a
