@@ -76,8 +76,13 @@ export type StripeEventsRow = {
 };
 
 // --- Free scan quota constants ---
-// Default free scan allowance before requiring a subscription
-export const FREE_SCAN_QUOTA = 3;
+// Default free scan allowance before requiring a subscription.
+//
+// Cut from 3 to 1 after Phase 2 returned zero pay-intents across ~170 paid
+// clicks. Three scans plus an unlocked forensic breakdown meant a visitor could
+// answer their question completely and leave with no reason to pay; one scan
+// establishes the product works and then the paywall is the only way forward.
+export const FREE_SCAN_QUOTA = 1;
 
 // Monthly scan allowance on the paid plan.
 //

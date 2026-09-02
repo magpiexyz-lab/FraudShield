@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ShieldCheck, Sparkles, FileSearch } from "lucide-react";
 import { createClient } from "@/lib/supabase";
@@ -12,6 +12,7 @@ import { ScanHistory } from "./scan-history";
 import { WhatWeCheck } from "./what-we-check";
 import { HowItWorks } from "./how-it-works";
 import { AI_PRIVACY_DISCLOSURE } from "@/lib/fraud/analysis-mode";
+import { trackPaywallShown } from "@/lib/events";
 
 type QuotaState = {
   used: number;
@@ -70,6 +71,16 @@ export default function DashboardPage() {
   }, [quotaEpoch]);
 
   const remaining = Math.max(quota.total - quota.used, 0);
+
+  // Fires when the exhausted card actually renders — once, not per render.
+  // Gated on `!quota.loading` so the first paint (used=0, total=default) cannot
+  // report a paywall the user never saw.
+  const dashboardPaywallFired = useRef(false);
+  useEffect(() => {
+    if (quota.loading || remaining > 0 || dashboardPaywallFired.current) return;
+    dashboardPaywallFired.current = true;
+    trackPaywallShown({ surface: "dashboard_quota" });
+  }, [quota.loading, remaining]);
   const isPaid = quota.total > FREE_SCAN_QUOTA;
   const pct = quota.total > 0 ? Math.min((quota.used / quota.total) * 100, 100) : 0;
 

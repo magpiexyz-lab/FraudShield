@@ -3,7 +3,10 @@ import { createServerClient } from "@supabase/ssr";
 
 // publicPaths derived from experiment.yaml via:
 // python3 .claude/scripts/lib/derive_pages.py public_paths < experiment/experiment.yaml
-const publicPaths = ["/", "/api/health", "/auth/callback", "/auth/reset-password", "/login", "/signup"];
+// /pricing is public: it is the paywall destination, and gating it behind auth
+// bounced signed-out visitors to /login at the exact moment they were deciding
+// whether to pay.
+const publicPaths = ["/", "/api/health", "/auth/callback", "/auth/reset-password", "/login", "/pricing", "/signup"];
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
