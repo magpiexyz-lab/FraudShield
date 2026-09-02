@@ -27,11 +27,32 @@ type Status = "idle" | "submitting" | "done";
 export function UpgradeCta({
   user,
   hasActivated,
+  ctaLabel,
+  heading,
+  body,
+  variant = "card",
 }: {
   /** Authenticated user id, or null when signed out. */
   user: string | null;
   /** True once this user has received a fraud score (a completed scan). */
   hasActivated: boolean;
+  /**
+   * Overrides the button text. The locked signal breakdown names what is
+   * actually behind the lock ("Unlock all 4 forensic signals") rather than the
+   * generic price label — the ask converts better when it is specific about
+   * what the user gets back.
+   */
+  ctaLabel?: string;
+  /** Overrides the card heading. */
+  heading?: string;
+  /** Overrides the supporting line under the heading. */
+  body?: string;
+  /**
+   * "card" renders the bordered panel this component has always been.
+   * "inline" drops the chrome so it can sit inside another container — the
+   * locked-signals placeholder supplies its own.
+   */
+  variant?: "card" | "inline";
 }) {
   const [status, setStatus] = useState<Status>("idle");
   const firedRef = useRef(false);
@@ -86,8 +107,13 @@ export function UpgradeCta({
     setStatus("done");
   }
 
+  const shellClass =
+    variant === "inline"
+      ? "scroll-mt-8"
+      : "mt-8 scroll-mt-8 rounded-lg border border-border bg-card p-6";
+
   return (
-    <div id="upgrade-pro" className="mt-8 scroll-mt-8 rounded-lg border border-border bg-card p-6">
+    <div id="upgrade-pro" className={shellClass}>
       <div aria-live="polite">
         {status === "done" ? (
           <div>
@@ -101,11 +127,11 @@ export function UpgradeCta({
         ) : (
           <div>
             <p className="font-medium text-foreground">
-              Need more than the free scans?
+              {heading ?? "Need more than the free scans?"}
             </p>
             <p className="mt-1 text-sm text-muted-foreground">
-              Pro lifts the scan limit and keeps the full forensic breakdown on every
-              document.
+              {body ??
+                "Pro lifts the scan limit and unlocks the full forensic breakdown on every document."}
             </p>
             <button
               type="button"
@@ -115,7 +141,7 @@ export function UpgradeCta({
             >
               {status === "submitting"
                 ? "One moment…"
-                : `Upgrade to Pro · ${priceLabel}`}
+                : (ctaLabel ?? `Upgrade to Pro · ${priceLabel}`)}
             </button>
           </div>
         )}

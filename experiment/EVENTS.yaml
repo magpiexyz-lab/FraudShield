@@ -127,6 +127,27 @@ events:
   # Fake door for the Google Ads Phase 2 value screen. Deliberately has NO
   # `requires: [payment]` — it fires on an Upgrade click that never charges, so
   # it must stay independent of whether the payment stack is wired.
+  paywall_shown:
+    funnel_stage: monetize
+    trigger: >-
+      A paywall surface renders for a user who cannot proceed without upgrading.
+      Fires once per mount, not per interaction, so it measures how many people
+      REACHED the ask — the denominator pay_intent was previously missing.
+    properties:
+      surface:
+        type: string
+        required: true
+        description: >-
+          Which paywall the user hit — locked_signals, scan_result_quota,
+          dashboard_quota, or pricing. Distinguishes the four asks so a low
+          pay_intent rate can be traced to the surface that failed.
+      signal_count:
+        type: number
+        required: false
+        description: >-
+          Forensic signals withheld behind the lock. Only meaningful on the
+          locked_signals surface; absent elsewhere.
+
   pay_intent:
     funnel_stage: monetize
     trigger: User clicks the fake-door Upgrade CTA (post-activation). No charge.

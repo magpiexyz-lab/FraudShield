@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { trackCheckoutStart, trackPayIntent } from "@/lib/events";
+import { trackCheckoutStart, trackPayIntent, trackPaywallShown } from "@/lib/events";
 import { getDistinctId } from "@/lib/analytics";
 import { readAttribution } from "@/lib/attribution";
 import { createClient } from "@/lib/supabase";
@@ -99,6 +99,16 @@ export function ScrollReveal({
 }
 
 export function PricingPlans() {
+  // /pricing is itself a paywall surface — most often reached from one of the
+  // in-app asks. Fired once on mount, with no auth or quota gate: unlike the
+  // other three surfaces, arriving here IS the event.
+  const pricingPaywallFired = useRef(false);
+  useEffect(() => {
+    if (pricingPaywallFired.current) return;
+    pricingPaywallFired.current = true;
+    trackPaywallShown({ surface: "pricing" });
+  }, []);
+
   const [state, setState] = useState<CheckoutState>("idle");
   const [errorMsg, setErrorMsg] = useState("");
   // null while loading. /pricing is login-gated by the middleware, so every

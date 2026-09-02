@@ -5,7 +5,7 @@ import type { ChangeEvent, DragEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { FileUp, FileText, ShieldCheck, X, ArrowRight } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { CreateScanResponse } from "@/app/api/scan/route";
 
@@ -585,9 +585,23 @@ export function UploadZone({
       {quotaExhausted && (
         // Quota-exhausted is a billing/system state, NOT a fraud signal —
         // use muted-foreground, not severity tokens (suspect/fraud).
-        <p className="text-sm text-muted-foreground">
-          You&apos;ve used all of your free scans. Upgrade to keep analyzing documents.
-        </p>
+        //
+        // "Upgrade to keep analyzing" used to be plain prose: an instruction
+        // with nothing to click, at the one moment the user cannot proceed.
+        <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-muted-foreground">
+            You&apos;ve used all of your free scans.
+          </p>
+          <Link
+            href="/pricing"
+            className={cn(
+              buttonVariants({ size: "sm" }),
+              "rounded-[var(--radius-pill)] bg-signal text-signal-foreground hover:bg-signal/90",
+            )}
+          >
+            Upgrade to keep analyzing
+          </Link>
+        </div>
       )}
     </div>
   );

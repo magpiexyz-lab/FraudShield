@@ -10,6 +10,7 @@ export const EVENT_FUNNEL_MAP: Record<string, string> = {
   signup_start: "activate",
   signup_complete: "activate",
   activate: "activate",
+  paywall_shown: "monetize",
   pay_intent: "monetize",
   checkout_start: "monetize",
   pay_success: "monetize",
@@ -62,6 +63,23 @@ export function trackFeedbackSubmitted(props: {
 }
 
 // monetize — fake door (no payment stack dependency)
+
+/**
+ * Fires when a paywall surface RENDERS, not when it is clicked.
+ *
+ * pay_intent alone cannot distinguish "nobody wants to pay" from "nobody was
+ * ever asked": a zero rate looks identical in both cases. This event supplies
+ * the missing denominator — of the people who hit a paywall, how many acted.
+ *
+ * Call it once per mount behind a ref guard. Firing per render would inflate
+ * the count with every re-render and make the ratio meaningless.
+ */
+export function trackPaywallShown(props: {
+  surface: "locked_signals" | "scan_result_quota" | "dashboard_quota" | "pricing";
+  signal_count?: number;
+}) {
+  track("paywall_shown", { ...props, funnel_stage: "monetize" });
+}
 
 /**
  * Google Ads Phase 2 value screen. Fires when an activated user clicks the

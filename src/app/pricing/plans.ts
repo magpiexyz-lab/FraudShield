@@ -30,7 +30,10 @@ export const PLANS: ReadonlyArray<PlanTier> = [
     featured: false,
     cta: "Start scanning free",
     features: [
-      { label: `${FREE_SCAN_QUOTA} document scans, total`, included: true },
+      {
+        label: `${FREE_SCAN_QUOTA} document scan${FREE_SCAN_QUOTA === 1 ? "" : "s"}, total`,
+        included: true,
+      },
       { label: "0–100 forensic fraud score", included: true },
       { label: "Per-signal breakdown & explanations", included: true },
       { label: "Pay stubs, bank statements & invoices", included: true },

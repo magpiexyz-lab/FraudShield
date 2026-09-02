@@ -71,14 +71,26 @@ describe("computeQuota — paid subscription", () => {
   });
 
   it("denies scan when subscription status is 'past_due'", () => {
+    // Derived from FREE_SCAN_QUOTA rather than a literal. This test previously
+    // hardcoded scans_used: 2 alongside a comment reading "free quota = 3", and
+    // broke the moment the quota changed — it was asserting the constant's
+    // value, not the behaviour it exists to describe. What matters here is that
+    // past_due falls back to the FREE allowance whatever that allowance is.
     const result = computeQuota({
-      scans_used: 2,
+      scans_used: FREE_SCAN_QUOTA - 1,
       subscription: { status: "past_due", scan_quota: 100 },
     });
     expect(result.is_paid).toBe(false);
-    // past_due falls back to free quota — 2 used, free quota = 3, so still allowed
-    expect(result.allowed).toBe(true);
     expect(result.total_quota).toBe(FREE_SCAN_QUOTA);
+    // One scan left of the free allowance, so still allowed.
+    expect(result.allowed).toBe(true);
+
+    // And denied once the free allowance is spent.
+    const spent = computeQuota({
+      scans_used: FREE_SCAN_QUOTA,
+      subscription: { status: "past_due", scan_quota: 100 },
+    });
+    expect(spent.allowed).toBe(false);
   });
 });
 

@@ -8,8 +8,8 @@ import { buttonVariants } from "@/components/ui/button";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { createClient } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
-import { trackActivate } from "@/lib/events";
-import { Check, ShieldCheck } from "lucide-react";
+import { trackActivate, trackPaywallShown } from "@/lib/events";
+import { Check, Lock, ShieldCheck } from "lucide-react";
 import {
   analysisMode,
   isFullAnalysis,
@@ -24,7 +24,6 @@ import {
 } from "@/lib/fraud/analysis-mode";
 import { FREE_SCAN_QUOTA, type FraudSignal, type ScansRow } from "@/lib/types";
 import { ScoreGauge } from "./score-gauge";
-import { SignalBreakdown } from "./signal-breakdown";
 import { ApiAccessDialog } from "./api-access-dialog";
 import { UpgradeCta } from "./upgrade-cta";
 import { severityOfScore } from "./severity";
@@ -179,14 +178,17 @@ export function ScanResultClient() {
         ) : (
           scan && (
             <>
+              {/* UpgradeCta used to render here, after the whole result. It now
+                  lives inside the locked signal breakdown: the offer lands
+                  hardest at the point where the user can see something is being
+                  withheld, not a screen further down. ResultView owns the only
+                  instance — a second one would duplicate its fire-once state. */}
               <ResultView
                 scan={scan}
                 scansUsed={scansUsed ?? 0}
                 overFreeLimit={overFreeLimit}
+                hasActivated={hasActivated}
               />
-              {/* Phase 2 fake door. Sits after the result because the offer only
-                  makes sense once the user has seen what they would be buying. */}
-              <UpgradeCta user={scan.user_id} hasActivated={hasActivated} />
             </>
           )
         )}
@@ -273,10 +275,12 @@ function ResultView({
   scan,
   scansUsed,
   overFreeLimit,
+  hasActivated,
 }: {
   scan: ScansRow;
   scansUsed: number;
   overFreeLimit: boolean;
+  hasActivated: boolean;
 }) {
   const docLabel = DOC_TYPE_LABEL[scan.doc_type] ?? "Document";
   const severity = severityOfScore(scan.fraud_score);
@@ -293,6 +297,16 @@ function ResultView({
   // on record is missing data. `file_meta.mime` is written by the scan route on
   // every completed scan, so its presence is what separates them.
   const scanCompleted = Boolean(meta && typeof meta.mime === "string");
+
+  // The quota banner is a second, distinct paywall: the locked breakdown asks
+  // "pay to see this result", this one asks "pay to run another scan". They
+  // convert differently, so `surface` keeps them apart in the funnel.
+  const quotaPaywallFired = useRef(false);
+  useEffect(() => {
+    if (!overFreeLimit || quotaPaywallFired.current) return;
+    quotaPaywallFired.current = true;
+    trackPaywallShown({ surface: "scan_result_quota" });
+  }, [overFreeLimit]);
 
   return (
     <div className="flex flex-col gap-12">
@@ -311,7 +325,8 @@ function ResultView({
             FraudShield ran metadata forensics, cross-document checks, and
             template matching on{" "}
             <span className="font-mono text-foreground">{meta.filename}</span>.
-            Here is the full evidence trail behind the score.
+            Your score is below; the signal-by-signal evidence behind it is
+            part of Pro.
           </p>
         ) : mode === "full_image" ? (
           <p className="mt-2 max-w-2xl text-base leading-relaxed text-muted-foreground">
@@ -463,16 +478,28 @@ function ResultView({
           </span>
         </div>
         <p className="mt-1 mb-5 text-sm text-muted-foreground">
-          {fullAnalysis
-            ? "Every point in the score traces to a specific, inspectable signal."
-            : "Every finding from the image metadata checks is listed here as a specific, inspectable signal."}
+          {fraudSignals.length > 0
+            ? "Every point in the score traces to a specific, inspectable signal. Pro shows you which."
+            : fullAnalysis
+              ? "Every point in the score traces to a specific, inspectable signal."
+              : "Every finding from the image metadata checks is listed here as a specific, inspectable signal."}
         </p>
         {fraudSignals.length > 0 ? (
-          <SignalBreakdown signals={fraudSignals} />
+          <LockedSignals
+            signals={fraudSignals}
+            user={scan.user_id}
+            hasActivated={hasActivated}
+          />
         ) : scanCompleted ? (
-          <NoIndicatorsFound mode={mode} />
+          <>
+            <NoIndicatorsFound mode={mode} />
+            <UpgradeCta user={scan.user_id} hasActivated={hasActivated} />
+          </>
         ) : (
-          <EmptySignals />
+          <>
+            <EmptySignals />
+            <UpgradeCta user={scan.user_id} hasActivated={hasActivated} />
+          </>
         )}
       </section>
 
@@ -509,6 +536,77 @@ function FingerprintField({ term, value }: { term: string; value: string }) {
       <dd className="truncate text-foreground" title={value}>
         {value}
       </dd>
+    </div>
+  );
+}
+
+/**
+ * The paywall over the signal breakdown.
+ *
+ * Blurs the REAL signal labels rather than inventing placeholder rows. A user
+ * who can see the shape of genuine findings has a reason to unlock them, and a
+ * fabricated preview would misrepresent what is actually behind the lock.
+ *
+ * Fires `paywall_shown` once per mount, never per render: the measurement is
+ * pay_intent over paywall_shown, and re-render inflation would quietly destroy
+ * the denominator this event exists to supply.
+ */
+function LockedSignals({
+  signals,
+  user,
+  hasActivated,
+}: {
+  signals: FraudSignal[];
+  user: string | null;
+  hasActivated: boolean;
+}) {
+  const count = signals.length;
+  const firedRef = useRef(false);
+  useEffect(() => {
+    if (firedRef.current) return;
+    firedRef.current = true;
+    trackPaywallShown({ surface: "locked_signals", signal_count: count });
+  }, [count]);
+
+  return (
+    <div className="relative overflow-hidden rounded-xl bg-card ring-1 ring-border">
+      {/* Decorative: aria-hidden and unselectable so the blurred labels are not
+          read out or copied. The blur is presentation, not a security control —
+          nothing is charged, so there is nothing to protect. */}
+      <div aria-hidden="true" className="select-none space-y-4 p-6 blur-[6px]">
+        {signals.slice(0, 4).map((s) => (
+          <div key={s.id} className="flex items-start gap-3">
+            <span className="mt-1.5 size-2.5 shrink-0 rounded-full bg-muted-foreground/60" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-foreground">{s.label}</p>
+              <span className="mt-2 block h-2 w-full rounded bg-muted-foreground/25" />
+              <span className="mt-1.5 block h-2 w-4/5 rounded bg-muted-foreground/20" />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div
+        aria-hidden="true"
+        className="absolute inset-0 bg-gradient-to-b from-card/30 via-card/85 to-card"
+      />
+
+      <div className="relative flex flex-col items-center gap-3 px-6 pb-6 pt-2 text-center">
+        <span
+          aria-hidden="true"
+          className="flex size-9 items-center justify-center rounded-full bg-signal/12 text-signal ring-1 ring-signal/25"
+        >
+          <Lock className="size-4" />
+        </span>
+        <UpgradeCta
+          user={user}
+          hasActivated={hasActivated}
+          variant="inline"
+          heading={`${count} forensic signal${count === 1 ? "" : "s"} found on this document`}
+          body="Each names what was detected, where it was found, and how much it moved the score."
+          ctaLabel={`Unlock all ${count} forensic signals`}
+        />
+      </div>
     </div>
   );
 }
