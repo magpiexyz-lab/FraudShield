@@ -18,7 +18,7 @@ export type PlanTier = {
   features: ReadonlyArray<{ label: string; included: boolean }>;
 };
 
-// $49.00 → 49 (PLAN_PRICES stores cents). Sourced, never hardcoded.
+// $60.00 → 60 (PLAN_PRICES stores cents). Sourced, never hardcoded.
 const PRO_PRICE_MONTHLY = Math.round(PLAN_PRICES.pro / 100);
 
 export const PLANS: ReadonlyArray<PlanTier> = [

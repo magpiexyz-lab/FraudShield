@@ -11,7 +11,6 @@ export const EVENT_FUNNEL_MAP: Record<string, string> = {
   signup_complete: "activate",
   activate: "activate",
   paywall_shown: "monetize",
-  pay_intent: "monetize",
   checkout_start: "monetize",
   pay_success: "monetize",
   retain_return: "retain",
@@ -62,12 +61,12 @@ export function trackFeedbackSubmitted(props: {
   track("feedback_submitted", { ...props, funnel_stage: "activate" });
 }
 
-// monetize — fake door (no payment stack dependency)
+// monetize
 
 /**
  * Fires when a paywall surface RENDERS, not when it is clicked.
  *
- * pay_intent alone cannot distinguish "nobody wants to pay" from "nobody was
+ * checkout_start alone cannot distinguish "nobody wants to pay" from "nobody was
  * ever asked": a zero rate looks identical in both cases. This event supplies
  * the missing denominator — of the people who hit a paywall, how many acted.
  *
@@ -79,26 +78,6 @@ export function trackPaywallShown(props: {
   signal_count?: number;
 }) {
   track("paywall_shown", { ...props, funnel_stage: "monetize" });
-}
-
-/**
- * Google Ads Phase 2 value screen. Fires when an activated user clicks the
- * fake-door Upgrade CTA. Nobody is charged.
- *
- * `utm_campaign` is a required argument rather than an optional one on purpose:
- * the Phase 2 verdict isolates its numerator on this property, and PostHog's
- * `utm_campaign` super-property is registered from sessionStorage, which does
- * not survive a return visit. `pay_intent` is a deep-funnel event that can fire
- * days after the ad click, so the value must be passed explicitly. Pass "" when
- * there is genuinely no campaign.
- */
-export function trackPayIntent(props: {
-  plan: string;
-  price_cents: number;
-  gclid?: string;
-  utm_campaign: string;
-}) {
-  track("pay_intent", { ...props, funnel_stage: "monetize" });
 }
 
 // --- Payment events (only when requires: [payment] matched) ---

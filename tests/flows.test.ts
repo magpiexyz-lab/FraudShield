@@ -373,3 +373,268 @@ describe("enterprise lead intake", () => {
     expect(response.status).toBeLessThan(500);
   });
 });
+
+// Phase 3: /api/checkout opens a real MONTHLY SUBSCRIPTION against a dashboard
+// Price, in Stripe TEST mode only.
+//
+// Two contracts are pinned here:
+//   (a) the not_configured 503 must ALSO cover a missing STRIPE_PRO_PRICE_ID.
+//       CI only ever supplies placeholder Stripe values and cannot be given new
+//       env vars, so this is the branch every CI run must land in.
+//   (b) when both envs are present the session must be mode: "subscription",
+//       must pass the dashboard Price id straight through (never an inline
+//       price_data amount), and must stamp attribution into BOTH metadata bags
+//       - Stripe does not copy session metadata onto the Subscription object.
+//
+// Fixtures deliberately avoid the literal live/test key prefixes: the secret
+// scanner and the stack rule both flag them even inside test files.
+const FAKE_STRIPE_KEY = "rk_test_notarealkey_fraudshield_unit_fixture";
+const FAKE_PRICE_ID = "price_0PhaseThreeMonthlyTest";
+
+// The subset of Checkout Session params these tests assert on.
+type CheckoutSessionParams = {
+  mode: string;
+  line_items: Array<{ price?: string; quantity?: number; price_data?: unknown }>;
+  metadata: Record<string, string>;
+  subscription_data: { metadata: Record<string, string> };
+};
+
+describe("Phase 3 checkout: monthly subscription session", () => {
+  it("returns not_configured when STRIPE_PRO_PRICE_ID is unset", async () => {
+    const prevDemo = process.env.DEMO_MODE;
+    const prevKey = process.env.STRIPE_SECRET_KEY;
+    const prevPrice = process.env.STRIPE_PRO_PRICE_ID;
+    process.env.DEMO_MODE = "false";
+    // A secret key that clears every existing placeholder/length test, so the
+    // ONLY thing missing is the Price id.
+    process.env.STRIPE_SECRET_KEY = "rk_test_notarealkey_priceunset_fixture";
+    delete process.env.STRIPE_PRO_PRICE_ID;
+    const vitestGlobal = (await import("vitest")).vi;
+    vitestGlobal.resetModules();
+    try {
+      const { POST } = await import("@/app/api/checkout/route");
+      const request = new Request("http://localhost/api/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plan: "pro" }),
+      });
+      const response = await POST(request);
+      const payload = await response.json();
+      expect(response.status).toBe(503);
+      expect(payload.code).toBe("not_configured");
+      expect(typeof payload.message).toBe("string");
+    } finally {
+      if (prevDemo === undefined) delete process.env.DEMO_MODE;
+      else process.env.DEMO_MODE = prevDemo;
+      if (prevKey === undefined) delete process.env.STRIPE_SECRET_KEY;
+      else process.env.STRIPE_SECRET_KEY = prevKey;
+      if (prevPrice === undefined) delete process.env.STRIPE_PRO_PRICE_ID;
+      else process.env.STRIPE_PRO_PRICE_ID = prevPrice;
+      vitestGlobal.resetModules();
+    }
+  });
+
+
+  // Regression guard for the live-key safety interlock. The first version of
+  // this check was a denylist (startsWith "sk_live_"), which Stripe RESTRICTED
+  // live keys ("rk_live_") walked straight through -- they are non-empty, not
+  // placeholder-shaped and well over the length floor, so the real SDK would
+  // have been instantiated against a LIVE account on a build with no
+  // cancellation path. The check is now an allowlist of test prefixes.
+  it("refuses a restricted LIVE key even when the Price id is present", async () => {
+    const prevDemo = process.env.DEMO_MODE;
+    const prevKey = process.env.STRIPE_SECRET_KEY;
+    const prevPrice = process.env.STRIPE_PRO_PRICE_ID;
+    process.env.DEMO_MODE = "false";
+    process.env.STRIPE_SECRET_KEY = "rk_live_notarealkey_interlock_fixture";
+    process.env.STRIPE_PRO_PRICE_ID = FAKE_PRICE_ID;
+    const vitestGlobal = (await import("vitest")).vi;
+    vitestGlobal.resetModules();
+    try {
+      const { POST } = await import("@/app/api/checkout/route");
+      const request = new Request("http://localhost/api/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plan: "pro" }),
+      });
+      const response = await POST(request);
+      const payload = await response.json();
+      expect(response.status).toBe(503);
+      expect(payload.code).toBe("not_configured");
+    } finally {
+      if (prevDemo === undefined) delete process.env.DEMO_MODE;
+      else process.env.DEMO_MODE = prevDemo;
+      if (prevKey === undefined) delete process.env.STRIPE_SECRET_KEY;
+      else process.env.STRIPE_SECRET_KEY = prevKey;
+      if (prevPrice === undefined) delete process.env.STRIPE_PRO_PRICE_ID;
+      else process.env.STRIPE_PRO_PRICE_ID = prevPrice;
+      vitestGlobal.resetModules();
+    }
+  });
+  it("opens a subscription session with the dashboard Price and dual metadata", async () => {
+    const prevDemo = process.env.DEMO_MODE;
+    const prevKey = process.env.STRIPE_SECRET_KEY;
+    const prevPrice = process.env.STRIPE_PRO_PRICE_ID;
+    process.env.DEMO_MODE = "false";
+    process.env.STRIPE_SECRET_KEY = FAKE_STRIPE_KEY;
+    process.env.STRIPE_PRO_PRICE_ID = FAKE_PRICE_ID;
+
+    const { PLAN_PRICES } = await import("@/lib/types");
+    const vitestGlobal = (await import("vitest")).vi;
+    vitestGlobal.resetModules();
+
+    let created: CheckoutSessionParams | null = null;
+    let retrievedId: string | null = null;
+    vitestGlobal.doMock("@/lib/stripe", () => ({
+      getStripe: () => ({
+        prices: {
+          retrieve: (id: string) => {
+            retrievedId = id;
+            return Promise.resolve({
+              id,
+              unit_amount: PLAN_PRICES.pro,
+              currency: "usd",
+              recurring: { interval: "month", interval_count: 1 },
+              active: true,
+              type: "recurring",
+            });
+          },
+        },
+        checkout: {
+          sessions: {
+            create: (params: CheckoutSessionParams) => {
+              created = params;
+              return Promise.resolve({ url: "https://stripe.test/session" });
+            },
+          },
+        },
+      }),
+    }));
+
+    try {
+      const { POST } = await import("@/app/api/checkout/route");
+      const request = new Request("http://localhost/api/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          plan: "pro",
+          gclid: "CjwKPhase3TestGclidValue",
+          utm_campaign: "fraudshield-search-phase2-v2",
+        }),
+      });
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      expect(retrievedId).toBe(FAKE_PRICE_ID);
+      expect(created).not.toBeNull();
+      const params = created as unknown as CheckoutSessionParams;
+
+      // Recurring, not one-time.
+      expect(params.mode).toBe("subscription");
+
+      // Dashboard Price passthrough - no inline amount may appear.
+      expect(params.line_items[0].price).toBe(FAKE_PRICE_ID);
+      expect(params.line_items[0].quantity).toBe(1);
+      expect(params.line_items[0].price_data).toBeUndefined();
+
+      // BOTH bags. subscription_data.metadata is what the PR 2 retention
+      // handlers read off the Subscription object.
+      expect(typeof params.metadata.attribution_source).toBe("string");
+      expect(params.metadata.attribution_source.length).toBeGreaterThan(0);
+      expect(typeof params.subscription_data.metadata.attribution_source).toBe(
+        "string",
+      );
+      expect(params.subscription_data.metadata.attribution_source).toBe(
+        params.metadata.attribution_source,
+      );
+      expect(params.subscription_data.metadata.user_id).toBe(
+        params.metadata.user_id,
+      );
+      expect(params.subscription_data.metadata.plan).toBe("pro");
+      expect(params.subscription_data.metadata.amount_cents).toBe(
+        String(PLAN_PRICES.pro),
+      );
+    } finally {
+      vitestGlobal.doUnmock("@/lib/stripe");
+      if (prevDemo === undefined) delete process.env.DEMO_MODE;
+      else process.env.DEMO_MODE = prevDemo;
+      if (prevKey === undefined) delete process.env.STRIPE_SECRET_KEY;
+      else process.env.STRIPE_SECRET_KEY = prevKey;
+      if (prevPrice === undefined) delete process.env.STRIPE_PRO_PRICE_ID;
+      else process.env.STRIPE_PRO_PRICE_ID = prevPrice;
+      vitestGlobal.resetModules();
+    }
+  });
+});
+
+// The Stripe metadata VALUE limit is 500 characters; the zod bound (mirrored
+// from /api/pay-intent) is 512. Without a clamp, a 501-512 char gclid on the
+// URL would make Stripe reject the session and hand the buyer a 500 - a
+// client-triggerable failure on the one route that takes money.
+describe("Phase 3 checkout: gclid clamped to the Stripe metadata limit", () => {
+  it("truncates an over-long gclid to 500 characters in both bags", async () => {
+    const prevDemo = process.env.DEMO_MODE;
+    const prevKey = process.env.STRIPE_SECRET_KEY;
+    const prevPrice = process.env.STRIPE_PRO_PRICE_ID;
+    process.env.DEMO_MODE = "false";
+    process.env.STRIPE_SECRET_KEY = FAKE_STRIPE_KEY;
+    process.env.STRIPE_PRO_PRICE_ID = FAKE_PRICE_ID;
+
+    const { PLAN_PRICES } = await import("@/lib/types");
+    const vitestGlobal = (await import("vitest")).vi;
+    vitestGlobal.resetModules();
+
+    let created: CheckoutSessionParams | null = null;
+    vitestGlobal.doMock("@/lib/stripe", () => ({
+      getStripe: () => ({
+        prices: {
+          retrieve: (id: string) =>
+            Promise.resolve({
+              id,
+              unit_amount: PLAN_PRICES.pro,
+              currency: "usd",
+              recurring: { interval: "month", interval_count: 1 },
+              active: true,
+              type: "recurring",
+            }),
+        },
+        checkout: {
+          sessions: {
+            create: (params: CheckoutSessionParams) => {
+              created = params;
+              return Promise.resolve({ url: "https://stripe.test/session" });
+            },
+          },
+        },
+      }),
+    }));
+
+    try {
+      const { POST } = await import("@/app/api/checkout/route");
+      // 512 chars: the maximum the zod schema accepts, 12 over the Stripe cap.
+      const longGclid = "Cj" + "a".repeat(510);
+      expect(longGclid.length).toBe(512);
+      const request = new Request("http://localhost/api/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plan: "pro", gclid: longGclid }),
+      });
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      const params = created as unknown as CheckoutSessionParams;
+      expect(params.metadata.gclid.length).toBe(500);
+      expect(params.subscription_data.metadata.gclid.length).toBe(500);
+      expect(longGclid.startsWith(params.metadata.gclid)).toBe(true);
+    } finally {
+      vitestGlobal.doUnmock("@/lib/stripe");
+      if (prevDemo === undefined) delete process.env.DEMO_MODE;
+      else process.env.DEMO_MODE = prevDemo;
+      if (prevKey === undefined) delete process.env.STRIPE_SECRET_KEY;
+      else process.env.STRIPE_SECRET_KEY = prevKey;
+      if (prevPrice === undefined) delete process.env.STRIPE_PRO_PRICE_ID;
+      else process.env.STRIPE_PRO_PRICE_ID = prevPrice;
+      vitestGlobal.resetModules();
+    }
+  });
+});
