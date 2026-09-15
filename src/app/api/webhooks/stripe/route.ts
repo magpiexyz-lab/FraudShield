@@ -120,5 +120,39 @@ export async function POST(request: Request) {
     });
   }
 
+  // Cancellation. Fires when a subscription actually ends - immediately, or at
+  // period end once a customer cancels in the Billing Portal. Without this the
+  // app would keep a cancelled customer on Pro forever, because nothing else
+  // ever writes status away from "active".
+  //
+  // Identity comes from stripe_subscription_id, NOT metadata: this event carries
+  // a Subscription object, which has no session metadata. That column is unique
+  // (001_initial.sql), and it is populated from session.subscription at checkout
+  // - a string only in subscription mode, which is why cancellation could not
+  // have been wired while the plan was a one-off payment.
+  //
+  // computeQuota gates on status === "active", so flipping the status is all
+  // that is needed to drop the user back to the free allowance. No quota write,
+  // no second source of truth.
+  if (event.type === "customer.subscription.deleted") {
+    const subscription = event.data.object as Stripe.Subscription;
+
+    const { error: cancelErr } = await supabase
+      .from("subscriptions")
+      .update({
+        status: "canceled",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("stripe_subscription_id", subscription.id);
+
+    if (cancelErr) {
+      console.error("[webhook] subscription cancel update error:", cancelErr);
+      return NextResponse.json(
+        { error: "Persistence error" },
+        { status: 500 },
+      );
+    }
+  }
+
   return NextResponse.json({ received: true });
 }

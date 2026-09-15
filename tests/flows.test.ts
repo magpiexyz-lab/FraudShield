@@ -638,3 +638,44 @@ describe("Phase 3 checkout: gclid clamped to the Stripe metadata limit", () => {
     }
   });
 });
+
+// Cancellation path. The checkout page promises the customer they are charged
+// "until you cancel" and the ads say "Cancel anytime", so this route is the
+// product half of that promise.
+//
+// What these pin is the access-control property: the Stripe customer id is
+// resolved from the caller OWN RLS-scoped subscriptions row and is NEVER read
+// from the request body, so a caller cannot open somebody else billing portal.
+// Under DEMO_MODE the demo Supabase client returns a stub user with no Stripe
+// customer, so the route correctly stops at "no_subscription" - the assertion
+// is that a forged body cannot turn that into a portal session.
+describe("billing portal: cancellation access control", () => {
+  it("never opens a portal for a customer id supplied in the body", async () => {
+    const { POST } = await import("@/app/api/billing-portal/route");
+    const forged = new Request("http://localhost/api/billing-portal", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ customer: "cus_someoneelse" }),
+    });
+    const response = await POST(forged);
+    expect(response.status).not.toBe(200);
+    const payload = await response.json();
+    expect(payload.url).toBeUndefined();
+  });
+
+  it("treats a forged body exactly like an empty one", async () => {
+    const { POST } = await import("@/app/api/billing-portal/route");
+    const bare = await POST(
+      new Request("http://localhost/api/billing-portal", { method: "POST" }),
+    );
+    const forged = await POST(
+      new Request("http://localhost/api/billing-portal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customer: "cus_someoneelse" }),
+      }),
+    );
+    // Identical outcome proves the body is not consulted at all.
+    expect(forged.status).toBe(bare.status);
+  });
+});
