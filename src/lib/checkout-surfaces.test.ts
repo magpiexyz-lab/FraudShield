@@ -34,7 +34,7 @@ describe.each(Object.entries(SURFACES))("%s upgrade surface", (_name, file) => {
   });
 
   it("fires checkout_start so both surfaces report the same funnel", () => {
-    expect(read(file)).toContain("trackCheckoutStart(");
+    expect(read(file)).toContain("trackCheckoutStarted(");
   });
 
   it("releases the fire-once latch when the flow does not navigate", () => {

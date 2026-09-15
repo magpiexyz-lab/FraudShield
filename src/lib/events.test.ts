@@ -25,7 +25,17 @@ describe("events.ts stays in sync with experiment/EVENTS.yaml", () => {
   it("parses the declared event list", () => {
     const declared = declaredEvents();
     expect(declared.size).toBeGreaterThan(5);
-    expect(declared.has("checkout_start")).toBe(true);
+    // The five Phase 3 paid-funnel names are read literally by the fleet
+    // readiness check, so pin all of them rather than a single sample.
+    for (const name of [
+      "checkout_started",
+      "subscription_activated",
+      "invoice_paid",
+      "payment_failed",
+      "subscription_canceled",
+    ]) {
+      expect(declared.has(name)).toBe(true);
+    }
   });
 
   it("declares every event in EVENT_FUNNEL_MAP", () => {

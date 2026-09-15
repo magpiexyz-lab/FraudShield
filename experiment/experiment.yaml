@@ -67,7 +67,7 @@ hypotheses:
     category: monetize
     statement: ">8% of users who receive a fraud score complete a paid checkout after hitting the free-scan limit"
     metric:
-      formula: "pay_success / activate"
+      formula: "subscription_activated / activate"
       threshold: 0.08
       operator: gte
     priority_score: 78
@@ -207,17 +207,17 @@ behaviors:
     tests:
       - "Free-scan limit prompt appears after the free quota is exhausted"
       - "Stripe checkout redirects back to a confirmation state"
-      - "pay_success event fires on completed checkout"
+      - "subscription_activated event fires on completed checkout"
       - "The Upgrade CTA is hidden until the user is both signed in and activated"
       - "The attribution relay prefers the user record and falls back to the client value"
     level: 3
   - id: b-07
     actor: system
-    trigger: "stripe webhook checkout.session.completed"
+    trigger: "stripe webhooks: checkout.session.completed, invoice.paid, invoice.payment_failed, customer.subscription.deleted"
     hypothesis_id: h-04
-    given: "A Stripe checkout session completes"
+    given: "A Stripe subscription lifecycle event arrives"
     when: "The webhook is received"
-    then: "The user's subscription is marked active and their scan quota is increased"
+    then: "The subscription row reflects the new state - active on first payment and on renewal, past_due on a failed payment, canceled when it ends - and the matching paid-funnel event fires"
     tests:
       - "subscriptions table row is set to status='active' for the user"
       - "User scan quota reflects the paid plan"

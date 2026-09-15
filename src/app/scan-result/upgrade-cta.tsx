@@ -18,7 +18,7 @@ import { useRef, useState } from "react";
 import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { trackCheckoutStart } from "@/lib/events";
+import { trackCheckoutStarted } from "@/lib/events";
 import { readAttribution } from "@/lib/attribution";
 import {
   interpretCheckoutResponse,
@@ -83,7 +83,7 @@ export function UpgradeCta({
 
     // checkout_start also fires from /pricing. Both upgrade surfaces emit it so
     // the monetize funnel counts the same action wherever it was taken.
-    trackCheckoutStart({ plan: PLAN_ID });
+    trackCheckoutStarted({ plan: PLAN_ID, surface: "scan_result" });
 
     // Read attribution at click time. This is the FALLBACK source - the route
     // prefers the acquisition_* values persisted on the user record at signup.

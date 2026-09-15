@@ -112,7 +112,7 @@ export async function POST(request: Request) {
       );
     }
 
-    await trackServerEvent("pay_success", userId, {
+    await trackServerEvent("subscription_activated", userId, {
       plan,
       amount_cents: planAmount,
       amount: planAmount,
@@ -151,6 +151,99 @@ export async function POST(request: Request) {
         { error: "Persistence error" },
         { status: 500 },
       );
+    }
+
+    // Resolve the owner for analytics. The Subscription object carries no
+    // session metadata, so the row we just updated is the identity source.
+    const { data: canceledRow } = await supabase
+      .from("subscriptions")
+      .select("user_id, plan")
+      .eq("stripe_subscription_id", subscription.id)
+      .maybeSingle();
+    const canceled = canceledRow as { user_id?: string; plan?: string } | null;
+    if (canceled?.user_id) {
+      await trackServerEvent("subscription_canceled", canceled.user_id, {
+        plan: canceled.plan ?? "",
+        provider: "stripe",
+      });
+    }
+  }
+
+  // Renewal. invoice.paid also fires for the FIRST invoice of a new
+  // subscription, which checkout.session.completed already reported - counting
+  // both would double-count every new sale as a renewal too. billing_reason
+  // separates them.
+  //
+  // NOTE on the payload shape: Stripe SDK 22.2.0 Invoice has NO top-level
+  // `subscription` field. The id and metadata live under
+  // invoice.parent.subscription_details, so reading invoice.subscription here
+  // would not compile.
+  if (event.type === "invoice.paid" || event.type === "invoice.payment_failed") {
+    const invoice = event.data.object as Stripe.Invoice;
+    const parent = invoice.parent as {
+      subscription_details?: { subscription?: string | { id?: string } };
+    } | null;
+    const rawSub = parent?.subscription_details?.subscription;
+    const subscriptionId =
+      typeof rawSub === "string" ? rawSub : rawSub?.id ?? null;
+
+    const isRenewal = invoice.billing_reason !== "subscription_create";
+
+    if (subscriptionId && isRenewal) {
+      const { data: ownerRow } = await supabase
+        .from("subscriptions")
+        .select("user_id, plan")
+        .eq("stripe_subscription_id", subscriptionId)
+        .maybeSingle();
+      const owner = ownerRow as { user_id?: string; plan?: string } | null;
+
+      if (owner?.user_id) {
+        if (event.type === "invoice.paid") {
+          // Renewal succeeded: keep the plan active and roll the quota window
+          // forward so the subscriber gets their next 200 scans.
+          const { error: renewErr } = await supabase
+            .from("subscriptions")
+            .update({
+              status: "active",
+              current_period_start: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            })
+            .eq("stripe_subscription_id", subscriptionId);
+          if (renewErr) {
+            console.error("[webhook] renewal update error:", renewErr);
+            return NextResponse.json(
+              { error: "Persistence error" },
+              { status: 500 },
+            );
+          }
+          await trackServerEvent("invoice_paid", owner.user_id, {
+            amount: invoice.amount_paid ?? 0,
+            billing_reason: invoice.billing_reason ?? "",
+            provider: "stripe",
+          });
+        } else {
+          // Dunning. Stripe retries on its own schedule; past_due drops the
+          // user to the free allowance via computeQuota until it clears.
+          const { error: failErr } = await supabase
+            .from("subscriptions")
+            .update({
+              status: "past_due",
+              updated_at: new Date().toISOString(),
+            })
+            .eq("stripe_subscription_id", subscriptionId);
+          if (failErr) {
+            console.error("[webhook] payment failed update error:", failErr);
+            return NextResponse.json(
+              { error: "Persistence error" },
+              { status: 500 },
+            );
+          }
+          await trackServerEvent("payment_failed", owner.user_id, {
+            amount: invoice.amount_due ?? 0,
+            provider: "stripe",
+          });
+        }
+      }
     }
   }
 

@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { trackCheckoutStart, trackPaywallShown } from "@/lib/events";
+import { trackCheckoutStarted, trackPaywallShown } from "@/lib/events";
 import { readAttribution } from "@/lib/attribution";
 import {
   interpretCheckoutResponse,
@@ -181,7 +181,7 @@ export function PricingPlans() {
     setState("redirecting");
     setErrorMsg("");
 
-    trackCheckoutStart({ plan: PAID_PLAN_ID });
+    trackCheckoutStarted({ plan: PAID_PLAN_ID, surface: "pricing" });
 
     // utm_campaign is passed explicitly rather than left to PostHog super-
     // properties, which are registered from sessionStorage and do not survive a
