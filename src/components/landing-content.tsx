@@ -8,6 +8,7 @@ import { trackDemoView, trackCtaClick } from "@/lib/events";
 import { PLANS } from "@/app/pricing/plans";
 import { BrandMark } from "@/components/brand-logo";
 import { HEADER_SURFACE } from "@/components/nav-bar";
+import { SUPPORT_EMAIL } from "@/lib/billing-copy";
 
 /* ------------------------------------------------------------------ *
  * FraudShield landing — "Forensic Instrument" design system.
@@ -19,6 +20,15 @@ import { HEADER_SURFACE } from "@/components/nav-bar";
  * Variant object as flat props and own the `visit_landing` mount event,
  * so this component fires only `demo_view` and `cta_click`.
  * ------------------------------------------------------------------ */
+
+/* Footer link treatment. The severity palette (teal / amber / vermilion) and
+   the signal cyan are reserved for fraud-score state, so a footer link cannot
+   spend colour to announce that it is a link. It sits at the same muted tone
+   as the tagline beside it and earns its affordance from a faint rule; hover
+   brightens the text and the rule together. Keyboard focus borrows the
+   hairline accent already drawn across the top of the footer. */
+const FOOTER_LINK =
+  "rounded-[2px] text-[oklch(0.82_0.014_244)] underline decoration-[oklch(0.82_0.014_244_/_35%)] underline-offset-4 transition-colors hover:text-foreground hover:decoration-[oklch(0.74_0.130_213_/_70%)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[oklch(0.74_0.130_213)]";
 
 export type LandingContentProps = {
   slug?: string;
@@ -1391,6 +1401,25 @@ export function LandingContent(props: LandingContentProps) {
             <p className="font-mono text-[11px] text-[oklch(0.82_0.014_244)]">
               Forensic fraud scores in seconds · built for small operators
             </p>
+
+            {/* The only two interactive elements in the footer, and the only
+                legal and contact surface cold ad traffic sees before the
+                signup wall. They get their own rows at normal tracking: the
+                support address is an unbreakable ~125px token, and the 0.16em
+                tracking on the status row above would push it past the
+                viewport at 393px. The address comes from billing-copy, so it
+                cannot drift away from the one printed on /terms. */}
+            <nav
+              aria-label="Legal and support"
+              className="flex flex-col items-start gap-1.5 font-mono text-[11px] sm:items-end"
+            >
+              <Link href="/terms" className={FOOTER_LINK}>
+                Terms
+              </Link>
+              <a href={`mailto:${SUPPORT_EMAIL}`} className={FOOTER_LINK}>
+                {SUPPORT_EMAIL}
+              </a>
+            </nav>
           </div>
         </div>
       </footer>
