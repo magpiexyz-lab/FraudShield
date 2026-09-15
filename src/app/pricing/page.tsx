@@ -9,6 +9,11 @@ import {
 import { buttonVariants } from "@/components/ui/button";
 import { PricingPlans, ScrollReveal } from "./pricing-plans";
 import { FREE_QUOTA, PRO_QUOTA } from "./plans";
+import {
+  BILLING_FAQS,
+  SUPPORT_EMAIL,
+  SUPPORT_RESPONSE_SLA,
+} from "@/lib/billing-copy";
 
 export const metadata: Metadata = {
   title: "Pricing | FraudShield",
@@ -21,7 +26,7 @@ export const metadata: Metadata = {
   },
 };
 
-const FAQS: ReadonlyArray<{ q: string; a: string }> = [
+const PRODUCT_FAQS: ReadonlyArray<{ q: string; a: string }> = [
   {
     q: "What happens when I hit my free scan limit?",
     a: `The Free plan includes ${FREE_QUOTA} scans. Once you've used them, your next scan prompts you to upgrade to Pro — your earlier results stay available.`,
@@ -31,14 +36,28 @@ const FAQS: ReadonlyArray<{ q: string; a: string }> = [
     a: "No. FraudShield never persists your raw files. We extract metadata and forensic signals in memory, return your fraud score, and discard the document.",
   },
   {
-    q: "Can I cancel anytime?",
-    a: "Yes. Pro is month-to-month with no contract. Cancel whenever you like and you keep access through the end of your billing period.",
-  },
-  {
     q: "What document types can FraudShield analyze?",
     a: "Pay stubs, bank statements, and invoices — as PDF or image files. Each gets a 0–100 fraud score with a per-signal forensic breakdown.",
   },
 ];
+
+// The billing answers are spliced in from the shared copy module rather than
+// retyped here. /terms, this page and the landing footer have to state one
+// cancellation policy between them; a second copy of the sentence is a second
+// policy, and a customer will hold us to whichever one they read.
+//
+// Order is the order a buyer asks in: what the product does to their files
+// first, then, kept adjacent as one block, what they are signing up to pay.
+const FAQS: ReadonlyArray<{ q: string; a: string }> = [
+  ...PRODUCT_FAQS,
+  ...BILLING_FAQS,
+];
+
+// One inline-link treatment, reused. The page already spends its accent on
+// signal-cyan, so links borrow it for the underline instead of introducing a
+// second colour, and carry a visible focus ring for keyboard users.
+const INLINE_LINK =
+  "rounded-sm text-foreground underline decoration-signal/40 underline-offset-4 transition-colors hover:text-signal hover:decoration-signal focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 
 const TRUST_SEGMENTS = [
   "Independent landlords",
@@ -219,8 +238,8 @@ export default function PricingPage() {
                 Frequently asked
               </h2>
               <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-                Quick answers on quota, data handling, billing, and supported
-                document types.
+                Quick answers on quota, data handling, document types, and what
+                you are committing to when you upgrade to Pro.
               </p>
             </div>
             <div className="relative border-l border-signal/20 pl-6">
@@ -253,6 +272,18 @@ export default function PricingPage() {
                   </AccordionItem>
                 ))}
               </Accordion>
+              <p className="mt-8 border-t border-border/40 pt-6 text-sm leading-relaxed break-words text-muted-foreground">
+                Something not answered here? Email{" "}
+                <a href={`mailto:${SUPPORT_EMAIL}`} className={INLINE_LINK}>
+                  {SUPPORT_EMAIL}
+                </a>{" "}
+                and we will reply within {SUPPORT_RESPONSE_SLA}. The full
+                billing terms are on the{" "}
+                <Link href="/terms" className={INLINE_LINK}>
+                  terms page
+                </Link>
+                .
+              </p>
             </div>
           </div>
         </ScrollReveal>
