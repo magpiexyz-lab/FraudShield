@@ -91,6 +91,11 @@ export async function POST(request: Request) {
         status: "active",
         plan,
         scan_quota: planQuota,
+        // Billing anchor for the monthly scan quota. Checkout completing IS the
+        // start of the first period; the scan route rolls this forward in whole
+        // months, so quota resets correctly without depending on a renewal
+        // webhook having fired. See 007_subscription_period.sql.
+        current_period_start: new Date().toISOString(),
         stripe_customer_id:
           typeof session.customer === "string" ? session.customer : null,
         stripe_subscription_id:
