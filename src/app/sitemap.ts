@@ -16,8 +16,10 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${b}/dashboard`, lastModified: now, changeFrequency: 'weekly' as const, priority: 0.7 },
     { url: `${b}/login`, lastModified: now, changeFrequency: 'weekly' as const, priority: 0.7 },
     { url: `${b}/pricing`, lastModified: now, changeFrequency: 'weekly' as const, priority: 0.7 },
+    { url: `${b}/auth/reset-password`, lastModified: now, changeFrequency: 'weekly' as const, priority: 0.7 },
     { url: `${b}/scan-result`, lastModified: now, changeFrequency: 'weekly' as const, priority: 0.7 },
     { url: `${b}/signup`, lastModified: now, changeFrequency: 'weekly' as const, priority: 0.7 },
+    { url: `${b}/terms`, lastModified: now, changeFrequency: 'weekly' as const, priority: 0.7 },
     { url: `${b}/v/demo-fixture-variant`, lastModified: now, changeFrequency: 'weekly' as const, priority: 0.7 },
   ];
 }
