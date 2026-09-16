@@ -425,6 +425,32 @@ test.describe("b-06: user has used all free scans and clicks Upgrade", () => {
       );
     },
   );
+
+  test("The Upgrade CTA is hidden until the user is both signed in and activated", async ({
+    page,
+  }) => {
+    // Moved here from the retired b-10 block. It needs no auth and no scan, so
+    // unlike the rest of b-06 it runs everywhere - including CI, where
+    // DEMO_MODE is NOT set (playwright.config.ts only sets it when Supabase is
+    // unreachable). This is a real assertion on every run, not a skipped one.
+    //
+    // Now that the CTA opens a real Stripe subscription, this guard is what
+    // keeps a signed-out visitor away from a charge surface entirely.
+    await page.goto("/scan-result");
+    await expect(
+      page.getByRole("button", { name: /upgrade to pro/i }),
+    ).toHaveCount(0);
+  });
+
+  test(
+    "The attribution relay prefers the user record and falls back to the client value",
+    async ({ page: _page }) => {
+      test.skip(
+        true,
+        "Precedence logic, not a browser behaviour - covered exhaustively by resolvePayIntentAttribution in src/lib/attribution.test.ts (see the last-touch precedence describe). The client sends gclid + utm_campaign to /api/checkout as a FALLBACK; the route resolves the winner server-side.",
+      );
+    },
+  );
 });
 
 // =====================================================================
@@ -502,59 +528,5 @@ test.describe("landing bugs #3 + #4: pay-stub mockup, pricing visibility", () =>
     await expect(demo.getByText(/net pay/i).first()).toBeVisible();
     // Look for at least one $ amount on the mockup (e.g. "$1,847.20" or similar).
     await expect(demo.locator('text=/\\$[0-9][0-9,]*\\.[0-9]{2}/').first()).toBeVisible();
-  });
-});
-
-// =====================================================================
-// b-10 — fake-door "Upgrade to Pro" pay-intent probe (Google Ads Phase 2)
-// =====================================================================
-test.describe("b-10: activated user clicks the fake-door Upgrade CTA", () => {
-  test.beforeEach(async ({ page }) => {
-    await blockAnalytics(page);
-  });
-
-  test("The Upgrade CTA is hidden until the user is both signed in and activated", async ({
-    page,
-  }) => {
-    // The negative case needs no auth and no scan, so unlike the rest of this
-    // block it runs everywhere. It is also the assertion that matters most:
-    // if the guard ever regresses, the pay-intent numerator silently fills with
-    // users who never saw a fraud score, and the Phase 2 verdict measures
-    // curiosity instead of willingness to pay.
-    await page.goto("/scan-result");
-    await expect(
-      page.getByRole("button", { name: /upgrade to pro/i }),
-    ).toHaveCount(0);
-  });
-
-  test("Clicking Upgrade shows the early-access confirmation without a charge", async ({
-    page,
-  }) => {
-    test.skip(
-      process.env.DEMO_MODE === "true",
-      "Requires a real scan to render the result view (bug #1 removed the seed-data fallback)",
-    );
-    await page.goto("/scan-result");
-    await page.getByRole("button", { name: /upgrade to pro/i }).click();
-    await expect(page.getByText(/pro early-access list/i)).toBeVisible();
-    // The fake door must never open checkout or ask for an email again.
-    await expect(page).toHaveURL(/scan-result/);
-    await expect(page.getByRole("textbox", { name: /email/i })).toHaveCount(0);
-  });
-
-  test("pay_intent fires with the campaign passed explicitly", async ({ page }) => {
-    test.skip(
-      process.env.DEMO_MODE === "true",
-      "Requires a real scan to render the result view (bug #1 removed the seed-data fallback)",
-    );
-    await page.goto("/scan-result");
-    await page.getByRole("button", { name: /upgrade to pro/i }).click();
-    const marker = await page.evaluate(() =>
-      window.sessionStorage.getItem("analytics:pay_intent"),
-    );
-    expect(marker).not.toBeNull();
-    const parsed = JSON.parse(marker as string);
-    expect(parsed.properties.price_cents).toBe(6000);
-    expect(parsed.properties).toHaveProperty("utm_campaign");
   });
 });

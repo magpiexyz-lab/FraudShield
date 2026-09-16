@@ -365,3 +365,28 @@ notes_phase2:
     runs. Deliberately NOT built in Aug 2026: there was no evidence of a problem to fix.'
   ad_strength: Average, deliberately. H1 and H2 are pinned so the product name and value prop always appear,
     which caps Ad Strength. Ad Strength is a Google content recommendation and does not affect the auction.
+  phase2_closeout: |-
+    PAUSED, NOT KILLED. The operator paused campaign fraudshield-search-phase2-v2
+    on 2026-09-12. This was a deliberate pause, not a kill.
+    MEASURED: 85 ad clicks, 15 paywall_shown asks from real users, 4 genuine paid
+    pay-intents. The 4 were verified in the DB against the email + gclid +
+    attribution_source filters, with team/test/probe rows excluded (same filter
+    discipline as v1_outcome).
+    AGAINST thresholds.pass_bar: the ">= 3 pay_intents" half is cleared (4 >= 3).
+    The ">= 75 asks" half is NOT -- 15 asks is a fifth of the bar. Per this
+    file's own no_go_signal language, that makes this state INCONCLUSIVE and NOT
+    a verdict: the ask was never put to enough people. The kill rule does not
+    fire either -- it requires 0 pay_intents across >= 30 asks, and this window
+    has 4 pay-intents across 15 asks. Neither promote nor kill is satisfied by
+    the measured data.
+    OVERRIDE (explicit and auditable): the team elected to proceed to Phase 3 on
+    the strength of the 4/15 rate despite the ask count. This is a judgement call
+    recorded as an override -- it is not a pass bar that was met, and nothing
+    here should be read as a GO.
+    DENOMINATOR CAVEAT: email signup confirmations were silently failing during
+    the measurement window -- Supabase's built-in SMTP is capped at 2 emails/hour
+    (fixed 2026-09-11/12). Signups that never received a confirmation could not
+    reach the paywall, so the 15-ask denominator is itself understated by an
+    unknown amount.
+    NOTE: the phase: field above is a record, not a gate. Editing it disarms
+    nothing -- /ads-ready reads the phase it checks from its CLI argument.

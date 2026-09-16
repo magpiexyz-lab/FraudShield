@@ -451,8 +451,8 @@ function ResultView({
                 Linking out sent the user to a card that told them to scan a
                 document — the one thing a quota-exhausted user cannot do — and
                 then back here again. It stays an anchor rather than a second
-                UpgradeCta because that component owns fire-once pay_intent
-                state; two instances could record the same intent twice. */}
+                UpgradeCta because that component owns fire-once checkout
+                state; two live instances could open two Stripe sessions. */}
             <Link
               href="#upgrade-pro"
               className={`${buttonVariants()} h-11 shrink-0 rounded-pill bg-signal px-6 text-signal-foreground hover:bg-signal/90`}
@@ -548,7 +548,7 @@ function FingerprintField({ term, value }: { term: string; value: string }) {
  * fabricated preview would misrepresent what is actually behind the lock.
  *
  * Fires `paywall_shown` once per mount, never per render: the measurement is
- * pay_intent over paywall_shown, and re-render inflation would quietly destroy
+ * checkout_start over paywall_shown, and re-render inflation would destroy
  * the denominator this event exists to supply.
  */
 function LockedSignals({

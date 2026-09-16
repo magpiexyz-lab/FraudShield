@@ -8,27 +8,36 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { trackCheckoutStart, trackPayIntent, trackPaywallShown } from "@/lib/events";
-import { getDistinctId } from "@/lib/analytics";
+import { trackCheckoutStarted, trackPaywallShown } from "@/lib/events";
 import { readAttribution } from "@/lib/attribution";
+import {
+  interpretCheckoutResponse,
+  CHECKOUT_NETWORK_MESSAGE,
+  NOT_CONFIGURED_FALLBACK_MESSAGE,
+  type CheckoutOutcome,
+} from "@/lib/checkout-client";
 import { createClient } from "@/lib/supabase";
-import { PLAN_PRICES } from "@/lib/types";
 import { PLANS, PAID_PLAN_ID, type PlanTier } from "./plans";
 
-// While the Google Ads Phase 2 value screen runs, "Choose Pro" IS the pay-intent
-// signal — it is the most explicit thing a user can do short of paying, and it
-// happens at the moment they decide. Routing them elsewhere to click a second
-// button lost people exactly there.
+// Phase 3: "Choose Pro" opens a REAL Stripe subscription checkout. The fake
+// door is retired - no pay_intent event, no early-access confirmation, and no
+// state that claims success before Stripe has taken anything.
 //
-// The activation gate still holds: pay_intent only fires for a user who has
-// received a fraud score, and /api/pay-intent enforces that server-side too. A
-// user who has not scanned anything sees "try it first" instead, which is
-// actionable for them — they still have free scans.
+// Two states carry the weight here:
+//   - "not_configured": /api/checkout answered 503 because Stripe is not wired
+//     up in this environment. That is a product state, not a failure, so the
+//     card swaps to an inline waitlist and still captures the demand signal.
+//   - "error": something actually went wrong. The card returns to idle so the
+//     user can retry - a rate limit or a dropped connection must never brick
+//     the upgrade path for the rest of the page session.
+//
+// The activation gate stays on this surface: someone who has never seen a
+// fraud score is pointed at a free scan, which is something they can act on.
 type CheckoutState =
   | "idle"
   | "redirecting"
   | "error"
-  | "recorded"
+  | "not_configured"
   | "needs_activation";
 
 /**
@@ -111,6 +120,7 @@ export function PricingPlans() {
 
   const [state, setState] = useState<CheckoutState>("idle");
   const [errorMsg, setErrorMsg] = useState("");
+  const [notConfiguredMsg, setNotConfiguredMsg] = useState("");
   // null while loading. /pricing is login-gated by the middleware, so every
   // visitor here is authenticated — what varies is whether they have activated.
   const [user, setUser] = useState<string | null>(null);
@@ -142,51 +152,86 @@ export function PricingPlans() {
     };
   }, []);
 
+  // needs_activation must never be terminal. The activation probe is async, so
+  // a user whose scan count resolves AFTER they clicked would otherwise stay on
+  // the "try it first" pointer until a manual page reload, with no path to
+  // checkout. Clearing it here restores the upgrade CTA as soon as the data
+  // says they qualify. (behaviour-verifier finding: B2 wrong mutation.)
+  useEffect(() => {
+    if (user && hasActivated) {
+      setState((s) => (s === "needs_activation" ? "idle" : s));
+    }
+  }, [user, hasActivated]);
+
   async function onChoosePro() {
-    // Render guard: only an authenticated, activated user can express pay intent.
+    // Render guard: only an authenticated, activated user is offered checkout.
+    // Activation probe still in flight. Do NOT latch into needs_activation:
+    // that state was terminal, so an activated user who clicked before the
+    // probe resolved lost the upgrade path for the rest of the page session.
+    if (hasActivated === null) return;
     if (!user || !hasActivated) {
       setState("needs_activation");
       return;
     }
+    // Fire-once latch: guards against a double-click opening two Stripe
+    // sessions. It is released again below on every outcome that does not
+    // navigate away.
     if (firedRef.current) return;
     firedRef.current = true;
     setState("redirecting");
     setErrorMsg("");
 
-    // checkout_start still fires: the user did begin the upgrade flow, and this
-    // remains the monetize entry point once real payment returns in Phase 3.
-    trackCheckoutStart({ plan: PAID_PLAN_ID });
+    trackCheckoutStarted({ plan: PAID_PLAN_ID, surface: "pricing" });
 
-    // utm_campaign is passed explicitly rather than left to PostHog's
-    // super-property, which is registered from sessionStorage and does not
-    // survive a return visit.
+    // utm_campaign is passed explicitly rather than left to PostHog super-
+    // properties, which are registered from sessionStorage and do not survive a
+    // return visit. The route treats both values as an untrusted FALLBACK - the
+    // acquisition_* values persisted on the user record win.
     const attribution = readAttribution(
       typeof window === "undefined" ? "" : window.location.search,
       typeof window === "undefined" ? null : window.sessionStorage,
     );
-    trackPayIntent({
-      plan: PAID_PLAN_ID,
-      price_cents: PLAN_PRICES[PAID_PLAN_ID],
-      gclid: attribution.gclid,
-      utm_campaign: attribution.utm_campaign ?? "",
-    });
 
+    let outcome: CheckoutOutcome;
     try {
-      await fetch("/api/pay-intent", {
+      const res = await fetch("/api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           plan: PAID_PLAN_ID,
           gclid: attribution.gclid,
           utm_campaign: attribution.utm_campaign,
-          distinct_id: getDistinctId(),
         }),
       });
+      let payload: unknown = null;
+      try {
+        payload = await res.json();
+      } catch {
+        // Non-JSON body (proxy error page, empty 502): decide on status alone.
+      }
+      outcome = interpretCheckoutResponse(res.status, payload);
     } catch {
-      // The analytics event already fired, which is the primary signal. A failed
-      // row write must not show an error for something that cost them nothing.
+      outcome = { kind: "error", message: CHECKOUT_NETWORK_MESSAGE };
     }
-    setState("recorded");
+
+    if (outcome.kind === "redirect") {
+      // Leaving the app: keep the latch closed for the rest of this document.
+      window.location.href = outcome.url;
+      return;
+    }
+
+    // Nothing was charged and we are staying on the page, so the user must be
+    // able to try again.
+    firedRef.current = false;
+
+    if (outcome.kind === "not_configured") {
+      setNotConfiguredMsg(outcome.message);
+      setState("not_configured");
+      return;
+    }
+
+    setErrorMsg(outcome.message);
+    setState("error");
   }
 
   return (
@@ -200,6 +245,7 @@ export function PricingPlans() {
             style={{ animationDelay: `${index * 90}ms` }}
             checkoutState={plan.id === PAID_PLAN_ID ? state : "idle"}
             onUpgrade={plan.id === PAID_PLAN_ID ? onChoosePro : undefined}
+            notConfiguredMsg={plan.id === PAID_PLAN_ID ? notConfiguredMsg : ""}
           />
         ))}
       </div>
@@ -231,16 +277,18 @@ export function PricingPlans() {
 function PlanCard({
   plan,
   checkoutState,
+  notConfiguredMsg,
   onUpgrade,
   style,
 }: {
   plan: PlanTier;
   checkoutState: CheckoutState;
+  notConfiguredMsg?: string;
   onUpgrade?: () => void;
   style?: React.CSSProperties;
 }) {
   const redirecting = checkoutState === "redirecting";
-  const recorded = checkoutState === "recorded";
+  const notConfigured = checkoutState === "not_configured";
   const needsActivation = checkoutState === "needs_activation";
 
   return (
@@ -257,17 +305,17 @@ function PlanCard({
     >
       {plan.featured && (
         <Badge className="absolute -top-3 right-7 border-transparent bg-signal px-3 py-1 font-mono text-[0.7rem] tracking-wide text-signal-foreground uppercase">
-          {recorded ? "You're on the list" : "Most popular"}
+          {notConfigured ? "Coming soon" : "Most popular"}
         </Badge>
       )}
 
       <header className="space-y-1">
         <h2 className="font-heading text-xl font-semibold tracking-tight text-foreground">
-          {recorded ? "You're on the Pro early-access list" : plan.name}
+          {notConfigured ? "Pro upgrade — coming soon" : plan.name}
         </h2>
         <p className="text-sm leading-relaxed text-muted-foreground">
-          {recorded
-            ? "We'll email you when it's live. You have not been charged."
+          {notConfigured
+            ? notConfiguredMsg || NOT_CONFIGURED_FALLBACK_MESSAGE
             : plan.tagline}
         </p>
       </header>
@@ -322,8 +370,8 @@ function PlanCard({
 
       <div className="mt-6">
         {onUpgrade ? (
-          recorded ? (
-            <ProEarlyAccessConfirmation />
+          notConfigured ? (
+            <ProWaitlistForm />
           ) : needsActivation ? (
             <TryItFirstPointer />
           ) : (
@@ -331,7 +379,7 @@ function PlanCard({
               type="button"
               onClick={onUpgrade}
               disabled={redirecting}
-              aria-label={redirecting ? "Recording your interest" : plan.cta}
+              aria-label={redirecting ? "Opening secure checkout" : plan.cta}
               className={cn(
                 "h-12 w-full rounded-full bg-signal text-base font-semibold text-signal-foreground",
                 "transition-all duration-200 hover:bg-signal/90 hover:shadow-[var(--shadow-signal-glow)]",
@@ -341,7 +389,7 @@ function PlanCard({
               {redirecting ? (
                 <>
                   <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-                  <span>One moment…</span>
+                  <span>Securing checkout…</span>
                 </>
               ) : (
                 <>
@@ -369,20 +417,109 @@ function PlanCard({
 }
 
 /**
- * Shown in the Pro card after a pay_intent has been recorded. This is the honest
- * confirmation the Phase 2 brief requires: no charge, no checkout, and we do NOT
- * ask for an email — the user is signed in, so we already have it.
+ * Bug #2 — Inline waitlist form rendered in the Pro card slot when
+ * /api/checkout reports Stripe is not yet configured. Reuses the same
+ * Forensic Instrument visual tokens (signal-cyan + glass) so the swap
+ * is in-place rather than a jarring modal. Posts to the existing
+ * /api/waitlist route with source: "pro-upgrade" — the row itself is
+ * the demand signal (no new analytics events per the bug-fix plan).
  */
-function ProEarlyAccessConfirmation() {
+function ProWaitlistForm() {
+  type SubmitState = "idle" | "submitting" | "success" | "error";
+  const [email, setEmail] = useState("");
+  const [submitState, setSubmitState] = useState<SubmitState>("idle");
+  const [errorMsg, setErrorMsg] = useState("");
+
+  async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (submitState === "submitting" || submitState === "success") return;
+    const trimmed = email.trim();
+    if (!trimmed) {
+      setSubmitState("error");
+      setErrorMsg("Enter your email to join the waitlist.");
+      return;
+    }
+    setSubmitState("submitting");
+    setErrorMsg("");
+    try {
+      const res = await fetch("/api/waitlist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: trimmed, source: "pro-upgrade" }),
+      });
+      if (res.status === 201 || res.ok) {
+        setSubmitState("success");
+        return;
+      }
+      throw new Error(`waitlist failed (${res.status})`);
+    } catch {
+      setSubmitState("error");
+      setErrorMsg("Couldn't join the waitlist. Please try again.");
+    }
+  }
+
+  if (submitState === "success") {
+    return (
+      <p
+        role="status"
+        className={cn(
+          "flex items-center justify-center gap-2 rounded-full px-4 py-3 text-sm font-medium",
+          "bg-signal/10 text-signal",
+        )}
+      >
+        <Check className="size-4" aria-hidden="true" />
+        You&apos;re on the list — we&apos;ll email you when Pro launches.
+      </p>
+    );
+  }
+
   return (
-    <div className="rounded-2xl border border-signal/30 bg-signal/5 p-5 text-center">
-      <p className="text-sm font-medium text-foreground">
-        You&apos;re on the Pro early-access list
-      </p>
-      <p className="mt-2 text-sm text-muted-foreground">
-        We&apos;ll email you when it&apos;s live. You have not been charged.
-      </p>
-    </div>
+    <form onSubmit={onSubmit} className="flex flex-col gap-2" noValidate>
+      <label htmlFor="pro-waitlist-email" className="sr-only">
+        Email address for Pro upgrade waitlist
+      </label>
+      <Input
+        id="pro-waitlist-email"
+        type="email"
+        inputMode="email"
+        autoComplete="email"
+        required
+        placeholder="you@company.com"
+        value={email}
+        onChange={(e) => {
+          setEmail(e.target.value);
+          if (submitState === "error") setSubmitState("idle");
+        }}
+        className="h-12 rounded-full border-border/70 bg-background/60 px-5 text-base"
+        aria-invalid={submitState === "error" ? "true" : undefined}
+      />
+      <Button
+        type="submit"
+        disabled={submitState === "submitting"}
+        className={cn(
+          "h-12 w-full rounded-full bg-signal text-base font-semibold text-signal-foreground",
+          "transition-all duration-200 hover:bg-signal/90 hover:shadow-[var(--shadow-signal-glow)]",
+          "focus-visible:ring-signal/50",
+        )}
+      >
+        {submitState === "submitting" ? (
+          <>
+            <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+            <span>Adding you…</span>
+          </>
+        ) : (
+          <>
+            <BellRing className="size-4" aria-hidden="true" />
+            <span>Notify me</span>
+          </>
+        )}
+      </Button>
+      {submitState === "error" && errorMsg ? (
+        <p role="alert" className="text-xs font-medium text-fraud">
+          {errorMsg}
+        </p>
+      ) : null}
+    </form>
   );
 }
 
@@ -433,7 +570,7 @@ function TryItFirstPointer() {
  * Three fields only. Email is never asked for - the visitor is signed in, so we
  * already have it, and the route reads it off the session rather than the body.
  * Intentionally fires no analytics event: the row is the signal, and a new
- * event mid-run would compete with pay_intent during the Phase 2 screen.
+ * event mid-run would compete with checkout_start during the paid screen.
  */
 function EnterpriseBand() {
   type SubmitState = "idle" | "open" | "submitting" | "sent" | "error";

@@ -546,6 +546,19 @@ mvp_mappings:
     classified_at: '2026-05-22T15:04:30Z'
     rationale: "Catalog has only visit_landing \u2014 landing-page view, not a signup.\
       \ No conversion event captured in window. (1 gclid visitor 2026-05-22.)"
+  fraudshield:
+    supabase_project_ref: golvupqegjprujwrxotb
+    classified_by: operator
+    classified_at: '2026-09-14T00:00:00Z'
+    rationale: 'Supabase mapping only -- signup_events is deliberately absent, not
+      forgotten. Adding the mapping closes the OPEN ACTION recorded in
+      experiment/ads.yaml notes_phase2.verdict_sourcing, so pay_intent_source can
+      resolve to db_real instead of falling back to PostHog counts. No
+      signup_events list is supplied because fraudshield is judged on pay_intents,
+      not signups; an entry without one also leaves /ads-ready check 5
+      not-applicable, which is the intended state. NOTE: this file is also
+      maintained centrally for the fleet -- this entry may need mirroring into
+      that copy before a cross-MVP run will see it.'
 mvp_aliases:
   hospitica:
   - statistica

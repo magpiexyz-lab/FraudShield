@@ -56,3 +56,57 @@ export function computeQuota(input: QuotaInput): QuotaResult {
     is_paid: isPaid,
   };
 }
+
+/**
+ * Add whole months to a UTC date, clamping the day-of-month so month-end anchors
+ * do not skid forward. Plain `setUTCMonth(+1)` turns 31 Jan into 3 Mar, which would
+ * silently hand a subscriber an extra billing window every short month.
+ */
+function addMonthsUTC(d: Date, months: number): Date {
+  const day = d.getUTCDate();
+  const r = new Date(
+    Date.UTC(
+      d.getUTCFullYear(),
+      d.getUTCMonth() + months,
+      1,
+      d.getUTCHours(),
+      d.getUTCMinutes(),
+      d.getUTCSeconds(),
+      d.getUTCMilliseconds(),
+    ),
+  );
+  const daysInMonth = new Date(
+    Date.UTC(r.getUTCFullYear(), r.getUTCMonth() + 1, 0),
+  ).getUTCDate();
+  r.setUTCDate(Math.min(day, daysInMonth));
+  return r;
+}
+
+/**
+ * Start of the monthly billing window that contains `now`.
+ *
+ * The Pro plan sells "200 document scans / month", but usage used to be counted
+ * all-time, so a subscriber got 200 scans EVER and month two was paid-for but
+ * empty. Quota is now counted only from this instant forward.
+ *
+ * `anchor` is subscriptions.current_period_start — the moment the subscription
+ * began. Rolling it forward in whole months keeps the quota correct without
+ * depending on a renewal webhook having fired; when invoice.paid handling lands
+ * it can overwrite the anchor with Stripe authoritative period and this read
+ * path is unchanged.
+ */
+export function currentPeriodStart(anchor: Date, now: Date): Date {
+  if (now <= anchor) return anchor;
+  let months =
+    (now.getUTCFullYear() - anchor.getUTCFullYear()) * 12 +
+    (now.getUTCMonth() - anchor.getUTCMonth());
+  if (months < 0) months = 0;
+  let start = addMonthsUTC(anchor, months);
+  if (start > now) {
+    start = addMonthsUTC(anchor, months - 1);
+  } else {
+    const next = addMonthsUTC(anchor, months + 1);
+    if (next <= now) start = next;
+  }
+  return start;
+}
