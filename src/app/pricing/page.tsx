@@ -152,7 +152,16 @@ export default function PricingPage() {
         }}
       />
 
-      <div className="mx-auto w-full max-w-5xl px-6 py-20 sm:py-28">
+      {/*
+        Asymmetric vertical padding, deliberately. /pricing is reached by a
+        buyer who clicked "Pricing" — the price figure is the answer to the
+        question they just asked, so it has to be on screen when they land.
+        The top padding is the only thing standing between the sticky nav and
+        the header, so that is where the reduction is spent; the bottom keeps
+        its full sm:pb-28 so the page still terminates with room rather than
+        stopping dead under the last section.
+      */}
+      <div className="mx-auto w-full max-w-5xl px-6 pt-10 pb-20 sm:pt-14 sm:pb-28">
         {/* Header */}
         <header className="fs-reveal mx-auto max-w-2xl text-center">
           <p className="mb-4 inline-flex items-center gap-2 rounded-full bg-signal/10 px-3 py-1 font-mono text-xs tracking-wide text-signal uppercase">
@@ -162,7 +171,7 @@ export default function PricingPage() {
           <h1 className="font-heading text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">
             Catch forged documents before they cost you
           </h1>
-          <p className="mx-auto mt-5 max-w-xl text-lg leading-relaxed text-muted-foreground">
+          <p className="mx-auto mt-4 max-w-xl text-lg leading-relaxed text-muted-foreground">
             Start free — no sales call, no enterprise contract. Run your first
             {" "}{FREE_QUOTA} scans on us, then upgrade to Pro when document review
             becomes part of your daily workflow.
@@ -170,7 +179,7 @@ export default function PricingPage() {
         </header>
 
         {/* Plans */}
-        <section className="mt-14" aria-label="Plans">
+        <section className="mt-10" aria-label="Plans">
           <PricingPlans />
         </section>
 
