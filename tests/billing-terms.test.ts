@@ -145,6 +145,19 @@ describe("b-11: the pricing FAQ answers the three billing questions", () => {
     expect(answers().some((a) => a.includes(SUPPORT_EMAIL))).toBe(true);
   });
 
+  // b-11 declares the FAQ answers "how to get an invoice". Cancelling and
+  // post-cancellation access were already pinned above; the invoice question
+  // was not asserted anywhere, on any surface other than /terms. Assert the
+  // answer names a place to get one, not merely that invoices exist.
+  it("tells the user where to get an invoice", () => {
+    const invoiceFaq = BILLING_FAQS.find((f) =>
+      f.q.toLowerCase().includes("invoice"),
+    );
+    expect(invoiceFaq).toBeDefined();
+    expect(invoiceFaq!.a).toContain(MANAGE_BILLING);
+    expect(invoiceFaq!.a).toContain(SUPPORT_EMAIL);
+  });
+
   it("repeats the refund position where the buying decision is made", () => {
     const joined = answers().toString().toLowerCase();
     expect(joined).toContain(NO_REFUNDS);

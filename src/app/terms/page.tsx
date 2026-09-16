@@ -101,35 +101,45 @@ export default function TermsPage() {
         <Separator className="mt-12 bg-border/60" />
 
         <ol className="mt-4">
-          {BILLING_TERMS.map((term, i) => (
-            <li
-              key={term.id}
-              id={term.id}
-              className="fs-doc-enter scroll-mt-28 border-b border-border/40 py-9 last:border-b-0 sm:grid sm:grid-cols-[3.25rem_1fr] sm:gap-7"
-              style={{ animationDelay: `${80 + i * 70}ms` }}
-            >
-              {/*
-                The exhibit numeral hangs in the gutter and is itself the
-                anchor: the citation handle and the deep link are the same
-                object, so there is no separate link icon to hunt for.
-              */}
-              <a
-                href={`#${term.id}`}
-                aria-label={`Link to clause ${i + 1}, ${term.heading}`}
-                className="mb-1.5 inline-block rounded-sm font-mono text-3xl leading-none font-semibold tabular-nums text-signal/60 transition-colors hover:text-signal focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/60 focus-visible:ring-offset-4 focus-visible:ring-offset-background sm:mb-0 sm:pt-1 sm:text-right sm:text-4xl"
+          {BILLING_TERMS.map((term, i) => {
+            const numeral = String(i + 1).padStart(2, "0");
+            return (
+              <li
+                key={term.id}
+                id={term.id}
+                className="fs-doc-enter scroll-mt-28 border-b border-border/40 py-9 last:border-b-0 sm:grid sm:grid-cols-[3.25rem_1fr] sm:gap-7"
+                style={{ animationDelay: `${80 + i * 70}ms` }}
               >
-                {String(i + 1).padStart(2, "0")}
-              </a>
-              <div>
-                <h2 className="font-heading text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
-                  {term.heading}
-                </h2>
-                <p className="mt-3 max-w-[62ch] text-base leading-relaxed text-muted-foreground">
-                  {term.body}
-                </p>
-              </div>
-            </li>
-          ))}
+                {/*
+                  The exhibit numeral hangs in the gutter and is itself the
+                  anchor: the citation handle and the deep link are the same
+                  object, so there is no separate link icon to hunt for.
+
+                  The accessible name STARTS with that visible numeral. Someone
+                  driving the page by voice says "click 01" — the words they can
+                  see have to be in the name they can address, or the only
+                  handle on the clause is one they cannot speak (WCAG 2.5.3,
+                  label-in-name). The clause heading follows it, so the name is
+                  still self-describing when read out of context in a link list.
+                */}
+                <a
+                  href={`#${term.id}`}
+                  aria-label={`${numeral}, link to the clause: ${term.heading}`}
+                  className="mb-1.5 inline-block rounded-sm font-mono text-3xl leading-none font-semibold tabular-nums text-signal/60 transition-colors hover:text-signal focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/60 focus-visible:ring-offset-4 focus-visible:ring-offset-background sm:mb-0 sm:pt-1 sm:text-right sm:text-4xl"
+                >
+                  {numeral}
+                </a>
+                <div>
+                  <h2 className="font-heading text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
+                    {term.heading}
+                  </h2>
+                  <p className="mt-3 max-w-[62ch] text-base leading-relaxed text-muted-foreground">
+                    {term.body}
+                  </p>
+                </div>
+              </li>
+            );
+          })}
         </ol>
 
         {/*
