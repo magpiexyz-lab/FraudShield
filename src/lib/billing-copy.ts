@@ -19,6 +19,14 @@
 
 import { PLAN_PRICES } from "@/lib/types";
 
+// Why this copy names an email address and never an in-app control: the
+// self-serve billing portal is not in this build. Telling a customer to click
+// "Manage billing" would be false the moment they went looking for it, and a
+// binding term that is false on the day it ships is the one kind of billing
+// bug you cannot patch quietly. An address, by contrast, is true in both
+// worlds — it keeps working unchanged once the portal does land, so nothing
+// here has to be revisited then. tests/billing-terms.test.ts enforces it.
+
 /** Where billing questions go. Draft Labs owns the Stripe account. */
 export const SUPPORT_EMAIL = "admin@draftlabs.org";
 
@@ -34,13 +42,6 @@ export const PRO_PRICE_MONTHLY_USD = Math.round(PLAN_PRICES.pro / 100);
 
 /** The price as it appears in prose. Every surface interpolates this. */
 export const PRO_PRICE_LABEL = `$${PRO_PRICE_MONTHLY_USD}/month`;
-
-/**
- * The dashboard control Stripe's billing portal sits behind. Named once: the
- * copy has to point at the label the user will actually see, so if the button
- * is renamed, every sentence that directs them to it moves with it.
- */
-const MANAGE_BILLING = "Manage billing";
 
 /** One numbered clause of the billing terms. */
 export type BillingTerm = { id: string; heading: string; body: string };
@@ -66,7 +67,7 @@ export const BILLING_TERMS: ReadonlyArray<BillingTerm> = [
   {
     id: "cancellation",
     heading: "Cancelling",
-    body: `You can cancel at any time from your dashboard, under "${MANAGE_BILLING}". There is no contract, no minimum term, and no cancellation fee.`,
+    body: `You can cancel at any time. Email ${SUPPORT_EMAIL} and say you want to cancel — one line is enough, we will not ask you to justify it, and we will cancel it for you and confirm within ${SUPPORT_RESPONSE_SLA}. There is no contract, no minimum term, and no cancellation fee.`,
   },
   {
     id: "access-after-cancellation",
@@ -81,7 +82,7 @@ export const BILLING_TERMS: ReadonlyArray<BillingTerm> = [
   {
     id: "support",
     heading: "Invoices and support",
-    body: `Every invoice and receipt is in your dashboard under "${MANAGE_BILLING}". For anything else — a billing question, a charge you do not recognise — email ${SUPPORT_EMAIL} and you will have a reply within ${SUPPORT_RESPONSE_SLA}.`,
+    body: `An invoice or receipt for any month is yours on request: email ${SUPPORT_EMAIL} and we will send it, addressed to your company if you need it that way. The same address takes anything else — a billing question, a charge you do not recognise — and you will have a reply within ${SUPPORT_RESPONSE_SLA}.`,
   },
 ];
 
@@ -89,13 +90,13 @@ export const BILLING_TERMS: ReadonlyArray<BillingTerm> = [
  * The same obligations, compressed to the three questions people actually ask
  * before they pay. Rendered on /pricing next to the Pro card, because the
  * moment someone hesitates over the button is the moment "how do I get out of
- * this?" needs an answer — and the answer has to say where the control is, not
- * merely that cancelling is allowed.
+ * this?" needs an answer — and the answer has to be a route they can take now,
+ * not merely a promise that cancelling is allowed.
  */
 export const BILLING_FAQS: ReadonlyArray<BillingFaq> = [
   {
     q: "How do I cancel?",
-    a: `Open your dashboard and click "${MANAGE_BILLING}" — you can cancel there yourself, in a couple of clicks, without asking anyone. If you cannot get into the dashboard, email ${SUPPORT_EMAIL}.`,
+    a: `Email ${SUPPORT_EMAIL} and say you want to cancel. We do it for you and confirm within ${SUPPORT_RESPONSE_SLA} — one line is enough, there is nothing to justify and no cancellation fee.`,
   },
   {
     q: "What happens to my access if I cancel?",
@@ -103,6 +104,6 @@ export const BILLING_FAQS: ReadonlyArray<BillingFaq> = [
   },
   {
     q: "How do I get an invoice?",
-    a: `Invoices and receipts are in your dashboard under "${MANAGE_BILLING}". If you need one re-sent, or addressed to a company, email ${SUPPORT_EMAIL}.`,
+    a: `Email ${SUPPORT_EMAIL} and we will send one within ${SUPPORT_RESPONSE_SLA} — any month you need, addressed to your company if that is what your finance team wants.`,
   },
 ];

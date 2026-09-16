@@ -82,12 +82,12 @@ describe("b-11: the five binding billing terms", () => {
     [SUBSCRIPTION]: ["monthly", "us dollars"],
     [CANCELLATION]: [
       "cancel at any time",
-      "manage billing",
+      SUPPORT_EMAIL,
       "no cancellation fee",
     ],
     [ACCESS]: ["end of the month", "does not stop immediately"],
     [REFUNDS]: ["no refunds", "current month"],
-    [SUPPORT]: ["invoice", "manage billing"],
+    [SUPPORT]: ["invoice", SUPPORT_EMAIL],
   };
 
   it("lists exactly the five terms, in order", () => {
@@ -121,8 +121,45 @@ describe("b-11: the five binding billing terms", () => {
   });
 });
 
+// The unstacking guard.
+//
+// This copy shipped ahead of the in-app billing portal, and the portal is held
+// unmerged deliberately. Any sentence that sends a customer to a dashboard
+// control to cancel or to fetch an invoice is therefore FALSE in the build we
+// ship: it points at a button that is not there. Email is the route that works
+// both before and after that portal lands, so email is the route the copy
+// names.
+//
+// This test fails the moment the portal wording is reintroduced, which is the
+// point: it stops this page from quietly re-acquiring a dependency on an
+// unmerged branch.
+describe("b-11: the billing copy names no in-app control", () => {
+  const PORTAL_WORDING: ReadonlyArray<RegExp> = [
+    /manage billing/i,
+    /\bdashboards?\b/i,
+    /billing portal/i,
+    /customer portal/i,
+    /account settings/i,
+  ];
+
+  it("routes cancelling and invoices through email, never through a control", () => {
+    for (const copy of allCopyStrings()) {
+      for (const wording of PORTAL_WORDING) {
+        expect(copy).not.toMatch(wording);
+      }
+    }
+  });
+
+  it("names the support address wherever it asks the user to get in touch", () => {
+    const asksForEmail = allCopyStrings().filter((c) => /email/i.test(c));
+    expect(asksForEmail.length).toBeGreaterThan(0);
+    for (const copy of asksForEmail) {
+      expect(copy).toContain(SUPPORT_EMAIL);
+    }
+  });
+});
+
 describe("b-11: the pricing FAQ answers the three billing questions", () => {
-  const MANAGE_BILLING = "Manage billing";
   const NO_REFUNDS = "no refunds";
   const END_OF_MONTH = "end of the month";
   const answers = () => BILLING_FAQS.map((f) => f.a);
@@ -135,10 +172,15 @@ describe("b-11: the pricing FAQ answers the three billing questions", () => {
     }
   });
 
-  // An FAQ that says "yes, you can cancel" without saying where the button is
-  // is not an answer. These three assert the HOW, not the reassurance.
-  it("tells the user where to cancel", () => {
-    expect(answers().some((a) => a.includes(MANAGE_BILLING))).toBe(true);
+  // An FAQ that says "yes, you can cancel" without saying how is not an
+  // answer. These three assert the HOW, not the reassurance — and the HOW is
+  // an email to a named address, which is a route that works today.
+  it("tells the user how to cancel: by emailing the support address", () => {
+    const cancelFaq = BILLING_FAQS.find((f) =>
+      f.q.toLowerCase().includes("how do i cancel"),
+    );
+    expect(cancelFaq).toBeDefined();
+    expect(cancelFaq!.a).toContain(SUPPORT_EMAIL);
   });
 
   it("gives an email fallback", () => {
@@ -148,13 +190,12 @@ describe("b-11: the pricing FAQ answers the three billing questions", () => {
   // b-11 declares the FAQ answers "how to get an invoice". Cancelling and
   // post-cancellation access were already pinned above; the invoice question
   // was not asserted anywhere, on any surface other than /terms. Assert the
-  // answer names a place to get one, not merely that invoices exist.
-  it("tells the user where to get an invoice", () => {
+  // answer names a way to get one, not merely that invoices exist.
+  it("tells the user how to get an invoice", () => {
     const invoiceFaq = BILLING_FAQS.find((f) =>
       f.q.toLowerCase().includes("invoice"),
     );
     expect(invoiceFaq).toBeDefined();
-    expect(invoiceFaq!.a).toContain(MANAGE_BILLING);
     expect(invoiceFaq!.a).toContain(SUPPORT_EMAIL);
   });
 
