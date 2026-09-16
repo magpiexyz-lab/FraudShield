@@ -23,7 +23,7 @@ import {
 
 export const metadata: Metadata = {
   title: "Terms | FraudShield",
-  description: `The billing terms for FraudShield Pro at ${PRO_PRICE_LABEL} — what you are charged, how to cancel it yourself, what happens to your access afterwards, and our refund policy.`,
+  description: `The billing terms for FraudShield Pro at ${PRO_PRICE_LABEL} — what you are charged, how to cancel in one email, what happens to your access afterwards, and our refund policy.`,
   openGraph: {
     title: "Terms | FraudShield",
     description: `What you are charged for FraudShield Pro, how to cancel, and what cancelling does to your access.`,
@@ -161,20 +161,28 @@ export default function TermsPage() {
                 Cancel, or ask us something
               </h2>
               <p className="mt-3 text-sm leading-relaxed break-words text-muted-foreground">
-                Cancelling is yours to do, in your dashboard. If you would
-                rather ask a person first, email{" "}
+                Cancelling takes one line to{" "}
                 <a href={`mailto:${SUPPORT_EMAIL}`} className={INLINE_LINK}>
                   {SUPPORT_EMAIL}
-                </a>{" "}
-                and you will have a reply within {SUPPORT_RESPONSE_SLA}.
+                </a>
+                . We cancel it for you and confirm within{" "}
+                {SUPPORT_RESPONSE_SLA} — no form to find, and nobody will try
+                to talk you out of it. The same address answers any other
+                billing question.
               </p>
             </div>
-            <Link
-              href="/dashboard"
+            {/*
+              The action is a mailto, not a route into the app: the button has
+              to do the thing the clause above promises, and the clause
+              promises an email. A link to a page where cancelling merely
+              might be possible would be a worse version of the same click.
+            */}
+            <a
+              href={`mailto:${SUPPORT_EMAIL}?subject=Cancel%20FraudShield%20Pro`}
               className={`${buttonVariants({ variant: "outline" })} h-12 shrink-0 rounded-full border-signal/40 bg-signal/[0.06] px-7 text-base font-medium text-foreground transition-colors duration-200 hover:border-signal hover:bg-signal/10`}
             >
-              Open your dashboard
-            </Link>
+              Email us to cancel
+            </a>
           </div>
         </section>
 
