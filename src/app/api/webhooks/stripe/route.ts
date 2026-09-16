@@ -14,6 +14,7 @@ import type Stripe from "stripe";
 import { getStripe } from "@/lib/stripe";
 import { createServiceRoleClient } from "@/lib/supabase-server";
 import { trackServerEvent } from "@/lib/analytics-server";
+import { nullableAttributionValue } from "@/lib/attribution";
 import { PLAN_PRICES, PRO_SCAN_QUOTA } from "@/lib/types";
 
 // Paid subscriptions raise scan quota above the free allowance. Sourced from
@@ -96,6 +97,26 @@ export async function POST(request: Request) {
         // months, so quota resets correctly without depending on a renewal
         // webhook having fired. See 007_subscription_period.sql.
         current_period_start: new Date().toISOString(),
+        // What this subscription cost and which ad bought it. All four values
+        // were already in hand here and were previously discarded, leaving the
+        // price unreadable from the database side and the sale untraceable back
+        // to its click. See 008_subscription_price_attribution.sql.
+        //
+        // planAmount is reused, not recomputed: it is the same figure reported
+        // to analytics below, so the row and the event cannot disagree about
+        // revenue. Integer cents, matching pay_intent.price_cents.
+        price_cents: planAmount,
+        // Read from the session rather than hardcoded. Stripe reports the
+        // lowercase ISO-4217 code it actually charged in; hardcoding "usd"
+        // would keep saying "usd" even if it ever charged something else. The
+        // fallback only fires if Stripe omits the field, and the checkout route
+        // refuses any Price that is not usd, so usd is the only possibility.
+        currency: session.currency ?? "usd",
+        // The checkout route writes "" for attribution it does not have
+        // (Stripe metadata cannot hold null), so normalise back to NULL —
+        // otherwise "no attribution" is invisible to `where gclid is null`.
+        gclid: nullableAttributionValue(session.metadata?.gclid),
+        utm_campaign: nullableAttributionValue(session.metadata?.utm_campaign),
         stripe_customer_id:
           typeof session.customer === "string" ? session.customer : null,
         stripe_subscription_id:
