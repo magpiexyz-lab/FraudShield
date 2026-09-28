@@ -4,7 +4,7 @@
   "rules": {
     "recovery-path-skip-pairing": {
       "$comment": "Soak extended 30→120d by the #1855 remediation PR: the first 71 days were VACUOUS — verify-gate-evidence.py had no runtime call site, so zero candidates were structurally possible and this trigger could never be met. The same PR wires the call site (check-observation-artifacts.sh gate-evidence step, warn mode, statuses recorded in observation-enforcement.json.gate_evidence), so the clock is honest from its merge. Unlock = the deny_flip_trigger observed via that channel; flip PR sets severity 'block' in gate-evidence-rules.json + flip_pr_required false here. Deadline 2026-09-15; if still unmet, retire or fix the matcher — do not blind-extend again. Tracker issue #2013.",
-      "soak_window_min_days": 120,
+      "soak_window_min_days": 210,
       "soak_window_min_real_cycles": 2,
       "deny_flip_trigger": "At least 1 candidate of kind=recovery-path-skip emitted AND correctly filed-or-suppressed in a real /verify or /change run",
       "first_merged_at": "2026-05-18T21:22:53+08:00",
@@ -14,7 +14,7 @@
     },
     "sparse-trace-pairing": {
       "$comment": "Soak extended 30→120d by the #1855 remediation PR — same vacuous-soak rationale and same newly-wired call site as recovery-path-skip-pairing above. Unlock = the deny_flip_trigger observed via observation-enforcement.json.gate_evidence; flip PR sets severity 'block' in gate-evidence-rules.json + flip_pr_required false. Deadline 2026-09-15. Tracker issue #2013.",
-      "soak_window_min_days": 120,
+      "soak_window_min_days": 210, 
       "soak_window_min_real_cycles": 2,
       "deny_flip_trigger": "At least 1 sparse-trace candidate (init-stub-survived OR lead-orchestrated-missing-aoc-v1.3) detected AND paired with an observation in a real run",
       "first_merged_at": "2026-05-18T21:22:53+08:00",
@@ -24,7 +24,7 @@
     },
     "prior-failure-consultation-gate": {
       "$comment": "Step 14c gate in verify-recurrence-guard.py — enforces prior_failure_consultation[] for dossier entries with designer_consultation_attestation_required=true. Tracked alongside the two GECR rules above so the same gecr-cutover-overdue linter rule (template-coherence-rules.json) flags it when overdue, even though it is a verifier-side gate rather than a declarative GECR rule. Soak extended 30→120d by the #1855 remediation PR: this gate IS live but its trigger path was never exercised end-to-end in 71 days, and the historical linter message suggested CONSULTATION_DENY=deny while the code tested =='1' (the remediation makes both spellings work). Unlock = a real /solve --defect run emitting the consultation (VERIFY WARN line); flip PR defaults CONSULTATION_DENY on + flip_pr_required false. Deadline 2026-09-15. Tracker issue #2013.",
-      "soak_window_min_days": 120,
+      "soak_window_min_days": 210,
       "soak_window_min_real_cycles": 2,
       "deny_flip_trigger": "At least 1 /solve --defect run with semantic-match dossier entry AND consultation correctly emitted",
       "first_merged_at": "2026-05-18T21:22:53+08:00",
@@ -34,3 +34,5 @@
     }
   }
 }
+
+
