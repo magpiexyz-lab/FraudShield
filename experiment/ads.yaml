@@ -232,11 +232,20 @@ budget:
   # v2's stop condition is measured in ASKS, not clicks -- see thresholds.pass_bar.
   # click_target is kept because the validator and cross-MVP readers expect it,
   # and is set to the clicks needed to reach 75 asks at v1's funnel (~28% of
-  # clicks produced a paywall render). RE-DERIVE from the real
-  # paywall_shown/click ratio after 2-3 days: 28% comes from v1, whose /pricing
-  # sat behind the auth wall and was unreachable for signed-out visitors, so the
-  # true v2 rate should be higher and this number too pessimistic.
-  click_target: 270
+  # clicks produced a paywall render), rounded UP to the Phase 2 fleet standard.
+  #
+  # 300 rather than the derived 270: validators/_analytics.py [38] requires
+  # click_target to be exactly 100 (Phase 1) or 300 (Phase 2) whenever
+  # cap_override_approved_by is set, which it is for the v2 USD 1,500
+  # re-approval. Rounding up is also the safer direction - a higher click
+  # target buys more traffic before the run concludes - and it moves the same
+  # way the note below already says this figure should move.
+  #
+  # RE-DERIVE from the real paywall_shown/click ratio after 2-3 days: 28% comes
+  # from v1, whose /pricing sat behind the auth wall and was unreachable for
+  # signed-out visitors, so the true v2 rate should be higher and 270 was too
+  # pessimistic.
+  click_target: 300
   total_budget_cents: 150000
   daily_budget_cents: 3500
   duration_days: 43
