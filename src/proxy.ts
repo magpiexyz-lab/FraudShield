@@ -6,7 +6,10 @@ import { createServerClient } from "@supabase/ssr";
 // /pricing is public: it is the paywall destination, and gating it behind auth
 // bounced signed-out visitors to /login at the exact moment they were deciding
 // whether to pay.
-const publicPaths = ["/", "/api/health", "/auth/callback", "/auth/reset-password", "/login", "/pricing", "/signup"];
+// /terms is public: it is linked from the signed-out landing footer, and
+// behavior b-11 marks it `anonymous_allowed: true`, so derive_public_paths()
+// emits it. Gating it would 404-by-redirect the footer link for anonymous visitors.
+const publicPaths = ["/", "/api/health", "/auth/callback", "/auth/reset-password", "/login", "/pricing", "/signup", "/terms"];
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;

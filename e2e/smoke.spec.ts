@@ -47,6 +47,19 @@ test.describe.serial("Page-load smoke tests", () => {
     await checkNoHorizontalOverflow(page);
   });
 
+  test("terms page loads", async ({ page }) => {
+    const response = await page.goto("/terms");
+    // b-11 regression guard: /terms must stay in the src/proxy.ts publicPaths
+    // list. Without it the middleware redirects anonymous visitors to /login,
+    // which turns the signed-out footer link into a dead end.
+    expect(response?.status()).toBe(200);
+    await expect(page).toHaveURL(/\/terms$/);
+    await expect(page).toHaveTitle(/.+/);
+    // Support contact is the escalation path the billing terms point readers to.
+    await expect(page.locator('a[href^="mailto:"]').first()).toBeVisible();
+    await checkNoHorizontalOverflow(page);
+  });
+
   // --- variant landings ---
 
   test("variant stop-the-loss loads", async ({ page }) => {

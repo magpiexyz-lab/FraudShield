@@ -8,6 +8,7 @@ import { trackDemoView, trackCtaClick } from "@/lib/events";
 import { PLANS } from "@/app/pricing/plans";
 import { BrandMark } from "@/components/brand-logo";
 import { HEADER_SURFACE } from "@/components/nav-bar";
+import { SUPPORT_EMAIL } from "@/lib/billing-copy";
 
 /* ------------------------------------------------------------------ *
  * FraudShield landing — "Forensic Instrument" design system.
@@ -19,6 +20,20 @@ import { HEADER_SURFACE } from "@/components/nav-bar";
  * Variant object as flat props and own the `visit_landing` mount event,
  * so this component fires only `demo_view` and `cta_click`.
  * ------------------------------------------------------------------ */
+
+/* Footer link treatment. The severity palette (teal / amber / vermilion) and
+   the signal cyan are reserved for fraud-score state, so a footer link cannot
+   spend colour to announce that it is a link. It sits at the same muted tone
+   as the tagline beside it and earns its affordance from a faint rule; hover
+   brightens the text and the rule together. Keyboard focus borrows the
+   hairline accent already drawn across the top of the footer. */
+const FOOTER_LINK =
+  "rounded-[2px] text-[oklch(0.82_0.014_244)] underline decoration-[oklch(0.82_0.014_244_/_35%)] underline-offset-4 transition-colors hover:text-foreground hover:decoration-[oklch(0.74_0.130_213_/_70%)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[oklch(0.74_0.130_213)]";
+
+/** Pads a footer link out to the 24px minimum target size (WCAG 2.5.8).
+ *  Separated from FOOTER_LINK so the colour and underline treatment above
+ *  stays the one place either is decided. */
+const FOOTER_TARGET = "inline-block min-h-6 py-1";
 
 export type LandingContentProps = {
   slug?: string;
@@ -1391,6 +1406,38 @@ export function LandingContent(props: LandingContentProps) {
             <p className="font-mono text-[11px] text-[oklch(0.82_0.014_244)]">
               Forensic fraud scores in seconds · built for small operators
             </p>
+
+            {/* The only two interactive elements in the footer, and the only
+                legal and contact surface cold ad traffic sees before the
+                signup wall. They get their own rows at normal tracking: the
+                support address is an unbreakable ~125px token, and the 0.16em
+                tracking on the status row above would push it past the
+                viewport at 393px. The address comes from billing-copy, so it
+                cannot drift away from the one printed on /terms.
+
+                FOOTER_TARGET is why these rows are taller than their 11px
+                type: an 11px line box is a ~16px tap target, and this is the
+                one place on a phone where someone hunts for the terms before
+                they hand over a card. min-h-6 + vertical padding takes each
+                link to the 24px floor (WCAG 2.5.8) without touching the type
+                size, the muted tone or the underline — the padding is
+                invisible, so the footer still reads as a quiet instrument
+                caption rather than a stack of buttons. Vertical only: the
+                address is already at the width budget for a 393px viewport. */}
+            <nav
+              aria-label="Legal and support"
+              className="flex flex-col items-start gap-1.5 font-mono text-[11px] sm:items-end"
+            >
+              <Link href="/terms" className={`${FOOTER_LINK} ${FOOTER_TARGET}`}>
+                Terms
+              </Link>
+              <a
+                href={`mailto:${SUPPORT_EMAIL}`}
+                className={`${FOOTER_LINK} ${FOOTER_TARGET}`}
+              >
+                {SUPPORT_EMAIL}
+              </a>
+            </nav>
           </div>
         </div>
       </footer>

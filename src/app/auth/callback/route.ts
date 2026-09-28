@@ -30,6 +30,7 @@ import {
   resolveRelayedAttribution,
   type Attribution,
 } from "@/lib/attribution";
+import { safeInternalPath } from "@/lib/safe-redirect";
 
 const codeSchema = z.string().min(20).max(512).regex(/^[A-Za-z0-9_-]+$/);
 const tokenHashSchema = z.string().min(20).max(512).regex(/^[A-Za-z0-9_-]+$/);
@@ -43,10 +44,18 @@ const otpTypeSchema = z.enum([
 
 const SIGNUP_RECENCY_MS = 60_000;
 
-/** Same-origin guard so `?next=//evil.com` cannot redirect off-site. */
+/**
+ * Same-origin guard for `?next=`, delegating to the shared predicate in
+ * src/lib/safe-redirect.ts.
+ *
+ * This route is not exploitable the way /login was -- redirectInto concatenates
+ * onto `origin`, so the URL is parsed as absolute and a backslash stays inside
+ * the path -- but it carried a verbatim copy of the guard that WAS exploitable,
+ * and one refactor of redirectInto would have made it live. The two copies
+ * drifting apart is the root cause, so there is now only one.
+ */
 function safeNext(raw: string | null, fallback = "/dashboard"): string {
-  if (!raw) return fallback;
-  return raw.startsWith("/") && !raw.startsWith("//") ? raw : fallback;
+  return safeInternalPath(raw, fallback);
 }
 
 export async function GET(request: Request) {

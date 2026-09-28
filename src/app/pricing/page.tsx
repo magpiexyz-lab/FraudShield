@@ -9,6 +9,11 @@ import {
 import { buttonVariants } from "@/components/ui/button";
 import { PricingPlans, ScrollReveal } from "./pricing-plans";
 import { FREE_QUOTA, PRO_QUOTA } from "./plans";
+import {
+  BILLING_FAQS,
+  SUPPORT_EMAIL,
+  SUPPORT_RESPONSE_SLA,
+} from "@/lib/billing-copy";
 
 export const metadata: Metadata = {
   title: "Pricing | FraudShield",
@@ -21,7 +26,7 @@ export const metadata: Metadata = {
   },
 };
 
-const FAQS: ReadonlyArray<{ q: string; a: string }> = [
+const PRODUCT_FAQS: ReadonlyArray<{ q: string; a: string }> = [
   {
     q: "What happens when I hit my free scan limit?",
     a: `The Free plan includes ${FREE_QUOTA} scans. Once you've used them, your next scan prompts you to upgrade to Pro — your earlier results stay available.`,
@@ -31,14 +36,28 @@ const FAQS: ReadonlyArray<{ q: string; a: string }> = [
     a: "No. FraudShield never persists your raw files. We extract metadata and forensic signals in memory, return your fraud score, and discard the document.",
   },
   {
-    q: "Can I cancel anytime?",
-    a: "Yes. Pro is month-to-month with no contract. Cancel whenever you like and you keep access through the end of your billing period.",
-  },
-  {
     q: "What document types can FraudShield analyze?",
     a: "Pay stubs, bank statements, and invoices — as PDF or image files. Each gets a 0–100 fraud score with a per-signal forensic breakdown.",
   },
 ];
+
+// The billing answers are spliced in from the shared copy module rather than
+// retyped here. /terms, this page and the landing footer have to state one
+// cancellation policy between them; a second copy of the sentence is a second
+// policy, and a customer will hold us to whichever one they read.
+//
+// Order is the order a buyer asks in: what the product does to their files
+// first, then, kept adjacent as one block, what they are signing up to pay.
+const FAQS: ReadonlyArray<{ q: string; a: string }> = [
+  ...PRODUCT_FAQS,
+  ...BILLING_FAQS,
+];
+
+// One inline-link treatment, reused. The page already spends its accent on
+// signal-cyan, so links borrow it for the underline instead of introducing a
+// second colour, and carry a visible focus ring for keyboard users.
+const INLINE_LINK =
+  "rounded-sm text-foreground underline decoration-signal/40 underline-offset-4 transition-colors hover:text-signal hover:decoration-signal focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 
 const TRUST_SEGMENTS = [
   "Independent landlords",
@@ -133,17 +152,43 @@ export default function PricingPage() {
         }}
       />
 
-      <div className="mx-auto w-full max-w-5xl px-6 py-20 sm:py-28">
-        {/* Header */}
-        <header className="fs-reveal mx-auto max-w-2xl text-center">
-          <p className="mb-4 inline-flex items-center gap-2 rounded-full bg-signal/10 px-3 py-1 font-mono text-xs tracking-wide text-signal uppercase">
+      {/*
+        Asymmetric vertical padding, deliberately. /pricing is reached by a
+        buyer who clicked "Pricing" — the price figure is the answer to the
+        question they just asked, so it has to be on screen when they land.
+        The top padding is the only thing standing between the sticky nav and
+        the header, so that is where the reduction is spent; the bottom keeps
+        its full sm:pb-28 so the page still terminates with room rather than
+        stopping dead under the last section.
+
+        The target is the whole Pro card, "Choose Pro" included, at a 760px
+        laptop viewport. Measured: nav (65px) + the card's own top-edge-to-
+        button-bottom run (495px) is 560px of fixed cost, leaving 200px for
+        top padding + header + plans gap. This block spends 40 + 154 + 32 =
+        226, so the button bottom lands at 786 — inside the fold at 800px and
+        up, 26px short of it at 760px. Those last 26px are inside the card,
+        which is not this page's to change; do not buy them back by crushing
+        the header further.
+      */}
+      <div className="mx-auto w-full max-w-5xl px-6 pt-8 pb-20 sm:pt-10 sm:pb-28">
+        {/*
+          Header. max-w-4xl, not max-w-2xl: the headline is 43 characters and
+          sets on a single line at 36px given ~770px of measure, where the old
+          672px column forced it to wrap. One line at 36px is 40px tall against
+          two lines at 48px for 96px — the largest saving available here, and it
+          is bought with width rather than by shrinking the page's primary
+          voice twice. The sub-head is pulled back to max-w-2xl so it keeps a
+          readable ~75-character measure instead of inheriting the wider column.
+        */}
+        <header className="fs-reveal mx-auto max-w-4xl text-center">
+          <p className="mb-3 inline-flex items-center gap-2 rounded-full bg-signal/10 px-3 py-1 font-mono text-xs tracking-wide text-signal uppercase">
             <span className="size-1.5 rounded-full bg-signal" aria-hidden="true" />
             Simple, self-serve pricing
           </p>
-          <h1 className="font-heading text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">
+          <h1 className="font-heading text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
             Catch forged documents before they cost you
           </h1>
-          <p className="mx-auto mt-5 max-w-xl text-lg leading-relaxed text-muted-foreground">
+          <p className="mx-auto mt-4 max-w-2xl text-lg leading-relaxed text-muted-foreground">
             Start free — no sales call, no enterprise contract. Run your first
             {" "}{FREE_QUOTA} scans on us, then upgrade to Pro when document review
             becomes part of your daily workflow.
@@ -151,7 +196,7 @@ export default function PricingPage() {
         </header>
 
         {/* Plans */}
-        <section className="mt-14" aria-label="Plans">
+        <section className="mt-8" aria-label="Plans">
           <PricingPlans />
         </section>
 
@@ -219,8 +264,8 @@ export default function PricingPage() {
                 Frequently asked
               </h2>
               <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-                Quick answers on quota, data handling, billing, and supported
-                document types.
+                Quick answers on quota, data handling, document types, and what
+                you are committing to when you upgrade to Pro.
               </p>
             </div>
             <div className="relative border-l border-signal/20 pl-6">
@@ -253,6 +298,18 @@ export default function PricingPage() {
                   </AccordionItem>
                 ))}
               </Accordion>
+              <p className="mt-8 border-t border-border/40 pt-6 text-sm leading-relaxed break-words text-muted-foreground">
+                Something not answered here? Email{" "}
+                <a href={`mailto:${SUPPORT_EMAIL}`} className={INLINE_LINK}>
+                  {SUPPORT_EMAIL}
+                </a>{" "}
+                and we will reply within {SUPPORT_RESPONSE_SLA}. The full
+                billing terms are on the{" "}
+                <Link href="/terms" className={INLINE_LINK}>
+                  terms page
+                </Link>
+                .
+              </p>
             </div>
           </div>
         </ScrollReveal>

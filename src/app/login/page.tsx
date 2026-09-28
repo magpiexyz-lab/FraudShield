@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase";
 import { identify } from "@/lib/analytics";
+import { safeInternalPath } from "@/lib/safe-redirect";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -33,12 +34,11 @@ function LoginForm() {
       ? "We couldn't verify your link. It may have expired — request a new confirmation email by signing up again, or log in if your account is already confirmed."
       : "Authentication failed. Please log in again."
     : null;
-  // Honor the proxy redirect target; default into the workspace.
-  const rawNext = searchParams.get("next");
-  const next =
-    rawNext && rawNext.startsWith("/") && !rawNext.startsWith("//")
-      ? rawNext
-      : "/dashboard";
+  // Honor the proxy redirect target; default into the workspace. The guard is
+  // shared with /auth/callback in src/lib/safe-redirect.ts -- an inline prefix
+  // check here is what let ?next=/%5Cevil.com push a freshly authenticated user
+  // off-site, and a second hand-rolled copy is how it stayed unnoticed.
+  const next = safeInternalPath(searchParams.get("next"));
 
   async function handleLogin(e: React.SyntheticEvent<HTMLFormElement>) {
     e.preventDefault();

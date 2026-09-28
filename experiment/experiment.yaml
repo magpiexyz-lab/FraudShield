@@ -188,6 +188,20 @@ behaviors:
       - "Image results are labelled partial analysis and direct the user to upload the original PDF for full forensics"
       - "activate event fires when the first fraud score is delivered"
     level: 2
+  - id: b-11
+    hypothesis_id: h-04
+    pages: [terms]
+    anonymous_allowed: true
+    given: "A visitor is deciding whether to pay for Pro, or has already paid and wants out"
+    when: "They open the terms page from the landing footer or the pricing FAQ"
+    then: "They read the billing terms in plain words - monthly subscription at the Pro price, cancel any time, access continues to the end of the paid month, no refunds for the current month once charged - and a support address they can actually reach"
+    tests:
+      - "Terms page states the four billing facts: monthly subscription, Pro price, cancel any time, no refunds once charged"
+      - "Pricing FAQ answers how to cancel, what happens after cancelling, and how to get an invoice"
+      - "Support address appears on the pricing page, on the terms page, and in the landing footer"
+      - "Terms page is reachable by a signed-out visitor without an auth redirect"
+      - "Every displayed price derives from PLAN_PRICES, never a hardcoded string"
+    level: 1
   - id: b-05
     hypothesis_id: h-06
     pages: [scan-result]

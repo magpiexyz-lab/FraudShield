@@ -4,6 +4,7 @@ import { Archivo, IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 import { NavBar } from "@/components/nav-bar";
 import { RetainTracker } from "@/components/RetainTracker";
+import { PLAN_PRICES } from "@/lib/types";
 
 const archivo = Archivo({
   subsets: ["latin"],
@@ -52,7 +53,9 @@ const jsonLd = {
   operatingSystem: "Web",
   offers: {
     "@type": "Offer",
-    price: "49",
+    // Derived from PLAN_PRICES.pro (cents) so the advertised price can never
+    // drift from what Stripe actually charges. Do not re-hardcode this.
+    price: String(Math.round(PLAN_PRICES.pro / 100)),
     priceCurrency: "USD",
   },
 };

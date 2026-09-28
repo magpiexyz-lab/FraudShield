@@ -16,6 +16,7 @@
     ".claude/scripts/verify-deploy-3b.py",
     ".claude/scripts/verify-resolve-challenge.py",
     ".claude/scripts/verify-review-adversarial.py",
+    ".claude/scripts/verify-state-7b-qscore.py",
     ".claude/scripts/write-q-score.py"
   ]
 }
