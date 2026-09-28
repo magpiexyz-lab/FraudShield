@@ -134,6 +134,16 @@ export async function POST(request: Request) {
     // line_items entirely.
     const linePriceId = priceId ?? "price_demo_placeholder";
 
+    // The cadence Stripe will actually bill on, recorded so the subscriptions
+    // row can state it (009_subscription_interval_period_end.sql). Relayed to
+    // the webhook through the metadata bag below rather than re-fetched there,
+    // so the value the database records is the one this route validated.
+    //
+    // Seeded with the plan as sold because DEMO_MODE has no Price catalogue to
+    // read. On the live path the retrieved Price overwrites it, so a real
+    // purchase never records a hardcoded assumption.
+    let billingInterval = "month";
+
     // Validate the dashboard Price BEFORE opening a session. The Stripe account
     // bills in SGD and experiment/ads.yaml records a prior USD/SGD mix-up: a
     // Price whose currency, amount or interval disagrees with PLAN_PRICES would
@@ -164,6 +174,12 @@ export async function POST(request: Request) {
         );
         return NextResponse.json({ error: "Checkout failed" }, { status: 500 });
       }
+
+      // Safe to record only after the guard above, which has already refused
+      // any Price that is not a single month. Read from the Price rather than
+      // left at the seeded literal so the recorded cadence follows the Price if
+      // PLAN_PRICES and the dashboard ever move together to another interval.
+      billingInterval = price.recurring?.interval ?? billingInterval;
     }
 
     // Resolve attribution: the acquisition_* values stamped onto the user record
@@ -185,6 +201,11 @@ export async function POST(request: Request) {
       gclid: (attribution.gclid ?? "").slice(0, STRIPE_METADATA_VALUE_MAX),
       utm_campaign: attribution.utm_campaign ?? "",
       attribution_source: attribution.source,
+      // The billing cadence, so the webhook can persist it at
+      // checkout.session.completed without a second Price round-trip. It rides
+      // the same dual bag as everything else here because Stripe does not copy
+      // Session metadata onto the Subscription.
+      billing_interval: billingInterval,
     };
 
     const siteUrl =

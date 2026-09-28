@@ -25,6 +25,47 @@ const PLAN_SCAN_QUOTA: Record<string, number> = {
   pro: PRO_SCAN_QUOTA,
 };
 
+// The END of the current billing period, read off the Stripe Subscription.
+//
+// PAYLOAD SHAPE, verified against the pinned SDK rather than assumed: in
+// stripe 22.2.0 Subscription has NO top-level current_period_end. The period
+// moved down onto the subscription ITEMS -- see current_period_end on
+// SubscriptionItem in node_modules/stripe/cjs/resources/SubscriptionItems.d.ts,
+// which is Unix SECONDS. Reading subscription.current_period_end would not
+// compile. Same class of trap as Invoice.subscription in the invoice handler
+// below, and checked the same way: by reading the shipped .d.ts.
+//
+// items.data[0] IS the subscription period here. The checkout route opens every
+// session with a single Price at quantity 1, so there is exactly one item.
+//
+// NEVER THROWS. A missing end date must not block activating a subscription the
+// customer has already been charged for, so every failure path logs and returns
+// null. current_period_end is nullable (009) precisely so this can happen.
+async function fetchCurrentPeriodEnd(
+  subscriptionId: string,
+): Promise<string | null> {
+  try {
+    const subscription =
+      await getStripe().subscriptions.retrieve(subscriptionId);
+    const periodEndSeconds = subscription.items.data[0]?.current_period_end;
+    if (typeof periodEndSeconds !== "number") {
+      console.warn(
+        "[webhook] subscription reported no current_period_end:",
+        subscriptionId,
+      );
+      return null;
+    }
+    return new Date(periodEndSeconds * 1000).toISOString();
+  } catch (err) {
+    console.error(
+      "[webhook] could not retrieve subscription for current_period_end:",
+      subscriptionId,
+      err,
+    );
+    return null;
+  }
+}
+
 export async function POST(request: Request) {
   const body = await request.text();
   const signature = request.headers.get("stripe-signature");
@@ -86,6 +127,32 @@ export async function POST(request: Request) {
         ? amountCents
         : (typeof PLAN_PRICES[plan] === "number" ? PLAN_PRICES[plan] : 0);
 
+    // The Stripe subscription this checkout created, resolved once: it is both
+    // the value stored on the row and the handle used to fetch the period end.
+    const subscriptionId =
+      typeof session.subscription === "string" ? session.subscription : null;
+
+    // How often this bills. Read from the metadata bag that
+    // src/app/api/checkout/route.ts stamps onto BOTH the Session and the
+    // Subscription, where it was written from the Stripe Price that route had
+    // already retrieved AND validated. Taking it from there keeps the value
+    // server-validated and costs no second round-trip to Stripe.
+    //
+    // nullableAttributionValue is reused for the blank-to-NULL step -- not
+    // because this is attribution, but because it is the same boundary. Stripe
+    // metadata cannot hold null, so an absent value arrives as the empty
+    // string, and storing that would hide it from `where billing_interval is
+    // null`. One representation of absent per column.
+    const billingInterval = nullableAttributionValue(
+      session.metadata?.billing_interval,
+    );
+
+    // When the current period ends. NOT carried on the Session, so it has to be
+    // fetched from the Subscription. Null on any failure, never a throw.
+    const currentPeriodEnd = subscriptionId
+      ? await fetchCurrentPeriodEnd(subscriptionId)
+      : null;
+
     const { error: upsertErr } = await supabase.from("subscriptions").upsert(
       {
         user_id: userId,
@@ -117,10 +184,24 @@ export async function POST(request: Request) {
         // otherwise "no attribution" is invisible to `where gclid is null`.
         gclid: nullableAttributionValue(session.metadata?.gclid),
         utm_campaign: nullableAttributionValue(session.metadata?.utm_campaign),
+        // How often Stripe bills this, and when the current period ends. Both
+        // were unanswerable from the row before 009: the cadence lived only on
+        // the dashboard Price and the end date only on the Subscription.
+        //
+        // billing_interval is DESCRIPTIVE, not a constraint. The binding
+        // monthly/usd/amount check is the Price validation in
+        // src/app/api/checkout/route.ts, which refuses to open a session at all
+        // when the Price disagrees with PLAN_PRICES. This column records what
+        // that guard let through.
+        billing_interval: billingInterval,
+        // Partner of current_period_start above, so the two describe the same
+        // period rather than drifting apart. NULL when Stripe could not be
+        // reached or reported no end date -- deliberately not fatal, because the
+        // customer has already been charged.
+        current_period_end: currentPeriodEnd,
         stripe_customer_id:
           typeof session.customer === "string" ? session.customer : null,
-        stripe_subscription_id:
-          typeof session.subscription === "string" ? session.subscription : null,
+        stripe_subscription_id: subscriptionId,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "user_id" },
@@ -222,11 +303,22 @@ export async function POST(request: Request) {
         if (event.type === "invoice.paid") {
           // Renewal succeeded: keep the plan active and roll the quota window
           // forward so the subscriber gets their next 200 scans.
+          //
+          // The period END has to move with the start. current_period_start is
+          // rolled forward just below; leaving its partner at the value written
+          // back at checkout would leave the row describing a period that ended
+          // before it started, and the gap would widen every month.
+          //
+          // billing_interval is deliberately NOT rewritten here. The cadence
+          // does not change when an existing subscription renews, so rewriting
+          // it would only add a way for it to become wrong.
+          const renewedPeriodEnd = await fetchCurrentPeriodEnd(subscriptionId);
           const { error: renewErr } = await supabase
             .from("subscriptions")
             .update({
               status: "active",
               current_period_start: new Date().toISOString(),
+              current_period_end: renewedPeriodEnd,
               updated_at: new Date().toISOString(),
             })
             .eq("stripe_subscription_id", subscriptionId);
