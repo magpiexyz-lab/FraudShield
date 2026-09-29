@@ -3,9 +3,9 @@
 // PRODUCTION BUG this pins. A real cancellation was taken through the Stripe
 // billing portal on the live site. Stripe emitted TWO
 // customer.subscription.updated events and NO customer.subscription.deleted,
-// because portal cancellation sets cancel_at_period_end = true and leaves the
-// subscription ACTIVE until the paid month runs out -- .deleted only arrives
-// when the period actually elapses, up to 30 days later. The webhook handled
+// because portal cancellation schedules the end and leaves the subscription
+// ACTIVE until the paid month runs out -- .deleted only arrives when the
+// period actually elapses, up to 30 days later. The webhook handled
 // .deleted only, so nothing fired and nothing was recorded:
 // subscription_canceled never reached PostHog, and the row stayed
 // status=active with no trace that the customer had already left.
@@ -15,15 +15,29 @@
 // nothing; churn analytics lagged by a full billing period; and the product
 // could not tell a happy subscriber from one who had already gone.
 //
-// These are source/schema contract tests, matching the convention of
-// tests/subscription-interval-period.test.ts: vitest runs environment "node"
-// with no database and no Stripe credentials, so the assertions pin (a) the
-// migration shape and (b) the branch structure of the webhook. End-to-end with
-// a real Stripe signature stays the job of /verify.
+// SECOND PRODUCTION BUG this pins, found because the first fix did not work.
+// The .updated branch shipped and still reported nothing. The captured event
+// (evt_1UKuEJRamJuooj63TxSnsho6, API version 2026-07-29.dahlia) showed why:
+// the portal sets `cancel_at` to the period end and leaves
+// `cancel_at_period_end` FALSE. The handler tested the false field.
+//
+// The test suite could not have caught that, because it asserted the handler's
+// SOURCE TEXT -- it grepped for `subscription.cancel_at_period_end` and passed
+// when it found it. It pinned the defect instead of detecting it. A test that
+// checks which field the code names can only ever confirm the author's
+// assumption; the fix is to run the decision against a payload Stripe really
+// sent, which is what the last describe block in this file now does.
+//
+// The remaining assertions are source/schema contract tests, matching the
+// convention of tests/subscription-interval-period.test.ts: vitest runs
+// environment "node" with no database and no Stripe credentials, so they pin
+// (a) the migration shape and (b) the branch structure of the webhook.
+// End-to-end with a real Stripe signature stays the job of /verify.
 
 import { describe, it, expect } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { isPendingCancellation } from "@/lib/stripe-cancel";
 
 const repoRoot = path.resolve(__dirname, "..");
 
@@ -159,15 +173,14 @@ describe("stripe webhook: handles customer.subscription.updated", () => {
     expect(webhookSource()).toContain(UPDATED_GUARD);
   });
 
-  // FIELD PATH, pinned against the shipped SDK. In stripe 22.2.0
-  // cancel_at_period_end is TOP-LEVEL and non-nullable on Subscription (see
-  // node_modules/stripe/cjs/resources/Subscriptions.d.ts) -- unlike
-  // current_period_end, which moved down onto the subscription items. Reading
-  // it off the items would not compile.
-  it("reads cancel_at_period_end from the top level of the Subscription", () => {
-    const block = updatedHandlerBlock();
-    expect(block).toMatch(/subscription\.cancel_at_period_end/);
-    expect(block).not.toMatch(/items\.data\[0\]\??\.cancel_at_period_end/);
+  // The decision itself is asserted against real payloads in the block below,
+  // not by grepping for a field name here. An earlier version of this test did
+  // grep for one -- `expect(block).toMatch(/subscription\.cancel_at_period_end/)`
+  // -- and that is how the bug shipped: the handler read a field the Billing
+  // Portal had stopped setting, and the test pinned it there rather than
+  // catching it. All this asserts now is that the branch delegates.
+  it("delegates the decision to the tested predicate", () => {
+    expect(updatedHandlerBlock()).toContain("isPendingCancellation(subscription)");
   });
 
   it("fires subscription_canceled on the pending-cancellation path", () => {
@@ -329,5 +342,83 @@ describe("regression surface: nothing else moved", () => {
     const source = webhookSource();
     expect(source).toContain("from(\"stripe_events\")");
     expect(source).toContain("23505");
+  });
+});
+
+// The decision, run against payloads Stripe actually sent.
+//
+// This block is the one that fails against the pre-fix handler. Everything
+// above it passed while cancellation was silently broken in production, which
+// is the whole argument for testing the decision rather than the source text.
+describe("isPendingCancellation: real Stripe payloads", () => {
+  // VERBATIM from evt_1UKuEJRamJuooj63TxSnsho6, the cancellation that reported
+  // nothing. Only the fields the predicate reads are kept; the rest of the
+  // Subscription object is 200 lines of payment settings and price data that
+  // the decision does not consult. cancel_at equals the item's
+  // current_period_end (1793254123) exactly -- that IS how the portal says
+  // "cancel when the paid month runs out".
+  const PORTAL_CANCELLATION = {
+    cancel_at: 1793254123,
+    cancel_at_period_end: false,
+  };
+
+  // Same subscription two seconds later. previous_attributes on this one was
+  // only { cancellation_details: { feedback: null } } -- the customer picking
+  // "too_expensive" from the portal's dropdown. The cancellation fields are
+  // unchanged, so the predicate must still read pending; it is the stored row
+  // flag, not this function, that stops the second report.
+  const FEEDBACK_FOLLOW_UP = {
+    cancel_at: 1793254123,
+    cancel_at_period_end: false,
+  };
+
+  // Reversing the cancellation clears the scheduled end date.
+  const UN_CANCELLED = { cancel_at: null, cancel_at_period_end: false };
+
+  // A price change, a card update, a quantity change: .updated fires for all
+  // of these and none of them is a cancellation.
+  const UNRELATED_UPDATE = { cancel_at: null, cancel_at_period_end: false };
+
+  // The older shape, still produced when a caller sets the flag through the
+  // API directly. Dropping support for it would trade this bug for its mirror.
+  const LEGACY_FLAG = { cancel_at: null, cancel_at_period_end: true };
+
+  it("detects the portal cancellation that shipped broken", () => {
+    expect(isPendingCancellation(PORTAL_CANCELLATION)).toBe(true);
+  });
+
+  it("still reads pending on the feedback follow-up event", () => {
+    expect(isPendingCancellation(FEEDBACK_FOLLOW_UP)).toBe(true);
+  });
+
+  it("detects a cancellation set through the legacy flag", () => {
+    expect(isPendingCancellation(LEGACY_FLAG)).toBe(true);
+  });
+
+  it("reads not-pending once the cancellation is reversed", () => {
+    expect(isPendingCancellation(UN_CANCELLED)).toBe(false);
+  });
+
+  it("does not treat an unrelated subscription update as a cancellation", () => {
+    expect(isPendingCancellation(UNRELATED_UPDATE)).toBe(false);
+  });
+
+  // Absent is not the same as false, and a webhook payload may omit either
+  // field. Neither present means nothing was scheduled.
+  it("treats missing fields as not pending", () => {
+    expect(isPendingCancellation({})).toBe(false);
+    expect(isPendingCancellation({ cancel_at: undefined })).toBe(false);
+    expect(isPendingCancellation({ cancel_at_period_end: null })).toBe(false);
+  });
+
+  // REGRESSION GUARD, and the sharpest assertion in the file. Reading only
+  // cancel_at_period_end is precisely the defect that reached production and
+  // survived a full test suite. If someone simplifies the predicate back to
+  // that one field, this is what stops them.
+  it("never decides on cancel_at_period_end alone", () => {
+    expect(isPendingCancellation({ cancel_at_period_end: false })).toBe(false);
+    expect(
+      isPendingCancellation({ cancel_at: 1793254123, cancel_at_period_end: false }),
+    ).toBe(true);
   });
 });

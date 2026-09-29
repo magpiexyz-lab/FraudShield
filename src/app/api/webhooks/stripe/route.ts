@@ -15,6 +15,7 @@ import { getStripe } from "@/lib/stripe";
 import { createServiceRoleClient } from "@/lib/supabase-server";
 import { trackServerEvent } from "@/lib/analytics-server";
 import { nullableAttributionValue } from "@/lib/attribution";
+import { isPendingCancellation } from "@/lib/stripe-cancel";
 import { PLAN_PRICES, PRO_SCAN_QUOTA } from "@/lib/types";
 
 // Paid subscriptions raise scan quota above the free allowance. Sourced from
@@ -312,14 +313,15 @@ export async function POST(request: Request) {
   if (event.type === "customer.subscription.updated") {
     const subscription = event.data.object as Stripe.Subscription;
 
-    // PAYLOAD SHAPE, verified against the pinned SDK rather than assumed: in
-    // stripe 22.2.0 cancel_at_period_end IS top-level on Subscription and is
-    // non-nullable - see cancel_at_period_end in
-    // node_modules/stripe/cjs/resources/Subscriptions.d.ts. That is the opposite
-    // of current_period_end, which moved down onto the subscription ITEMS (see
-    // fetchCurrentPeriodEnd above); reading this one off the items would not
-    // compile. Same trap, checked the same way: by reading the shipped .d.ts.
-    const pendingCancel = subscription.cancel_at_period_end === true;
+    // PAYLOAD SHAPE. This used to read subscription.cancel_at_period_end and
+    // nothing else, checked against the SDK's .d.ts - which type-checks and is
+    // still WRONG, because the Billing Portal no longer sets that field. It
+    // schedules cancel_at at the period end and leaves cancel_at_period_end
+    // false, so the handler saw no transition and reported nothing. Reading the
+    // shipped types cannot catch a field the API has stopped populating; only a
+    // real payload can. See isPendingCancellation for the captured event, and
+    // tests/subscription-cancel-pending.test.ts, which now replays it.
+    const pendingCancel = isPendingCancellation(subscription);
 
     const { data: subscriberRow } = await supabase
       .from("subscriptions")
@@ -395,9 +397,14 @@ export async function POST(request: Request) {
       });
     } else if (alreadyPending && !pendingCancel) {
       // UN-CANCEL. The customer reversed the pending cancellation in the
-      // portal, which sets cancel_at_period_end back to false and emits another
-      // .updated. Clearing the flag restores the row to plain-active AND re-arms
-      // the guard above, so a later genuine cancellation is reported again.
+      // portal, which clears the scheduled cancel_at (and cancel_at_period_end
+      // where that is what was set) and emits another .updated. Clearing our
+      // own flag restores the row to plain-active AND re-arms the guard above,
+      // so a later genuine cancellation is reported again.
+      //
+      // The column keeps its name because it is OUR record of "a cancellation
+      // has been reported", not a mirror of any one Stripe field - which is
+      // what lets the .deleted handler's double-fire guard read it safely.
       //
       // canceled_at is deliberately left in place. The boolean is what carries
       // pending, so retaining the timestamp costs no correctness and preserves
