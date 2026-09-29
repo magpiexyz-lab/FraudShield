@@ -13,6 +13,8 @@
 // same server-authoritative constant /api/checkout charges on), so a price
 // change cannot leave a stale number inside a binding promise.
 
+import { readFileSync } from "fs";
+import path from "path";
 import { describe, it, expect } from "vitest";
 import { PLAN_PRICES } from "@/lib/types";
 import {
@@ -23,6 +25,9 @@ import {
   BILLING_TERMS,
   BILLING_FAQS,
 } from "@/lib/billing-copy";
+
+/** Repo root, for reading component source that this copy must agree with. */
+const repoRoot = path.resolve(__dirname, "..");
 
 /** Every user-facing string the module exports, flattened. */
 function allCopyStrings(): string[] {
@@ -121,30 +126,116 @@ describe("b-11: the five binding billing terms", () => {
   });
 });
 
-// The unstacking guard.
+// The restacking guard.
 //
-// This copy shipped ahead of the in-app billing portal, and the portal is held
-// unmerged deliberately. Any sentence that sends a customer to a dashboard
-// control to cancel or to fetch an invoice is therefore FALSE in the build we
-// ship: it points at a button that is not there. Email is the route that works
-// both before and after that portal lands, so email is the route the copy
-// names.
+// This block used to assert the OPPOSITE: that the copy named no in-app
+// control at all. That was right while the self-serve billing portal sat
+// unmerged — naming a button that did not exist would have been a binding
+// term that was false on the day it shipped.
 //
-// This test fails the moment the portal wording is reintroduced, which is the
-// point: it stops this page from quietly re-acquiring a dependency on an
-// unmerged branch.
-describe("b-11: the billing copy names no in-app control", () => {
-  const PORTAL_WORDING: ReadonlyArray<RegExp> = [
-    /manage billing/i,
-    /\bdashboards?\b/i,
-    /billing portal/i,
-    /customer portal/i,
-    /account settings/i,
-  ];
+// The portal now ships (src/app/dashboard/manage-billing.tsx, backed by
+// /api/billing-portal), so that premise is dead and this guard is inverted.
+// The requirement is literally "cancel any time from the account page", and a
+// customer told to email us when a button would have done it in two clicks has
+// been handed the slow route to something we sold as easy.
+//
+// The obligation is now two-sided, and both sides are load-bearing:
+//   1. the cancel and invoice copy NAMES the real control, and
+//   2. it still names SUPPORT_EMAIL as the fallback, for anyone locked out of
+//      their dashboard — email stays a documented route, not a deleted one.
+// Reverting either half fails here.
+describe("b-11: the billing copy names the in-app control that now ships", () => {
+  const CANCELLATION_ID = "cancellation";
+  const SUPPORT_ID = "support";
 
-  it("routes cancelling and invoices through email, never through a control", () => {
+  // Asserted against the component's own source rather than retyped from
+  // memory. That is the point of this constant: a label invented here, or
+  // renamed there, sends the customer hunting for a button that is not on the
+  // screen — the same class of falsehood the old guard existed to prevent,
+  // only pointing the other way.
+  const PORTAL_LABEL = "Manage billing or cancel";
+  const manageBillingSource = readFileSync(
+    path.join(repoRoot, "src/app/dashboard/manage-billing.tsx"),
+    "utf8",
+  );
+
+  const faq = (fragment: string) => {
+    const found = BILLING_FAQS.find((f) => f.q.toLowerCase().includes(fragment));
+    expect(found).toBeDefined();
+    return found!;
+  };
+
+  it("names a control the dashboard actually renders", () => {
+    expect(manageBillingSource).toContain(PORTAL_LABEL);
+  });
+
+  it("points the cancellation term at the control, with email as fallback", () => {
+    const body = term(CANCELLATION_ID).body;
+    expect(body).toContain(PORTAL_LABEL);
+    expect(body).toContain(SUPPORT_EMAIL);
+  });
+
+  it("points the support term at the control, with email as fallback", () => {
+    const body = term(SUPPORT_ID).body;
+    expect(body).toContain(PORTAL_LABEL);
+    expect(body).toContain(SUPPORT_EMAIL);
+  });
+
+  // Ordering is substance here, not house style: the first route offered is
+  // the one most customers take, and it has to be the self-serve one.
+  it("answers 'how do I cancel' with the control first, email second", () => {
+    const answer = faq("how do i cancel").a;
+    expect(answer).toContain(PORTAL_LABEL);
+    expect(answer).toContain(SUPPORT_EMAIL);
+    expect(answer.indexOf(PORTAL_LABEL)).toBeLessThan(
+      answer.indexOf(SUPPORT_EMAIL),
+    );
+  });
+
+  it("answers 'how do I get an invoice' with the control first, email second", () => {
+    const answer = faq("invoice").a;
+    expect(answer).toContain(PORTAL_LABEL);
+    expect(answer).toContain(SUPPORT_EMAIL);
+    expect(answer.indexOf(PORTAL_LABEL)).toBeLessThan(
+      answer.indexOf(SUPPORT_EMAIL),
+    );
+  });
+
+  // Says WHERE the button is, not merely that it exists. "Click Manage
+  // billing or cancel" is not an instruction if the customer cannot find the
+  // screen it is on.
+  it("says where the control lives", () => {
+    for (const copy of [term(CANCELLATION_ID).body, faq("how do i cancel").a]) {
+      expect(copy.toLowerCase()).toMatch(/\bdashboard\b/);
+    }
+  });
+
+  // The anti-regression half. Restore the email-only wording and the cancel
+  // and invoice copy stops naming the control at all — this fails then as
+  // firmly as the old guard failed the reverse.
+  it("never routes cancelling or invoices through email alone", () => {
+    const routed = [
+      term(CANCELLATION_ID).body,
+      term(SUPPORT_ID).body,
+      faq("how do i cancel").a,
+      faq("invoice").a,
+    ];
+    for (const copy of routed) {
+      expect(copy).toMatch(/manage billing/i);
+    }
+  });
+
+  // Cancelling has to read as easy. Retention-desk phrasing is the failure
+  // mode this catches: it turns a two-click action into a request we grant.
+  it("does not phrase cancelling as a favour we have to grant", () => {
+    const OBSTACLE_WORDING: ReadonlyArray<RegExp> = [
+      /request cancellation/i,
+      /cancellation request/i,
+      /to request.{0,20}cancel/i,
+      /contact (support|us).{0,30}to cancel/i,
+    ];
     for (const copy of allCopyStrings()) {
-      for (const wording of PORTAL_WORDING) {
+      for (const wording of OBSTACLE_WORDING) {
         expect(copy).not.toMatch(wording);
       }
     }

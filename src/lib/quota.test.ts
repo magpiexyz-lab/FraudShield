@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeQuota } from "./quota";
+import { computeQuota, currentPeriodStart } from "./quota";
 import { FREE_SCAN_QUOTA } from "./types";
 
 describe("computeQuota — free tier", () => {
@@ -107,5 +107,59 @@ describe("computeQuota — edge cases", () => {
   it("FREE_SCAN_QUOTA is a positive integer", () => {
     expect(FREE_SCAN_QUOTA).toBeGreaterThan(0);
     expect(Number.isInteger(FREE_SCAN_QUOTA)).toBe(true);
+  });
+});
+
+// The Pro plan sells "200 document scans / month". Usage used to be counted
+// all-time, so a subscriber got 200 scans EVER and month two was paid for but
+// empty. These pin the window arithmetic that makes the quota genuinely monthly.
+describe("currentPeriodStart — monthly quota window", () => {
+  const anchor = new Date("2026-01-15T10:00:00.000Z");
+
+  it("returns the anchor while still inside the first period", () => {
+    const now = new Date("2026-01-20T00:00:00.000Z");
+    expect(currentPeriodStart(anchor, now).toISOString()).toBe(anchor.toISOString());
+  });
+
+  it("returns the anchor at the very last instant before renewal", () => {
+    const now = new Date("2026-02-15T09:59:59.999Z");
+    expect(currentPeriodStart(anchor, now).toISOString()).toBe(anchor.toISOString());
+  });
+
+  it("advances exactly on the renewal instant", () => {
+    const now = new Date("2026-02-15T10:00:00.000Z");
+    expect(currentPeriodStart(anchor, now).toISOString()).toBe(
+      "2026-02-15T10:00:00.000Z",
+    );
+  });
+
+  it("lands in the right window many months later", () => {
+    const now = new Date("2026-07-20T00:00:00.000Z");
+    expect(currentPeriodStart(anchor, now).toISOString()).toBe(
+      "2026-07-15T10:00:00.000Z",
+    );
+  });
+
+  it("never returns a window start in the future", () => {
+    const now = new Date("2026-05-01T00:00:00.000Z");
+    expect(currentPeriodStart(anchor, now).getTime()).toBeLessThanOrEqual(
+      now.getTime(),
+    );
+  });
+
+  it("clamps a month-end anchor instead of skidding forward", () => {
+    // 31 Jan + 1 month via setUTCMonth lands on 3 Mar, which would hand the
+    // subscriber a free extra window every short month.
+    const endOfMonth = new Date("2026-01-31T12:00:00.000Z");
+    const inFebruary = new Date("2026-02-28T13:00:00.000Z");
+    const start = currentPeriodStart(endOfMonth, inFebruary);
+    expect(start.getUTCMonth()).toBe(1);
+    expect(start.getUTCDate()).toBe(28);
+    expect(start.getTime()).toBeLessThanOrEqual(inFebruary.getTime());
+  });
+
+  it("treats a future anchor as the window start", () => {
+    const now = new Date("2026-01-01T00:00:00.000Z");
+    expect(currentPeriodStart(anchor, now).toISOString()).toBe(anchor.toISOString());
   });
 });

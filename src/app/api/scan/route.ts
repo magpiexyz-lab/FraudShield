@@ -22,7 +22,7 @@ import { z } from "zod";
 import exifr from "exifr";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { rateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
-import { computeQuota } from "@/lib/quota";
+import { computeQuota, currentPeriodStart } from "@/lib/quota";
 import { computeFraudScore } from "@/lib/fraud/score";
 import { analyzeImageForFraud, applyVisionSignals } from "@/lib/fraud/vision";
 import { isFullAnalysis } from "@/lib/fraud/analysis-mode";
@@ -229,17 +229,33 @@ export async function POST(request: Request) {
     // image analysis returns EXIF evidence but no fraud score, and charging a
     // free scan for a non-answer penalises exactly the users who photograph
     // documents instead of exporting PDFs. See 005_scans_counts_toward_quota.sql.
-    const { count } = await supabase
+    // Subscription is read FIRST because it carries the billing anchor that
+    // decides which scans count. Pro is sold as "200 document scans / month";
+    // counting all-time gave a subscriber 200 scans EVER, so month two was paid
+    // for and empty. See 007_subscription_period.sql.
+    const { data: sub } = await supabase
+      .from("subscriptions")
+      .select("status, scan_quota, current_period_start")
+      .eq("user_id", user.id)
+      .eq("status", "active")
+      .maybeSingle();
+
+    let scanQuery = supabase
       .from("scans")
       .select("id", { count: "exact", head: true })
       .eq("counts_toward_quota", true);
 
-    const { data: sub } = await supabase
-      .from("subscriptions")
-      .select("status, scan_quota")
-      .eq("user_id", user.id)
-      .eq("status", "active")
-      .maybeSingle();
+    // Paid plans count within the current monthly window. A NULL anchor means
+    // free tier or a comped lifetime grant, where all-time counting is correct:
+    // the free card sells "1 document scan, total", not one per month.
+    const anchor = (sub as { current_period_start?: string | null } | null)
+      ?.current_period_start;
+    if (anchor) {
+      const windowStart = currentPeriodStart(new Date(anchor), new Date());
+      scanQuery = scanQuery.gte("created_at", windowStart.toISOString());
+    }
+
+    const { count } = await scanQuery;
 
     const quota = computeQuota({
       scans_used: count ?? 0,

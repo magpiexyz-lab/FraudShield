@@ -77,3 +77,4 @@ AGENTS.md
 supabase/.temp/
 
 .vercel
+.env*

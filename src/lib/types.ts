@@ -57,6 +57,7 @@ export type SubscriptionsRow = {
   status: "active" | "inactive" | "canceled" | "past_due";
   plan: string;                         // e.g. "pro"
   scan_quota: number;                   // total scans allowed per billing period
+  current_period_start: string | null;  // timestamptz billing anchor; NULL = all-time
   created_at: string;                   // timestamptz
 };
 

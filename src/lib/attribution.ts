@@ -103,6 +103,25 @@ export function sanitizeUtmCampaign(raw: string | null | undefined): string | un
   return value;
 }
 
+/**
+ * Stripe metadata -> database column. Stripe metadata values are always
+ * strings, so /api/checkout writes `""` for attribution it does not have.
+ * Persisting that empty string would make "this purchase had no attribution"
+ * invisible to `where gclid is null` and force every reporting query to spell
+ * out `is null or = ''`. Collapsing blank to NULL at the write boundary keeps
+ * one representation of "absent" in the column.
+ *
+ * Lives here rather than in the webhook route because a Next.js App Router
+ * `route.ts` may only export route handlers and segment config.
+ */
+export function nullableAttributionValue(
+  raw: string | null | undefined,
+): string | null {
+  if (typeof raw !== "string") return null;
+  const value = raw.trim();
+  return value.length > 0 ? value : null;
+}
+
 /** Drops unset/invalid members so callers never spread `undefined` into events. */
 export function sanitizeAttribution(raw: {
   gclid?: string | null;

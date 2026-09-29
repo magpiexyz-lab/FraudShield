@@ -23,7 +23,7 @@ import {
 
 export const metadata: Metadata = {
   title: "Terms | FraudShield",
-  description: `The billing terms for FraudShield Pro at ${PRO_PRICE_LABEL} — what you are charged, how to cancel in one email, what happens to your access afterwards, and our refund policy.`,
+  description: `The billing terms for FraudShield Pro at ${PRO_PRICE_LABEL} — what you are charged, how to cancel yourself from your dashboard, what happens to your access afterwards, and our refund policy.`,
   openGraph: {
     title: "Terms | FraudShield",
     description: `What you are charged for FraudShield Pro, how to cancel, and what cancelling does to your access.`,
@@ -161,28 +161,39 @@ export default function TermsPage() {
                 Cancel, or ask us something
               </h2>
               <p className="mt-3 text-sm leading-relaxed break-words text-muted-foreground">
-                Cancelling takes one line to{" "}
+                Cancelling is two clicks in your dashboard, under{" "}
+                <span className="text-foreground">Manage billing or cancel</span>
+                . It applies straight away — no form to find, and nobody will
+                try to talk you out of it. If you cannot get in, email{" "}
                 <a href={`mailto:${SUPPORT_EMAIL}`} className={INLINE_LINK}>
                   {SUPPORT_EMAIL}
-                </a>
-                . We cancel it for you and confirm within{" "}
-                {SUPPORT_RESPONSE_SLA} — no form to find, and nobody will try
-                to talk you out of it. The same address answers any other
+                </a>{" "}
+                and we will do it for you, and confirm within{" "}
+                {SUPPORT_RESPONSE_SLA}. The same address answers any other
                 billing question.
               </p>
             </div>
-            {/*
-              The action is a mailto, not a route into the app: the button has
-              to do the thing the clause above promises, and the clause
-              promises an email. A link to a page where cancelling merely
-              might be possible would be a worse version of the same click.
-            */}
-            <a
-              href={`mailto:${SUPPORT_EMAIL}?subject=Cancel%20FraudShield%20Pro`}
-              className={`${buttonVariants({ variant: "outline" })} h-12 shrink-0 rounded-full border-signal/40 bg-signal/[0.06] px-7 text-base font-medium text-foreground transition-colors duration-200 hover:border-signal hover:bg-signal/10`}
-            >
-              Email us to cancel
-            </a>
+            <div className="flex flex-col items-start gap-2 sm:items-end">
+              {/*
+                The primary action is now a route into the app rather than a
+                mailto: the portal ships, so the button can do the thing the
+                clause above promises instead of asking someone else to do it.
+                The mailto stays on as the secondary, because a customer locked
+                out of their dashboard still has to be able to stop the charge.
+              */}
+              <Link
+                href="/dashboard"
+                className={`${buttonVariants({ variant: "outline" })} h-12 shrink-0 rounded-full border-signal/40 bg-signal/[0.06] px-7 text-base font-medium text-foreground transition-colors duration-200 hover:border-signal hover:bg-signal/10`}
+              >
+                Cancel in your dashboard
+              </Link>
+              <a
+                href={`mailto:${SUPPORT_EMAIL}?subject=Cancel%20FraudShield%20Pro`}
+                className={INLINE_LINK}
+              >
+                or email us to cancel
+              </a>
+            </div>
           </div>
         </section>
 

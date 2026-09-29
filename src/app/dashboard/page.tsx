@@ -10,6 +10,7 @@ import { FREE_SCAN_QUOTA, type SubscriptionsRow } from "@/lib/types";
 import { UploadZone } from "./upload-zone";
 import { ScanHistory } from "./scan-history";
 import { WhatWeCheck } from "./what-we-check";
+import { ManageBilling } from "./manage-billing";
 import { HowItWorks } from "./how-it-works";
 import { AI_PRIVACY_DISCLOSURE } from "@/lib/fraud/analysis-mode";
 import { trackPaywallShown } from "@/lib/events";
@@ -124,6 +125,10 @@ export default function DashboardPage() {
                 isPaid={isPaid}
                 pct={pct}
               />
+              {/* Paid subscribers must be able to cancel from inside the product:
+                  Stripe checkout promises "until you cancel" and the ads say
+                  "Cancel anytime". */}
+              {isPaid ? <ManageBilling /> : null}
             </div>
           </header>
 

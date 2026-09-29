@@ -1,12 +1,20 @@
-// POST /api/pay-intent — record a fake-door "Upgrade to Pro" click.
+// POST /api/pay-intent — RETAINED FOR HISTORICAL MEASUREMENT ONLY.
 //
-// Google Ads Phase 2 measures willingness to pay: of the users we paid to
-// bring, how many take a money-shaped action. This route is the DB half of that
-// signal (the PostHog event is the other half). NOTHING IS CHARGED and no
-// payment provider is imported here — that is enforced by the P2-e static check,
-// which walks this file's transitive imports looking for a payment SDK.
+// This route recorded the Phase 2 fake-door "Upgrade to Pro" click. Phase 3
+// replaced that fake door with a real Stripe subscription, so NOTHING IN THE
+// PRODUCT CALLS THIS ROUTE ANY MORE: the pricing page and the scan-result CTA
+// both POST /api/checkout now.
 //
-// Security:
+// It stays live, along with public.pay_intent and every row in it, for two
+// reasons. The cross-MVP verdict pipeline reads that table, and the Phase 2
+// rows are the ground truth the willingness-to-pay verdict was written
+// against. Removing either would silently rewrite a finished experiment.
+//
+// DO NOT WIRE THIS TO ANY NEW UI. A click here is not a purchase, and mixing
+// fake-door rows into Phase 3 subscription data would corrupt both numbers.
+// New money-shaped surfaces belong on /api/checkout.
+//
+// Security (unchanged - the route is still reachable and still authenticated):
 //   - Authenticated via Supabase cookie session (401 otherwise)
 //   - Rate-limited per user+IP after auth
 //   - Body is zod-validated with explicit .max() bounds on every string
@@ -16,6 +24,8 @@
 //   - Inserted with the service-role client because pay_intent has no client
 //     write policy; a client-writable table would let anyone forge the rows the
 //     verdict counts
+//   - NOTHING IS CHARGED and no payment provider is imported here — enforced by
+//     the P2-e static check, which walks the transitive imports of this file
 
 import { NextResponse } from "next/server";
 import { z } from "zod";

@@ -19,13 +19,18 @@
 
 import { PLAN_PRICES } from "@/lib/types";
 
-// Why this copy names an email address and never an in-app control: the
-// self-serve billing portal is not in this build. Telling a customer to click
-// "Manage billing" would be false the moment they went looking for it, and a
-// binding term that is false on the day it ships is the one kind of billing
-// bug you cannot patch quietly. An address, by contrast, is true in both
-// worlds — it keeps working unchanged once the portal does land, so nothing
-// here has to be revisited then. tests/billing-terms.test.ts enforces it.
+// Why this copy names an in-app control AND an email address: the self-serve
+// billing portal now ships (src/app/dashboard/manage-billing.tsx, backed by
+// /api/billing-portal), so "cancel any time" has a button behind it and the
+// copy has to say so — a customer sent to email when two clicks would have
+// done it has been given the slow route to something we sold as instant.
+//
+// The address stays as the stated fallback rather than being deleted: someone
+// locked out of their dashboard still has to be able to stop the charge, and a
+// binding term with only one route is a term that fails whenever that route
+// does. Control first, email second, both real. The button label below is the
+// one manage-billing.tsx actually renders; tests/billing-terms.test.ts pins
+// them together so a rename on either side cannot ship alone.
 
 /** Where billing questions go. Draft Labs owns the Stripe account. */
 export const SUPPORT_EMAIL = "admin@draftlabs.org";
@@ -67,7 +72,7 @@ export const BILLING_TERMS: ReadonlyArray<BillingTerm> = [
   {
     id: "cancellation",
     heading: "Cancelling",
-    body: `You can cancel at any time. Email ${SUPPORT_EMAIL} and say you want to cancel — one line is enough, we will not ask you to justify it, and we will cancel it for you and confirm within ${SUPPORT_RESPONSE_SLA}. There is no contract, no minimum term, and no cancellation fee.`,
+    body: `You can cancel at any time, yourself, in a couple of clicks: open your dashboard and click "Manage billing or cancel". It takes effect the moment you confirm — nobody has to approve it, and nothing will try to talk you out of it. If you cannot get into your dashboard, email ${SUPPORT_EMAIL} instead and we will cancel it for you and confirm within ${SUPPORT_RESPONSE_SLA}. There is no contract, no minimum term, and no cancellation fee.`,
   },
   {
     id: "access-after-cancellation",
@@ -82,7 +87,7 @@ export const BILLING_TERMS: ReadonlyArray<BillingTerm> = [
   {
     id: "support",
     heading: "Invoices and support",
-    body: `An invoice or receipt for any month is yours on request: email ${SUPPORT_EMAIL} and we will send it, addressed to your company if you need it that way. The same address takes anything else — a billing question, a charge you do not recognise — and you will have a reply within ${SUPPORT_RESPONSE_SLA}.`,
+    body: `Your invoices are in the billing portal: open your dashboard, click "Manage billing or cancel", and every receipt on the account is there to download, addressed to your company if you set it up that way. Email ${SUPPORT_EMAIL} if you would rather we sent one, or for anything else — a billing question, a charge you do not recognise — and you will have a reply within ${SUPPORT_RESPONSE_SLA}.`,
   },
 ];
 
@@ -96,7 +101,7 @@ export const BILLING_TERMS: ReadonlyArray<BillingTerm> = [
 export const BILLING_FAQS: ReadonlyArray<BillingFaq> = [
   {
     q: "How do I cancel?",
-    a: `Email ${SUPPORT_EMAIL} and say you want to cancel. We do it for you and confirm within ${SUPPORT_RESPONSE_SLA} — one line is enough, there is nothing to justify and no cancellation fee.`,
+    a: `Yourself, in a couple of clicks: open your dashboard and click "Manage billing or cancel". It applies straight away — no form to find, nothing to justify, and no cancellation fee. Locked out of your dashboard? Email ${SUPPORT_EMAIL} and we will do it for you within ${SUPPORT_RESPONSE_SLA}.`,
   },
   {
     q: "What happens to my access if I cancel?",
@@ -104,6 +109,6 @@ export const BILLING_FAQS: ReadonlyArray<BillingFaq> = [
   },
   {
     q: "How do I get an invoice?",
-    a: `Email ${SUPPORT_EMAIL} and we will send one within ${SUPPORT_RESPONSE_SLA} — any month you need, addressed to your company if that is what your finance team wants.`,
+    a: `Open your dashboard, click "Manage billing or cancel", and download any month you need yourself — addressed to your company if that is what your finance team wants. Or email ${SUPPORT_EMAIL} and we will send one within ${SUPPORT_RESPONSE_SLA}.`,
   },
 ];
