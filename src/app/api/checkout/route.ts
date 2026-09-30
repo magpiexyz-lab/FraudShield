@@ -26,6 +26,7 @@ import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { rateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
 import { resolvePayIntentAttribution } from "@/lib/attribution";
 import { PLAN_PRICES } from "@/lib/types";
+import { hashEmailForMatching } from "@/lib/email-hash";
 
 // Closed enum of plan slugs derived from PLAN_PRICES at build time.
 const PLAN_ENUM = z.enum(
@@ -256,6 +257,20 @@ export async function POST(request: Request) {
       // the same dual bag as everything else here because Stripe does not copy
       // Session metadata onto the Subscription.
       billing_interval: billingInterval,
+      // Fallback join key for the Google Ads conversion upload, for the sales
+      // where gclid did not survive the journey (ad blocker, stripped query
+      // string, a purchase made days later in another browser).
+      //
+      // Computed HERE rather than in the webhook because this is where a
+      // trustworthy email exists: user.email comes from the authenticated
+      // Supabase session. The webhook sees only session.customer_email, which
+      // the route header already warns is attacker-controllable - hashing that
+      // would let a buyer choose which conversion their sale is credited to.
+      //
+      // Empty string, not null: Stripe metadata values must be strings, and
+      // nullableAttributionValue() in the webhook maps "" back to SQL NULL, the
+      // same round trip gclid and utm_campaign already make.
+      email_sha256: hashEmailForMatching(user.email) ?? "",
     };
 
     const siteUrl =
