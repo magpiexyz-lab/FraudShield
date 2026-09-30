@@ -38,7 +38,12 @@ type CheckoutState =
   | "redirecting"
   | "error"
   | "not_configured"
-  | "needs_activation";
+  | "needs_activation"
+  // Already paying. Showing "Choose Pro" to a subscriber is not a cosmetic
+  // slip: the checkout it opens works, so they buy a SECOND subscription and
+  // Stripe bills them $120/month. /api/checkout refuses this with 409
+  // already_subscribed; this state is what stops them reaching it.
+  | "subscribed";
 
 /**
  * ScrollReveal — IntersectionObserver-driven wrapper used by the pricing page
@@ -125,6 +130,7 @@ export function PricingPlans() {
   // visitor here is authenticated — what varies is whether they have activated.
   const [user, setUser] = useState<string | null>(null);
   const [hasActivated, setHasActivated] = useState<boolean | null>(null);
+  const [isSubscribed, setIsSubscribed] = useState<boolean | null>(null);
   const firedRef = useRef(false);
 
   useEffect(() => {
@@ -139,11 +145,29 @@ export function PricingPlans() {
         const { count } = await supabase
           .from("scans")
           .select("id", { count: "exact", head: true });
+        // Are they already paying? Read alongside the scan count rather than in
+        // a second effect, so the card never renders "Choose Pro" to a
+        // subscriber during a gap between two in-flight probes. RLS scopes this
+        // to their own row.
+        const { data: sub } = await supabase
+          .from("subscriptions")
+          .select("status")
+          .maybeSingle();
         if (cancelled) return;
         setUser(authUser?.id ?? null);
         setHasActivated((count ?? 0) > 0);
+        setIsSubscribed(
+          (sub as { status?: string } | null)?.status === "active",
+        );
       } catch {
-        if (!cancelled) setHasActivated(false);
+        // FAIL OPEN, deliberately. A failed probe must not lock a non-paying
+        // visitor out of buying - that would cost a sale to protect against a
+        // duplicate charge the server refuses anyway. /api/checkout is the
+        // binding guard; this is the courteous one.
+        if (!cancelled) {
+          setHasActivated(false);
+          setIsSubscribed(false);
+        }
       }
     }
     loadActivation();
@@ -162,6 +186,16 @@ export function PricingPlans() {
       setState((s) => (s === "needs_activation" ? "idle" : s));
     }
   }, [user, hasActivated]);
+
+  // Latch into "subscribed" once the probe says they are paying. Overrides
+  // idle and needs_activation only: not_configured is a deployment fact, and
+  // redirecting/error belong to a click already in flight, so none of those
+  // should be overwritten by a probe that resolves late.
+  useEffect(() => {
+    if (isSubscribed) {
+      setState((s) => (s === "idle" || s === "needs_activation" ? "subscribed" : s));
+    }
+  }, [isSubscribed]);
 
   async function onChoosePro() {
     // Render guard: only an authenticated, activated user is offered checkout.
@@ -230,6 +264,16 @@ export function PricingPlans() {
       return;
     }
 
+    // The probe missed them - a stale tab, a back button, or a subscription
+    // bought in another tab since this page loaded. The server refused, so
+    // nothing was charged; swap the card to the subscriber panel rather than
+    // showing an error for a request that behaved correctly.
+    if (outcome.kind === "already_subscribed") {
+      setIsSubscribed(true);
+      setState("subscribed");
+      return;
+    }
+
     setErrorMsg(outcome.message);
     setState("error");
   }
@@ -290,6 +334,7 @@ function PlanCard({
   const redirecting = checkoutState === "redirecting";
   const notConfigured = checkoutState === "not_configured";
   const needsActivation = checkoutState === "needs_activation";
+  const subscribed = checkoutState === "subscribed";
 
   return (
     <div
@@ -372,6 +417,11 @@ function PlanCard({
         {onUpgrade ? (
           notConfigured ? (
             <ProWaitlistForm />
+          ) : subscribed ? (
+            // Ahead of needsActivation on purpose: a subscriber who has not
+            // scanned yet must not be told to "try it first" when they have
+            // already paid for 200 scans a month.
+            <AlreadySubscribedPanel />
           ) : needsActivation ? (
             <TryItFirstPointer />
           ) : (
@@ -534,6 +584,42 @@ function ProWaitlistForm() {
  * Unlike the quota-exhausted case, this is not a dead end — they still have free
  * scans, so "try it first" is something they can actually act on.
  */
+/**
+ * Rendered in the Pro card slot when the visitor is already paying.
+ *
+ * Replaces "Choose Pro", which for a subscriber was not a no-op but a second
+ * $60/month subscription: Stripe holds both, and the webhook's upsert on
+ * user_id repoints our row at whichever completed last, leaving the first one
+ * billing invisibly. The server refuses it (409 already_subscribed); this is
+ * what stops them getting that far, and what tells them where to go instead.
+ *
+ * Points at the dashboard because that is where "Manage billing or cancel"
+ * lives - the same control /terms and the pricing FAQ name, so a customer who
+ * reads any of the three is sent to one place.
+ */
+function AlreadySubscribedPanel() {
+  return (
+    <div className="rounded-2xl border border-signal/40 bg-card/60 p-5 text-center">
+      <p className="text-sm font-medium text-foreground">
+        You&rsquo;re on Pro
+      </p>
+      <p className="mt-2 text-sm text-muted-foreground">
+        Your subscription is active. Change your card, download invoices or
+        cancel from your dashboard.
+      </p>
+      <Link
+        href="/dashboard"
+        className={cn(
+          buttonVariants({ variant: "outline" }),
+          "mt-4 h-11 rounded-full px-6",
+        )}
+      >
+        Manage billing or cancel
+      </Link>
+    </div>
+  );
+}
+
 function TryItFirstPointer() {
   return (
     <div className="rounded-2xl border border-border bg-card/60 p-5 text-center">

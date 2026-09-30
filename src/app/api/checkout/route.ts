@@ -64,6 +64,56 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Too many requests" }, { status: 429 });
   }
 
+  // 3. REFUSE A SECOND SUBSCRIPTION. Nothing stopped an already-paying customer
+  //    from buying again: the pricing page rendered "Choose Pro" regardless of
+  //    status, and this route opened a session for anyone authenticated. The
+  //    result is not a duplicate row but a duplicate CHARGE - Stripe happily
+  //    holds two subscriptions for one customer, so they pay $120/month.
+  //
+  //    Worse, it goes unnoticed. The webhook upserts on user_id, so the row
+  //    points at whichever subscription completed LAST; the first one keeps
+  //    billing while being invisible to us, and cancelling in the portal ends
+  //    only the one the customer happens to pick. This is not hypothetical - it
+  //    happened to the test account (cus_VLbQli9C8FLAXX) during phase-3
+  //    verification and made the cancellation events ambiguous.
+  //
+  //    SERVER-SIDE, not just the button. The UI change that accompanies this is
+  //    what customers will see, but it can be walked around by a stale tab, a
+  //    back button, or a direct POST. The charge has to be refused where the
+  //    charge is created.
+  //
+  //    RLS scopes this read to the caller's own row, so no service-role client
+  //    is needed and one user cannot probe another's subscription state.
+  const { data: existing } = await supabase
+    .from("subscriptions")
+    .select("status")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  // ACTIVE ONLY. A canceled row must still be able to buy again - that is a
+  // returning customer, and the webhook's upsert is built to reuse their row.
+  // A pending cancellation (status active, cancel_at_period_end true) is
+  // deliberately refused too: they have paid for the current month and still
+  // hold access, so a second purchase would bill them twice for the same
+  // period. The portal's "Renew" is the correct route back, and the client
+  // sends them there.
+  if ((existing as { status?: string } | null)?.status === "active") {
+    // Both `error` and `code`, matching the not_configured response below: the
+    // shared client decision table (src/lib/checkout-client.ts) switches on
+    // `code`, and dropping it here would fall through to the generic "could not
+    // start checkout" message - which reads as a fault and invites a retry that
+    // will also be refused.
+    return NextResponse.json(
+      {
+        error: "already_subscribed",
+        code: "already_subscribed",
+        message:
+          "You are already on Pro. Manage or cancel your plan from your dashboard.",
+      },
+      { status: 409 },
+    );
+  }
+
   try {
     const body = await request.json();
     const { plan, gclid, utm_campaign } = checkoutSchema.parse(body);

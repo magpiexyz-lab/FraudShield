@@ -3,6 +3,7 @@ import {
   interpretCheckoutResponse,
   CHECKOUT_NETWORK_MESSAGE,
   NOT_CONFIGURED_FALLBACK_MESSAGE,
+  ALREADY_SUBSCRIBED_FALLBACK_MESSAGE,
 } from "./checkout-client";
 
 // The two upgrade CTAs (/pricing and /scan-result) both POST /api/checkout and
@@ -106,5 +107,61 @@ describe("interpretCheckoutResponse", () => {
 
   it("exposes a user-readable network failure message", () => {
     expect(CHECKOUT_NETWORK_MESSAGE).toMatch(/connect|try again|network/i);
+  });
+});
+
+// A subscriber clicking "Choose Pro" used to open a working checkout and buy a
+// SECOND subscription: Stripe holds both, so the customer is billed $120/month,
+// and the webhook's upsert on user_id repoints our row at whichever completed
+// last - leaving the first one billing while invisible to us. It happened to
+// the test account during phase-3 verification. /api/checkout now answers 409
+// already_subscribed, and this is the table that turns that into a calm panel
+// rather than a red retry prompt.
+describe("interpretCheckoutResponse: already subscribed", () => {
+  const PAYLOAD = {
+    error: "already_subscribed",
+    code: "already_subscribed",
+    message: "You are already on Pro.",
+  };
+
+  it("reads 409 + already_subscribed as its own outcome", () => {
+    expect(interpretCheckoutResponse(409, PAYLOAD)).toEqual({
+      kind: "already_subscribed",
+      message: "You are already on Pro.",
+    });
+  });
+
+  // The distinction is the whole point: "error" renders red, role="alert", and
+  // invites a retry the server will refuse again. Nothing failed here.
+  it("is not classified as an error", () => {
+    expect(interpretCheckoutResponse(409, PAYLOAD).kind).not.toBe("error");
+  });
+
+  it("falls back to its own copy when the server sends no message", () => {
+    const outcome = interpretCheckoutResponse(409, {
+      code: "already_subscribed",
+    });
+    expect(outcome).toEqual({
+      kind: "already_subscribed",
+      message: ALREADY_SUBSCRIBED_FALLBACK_MESSAGE,
+    });
+  });
+
+  // Never invent the state from a bare status code. A 409 from a proxy, or any
+  // other conflict the route grows later, must not tell a NON-subscriber they
+  // are already paying - that would block a sale outright.
+  it("requires the code, not just the status", () => {
+    expect(interpretCheckoutResponse(409, {}).kind).toBe("error");
+    expect(interpretCheckoutResponse(409, { code: "something_else" }).kind).toBe(
+      "error",
+    );
+  });
+
+  // And the mirror: the code alone must not override a status that means
+  // something else entirely.
+  it("does not fire on other statuses carrying the code", () => {
+    expect(interpretCheckoutResponse(500, PAYLOAD).kind).toBe("error");
+    expect(interpretCheckoutResponse(200, { ...PAYLOAD, url: "https://x/y" })
+      .kind).toBe("redirect");
   });
 });

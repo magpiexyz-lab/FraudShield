@@ -13,10 +13,18 @@
 export type CheckoutOutcome =
   | { kind: "redirect"; url: string }
   | { kind: "not_configured"; message: string }
+  // Already paying. Like not_configured, a PRODUCT STATE rather than an error:
+  // nothing failed, the answer is simply that there is nothing to buy. Showing
+  // a red retry prompt would invite a second attempt that is also refused, and
+  // would read as a fault in a route that is working correctly.
+  | { kind: "already_subscribed"; message: string }
   | { kind: "error"; message: string };
 
 export const NOT_CONFIGURED_FALLBACK_MESSAGE =
   "Pro upgrade is coming soon. Join the waitlist to be notified.";
+
+export const ALREADY_SUBSCRIBED_FALLBACK_MESSAGE =
+  "You are already on Pro. Manage or cancel your plan from your dashboard.";
 
 export const CHECKOUT_NETWORK_MESSAGE =
   "We could not reach the server. Check your connection and try again.";
@@ -39,6 +47,17 @@ export function interpretCheckoutResponse(
       return { kind: "redirect", url: body.url };
     }
     return { kind: "error", message: GENERIC_ERROR_MESSAGE };
+  }
+
+  // 409 + already_subscribed. The server refuses a second subscription because
+  // Stripe would otherwise hold two for one customer and bill $120/month, with
+  // the first one invisible to us once the webhook's upsert repoints the row.
+  if (status === 409 && body.code === "already_subscribed") {
+    const message =
+      typeof body.message === "string" && body.message.length > 0
+        ? body.message
+        : ALREADY_SUBSCRIBED_FALLBACK_MESSAGE;
+    return { kind: "already_subscribed", message };
   }
 
   if (status === 503 && body.code === "not_configured") {

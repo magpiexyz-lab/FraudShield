@@ -11,6 +11,8 @@
 // responsibility of /verify --post-deploy.
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 
 beforeAll(() => {
   // Tell every server-side library to use its demo-mode short-circuit.
@@ -677,5 +679,66 @@ describe("billing portal: cancellation access control", () => {
     );
     // Identical outcome proves the body is not consulted at all.
     expect(forged.status).toBe(bare.status);
+  });
+});
+
+// DOUBLE-SUBSCRIPTION GUARD (b-06 / b-07).
+//
+// Nothing stopped a paying customer buying again. The pricing card rendered
+// "Choose Pro" regardless of status and /api/checkout opened a session for
+// anyone authenticated, so a second Stripe subscription was created alongside
+// the first: $120/month, with the older one invisible to us the moment the
+// webhook's upsert on user_id repointed the row at the newer one. Cancelling
+// in the portal then ended only whichever the customer happened to pick.
+//
+// Not hypothetical - it happened to the test account (cus_VLbQli9C8FLAXX)
+// during phase-3 verification and is what made the cancellation events
+// ambiguous enough to cost a debugging cycle.
+describe("b-06: checkout refuses a second subscription", () => {
+  const routeSource = () =>
+    readFileSync(
+      path.join(__dirname, "..", "src", "app", "api", "checkout", "route.ts"),
+      "utf8",
+    );
+
+  // ORDERING IS THE CORRECTNESS PROPERTY, and the only one source position can
+  // actually prove. A guard that runs AFTER the session is created refuses
+  // nothing: Stripe has already been told to charge. Moving it below
+  // sessions.create fails here.
+  it("refuses before any Stripe session is created", () => {
+    const source = routeSource();
+    // Anchored on the status code, not the phrase: "already_subscribed" could
+    // later appear in a comment anywhere in the file and satisfy a laxer check.
+    const guard = source.indexOf("status: 409");
+    const session = source.indexOf("sessions.create");
+    expect(guard).toBeGreaterThan(-1);
+    expect(session).toBeGreaterThan(-1);
+    expect(guard).toBeLessThan(session);
+  });
+
+  // ACTIVE ONLY. A canceled row must still be able to buy again - the webhook's
+  // upsert is built to reuse that row, and refusing a returning customer would
+  // turn a bug fix into lost revenue.
+  it("keys the refusal on an active status, not on the row existing", () => {
+    expect(routeSource()).toMatch(/status\s*===\s*"active"/);
+  });
+
+  // DEMO MODE AND E2E MUST STILL REACH CHECKOUT. The demo Supabase client
+  // returns { data: null } from maybeSingle(), so the guard reads no row and
+  // falls through -- but that is a property of a shared fixture that some
+  // future change could flip. If it ever starts returning a seeded row with
+  // status "active" (DEMO_SEED_DATA contains exactly that), every e2e upgrade
+  // run would 409 and the failure would look like a product bug rather than a
+  // fixture change. This is the canary.
+  it("does not refuse in demo mode, where there is no subscription row", async () => {
+    const { POST } = await import("@/app/api/checkout/route");
+    const response = await POST(
+      new Request("http://localhost/api/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plan: "pro" }),
+      }),
+    );
+    expect(response.status).not.toBe(409);
   });
 });

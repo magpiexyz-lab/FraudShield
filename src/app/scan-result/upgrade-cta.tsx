@@ -29,7 +29,16 @@ import { PLAN_PRICES } from "@/lib/types";
 
 const PLAN_ID = "pro";
 
-type Status = "idle" | "submitting" | "error" | "not_configured";
+// "already_subscribed" is a product state like "not_configured", not a
+// failure: the server refused a SECOND subscription, which would have billed
+// this customer twice. Rendering it as an error would colour a correct
+// refusal red and invite a retry that is also refused.
+type Status =
+  | "idle"
+  | "submitting"
+  | "error"
+  | "not_configured"
+  | "already_subscribed";
 
 export function UpgradeCta({
   user,
@@ -124,7 +133,11 @@ export function UpgradeCta({
 
     firedRef.current = false;
     setMessage(outcome.message);
-    setStatus(outcome.kind === "not_configured" ? "not_configured" : "error");
+    setStatus(
+      outcome.kind === "not_configured" || outcome.kind === "already_subscribed"
+        ? outcome.kind
+        : "error",
+    );
   }
 
   const shellClass =
@@ -143,7 +156,20 @@ export function UpgradeCta({
             "Pro lifts the scan limit and unlocks the full forensic breakdown on every document."}
         </p>
 
-        {status === "not_configured" ? (
+        {status === "already_subscribed" ? (
+          // Already paying. Send them to the dashboard, which owns "Manage
+          // billing or cancel" - the same control /terms and the pricing FAQ
+          // name, so all three point at one place.
+          <div className="mt-4">
+            <p className="text-sm text-muted-foreground">{message}</p>
+            <Link
+              href="/dashboard"
+              className={cn(buttonVariants({ size: "lg" }), "mt-3")}
+            >
+              Manage billing or cancel
+            </Link>
+          </div>
+        ) : status === "not_configured" ? (
           // Stripe is not wired up in this environment. Point at /pricing,
           // which owns the waitlist form, rather than duplicating it here.
           <div className="mt-4">
