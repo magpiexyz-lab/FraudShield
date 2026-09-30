@@ -6,8 +6,8 @@ This file is the checklist because `.runs/deploy-manifest.json` cannot be: `.run
 is gitignored, so the manifest exists only on the machine that ran `/deploy` and
 nobody else can read it. This is committed, diffable, and reviewable in a PR.
 
-**Order matters.** Line 1 is last on launch day; lines 2–5 gate whether launch
-day happens at all.
+**Order matters.** Line 1 is last on launch day; lines 2–6 gate whether launch
+day happens at all. Lines 3 and 4 are done; 2 and 5 are not.
 
 ---
 
@@ -87,8 +87,10 @@ a product is fine once the claim matches what it does.
 
 ## 3. Duplicate-subscription guard shipped
 
-**Status:** fixed in [PR #51](https://github.com/magpiexyz-lab/FraudShield/pull/51),
-pending merge.
+**Status:** DONE. [PR #51](https://github.com/magpiexyz-lab/FraudShield/pull/51)
+merged 2026-09-29 and verified on production: an account with an active
+subscription now sees "You're on Pro" on /pricing instead of "Choose Pro", and
+/api/checkout refuses a second purchase with 409.
 
 The pricing card showed "Choose Pro" to a customer who was already paying, and
 the checkout it opened worked — so they bought a second subscription and Stripe
@@ -104,13 +106,34 @@ session is created, and both upgrade surfaces show "You're on Pro" with a link t
 the billing portal. The server guard is the binding one — the UI can be walked
 around by a stale tab, a back button or a direct POST.
 
-**Verify after merge:** log in on an account that already subscribes, open
-`/pricing`, and confirm the Pro card offers "Manage billing or cancel" rather
-than "Choose Pro".
+---
+
+## 4. Conversion matching when the click id is lost
+
+**Status:** DONE. [PR #52](https://github.com/magpiexyz-lab/FraudShield/pull/52)
+merged 2026-09-30, migration 011 applied by hand, verified on production.
+
+`gclid` is the precise link from a sale to the ad that bought it, and the
+fragile one: ad blockers, stripped query strings and purchases made days later
+in another browser all arrive without it. Those sales are real revenue the Ads
+upload cannot attribute, so the campaign measures worse than it performed.
+
+`public.subscriptions.email_sha256` now carries the hex SHA-256 of the trimmed,
+lower-cased account email as a fallback join key. Computed in the checkout route
+from the AUTHENTICATED session email -- never from `session.customer_email`,
+which is attacker-controllable and would let a buyer have their purchase
+credited to someone else's ad click.
+
+**Verified on the first live test**, and on exactly the case it exists for: the
+new row came back with `gclid` NULL and a valid 64-character digest. Under the
+old schema that sale would have been unattributable.
+
+Backfill is not possible and not attempted -- the hash is taken at checkout, so
+rows that predate the column stay NULL. `where email_sha256 is null` finds them.
 
 ---
 
-## 4. Renewal events proven
+## 5. Renewal events proven
 
 **Status:** in progress.
 
@@ -142,7 +165,7 @@ Paste the two PostHog event ids here when done:
 
 ---
 
-## 5. CI is not currently a safety net
+## 6. CI is not currently a safety net
 
 **Status:** known, filed with the fleet, not blocking.
 
