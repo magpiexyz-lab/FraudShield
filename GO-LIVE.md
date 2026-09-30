@@ -6,8 +6,8 @@ This file is the checklist because `.runs/deploy-manifest.json` cannot be: `.run
 is gitignored, so the manifest exists only on the machine that ran `/deploy` and
 nobody else can read it. This is committed, diffable, and reviewable in a PR.
 
-**Order matters.** Line 1 is last on launch day; lines 2–4 gate whether launch day
-happens at all.
+**Order matters.** Line 1 is last on launch day; lines 2–5 gate whether launch
+day happens at all.
 
 ---
 
@@ -85,7 +85,32 @@ a product is fine once the claim matches what it does.
 
 ---
 
-## 3. Renewal events proven
+## 3. Duplicate-subscription guard shipped
+
+**Status:** fixed in [PR #51](https://github.com/magpiexyz-lab/FraudShield/pull/51),
+pending merge.
+
+The pricing card showed "Choose Pro" to a customer who was already paying, and
+the checkout it opened worked — so they bought a second subscription and Stripe
+billed them **$120/month**. The webhook upserts on `user_id`, so our row pointed
+at whichever session completed last while the first one kept billing invisibly,
+and cancelling in the portal ended only whichever the customer happened to pick.
+
+It is on this list because the cost changes at go-live: today it is test money,
+afterwards it is a real customer charged twice, a refund and an apology.
+
+`/api/checkout` now refuses with `409 already_subscribed` before any Stripe
+session is created, and both upgrade surfaces show "You're on Pro" with a link to
+the billing portal. The server guard is the binding one — the UI can be walked
+around by a stale tab, a back button or a direct POST.
+
+**Verify after merge:** log in on an account that already subscribes, open
+`/pricing`, and confirm the Pro card offers "Manage billing or cancel" rather
+than "Choose Pro".
+
+---
+
+## 4. Renewal events proven
 
 **Status:** in progress.
 
@@ -117,7 +142,7 @@ Paste the two PostHog event ids here when done:
 
 ---
 
-## 4. CI is not currently a safety net
+## 5. CI is not currently a safety net
 
 **Status:** known, filed with the fleet, not blocking.
 
