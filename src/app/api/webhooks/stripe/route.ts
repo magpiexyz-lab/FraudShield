@@ -185,6 +185,17 @@ export async function POST(request: Request) {
         // otherwise "no attribution" is invisible to `where gclid is null`.
         gclid: nullableAttributionValue(session.metadata?.gclid),
         utm_campaign: nullableAttributionValue(session.metadata?.utm_campaign),
+        // Fallback join key for the Ads upload when gclid is absent. Already a
+        // hash when it arrives: computed in the checkout route from the
+        // AUTHENTICATED user's email, deliberately not from
+        // session.customer_email, which is attacker-controllable and would let
+        // a buyer choose whose conversion their sale is credited to.
+        //
+        // Same "" -> NULL normalisation as the two attribution values above:
+        // Stripe metadata cannot hold null, and the digest of the empty string
+        // is a real constant that would join every unmatched row to every
+        // other. See 011_subscription_email_match.sql.
+        email_sha256: nullableAttributionValue(session.metadata?.email_sha256),
         // How often Stripe bills this, and when the current period ends. Both
         // were unanswerable from the row before 009: the cadence lived only on
         // the dashboard Price and the end date only on the Subscription.
