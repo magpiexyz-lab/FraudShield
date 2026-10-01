@@ -35,8 +35,29 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const LABELS = path.join(HERE, "labels.csv");
+// Which manifest to run. Defaults to labels.csv; FRAUD_EVAL_MANIFEST selects
+// another, so the PDF set and the image set can be measured separately.
+//
+// That separation is the whole reason this exists. The first run scored 0/20 on
+// tampered PDFs, and the cause turned out to be that /api/scan only sends
+// IMAGES through the content pass -- a PDF is scored on metadata alone and
+// never read. With only one manifest, "cannot detect forgery in PDFs" and
+// "cannot detect forgery at all" are indistinguishable, and they are very
+// different findings.
+const LABELS = process.env.FRAUD_EVAL_MANIFEST
+  ? path.resolve(process.env.FRAUD_EVAL_MANIFEST)
+  : path.join(HERE, "labels.csv");
 const RESULTS_DIR = path.join(HERE, "results");
+
+// Results are named after the manifest, so a second run cannot silently
+// overwrite the first one's evidence: labels.csv -> confusion-matrix.md,
+// labels-images.csv -> confusion-matrix-images.md.
+const RESULT_SUFFIX = path
+  .basename(LABELS, ".csv")
+  .replace(/^labels/, "")
+  .replace(/^-/, "");
+const resultName = (stem, ext) =>
+  RESULT_SUFFIX ? `${stem}-${RESULT_SUFFIX}.${ext}` : `${stem}.${ext}`;
 
 const BUCKET = "fraud-eval";
 
@@ -471,9 +492,9 @@ async function main() {
   ].join("\n");
 
   await mkdir(RESULTS_DIR, { recursive: true });
-  await writeFile(path.join(RESULTS_DIR, "confusion-matrix.md"), report, "utf8");
+  await writeFile(path.join(RESULTS_DIR, resultName("confusion-matrix", "md")), report, "utf8");
   await writeFile(
-    path.join(RESULTS_DIR, "per-file.csv"),
+    path.join(RESULTS_DIR, resultName("per-file", "csv")),
     [
       "file,label,change,source,score,verdict,error",
       ...rows.map((r) =>
