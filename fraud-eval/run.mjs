@@ -151,7 +151,11 @@ async function scanOne(page, filePath, fileName) {
     { name: fileName, b64: bytes.toString("base64") },
   );
 
-  if (result.status !== 200 || !result.body) {
+  // 201, not 200. /api/scan returns Created with the new scan id -- checking
+  // for 200 recorded every successful scan as a failure, which would have
+  // excluded all forty documents and produced an empty matrix that still
+  // rendered and still looked like a result.
+  if (result.status !== 201 || !result.body) {
     return { error: `HTTP ${result.status}: ${result.text}` };
   }
   // The route returns the scan id and the score. An image upload legitimately
