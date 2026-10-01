@@ -32,7 +32,7 @@ vi.mock("sharp", () => ({
 }));
 
 import {
-  analyzeImageForFraud,
+  analyzeDocumentForFraud,
   applyVisionSignals,
   VISION_MODEL,
   MAX_IMAGE_EDGE,
@@ -74,7 +74,7 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-describe("analyzeImageForFraud — indicators found", () => {
+describe("analyzeDocumentForFraud — indicators found", () => {
   it("returns normalized signals and marks the scan analyzed", async () => {
     create.mockResolvedValue(
       apiResponse({
@@ -92,7 +92,7 @@ describe("analyzeImageForFraud — indicators found", () => {
       }),
     );
 
-    const result = await analyzeImageForFraud(IMAGE, "pay_stub");
+    const result = await analyzeDocumentForFraud(IMAGE, "pay_stub", "image/jpeg");
 
     expect(result.status).toBe("analyzed");
     expect(result.analyzed).toBe(true);
@@ -110,7 +110,7 @@ describe("analyzeImageForFraud — indicators found", () => {
       apiResponse({ outcome: "no_indicators", signals: [] }),
     );
 
-    await analyzeImageForFraud(IMAGE, "bank_statement");
+    await analyzeDocumentForFraud(IMAGE, "bank_statement", "image/jpeg");
 
     const [body] = create.mock.calls[0];
     expect(body.model).toBe(VISION_MODEL);
@@ -146,7 +146,7 @@ describe("analyzeImageForFraud — indicators found", () => {
       }),
     );
 
-    const result = await analyzeImageForFraud(IMAGE, "invoice");
+    const result = await analyzeDocumentForFraud(IMAGE, "invoice", "image/jpeg");
 
     expect(result.signals).toHaveLength(1);
     expect(result.signals[0].weight).toBe(35);
@@ -154,14 +154,14 @@ describe("analyzeImageForFraud — indicators found", () => {
   });
 });
 
-describe("analyzeImageForFraud — no determination available", () => {
+describe("analyzeDocumentForFraud — no determination available", () => {
   it("treats a refusal as unavailable without reading content", async () => {
     // A refusal returns HTTP 200 with an empty content array. Reading
     // content[0].text here would throw — the stop_reason check has to come
     // first, and the outcome is inconclusive, never a fraud finding.
     create.mockResolvedValue({ stop_reason: "refusal", content: [] });
 
-    const result = await analyzeImageForFraud(IMAGE, "pay_stub");
+    const result = await analyzeDocumentForFraud(IMAGE, "pay_stub", "image/jpeg");
 
     expect(result.status).toBe("unavailable");
     expect(result.analyzed).toBe(false);
@@ -171,7 +171,7 @@ describe("analyzeImageForFraud — no determination available", () => {
   it("swallows an API error so the scan is never blocked", async () => {
     create.mockRejectedValue(new Error("connection timed out"));
 
-    await expect(analyzeImageForFraud(IMAGE, "pay_stub")).resolves.toEqual({
+    await expect(analyzeDocumentForFraud(IMAGE, "pay_stub", "image/jpeg")).resolves.toEqual({
       status: "unavailable",
       analyzed: false,
       signals: [],
@@ -181,7 +181,7 @@ describe("analyzeImageForFraud — no determination available", () => {
   it("does not call the API at all when no key is configured", async () => {
     vi.stubEnv("ANTHROPIC_API_KEY", "");
 
-    const result = await analyzeImageForFraud(IMAGE, "pay_stub");
+    const result = await analyzeDocumentForFraud(IMAGE, "pay_stub", "image/jpeg");
 
     expect(create).not.toHaveBeenCalled();
     expect(result.analyzed).toBe(false);
@@ -192,7 +192,7 @@ describe("analyzeImageForFraud — no determination available", () => {
       apiResponse({ outcome: "inconclusive", signals: [] }),
     );
 
-    const result = await analyzeImageForFraud(IMAGE, "pay_stub");
+    const result = await analyzeDocumentForFraud(IMAGE, "pay_stub", "image/jpeg");
 
     // Inconclusive means the model looked and could not tell — that is not a
     // complete analysis, so the scan stays partial.
@@ -206,7 +206,7 @@ describe("analyzeImageForFraud — no determination available", () => {
       content: [{ type: "text", text: "not json" }],
     });
 
-    expect((await analyzeImageForFraud(IMAGE, "pay_stub")).analyzed).toBe(false);
+    expect((await analyzeDocumentForFraud(IMAGE, "pay_stub", "image/jpeg")).analyzed).toBe(false);
   });
 });
 
@@ -254,5 +254,108 @@ describe("applyVisionSignals", () => {
 
     expect(merged.score).toBe(100);
     expect(merged.severity).toBe("fraud");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PDFs reach the content pass.
+//
+// Added with the fix for the accuracy gate (#49). Before it, /api/scan sent
+// only images here and PDFs were scored on metadata alone -- 0 of 20 forged
+// PDFs detected, scores a constant per document type, genuine and tampered
+// indistinguishable. These pin the two halves of the fix: a PDF is sent as a
+// document block rather than rasterized, and it is told the truth about what
+// it is looking at.
+// ---------------------------------------------------------------------------
+describe("analyzeDocumentForFraud — PDFs", () => {
+  const PDF = Buffer.from("%PDF-1.7 raw-pdf-bytes");
+
+  beforeEach(() => {
+    vi.stubEnv("ANTHROPIC_API_KEY", "sk-ant-test");
+    create.mockReset();
+  });
+  afterEach(() => vi.unstubAllEnvs());
+
+  function sentBlocks() {
+    return create.mock.calls[0][0].messages[0].content;
+  }
+
+  it("sends a PDF as a document block, not an image", async () => {
+    create.mockResolvedValue(apiResponse({ outcome: "no_indicators", signals: [] }));
+
+    await analyzeDocumentForFraud(PDF, "pay_stub", "application/pdf");
+
+    const block = sentBlocks()[0];
+    expect(block.type).toBe("document");
+    expect(block.source.media_type).toBe("application/pdf");
+    // The ORIGINAL bytes, not a re-encode. Rasterizing would discard the text
+    // layer and need a system dependency sharp cannot provide.
+    expect(block.source.data).toBe(PDF.toString("base64"));
+  });
+
+  it("does not route a PDF through the image downscaler", async () => {
+    const sharp = (await import("sharp")).default as unknown as ReturnType<typeof vi.fn>;
+    (sharp as ReturnType<typeof vi.fn>).mockClear();
+    create.mockResolvedValue(apiResponse({ outcome: "no_indicators", signals: [] }));
+
+    await analyzeDocumentForFraud(PDF, "pay_stub", "application/pdf");
+
+    // sharp cannot decode a PDF at all; reaching it would mean every PDF
+    // silently failed to be analysed.
+    expect(sharp).not.toHaveBeenCalled();
+  });
+
+  it("still sends an image as an image block", async () => {
+    create.mockResolvedValue(apiResponse({ outcome: "no_indicators", signals: [] }));
+
+    await analyzeDocumentForFraud(IMAGE, "pay_stub", "image/png");
+
+    const block = sentBlocks()[0];
+    expect(block.type).toBe("image");
+    expect(block.source.media_type).toBe("image/jpeg");
+  });
+
+  // FALSE CONTEXT IS NOT A STYLE PROBLEM. The image prompt states the file was
+  // downscaled and re-encoded and warns against reading compression artifacts.
+  // Telling a model that about a PDF invites findings about things which cannot
+  // be present in one.
+  it("does not tell the model a PDF was photographed or downscaled", async () => {
+    create.mockResolvedValue(apiResponse({ outcome: "no_indicators", signals: [] }));
+
+    await analyzeDocumentForFraud(PDF, "pay_stub", "application/pdf");
+
+    const system: string = create.mock.calls[0][0].system;
+
+    // Matching on the CLAIMS, not on the words. The PDF rule mentions
+    // photographs and cameras deliberately -- to say the document is not one
+    // and that there is no capture noise to reason about. A blanket word-match
+    // would fail on exactly the sentence that makes the prompt correct.
+    expect(system).toContain("a PDF of a financial document");
+    expect(system).toContain("This is the original PDF, not a photograph");
+    expect(system).not.toContain("was downscaled and re-encoded before it reached you");
+    expect(system).not.toContain("a photograph or scan of a financial document");
+  });
+
+  it("keeps the photography guidance for images", async () => {
+    create.mockResolvedValue(apiResponse({ outcome: "no_indicators", signals: [] }));
+
+    await analyzeDocumentForFraud(IMAGE, "pay_stub", "image/jpeg");
+
+    const system: string = create.mock.calls[0][0].system;
+    expect(system).toMatch(/photograph/i);
+    expect(system).toMatch(/downscaled/i);
+  });
+
+  // The guarantee the route depends on: this module never throws, whatever the
+  // format. A PDF failure must degrade to the metadata-only result, not 500 a
+  // scan the customer has already been charged for.
+  it("reports unavailable rather than throwing when the API fails on a PDF", async () => {
+    create.mockRejectedValue(new Error("upstream exploded"));
+
+    const result = await analyzeDocumentForFraud(PDF, "pay_stub", "application/pdf");
+
+    expect(result.analyzed).toBe(false);
+    expect(result.status).toBe("unavailable");
+    expect(result.signals).toEqual([]);
   });
 });
