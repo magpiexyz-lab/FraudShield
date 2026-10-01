@@ -138,6 +138,39 @@ describe("no forged document can reach the public repository", () => {
   });
 });
 
+describe("the runner agrees with the scan route it calls", () => {
+  const scanSource = () =>
+    readFileSync(
+      path.join(repoRoot, "src", "app", "api", "scan", "route.ts"),
+      "utf8",
+    );
+
+  // THE CONTRACT THAT ALREADY BROKE ONCE. /api/scan answers 201 Created; the
+  // runner was written against 200 and would have recorded every successful
+  // scan as a failure -- excluding all forty documents and producing an empty
+  // matrix that still rendered and still looked like a result. The two numbers
+  // have to be read from the two files and compared, because nothing else
+  // connects them.
+  it("expects the status the scan route actually returns", () => {
+    const returned = scanSource().match(
+      /NextResponse\.json\(response,\s*\{\s*status:\s*(\d+)\s*\}\)/,
+    );
+    expect(returned, "success response status not found in the scan route").not.toBeNull();
+
+    const expected = runnerSource().match(/result\.status !== (\d+)/);
+    expect(expected, "status check not found in run.mjs").not.toBeNull();
+
+    expect(expected![1]).toBe(returned![1]);
+  });
+
+  // The score field is named fraud_score on the wire. The runner accepts
+  // either spelling, so this pins that the route's actual name is one it reads.
+  it("reads the field name the scan route sends", () => {
+    expect(scanSource()).toContain("fraud_score");
+    expect(runnerSource()).toContain("fraud_score");
+  });
+});
+
 describe("the matrix cannot be flattered", () => {
   // A document that failed to download or scan must not land in the "correct"
   // cells. Counting an unscored document as a pass would raise the caught rate
