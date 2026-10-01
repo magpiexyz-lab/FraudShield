@@ -14,9 +14,9 @@
 //
 // 2. SCANS GO THROUGH A REAL AUTHENTICATED SESSION. /api/scan resolves identity
 //    from the Supabase cookie (createServerSupabaseClient), so a bearer token
-//    would not work. Playwright logs in once and POSTs from inside the page
-//    context -- the same path e2e/behaviors.spec.ts already uses, and the same
-//    one a customer's upload takes. An eval that bypassed auth would be
+//    would not work. Playwright logs in once through the real login form and
+//    every scan is posted through that context, so the request carries the same
+//    cookie a customer's upload does. An eval that bypassed auth would be
 //    measuring a code path no customer uses.
 //
 // 3. THE VERDICT COMES FROM THE PRODUCT, NOT FROM HERE. scoreSeverity() owns
@@ -77,6 +77,10 @@ const BAR = { caught: 0.8, falseAlarm: 0.1 };
 const SCAN_GAP_MS = 6500;
 const RATE_LIMIT_WAIT_MS = 62_000;
 const RATE_LIMIT_RETRIES = 3;
+// Image scans call the vision model, so they are far slower than a PDF
+// metadata read. Generous, but bounded: an unbounded wait would hang the run
+// on a single document rather than recording it and moving on.
+const SCAN_TIMEOUT_MS = 180_000;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -183,10 +187,18 @@ const MIME_BY_EXT = {
 /**
  * Scan one document and return { score, verdict } as the PRODUCT reports them.
  *
- * Posts from inside the page so the request carries the session cookie, which
- * is the only credential /api/scan accepts.
+ * Sent through the BROWSER CONTEXT'S request API, not a fetch() inside the
+ * page. Both carry the session cookie -- which is the only credential
+ * /api/scan accepts -- but an in-page fetch is tied to the page's lifecycle,
+ * so anything that navigates or re-renders the dashboard aborts the request
+ * and surfaces as a bare "TypeError: Failed to fetch" with no status to
+ * report. That killed the image run on its first document.
+ *
+ * Image scans are the slow case because they invoke the vision model, which
+ * makes them the most exposed to exactly that. The context request also takes
+ * a real timeout, where the in-page version silently inherited none.
  */
-async function scanOne(page, filePath, fileName) {
+async function scanOne(context, filePath, fileName) {
   const bytes = await readFile(filePath);
   const ext = fileName.split(".").pop().toLowerCase();
   const mime = MIME_BY_EXT[ext];
@@ -194,21 +206,22 @@ async function scanOne(page, filePath, fileName) {
     return { error: `no MIME type known for ".${ext}" — refusing to guess` };
   }
 
-  const result = await page.evaluate(
-    async ({ name, b64, type }) => {
-      const binary = atob(b64);
-      const buf = new Uint8Array(binary.length);
-      for (let i = 0; i < binary.length; i++) buf[i] = binary.charCodeAt(i);
-      const form = new FormData();
-      form.append("file", new File([buf], name, { type }));
-      const res = await fetch("/api/scan", { method: "POST", body: form });
-      const text = await res.text();
-      let body = null;
-      try { body = JSON.parse(text); } catch { /* non-JSON error page */ }
-      return { status: res.status, body, text: text.slice(0, 400) };
-    },
-    { name: fileName, b64: bytes.toString("base64"), type: mime },
-  );
+  let result;
+  try {
+    const res = await context.request.post("/api/scan", {
+      multipart: { file: { name: fileName, mimeType: mime, buffer: bytes } },
+      timeout: SCAN_TIMEOUT_MS,
+    });
+    const text = await res.text();
+    let body = null;
+    try { body = JSON.parse(text); } catch { /* non-JSON error page */ }
+    result = { status: res.status(), body, text: text.slice(0, 400) };
+  } catch (err) {
+    // Transport-level failure: timeout, reset connection, DNS. Returned as a
+    // per-document error so one bad scan does not abort the remaining
+    // thirty-nine -- the previous version threw and took the whole run with it.
+    return { error: `request failed: ${err.message.split("\n")[0]}` };
+  }
 
   // Rate limited. /api/scan allows 10 scans per 60 seconds per user; forty
   // back to back trips it from the ninth onward. Reported so the caller can
@@ -386,7 +399,7 @@ async function main() {
         // shrink the set the result is based on.
         let result;
         for (let attempt = 1; ; attempt++) {
-          result = await scanOne(page, local, path.basename(entry.file));
+          result = await scanOne(context, local, path.basename(entry.file));
           if (!result.rateLimited) break;
           if (attempt > RATE_LIMIT_RETRIES) {
             result = { error: `rate limited after ${RATE_LIMIT_RETRIES} retries` };
