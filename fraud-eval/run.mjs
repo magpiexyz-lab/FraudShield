@@ -27,7 +27,6 @@
 //    worthless.
 
 import { chromium } from "@playwright/test";
-import { createClient } from "@supabase/supabase-js";
 import { createHash } from "node:crypto";
 import { mkdtemp, writeFile, rm, readFile, mkdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
@@ -210,6 +209,41 @@ function renderMatrix(title, m) {
   ].join("\n");
 }
 
+/** Fail fast, and say which of the three things is wrong. */
+async function preflight(supabaseUrl, serviceKey) {
+  let res;
+  try {
+    res = await fetch(`${supabaseUrl}/storage/v1/bucket/${BUCKET}`, {
+      headers: { Authorization: `Bearer ${serviceKey}`, apikey: serviceKey },
+    });
+  } catch (err) {
+    console.error(`\nCannot reach ${supabaseUrl}`);
+    console.error(`  ${err.message}`);
+    console.error("\nNEXT_PUBLIC_SUPABASE_URL should be the Project URL from");
+    console.error("Supabase > Settings > API. It looks like");
+    console.error("  https://<project-ref>.supabase.co");
+    console.error("and the ref is a random string, not your project's name.");
+    process.exit(1);
+  }
+
+  if (res.status === 401 || res.status === 403) {
+    console.error("\nRejected by Supabase (HTTP " + res.status + ").");
+    console.error("SUPABASE_SERVICE_ROLE_KEY is wrong, or was rotated since you copied it.");
+    console.error("Supabase > Settings > API > service_role.");
+    process.exit(1);
+  }
+  if (res.status === 404) {
+    console.error(`\nNo bucket named "${BUCKET}" in this project.`);
+    console.error("Create it under Storage, private, with exactly that name.");
+    process.exit(1);
+  }
+  if (!res.ok) {
+    console.error(`\nStorage returned HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    process.exit(1);
+  }
+  console.log(`Bucket "${BUCKET}" reachable.`);
+}
+
 async function main() {
   const supabaseUrl = env("NEXT_PUBLIC_SUPABASE_URL");
   const serviceKey = env("SUPABASE_SERVICE_ROLE_KEY");
@@ -220,7 +254,13 @@ async function main() {
   const manifest = await loadManifest();
   console.log(`Manifest: ${manifest.length} documents.`);
 
-  const supabase = createClient(supabaseUrl, serviceKey);
+  // PREFLIGHT. Check the bucket is reachable BEFORE launching a browser,
+  // logging in and starting forty scans. A wrong project URL or a stale key
+  // otherwise surfaces as a wall of download failures several minutes in, and
+  // the obvious reading of that is "the documents are missing" rather than
+  // "the credentials are wrong". Two seconds here saves that.
+  await preflight(supabaseUrl, serviceKey);
+
   const browser = await chromium.launch();
   // OUTSIDE the repository, deliberately. See decision 1 in the header.
   const scratch = await mkdtemp(path.join(tmpdir(), "fraud-eval-"));
@@ -235,15 +275,28 @@ async function main() {
       const label = `[${i + 1}/${manifest.length}] ${entry.file}`;
       const local = path.join(scratch, path.basename(entry.file));
       try {
-        const { data, error } = await supabase.storage
-          .from(BUCKET)
-          .download(entry.file);
-        if (error || !data) {
-          rows.push({ ...entry, error: `download failed: ${error?.message ?? "no data"}` });
-          console.log(`${label} — DOWNLOAD FAILED`);
+        // Plain fetch against the Storage REST API rather than supabase-js.
+        // The client constructs a Realtime connection on creation, which needs
+        // a global WebSocket that Node 20 does not have -- it aborted the whole
+        // run before a single document was read. Nothing here needs realtime,
+        // auth refresh or query building, so the dependency bought us only its
+        // failure mode.
+        const res = await fetch(
+          `${supabaseUrl}/storage/v1/object/${BUCKET}/${entry.file
+            .split("/").map(encodeURIComponent).join("/")}`,
+          { headers: { Authorization: `Bearer ${serviceKey}`, apikey: serviceKey } },
+        );
+        if (!res.ok) {
+          const detail = res.status === 400 || res.status === 404
+            ? "not found in the bucket — check the filename matches the manifest"
+            : res.status === 401 || res.status === 403
+              ? "unauthorised — check SUPABASE_SERVICE_ROLE_KEY and the bucket name"
+              : (await res.text()).slice(0, 160);
+          rows.push({ ...entry, error: `download failed (HTTP ${res.status}): ${detail}` });
+          console.log(`${label} — DOWNLOAD FAILED (${res.status})`);
           continue;
         }
-        const bytes = Buffer.from(await data.arrayBuffer());
+        const bytes = Buffer.from(await res.arrayBuffer());
 
         // INTEGRITY. A document quietly replaced in the bucket would otherwise
         // produce a confusion matrix about a set nobody can reconstruct, and
