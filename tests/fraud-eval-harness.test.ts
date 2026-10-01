@@ -169,6 +169,64 @@ describe("the runner agrees with the scan route it calls", () => {
     expect(scanSource()).toContain("fraud_score");
     expect(runnerSource()).toContain("fraud_score");
   });
+
+  // EVERY MIME THE RUNNER SENDS MUST BE ONE THE ROUTE ACCEPTS. Sending a type
+  // outside ACCEPTED_MIME is a 415 and the document is excluded; sending no
+  // type at all is worse, because the route only runs extractPdfMetadata when
+  // the type is exactly application/pdf. A set scanned without a content type
+  // would be measured with metadata forensics silently skipped -- a matrix
+  // about an analysis the product does not perform that way.
+  it("sends only MIME types the scan route accepts", () => {
+    const accepted = scanSource()
+      .slice(scanSource().indexOf("const ACCEPTED_MIME"))
+      .slice(0, 300)
+      .match(/"[a-z]+\/[a-z0-9.+-]+"/g)
+      ?.map((s) => s.replace(/"/g, ""));
+    expect(accepted, "ACCEPTED_MIME not found in the scan route").toBeDefined();
+
+    const sent = runnerSource()
+      .slice(runnerSource().indexOf("const MIME_BY_EXT"))
+      .slice(0, 300)
+      .match(/"[a-z]+\/[a-z0-9.+-]+"/g)
+      ?.map((s) => s.replace(/"/g, ""));
+    expect(sent, "MIME_BY_EXT not found in the runner").toBeDefined();
+    expect(sent!.length).toBeGreaterThan(0);
+
+    for (const mime of sent!) {
+      expect(accepted, `route rejects ${mime}`).toContain(mime);
+    }
+  });
+
+  // Guessing would reintroduce the empty-type bug for any format added later.
+  it("refuses to scan an extension it has no MIME type for", () => {
+    expect(runnerSource()).toContain("refusing to guess");
+  });
+
+  // Pacing has to come from the route's own limiter, not a guess. If the
+  // route's budget is lowered, a hardcoded gap silently starts failing again.
+  it("paces itself under the scan route's rate limit", () => {
+    const limit = scanSource().match(
+      /rateLimit\(`scan:[^`]*`,\s*(\d+),\s*(\d+)\)/,
+    );
+    expect(limit, "rate limit not found in the scan route").not.toBeNull();
+
+    const perWindow = Number(limit![1]);
+    const windowSeconds = Number(limit![2]);
+    const gapMs = Number(runnerSource().match(/const SCAN_GAP_MS = (\d+)/)![1]);
+
+    // The gap must be at least the window divided by the allowance.
+    expect(gapMs).toBeGreaterThanOrEqual((windowSeconds / perWindow) * 1000);
+  });
+
+  // A 429 means "not yet", not "never". Treating it as a scan failure drops
+  // the document from the matrix and shrinks the set the result rests on --
+  // which is exactly what the first real run did to 31 of 40 documents.
+  it("retries a rate-limited scan instead of recording a failure", () => {
+    const source = runnerSource();
+    expect(source).toContain("result.status === 429");
+    expect(source).toContain("rateLimited");
+    expect(source).toMatch(/RATE_LIMIT_RETRIES/);
+  });
 });
 
 describe("the matrix cannot be flattered", () => {

@@ -34,6 +34,7 @@ export default tseslint.config(
         console: "readonly",
         process: "readonly",
         Buffer: "readonly",
+        setTimeout: "readonly",
         // Browser, inside the page.evaluate() callback. That function is
         // serialised and executed in Chromium, so these ARE defined where they
         // are used -- eslint simply cannot see the boundary.
