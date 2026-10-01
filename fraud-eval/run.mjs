@@ -331,7 +331,16 @@ async function main() {
   const baseUrl = env("FRAUD_EVAL_BASE_URL", "http://localhost:3000");
 
   const manifest = await loadManifest();
-  console.log(`Manifest: ${manifest.length} documents.`);
+  // NAME THE MANIFEST, not just the count. FRAUD_EVAL_MANIFEST is an exported
+  // shell variable, so it survives between runs in the same terminal: a session
+  // that ran the retry set then dropped the variable from the next command
+  // still ran the retry set, and "Manifest: 4 documents" was the only hint. The
+  // run looked successful and measured the wrong forty — or in that case, the
+  // wrong four.
+  console.log(
+    `Manifest: ${path.relative(process.cwd(), LABELS)} — ${manifest.length} documents` +
+      (process.env.FRAUD_EVAL_MANIFEST ? " (from FRAUD_EVAL_MANIFEST)" : " (default)"),
+  );
 
   // PREFLIGHT. Check the bucket is reachable BEFORE launching a browser,
   // logging in and starting forty scans. A wrong project URL or a stale key
