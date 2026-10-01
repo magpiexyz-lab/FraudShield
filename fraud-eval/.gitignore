@@ -1,0 +1,25 @@
+# NO DOCUMENT EVER ENTERS THIS REPOSITORY.
+#
+# github.com/magpiexyz-lab/FraudShield is PUBLIC. Twenty of the forty documents
+# in this evaluation are forged financial records; three of those were built
+# specifically to defeat metadata forensics. Committing them would publish a
+# working set of forgery templates and a labelled map of what gets past a fraud
+# detector -- from the repository of a fraud-detection product.
+#
+# The documents live in a private Supabase Storage bucket. This file is the last
+# line of defence, not the first: the rule is that they are never copied into
+# the working tree at all. run.mjs streams them to a temp directory outside the
+# repo for exactly as long as a scan takes.
+#
+# Deny everything, then re-allow the few text artefacts that are meant to be
+# tracked. An allowlist, because a denylist of extensions is one unfamiliar
+# format away from leaking.
+*
+!.gitignore
+!README.md
+!labels.csv
+!run.mjs
+!results/
+!results/*.md
+!results/*.csv
+!results/.gitkeep
