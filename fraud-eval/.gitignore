@@ -19,6 +19,7 @@
 !README.md
 !labels.csv
 !labels-images.csv
+!labels-retry.csv
 !run.mjs
 !results/
 !results/*.md
