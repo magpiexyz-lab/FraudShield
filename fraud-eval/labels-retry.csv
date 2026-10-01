@@ -1,0 +1,5 @@
+file,label,change,source,sha256
+"images/genuine-statement-03.png","genuine","","rendered-png","5c03ffde477dbd732f0a8568e199ffa8db6a9321226219d5011166edc1947dff"
+"images/tampered-date-03.png","tampered","one transaction dated outside the statement period","rendered-png","843f161662c22271f750a2ae3a7fb7bb52be1592d0cb228ca9209ff6a6a1c1ce"
+"images/tampered-identity-04.png","tampered","bill-to name swapped; billing address still the original client's","rendered-png","fda9886a281bd7a4544af8261f12be719b1eab799644f5804eaca0abd3cac487"
+"images/tampered-clean-01.png","tampered","net pay raised $600 to $3,933.71 (true 3,333.71); regenerated with no editing trace","rendered-png","2203350fc70baeddd0378d36cfbf788141621d52cb8223fb4a06cd2ddf6e000a"
