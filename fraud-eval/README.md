@@ -140,6 +140,19 @@ image manifest separates them.
 Select one with `FRAUD_EVAL_MANIFEST=fraud-eval/labels-images.csv`. Results are
 named after the manifest, so neither run overwrites the other's evidence.
 
+**`FRAUD_EVAL_MANIFEST` persists for the whole shell session.** Leaving it out
+of the next command does not clear it — the previous value is still set, and the
+run quietly measures the wrong set. Clear it explicitly before running the
+default manifest:
+
+```powershell
+Remove-Item Env:FRAUD_EVAL_MANIFEST     # PowerShell
+unset FRAUD_EVAL_MANIFEST               # bash
+```
+
+The first line of output names the manifest actually in use. Read it before
+waiting half an hour for the result.
+
 ## What the metadata in this set can and cannot test
 
 The product does metadata forensics, so the set has to vary metadata or the

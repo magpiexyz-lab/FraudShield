@@ -1,5 +1,5 @@
 file,label,change,source,score,verdict,error
 "images/genuine-statement-03.png","genuine","","rendered-png","30","clear",""
-"images/tampered-date-03.png","tampered","one transaction dated outside the statement period","rendered-png","25","clear",""
+"images/tampered-date-03.png","tampered","one transaction dated outside the statement period","rendered-png","30","clear",""
 "images/tampered-identity-04.png","tampered","bill-to name swapped; billing address still the original client's","rendered-png","0","clear",""
 "images/tampered-clean-01.png","tampered","net pay raised $600 to $3,933.71 (true 3,333.71); regenerated with no editing trace","rendered-png","35","suspect",""
