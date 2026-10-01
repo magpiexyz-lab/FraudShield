@@ -49,6 +49,16 @@ const FRAUD_MIN = 67;
 
 const BAR = { caught: 0.8, falseAlarm: 0.1 };
 
+// Pacing, derived from the route's own limiter: rateLimit(`scan:...`, 10, 60)
+// in src/app/api/scan/route.ts -- ten scans per sixty seconds, per user.
+// 6.5s between scans keeps us just under it without relying on how long a scan
+// happens to take; the retry below covers the case where it is not enough.
+const SCAN_GAP_MS = 6500;
+const RATE_LIMIT_WAIT_MS = 62_000;
+const RATE_LIMIT_RETRIES = 3;
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 function env(name, fallback) {
   const value = process.env[name] ?? fallback;
   if (value === undefined) {
@@ -127,6 +137,29 @@ async function authenticate(browser, baseUrl, email, password) {
 }
 
 /**
+ * MIME type per extension, and it is not cosmetic.
+ *
+ * `new File([bytes], name)` with no type is transmitted as
+ * application/octet-stream, which /api/scan rejects with 415. That alone
+ * failed every document on the first real run.
+ *
+ * The quieter half matters more: the route only extracts PDF metadata when
+ * `file.type === "application/pdf"` (route.ts, extractPdfMetadata call). Had
+ * the 415 not fired, all forty documents would have been scanned with METADATA
+ * FORENSICS SKIPPED, and the confusion matrix would have reported on an
+ * analysis the product does not actually perform that way. A wrong content
+ * type here does not fail loudly; it quietly measures the wrong thing.
+ */
+const MIME_BY_EXT = {
+  pdf: "application/pdf",
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  webp: "image/webp",
+  heic: "image/heic",
+};
+
+/**
  * Scan one document and return { score, verdict } as the PRODUCT reports them.
  *
  * Posts from inside the page so the request carries the session cookie, which
@@ -134,21 +167,33 @@ async function authenticate(browser, baseUrl, email, password) {
  */
 async function scanOne(page, filePath, fileName) {
   const bytes = await readFile(filePath);
+  const ext = fileName.split(".").pop().toLowerCase();
+  const mime = MIME_BY_EXT[ext];
+  if (!mime) {
+    return { error: `no MIME type known for ".${ext}" — refusing to guess` };
+  }
+
   const result = await page.evaluate(
-    async ({ name, b64 }) => {
+    async ({ name, b64, type }) => {
       const binary = atob(b64);
       const buf = new Uint8Array(binary.length);
       for (let i = 0; i < binary.length; i++) buf[i] = binary.charCodeAt(i);
       const form = new FormData();
-      form.append("file", new File([buf], name));
+      form.append("file", new File([buf], name, { type }));
       const res = await fetch("/api/scan", { method: "POST", body: form });
       const text = await res.text();
       let body = null;
       try { body = JSON.parse(text); } catch { /* non-JSON error page */ }
       return { status: res.status, body, text: text.slice(0, 400) };
     },
-    { name: fileName, b64: bytes.toString("base64") },
+    { name: fileName, b64: bytes.toString("base64"), type: mime },
   );
+
+  // Rate limited. /api/scan allows 10 scans per 60 seconds per user; forty
+  // back to back trips it from the ninth onward. Reported so the caller can
+  // wait rather than recording a document as unscannable when the only problem
+  // was pace.
+  if (result.status === 429) return { rateLimited: true };
 
   // 201, not 200. /api/scan returns Created with the new scan id -- checking
   // for 200 recorded every successful scan as a failure, which would have
@@ -309,7 +354,27 @@ async function main() {
         }
 
         await writeFile(local, bytes);
-        const result = await scanOne(page, local, path.basename(entry.file));
+
+        // THROTTLE AND RETRY. /api/scan allows 10 scans per 60 seconds per
+        // user. Forty back to back tripped it from the ninth onward and the
+        // first run recorded thirty-one documents as unscannable -- a rate
+        // limit reported as if the documents were at fault.
+        //
+        // Retry rather than fail: a 429 says "not yet", not "never", and a
+        // document dropped here would be excluded from the matrix and quietly
+        // shrink the set the result is based on.
+        let result;
+        for (let attempt = 1; ; attempt++) {
+          result = await scanOne(page, local, path.basename(entry.file));
+          if (!result.rateLimited) break;
+          if (attempt > RATE_LIMIT_RETRIES) {
+            result = { error: `rate limited after ${RATE_LIMIT_RETRIES} retries` };
+            break;
+          }
+          console.log(`${label} — rate limited, waiting ${RATE_LIMIT_WAIT_MS / 1000}s`);
+          await sleep(RATE_LIMIT_WAIT_MS);
+        }
+
         if (result.error) {
           rows.push({ ...entry, error: result.error });
           console.log(`${label} — SCAN FAILED: ${result.error}`);
@@ -318,6 +383,10 @@ async function main() {
         const verdict = verdictFor(result.score);
         rows.push({ ...entry, score: result.score, verdict });
         console.log(`${label} — ${result.score ?? "no score"} (${verdict})`);
+
+        // Stay under the limit on the next one. Cheaper than being refused and
+        // waiting a full window.
+        if (i < manifest.length - 1) await sleep(SCAN_GAP_MS);
       } finally {
         await rm(local, { force: true });
       }
