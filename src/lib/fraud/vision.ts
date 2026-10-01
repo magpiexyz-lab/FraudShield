@@ -139,9 +139,28 @@ const VISION_SCHEMA = {
   additionalProperties: false,
 } as const;
 
-const SYSTEM_PROMPT = `You are a document forensics analyst examining a photograph or scan of a financial document submitted for verification.
+// THE PROMPT IS FORMAT-SPECIFIC, and has to be. A PDF was not photographed,
+// was not downscaled, and carries no camera artefacts; telling the model
+// otherwise is false, and false context is not a stylistic problem — it invites
+// findings about things that cannot be present, and suppresses the pixel-level
+// reasoning that IS available on a photo. The two halves below are the only
+// parts that differ; everything in SYSTEM_PROMPT_CORE applies to both.
+const IMAGE_FRAMING = `a photograph or scan of a financial document`;
+const PDF_FRAMING = `a PDF of a financial document, with its text and layout intact`;
 
-The image's metadata has already been analyzed separately. Your job is the content: what is visible on the document itself.
+const IMAGE_ARTIFACT_RULE = `- Ordinary photography artifacts: page skew, glare, shadow, moiré, camera blur affecting the whole image, or JPEG blocking that is uniform across the page. This image was downscaled and re-encoded before it reached you, so pixel-level compression forensics are not available to you — do not report them.`;
+const PDF_ARTIFACT_RULE = `- Rendering differences that are not evidence: antialiasing, subpixel positioning, or font substitution for a font the document did not embed. This is the original PDF, not a photograph, so there are no capture artifacts to interpret and no camera noise to compare — do not reason about either.`;
+
+const IMAGE_UNREADABLE_RULE = `- If the image is unreadable, heavily cropped, or is not a financial document, return inconclusive with no signals.`;
+const PDF_UNREADABLE_RULE = `- If the PDF is empty, is a scan embedded in a PDF wrapper that you cannot read, or is not a financial document, return inconclusive with no signals.`;
+
+const IMAGE_UNSURE_RULE = `- Report only what you can point to. If you are unsure whether something is an indicator or an artifact of the photograph, leave it out.`;
+const PDF_UNSURE_RULE = `- Report only what you can point to. If you are unsure whether something is an indicator or a consequence of how the PDF was generated, leave it out.`;
+
+const SYSTEM_PROMPT = (framing: string) =>
+  `You are a document forensics analyst examining ${framing} submitted for verification.
+
+The document's metadata has already been analyzed separately. Your job is the content: what is visible on the document itself.
 
 Look for:
 - Arithmetic that does not reconcile (gross minus deductions not equal to net, line items not summing to a stated total, YTD figures inconsistent with the pay period, tax withholding implausible for the stated gross).
@@ -153,14 +172,23 @@ Look for:
 Do not report:
 - Anything you can only infer from metadata rather than see.
 - Judgments about the person or their finances. Round numbers, a low income, or an unfamiliar employer are not fraud indicators.
-- Ordinary photography artifacts: page skew, glare, shadow, moiré, camera blur affecting the whole image, or JPEG blocking that is uniform across the page. This image was downscaled and re-encoded before it reached you, so pixel-level compression forensics are not available to you — do not report them.
+ARTIFACT_RULE
 
 Rules on your verdict:
 - You have exactly three outcomes: fraud_indicators, inconclusive, no_indicators.
 - You must NEVER certify a document as genuine, real, verified, or authentic. no_indicators means only that you found nothing wrong in what you could see — it is not a statement that the document is real, and you must not phrase it as one.
-- Report only what you can point to. If you are unsure whether something is an indicator or an artifact of the photograph, leave it out.
-- If the image is unreadable, heavily cropped, or is not a financial document, return inconclusive with no signals.
+UNSURE_RULE
+UNREADABLE_RULE
 - If the document is legible and nothing above applies, return no_indicators with no signals. An honest empty result is the correct answer for a document with nothing wrong; do not manufacture a finding.`;
+
+/** The system prompt for one format. */
+function systemPromptFor(mime: string): string {
+  const isPdf = mime === "application/pdf";
+  return SYSTEM_PROMPT(isPdf ? PDF_FRAMING : IMAGE_FRAMING)
+    .replace("ARTIFACT_RULE", isPdf ? PDF_ARTIFACT_RULE : IMAGE_ARTIFACT_RULE)
+    .replace("UNSURE_RULE", isPdf ? PDF_UNSURE_RULE : IMAGE_UNSURE_RULE)
+    .replace("UNREADABLE_RULE", isPdf ? PDF_UNREADABLE_RULE : IMAGE_UNREADABLE_RULE);
+}
 
 // ---- Image preparation ----
 
@@ -274,23 +302,72 @@ function parseResponse(content: Anthropic.ContentBlock[]): VisionResult {
 // ---- Entry point ----
 
 /**
- * Run the content pass on an image upload.
+ * Build the content block that carries the document to the model.
+ *
+ * PDFs go as a `document` block, NOT rasterized first. sharp cannot decode a
+ * PDF at all, and adding poppler or pdfjs to do it would mean a system
+ * dependency on a serverless runtime for no gain: the API accepts PDFs
+ * directly (Base64PDFSource in the SDK's messages types), and it keeps the
+ * selectable text rather than flattening a document to pixels.
+ *
+ * Images keep the existing path: downscale, apply EXIF orientation, normalize
+ * to JPEG. That conversion is what makes the hardcoded image/jpeg media type
+ * below correct for a PNG or HEIC upload.
+ */
+async function documentContentBlock(
+  buf: Buffer,
+  mime: string,
+): Promise<Anthropic.ContentBlockParam | null> {
+  if (mime === "application/pdf") {
+    return {
+      type: "document",
+      source: {
+        type: "base64",
+        media_type: "application/pdf",
+        data: buf.toString("base64"),
+      },
+    };
+  }
+
+  const image = await prepareImage(buf);
+  if (!image) return null;
+  return {
+    type: "image",
+    source: {
+      type: "base64",
+      media_type: "image/jpeg",
+      data: image.toString("base64"),
+    },
+  };
+}
+
+/**
+ * Run the content pass on an uploaded document.
+ *
+ * PDFS REACH THIS TOO, as of the accuracy gate (#49). They did not before, and
+ * the measurement is why: scored on metadata alone, the product caught 0 of 20
+ * forged PDFs, because an edited salary or a falsified balance is simply never
+ * read. The scores were a constant per document type — identical for genuine
+ * and forged — which is what a detector looks like when it is not examining
+ * the thing it claims to examine.
  *
  * Never throws. Every failure path returns an unanalyzed result, and the caller
  * keeps whatever the metadata detectors already produced.
  *
  * @param buf      Raw uploaded bytes (not persisted anywhere).
  * @param docType  Document type, for context in the prompt.
+ * @param mime     Server-detected MIME; selects the content block.
  */
-export async function analyzeImageForFraud(
+export async function analyzeDocumentForFraud(
   buf: Buffer,
   docType: "pay_stub" | "bank_statement" | "invoice",
+  mime: string,
 ): Promise<VisionResult> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return unusable("unavailable");
 
-  const image = await prepareImage(buf);
-  if (!image) return unusable("unavailable");
+  const block = await documentContentBlock(buf, mime);
+  if (!block) return unusable("unavailable");
 
   try {
     const client = new Anthropic({
@@ -305,7 +382,7 @@ export async function analyzeImageForFraud(
       {
         model: VISION_MODEL,
         max_tokens: 4096,
-        system: SYSTEM_PROMPT,
+        system: systemPromptFor(mime),
         output_config: {
           // Low effort: this is a foreground request and the task is bounded
           // observation, not open-ended reasoning.
@@ -316,17 +393,14 @@ export async function analyzeImageForFraud(
           {
             role: "user",
             content: [
-              {
-                type: "image",
-                source: {
-                  type: "base64",
-                  media_type: "image/jpeg",
-                  data: image.toString("base64"),
-                },
-              },
+              block,
               {
                 type: "text",
-                text: `This image was submitted as a ${docType.replace("_", " ")}. Examine its content and return your findings.`,
+                // "document" rather than "image": the same prompt now covers a
+                // PDF, and telling the model it is looking at an image when it
+                // is not invites it to comment on capture artefacts that
+                // cannot exist.
+                text: `This document was submitted as a ${docType.replace("_", " ")}. Examine its content and return your findings.`,
               },
             ],
           },

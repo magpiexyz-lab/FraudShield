@@ -4,10 +4,15 @@
  * A scan can receive one of three depths of analysis, and the result surfaces
  * must not present one as another:
  *
- *   full_pdf     — the original PDF. Document-level metadata forensics:
- *                  producer/creator fingerprinting, template matching,
- *                  creation-vs-modification timestamp analysis, page and size
- *                  heuristics.
+ *   full_pdf     — the original PDF, with BOTH passes complete: document-level
+ *                  metadata forensics (producer/creator fingerprinting,
+ *                  template matching, creation-vs-modification timestamps,
+ *                  page and size heuristics) AND the AI content pass.
+ *
+ *                  The content pass is new here. This mode used to mean
+ *                  metadata only, and the accuracy gate (#49) measured the
+ *                  consequence: 0 of 20 forged PDFs detected, because nothing
+ *                  in the metadata path reads the numbers on the page.
  *   full_image   — an image whose content was successfully analysed by the AI
  *                  content pass (lib/fraud/vision.ts), on top of the EXIF
  *                  metadata checks. Different evidence from a PDF scan, but a
@@ -56,7 +61,22 @@ export function analysisMode(
   meta: AnalysisSubject | null | undefined,
 ): AnalysisMode {
   if (!meta || typeof meta.mime !== "string") return "partial";
-  if (meta.mime === FULL_ANALYSIS_MIME) return "full_pdf";
+
+  // A PDF is full ONLY when the content pass also returned a determination.
+  //
+  // It used to qualify on MIME alone, because PDFs received document-level
+  // metadata forensics and that was the whole of the analysis available to
+  // them. The accuracy gate (#49) showed what that was worth: 0 of 20 forged
+  // PDFs caught, scores a constant per document type, genuine and tampered
+  // indistinguishable. Metadata cannot see an edited salary.
+  //
+  // PDFs now go through the content pass too, so the same rule applies to them
+  // as to images: a scan whose content was never read is partial, whatever its
+  // format. Calling it full on format alone is how a document that was not
+  // examined gets presented as one that was.
+  if (meta.mime === FULL_ANALYSIS_MIME) {
+    return meta.vision_analyzed === true ? "full_pdf" : "partial";
+  }
   if (meta.mime.startsWith("image/") && meta.vision_analyzed === true) {
     return "full_image";
   }
@@ -122,6 +142,9 @@ export const CHECKS_PERFORMED: Record<AnalysisMode, ReadonlyArray<string>> = {
     "Creation and modification timeline consistency",
     "Editable form fields left live in the document",
     "Known fraud-template matching",
+    // Listed because it now runs. Omitting it would understate the scan, and
+    // this list is the only evidence of work a clean result can show.
+    "AI content review — arithmetic, typography, alignment, editing artifacts",
   ],
   full_image: [
     "EXIF capture date and editing-software traces",
@@ -150,6 +173,13 @@ export const NO_INDICATORS_BODY =
  * Shown before upload, because uploading is the point of consent. Documents
  * are sent to a third-party AI service (Anthropic) for the content pass; the
  * user has to know that before the file leaves their machine, not after.
+ *
+ * THIS LINE CHANGED WITH THE PDF CONTENT PASS and had to. It previously read
+ * "PDFs are analyzed on our servers", which was true while PDFs got metadata
+ * forensics only. Routing them through the content pass makes that sentence
+ * false, and a false sentence here is not a copy nit: it is telling a customer
+ * their bank statement stays with us while sending it to a third party. If the
+ * content pass is ever made conditional, this has to say so.
  */
 export const AI_PRIVACY_DISCLOSURE =
-  "Images are sent to Anthropic's Claude API for AI content analysis, and PDFs are analyzed on our servers. No document is stored by FraudShield after the scan — only the extracted metadata and the resulting signals.";
+  "Every document you upload — images and PDFs alike — is sent to Anthropic's Claude API for AI content analysis. No document is stored by FraudShield after the scan, only the extracted metadata and the resulting signals.";

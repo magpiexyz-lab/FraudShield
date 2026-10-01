@@ -2,10 +2,11 @@
 // compute the forensic fraud score, persist metadata + signals (NOT the raw
 // file), and return the new scan id.
 //
-// Image uploads additionally get an AI content pass (lib/fraud/vision.ts):
-// metadata describes the capture, not the document, so the content is the only
-// thing left to check on a photographed document. The pass is best-effort — on
-// any failure the scan keeps its metadata-only result and is labelled partial.
+// EVERY upload gets an AI content pass (lib/fraud/vision.ts) — images and PDFs
+// alike. It ran on images only until the accuracy gate (#49) measured the
+// consequence: 0 of 20 forged PDFs detected, because the metadata path never
+// reads the numbers on the page. The pass is best-effort — on any failure the
+// scan keeps its metadata-only result and is labelled partial.
 //
 // Security:
 //   - Authenticated via Supabase cookie session
@@ -13,8 +14,9 @@
 //   - Free-scan quota enforced via src/lib/quota.ts
 //   - Sanitized filenames per nextjs.md SK "When handling file uploads"
 //   - Raw documents are NEVER persisted — only file_meta + signals + score
-//   - Images are sent to Anthropic for the content pass (disclosed pre-upload
-//     via AI_PRIVACY_DISCLOSURE); nothing is retained by FraudShield
+//   - EVERY document, image or PDF, is sent to Anthropic for the content pass
+//     (disclosed pre-upload via AI_PRIVACY_DISCLOSURE, which had to change with
+//     it); nothing is retained by FraudShield
 //   - Zod input validation; generic { error } on ZodError (OWASP A4-InfoLeakage)
 
 import { NextResponse } from "next/server";
@@ -24,7 +26,7 @@ import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { rateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
 import { computeQuota, currentPeriodStart } from "@/lib/quota";
 import { computeFraudScore } from "@/lib/fraud/score";
-import { analyzeImageForFraud, applyVisionSignals } from "@/lib/fraud/vision";
+import { analyzeDocumentForFraud, applyVisionSignals } from "@/lib/fraud/vision";
 import { isFullAnalysis } from "@/lib/fraud/analysis-mode";
 import type {
   DocumentMetadata,
@@ -295,20 +297,26 @@ export async function POST(request: Request) {
   const scoringInput: ScoringInput = { metadata, doc_type: docType };
   let result = computeFraudScore(scoringInput);
 
-  // 5b. AI content pass — images only. PDFs already get document-level
-  //     forensics; an image's metadata only describes the capture, so the
-  //     content is what remains to check. analyzeImageForFraud never throws:
-  //     on a missing key, timeout, API error, refusal, or inconclusive verdict
-  //     it reports back unanalyzed and the scan stays a partial analysis.
-  if (isImage) {
-    const vision = await analyzeImageForFraud(buf, docType);
-    metadata.vision_status = vision.status;
-    if (vision.analyzed) {
-      // Only a completed determination upgrades the scan to a full analysis
-      // (see lib/fraud/analysis-mode.ts).
-      metadata.vision_analyzed = true;
-      result = applyVisionSignals(result, vision.signals);
-    }
+  // 5b. AI content pass — EVERY supported format, images and PDFs alike.
+  //
+  //     This used to run on images only, on the reasoning that a PDF already
+  //     got document-level forensics. The accuracy gate (#49) measured what
+  //     that was worth: 0 of 20 forged PDFs detected, with scores that were a
+  //     constant per document type and identical for genuine and tampered.
+  //     Metadata forensics cannot see an edited salary, because nothing in
+  //     that path ever reads the number. A detector that never examines the
+  //     document cannot be tuned into one that does.
+  //
+  //     analyzeDocumentForFraud never throws: on a missing key, timeout, API
+  //     error, refusal, or inconclusive verdict it reports back unanalyzed and
+  //     the scan keeps whatever the metadata detectors produced.
+  const vision = await analyzeDocumentForFraud(buf, docType, file.type);
+  metadata.vision_status = vision.status;
+  if (vision.analyzed) {
+    // Only a completed determination upgrades the scan to a full analysis
+    // (see lib/fraud/analysis-mode.ts).
+    metadata.vision_analyzed = true;
+    result = applyVisionSignals(result, vision.signals);
   }
 
   const { score, signals } = result;

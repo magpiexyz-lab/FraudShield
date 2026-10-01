@@ -742,3 +742,51 @@ describe("b-06: checkout refuses a second subscription", () => {
     expect(response.status).not.toBe(409);
   });
 });
+
+// THE CONTENT PASS MUST NOT BE GATED ON FORMAT (b-04).
+//
+// /api/scan ran the AI content pass on images only, and the accuracy gate (#49)
+// measured the cost: 0 of 20 forged PDFs detected, scores a constant per
+// document type, genuine and tampered indistinguishable. Nothing in the
+// metadata path reads the numbers on the page.
+//
+// The vision unit tests cannot see this: they prove a PDF is SENT correctly
+// once analyzeDocumentForFraud is called, not that the route calls it. The gate
+// that was wrong lived here, so the assertion lives here too.
+describe("b-04: every supported format reaches the content pass", () => {
+  const routeSource = () =>
+    readFileSync(
+      path.join(__dirname, "..", "src", "app", "api", "scan", "route.ts"),
+      "utf8",
+    );
+
+  it("calls the content pass", () => {
+    expect(routeSource()).toContain("await analyzeDocumentForFraud(");
+  });
+
+  // The regression itself. `if (isImage)` around this call is exactly what
+  // produced the 0-of-20, and it reads as a harmless optimisation.
+  it("does not wrap the content pass in a format check", () => {
+    const source = routeSource();
+    const call = source.indexOf("await analyzeDocumentForFraud(");
+    expect(call).toBeGreaterThan(-1);
+
+    // Walk back to the previous statement boundary and confirm no format
+    // condition sits between it and the call.
+    const preceding = source.slice(Math.max(0, call - 400), call);
+    const lastBrace = Math.max(preceding.lastIndexOf("}"), preceding.lastIndexOf(";"));
+    const immediate = preceding.slice(lastBrace + 1);
+
+    expect(immediate).not.toMatch(/if\s*\(/);
+    expect(immediate).not.toContain("isImage");
+    expect(immediate).not.toContain("application/pdf");
+  });
+
+  // The PDF branch has to be reachable at all: the route passes the MIME
+  // through, and vision.ts selects the content block from it.
+  it("passes the file's MIME type to the content pass", () => {
+    expect(routeSource()).toMatch(
+      /analyzeDocumentForFraud\(\s*buf,\s*docType,\s*file\.type\s*\)/,
+    );
+  });
+});

@@ -22,9 +22,24 @@ import { computeFraudScore, type ScoringInput } from "./score";
 const CLEAR_MAX = 33;
 
 describe("isFullAnalysis", () => {
-  it("returns true for application/pdf", () => {
-    expect(isFullAnalysis({ mime: "application/pdf" })).toBe(true);
-    expect(analysisMode({ mime: "application/pdf" })).toBe("full_pdf");
+  // A PDF is full only when the content pass also returned a determination.
+  //
+  // It qualified on MIME alone until the accuracy gate (#49) measured what
+  // metadata-only analysis was worth on PDFs: 0 of 20 forged documents caught,
+  // scores a constant per document type, genuine and tampered indistinguishable.
+  // PDFs now go through the content pass, so the rule is the same as for
+  // images — a document whose content was never read is partial, whatever its
+  // format. Format alone is how an unexamined document gets presented as an
+  // examined one.
+  it("returns true for a PDF whose content pass completed", () => {
+    expect(isFullAnalysis({ mime: "application/pdf", vision_analyzed: true })).toBe(true);
+    expect(analysisMode({ mime: "application/pdf", vision_analyzed: true })).toBe("full_pdf");
+  });
+
+  it("returns false for a PDF whose content pass did not complete", () => {
+    expect(isFullAnalysis({ mime: "application/pdf" })).toBe(false);
+    expect(analysisMode({ mime: "application/pdf" })).toBe("partial");
+    expect(analysisMode({ mime: "application/pdf", vision_analyzed: false })).toBe("partial");
   });
 
   it.each(["image/png", "image/jpeg", "image/webp", "image/heic"])(
@@ -250,12 +265,19 @@ describe("free-scan quota semantics", () => {
     // returns EXIF evidence but no fraud score, and spending one of three free
     // scans on a non-answer penalises exactly the users who photograph
     // documents rather than exporting PDFs.
-    expect(isFullAnalysis({ mime: "application/pdf" })).toBe(true);
+    expect(isFullAnalysis({ mime: "application/pdf", vision_analyzed: true })).toBe(true);
     expect(isFullAnalysis({ mime: "image/jpeg", vision_analyzed: true })).toBe(true);
 
-    // These two are the refunded cases.
+    // The refunded cases — now including PDFs.
+    //
+    // A PDF whose content pass failed used to be charged, because format alone
+    // made it a full analysis. Now that PDFs are read rather than merely
+    // fingerprinted, a failed pass leaves the same non-answer an image does,
+    // and the same reasoning applies: do not spend a free scan on it.
     expect(isFullAnalysis({ mime: "image/jpeg" })).toBe(false);
     expect(isFullAnalysis({ mime: "image/png", vision_analyzed: false })).toBe(false);
+    expect(isFullAnalysis({ mime: "application/pdf" })).toBe(false);
+    expect(isFullAnalysis({ mime: "application/pdf", vision_analyzed: false })).toBe(false);
   });
 });
 
