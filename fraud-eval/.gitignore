@@ -18,6 +18,7 @@
 !.gitignore
 !README.md
 !labels.csv
+!labels-images.csv
 !run.mjs
 !results/
 !results/*.md

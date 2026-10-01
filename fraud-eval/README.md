@@ -111,6 +111,35 @@ is the same path a customer's upload takes. Results land in `results/`.
    (`shasum -a 256 <file>` / `Get-FileHash -Algorithm SHA256`).
 3. Never copy it into the repository, not even temporarily.
 
+## Two manifests, and why
+
+| Manifest | Set | Reaches |
+|---|---|---|
+| `labels.csv` | the original 40 (36 PDF, 4 image) | PDF path for most |
+| `labels-images.csv` | the same 40, all rendered PNG | the content pass, for all |
+
+The first run scored **0 of 20** on tampered documents. The cause was not
+tuning. `/api/scan` sends only images through the AI content pass:
+
+```ts
+const isImage = file.type.startsWith("image/");
+const pdfMeta = file.type === "application/pdf" ? extractPdfMetadata(buf) : {};
+...
+if (isImage) { const vision = await analyzeImageForFraud(buf, docType); ... }
+```
+
+A PDF is scored on metadata alone -- producer, creator, dates, page count,
+size. Its contents are never read, so an edited salary or a falsified balance
+is invisible by construction. The PDF scores bear this out: a constant per
+document type, identical for genuine and forged.
+
+With one manifest, "cannot detect forgery in PDFs" and "cannot detect forgery
+at all" are indistinguishable, and they call for very different responses. The
+image manifest separates them.
+
+Select one with `FRAUD_EVAL_MANIFEST=fraud-eval/labels-images.csv`. Results are
+named after the manifest, so neither run overwrites the other's evidence.
+
 ## What the metadata in this set can and cannot test
 
 The product does metadata forensics, so the set has to vary metadata or the
