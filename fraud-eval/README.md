@@ -111,6 +111,36 @@ is the same path a customer's upload takes. Results land in `results/`.
    (`shasum -a 256 <file>` / `Get-FileHash -Algorithm SHA256`).
 3. Never copy it into the repository, not even temporarily.
 
+## What the metadata in this set can and cannot test
+
+The product does metadata forensics, so the set has to vary metadata or the
+matrix silently measures content analysis alone. What it actually varies, after
+checking rather than assuming:
+
+| Field | Varies? | Carries |
+|---|---|---|
+| `Creator` | **yes** | the separating signal — see below |
+| `CreationDate` | yes | a plausible issue date per document |
+| `Producer` | **no** | identical across all 40 |
+| `ModDate` | **no** | identical across all 40 |
+
+`Creator` separates the three classes:
+
+- genuine → the payroll or banking system that issued it
+- tampered (17) → the editor that last touched it (Acrobat, Foxit, LibreOffice…)
+- clean-metadata (3) → empty
+
+`Producer` and `ModDate` are uniform because the generator writes PDFs with
+`pdf-lib`, which stamps both on every save regardless of what is set — including
+through the low-level Info dictionary. **So this set cannot test a detector that
+relies on a create/modify timestamp gap**, which is a real forensic signal in the
+wild. A caught rate measured here is therefore a floor, not a ceiling: a
+real-world detector has one more signal available than this set provides.
+
+Worth saying plainly because the first version of the generator did not check,
+and produced forty documents with identical producer and that day's date — a set
+that would have scored the metadata dimension at zero while looking fine.
+
 ## Known gap, stated rather than papered over
 
 Issue #49 asks for printed-and-scanned documents and two phone photos. Those
