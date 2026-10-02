@@ -1,6 +1,6 @@
 # Detection accuracy — confusion matrix
 
-Run: 2026-10-01T11:25:12.966Z
+Run: 2026-10-01T11:36:41.377Z
 Target: https://fraudshield.draftlabs.org
 Scored: 4 of 4
 
@@ -36,8 +36,8 @@ All documents scored.
 
 | file | change | source | score |
 |---|---|---|---|
-| images/tampered-date-03.png | one transaction dated outside the statement period | rendered-png | 30 |
-| images/tampered-identity-04.png | bill-to name swapped; billing address still the original client's | rendered-png | 0 |
+| images/tampered-date-03.png | one transaction dated outside the statement period | rendered-png | 25 |
+| images/tampered-identity-04.png | bill-to name swapped; billing address still the original client's | rendered-png | 20 |
 
 ## False alarms
 
@@ -48,6 +48,6 @@ None.
 | file | label | change | source | score | verdict |
 |---|---|---|---|---|---|
 | images/genuine-statement-03.png | genuine |  | rendered-png | 30 | clear |
-| images/tampered-date-03.png | tampered | one transaction dated outside the statement period | rendered-png | 30 | clear |
-| images/tampered-identity-04.png | tampered | bill-to name swapped; billing address still the original client's | rendered-png | 0 | clear |
+| images/tampered-date-03.png | tampered | one transaction dated outside the statement period | rendered-png | 25 | clear |
+| images/tampered-identity-04.png | tampered | bill-to name swapped; billing address still the original client's | rendered-png | 20 | clear |
 | images/tampered-clean-01.png | tampered | net pay raised $600 to $3,933.71 (true 3,333.71); regenerated with no editing trace | rendered-png | 35 | suspect |
