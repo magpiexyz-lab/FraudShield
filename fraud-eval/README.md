@@ -111,6 +111,32 @@ is the same path a customer's upload takes. Results land in `results/`.
    (`shasum -a 256 <file>` / `Get-FileHash -Algorithm SHA256`).
 3. Never copy it into the repository, not even temporarily.
 
+## The v2 set, and what was wrong with v1
+
+`labels-v2.csv` (PDFs) and `labels-v2-images.csv` (the same 40 as PNG) replace
+the originals. The first set produced numbers that measured ITSELF, not the
+product -- four separate contaminations, none of which surfaced as an error:
+
+| Contamination | Effect |
+|---|---|
+| Filenames `genuine-paystub-01.pdf`, `tampered-template-02.pdf` | `detectSuspiciousFilename` scores on a keyword list containing **stub** and **template**: 21 fires, 10 points each. The label was also in the name. |
+| PDFs written by pdf-lib | Info dictionary lands in a compressed object stream; the route's regex cannot read it and reports **"metadata has been stripped"** -- 31 fires, 20 points each |
+| Footers reading *"is a fictional institution used for software testing"*, reserved `000-xx-xxxx` SSNs, `.test` domains | The model reports placeholder text and placeholder identifiers, correctly |
+| Three genuine pay stubs whose Regular YTD + Overtime YTD exceeded the Gross YTD printed beside them | Flagged for a real arithmetic contradiction, counted as a false alarm |
+
+Together those produced a 78.9% false-alarm rate that was mostly the set.
+
+**v2 fixes all four.** Filenames are `earnings-`/`statement-`/`invoice-` plus a
+hash -- opaque, label-free, and checked against the product's own keyword list
+by a test. PDFs are rendered once by Chromium and never post-processed, so the
+Info dict stays readable. Identifiers are plausible and fictional. The
+arithmetic reconciles.
+
+**What v2 cannot test:** Producer and Creator are now identical across all 40
+(Chromium/Skia), so the metadata-forensics axis is not measured. That is the
+price of making the metadata readable at all, and it is better stated than
+implied by a number.
+
 ## Two manifests, and why
 
 | Manifest | Set | Reaches |
