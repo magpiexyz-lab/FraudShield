@@ -135,18 +135,15 @@ rows that predate the column stay NULL. `where email_sha256 is null` finds them.
 
 ## 5. Renewal events proven
 
-**Status:** in progress.
-
-Three of the five payment events are verified end to end against the live test-mode
-endpoint:
+**Status:** DONE. All five verified end to end against the live test-mode endpoint.
 
 | Event | Verified |
 |---|---|
 | `checkout_started` | yes |
 | `subscription_activated` | yes |
 | `subscription_canceled` | yes — 2026-09-29 |
-| `invoice_paid` | pending — Stripe test clock |
-| `payment_failed` | pending — Stripe test clock |
+| `invoice_paid` | yes — 2026-10-05, Stripe test clock |
+| `payment_failed` | yes — 2026-10-05, Stripe test clock |
 
 The last two never fire on a first purchase, by design:
 
@@ -158,10 +155,30 @@ if (subscriptionId && isRenewal) { ... }
 Without that gate every new sale would be counted twice, once as a sale and once as
 a renewal. Proving them therefore requires a forced renewal via a Stripe test clock.
 
-Paste the two PostHog event ids here when done:
+PostHog event ids, as requested:
 
-- `invoice_paid`: _pending_
-- `payment_failed`: _pending_
+- `invoice_paid`: `01a10ba3-69e6-7074-ba85-511eeb786de7`
+- `payment_failed`: `01a10ba7-4829-7015-ba77-9740605d7d33`
+
+HOW THEY WERE PRODUCED. A test clock, a customer created on it, a $60 USD
+subscription, then the clock advanced a month to force a renewal. The
+subscriptions row was repointed at the simulated subscription for the duration,
+because the webhook resolves the user by stripe_subscription_id and would
+otherwise have matched nothing.
+
+TWO THINGS WORTH KNOWING, found doing it:
+
+One failing customer produces SIX TO EIGHT payment_failed events, not one.
+Stripe retries a failed invoice on its dunning schedule and sends
+invoice.payment_failed for every attempt; the handler reports each. Every one is
+a real failed attempt, so this is not wrong -- but anything counting these as
+"customers who failed to pay" will overstate it several times over. Worth
+deciding before the number is used.
+
+Repointing the row let the failures write past_due onto the REAL account's row,
+which computeQuota gates on, so that account silently lost its Pro quota until
+it was set back. Anyone repeating this should restore both
+stripe_subscription_id and status afterwards, not just the id.
 
 ---
 
