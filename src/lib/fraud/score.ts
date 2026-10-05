@@ -177,7 +177,7 @@ function isRecentlyCreated(created: string | undefined): boolean {
  * Legitimate PDF generators produce creation ≤ modification; a rapid same-second
  * or near-instant modification gap is a batch-generator artifact.
  */
-function hasAnomalousModification(
+function isModifiedBeforeCreated(
   created: string | undefined,
   modified: string | undefined
 ): boolean {
@@ -185,11 +185,17 @@ function hasAnomalousModification(
   try {
     const createdMs = new Date(created).getTime();
     const modifiedMs = new Date(modified).getTime();
-    // Modified before creation — impossible from a legitimate tool
-    if (modifiedMs < createdMs) return true;
-    // Modified within 2 seconds of creation — batch-generation artifact
-    if (modifiedMs - createdMs < 2000) return true;
-    return false;
+    if (Number.isNaN(createdMs) || Number.isNaN(modifiedMs)) return false;
+    // Modified before creation. There is no legitimate way to produce this.
+    //
+    // This used to ALSO return true when the two timestamps were within 2
+    // seconds, called a "batch-generation artifact" in the comment. It is not:
+    // a single-pass export writes both at once, so every normal PDF has them
+    // within 2 seconds -- Chromium, Word, a payroll portal. The accuracy gate
+    // (#49) measured it -- all 40 documents, genuine and forged alike, fired
+    // this. A signal that fires on everything separates nothing; it moved the
+    // whole population 18 points closer to being flagged.
+    return modifiedMs < createdMs;
   } catch {
     return false;
   }
@@ -291,8 +297,19 @@ function detectRecentCreation(input: ScoringInput): FraudSignal | null {
     id: "recently_created",
     label: "Document created within the last 7 days",
     severity: "suspect",
-    detail: `The document was created on ${input.metadata.pdf_created}. Documents submitted for verification that were created very recently can indicate fabrication shortly before submission.`,
-    weight: 15,
+    detail: `The document was created on ${input.metadata.pdf_created}. On its own this is unremarkable — most documents submitted for verification are recent — but it is worth noting alongside any other finding.`,
+    // WEAK ON PURPOSE. A fabricated document is created shortly before it is
+    // submitted; so is a legitimate one. Recency is the normal case for a
+    // verification product, so alone it carries almost no information. At
+    // weight 15 against a threshold of 34, paired with the timestamp detector
+    // above, every freshly exported PDF started at 33 -- one point short of
+    // being flagged, whatever was on the page.
+    //
+    // Kept rather than deleted because it is a real contributor in
+    // combination: a stub whose pay period ended six months ago but whose file
+    // was created yesterday is worth noticing. That detector needs the stated
+    // period, which the metadata pass does not extract. Until then, a nudge.
+    weight: 5,
   };
 }
 
@@ -313,13 +330,13 @@ function detectFutureDate(input: ScoringInput): FraudSignal | null {
 }
 
 function detectAnomalousModification(input: ScoringInput): FraudSignal | null {
-  if (!hasAnomalousModification(input.metadata.pdf_created, input.metadata.pdf_modified))
+  if (!isModifiedBeforeCreated(input.metadata.pdf_created, input.metadata.pdf_modified))
     return null;
   return {
     id: "anomalous_modification",
-    label: "Suspicious modification timestamp",
+    label: "Modified before it was created",
     severity: "suspect",
-    detail: `The PDF modification date is ${input.metadata.pdf_modified} — either before the creation date or within 2 seconds of it. This pattern occurs when batch-generation tools set both timestamps simultaneously.`,
+    detail: `The PDF reports a modification date of ${input.metadata.pdf_modified}, which is earlier than its creation date of ${input.metadata.pdf_created}. A document cannot be edited before it exists.`,
     weight: 18,
   };
 }
