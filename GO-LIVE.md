@@ -57,8 +57,30 @@ matches `PLAN_PRICES.pro`. That guard is not part of this step.
 
 ## 2. Detection accuracy gate
 
-**Status:** not started. Tracked in
-[issue #49](https://github.com/magpiexyz-lab/FraudShield/issues/49).
+**Status:** RUN AND MEASURED. Below the bar on caught rate.
+Tracked in [issue #49](https://github.com/magpiexyz-lab/FraudShield/issues/49);
+results in `fraud-eval/results/`, analysis in PR #72.
+
+| Measure | Result | Bar | |
+|---|---|---|---|
+| False alarms | **0 of 20 — 0.0%** | <= 10% | PASS |
+| Caught, all tampered | 13 of 20 — 65.0% | >= 80% | MISS |
+| Caught, excluding identity swaps | **13 of 16 — 81.2%** | >= 80% | PASS |
+
+ONE CATEGORY ACCOUNTS FOR THE WHOLE SHORTFALL. Identity swaps -- a name or
+address moved onto another person's document while the identifiers stay -- were
+caught 0 of 4, in both PDF and image form, in every run. Two of them scored 5 out
+of 100: the product sees nothing at all.
+
+Knowing a name does not belong on a document needs a second source to check it
+against -- an employment record, a credit file. There is none. No prompt or
+weight change reaches it, so this is a decision about what the product claims,
+not a tuning task. WITH @alanmagpie.
+
+Everything the product can see, it catches at 81% with zero false alarms.
+Per class: edited amounts 8/9, template forgeries 4/4, edited dates 3/5.
+Dates are the weakest working category and are worth prompt work; both misses
+are contradictions visible on the page.
 
 40 labelled documents — 20 genuine-style, 20 tampered with one known change each —
 run through the product as a customer would, reported as one confusion matrix.
@@ -73,7 +95,7 @@ run through the product as a customer would, reported as one confusion matrix.
 must show specific findings instead of a single number. Then re-run. Charging for
 a product is fine once the claim matches what it does.
 
-> **Open question before this starts — storage.** This repository is **public**.
+> **Storage — settled.** This repository is **public**.
 > Issue #49 asks for the documents under `fraud-eval/`, but 20 of them are forged
 > financial documents, including four from commercial fake-pay-stub sites and three
 > built specifically to defeat metadata forensics. Committing them publishes a
@@ -81,7 +103,8 @@ a product is fine once the claim matches what it does.
 > detection. Recommend keeping `labels.csv` and the results in the repo and the
 > document files out of it, or generating content that is obviously synthetic
 > (fictional employers, reserved identifiers) so the files are useless as
-> templates. **To be settled before the set is built.**
+> templates. **Settled: documents live in the private `fraud-eval` Supabase
+> bucket; only the script, the manifests and the results are committed.**
 
 ---
 
@@ -184,7 +207,15 @@ stripe_subscription_id and status afterwards, not just the id.
 
 ## 6. CI is not currently a safety net
 
-**Status:** known, filed with the fleet, not blocking.
+**Status:** `build` FIXED, `e2e` now failing and with the fleet.
+
+`.nvmrc` moved to 24 so the runner's npm matches the lockfile, and `build` went
+green for the first time since #39. That let `e2e` run -- and 13 of its tests
+fail. They had been failing all along behind the red build; the cause is that the
+e2e job is given no ANTHROPIC_API_KEY, so document scanning cannot work there.
+Reported on PR #54 for the template queue.
+
+`migrate` is still skipped, so migrations continue to be applied by hand.
 
 The `build` job fails on `npm ci`, so `e2e` and `migrate` never run and migrations
 are applied by hand.
