@@ -169,15 +169,53 @@ describe("computeFraudScore — timestamp anomalies", () => {
     expect(signal).toBeDefined();
   });
 
-  it("flags instant modification (batch generator artifact)", () => {
+  // THE INVERSE OF WHAT THIS USED TO ASSERT, and the inversion is the point.
+  //
+  // It previously expected identical timestamps to be flagged, calling them a
+  // "batch generator artifact". They are not: a single-pass export writes both
+  // at once, so every normal PDF has them within 2 seconds -- Chromium, Word, a
+  // payroll portal. The accuracy gate (#49) measured it: all 40 documents in
+  // the set, genuine and forged alike, fired this signal and took 18 points.
+  //
+  // Combined with the recency detector that made 33 on a 34-point threshold, so
+  // ten of twenty clean documents sat one point from being flagged before
+  // anything on the page was read.
+  it("does NOT flag timestamps written in the same pass", () => {
     const ts = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
-    const tsPlus1s = new Date(ts.getTime() + 500); // 500ms after creation
+    const sameSecond = new Date(ts.getTime() + 500);
     const result = computeFraudScore(makeInput({
       pdf_created: ts.toISOString(),
-      pdf_modified: tsPlus1s.toISOString(),
+      pdf_modified: sameSecond.toISOString(),
     }));
-    const signal = result.signals.find((s) => s.id === "anomalous_modification");
-    expect(signal).toBeDefined();
+    expect(
+      result.signals.find((s) => s.id === "anomalous_modification"),
+    ).toBeUndefined();
+  });
+
+  it("does NOT flag identical creation and modification timestamps", () => {
+    const ts = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString();
+    const result = computeFraudScore(makeInput({
+      pdf_created: ts,
+      pdf_modified: ts,
+    }));
+    expect(
+      result.signals.find((s) => s.id === "anomalous_modification"),
+    ).toBeUndefined();
+  });
+
+  // A freshly exported, otherwise unremarkable PDF must sit well clear of the
+  // suspect band on metadata alone. This is the regression that mattered: the
+  // old pair put it at 33 of 34, so any single content finding flagged it.
+  it("leaves an ordinary fresh PDF far below the suspect threshold", () => {
+    const now = new Date().toISOString();
+    const result = computeFraudScore(makeInput({
+      pdf_created: now,
+      pdf_modified: now,
+      pdf_producer: "Skia/PDF m148",
+      pdf_creator: "Chromium",
+    }));
+    expect(result.severity).toBe("clear");
+    expect(result.score).toBeLessThan(15);
   });
 
   it("does NOT flag a legitimate 10-minute editing gap", () => {
