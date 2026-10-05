@@ -254,3 +254,89 @@ describe("the matrix cannot be flattered", () => {
     expect(source).not.toMatch(/caughtRate\s*<\s*BAR\.caught.*process\.exit/s);
   });
 });
+
+// THE FILENAME IS AN INPUT TO THE PRODUCT, and the first eval set forgot that.
+//
+// Files were named "genuine-paystub-01.pdf" and "tampered-template-02.pdf".
+// detectSuspiciousFilename in src/lib/fraud/score.ts scores on a keyword list
+// containing "stub" and "template", so every pay stub and every template
+// forgery took 10 points for its NAME -- 21 fires across the set. Worse, the
+// label was in the filename: "tampered-" told the detector the answer.
+//
+// Neither showed up as an error. They showed up as the product's accuracy.
+describe("eval filenames do not contaminate the measurement", () => {
+  const manifests = ["labels-v2.csv", "labels-v2-images.csv"];
+
+  /** The product's own keyword list, read from score.ts rather than restated. */
+  function fraudKeywords(): string[] {
+    const source = readFileSync(
+      path.join(repoRoot, "src", "lib", "fraud", "score.ts"),
+      "utf8",
+    );
+    const block = source.slice(source.indexOf("const fraudKeywords = ["));
+    const list = block.slice(0, block.indexOf("]"));
+    return (list.match(/"([a-z]+)"/g) ?? []).map((s) => s.replace(/"/g, ""));
+  }
+
+  function filesIn(manifest: string): string[] {
+    const csv = readFileSync(path.join(evalDir, manifest), "utf8");
+    return csv
+      .split(/\r?\n/)
+      .slice(1)
+      .filter(Boolean)
+      .map((line) => line.split(",")[0].replace(/"/g, ""));
+  }
+
+  it("reads a non-empty keyword list from the product", () => {
+    const kws = fraudKeywords();
+    expect(kws.length).toBeGreaterThan(5);
+    // The two that actually bit. If they ever leave the list this test is
+    // weaker, but it is still correct; if they stay, it must keep catching them.
+    expect(kws).toContain("stub");
+    expect(kws).toContain("template");
+  });
+
+  it.each(manifests)("%s: no filename trips the product's own keywords", (m) => {
+    const kws = fraudKeywords();
+    for (const file of filesIn(m)) {
+      const name = file.toLowerCase();
+      for (const kw of kws) {
+        expect(name, `"${file}" contains the scored keyword "${kw}"`).not.toContain(kw);
+      }
+    }
+  });
+
+  // A filename that states the answer makes the result meaningless whether or
+  // not any detector reads it.
+  it.each(manifests)("%s: no filename reveals its label", (m) => {
+    for (const file of filesIn(m)) {
+      const name = file.toLowerCase();
+      expect(name).not.toContain("genuine");
+      expect(name).not.toContain("tampered");
+      expect(name).not.toContain("forged");
+      expect(name).not.toContain("clean");
+    }
+  });
+
+  // The route infers doc_type from the filename, so an entirely opaque name
+  // would send every statement and invoice through as a pay stub and change
+  // what the model is told it is looking at. The type prefix has to survive.
+  it.each(manifests)("%s: filenames still carry the document type", (m) => {
+    for (const file of filesIn(m)) {
+      const base = file.split("/").pop()!;
+      expect(base, `"${file}" has no recognisable type prefix`).toMatch(
+        /^(earnings|statement|invoice)-/,
+      );
+    }
+  });
+
+  it.each(manifests)("%s: has 40 rows, 20 of each label", (m) => {
+    const rows = readFileSync(path.join(evalDir, m), "utf8")
+      .split(/\r?\n/)
+      .slice(1)
+      .filter(Boolean);
+    expect(rows).toHaveLength(40);
+    expect(rows.filter((r) => r.includes('"genuine"'))).toHaveLength(20);
+    expect(rows.filter((r) => r.includes('"tampered"'))).toHaveLength(20);
+  });
+});
