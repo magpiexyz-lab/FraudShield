@@ -148,7 +148,15 @@ async function loadManifest() {
   return entries;
 }
 
-/** Log in once and hand back a browser context carrying the session. */
+/**
+ * Log in once and hand back a browser context carrying the session.
+ *
+ * REPORTS WHAT THE PAGE SAID. The first version simply waited for /dashboard
+ * and threw "page.waitForURL: Timeout 30000ms exceeded" on any failure, which
+ * says nothing about whether the password was wrong, the account was locked, or
+ * the form had moved. The login page renders its failure into a role="alert"
+ * element; reading it turns a stack trace into the actual message.
+ */
 async function authenticate(browser, baseUrl, email, password) {
   const context = await browser.newContext({ baseURL: baseUrl });
   const page = await context.newPage();
@@ -156,7 +164,33 @@ async function authenticate(browser, baseUrl, email, password) {
   await page.getByLabel(/email/i).fill(email);
   await page.getByLabel(/password/i).fill(password);
   await page.getByRole("button", { name: /log in|sign in/i }).click();
-  await page.waitForURL(/\/dashboard/, { timeout: 30_000 });
+
+  try {
+    await page.waitForURL(/\/dashboard/, { timeout: 30_000 });
+  } catch {
+    // Whatever the form is telling a human, verbatim.
+    const alerts = await page
+      .getByRole("alert")
+      .allTextContents()
+      .catch(() => []);
+    const message = alerts.map((t) => t.trim()).filter(Boolean).join(" | ");
+
+    console.error(`\nLogin failed for ${email}.`);
+    console.error(`  still on: ${page.url()}`);
+    console.error(
+      message
+        ? `  page says: ${message}`
+        : "  the page displayed no error — the form may have changed, or the " +
+          "request never completed.",
+    );
+    console.error(
+      "\nCheck FRAUD_EVAL_EMAIL and FRAUD_EVAL_PASSWORD. A password typed into " +
+        "a new shell is the usual cause.",
+    );
+    await context.close();
+    process.exit(1);
+  }
+
   await page.close();
   return context;
 }
