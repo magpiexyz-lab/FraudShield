@@ -322,7 +322,7 @@ function ResultView({
         </h1>
         {mode === "full_pdf" ? (
           <p className="mt-2 max-w-2xl text-base leading-relaxed text-muted-foreground">
-            FraudShield ran metadata forensics, cross-document checks, and
+            FraudShield ran metadata forensics, AI content review, and
             template matching on{" "}
             <span className="font-mono text-foreground">{meta.filename}</span>.
             Your score is below; the signal-by-signal evidence behind it is

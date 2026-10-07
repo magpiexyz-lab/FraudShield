@@ -328,9 +328,9 @@ const DEMO_SIGNALS: SignalRow[] = [
     revealAt: 980,
   },
   {
-    code: "XDOC.FONT",
-    label: "Cross-document mismatch",
-    detail: "Net-pay font differs from employer template",
+    code: "TYPO.FONT",
+    label: "Typography inconsistency",
+    detail: "Net-pay figure rendered in a different font to the row",
     weight: 16,
     severity: "suspect",
     revealAt: 1500,
@@ -768,10 +768,10 @@ const FEATURES = [
   },
   {
     img: "/images/feature-2.webp",
-    alt: "Conceptual isometric illustration of cross-document checks: two financial documents connected by signal-cyan verification lines with match and mismatch node markers on deep cool-ink",
-    tag: "02 · cross-document checks",
+    alt: "Conceptual isometric illustration of document content review: a financial document with signal-cyan markers on individual figures and rows on deep cool-ink",
+    tag: "02 · content review",
     title: "Catch the story that doesn’t add up",
-    body: "Fonts, totals, and layouts are compared across documents and against employer templates, so a number that was quietly retyped lights up instantly.",
+    body: "An AI pass reads the document itself — arithmetic that does not reconcile, dates that contradict each other, a figure set in a different font to the row it sits in.",
   },
   {
     img: "/images/feature-3.webp",

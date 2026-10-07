@@ -4,7 +4,7 @@ import { ScanResultClient } from "./scan-result-client";
 export const metadata = {
   title: "Scan result | FraudShield",
   description:
-    "Your forensic fraud score with a full per-signal breakdown — metadata forensics, cross-document checks, and template matching.",
+    "Your forensic fraud score with a full per-signal breakdown — metadata forensics, AI content review, and template matching.",
 };
 
 // ScanResultClient calls useSearchParams() to read ?id=<scanId>, so it must be

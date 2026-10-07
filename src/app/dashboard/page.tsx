@@ -112,7 +112,7 @@ export default function DashboardPage() {
                 </h1>
                 <p className="mt-2 max-w-xl text-base text-muted-foreground">
                   Upload a pay stub, bank statement, or invoice. FraudShield runs
-                  metadata forensics, cross-document checks, and template matching to
+                  metadata forensics, AI content review, and template matching to
                   return a fraud score in seconds.
                 </p>
               </div>
