@@ -72,6 +72,23 @@ events:
         type: string
         required: false
         description: Variant slug from experiment.yaml variants
+  feature_interest_click:
+    funnel_stage: demand
+    trigger: >-
+      A user clicks a clearly-labelled "coming soon" control for a capability
+      the product does NOT have. A demand signal only: the label must say the
+      feature does not exist yet, and nothing about the click may imply it was
+      performed.
+    properties:
+      feature:
+        type: string
+        required: true
+        description: Which unbuilt capability was asked for (e.g. cross_document)
+      doc_type:
+        type: string
+        required: false
+        description: Document type of the result being viewed
+
   api_interest_click:
     funnel_stage: demand
     trigger: An activated user clicks 'Get API access' (fake door) on a scan result
@@ -210,15 +227,30 @@ events:
   subscription_canceled:
     funnel_stage: retain
     trigger: >-
-      A subscription actually ends (customer.subscription.deleted). With
-      cancel-at-period-end this fires when the paid month runs out, not when
-      the customer clicks cancel.
+      The customer asks to cancel. Fired from customer.subscription.updated the
+      moment cancel_at is scheduled -- NOT from customer.subscription.deleted,
+      which does not arrive until the paid month elapses up to 30 days later.
+      Reported once per cancellation; the elapsed-cancellation handler suppresses
+      a second report using the pending flag on the row.
     requires: [payment]
     properties:
       plan:
         type: string
         required: false
         description: Plan that was cancelled
+      cancel_feedback:
+        type: string
+        required: false
+        description: >-
+          Stripe's structured reason from the billing portal's cancel survey
+          (cancellation_details.feedback), e.g. too_expensive, missing_features,
+          unused. Absent when the customer skipped the question.
+      cancel_comment:
+        type: string
+        required: false
+        description: >-
+          Free-text the customer typed alongside it
+          (cancellation_details.comment). Usually absent.
   # --- retain ---
   retain_return:
     funnel_stage: retain
