@@ -41,7 +41,10 @@ function userFacingFiles(dir: string, acc: string[] = []): string[] {
  */
 const UNBUILT_CLAIMS: ReadonlyArray<{ pattern: RegExp; reason: string }> = [
   {
-    pattern: /cross[- ]document/i,
+    pattern: /cross[- ]document/i,
+    //  matters: "across documents" contains the substring "cross document",
+    // so an unanchored pattern rejects a perfectly honest sentence. Found by
+    // running this against copy that says the product does NOT do it.
     reason:
       "The scoring engine receives one document (ScoringInput = metadata + doc_type). " +
       "Nothing compares across documents. Measured: identity swaps caught 0 of 4 (#49).",
@@ -64,8 +67,11 @@ describe("the product does not advertise what it cannot do", () => {
     for (const file of files) {
       const text = readFileSync(file, "utf8");
       text.split(/\r?\n/).forEach((line, i) => {
-        // A comment explaining why the claim was removed is not a claim.
+        // A comment explaining why the claim was removed is not a claim,
+        // and neither is an import path or an identifier. Only what a user
+        // can read counts.
         if (/^\s*(\/\/|\*|\/\*)/.test(line)) return;
+        if (/^\s*import\s/.test(line)) return;
         if (pattern.test(line)) {
           offenders.push(`${path.relative(repoRoot, file)}:${i + 1}`);
         }
