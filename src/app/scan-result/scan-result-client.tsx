@@ -25,6 +25,7 @@ import {
 import { FREE_SCAN_QUOTA, type FraudSignal, type ScansRow } from "@/lib/types";
 import { ScoreGauge } from "./score-gauge";
 import { ApiAccessDialog } from "./api-access-dialog";
+import { CrossDocumentInterest } from "./cross-document-interest";
 import { UpgradeCta } from "./upgrade-cta";
 import { severityOfScore } from "./severity";
 import { FeedbackWidget } from "@/components/feedback-widget";
@@ -515,7 +516,9 @@ function ResultView({
                 FREE_SCAN_QUOTA - scansUsed === 1 ? "" : "s"
               } remaining.`}
         </p>
-        <div className="flex flex-col gap-3 sm:flex-row">
+        <CrossDocumentInterest docType={scan.doc_type} />
+
+        <div className="mt-6 flex flex-col gap-3 sm:flex-row">
           <ApiAccessDialog docType={scan.doc_type} />
           <Link
             href="/dashboard"

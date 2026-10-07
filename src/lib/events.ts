@@ -7,6 +7,7 @@ export const EVENT_FUNNEL_MAP: Record<string, string> = {
   demo_view: "reach",
   cta_click: "demand",
   api_interest_click: "demand",
+  feature_interest_click: "demand",
   signup_start: "activate",
   signup_complete: "activate",
   activate: "activate",
@@ -36,6 +37,20 @@ export function trackDemoView(props?: { variant?: string }) {
 
 export function trackCtaClick(props?: { variant?: string }) {
   track("cta_click", { ...props, funnel_stage: "demand" });
+}
+
+/**
+ * Demand for a capability the product does NOT have.
+ *
+ * The control that fires this must say so on its face. A "coming soon" button
+ * is a question; anything that reads as a feature is a claim, and this product
+ * has just finished removing twelve of those.
+ */
+export function trackFeatureInterestClick(props: {
+  feature: string;
+  doc_type?: string;
+}) {
+  track("feature_interest_click", { ...props, funnel_stage: "demand" });
 }
 
 export function trackApiInterestClick(props?: { doc_type?: string }) {

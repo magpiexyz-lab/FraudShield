@@ -308,9 +308,18 @@ export async function POST(request: Request) {
     const alreadyReported = canceled?.cancel_at_period_end === true;
 
     if (canceled?.user_id && !alreadyReported) {
+      // Same reason fields as the pending-cancellation path below. This
+      // handler is the only report for an IMMEDIATE cancellation, which never
+      // passes through the pending state -- without these, every churn reason
+      // from that route would be missing and nobody would know a category was
+      // absent rather than empty.
       await trackServerEvent("subscription_canceled", canceled.user_id, {
         plan: canceled.plan ?? "",
         provider: "stripe",
+        cancel_feedback:
+          nullableAttributionValue(subscription.cancellation_details?.feedback) ?? "",
+        cancel_comment:
+          nullableAttributionValue(subscription.cancellation_details?.comment) ?? "",
       });
     }
   }
@@ -409,9 +418,22 @@ export async function POST(request: Request) {
       // Same event name and same property shape as the elapsed-cancellation
       // path above, on purpose: churn queries must not have to know which of
       // the two webhooks reported a cancellation.
+      // WHY they cancelled, when Stripe collected it. The Billing Portal's
+      // cancel survey writes cancellation_details on the subscription, so the
+      // reason is already in this payload -- we were discarding it. Customers
+      // cancel in Stripe's UI rather than ours, so this is the only place the
+      // answer is available at all; a prompt of our own would sit on a screen
+      // they never see.
+      //
+      // Both fields are frequently absent (the survey is skippable), hence the
+      // same ""-is-not-a-value normalisation gclid gets.
       await trackServerEvent("subscription_canceled", subscriber.user_id, {
         plan: subscriber.plan ?? "",
         provider: "stripe",
+        cancel_feedback:
+          nullableAttributionValue(subscription.cancellation_details?.feedback) ?? "",
+        cancel_comment:
+          nullableAttributionValue(subscription.cancellation_details?.comment) ?? "",
       });
     } else if (alreadyPending && !pendingCancel) {
       // UN-CANCEL. The customer reversed the pending cancellation in the
