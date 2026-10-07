@@ -220,6 +220,11 @@ export async function POST(request: Request) {
         canceled_at: null,
         stripe_customer_id:
           typeof session.customer === "string" ? session.customer : null,
+        // Which Stripe mode produced this row. Taken from the EVENT rather
+        // than fetched, so it costs nothing and is available on every handler.
+        // The Ads uploader will not send a conversion without it, and must
+        // never send a test-mode purchase as revenue. See 012.
+        livemode: event.livemode,
         stripe_subscription_id: subscriptionId,
         updated_at: new Date().toISOString(),
       },
@@ -262,6 +267,7 @@ export async function POST(request: Request) {
       .from("subscriptions")
       .update({
         status: "canceled",
+        livemode: event.livemode,
         updated_at: new Date().toISOString(),
       })
       .eq("stripe_subscription_id", subscription.id);
@@ -376,6 +382,7 @@ export async function POST(request: Request) {
         .from("subscriptions")
         .update({
           cancel_at_period_end: true,
+          livemode: event.livemode,
           // When the customer asked, as Stripe reports it - Unix SECONDS and
           // nullable, like every other Stripe timestamp. Falling back to now
           // keeps the decision dated even if Stripe omits it; a NULL here would
@@ -430,6 +437,7 @@ export async function POST(request: Request) {
         .from("subscriptions")
         .update({
           cancel_at_period_end: false,
+          livemode: event.livemode,
           updated_at: new Date().toISOString(),
         })
         .eq("stripe_subscription_id", subscription.id);
@@ -496,6 +504,11 @@ export async function POST(request: Request) {
               status: "active",
               current_period_start: new Date().toISOString(),
               current_period_end: renewedPeriodEnd,
+              // Repeated on renewal so a row that somehow missed it at
+              // checkout is repaired rather than staying NULL and silently
+              // dropping out of the upload. A subscription's mode never
+              // changes, so rewriting it cannot make the row wrong.
+              livemode: event.livemode,
               updated_at: new Date().toISOString(),
             })
             .eq("stripe_subscription_id", subscriptionId);
