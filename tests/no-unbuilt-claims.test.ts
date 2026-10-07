@@ -41,8 +41,8 @@ function userFacingFiles(dir: string, acc: string[] = []): string[] {
  */
 const UNBUILT_CLAIMS: ReadonlyArray<{ pattern: RegExp; reason: string }> = [
   {
-    pattern: /cross[- ]document/i,
-    //  matters: "across documents" contains the substring "cross document",
+    pattern: /\bcross[- ]document/i,
+    // \b matters: "across documents" contains the substring "cross document",
     // so an unanchored pattern rejects a perfectly honest sentence. Found by
     // running this against copy that says the product does NOT do it.
     reason:
