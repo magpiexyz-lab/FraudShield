@@ -178,7 +178,7 @@ export function UploadZone({
     if (status !== "scanning") return;
     const phases = [
       "Reading document metadata…",
-      "Running cross-document checks…",
+      "Reviewing the document contents…",
       "Matching against fraud templates…",
       "Computing forensic score…",
     ];

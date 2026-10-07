@@ -110,7 +110,7 @@ export function AuthShell({
           <ul className="space-y-4 text-sm text-muted-foreground">
             {[
               ["Metadata forensics", "PDF producer, timestamps, edit history"],
-              ["Cross-document checks", "Names, totals, and dates reconciled"],
+              ["AI content review", "Arithmetic, dates, and typography checked"],
               ["Known-fraud templates", "Matched against a growing signature set"],
             ].map(([title, detail], idx) => (
               <li key={title} className="flex items-start gap-3">

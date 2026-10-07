@@ -51,7 +51,7 @@ export const VARIANTS: readonly Variant[] = [
     ],
     promise: "Instant, automated document forensics for small teams",
     proof:
-      "Checks metadata, cross-document consistency, and known fraud templates in one pass",
+      "Checks metadata, document contents, and known fraud templates in one pass",
     urgency: "Every minute spent eyeballing docs is a minute a fraudster counts on",
     pricing_amount: 60,
     pricing_model: "subscription",
