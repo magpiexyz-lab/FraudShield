@@ -7,7 +7,12 @@ is gitignored, so the manifest exists only on the machine that ran `/deploy` and
 nobody else can read it. This is committed, diffable, and reviewable in a PR.
 
 **Order matters.** Line 1 is last on launch day; lines 2–6 gate whether launch
-day happens at all. Lines 3 and 4 are done; 2 and 5 are not.
+day happens at all.
+
+As of 2026-10-08 every line except 1 is done. Line 1 is deliberately not, and
+is the launch-day step itself. The remaining decision is not on this list: the
+fleet decides on 2026-10-13 whether the ads restart, and the launch-day
+sequence below follows that.
 
 ---
 
@@ -57,15 +62,22 @@ matches `PLAN_PRICES.pro`. That guard is not part of this step.
 
 ## 2. Detection accuracy gate
 
-**Status:** RUN AND MEASURED. Below the bar on caught rate.
+**Status:** TICKED by the fleet, 2026-10-08. Judged on the categories the
+product now claims, with identity swaps out of scope and out of the copy.
 Tracked in [issue #49](https://github.com/magpiexyz-lab/FraudShield/issues/49);
 results in `fraud-eval/results/`, analysis in PR #72.
+
+WHAT WAS JUDGED, and why no re-run happened: the detection code has not changed
+since the 5 Oct run, so re-running the same 40 documents would reproduce the
+same numbers. The claim narrowed instead -- cross-document checks were removed
+from all twelve places that advertised them (PR #76) -- so the gate is read
+against what the product now says it does.
 
 | Measure | Result | Bar | |
 |---|---|---|---|
 | False alarms | **0 of 20 — 0.0%** | <= 10% | PASS |
-| Caught, all tampered | 13 of 20 — 65.0% | >= 80% | MISS |
-| Caught, excluding identity swaps | **13 of 16 — 81.2%** | >= 80% | PASS |
+| Caught, all tampered | 13 of 20 — 65.0% | >= 80% | not the judged figure |
+| **Caught, on claimed categories** | **13 of 16 — 81.2%** | >= 80% | **PASS** |
 
 ONE CATEGORY ACCOUNTS FOR THE WHOLE SHORTFALL. Identity swaps -- a name or
 address moved onto another person's document while the identifiers stay -- were
