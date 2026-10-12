@@ -231,12 +231,16 @@ describe("checkout route: puts the validated interval in the metadata bag", () =
     expect(source).toMatch(/billingInterval\s*=\s*price\.recurring/);
   });
 
-  // Regression guard: this PR must not weaken the interlock that keeps the
-  // route incapable of taking real money before the cancellation path ships.
-  it("keeps the live-key safety interlock intact", () => {
-    const source = readFileSync(CHECKOUT_PATH, "utf8");
-    expect(source).toContain("liveKeyInterlock");
-    expect(source).toContain('stripeKey.startsWith("sk_test_")');
-    expect(source).toContain('stripeKey.startsWith("rk_test_")');
-  });
+  // The live-key interlock assertion that used to sit here is gone, and
+  // deliberately was not replaced in kind. Its own comment bounded it in time
+  // -- it guarded the route "before the cancellation path ships" -- and that
+  // precondition is now met, so an assertion that the interlock still EXISTS
+  // would hold the launch shut rather than protect anything.
+  //
+  // It was also the weaker of the two guards: it grepped the source for the
+  // identifier, which pins a spelling rather than a behaviour. The contract
+  // that actually matters -- a live key reaches Stripe instead of being
+  // reported as misconfigured -- is asserted behaviourally in
+  // tests/flows.test.ts ("accepts a LIVE key now that the interlock is
+  // removed"), which fails loudly if any such guard is reintroduced.
 });

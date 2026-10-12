@@ -437,21 +437,57 @@ describe("Phase 3 checkout: monthly subscription session", () => {
   });
 
 
-  // Regression guard for the live-key safety interlock. The first version of
-  // this check was a denylist (startsWith "sk_live_"), which Stripe RESTRICTED
-  // live keys ("rk_live_") walked straight through -- they are non-empty, not
-  // placeholder-shaped and well over the length floor, so the real SDK would
-  // have been instantiated against a LIVE account on a build with no
-  // cancellation path. The check is now an allowlist of test prefixes.
-  it("refuses a restricted LIVE key even when the Price id is present", async () => {
+  // LAUNCH DAY INVERSION. Until launch this test asserted the opposite: a live
+  // key was refused with 503 not_configured, because the build had no
+  // self-serve cancellation path and no billing legal pages and therefore had
+  // to be incapable of taking real money. Both preconditions are now met, the
+  // interlock is gone, and this test pins the new contract in its place.
+  //
+  // It is kept rather than deleted because the failure it guards against is
+  // SILENT. Re-introducing the interlock -- or any guard that treats a live key
+  // as misconfigured -- would not raise an error anyone sees: checkout would
+  // answer "Pro upgrade is coming soon", the upgrade button would do nothing,
+  // and the revenue path would be dead with a green build. An assertion that a
+  // live key reaches Stripe is the only thing that catches that.
+  it("accepts a LIVE key now that the interlock is removed", async () => {
     const prevDemo = process.env.DEMO_MODE;
     const prevKey = process.env.STRIPE_SECRET_KEY;
     const prevPrice = process.env.STRIPE_PRO_PRICE_ID;
     process.env.DEMO_MODE = "false";
     process.env.STRIPE_SECRET_KEY = "rk_live_notarealkey_interlock_fixture";
     process.env.STRIPE_PRO_PRICE_ID = FAKE_PRICE_ID;
+
+    const { PLAN_PRICES } = await import("@/lib/types");
     const vitestGlobal = (await import("vitest")).vi;
     vitestGlobal.resetModules();
+
+    // Mocked so the LIVE-prefixed fixture key never instantiates the real SDK
+    // and no request leaves the machine.
+    let created: CheckoutSessionParams | null = null;
+    vitestGlobal.doMock("@/lib/stripe", () => ({
+      getStripe: () => ({
+        prices: {
+          retrieve: (id: string) =>
+            Promise.resolve({
+              id,
+              unit_amount: PLAN_PRICES.pro,
+              currency: "usd",
+              recurring: { interval: "month", interval_count: 1 },
+              active: true,
+              type: "recurring",
+            }),
+        },
+        checkout: {
+          sessions: {
+            create: (params: CheckoutSessionParams) => {
+              created = params;
+              return Promise.resolve({ url: "https://stripe.test/session" });
+            },
+          },
+        },
+      }),
+    }));
+
     try {
       const { POST } = await import("@/app/api/checkout/route");
       const request = new Request("http://localhost/api/checkout", {
@@ -460,10 +496,13 @@ describe("Phase 3 checkout: monthly subscription session", () => {
         body: JSON.stringify({ plan: "pro" }),
       });
       const response = await POST(request);
-      const payload = await response.json();
-      expect(response.status).toBe(503);
-      expect(payload.code).toBe("not_configured");
+
+      // The specific failure being guarded against, named rather than implied.
+      expect(response.status).not.toBe(503);
+      expect(response.status).toBe(200);
+      expect(created).not.toBeNull();
     } finally {
+      vitestGlobal.doUnmock("@/lib/stripe");
       if (prevDemo === undefined) delete process.env.DEMO_MODE;
       else process.env.DEMO_MODE = prevDemo;
       if (prevKey === undefined) delete process.env.STRIPE_SECRET_KEY;
