@@ -516,9 +516,7 @@ function ResultView({
                 FREE_SCAN_QUOTA - scansUsed === 1 ? "" : "s"
               } remaining.`}
         </p>
-        <CrossDocumentInterest docType={scan.doc_type} />
-
-        <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+        <div className="flex flex-col gap-3 sm:flex-row">
           <ApiAccessDialog docType={scan.doc_type} />
           <Link
             href="/dashboard"
@@ -528,6 +526,13 @@ function ResultView({
           </Link>
         </div>
       </section>
+
+      {/* Demand probe for a capability the product does NOT have. Full width
+          and on its own line on purpose: it first shipped as a child of the
+          next-steps flex row, which squeezed two paragraphs into a narrow
+          column on desktop. A probe nobody can comfortably read measures the
+          layout, not the demand. */}
+      <CrossDocumentInterest docType={scan.doc_type} />
     </div>
   );
 }
