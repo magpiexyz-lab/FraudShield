@@ -28,6 +28,12 @@ function LoginForm() {
   // codes fall back to the generic message. Keeps the surface useful without
   // leaking raw provider error strings to the user.
   const authErrorMessage = authError
+    // RETAINED THOUGH /auth/callback NO LONGER EMITS IT. The callback used to
+    // send this the moment a token exchange failed; it now falls through to a
+    // session check first, so a spent link on a confirmed account lands in the
+    // app instead of here. Kept because the code can still arrive from an old
+    // tab, a bookmark or a hand-typed URL, and an unmapped code would show the
+    // blunter generic message.
     ? authErrorCode === "link_invalid_or_expired"
       ? "That confirmation link is no longer valid — it may have been used already or expired. Request a fresh one below."
       : authErrorCode === "missing_or_expired_link"

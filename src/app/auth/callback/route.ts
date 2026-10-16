@@ -2,9 +2,11 @@
 //   1. PKCE code exchange   (?code=...)      — exchangeCodeForSession
 //   2. Token-hash verify    (?token_hash=... &type=signup|recovery|email_change|invite|magiclink)
 //                                            — verifyOtp (modern Supabase templates)
-//   3. Implicit/redirect    (no params, session already in cookies via /auth/v1/verify)
+//   3. Session already set  (implicit/redirect flow, OR a spent token on an
+//                              account that is already confirmed)
 //                                            — getUser fallback
-//   4. Real failure         (none of the above match) — /login?error=<reason>
+//   4. Real failure         (no session and nothing above matched)
+//                                            — /login?error=<reason>
 //
 // Also fires server-side signup_complete for fresh signups (user.created_at < 60s).
 //
@@ -125,9 +127,10 @@ export async function GET(request: Request) {
         await onAuthenticated(supabase, undefined, attribution);
         return redirectInto(next);
       }
-      return NextResponse.redirect(
-        `${origin}/login?error=${encodeURIComponent("link_invalid_or_expired")}`,
-      );
+      // A FAILED EXCHANGE IS NOT YET A FAILED SIGNUP. Fall through to the
+      // session check below rather than erroring here -- see the note on
+      // Path 3. A link whose token has already been spent can still belong to
+      // an account that is now confirmed and signed in.
     }
   }
 
@@ -148,16 +151,36 @@ export async function GET(request: Request) {
         await onAuthenticated(supabase, undefined, attribution);
         return redirectInto(next);
       }
-      return NextResponse.redirect(
-        `${origin}/login?error=${encodeURIComponent("link_invalid_or_expired")}`,
-      );
+      // Same reasoning as Path 1: fall through to the session check.
     }
   }
 
-  // ── Path 3: Implicit/redirect — Supabase /auth/v1/verify already set ─
-  // the session via cookies; we just need to redirect into the app. Default
-  // Supabase email templates use ConfirmationURL which routes through this
-  // implicit path (post-launch bug #4 root cause).
+  // ── Path 3: Session already established ──────────────────────────────
+  // Two ways to arrive here, and the second one is a bug fix.
+  //
+  // (a) Implicit/redirect. Supabase /auth/v1/verify already set the session
+  //     via cookies and we just redirect into the app. Default Supabase email
+  //     templates use ConfirmationURL and route through this path
+  //     (post-launch bug #4 root cause).
+  //
+  // (b) A SPENT TOKEN ON AN ACCOUNT THAT IS ALREADY CONFIRMED. Paths 1 and 2
+  //     used to redirect straight to /login?error=link_invalid_or_expired the
+  //     moment an exchange failed, without ever asking whether the user was
+  //     signed in. They now fall through to here.
+  //
+  //     Confirmation links are single use, and the human is often not the
+  //     first to open one: corporate mail scanners pre-fetch links before
+  //     delivery. The scanner's request spends the token AND confirms the
+  //     account; the customer then clicks their own link and is told it is no
+  //     longer valid. Their account exists, works, and is confirmed -- and the
+  //     screen says signup failed. Most people do not then go and try the
+  //     login form; they leave. That is a drop at the top of a funnel we pay
+  //     for.
+  //
+  //     Checking the session grants nothing: this user is already
+  //     authenticated, and this is the same check path (a) has always made.
+  //     An expired token with no session still falls to Path 4 and still
+  //     errors.
   const { data: { user } } = await supabase.auth.getUser();
   if (user) {
     await onAuthenticated(supabase, user, attribution);
