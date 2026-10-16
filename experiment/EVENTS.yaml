@@ -171,7 +171,17 @@ events:
   # subscription_activated replace the earlier checkout_start / pay_success.
   checkout_started:
     funnel_stage: monetize
-    trigger: User clicks Upgrade and a Stripe Checkout Session is requested.
+    trigger: >-
+      User clicks Upgrade and a Stripe Checkout Session is requested.
+
+      POPULATION CHANGED 2026-10-16, and rates before and after are not
+      comparable. The pricing page used to refuse checkout to a signed-in user
+      who had never received a fraud score, so their click fired nothing - by
+      design, because Phase 2 asked whether people who had USED the product
+      would pay, and a click from someone who had scanned nothing measured
+      curiosity. With real checkout live, those users can buy, so the event now
+      fires for them. The pricing-page denominator grows accordingly. The
+      scan_result surface is unaffected.
     requires: [payment]
     properties:
       plan:
