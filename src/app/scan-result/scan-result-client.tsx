@@ -23,7 +23,9 @@ import {
   type AnalysisMode,
 } from "@/lib/fraud/analysis-mode";
 import { FREE_SCAN_QUOTA, type FraudSignal, type ScansRow } from "@/lib/types";
+import { hasProAccess } from "@/lib/pro-access";
 import { ScoreGauge } from "./score-gauge";
+import { SignalBreakdown } from "./signal-breakdown";
 import { ApiAccessDialog } from "./api-access-dialog";
 import { CrossDocumentInterest } from "./cross-document-interest";
 import { UpgradeCta } from "./upgrade-cta";
@@ -45,6 +47,11 @@ export function ScanResultClient() {
   const [state, setState] = useState<LoadState>("loading");
   const [scan, setScan] = useState<ScansRow | null>(null);
   const [scansUsed, setScansUsed] = useState<number | null>(null);
+  // FAILS CLOSED. Starts false and is only ever set true by a row that says
+  // active, so the window before the subscription read resolves shows the
+  // locked view. The opposite default would flash the paid breakdown at every
+  // free user on every page load.
+  const [isPro, setIsPro] = useState(false);
   const activateFiredRef = useRef(false);
 
   useEffect(() => {
@@ -70,7 +77,26 @@ export function ScanResultClient() {
           .select("id", { count: "exact", head: true })
           .eq("counts_toward_quota", true);
 
+        // WHO IS ALLOWED TO SEE THE BREAKDOWN. Read here rather than passed
+        // down from a server component because this page is a client component
+        // that already owns its own data fetching.
+        //
+        // No user_id filter and no service-role client: the RLS policy
+        // subscriptions_select_own scopes this to the caller's own row, so one
+        // user cannot read another's plan. Matches the gate used by
+        // computeQuota and by the checkout route's already-subscribed guard --
+        // status === "active" and nothing else. A pending cancellation is
+        // deliberately still active: they have paid for the current period.
+        const { data: subscription } = await supabase
+          .from("subscriptions")
+          .select("status")
+          .maybeSingle();
+
         if (cancelled) return;
+
+        setIsPro(
+          hasProAccess((subscription as { status?: string } | null)?.status),
+        );
 
         const resolved = data as ScansRow | null;
         if (!resolved) {
@@ -189,6 +215,7 @@ export function ScanResultClient() {
                 scansUsed={scansUsed ?? 0}
                 overFreeLimit={overFreeLimit}
                 hasActivated={hasActivated}
+                isPro={isPro}
               />
             </>
           )
@@ -277,11 +304,13 @@ function ResultView({
   scansUsed,
   overFreeLimit,
   hasActivated,
+  isPro,
 }: {
   scan: ScansRow;
   scansUsed: number;
   overFreeLimit: boolean;
   hasActivated: boolean;
+  isPro: boolean;
 }) {
   const docLabel = DOC_TYPE_LABEL[scan.doc_type] ?? "Document";
   const severity = severityOfScore(scan.fraud_score);
@@ -480,17 +509,34 @@ function ResultView({
         </div>
         <p className="mt-1 mb-5 text-sm text-muted-foreground">
           {fraudSignals.length > 0
-            ? "Every point in the score traces to a specific, inspectable signal. Pro shows you which."
+            ? isPro
+              ? "Every point in the score traces to a specific, inspectable signal."
+              : "Every point in the score traces to a specific, inspectable signal. Pro shows you which."
             : fullAnalysis
               ? "Every point in the score traces to a specific, inspectable signal."
               : "Every finding from the image metadata checks is listed here as a specific, inspectable signal."}
         </p>
         {fraudSignals.length > 0 ? (
-          <LockedSignals
-            signals={fraudSignals}
-            user={scan.user_id}
-            hasActivated={hasActivated}
-          />
+          // THE PAYWALL BRANCH. This read `fraudSignals.length > 0 ?
+          // <LockedSignals/>` with no subscription check at all, so the
+          // breakdown rendered locked for everyone -- including subscribers,
+          // who had paid for "Per-signal breakdown & explanations" on the
+          // pricing page. SignalBreakdown existed in this folder the whole
+          // time and was imported nowhere.
+          //
+          // It read as a payment bug rather than a rendering one because
+          // UpgradeCta, nested inside LockedSignals, learns the user is
+          // subscribed from checkout's 409 and says "You are already on Pro"
+          // -- inside the very section still telling them to upgrade.
+          isPro ? (
+            <SignalBreakdown signals={fraudSignals} />
+          ) : (
+            <LockedSignals
+              signals={fraudSignals}
+              user={scan.user_id}
+              hasActivated={hasActivated}
+            />
+          )
         ) : scanCompleted ? (
           <>
             <NoIndicatorsFound mode={mode} />
