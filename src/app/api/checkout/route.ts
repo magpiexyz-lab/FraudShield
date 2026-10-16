@@ -147,20 +147,16 @@ export async function POST(request: Request) {
       priceId.startsWith("placeholder") ||
       priceId === "price_..." ||
       priceId.length < 8;
-    // SAFETY INTERLOCK (deliberate, temporary): refuse to run against a LIVE
-    // key. This PR ships a subscription with no self-serve cancellation path
-    // and no billing legal pages, so it must be incapable of taking real money
-    // even if a live key reaches the environment by accident. PR 2 adds the
-    // cancellation route + legal pages and removes this branch; until then a
-    // live key reads as "not configured".
-    // ALLOWLIST, not a denylist: Stripe restricted live keys begin "rk_live_",
-    // which a "sk_live_" prefix check would miss entirely. Anything that is not
-    // a recognised TEST key is treated as not configured.
-    const liveKeyInterlock =
-      !!stripeKey &&
-      !(stripeKey.startsWith("sk_test_") || stripeKey.startsWith("rk_test_"));
+    // The live-key safety interlock that used to sit here was removed on launch
+    // day. It refused any key that was not sk_test_/rk_test_, because the build
+    // at the time had no self-serve cancellation path and no billing legal
+    // pages, and so had to be incapable of taking real money even by accident.
+    // Both of those preconditions are now met: the billing portal handles
+    // cancellation and /terms carries the billing terms. Keeping the interlock
+    // past that point would have made a live key fail SILENTLY -- checkout
+    // would answer "not configured" and the upgrade button would do nothing.
     const stripeNotConfigured =
-      !demoMode && (keyNotConfigured || priceNotConfigured || liveKeyInterlock);
+      !demoMode && (keyNotConfigured || priceNotConfigured);
     if (stripeNotConfigured) {
       return NextResponse.json(
         {

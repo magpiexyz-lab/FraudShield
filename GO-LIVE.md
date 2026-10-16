@@ -9,8 +9,8 @@ nobody else can read it. This is committed, diffable, and reviewable in a PR.
 **Order matters.** Line 1 is last on launch day; lines 2–6 gate whether launch
 day happens at all.
 
-As of 2026-10-08 every line except 1 is done. Line 1 is deliberately not, and
-is the launch-day step itself. The remaining decision is not on this list: the
+As of 2026-10-12 every line except 1 is done. Line 1 is deliberately not: its
+PR is written and open, but merging it is the launch-day step itself. The remaining decision is not on this list: the
 fleet decides on 2026-10-13 whether the ads restart, and the launch-day
 sequence below follows that.
 
@@ -18,7 +18,9 @@ sequence below follows that.
 
 ## 1. Remove the live-key safety block — LAUNCH DAY ONLY, DONE TOGETHER
 
-**Status:** deliberately NOT done. Keep it this way until the launch step.
+**Status:** the removal PR is OPEN AND UNMERGED, waiting on the fleet's go.
+Prepared 2026-10-12 so the launch-day window is a merge, not a code change.
+Merging it is step 2 below and nothing else about it is done.
 
 `src/app/api/checkout/route.ts` refuses any Stripe key that is not a test key:
 
@@ -42,7 +44,13 @@ step someone performs, not a side effect of rotating an environment variable.
 
 1. Remove the `liveKeyInterlock` branch, in its own PR, reviewed.
 2. Merge and wait for the Vercel production deploy to report **Ready**.
-3. Swap `STRIPE_SECRET_KEY` and `STRIPE_PRICE_ID` to live values in Vercel.
+3. Swap `STRIPE_SECRET_KEY`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` and
+   `STRIPE_PRO_PRICE_ID` to live values in Vercel. **`STRIPE_PRO_PRICE_ID`,
+   not `STRIPE_PRICE_ID`** -- the route reads the former, and the latter is
+   read by nothing, so getting it wrong leaves the Price unconfigured and
+   checkout answers "coming soon" with a green build.
+   The live Price does not exist yet: live mode shares nothing with test mode,
+   so the Product and Price must be created there first.
 4. Point the Stripe webhook at the live endpoint and copy the new
    `STRIPE_WEBHOOK_SECRET` into Vercel — **the live endpoint has a different
    signing secret than the test one.** A stale secret means every webhook fails
