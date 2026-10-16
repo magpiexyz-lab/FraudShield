@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Check, Minus, Loader2, ShieldAlert, ArrowRight, BellRing } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -31,14 +32,14 @@ import { PLANS, PAID_PLAN_ID, type PlanTier } from "./plans";
 //     user can retry - a rate limit or a dropped connection must never brick
 //     the upgrade path for the rest of the page session.
 //
-// The activation gate stays on this surface: someone who has never seen a
-// fraud score is pointed at a free scan, which is something they can act on.
+// There is NO activation state here any more. The pricing page used to refuse
+// checkout to anyone who had never seen a fraud score; it now offers the free
+// scan alongside the buy button instead of in place of it.
 type CheckoutState =
   | "idle"
   | "redirecting"
   | "error"
   | "not_configured"
-  | "needs_activation"
   // Already paying. Showing "Choose Pro" to a subscriber is not a cosmetic
   // slip: the checkout it opens works, so they buy a SECOND subscription and
   // Stripe bills them $120/month. /api/checkout refuses this with 409
@@ -132,6 +133,7 @@ export function PricingPlans() {
   const [hasActivated, setHasActivated] = useState<boolean | null>(null);
   const [isSubscribed, setIsSubscribed] = useState<boolean | null>(null);
   const firedRef = useRef(false);
+  const router = useRouter();
 
   useEffect(() => {
     let cancelled = false;
@@ -176,35 +178,36 @@ export function PricingPlans() {
     };
   }, []);
 
-  // needs_activation must never be terminal. The activation probe is async, so
-  // a user whose scan count resolves AFTER they clicked would otherwise stay on
-  // the "try it first" pointer until a manual page reload, with no path to
-  // checkout. Clearing it here restores the upgrade CTA as soon as the data
-  // says they qualify. (behaviour-verifier finding: B2 wrong mutation.)
-  useEffect(() => {
-    if (user && hasActivated) {
-      setState((s) => (s === "needs_activation" ? "idle" : s));
-    }
-  }, [user, hasActivated]);
-
   // Latch into "subscribed" once the probe says they are paying. Overrides
-  // idle and needs_activation only: not_configured is a deployment fact, and
-  // redirecting/error belong to a click already in flight, so none of those
-  // should be overwritten by a probe that resolves late.
+  // idle only: not_configured is a deployment fact, and redirecting/error
+  // belong to a click already in flight, so none of those should be
+  // overwritten by a probe that resolves late.
   useEffect(() => {
     if (isSubscribed) {
-      setState((s) => (s === "idle" || s === "needs_activation" ? "subscribed" : s));
+      setState((s) => (s === "idle" ? "subscribed" : s));
     }
   }, [isSubscribed]);
 
   async function onChoosePro() {
-    // Render guard: only an authenticated, activated user is offered checkout.
-    // Activation probe still in flight. Do NOT latch into needs_activation:
-    // that state was terminal, so an activated user who clicked before the
-    // probe resolved lost the upgrade path for the rest of the page session.
-    if (hasActivated === null) return;
-    if (!user || !hasActivated) {
-      setState("needs_activation");
+    // NO ACTIVATION GATE. This used to refuse anyone who had never received a
+    // fraud score, swapping the button for a "try it first" pointer. That was
+    // right for the Phase 2 fake door, where the question was whether people
+    // who had USED the product would pay for it, and a click from someone who
+    // had scanned nothing measured curiosity.
+    //
+    // With real checkout the question changed. A signed-in visitor asking to
+    // pay is the highest-intent signal on the page, and sending them to scan
+    // something first is a detour that costs sales. The free-scan pointer is
+    // still shown beside the button, so nothing is taken away -- it is an
+    // option now rather than a toll gate.
+    //
+    // /api/checkout was never gated on activation (see its own note), so this
+    // removes a client-side restriction, not a server-side protection.
+    //
+    // Signed-out visitors are sent to sign up, as before: checkout needs a
+    // user to attach the subscription to.
+    if (!user) {
+      router.push(`/login?next=${encodeURIComponent("/pricing")}`);
       return;
     }
     // Fire-once latch: guards against a double-click opening two Stripe
@@ -288,6 +291,12 @@ export function PricingPlans() {
             // staggered, in-place reveal (translate + opacity, never bare fade)
             style={{ animationDelay: `${index * 90}ms` }}
             checkoutState={plan.id === PAID_PLAN_ID ? state : "idle"}
+            // Only once the probe has actually resolved to "no scans yet".
+            // null means still loading, and a pointer that appears a beat
+            // after the card has settled reads as a glitch.
+            showFreeScanPointer={
+              plan.id === PAID_PLAN_ID && user !== null && hasActivated === false
+            }
             onUpgrade={plan.id === PAID_PLAN_ID ? onChoosePro : undefined}
             notConfiguredMsg={plan.id === PAID_PLAN_ID ? notConfiguredMsg : ""}
           />
@@ -322,18 +331,19 @@ function PlanCard({
   plan,
   checkoutState,
   notConfiguredMsg,
+  showFreeScanPointer = false,
   onUpgrade,
   style,
 }: {
   plan: PlanTier;
   checkoutState: CheckoutState;
   notConfiguredMsg?: string;
+  showFreeScanPointer?: boolean;
   onUpgrade?: () => void;
   style?: React.CSSProperties;
 }) {
   const redirecting = checkoutState === "redirecting";
   const notConfigured = checkoutState === "not_configured";
-  const needsActivation = checkoutState === "needs_activation";
   const subscribed = checkoutState === "subscribed";
 
   return (
@@ -418,12 +428,10 @@ function PlanCard({
           notConfigured ? (
             <ProWaitlistForm />
           ) : subscribed ? (
-            // Ahead of needsActivation on purpose: a subscriber who has not
-            // scanned yet must not be told to "try it first" when they have
-            // already paid for 200 scans a month.
+            // Still ahead of the free-scan pointer: a subscriber who has not
+            // scanned yet must not be nudged toward a free scan when they have
+            // already paid for 200 a month.
             <AlreadySubscribedPanel />
-          ) : needsActivation ? (
-            <TryItFirstPointer />
           ) : (
             <Button
               type="button"
@@ -452,6 +460,7 @@ function PlanCard({
         ) : (
           <Link
             href="/signup"
+            data-cta="signed-out"
             className={cn(
               buttonVariants({ variant: "outline" }),
               "h-12 w-full rounded-full border-border/70 text-base font-medium",
@@ -461,6 +470,23 @@ function PlanCard({
             {plan.cta}
           </Link>
         )}
+
+        {/* ALONGSIDE, NEVER INSTEAD. The buy button above stays available to a
+            zero-scan visitor; this is the free scan offered as an option. It
+            is deliberately a quiet link rather than a second button, so the
+            card still has exactly one primary action. */}
+        {showFreeScanPointer && !subscribed && !notConfigured ? (
+          <p className="mt-3 text-center text-sm text-muted-foreground">
+            Not sure yet?{" "}
+            <Link
+              href="/dashboard"
+              className="font-medium text-foreground underline underline-offset-4 hover:text-signal"
+            >
+              Scan a document free
+            </Link>{" "}
+            and see a real fraud score first.
+          </p>
+        ) : null}
       </div>
     </div>
   );
@@ -574,17 +600,6 @@ function ProWaitlistForm() {
 }
 
 /**
- * Shown when a signed-in user who has never received a fraud score clicks
- * "Choose Pro".
- *
- * Their click is not counted, deliberately: Phase 2 measures whether people who
- * USED the product will pay for it, and someone who has not scanned anything has
- * no idea what they would be buying. Counting them would measure curiosity.
- *
- * Unlike the quota-exhausted case, this is not a dead end — they still have free
- * scans, so "try it first" is something they can actually act on.
- */
-/**
  * Rendered in the Pro card slot when the visitor is already paying.
  *
  * Replaces "Choose Pro", which for a subscriber was not a no-op but a second
@@ -620,26 +635,6 @@ function AlreadySubscribedPanel() {
   );
 }
 
-function TryItFirstPointer() {
-  return (
-    <div className="rounded-2xl border border-border bg-card/60 p-5 text-center">
-      <p className="text-sm font-medium text-foreground">Try it first</p>
-      <p className="mt-2 text-sm text-muted-foreground">
-        Scan a document free and see a real fraud score. The upgrade option is
-        waiting on your results page.
-      </p>
-      <Link
-        href="/dashboard"
-        className={cn(
-          buttonVariants({ variant: "outline" }),
-          "mt-4 h-11 rounded-full px-6",
-        )}
-      >
-        Scan a document free
-      </Link>
-    </div>
-  );
-}
 
 /**
  * Enterprise band.
