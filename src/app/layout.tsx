@@ -4,6 +4,7 @@ import { Archivo, IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 import { NavBar } from "@/components/nav-bar";
 import { RetainTracker } from "@/components/RetainTracker";
+import { AnalyticsIdentity } from "@/components/AnalyticsIdentity";
 import { PLAN_PRICES } from "@/lib/types";
 
 const archivo = Archivo({
@@ -111,6 +112,11 @@ export default function RootLayout({
           {children}
         </main>
         <RetainTracker />
+        {/* Keeps the browser's PostHog person in step with the signed-in user.
+            In the root layout so no auth route can bypass it — the bug it
+            closes was caused by identity living on individual pages, and two
+            routes into a session not passing through any of them. */}
+        <AnalyticsIdentity />
       </body>
     </html>
   );
