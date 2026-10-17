@@ -118,9 +118,24 @@ export async function createServerSupabaseClient() {
           return cookieStore.getAll();
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => {
-            cookieStore.set(name, value, options);
-          });
+          // WRAPPED BECAUSE SERVER COMPONENTS CANNOT SET COOKIES. Next throws
+          // on cookieStore.set() during a Server Component render -- only a
+          // Route Handler or Server Action may write them. Supabase calls
+          // setAll whenever it refreshes an expired token, so an ordinary page
+          // render by a returning user could throw here and take the whole
+          // page down.
+          //
+          // Swallowing it is correct rather than lazy: src/proxy.ts refreshes
+          // the session on every matched request and CAN write cookies, so the
+          // refreshed pair is already persisted by the time a Server Component
+          // reads it. This call has nothing left to do.
+          try {
+            cookiesToSet.forEach(({ name, value, options }) => {
+              cookieStore.set(name, value, options);
+            });
+          } catch {
+            // Server Component render — the proxy owns cookie writes.
+          }
         },
       },
     }

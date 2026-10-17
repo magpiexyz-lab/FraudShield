@@ -54,7 +54,30 @@ export async function proxy(request: NextRequest) {
   if (!user) {
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("next", pathname);
-    return NextResponse.redirect(loginUrl);
+    const redirect = NextResponse.redirect(loginUrl);
+
+    // CARRY THE REFRESHED COOKIES ONTO THE REDIRECT. Returning a bare
+    // NextResponse.redirect() here threw them away, and that logged people out
+    // for good roughly an hour after they signed in.
+    //
+    // HOW IT PLAYED OUT. Access tokens last about an hour. When someone came
+    // back after that, getUser() above spent the refresh token to mint a new
+    // pair -- and Supabase ROTATES refresh tokens, so the old one died the
+    // moment it was used. setAll() wrote the new pair onto `response`. On the
+    // authenticated path `response` is returned and the new cookies stick. On
+    // this path they were dropped: old refresh token already spent, new one
+    // never saved, session unrecoverable. The user is bounced to /login and
+    // signing in again is the only way out.
+    //
+    // It presents as "I close the tab and have to log in again", which sounds
+    // like a cookie-lifetime problem and is not one. The cookies were right;
+    // they were written to an object that was discarded.
+    //
+    // Reported by a signed-in user on 2026-10-17.
+    for (const cookie of response.cookies.getAll()) {
+      redirect.cookies.set(cookie);
+    }
+    return redirect;
   }
 
   return response;
