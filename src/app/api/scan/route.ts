@@ -339,6 +339,22 @@ export async function POST(request: Request) {
         // here rather than derived on read so the decision is visible in the
         // data and the quota check stays a plain indexed count.
         counts_toward_quota: isFullAnalysis(fileMetaForDb),
+        // WHAT THIS SCAN COST, as the API reported it. Spread rather than set
+        // to null: a scan that never reached the model (no key, undecodable
+        // upload) leaves these NULL, which reads as "not measured". Writing 0
+        // would be a measurement meaning "billed nothing", which never happens,
+        // and would drag every later average toward zero.
+        //
+        // Recorded for inconclusive and refused scans too. Those were billed
+        // like any other request, and leaving them out would under-report spend
+        // by exactly the scans that went wrong.
+        ...(vision.usage
+          ? {
+              input_tokens: vision.usage.input_tokens,
+              output_tokens: vision.usage.output_tokens,
+              model: vision.usage.model,
+            }
+          : {}),
       })
       .select("id")
       .single();
