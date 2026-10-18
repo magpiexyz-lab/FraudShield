@@ -66,17 +66,53 @@ const MAX_SIGNALS = 6;
  */
 export type VisionStatus = "analyzed" | "inconclusive" | "unavailable";
 
+/**
+ * What one content pass cost, as the API reported it.
+ *
+ * MEASURED, NOT ESTIMATED. Per-scan cost was a back-of-envelope figure derived
+ * from token arithmetic; this records what was actually billed, so cost per
+ * user and margin per subscriber come off real numbers.
+ *
+ * `model` is stored alongside the counts because the counts mean nothing
+ * without it -- the rate differs per model, and a model change later would
+ * silently reprice every historical row that did not say which model produced
+ * it.
+ */
+export type VisionUsage = {
+  input_tokens: number;
+  output_tokens: number;
+  model: string;
+};
+
 export type VisionResult = {
   status: VisionStatus;
   /** True only when status === "analyzed". Convenience for the route. */
   analyzed: boolean;
   /** Content-level signals, in the same shape the scoring engine emits. */
   signals: FraudSignal[];
+  /**
+   * Tokens billed, when a request actually reached the API.
+   *
+   * Absent when no call was made (no key, undecodable image) and when the call
+   * threw before returning a response. Present on every path that DID reach
+   * the model -- including refusals and unreadable documents, which are billed
+   * like any other request and would otherwise be invisible spend.
+   */
+  usage?: VisionUsage;
 };
 
-/** Result shape when the content pass produced nothing usable. */
-function unusable(status: Exclude<VisionStatus, "analyzed">): VisionResult {
-  return { status, analyzed: false, signals: [] };
+/**
+ * Result shape when the content pass produced nothing usable.
+ *
+ * Takes usage because an unusable OUTCOME is not an unbilled one: a refusal, an
+ * unreadable document and a malformed response were all paid for. Leaving them
+ * out would under-report spend by exactly the scans that went wrong.
+ */
+function unusable(
+  status: Exclude<VisionStatus, "analyzed">,
+  usage?: VisionUsage,
+): VisionResult {
+  return { status, analyzed: false, signals: [], ...(usage ? { usage } : {}) };
 }
 
 // ---- Structured output contract ----
@@ -270,33 +306,41 @@ function normalizeSignals(raw: unknown): FraudSignal[] {
   return signals;
 }
 
-/** Pull the structured-output JSON out of the response's text block. */
-function parseResponse(content: Anthropic.ContentBlock[]): VisionResult {
+/**
+ * Pull the structured-output JSON out of the response's text block.
+ *
+ * `usage` rides through every return path, usable or not: the request was
+ * billed regardless of whether we could make sense of the answer.
+ */
+function parseResponse(
+  content: Anthropic.ContentBlock[],
+  usage?: VisionUsage,
+): VisionResult {
   const block = content.find((b): b is Anthropic.TextBlock => b.type === "text");
-  if (!block) return unusable("unavailable");
+  if (!block) return unusable("unavailable", usage);
 
   let parsed: { outcome?: unknown; signals?: unknown };
   try {
     parsed = JSON.parse(block.text) as { outcome?: unknown; signals?: unknown };
   } catch {
-    return unusable("unavailable");
+    return unusable("unavailable", usage);
   }
 
-  if (parsed.outcome === "inconclusive") return unusable("inconclusive");
+  if (parsed.outcome === "inconclusive") return unusable("inconclusive", usage);
 
   if (parsed.outcome === "fraud_indicators") {
     const signals = normalizeSignals(parsed.signals);
     // An indicators verdict with nothing behind it is not a determination we
     // can show or score — treat it as inconclusive rather than inventing one.
-    if (signals.length === 0) return unusable("inconclusive");
-    return { status: "analyzed", analyzed: true, signals };
+    if (signals.length === 0) return unusable("inconclusive", usage);
+    return { status: "analyzed", analyzed: true, signals, ...(usage ? { usage } : {}) };
   }
 
   if (parsed.outcome === "no_indicators") {
-    return { status: "analyzed", analyzed: true, signals: [] };
+    return { status: "analyzed", analyzed: true, signals: [], ...(usage ? { usage } : {}) };
   }
 
-  return unusable("unavailable");
+  return unusable("unavailable", usage);
 }
 
 // ---- Entry point ----
@@ -409,12 +453,28 @@ export async function analyzeDocumentForFraud(
       { signal: AbortSignal.timeout(VISION_TIMEOUT_MS) },
     );
 
+    // Read before any early return so a refusal is still counted. Refusals
+    // are billed, and a model that refuses often would otherwise cost money
+    // that never showed up anywhere.
+    // UNDEFINED, NOT ZEROS, when the response carries no usage. Zero is a
+    // measurement meaning "called and billed nothing", which never happens;
+    // absent means "not measured". Collapsing the two would quietly drag every
+    // average taken later toward zero. The migration leaves these columns NULL
+    // for the same reason.
+    const usage: VisionUsage | undefined = response.usage
+      ? {
+          input_tokens: response.usage.input_tokens ?? 0,
+          output_tokens: response.usage.output_tokens ?? 0,
+          model: VISION_MODEL,
+        }
+      : undefined;
+
     // Checked BEFORE content is read: on a refusal the content array is empty
     // or partial, and indexing into it would throw. A refusal is not a fraud
     // finding and must not be scored as one — it is simply inconclusive.
-    if (response.stop_reason === "refusal") return unusable("unavailable");
+    if (response.stop_reason === "refusal") return unusable("unavailable", usage);
 
-    return parseResponse(response.content);
+    return parseResponse(response.content, usage);
   } catch {
     // Timeout, network failure, 4xx/5xx, malformed SDK response — all identical
     // from the scan's point of view: no content determination is available.

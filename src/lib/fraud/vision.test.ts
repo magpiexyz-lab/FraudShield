@@ -41,11 +41,21 @@ import { computeFraudScore, type ScoringInput } from "./score";
 
 const IMAGE = Buffer.from("raw-upload-bytes");
 
-/** Shape of a successful structured-output response. */
-function apiResponse(payload: unknown, stopReason = "end_turn") {
+/**
+ * Shape of a successful structured-output response.
+ *
+ * `usage` is optional so the existing tests, which pass none, keep exercising
+ * the path where the API reports no token counts.
+ */
+function apiResponse(
+  payload: unknown,
+  stopReason = "end_turn",
+  usage?: { input_tokens: number; output_tokens: number },
+) {
   return {
     stop_reason: stopReason,
     content: [{ type: "text", text: JSON.stringify(payload) }],
+    ...(usage ? { usage } : {}),
   };
 }
 
@@ -357,5 +367,85 @@ describe("analyzeDocumentForFraud — PDFs", () => {
     expect(result.analyzed).toBe(false);
     expect(result.status).toBe("unavailable");
     expect(result.signals).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Token usage — what the scan was billed
+//
+// Cost per scan was arithmetic until now. The API reports exact counts on every
+// response and we were discarding them, so per-user cost and margin per
+// subscriber rested on an estimate.
+// ---------------------------------------------------------------------------
+
+describe("token usage capture", () => {
+  it("reports what the API billed, with the model that produced it", async () => {
+    create.mockResolvedValue(
+      apiResponse({ outcome: "no_indicators", signals: [] }, "end_turn", {
+        input_tokens: 4812,
+        output_tokens: 731,
+      }),
+    );
+
+    const result = await analyzeDocumentForFraud(IMAGE, "pay_stub", "image/jpeg");
+
+    expect(result.usage).toEqual({
+      input_tokens: 4812,
+      output_tokens: 731,
+      model: VISION_MODEL,
+    });
+  });
+
+  // BILLED IS BILLED. A document the model could not read still cost money, and
+  // dropping those would under-report spend by exactly the scans that failed.
+  it("records usage for an inconclusive scan", async () => {
+    create.mockResolvedValue(
+      apiResponse({ outcome: "inconclusive", signals: [] }, "end_turn", {
+        input_tokens: 3100,
+        output_tokens: 90,
+      }),
+    );
+
+    const result = await analyzeDocumentForFraud(IMAGE, "invoice", "image/jpeg");
+
+    expect(result.analyzed).toBe(false);
+    expect(result.usage?.input_tokens).toBe(3100);
+  });
+
+  // A refusal returns early, before the content is parsed. It is billed like
+  // any other request, so the early return must still carry the usage.
+  it("records usage for a refusal", async () => {
+    create.mockResolvedValue(
+      apiResponse({}, "refusal", { input_tokens: 2500, output_tokens: 12 }),
+    );
+
+    const result = await analyzeDocumentForFraud(IMAGE, "pay_stub", "image/jpeg");
+
+    expect(result.status).toBe("unavailable");
+    expect(result.usage?.input_tokens).toBe(2500);
+  });
+
+  // ABSENT, NOT ZERO. Zero means "called and billed nothing", which never
+  // happens; absent means "not measured". Collapsing the two would drag every
+  // later average toward zero — the migration leaves the columns NULL for the
+  // same reason.
+  it("reports no usage rather than zeros when the API reports none", async () => {
+    create.mockResolvedValue(
+      apiResponse({ outcome: "no_indicators", signals: [] }),
+    );
+
+    const result = await analyzeDocumentForFraud(IMAGE, "pay_stub", "image/jpeg");
+
+    expect(result.usage).toBeUndefined();
+  });
+
+  // The call never happened, so there is nothing to report.
+  it("reports no usage when the request throws", async () => {
+    create.mockRejectedValue(new Error("network"));
+
+    const result = await analyzeDocumentForFraud(IMAGE, "pay_stub", "image/jpeg");
+
+    expect(result.status).toBe("unavailable");
+    expect(result.usage).toBeUndefined();
   });
 });

@@ -16,6 +16,14 @@ export type ScansRow = {
   // pass did not complete). Those return EXIF evidence but no fraud score, so
   // they do not spend one of the free scans.
   counts_toward_quota: boolean;
+  // What the content-analysis call cost, as the API reported it. NULL when the
+  // scan never reached the model (pre-migration rows, no API key, undecodable
+  // upload) — not zero, which would be a measurement rather than an absence.
+  // `model` is stored with the counts because input and output are billed at
+  // per-model rates, so the numbers cannot be priced without it.
+  input_tokens: number | null;
+  output_tokens: number | null;
+  model: string | null;
   created_at: string;             // timestamptz
 };
 
