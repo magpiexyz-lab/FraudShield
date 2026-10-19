@@ -8,6 +8,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { FREE_SCAN_QUOTA, type SubscriptionsRow } from "@/lib/types";
 import { UploadZone } from "./upload-zone";
+import { AbandonFollowup } from "./abandon-followup";
 import { ScanHistory } from "./scan-history";
 import { WhatWeCheck } from "./what-we-check";
 import { ManageBilling } from "./manage-billing";
@@ -131,6 +132,14 @@ export default function DashboardPage() {
               {isPaid ? <ManageBilling /> : null}
             </div>
           </header>
+
+          {/* Asked only of someone whose Stripe Checkout Session expired —
+              they closed the tab rather than pressing back, so the pricing
+              prompt never got the chance. Above the upload zone because it is
+              about something that already happened; below the header so it
+              never displaces the primary task. Renders nothing for everyone
+              else. */}
+          <AbandonFollowup />
 
           {/* Primary task: upload + scan */}
           <section aria-labelledby="upload-heading" className="mb-8">

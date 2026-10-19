@@ -54,6 +54,16 @@ const MAX_TEXT = 300;
  */
 const SEEN_KEY = "fs_abandon_prompt_seen";
 
+/**
+ * Whether this browser has already answered, on either surface.
+ *
+ * Exported so the dashboard follow-up shares one record with the pricing
+ * prompt — two surfaces asking the same question must never both ask it.
+ */
+export function abandonPromptAnswered(): boolean {
+  return alreadyAsked();
+}
+
 function alreadyAsked(): boolean {
   try {
     return localStorage.getItem(SEEN_KEY) === "1";
@@ -71,22 +81,19 @@ function markAsked() {
   }
 }
 
-export function AbandonReasonPrompt() {
-  const searchParams = useSearchParams();
-  const cancelled = searchParams.get("checkout") === "cancelled";
-  const [visible, setVisible] = useState(false);
+/**
+ * The question itself, with no opinion about when to show it.
+ *
+ * Separated from the trigger so a second surface can reuse it. The pricing
+ * page asks on a return from Stripe's back button; the dashboard asks someone
+ * whose Checkout Session expired, which Stripe only tells us about a day
+ * later. Same question, same event, two completely different reasons to show
+ * it -- and nothing is served by two copies of the markup drifting apart.
+ */
+export function AbandonReasonCard() {
   const [choice, setChoice] = useState<CheckoutAbandonReason | null>(null);
   const [text, setText] = useState("");
   const [done, setDone] = useState(false);
-
-  // localStorage is read in an effect, never during render: it does not exist
-  // on the server, and reading it during render makes the markup differ
-  // between server and client.
-  useEffect(() => {
-    if (cancelled && !alreadyAsked()) setVisible(true);
-  }, [cancelled]);
-
-  if (!visible) return null;
 
   function send(reason: CheckoutAbandonReason) {
     const trimmed = text.trim().slice(0, MAX_TEXT);
@@ -177,4 +184,27 @@ export function AbandonReasonPrompt() {
       </Button>
     </section>
   );
+}
+
+/**
+ * Asks on a return from a cancelled checkout.
+ *
+ * Stripe's back button lands on /pricing?checkout=cancelled, so the trigger is
+ * a fact about what the person just did rather than a guess. Someone browsing
+ * /pricing normally never sees it.
+ */
+export function AbandonReasonPrompt() {
+  const searchParams = useSearchParams();
+  const cancelled = searchParams.get("checkout") === "cancelled";
+  const [visible, setVisible] = useState(false);
+
+  // localStorage is read in an effect, never during render: it does not exist
+  // on the server, and reading it during render makes the markup differ
+  // between server and client.
+  useEffect(() => {
+    if (cancelled && !alreadyAsked()) setVisible(true);
+  }, [cancelled]);
+
+  if (!visible) return null;
+  return <AbandonReasonCard />;
 }

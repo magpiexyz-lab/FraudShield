@@ -22,6 +22,19 @@ import { PLAN_PRICES, PRO_SCAN_QUOTA } from "@/lib/types";
 // PRO_SCAN_QUOTA rather than restated: this held 9999 ("effectively unlimited")
 // after the plan moved to a 200/month cap, so an actual subscriber would have
 // been granted 50x what the pricing page sells them.
+/**
+ * Marks that this user opened Stripe Checkout and let it expire.
+ *
+ * Lives in app_metadata rather than a column for two reasons: it rides along
+ * in the user's session, so the dashboard can decide whether to ask without a
+ * database round trip; and app_metadata cannot be written by the user's own
+ * session the way user_metadata can, so the flag cannot be cleared from the
+ * browser to re-trigger the prompt.
+ *
+ * A timestamp rather than `true` -- same cost, and it answers "when" later.
+ */
+export const CHECKOUT_ABANDONED_KEY = "checkout_abandoned_at";
+
 const PLAN_SCAN_QUOTA: Record<string, number> = {
   pro: PRO_SCAN_QUOTA,
 };
@@ -260,6 +273,57 @@ export async function POST(request: Request) {
   // computeQuota gates on status === "active", so flipping the status is all
   // that is needed to drop the user back to the free allowance. No quota write,
   // no second source of truth.
+  // ── Checkout opened, then abandoned ──────────────────────────────────
+  //
+  // Stripe expires an unfinished Checkout Session about 24 hours after it is
+  // created. This is the OTHER half of the abandonment question: the prompt on
+  // /pricing?checkout=cancelled catches people who press Stripe's back button,
+  // and this catches everyone who simply closed the tab -- who never return to
+  // a URL we control and are otherwise completely invisible.
+  //
+  // Flagged rather than asked, because the person is not present: the event
+  // arrives up to a day later, long after they have gone. The flag is what
+  // makes the question survive until they next sign in.
+  //
+  // NOT A FAILURE, and deliberately not logged as one. Abandoning a checkout
+  // is an ordinary thing to do; this handler exists to measure it.
+  if (event.type === "checkout.session.expired") {
+    const session = event.data.object as Stripe.Checkout.Session;
+    const userId = session.metadata?.user_id ?? "";
+
+    // Same rule as checkout.session.completed: identity comes from metadata an
+    // authenticated route wrote server-side, never from customer_email, which
+    // is attacker-controllable. No user_id means a session we did not create --
+    // nothing to flag, and not an error.
+    if (userId) {
+      try {
+        // The demo client proxies unknown auth members to a bare function.
+        if (
+          typeof supabase.auth?.admin?.getUserById === "function" &&
+          typeof supabase.auth?.admin?.updateUserById === "function"
+        ) {
+          const { data } = await supabase.auth.admin.getUserById(userId);
+          const appMeta = (data?.user?.app_metadata ?? {}) as Record<string, unknown>;
+
+          // Spread the existing bag back: provider and providers live here
+          // too, and sending the one key alone would erase them if Supabase
+          // ever replaced rather than merged.
+          await supabase.auth.admin.updateUserById(userId, {
+            app_metadata: {
+              ...appMeta,
+              [CHECKOUT_ABANDONED_KEY]: new Date().toISOString(),
+            },
+          });
+        }
+      } catch (err) {
+        // A missed flag costs one survey answer. Returning non-2xx would make
+        // Stripe retry this event for days over a measurement nicety, so it is
+        // logged and swallowed.
+        console.error("[webhook] could not flag abandoned checkout:", err);
+      }
+    }
+  }
+
   if (event.type === "customer.subscription.deleted") {
     const subscription = event.data.object as Stripe.Subscription;
 
