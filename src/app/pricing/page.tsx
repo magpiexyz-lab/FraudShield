@@ -7,7 +7,9 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { buttonVariants } from "@/components/ui/button";
+import { Suspense } from "react";
 import { PricingPlans, ScrollReveal } from "./pricing-plans";
+import { AbandonReasonPrompt } from "./abandon-reason-prompt";
 import { FREE_QUOTA, PRO_QUOTA } from "./plans";
 import {
   BILLING_FAQS,
@@ -194,6 +196,18 @@ export default function PricingPage() {
             becomes part of your daily workflow.
           </p>
         </header>
+
+        {/* Asked only of someone returning from Stripe Checkout without paying
+            — Stripe's back button lands on /pricing?checkout=cancelled. Placed
+            ABOVE the plans because it is about what just happened, and because
+            a question buried under the thing they declined to buy does not get
+            answered.
+
+            Suspense: the prompt reads useSearchParams(), which Next requires a
+            boundary for on a statically rendered page. */}
+        <Suspense fallback={null}>
+          <AbandonReasonPrompt />
+        </Suspense>
 
         {/* Plans */}
         <section className="mt-8" aria-label="Plans">

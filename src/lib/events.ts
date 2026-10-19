@@ -127,6 +127,37 @@ export function trackSubscriptionCanceled(props?: { plan?: string }) {
   track("subscription_canceled", { ...props, funnel_stage: "retain" });
 }
 
+/** The four offered answers, plus the dismissal. */
+export type CheckoutAbandonReason =
+  | "price"
+  | "unsure_fit"
+  | "need_team_invoice"
+  | "just_looking"
+  | "skipped";
+
+/**
+ * Why someone who reached Stripe Checkout did not pay.
+ *
+ * subscription_canceled explains why a PAYING customer left.
+ * This explains why someone never became one -- the larger population, and
+ * until now a completely dark one: we could see who opened Checkout and who
+ * paid, and nothing whatsoever about the gap between.
+ *
+ * "skipped" is sent rather than swallowed. A dismissal is a real answer about
+ * how willing abandoners are to explain themselves, and dropping it would make
+ * the four substantive reasons look more representative than they are.
+ *
+ * The free text is trimmed and capped at the call site: it is user input typed
+ * on a public page, and an unbounded string has no business being forwarded to
+ * an analytics provider.
+ */
+export function trackCheckoutAbandonReason(props: {
+  reason: CheckoutAbandonReason;
+  reason_text?: string;
+}) {
+  track("checkout_abandon_reason", { ...props, funnel_stage: "monetize" });
+}
+
 // retain
 
 export function trackRetainReturn(props?: { days_since_last?: number }) {
