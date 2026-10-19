@@ -44,7 +44,35 @@ const otpTypeSchema = z.enum([
   "magiclink",
 ]);
 
-const SIGNUP_RECENCY_MS = 60_000;
+/**
+ * Key on the user's app_metadata marking that signup_complete has been sent.
+ *
+ * app_metadata, NOT user_metadata, and the difference matters: user_metadata is
+ * writable by the user's own session, so a flag kept there could be cleared
+ * from the browser and the event re-fired. app_metadata is service-role only.
+ * (persistAttribution writes to user_metadata because an attribution value is
+ * descriptive; this one is a ledger entry.)
+ *
+ * Stores a timestamp rather than `true` -- same cost, and it answers "when was
+ * this account first seen" later on.
+ */
+const SIGNUP_COMPLETE_KEY = "signup_complete_fired_at";
+
+/**
+ * Accounts created before this instant are grandfathered: flagged on sight,
+ * never announced.
+ *
+ * Without it every existing customer fires signup_complete the next time they
+ * sign in -- they have no flag, so first sight looks exactly like a new
+ * account. That would report the entire userbase as signing up again on the
+ * day this deployed.
+ *
+ * A fixed instant rather than a rolling window on purpose. It is a one-time
+ * boundary between "before the flag existed" and after, not a rule about how
+ * fresh a signup has to be, and it stops mattering once every active account
+ * carries a flag.
+ */
+const SIGNUP_FLAG_EPOCH_MS = Date.parse("2026-10-19T00:00:00Z");
 
 /**
  * Same-origin guard for `?next=`, delegating to the shared predicate in
@@ -205,13 +233,76 @@ export async function GET(request: Request) {
  *      never had that touch recorded. Their click counted in the verdict's
  *      denominator while their pay_intent, still carrying the older campaign,
  *      was dropped from the numerator as unattributed.
- *   2. Fire signup_complete — only for accounts created within
- *      SIGNUP_RECENCY_MS. Shared chokepoint the client-side trackSignupComplete
- *      cannot cover for email-confirm / OAuth / magic-link.
+ *   2. Fire signup_complete — ONCE PER ACCOUNT, claimed through a flag on
+ *      app_metadata rather than a window on created_at. Shared chokepoint the
+ *      client-side trackSignupComplete cannot cover for email-confirm / OAuth
+ *      / magic-link. See claimSignupComplete for why the window had to go.
  *
  * Pass `userOverride` to avoid a second getUser() round-trip when the caller
  * already has the user object.
  */
+/**
+ * Claim the one signup_complete this account is entitled to.
+ *
+ * Returns true exactly once per account -- the first time any callback sees
+ * it -- and false forever after.
+ *
+ * WHY THIS REPLACED A TIME WINDOW. signup_complete used to fire only while
+ * `created_at` was under 60 seconds old. That holds right up until something
+ * other than the customer opens the confirmation link first: corporate mail
+ * scanners pre-fetch links, the account is confirmed within seconds, and the
+ * person opens their own link a minute or two later. By then the window has
+ * shut and the signup is never recorded as completed, even though they go on
+ * to use the product. Two of the first night's email signups were exactly
+ * this; one that confirmed inside a minute fired normally, and Google signups
+ * were unaffected because they never wait on an email.
+ *
+ * A flag on the account is idempotent in a way a clock cannot be: it does not
+ * care how long the person took.
+ *
+ * NOT ATOMIC, and that is a considered trade. Two callbacks for the same user
+ * in the same instant could both read an unset flag and both fire. The gap
+ * between a scanner's fetch and a human's click is minutes, so this is close
+ * to unreachable in the case it was written for; a doubled signup event is
+ * also a far smaller measurement error than the missing ones it fixes. Making
+ * it atomic would mean a table with a unique key on user_id -- worth doing if
+ * duplicates ever actually show up.
+ */
+async function claimSignupComplete(user: {
+  id: string;
+  created_at: string;
+}): Promise<boolean> {
+  const admin = createServiceRoleClient();
+  // The demo client proxies unknown auth members to a bare function, so these
+  // are undefined under DEMO_MODE — guard rather than throw.
+  if (typeof admin.auth?.admin?.getUserById !== "function") return false;
+  if (typeof admin.auth?.admin?.updateUserById !== "function") return false;
+
+  const { data } = await admin.auth.admin.getUserById(user.id);
+  const appMeta = (data?.user?.app_metadata ?? {}) as Record<string, unknown>;
+
+  // Already announced. Nothing to do, on any later visit, forever.
+  if (appMeta[SIGNUP_COMPLETE_KEY]) return false;
+
+  // Spread the existing metadata back rather than sending the new key alone.
+  // Supabase merges app_metadata on update, but provider and providers live in
+  // this same bag — if that ever changed to a replace, sending only the flag
+  // would erase them.
+  await admin.auth.admin.updateUserById(user.id, {
+    app_metadata: {
+      ...appMeta,
+      [SIGNUP_COMPLETE_KEY]: new Date().toISOString(),
+    },
+  });
+
+  // Predates the flag: mark it so this runs once, but say nothing. See
+  // SIGNUP_FLAG_EPOCH_MS — announcing here would report every existing
+  // customer as a fresh signup.
+  if (new Date(user.created_at).getTime() < SIGNUP_FLAG_EPOCH_MS) return false;
+
+  return true;
+}
+
 async function onAuthenticated(
   supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>,
   userOverride?: { id: string; created_at: string; app_metadata?: { provider?: string } } | null,
@@ -223,9 +314,8 @@ async function onAuthenticated(
 
     await persistAttribution(user.id, attribution);
 
-    if (Date.now() - new Date(user.created_at).getTime() >= SIGNUP_RECENCY_MS) {
-      return;
-    }
+    // Once per account, however long the customer took to open their link.
+    if (!(await claimSignupComplete(user))) return;
     const provider =
       (user.app_metadata?.provider as string | undefined) ?? "email";
     // Spreading a sanitized object keeps absent values off the payload entirely
