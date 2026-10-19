@@ -282,3 +282,31 @@ events:
         type: string
         required: true
         description: What activation action preceded this (from experiment.yaml thesis)
+
+  # --- Why a checkout did not convert ---
+  # subscription_canceled explains why a PAYING customer left. This explains why
+  # someone who reached checkout never became one — the larger and, until now,
+  # completely dark population.
+  checkout_abandon_reason:
+    funnel_stage: monetize
+    trigger: >-
+      A user who reached Stripe Checkout and did not pay answers the one-question
+      prompt on /pricing?checkout=cancelled. Self-reported and optional, so the
+      count is a sample of abandoners rather than all of them — read it against
+      checkout_started, never as a total.
+    requires: [payment]
+    properties:
+      reason:
+        type: string
+        required: true
+        description: >-
+          One of price, unsure_fit, need_team_invoice, just_looking, or skipped.
+          "skipped" is recorded deliberately: a dismissal is a real answer about
+          how willing abandoners are to explain themselves, and dropping it would
+          make the other four look more representative than they are.
+      reason_text:
+        type: string
+        required: false
+        description: >-
+          Optional free text. Absent when left blank. Trimmed and capped before
+          sending — this field is user input on a public page.
