@@ -349,6 +349,51 @@ export function UploadZone({
         disabled={scanning || quotaExhausted}
       />
 
+      {/* FIRST, NOT LAST, and only when it applies. This block used to sit
+          under the drop zone, which put it below the fold: someone who had
+          just been told they cannot scan had to scroll past the upload area
+          they can no longer use to find the two ways to continue.
+
+          When quota is exhausted the drop zone is dead weight -- it is
+          disabled and dimmed -- so leading with the reason and the remedy is
+          both the honest order and the one that needs no scrolling. For
+          everyone else this renders nothing and the page is unchanged. */}
+      {quotaExhausted && (
+        // Quota-exhausted is a billing/system state, NOT a fraud signal —
+        // use muted-foreground, not severity tokens (suspect/fraud).
+        //
+        // "Upgrade to keep analyzing" used to be plain prose: an instruction
+        // with nothing to click, at the one moment the user cannot proceed.
+        <div>
+          <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-muted-foreground">
+              You&apos;ve used all of your free scans.
+            </p>
+            <Link
+              href="/pricing"
+              className={cn(
+                buttonVariants({ size: "sm" }),
+                "rounded-[var(--radius-pill)] bg-signal text-signal-foreground hover:bg-signal/90",
+              )}
+            >
+              Upgrade to keep analyzing
+            </Link>
+          </div>
+
+          {/* BUYABLE HERE, not one page away. This block is the exact moment
+              someone is stopped, and until now the only thing it offered was a
+              link to /pricing -- where the cheaper option sits below the Pro
+              card and needs a scroll to find. Someone who has just been told
+              they cannot continue should not have to go looking for the
+              smallest way to continue.
+
+              The Pro link stays: Pro is unchanged and still the offer we lead
+              with, and subscribing needs the pricing page's fuller
+              explanation. This is the smaller door beside it. */}
+          <ScanPackOptions surface="dashboard_quota" />
+        </div>
+      )}
+
       <div
         onDragOver={(e) => {
           e.preventDefault();
@@ -583,41 +628,6 @@ export function UploadZone({
         {quotaNotice || ""}
       </p>
 
-      {quotaExhausted && (
-        // Quota-exhausted is a billing/system state, NOT a fraud signal —
-        // use muted-foreground, not severity tokens (suspect/fraud).
-        //
-        // "Upgrade to keep analyzing" used to be plain prose: an instruction
-        // with nothing to click, at the one moment the user cannot proceed.
-        <div>
-          <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm text-muted-foreground">
-              You&apos;ve used all of your free scans.
-            </p>
-            <Link
-              href="/pricing"
-              className={cn(
-                buttonVariants({ size: "sm" }),
-                "rounded-[var(--radius-pill)] bg-signal text-signal-foreground hover:bg-signal/90",
-              )}
-            >
-              Upgrade to keep analyzing
-            </Link>
-          </div>
-
-          {/* BUYABLE HERE, not one page away. This block is the exact moment
-              someone is stopped, and until now the only thing it offered was a
-              link to /pricing -- where the cheaper option sits below the Pro
-              card and needs a scroll to find. Someone who has just been told
-              they cannot continue should not have to go looking for the
-              smallest way to continue.
-
-              The Pro link stays: Pro is unchanged and still the offer we lead
-              with, and subscribing needs the pricing page's fuller
-              explanation. This is the smaller door beside it. */}
-          <ScanPackOptions surface="dashboard_quota" />
-        </div>
-      )}
     </div>
   );
 }
