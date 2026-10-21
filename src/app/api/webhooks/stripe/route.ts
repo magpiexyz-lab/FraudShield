@@ -134,6 +134,41 @@ export async function POST(request: Request) {
       return NextResponse.json({ received: true });
     }
 
+    // THE SESSION COMPLETING IS NOT THE MONEY ARRIVING.
+    //
+    // checkout.session.completed fires when the customer finishes the Checkout
+    // flow. With a delayed-notification payment method -- bank debits,
+    // vouchers, bank transfers -- Stripe sends it immediately with
+    // payment_status "unpaid", and the funds may never arrive at all. Granting
+    // on the event alone hands out scans, or a month of Pro, for free.
+    //
+    // Only cards, Apple Pay and Link are enabled on the account today, so this
+    // is currently always "paid". That is a dashboard setting, not a property
+    // of this code: enabling one delayed method later would silently turn an
+    // ordinary configuration change into free product, with nothing failing to
+    // say so.
+    //
+    // "paid" EXACTLY, not "not unpaid". The third value,
+    // "no_payment_required", is a zero-amount session -- a full-discount coupon
+    // or a trial. We issue neither, so if one ever appears it is a surprise and
+    // should be refused rather than interpreted.
+    //
+    // Fails CLOSED and says so. A legitimate delayed payment that later
+    // succeeds arrives as checkout.session.async_payment_succeeded, which this
+    // endpoint does not subscribe to -- so if delayed methods are ever enabled,
+    // that event has to be handled before they are.
+    if (session.payment_status !== "paid") {
+      console.error(
+        "[webhook] refusing to fulfil an unpaid checkout session",
+        {
+          session_id: session.id,
+          payment_status: session.payment_status,
+          plan,
+        },
+      );
+      return NextResponse.json({ received: true });
+    }
+
     // ── A one-time scan pack ─────────────────────────────────────────────
     //
     // No Subscription object exists, so none of the subscription handling
@@ -163,11 +198,28 @@ export async function POST(request: Request) {
             : 0;
 
     if (pack) {
-      const { data: existing } = await supabase
+      // THE ERROR IS CHECKED, and that is the whole point of this block. The
+      // grant is read-then-write, so a failed read that was treated as "no
+      // credits yet" would write pack.scans as the new total and DESTROY every
+      // credit the customer had already bought. Someone holding 10 scans would
+      // buy 5 more and end up with 5.
+      //
+      // Returning 500 makes Stripe redeliver the event, and the exactly-once
+      // guard above means the retry grants once. Losing paid-for scans is not
+      // recoverable without a support conversation; a retry costs nothing.
+      const { data: existing, error: readErr } = await supabase
         .from("subscriptions")
         .select("scan_credits")
         .eq("user_id", userId)
         .maybeSingle();
+
+      if (readErr) {
+        console.error("[webhook] could not read existing scan credits:", readErr);
+        return NextResponse.json(
+          { error: "Persistence error" },
+          { status: 500 },
+        );
+      }
 
       const current = Number(
         (existing as { scan_credits?: number } | null)?.scan_credits ?? 0,

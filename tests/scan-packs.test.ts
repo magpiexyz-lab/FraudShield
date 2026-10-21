@@ -216,6 +216,66 @@ describe("the webhook grants what was bought", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Three ways this could take money and give nothing back.
+//
+// All three were found by review AFTER the feature was written and the suite
+// was green, which is the reason they are pinned here rather than left to the
+// comments explaining them.
+// ---------------------------------------------------------------------------
+
+describe("paying and receiving nothing", () => {
+  const SCAN = read("src", "app", "api", "scan", "route.ts");
+
+  // THE WORST ONE. The subscription row used to be selected with
+  // .eq("status", "active"), which was correct while it only ever meant "is
+  // this person a subscriber". A pack buyer's status is "inactive", so the
+  // filter hid their row, computeQuota saw null, and the scans they had just
+  // paid for did not exist.
+  it("reads the billing row whatever the status, so credits are seen", () => {
+    const start = SCAN.indexOf('.from("subscriptions")');
+    expect(start).toBeGreaterThan(-1);
+    const block = SCAN.slice(start, SCAN.indexOf("maybeSingle()", start));
+    expect(block).toContain("scan_credits");
+    expect(block).not.toContain('.eq("status", "active")');
+  });
+
+  // A cancelled subscriber keeps their old current_period_start, and
+  // currentPeriodStart() rolls any anchor forward to the present. Without this
+  // gate, someone who cancelled and later bought one pack would have usage
+  // counted from this month only -- and would receive their free scan plus the
+  // whole pack again every month, forever.
+  it("applies the monthly window only to an active subscription", () => {
+    expect(SCAN).toContain('subRow?.status === "active" ? subRow.current_period_start');
+  });
+});
+
+describe("granting before the money arrives", () => {
+  // checkout.session.completed fires when the SESSION completes, not when the
+  // payment settles. A delayed-notification method -- bank debit, voucher,
+  // bank transfer -- produces it immediately with payment_status "unpaid", and
+  // the funds may never arrive.
+  it("fulfils nothing until the session is actually paid", () => {
+    expect(WEBHOOK).toContain('session.payment_status !== "paid"');
+  });
+
+  // "paid" exactly, not "not unpaid". The third value,
+  // "no_payment_required", is a zero-amount session: a full-discount coupon or
+  // a trial, neither of which we issue.
+  it("requires paid exactly, rather than excluding unpaid", () => {
+    expect(WEBHOOK).not.toContain('payment_status === "unpaid"');
+  });
+
+  // The grant is read-then-write. A failed read treated as "no credits yet"
+  // would write pack.scans as the new total and destroy everything the
+  // customer had already bought.
+  it("refuses to overwrite credits it could not read", () => {
+    const block = packGrantBlock();
+    expect(block).toContain("readErr");
+    expect(block).toContain("status: 500");
+  });
+});
+
 describe("where the offer appears", () => {
   it("is offered on the pricing page and the scan-result paywall", () => {
     expect(PRICING).toContain('<ScanPackOptions surface="pricing"');

@@ -235,11 +235,20 @@ export async function POST(request: Request) {
     // decides which scans count. Pro is sold as "200 document scans / month";
     // counting all-time gave a subscriber 200 scans EVER, so month two was paid
     // for and empty. See 007_subscription_period.sql.
+    // NO STATUS FILTER. This used to select only `status = "active"`, which was
+    // right while the row mattered solely as proof of a subscription. It stopped
+    // being right the moment scans could be bought outright: a pack buyer's
+    // status is "inactive", so the filter hid their row, computeQuota saw null,
+    // and the scans they had just paid for did not exist. They would have been
+    // charged and given nothing.
+    //
+    // The row is per-user BILLING STATE, not proof of a plan. Reading it
+    // unconditionally and letting computeQuota decide is what keeps those two
+    // ideas separate.
     const { data: sub } = await supabase
       .from("subscriptions")
       .select("status, scan_quota, scan_credits, current_period_start")
       .eq("user_id", user.id)
-      .eq("status", "active")
       .maybeSingle();
 
     let scanQuery = supabase
@@ -250,8 +259,20 @@ export async function POST(request: Request) {
     // Paid plans count within the current monthly window. A NULL anchor means
     // free tier or a comped lifetime grant, where all-time counting is correct:
     // the free card sells "1 document scan, total", not one per month.
-    const anchor = (sub as { current_period_start?: string | null } | null)
-      ?.current_period_start;
+    //
+    // GATED ON status === "active", which matters now that the row above is
+    // read regardless of status. A CANCELLED subscriber keeps their old
+    // current_period_start, and currentPeriodStart() rolls any anchor forward
+    // to the present -- so without this gate, someone who cancelled and later
+    // bought a single pack would have their usage counted from this month only,
+    // and would receive their free scan plus the whole pack again every month,
+    // forever.
+    const subRow = sub as {
+      status?: string;
+      current_period_start?: string | null;
+    } | null;
+    const anchor =
+      subRow?.status === "active" ? subRow.current_period_start : null;
     if (anchor) {
       const windowStart = currentPeriodStart(new Date(anchor), new Date());
       scanQuery = scanQuery.gte("created_at", windowStart.toISOString());
