@@ -315,6 +315,19 @@ describe("where the offer appears", () => {
     expect(UPLOAD.slice(start, start + 1800)).toContain("ScanPackOptions");
   });
 
+  // ABOVE THE DROP ZONE, not below it. Sitting underneath put the whole block
+  // below the fold: someone who had just been told they cannot scan had to
+  // scroll past the upload area they can no longer use to find the two ways to
+  // continue. When quota is exhausted that drop zone is dead weight -- it is
+  // disabled and dimmed -- so the reason and the remedy come first.
+  it("puts the paywall above the upload area, not below it", () => {
+    const paywall = UPLOAD.indexOf("{quotaExhausted && (");
+    const dropZone = UPLOAD.indexOf("onDragOver=");
+    expect(paywall).toBeGreaterThan(-1);
+    expect(dropZone).toBeGreaterThan(-1);
+    expect(paywall).toBeLessThan(dropZone);
+  });
+
   // Pro is unchanged and still the offer we lead with; subscribing needs the
   // pricing page's fuller explanation. The packs sit beside that link, never
   // replace it.
