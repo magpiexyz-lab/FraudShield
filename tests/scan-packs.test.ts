@@ -294,9 +294,43 @@ describe("granting before the money arrives", () => {
 });
 
 describe("where the offer appears", () => {
+  const UPLOAD = read("src", "app", "dashboard", "upload-zone.tsx");
+
   it("is offered on the pricing page and the scan-result paywall", () => {
     expect(PRICING).toContain('<ScanPackOptions surface="pricing"');
     expect(SCAN_RESULT).toContain('<ScanPackOptions surface="scan_result"');
+  });
+
+  // THE MOMENT SOMEONE IS ACTUALLY STOPPED. This block used to offer only a
+  // link to /pricing, where the cheaper option sits below the Pro card and
+  // needs a scroll to find. Someone who has just been told they cannot
+  // continue should not have to go looking for the smallest way to continue.
+  it("is buyable at the dashboard quota paywall, not one page away", () => {
+    expect(UPLOAD).toContain('<ScanPackOptions surface="dashboard_quota"');
+    // Anchored on the JSX render block, not the bare identifier: a drag
+    // handler earlier in the file also guards on quotaExhausted, and the bare
+    // search landed there.
+    const start = UPLOAD.indexOf("{quotaExhausted && (");
+    expect(start).toBeGreaterThan(-1);
+    expect(UPLOAD.slice(start, start + 1800)).toContain("ScanPackOptions");
+  });
+
+  // Pro is unchanged and still the offer we lead with; subscribing needs the
+  // pricing page's fuller explanation. The packs sit beside that link, never
+  // replace it.
+  it("keeps the Pro route intact at that paywall", () => {
+    const start = UPLOAD.indexOf("{quotaExhausted && (");
+    expect(start).toBeGreaterThan(-1);
+    expect(UPLOAD.slice(start, start + 1800)).toContain('href="/pricing"');
+  });
+
+  // Same surface names paywall_shown already uses, so the two events can be
+  // read against each other per surface rather than only in total.
+  it("uses surface names that match paywall_shown", () => {
+    const events = read("experiment", "EVENTS.yaml");
+    for (const surface of ["pricing", "scan_result", "dashboard_quota"]) {
+      expect(events).toContain(surface);
+    }
   });
 
   // One component, two surfaces. Two copies of a money button would drift.
