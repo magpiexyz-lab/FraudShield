@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { FileUp, FileText, ShieldCheck, X, ArrowRight } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { ScanPackOptions } from "@/components/scan-pack-options";
 import { cn } from "@/lib/utils";
 import type { CreateScanResponse } from "@/app/api/scan/route";
 
@@ -588,19 +589,33 @@ export function UploadZone({
         //
         // "Upgrade to keep analyzing" used to be plain prose: an instruction
         // with nothing to click, at the one moment the user cannot proceed.
-        <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-sm text-muted-foreground">
-            You&apos;ve used all of your free scans.
-          </p>
-          <Link
-            href="/pricing"
-            className={cn(
-              buttonVariants({ size: "sm" }),
-              "rounded-[var(--radius-pill)] bg-signal text-signal-foreground hover:bg-signal/90",
-            )}
-          >
-            Upgrade to keep analyzing
-          </Link>
+        <div>
+          <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-muted-foreground">
+              You&apos;ve used all of your free scans.
+            </p>
+            <Link
+              href="/pricing"
+              className={cn(
+                buttonVariants({ size: "sm" }),
+                "rounded-[var(--radius-pill)] bg-signal text-signal-foreground hover:bg-signal/90",
+              )}
+            >
+              Upgrade to keep analyzing
+            </Link>
+          </div>
+
+          {/* BUYABLE HERE, not one page away. This block is the exact moment
+              someone is stopped, and until now the only thing it offered was a
+              link to /pricing -- where the cheaper option sits below the Pro
+              card and needs a scroll to find. Someone who has just been told
+              they cannot continue should not have to go looking for the
+              smallest way to continue.
+
+              The Pro link stays: Pro is unchanged and still the offer we lead
+              with, and subscribing needs the pricing page's fuller
+              explanation. This is the smaller door beside it. */}
+          <ScanPackOptions surface="dashboard_quota" />
         </div>
       )}
     </div>

@@ -192,8 +192,10 @@ events:
         type: string
         required: false
         description: >-
-          Which CTA opened checkout - pricing or scan_result. Preserves the
-          per-surface diagnostic that paywall_shown established.
+          Which CTA opened checkout - pricing, scan_result, or dashboard_quota.
+          Preserves the per-surface diagnostic that paywall_shown established,
+          and uses the same surface names so the two events can be read against
+          each other per surface rather than only in total.
   subscription_activated:
     funnel_stage: monetize
     trigger: >-

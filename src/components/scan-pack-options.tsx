@@ -34,8 +34,13 @@ export function ScanPackOptions({
   surface,
   className,
 }: {
-  /** Which paywall this was offered from — carried into checkout_started. */
-  surface: "pricing" | "scan_result";
+  /**
+   * Which paywall this was offered from — carried into checkout_started.
+   *
+   * Matches the surface values paywall_shown already uses, so the two events
+   * can be read against each other per surface rather than only in total.
+   */
+  surface: "pricing" | "scan_result" | "dashboard_quota";
   className?: string;
 }) {
   const [busy, setBusy] = useState<string | null>(null);
