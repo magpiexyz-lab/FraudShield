@@ -324,6 +324,11 @@ describe("regression surface: nothing else moved", () => {
     expect(new Set(emitted)).toEqual(
       new Set([
         "subscription_activated",
+        // A one-time scan pack purchase. Declared in EVENTS.yaml and
+        // deliberately NOT reported as subscription_activated: that name is
+        // read literally as the paid SUBSCRIPTION funnel, and a pack buyer has
+        // not subscribed to anything.
+        "one_time_purchase",
         "subscription_canceled",
         "invoice_paid",
         "payment_failed",

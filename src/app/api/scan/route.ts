@@ -237,7 +237,7 @@ export async function POST(request: Request) {
     // for and empty. See 007_subscription_period.sql.
     const { data: sub } = await supabase
       .from("subscriptions")
-      .select("status, scan_quota, current_period_start")
+      .select("status, scan_quota, scan_credits, current_period_start")
       .eq("user_id", user.id)
       .eq("status", "active")
       .maybeSingle();
@@ -261,7 +261,10 @@ export async function POST(request: Request) {
 
     const quota = computeQuota({
       scans_used: count ?? 0,
-      subscription: sub as Pick<SubscriptionsRow, "status" | "scan_quota"> | null,
+      subscription: sub as Pick<
+        SubscriptionsRow,
+        "status" | "scan_quota" | "scan_credits"
+      > | null,
     });
 
     if (!quota.allowed) {

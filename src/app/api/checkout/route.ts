@@ -1,7 +1,11 @@
 // POST /api/checkout - create a Stripe Checkout Session for the chosen plan.
 //
-// Phase 3: this is a real MONTHLY SUBSCRIPTION (mode: "subscription") billed
-// against a Price created in the Stripe dashboard, in TEST mode only.
+// Phase 3: opens a real Stripe Checkout Session against a Price created in the
+// dashboard. TWO SHAPES, decided by the plan slug:
+//   - a subscription slug (PLAN_PRICES) -> mode "subscription", recurring Price
+//   - a pack id (SCAN_PACKS)            -> mode "payment", one-time Price
+// The packs were added after a week of live checkout in which 8 ad visitors
+// opened Stripe and none paid; the one who said why said the reason was price.
 //
 // Security:
 //   - Authenticated via Supabase cookie session
@@ -25,12 +29,17 @@ import { getStripe } from "@/lib/stripe";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { rateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
 import { resolvePayIntentAttribution } from "@/lib/attribution";
-import { PLAN_PRICES } from "@/lib/types";
+import { PLAN_PRICES, SCAN_PACKS, scanPackById } from "@/lib/types";
 import { hashEmailForMatching } from "@/lib/email-hash";
 
-// Closed enum of plan slugs derived from PLAN_PRICES at build time.
+// Closed enum of everything buyable: subscription slugs from PLAN_PRICES and
+// one-time pack ids from SCAN_PACKS. Both derived at build time, so a slug the
+// catalogue does not contain cannot reach Stripe.
 const PLAN_ENUM = z.enum(
-  Object.keys(PLAN_PRICES) as [string, ...string[]],
+  [...Object.keys(PLAN_PRICES), ...SCAN_PACKS.map((p) => p.id)] as [
+    string,
+    ...string[],
+  ],
 );
 
 // Stripe caps a metadata VALUE at 500 characters while GCLID_MAX_LENGTH (the
@@ -119,6 +128,17 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { plan, gclid, utm_campaign } = checkoutSchema.parse(body);
 
+    // ONE PURCHASE, TWO SHAPES. A subscription slug opens Stripe in
+    // "subscription" mode against a recurring Price; a pack id opens it in
+    // "payment" mode against a one-time Price, and the webhook grants credits
+    // instead of a quota. Everything below branches on this one value rather
+    // than scattering the question through the route.
+    //
+    // A subscriber can never reach here with a pack: the already_subscribed
+    // guard above refuses anyone whose status is active. That is also why
+    // computeQuota never has to add a monthly allowance to permanent credits.
+    const pack = scanPackById(plan);
+
     // Bug #2: graceful "Pro upgrade coming soon" path. When Stripe envs are
     // unwired (e.g., a staging deployment or pre-launch demo without billing),
     // the route used to fall through to a generic 500 which read as a transient
@@ -128,7 +148,14 @@ export async function POST(request: Request) {
     // happy path intact for development + e2e.
     const demoMode = process.env.DEMO_MODE === "true";
     const stripeKey = process.env.STRIPE_SECRET_KEY;
-    const priceId = process.env.STRIPE_PRO_PRICE_ID;
+    // Literal process.env reads, never process.env[someVariable]: Next inlines
+    // the literal form at build time, and a dynamic key would read as undefined
+    // in a bundled server build.
+    const priceId = pack
+      ? pack.id === "scan_1"
+        ? process.env.STRIPE_SCAN_1_PRICE_ID
+        : process.env.STRIPE_SCAN_5_PRICE_ID
+      : process.env.STRIPE_PRO_PRICE_ID;
     // Recognize the canonical placeholder shapes: empty, "placeholder-..."
     // (used by the demo Supabase client + tests), and the literals shipped in
     // .env.example. A real Stripe key is much longer than 16 chars, so the
@@ -170,9 +197,9 @@ export async function POST(request: Request) {
     }
 
     // Server-authoritative price lookup - NEVER trust client-supplied amounts.
-    const amount_cents = PLAN_PRICES[plan];
+    const amount_cents = pack ? pack.price_cents : PLAN_PRICES[plan];
     if (typeof amount_cents !== "number" || amount_cents <= 0) {
-      console.error("[checkout] PLAN_PRICES misconfigured for plan:", plan);
+      console.error("[checkout] price catalogue misconfigured for plan:", plan);
       return NextResponse.json({ error: "Checkout failed" }, { status: 500 });
     }
 
@@ -199,22 +226,43 @@ export async function POST(request: Request) {
     // Skipped in DEMO_MODE - the demo Stripe client has no Price catalogue.
     if (!demoMode) {
       const price = await getStripe().prices.retrieve(linePriceId);
-      const mismatch =
+
+      // Amount, currency and active state matter whichever shape is being
+      // bought. The recurrence check differs, and getting it backwards is the
+      // expensive mistake here: a pack pointed at a recurring Price would
+      // silently sign someone up to pay $7 EVERY MONTH for one scan.
+      const amountOrCurrencyWrong =
         price.unit_amount !== amount_cents ||
         price.currency !== "usd" ||
-        price.recurring?.interval !== "month" ||
-        (price.recurring?.interval_count ?? 1) !== 1 ||
-        price.active !== true ||
-        price.type !== "recurring";
-      if (mismatch) {
+        price.active !== true;
+
+      const recurrenceWrong = pack
+        ? // A pack must be one-time. Stripe reports that as type
+          // "one_time" with no `recurring` object at all; both are checked,
+          // because a Price carrying recurrence while typed one_time is a
+          // configuration we should refuse rather than interpret.
+          price.type !== "one_time" || price.recurring != null
+        : // A subscription must be exactly one month.
+          price.type !== "recurring" ||
+          price.recurring?.interval !== "month" ||
+          (price.recurring?.interval_count ?? 1) !== 1;
+
+      if (amountOrCurrencyWrong || recurrenceWrong) {
         console.error(
-          "[checkout] STRIPE_PRO_PRICE_ID disagrees with PLAN_PRICES:",
+          "[checkout] Stripe Price disagrees with the catalogue:",
           {
+            plan,
             price_id: linePriceId,
-            expected: { unit_amount: amount_cents, currency: "usd", interval: "month" },
+            expected: {
+              unit_amount: amount_cents,
+              currency: "usd",
+              type: pack ? "one_time" : "recurring",
+              interval: pack ? null : "month",
+            },
             actual: {
               unit_amount: price.unit_amount,
               currency: price.currency,
+              type: price.type,
               interval: price.recurring?.interval ?? null,
             },
           },
@@ -222,11 +270,10 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Checkout failed" }, { status: 500 });
       }
 
-      // Safe to record only after the guard above, which has already refused
-      // any Price that is not a single month. Read from the Price rather than
-      // left at the seeded literal so the recorded cadence follows the Price if
-      // PLAN_PRICES and the dashboard ever move together to another interval.
-      billingInterval = price.recurring?.interval ?? billingInterval;
+      // Safe to record only after the guard above. A pack has no cadence, and
+      // recording "month" against one would describe a renewal that is never
+      // going to happen.
+      billingInterval = pack ? "" : price.recurring?.interval ?? billingInterval;
     }
 
     // Resolve attribution: the acquisition_* values stamped onto the user record
@@ -273,10 +320,18 @@ export async function POST(request: Request) {
       process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 
     const session = await getStripe().checkout.sessions.create({
-      mode: "subscription",
+      mode: pack ? "payment" : "subscription",
       line_items: [{ price: linePriceId, quantity: 1 }],
       metadata,
-      subscription_data: { metadata },
+      // subscription_data ONLY on a subscription. Stripe rejects it outright in
+      // payment mode, and there is no Subscription object for the retention
+      // handlers to read it off anyway. The same bag still rides on the Session
+      // itself, which is what the webhook reads for a pack.
+      ...(pack ? {} : { subscription_data: { metadata } }),
+      // A one-time purchase creates no customer record unless asked for, and
+      // without one the buyer has no receipt history and no way to be
+      // recognised if they come back and subscribe later.
+      ...(pack ? { customer_creation: "always" as const } : {}),
       // Successful checkout returns the user to the dashboard so their new
       // quota is reflected immediately. Cancel routes back to /pricing.
       success_url: `${siteUrl}/dashboard?checkout=success`,

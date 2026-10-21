@@ -34,7 +34,7 @@ describe("computeQuota — paid subscription", () => {
   it("allows scan when scans_used < subscription scan_quota", () => {
     const result = computeQuota({
       scans_used: 5,
-      subscription: { status: "active", scan_quota: 100 },
+      subscription: { status: "active", scan_quota: 100, scan_credits: 0 },
     });
     expect(result.allowed).toBe(true);
     expect(result.total_quota).toBe(100);
@@ -45,7 +45,7 @@ describe("computeQuota — paid subscription", () => {
   it("denies scan when scans_used equals subscription scan_quota", () => {
     const result = computeQuota({
       scans_used: 100,
-      subscription: { status: "active", scan_quota: 100 },
+      subscription: { status: "active", scan_quota: 100, scan_credits: 0 },
     });
     expect(result.allowed).toBe(false);
     expect(result.remaining).toBe(0);
@@ -54,7 +54,7 @@ describe("computeQuota — paid subscription", () => {
   it("denies scan when subscription status is 'inactive'", () => {
     const result = computeQuota({
       scans_used: 0,
-      subscription: { status: "inactive", scan_quota: 100 },
+      subscription: { status: "inactive", scan_quota: 100, scan_credits: 0 },
     });
     // Inactive subscription falls back to free quota behaviour
     expect(result.is_paid).toBe(false);
@@ -64,7 +64,7 @@ describe("computeQuota — paid subscription", () => {
   it("denies scan when subscription status is 'canceled'", () => {
     const result = computeQuota({
       scans_used: FREE_SCAN_QUOTA,
-      subscription: { status: "canceled", scan_quota: 100 },
+      subscription: { status: "canceled", scan_quota: 100, scan_credits: 0 },
     });
     expect(result.is_paid).toBe(false);
     expect(result.allowed).toBe(false);
@@ -78,7 +78,7 @@ describe("computeQuota — paid subscription", () => {
     // past_due falls back to the FREE allowance whatever that allowance is.
     const result = computeQuota({
       scans_used: FREE_SCAN_QUOTA - 1,
-      subscription: { status: "past_due", scan_quota: 100 },
+      subscription: { status: "past_due", scan_quota: 100, scan_credits: 0 },
     });
     expect(result.is_paid).toBe(false);
     expect(result.total_quota).toBe(FREE_SCAN_QUOTA);
@@ -88,7 +88,7 @@ describe("computeQuota — paid subscription", () => {
     // And denied once the free allowance is spent.
     const spent = computeQuota({
       scans_used: FREE_SCAN_QUOTA,
-      subscription: { status: "past_due", scan_quota: 100 },
+      subscription: { status: "past_due", scan_quota: 100, scan_credits: 0 },
     });
     expect(spent.allowed).toBe(false);
   });

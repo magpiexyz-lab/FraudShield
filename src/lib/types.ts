@@ -65,6 +65,11 @@ export type SubscriptionsRow = {
   status: "active" | "inactive" | "canceled" | "past_due";
   plan: string;                         // e.g. "pro"
   scan_quota: number;                   // total scans allowed per billing period
+  // Scans bought outright through a one-time purchase. Cumulative and never
+  // expiring: this only ever increases, and remaining scans are computed as
+  // (free quota + scan_credits) minus scans used. Zero, never null — a user
+  // who has bought nothing has bought zero, which is a fact, not an unknown.
+  scan_credits: number;
   current_period_start: string | null;  // timestamptz billing anchor; NULL = all-time
   created_at: string;                   // timestamptz
 };
@@ -107,3 +112,52 @@ export const PRO_SCAN_QUOTA = 200;
 export const PLAN_PRICES: Record<string, number> = {
   pro: 6000, // $60.00 in cents
 };
+
+/**
+ * Scans bought outright, with no subscription.
+ *
+ * WHY THESE EXIST. A week of live checkout produced 8 real visitors who opened
+ * Stripe and none who paid; the one who came back and said why said the reason
+ * was price. Intent was never the problem -- more than half of the people who
+ * reach the paywall click through to checkout -- so what changed is the size of
+ * the commitment at the end, not the funnel in front of it.
+ *
+ * SEPARATE FROM PLAN_PRICES, deliberately. Everything in PLAN_PRICES is a
+ * recurring subscription and the checkout route opens it in Stripe's
+ * "subscription" mode; these open in "payment" mode, grant credits rather than
+ * a quota, and never renew. Folding them into one map would mean every reader
+ * of PLAN_PRICES having to ask which kind it got.
+ *
+ * CREDITS DO NOT EXPIRE — see supabase/migrations/014_scan_credits.sql for why
+ * that is a decision rather than an omission.
+ */
+export type ScanPack = {
+  /** Stable id, used as the `plan` value through checkout and the webhook. */
+  id: string;
+  label: string;
+  /** Scans granted on purchase. */
+  scans: number;
+  /** Price in cents. Server-authoritative, like PLAN_PRICES. */
+  price_cents: number;
+};
+
+export const SCAN_PACKS: ReadonlyArray<ScanPack> = [
+  {
+    id: "scan_1",
+    label: "Single scan",
+    scans: 1,
+    price_cents: 700, // $7.00
+  },
+  {
+    id: "scan_5",
+    label: "5-scan pack",
+    scans: 5,
+    price_cents: 1900, // $19.00 — $3.80 a scan
+  },
+];
+
+/** Look up a pack by the id that travels through checkout metadata. */
+export function scanPackById(id: string | null | undefined): ScanPack | null {
+  if (!id) return null;
+  return SCAN_PACKS.find((p) => p.id === id) ?? null;
+}

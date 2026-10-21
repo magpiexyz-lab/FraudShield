@@ -55,13 +55,27 @@ function readMigration(): string {
 // The upsert that runs for checkout.session.completed, isolated from the three
 // other handlers in the file. Slicing it out means a match cannot be satisfied
 // by an unrelated .update() in the renewal or cancellation branch.
+/**
+ * The upsert that records a completed SUBSCRIPTION checkout.
+ *
+ * Found by the status it writes, not by position. A one-time scan pack also
+ * upserts this table -- without a cadence or a period, both of which would
+ * describe a renewal that never happens -- and a positional search silently
+ * began returning that block when packs were added, turning the interval and
+ * period assertions below into checks on the wrong code.
+ */
 function checkoutSessionUpsertBlock(): string {
   const source = readFileSync(WEBHOOK_PATH, "utf8");
-  const start = source.indexOf('.from("subscriptions").upsert(');
-  expect(start).toBeGreaterThan(-1);
-  const end = source.indexOf("onConflict", start);
-  expect(end).toBeGreaterThan(start);
-  return source.slice(start, end);
+  let from = 0;
+  for (;;) {
+    const start = source.indexOf('.from("subscriptions").upsert(', from);
+    expect(start).toBeGreaterThan(-1);
+    const end = source.indexOf("onConflict", start);
+    expect(end).toBeGreaterThan(start);
+    const block = source.slice(start, end);
+    if (block.includes('status: "active"')) return block;
+    from = end;
+  }
 }
 
 // The invoice.paid renewal update, isolated from the invoice.payment_failed
@@ -228,7 +242,17 @@ describe("checkout route: puts the validated interval in the metadata bag", () =
   // would keep claiming monthly no matter what the Price said.
   it("derives the interval from the retrieved Stripe Price", () => {
     const source = readFileSync(CHECKOUT_PATH, "utf8");
-    expect(source).toMatch(/billingInterval\s*=\s*price\.recurring/);
+    // Asserted as a literal rather than a pattern. The point is the SOURCE of
+    // the recorded value -- the retrieved Price, never a hardcoded "month" --
+    // and a plain string says that without an escape sequence to get wrong.
+    expect(source).toContain("price.recurring?.interval ?? billingInterval");
+  });
+
+  // A pack never renews, so recording "month" against one would describe a
+  // billing cycle that is never going to happen.
+  it("records no cadence for a one-time pack", () => {
+    const source = readFileSync(CHECKOUT_PATH, "utf8");
+    expect(source).toContain('billingInterval = pack ? ""');
   });
 
   // The live-key interlock assertion that used to sit here is gone, and
