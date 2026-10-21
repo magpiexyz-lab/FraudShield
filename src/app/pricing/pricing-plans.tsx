@@ -19,6 +19,7 @@ import {
 } from "@/lib/checkout-client";
 import { createClient } from "@/lib/supabase";
 import { PLANS, PAID_PLAN_ID, type PlanTier } from "./plans";
+import { ScanPackOptions } from "@/components/scan-pack-options";
 
 // Phase 3: "Choose Pro" opens a REAL Stripe subscription checkout. The fake
 // door is retired - no pay_intent event, no early-access confirmation, and no
@@ -470,6 +471,15 @@ function PlanCard({
             {plan.cta}
           </Link>
         )}
+
+        {/* The smaller door, for someone who has decided $60/month is too much
+            to commit to. Only on the Pro card, and only when checkout is
+            actually available -- offering a one-off purchase to a subscriber
+            would sell them scans they already have, and the checkout route
+            refuses it anyway with already_subscribed. */}
+        {onUpgrade && !subscribed && !notConfigured ? (
+          <ScanPackOptions surface="pricing" />
+        ) : null}
 
         {/* ALONGSIDE, NEVER INSTEAD. The buy button above stays available to a
             zero-scan visitor; this is the free scan offered as an option. It

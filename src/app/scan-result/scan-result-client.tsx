@@ -29,6 +29,7 @@ import { SignalBreakdown } from "./signal-breakdown";
 import { ApiAccessDialog } from "./api-access-dialog";
 import { CrossDocumentInterest } from "./cross-document-interest";
 import { UpgradeCta } from "./upgrade-cta";
+import { ScanPackOptions } from "@/components/scan-pack-options";
 import { severityOfScore } from "./severity";
 import { FeedbackWidget } from "@/components/feedback-widget";
 
@@ -660,6 +661,17 @@ function LockedSignals({
           body="Each names what was detected, where it was found, and how much it moved the score."
           ctaLabel={`Unlock all ${count} forensic signals`}
         />
+        {/* The smaller door, offered at the exact moment someone can see what
+            they are being asked to pay for. This is where intent is highest --
+            more than half of the people who reach this panel click through to
+            checkout -- and where $60/month was the thing being refused.
+
+            Only for a signed-in visitor: checkout needs a user to attach the
+            purchase to, and a signed-out one is sent to sign up by the CTA
+            above. */}
+        {user ? (
+          <ScanPackOptions surface="scan_result" className="w-full" />
+        ) : null}
       </div>
     </div>
   );

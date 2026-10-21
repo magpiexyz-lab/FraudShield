@@ -44,13 +44,48 @@ function readMigration(): string {
 // The upsert that runs for checkout.session.completed, isolated from the three
 // other handlers in the file. Slicing it out means a match cannot be satisfied
 // by an unrelated `.update({ ... })` in the renewal or cancellation branch.
+/**
+ * The upsert that records a completed SUBSCRIPTION checkout.
+ *
+ * Found by the status it writes, not by being the first upsert in the file.
+ * A one-time scan pack also upserts this table -- deliberately without a
+ * period, a cadence, or an active status -- and a positional search silently
+ * began returning that block instead when packs were added, turning several
+ * assertions here into checks on the wrong code.
+ */
 function checkoutSessionUpsertBlock(): string {
   const source = readFileSync(WEBHOOK_PATH, "utf8");
-  const start = source.indexOf('.from("subscriptions").upsert(');
-  expect(start).toBeGreaterThan(-1);
-  const end = source.indexOf("onConflict", start);
-  expect(end).toBeGreaterThan(start);
-  return source.slice(start, end);
+  let from = 0;
+  for (;;) {
+    const start = source.indexOf('.from("subscriptions").upsert(', from);
+    expect(start).toBeGreaterThan(-1);
+    const end = source.indexOf("onConflict", start);
+    expect(end).toBeGreaterThan(start);
+    const block = source.slice(start, end);
+    if (block.includes('status: "active"')) return block;
+    from = end;
+  }
+}
+
+/**
+ * The upsert that records a one-time scan pack purchase.
+ *
+ * Shares several contracts with the subscription block above -- a
+ * server-validated amount, the currency Stripe reported, and the attribution
+ * columns -- and deliberately shares none of the subscription-shaped ones.
+ */
+function scanPackUpsertBlock(): string {
+  const source = readFileSync(WEBHOOK_PATH, "utf8");
+  let from = 0;
+  for (;;) {
+    const start = source.indexOf('.from("subscriptions").upsert(', from);
+    expect(start).toBeGreaterThan(-1);
+    const end = source.indexOf("onConflict", start);
+    expect(end).toBeGreaterThan(start);
+    const block = source.slice(start, end);
+    if (block.includes("scan_credits")) return block;
+    from = end;
+  }
 }
 
 describe("008 migration: price and attribution columns on subscriptions", () => {
@@ -182,4 +217,47 @@ describe("nullableAttributionValue: empty metadata becomes NULL", () => {
       expect(nullableAttributionValue(input)).not.toBe("");
     }
   });
+});
+
+// ---------------------------------------------------------------------------
+// The one-time pack purchase records the same money facts.
+//
+// Packs were added after a week of live checkout in which 8 ad visitors opened
+// Stripe and none paid. They write to the same table and must not quietly keep
+// a lower standard of record than a subscription does.
+// ---------------------------------------------------------------------------
+
+describe("a scan pack purchase records the same money facts", () => {
+  it("writes the server-validated amount, not Stripe's final total", () => {
+    const block = scanPackUpsertBlock();
+    expect(block).toContain("price_cents: planAmount");
+    expect(block).not.toContain("amount_total");
+  });
+
+  it("reads the currency Stripe reported rather than hardcoding a literal", () => {
+    expect(scanPackUpsertBlock()).toContain("session.currency");
+  });
+
+  it.each(["gclid", "utm_campaign", "email_sha256"])(
+    "writes %s so a pack sale is attributable too",
+    (column) => {
+      expect(scanPackUpsertBlock()).toContain(column + ":");
+    },
+  );
+
+  // THE LINE THAT MUST NOT MOVE. Marking a pack buyer active would hand them
+  // the Pro monthly quota, hide the upgrade CTA, and make their next purchase
+  // fail with already_subscribed.
+  it("never marks a pack buyer as an active subscriber", () => {
+    expect(scanPackUpsertBlock()).not.toContain('status: "active"');
+  });
+
+  // A pack has no cadence and no period. Recording either would describe a
+  // renewal that is never going to happen.
+  it.each(["billing_interval", "current_period_start", "current_period_end"])(
+    "does not invent %s for a purchase that never renews",
+    (column) => {
+      expect(scanPackUpsertBlock()).not.toContain(column + ":");
+    },
+  );
 });

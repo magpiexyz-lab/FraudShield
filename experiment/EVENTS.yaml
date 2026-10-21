@@ -310,3 +310,28 @@ events:
         description: >-
           Optional free text. Absent when left blank. Trimmed and capped before
           sending — this field is user input on a public page.
+
+  # --- One-time purchases ---
+  one_time_purchase:
+    funnel_stage: monetize
+    trigger: >-
+      A one-time scan pack is paid for (checkout.session.completed in payment
+      mode). Deliberately NOT subscription_activated: that event is read
+      literally as the paid SUBSCRIPTION funnel, and a pack buyer has not
+      subscribed to anything. Counting them there would overstate subscribers
+      and hide the thing the packs were added to measure -- whether the $60/mo
+      commitment, rather than the product, is what people are refusing.
+    requires: [payment]
+    properties:
+      pack:
+        type: string
+        required: true
+        description: Pack id — scan_1 or scan_5.
+      scans:
+        type: number
+        required: false
+        description: Scans granted by this purchase.
+      amount:
+        type: number
+        required: false
+        description: Amount charged in cents.

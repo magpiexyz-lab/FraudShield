@@ -16,7 +16,7 @@ import { createServiceRoleClient } from "@/lib/supabase-server";
 import { trackServerEvent } from "@/lib/analytics-server";
 import { nullableAttributionValue } from "@/lib/attribution";
 import { isPendingCancellation } from "@/lib/stripe-cancel";
-import { PLAN_PRICES, PRO_SCAN_QUOTA } from "@/lib/types";
+import { PLAN_PRICES, PRO_SCAN_QUOTA, scanPackById } from "@/lib/types";
 
 // Paid subscriptions raise scan quota above the free allowance. Sourced from
 // PRO_SCAN_QUOTA rather than restated: this held 9999 ("effectively unlimited")
@@ -134,12 +134,153 @@ export async function POST(request: Request) {
       return NextResponse.json({ received: true });
     }
 
-    const planQuota =
-      typeof PLAN_SCAN_QUOTA[plan] === "number" ? PLAN_SCAN_QUOTA[plan] : 100;
+
+    // ── A one-time scan pack ─────────────────────────────────────────────
+    //
+    // No Subscription object exists, so none of the subscription handling
+    // below applies: no period, no cadence, no renewal, and nothing for the
+    // cancellation handlers to ever act on. The purchase grants credits and
+    // that is the whole of it.
+    //
+    // ADDED, NOT SET. A second pack must leave the buyer with the sum of both,
+    // so the new total is read-then-written rather than assigned. The read is
+    // of the row as it stands right now, which is also why the exactly-once
+    // guard above matters more here than anywhere else in this file: a
+    // redelivered event that got past it would grant the scans twice.
+    const pack = scanPackById(plan);
+
+    // Computed before the branch so both shapes record the same
+    // server-validated figure: the amount the checkout route verified against
+    // the Stripe Price and relayed through metadata, falling back to the
+    // catalogue. Never session.amount_total, which carries whatever Stripe
+    // finally charged including any currency conversion.
     const planAmount =
       amountCents > 0
         ? amountCents
-        : (typeof PLAN_PRICES[plan] === "number" ? PLAN_PRICES[plan] : 0);
+        : pack
+          ? pack.price_cents
+          : typeof PLAN_PRICES[plan] === "number"
+            ? PLAN_PRICES[plan]
+            : 0;
+
+    if (pack) {
+      // THE SESSION COMPLETING IS NOT THE MONEY ARRIVING.
+      //
+      // checkout.session.completed fires when the customer finishes the
+      // Checkout flow. With a delayed-notification payment method -- bank
+      // debits, vouchers, bank transfers -- Stripe sends it immediately with
+      // payment_status "unpaid", and the funds may never arrive at all.
+      //
+      // ONLY ON THE PACK PATH, and the asymmetry is the whole reason. A pack
+      // grant is irreversible: credits never expire and nothing revokes them,
+      // so handing them out before the money settles cannot be undone.
+      //
+      // A SUBSCRIPTION IS NOT LIKE THAT, and guarding it the same way would be
+      // worse than not guarding it at all. If payment later fails, dunning
+      // corrects it -- invoice.payment_failed moves the row to past_due. But
+      // if this skipped an unpaid subscription session, nothing would ever
+      // activate it: invoice.paid deliberately ignores the first invoice
+      // (billing_reason "subscription_create"), so a customer whose payment
+      // settled a minute later would have paid and never received Pro, with no
+      // path back. Refusing is safe where there is a correction, and dangerous
+      // where there is none.
+      //
+      // "paid" EXACTLY, not "not unpaid". The third value,
+      // "no_payment_required", is a zero-amount session -- a full-discount
+      // coupon or a trial. We issue neither, so if one appears it is a surprise
+      // and should be refused rather than interpreted.
+      //
+      // Only cards, Apple Pay and Link are enabled on the account today, so
+      // this is currently always "paid". That is a dashboard setting, not a
+      // property of this code. A legitimate delayed payment that later succeeds
+      // arrives as checkout.session.async_payment_succeeded, which this
+      // endpoint does not subscribe to -- so if delayed methods are ever
+      // enabled, that event must be handled BEFORE they are, or real payments
+      // will go unfulfilled.
+      if (session.payment_status !== "paid") {
+        console.error(
+          "[webhook] refusing to grant scan credits for an unpaid session",
+          {
+            session_id: session.id,
+            payment_status: session.payment_status,
+            pack: pack.id,
+          },
+        );
+        return NextResponse.json({ received: true });
+      }
+
+      // THE ERROR IS CHECKED, and that is the whole point of this block. The
+      // grant is read-then-write, so a failed read that was treated as "no
+      // credits yet" would write pack.scans as the new total and DESTROY every
+      // credit the customer had already bought. Someone holding 10 scans would
+      // buy 5 more and end up with 5.
+      //
+      // Returning 500 makes Stripe redeliver the event, and the exactly-once
+      // guard above means the retry grants once. Losing paid-for scans is not
+      // recoverable without a support conversation; a retry costs nothing.
+      const { data: existing, error: readErr } = await supabase
+        .from("subscriptions")
+        .select("scan_credits")
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      if (readErr) {
+        console.error("[webhook] could not read existing scan credits:", readErr);
+        return NextResponse.json(
+          { error: "Persistence error" },
+          { status: 500 },
+        );
+      }
+
+      const current = Number(
+        (existing as { scan_credits?: number } | null)?.scan_credits ?? 0,
+      );
+
+      const { error: creditErr } = await supabase.from("subscriptions").upsert(
+        {
+          user_id: userId,
+          // STATUS IS NOT TOUCHED toward "active". A pack buyer is not a
+          // subscriber, and marking them active would hand them the Pro
+          // monthly quota, hide the upgrade CTA, and make the checkout route
+          // refuse their next purchase with already_subscribed.
+          scan_credits: current + pack.scans,
+          livemode: event.livemode,
+          price_cents: planAmount,
+          // Read from the Session rather than hardcoded, for the same reason
+          // the subscription path does: a literal "usd" would keep claiming usd
+          // even if a charge were ever denominated differently.
+          currency: session.currency ?? "usd",
+          email_sha256: nullableAttributionValue(session.metadata?.email_sha256),
+          gclid: nullableAttributionValue(session.metadata?.gclid),
+          utm_campaign: nullableAttributionValue(session.metadata?.utm_campaign),
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id" },
+      );
+
+      if (creditErr) {
+        console.error("[webhook] scan credit grant error:", creditErr);
+        return NextResponse.json(
+          { error: "Persistence error" },
+          { status: 500 },
+        );
+      }
+
+      // NOT subscription_activated. That event is one of the five the fleet
+      // reads literally as the paid subscription funnel, and a pack buyer has
+      // not subscribed to anything -- counting them there would overstate
+      // subscribers and understate the thing the packs were added to test.
+      await trackServerEvent("one_time_purchase", userId, {
+        pack: pack.id,
+        scans: pack.scans,
+        amount: pack.price_cents,
+      });
+
+      return NextResponse.json({ received: true });
+    }
+
+    const planQuota =
+      typeof PLAN_SCAN_QUOTA[plan] === "number" ? PLAN_SCAN_QUOTA[plan] : 100;
 
     // The Stripe subscription this checkout created, resolved once: it is both
     // the value stored on the row and the handle used to fetch the period end.
