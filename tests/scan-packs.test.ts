@@ -255,8 +255,25 @@ describe("granting before the money arrives", () => {
   // payment settles. A delayed-notification method -- bank debit, voucher,
   // bank transfer -- produces it immediately with payment_status "unpaid", and
   // the funds may never arrive.
-  it("fulfils nothing until the session is actually paid", () => {
-    expect(WEBHOOK).toContain('session.payment_status !== "paid"');
+  it("grants no credits until the session is actually paid", () => {
+    expect(packGrantBlock()).toContain('session.payment_status !== "paid"');
+  });
+
+  // THE ASYMMETRY, and getting it backwards is worse than having no guard.
+  //
+  // A pack grant is irreversible -- credits never expire and nothing revokes
+  // them -- so refusing an unpaid session is right. A subscription is not like
+  // that: if payment later fails, dunning corrects it via
+  // invoice.payment_failed. But if the same guard skipped an unpaid
+  // subscription session, NOTHING would ever activate it, because invoice.paid
+  // deliberately ignores the first invoice. The customer would have paid and
+  // never received Pro, with no path back.
+  it("does not gate the subscription path on the same check", () => {
+    const start = WEBHOOK.indexOf('event.type === "checkout.session.completed"');
+    const packStart = WEBHOOK.indexOf("if (pack) {", start);
+    // Everything between the handler opening and the pack branch runs for a
+    // subscription too, so the guard must not live there.
+    expect(WEBHOOK.slice(start, packStart)).not.toContain("payment_status");
   });
 
   // "paid" exactly, not "not unpaid". The third value,

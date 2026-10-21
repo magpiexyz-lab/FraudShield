@@ -134,40 +134,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ received: true });
     }
 
-    // THE SESSION COMPLETING IS NOT THE MONEY ARRIVING.
-    //
-    // checkout.session.completed fires when the customer finishes the Checkout
-    // flow. With a delayed-notification payment method -- bank debits,
-    // vouchers, bank transfers -- Stripe sends it immediately with
-    // payment_status "unpaid", and the funds may never arrive at all. Granting
-    // on the event alone hands out scans, or a month of Pro, for free.
-    //
-    // Only cards, Apple Pay and Link are enabled on the account today, so this
-    // is currently always "paid". That is a dashboard setting, not a property
-    // of this code: enabling one delayed method later would silently turn an
-    // ordinary configuration change into free product, with nothing failing to
-    // say so.
-    //
-    // "paid" EXACTLY, not "not unpaid". The third value,
-    // "no_payment_required", is a zero-amount session -- a full-discount coupon
-    // or a trial. We issue neither, so if one ever appears it is a surprise and
-    // should be refused rather than interpreted.
-    //
-    // Fails CLOSED and says so. A legitimate delayed payment that later
-    // succeeds arrives as checkout.session.async_payment_succeeded, which this
-    // endpoint does not subscribe to -- so if delayed methods are ever enabled,
-    // that event has to be handled before they are.
-    if (session.payment_status !== "paid") {
-      console.error(
-        "[webhook] refusing to fulfil an unpaid checkout session",
-        {
-          session_id: session.id,
-          payment_status: session.payment_status,
-          plan,
-        },
-      );
-      return NextResponse.json({ received: true });
-    }
 
     // ── A one-time scan pack ─────────────────────────────────────────────
     //
@@ -198,6 +164,51 @@ export async function POST(request: Request) {
             : 0;
 
     if (pack) {
+      // THE SESSION COMPLETING IS NOT THE MONEY ARRIVING.
+      //
+      // checkout.session.completed fires when the customer finishes the
+      // Checkout flow. With a delayed-notification payment method -- bank
+      // debits, vouchers, bank transfers -- Stripe sends it immediately with
+      // payment_status "unpaid", and the funds may never arrive at all.
+      //
+      // ONLY ON THE PACK PATH, and the asymmetry is the whole reason. A pack
+      // grant is irreversible: credits never expire and nothing revokes them,
+      // so handing them out before the money settles cannot be undone.
+      //
+      // A SUBSCRIPTION IS NOT LIKE THAT, and guarding it the same way would be
+      // worse than not guarding it at all. If payment later fails, dunning
+      // corrects it -- invoice.payment_failed moves the row to past_due. But
+      // if this skipped an unpaid subscription session, nothing would ever
+      // activate it: invoice.paid deliberately ignores the first invoice
+      // (billing_reason "subscription_create"), so a customer whose payment
+      // settled a minute later would have paid and never received Pro, with no
+      // path back. Refusing is safe where there is a correction, and dangerous
+      // where there is none.
+      //
+      // "paid" EXACTLY, not "not unpaid". The third value,
+      // "no_payment_required", is a zero-amount session -- a full-discount
+      // coupon or a trial. We issue neither, so if one appears it is a surprise
+      // and should be refused rather than interpreted.
+      //
+      // Only cards, Apple Pay and Link are enabled on the account today, so
+      // this is currently always "paid". That is a dashboard setting, not a
+      // property of this code. A legitimate delayed payment that later succeeds
+      // arrives as checkout.session.async_payment_succeeded, which this
+      // endpoint does not subscribe to -- so if delayed methods are ever
+      // enabled, that event must be handled BEFORE they are, or real payments
+      // will go unfulfilled.
+      if (session.payment_status !== "paid") {
+        console.error(
+          "[webhook] refusing to grant scan credits for an unpaid session",
+          {
+            session_id: session.id,
+            payment_status: session.payment_status,
+            pack: pack.id,
+          },
+        );
+        return NextResponse.json({ received: true });
+      }
+
       // THE ERROR IS CHECKED, and that is the whole point of this block. The
       // grant is read-then-write, so a failed read that was treated as "no
       // credits yet" would write pack.scans as the new total and DESTROY every

@@ -82,9 +82,13 @@ function checkoutSessionUpsertBlock(): string {
 // branch that follows it in the same handler.
 function renewalUpdateBlock(): string {
   const source = readFileSync(WEBHOOK_PATH, "utf8");
+  // Anchored on the event-type check, not the bare string "invoice.paid".
+  // Prose elsewhere in the handler mentions invoice.paid by name, and the bare
+  // search began matching a COMMENT -- which moved this slice onto the
+  // completed-checkout upsert and read a correct renewal path as broken.
   const start = source.indexOf(
     'status: "active",',
-    source.indexOf("invoice.paid"),
+    source.indexOf('event.type === "invoice.paid"'),
   );
   expect(start).toBeGreaterThan(-1);
   const end = source.indexOf("renewErr", start);
