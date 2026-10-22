@@ -358,6 +358,16 @@ describe("where the offer appears", () => {
     expect(PRICING).toContain('state !== "subscribed" && !notConfiguredMsg');
   });
 
+  // THE GRID MUST DESCRIBE WHAT IS RENDERED. A fixed three-column grid kept
+  // reserving the card's slot for subscribers, who never see it -- leaving
+  // Free and Pro squeezed into two thirds of the row with a dead third beside
+  // them. One flag drives both the card and the column count so the two cannot
+  // disagree again.
+  it("drops to two columns when the card is not shown", () => {
+    expect(PRICING).toContain("showPayAsYouGo && \"lg:grid-cols-3\"");
+    expect(PRICING).toContain("{showPayAsYouGo ? (");
+  });
+
   // A CARD, not a footnote. The options previously sat inside the Pro card
   // under its CTA, findable only by someone already reading Pro closely and
   // willing to scroll -- which is not what "compare before you sign up" means.

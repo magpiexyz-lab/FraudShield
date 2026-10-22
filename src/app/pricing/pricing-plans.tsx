@@ -283,6 +283,12 @@ export function PricingPlans() {
     setState("error");
   }
 
+  // Hidden from subscribers: they already have 200 scans a month, the checkout
+  // route refuses them with already_subscribed, and offering it would be
+  // selling something they cannot buy. Also hidden when Stripe is unwired,
+  // where the buttons would only ever answer "coming soon".
+  const showPayAsYouGo = state !== "subscribed" && !notConfiguredMsg;
+
   return (
     <div className="space-y-5">
       {/* THREE ACROSS, not two plus a footnote. The one-time options used to
@@ -293,11 +299,22 @@ export function PricingPlans() {
 
           Free / Pro / Pay as you go also happens to be the real decision:
           nothing, a commitment, or a one-off. */}
-      {/* Two across at tablet widths, three only once there is room: three
+      {/* COLUMN COUNT FOLLOWS THE CARD COUNT. The pay-as-you-go card is hidden
+          from subscribers, and a fixed three-column grid kept reserving its
+          slot -- leaving Free and Pro squeezed into two thirds of the row with
+          a dead third beside them. The grid now describes what is actually
+          rendered.
+
+          Two across at tablet widths, three only once there is room: three
           cards at 768px squeezes every price and feature list into a column
           too narrow to compare, which defeats the point of showing them
           together. */}
-      <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+      <div
+        className={cn(
+          "grid gap-5 md:grid-cols-2",
+          showPayAsYouGo && "lg:grid-cols-3",
+        )}
+      >
         {PLANS.map((plan, index) => (
           <PlanCard
             key={plan.id}
@@ -319,7 +336,7 @@ export function PricingPlans() {
         {/* Hidden from subscribers: they already have 200 scans a month, the
             checkout route refuses them with already_subscribed, and offering
             it anyway would be selling something they cannot buy. */}
-        {state !== "subscribed" && !notConfiguredMsg ? (
+        {showPayAsYouGo ? (
           <PayAsYouGoCard style={{ animationDelay: `${PLANS.length * 90}ms` }} />
         ) : null}
       </div>
