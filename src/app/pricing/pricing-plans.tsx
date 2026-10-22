@@ -20,6 +20,7 @@ import {
 import { createClient } from "@/lib/supabase";
 import { PLANS, PAID_PLAN_ID, type PlanTier } from "./plans";
 import { ScanPackOptions } from "@/components/scan-pack-options";
+import { SCAN_PACKS } from "@/lib/types";
 
 // Phase 3: "Choose Pro" opens a REAL Stripe subscription checkout. The fake
 // door is retired - no pay_intent event, no early-access confirmation, and no
@@ -284,7 +285,19 @@ export function PricingPlans() {
 
   return (
     <div className="space-y-5">
-      <div className="grid gap-5 md:grid-cols-2">
+      {/* THREE ACROSS, not two plus a footnote. The one-time options used to
+          sit inside the Pro card, under its CTA and below the feature list --
+          present, but only findable by someone already reading Pro closely and
+          willing to scroll. Pricing is where people COMPARE before they sign
+          up, and a choice you have to go looking for is not in the comparison.
+
+          Free / Pro / Pay as you go also happens to be the real decision:
+          nothing, a commitment, or a one-off. */}
+      {/* Two across at tablet widths, three only once there is room: three
+          cards at 768px squeezes every price and feature list into a column
+          too narrow to compare, which defeats the point of showing them
+          together. */}
+      <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
         {PLANS.map((plan, index) => (
           <PlanCard
             key={plan.id}
@@ -302,6 +315,13 @@ export function PricingPlans() {
             notConfiguredMsg={plan.id === PAID_PLAN_ID ? notConfiguredMsg : ""}
           />
         ))}
+
+        {/* Hidden from subscribers: they already have 200 scans a month, the
+            checkout route refuses them with already_subscribed, and offering
+            it anyway would be selling something they cannot buy. */}
+        {state !== "subscribed" && !notConfiguredMsg ? (
+          <PayAsYouGoCard style={{ animationDelay: `${PLANS.length * 90}ms` }} />
+        ) : null}
       </div>
 
       <EnterpriseBand />
@@ -471,15 +491,6 @@ function PlanCard({
             {plan.cta}
           </Link>
         )}
-
-        {/* The smaller door, for someone who has decided $60/month is too much
-            to commit to. Only on the Pro card, and only when checkout is
-            actually available -- offering a one-off purchase to a subscriber
-            would sell them scans they already have, and the checkout route
-            refuses it anyway with already_subscribed. */}
-        {onUpgrade && !subscribed && !notConfigured ? (
-          <ScanPackOptions surface="pricing" />
-        ) : null}
 
         {/* ALONGSIDE, NEVER INSTEAD. The buy button above stays available to a
             zero-scan visitor; this is the free scan offered as an option. It
@@ -663,6 +674,79 @@ function AlreadySubscribedPanel() {
  * Intentionally fires no analytics event: the row is the signal, and a new
  * event mid-run would compete with checkout_start during the paid screen.
  */
+/**
+ * Scans bought outright, as a plan card rather than a footnote.
+ *
+ * WHY IT IS A CARD. The two options already existed on this page, inside the
+ * Pro card, under its CTA and below the feature list. Present, but only
+ * findable by someone already reading Pro closely and willing to scroll -- and
+ * pricing is where people COMPARE before they sign up. A choice you have to go
+ * looking for is not in the comparison.
+ *
+ * Free / Pro / Pay as you go is also the real decision someone is making:
+ * nothing, a commitment, or a one-off.
+ *
+ * DELIBERATELY NOT FEATURED. Pro keeps the ring, the glow and the "Most
+ * popular" badge; this card uses the quieter treatment the Free card uses.
+ * The point is to make the option visible, not to talk anyone out of
+ * subscribing.
+ */
+function PayAsYouGoCard({ style }: { style?: React.CSSProperties }) {
+  const single = SCAN_PACKS[0];
+  const pack = SCAN_PACKS[1];
+  const perScan = (pack.price_cents / pack.scans / 100).toFixed(2);
+
+  return (
+    <div
+      style={style}
+      className={cn(
+        "group relative flex flex-col rounded-xl p-5 sm:p-6",
+        "fs-reveal",
+        "bg-card/50 shadow-[0_0_0_1px_rgba(146,170,190,0.14),0_12px_30px_rgba(14,23,38,0.30)] backdrop-blur-sm",
+      )}
+    >
+      <header className="space-y-1">
+        <h2 className="font-heading text-xl font-semibold tracking-tight text-foreground">
+          Pay as you go
+        </h2>
+        <p className="text-sm leading-relaxed text-muted-foreground">
+          For a document or two, with no plan to cancel.
+        </p>
+      </header>
+
+      <div className="mt-5 flex items-baseline gap-1">
+        {/* The headline number is the SINGLE scan, not the pack. It is the
+            smallest thing someone can commit to, and the number that answers
+            "what does it cost to just try this once". */}
+        <span className="font-heading text-5xl font-semibold tracking-tight text-foreground">
+          ${(single.price_cents / 100).toFixed(0)}
+        </span>
+        <span className="text-sm text-muted-foreground">/ scan</span>
+      </div>
+
+      <ul className="mt-6 flex-1 space-y-3 text-sm">
+        {[
+          "Everything in the free scan",
+          `${pack.scans} scans for $${(pack.price_cents / 100).toFixed(0)} — $${perScan} each`,
+          "Scans never expire",
+          "No subscription, nothing to cancel",
+        ].map((label) => (
+          <li key={label} className="flex items-start gap-2.5">
+            <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-signal/12 text-signal">
+              <Check className="size-3.5" />
+            </span>
+            <span>{label}</span>
+          </li>
+        ))}
+      </ul>
+
+      {/* The buttons own their own checkout, so the card needs no CTA of its
+          own -- a third button here would just be a step before the real one. */}
+      <ScanPackOptions surface="pricing" className="mt-6" />
+    </div>
+  );
+}
+
 function EnterpriseBand() {
   type SubmitState = "idle" | "open" | "submitting" | "sent" | "error";
   const [submitState, setSubmitState] = useState<SubmitState>("idle");
