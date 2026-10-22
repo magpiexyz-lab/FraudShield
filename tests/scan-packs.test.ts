@@ -352,9 +352,33 @@ describe("where the offer appears", () => {
     expect(SCAN_RESULT).toContain('from "@/components/scan-pack-options"');
   });
 
-  // Selling scans to someone who already has 200 a month is not an offer.
+  // Selling scans to someone who already has 200 a month is not an offer, and
+  // the checkout route refuses them with already_subscribed anyway.
   it("is hidden from subscribers on the pricing page", () => {
-    expect(PRICING).toContain("onUpgrade && !subscribed && !notConfigured");
+    expect(PRICING).toContain('state !== "subscribed" && !notConfiguredMsg');
+  });
+
+  // A CARD, not a footnote. The options previously sat inside the Pro card
+  // under its CTA, findable only by someone already reading Pro closely and
+  // willing to scroll -- which is not what "compare before you sign up" means.
+  it("stands beside the plans rather than inside one", () => {
+    expect(PRICING).toContain("<PayAsYouGoCard");
+    expect(PRICING).toContain("lg:grid-cols-3");
+  });
+
+  // Exactly once on the page. Two copies of the same money buttons would be
+  // two places for the price to drift.
+  it("appears only once on the pricing page", () => {
+    expect(PRICING.split("<ScanPackOptions").length - 1).toBe(1);
+  });
+
+  // Pro keeps the ring, the glow and the badge. The point is to make the
+  // option visible, not to talk anyone out of subscribing.
+  it("does not outrank Pro visually", () => {
+    const start = PRICING.indexOf("function PayAsYouGoCard");
+    const card = PRICING.slice(start, PRICING.indexOf("function EnterpriseBand", start));
+    expect(card).not.toContain("Most popular");
+    expect(card).toContain("bg-card/50");
   });
 
   // Double-click protection: two sessions would be opened and the second
