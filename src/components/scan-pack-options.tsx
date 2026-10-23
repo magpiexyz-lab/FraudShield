@@ -1,6 +1,8 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SCAN_PACKS } from "@/lib/types";
@@ -43,13 +45,55 @@ export function ScanPackOptions({
   surface: "pricing" | "scan_result" | "dashboard_quota";
   className?: string;
 }) {
+  const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
+
+  // null while unknown. Resolved on mount rather than on click so the decision
+  // is already made by the time someone presses a button.
+  const [signedIn, setSignedIn] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    createClient()
+      .auth.getUser()
+      .then(({ data }: { data: { user: unknown } }) => {
+        if (!cancelled) setSignedIn(Boolean(data?.user));
+      })
+      .catch(() => {
+        // Unknown. Treated as signed out below, which sends them to sign in
+        // rather than into a checkout that would answer 401.
+        if (!cancelled) setSignedIn(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   // Fire-once latch, like the Pro CTA: a double click would otherwise open two
   // Stripe sessions and the second would be abandoned by construction.
   const firedRef = useRef(false);
 
   async function buy(packId: string) {
+    // SIGNED OUT GOES TO SIGN IN, not into checkout.
+    //
+    // /api/checkout answers 401 without a session, which the shared client
+    // renders as "Your session has expired. Please sign in again to upgrade."
+    // -- wrong for someone who never had a session, and a dead end: no link,
+    // nothing to click, no way forward.
+    //
+    // That is the exact path the IN/JP campaign creates. Its ads promise "$7"
+    // and land on /pricing, where the visitor is signed out by definition. The
+    // Pro button already redirected; these did not, so every one of those
+    // clicks ended on an error message about an expired session.
+    //
+    // Same destination as the Pro button, so both buttons behave alike. The
+    // login page carries a "Sign up" link for anyone who has no account.
+    if (signedIn === false) {
+      trackCheckoutStarted({ plan: packId, surface });
+      router.push(`/login?next=${encodeURIComponent("/pricing")}`);
+      return;
+    }
+
     if (firedRef.current) return;
     firedRef.current = true;
     setBusy(packId);
