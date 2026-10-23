@@ -397,6 +397,35 @@ describe("where the offer appears", () => {
     expect(COMPONENT).toContain("firedRef.current");
   });
 
+  // A SIGNED-OUT VISITOR MUST NOT REACH CHECKOUT. /api/checkout answers 401
+  // without a session, which the shared client renders as "Your session has
+  // expired. Please sign in again to upgrade." -- wrong for someone who never
+  // had a session, and a dead end with nothing to click.
+  //
+  // This is the exact path the IN/JP campaign creates: its ads promise $7 and
+  // land on /pricing, where the visitor is signed out by definition.
+  it("sends a signed-out visitor to sign in, not into checkout", () => {
+    expect(COMPONENT).toContain("if (signedIn === false)");
+    expect(COMPONENT).toContain('router.push(`/login?next=');
+  });
+
+  // Same destination as the Pro button, so both behave alike and neither
+  // needs its own explanation.
+  it("uses the same sign-in route as the Pro button", () => {
+    const proRoute = '/login?next=${encodeURIComponent("/pricing")}';
+    expect(PRICING).toContain(proRoute);
+    expect(COMPONENT).toContain(proRoute);
+  });
+
+  // Unknown auth state is treated as signed out: sending someone to sign in
+  // is recoverable, dropping them on a 401 is not.
+  it("fails toward sign-in when auth state cannot be read", () => {
+    const start = COMPONENT.indexOf("createClient()");
+    const block = COMPONENT.slice(start, COMPONENT.indexOf("async function buy", start));
+    expect(block).toContain("catch");
+    expect(block).toContain("setSignedIn(false)");
+  });
+
   // The promise made on the button has to match the migration behaviour.
   it("says the scans do not expire, which the schema guarantees", () => {
     expect(COMPONENT).toContain("never expire");
