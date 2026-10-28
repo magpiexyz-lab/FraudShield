@@ -245,8 +245,18 @@ describe("paying and receiving nothing", () => {
   // gate, someone who cancelled and later bought one pack would have usage
   // counted from this month only -- and would receive their free scan plus the
   // whole pack again every month, forever.
+  //
+  // The rule moved into lib/quota.ts (scanWindowStart) so the dashboard meter
+  // could read quota the same way this endpoint enforces it -- the dashboard
+  // had kept the old active-only filter because the rule was inlined here. The
+  // assertion tracks it rather than the expression it used to be: the route
+  // must delegate, and the gate must still exist where it now lives.
   it("applies the monthly window only to an active subscription", () => {
-    expect(SCAN).toContain('subRow?.status === "active" ? subRow.current_period_start');
+    expect(SCAN).toContain("scanWindowStart(");
+    const quota = read("src", "lib", "quota.ts");
+    const start = quota.indexOf("export function scanWindowStart");
+    expect(start).toBeGreaterThan(-1);
+    expect(quota.slice(start)).toContain('sub?.status !== "active"');
   });
 });
 

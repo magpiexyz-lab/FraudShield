@@ -24,7 +24,7 @@ import { z } from "zod";
 import exifr from "exifr";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { rateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
-import { computeQuota, currentPeriodStart } from "@/lib/quota";
+import { computeQuota, scanWindowStart } from "@/lib/quota";
 import { computeFraudScore } from "@/lib/fraud/score";
 import { analyzeDocumentForFraud, applyVisionSignals } from "@/lib/fraud/vision";
 import { isFullAnalysis } from "@/lib/fraud/analysis-mode";
@@ -256,25 +256,28 @@ export async function POST(request: Request) {
       .select("id", { count: "exact", head: true })
       .eq("counts_toward_quota", true);
 
-    // Paid plans count within the current monthly window. A NULL anchor means
+    // Paid plans count within the current monthly window. A NULL window means
     // free tier or a comped lifetime grant, where all-time counting is correct:
     // the free card sells "1 document scan, total", not one per month.
     //
-    // GATED ON status === "active", which matters now that the row above is
-    // read regardless of status. A CANCELLED subscriber keeps their old
-    // current_period_start, and currentPeriodStart() rolls any anchor forward
-    // to the present -- so without this gate, someone who cancelled and later
-    // bought a single pack would have their usage counted from this month only,
-    // and would receive their free scan plus the whole pack again every month,
-    // forever.
-    const subRow = sub as {
-      status?: string;
-      current_period_start?: string | null;
-    } | null;
-    const anchor =
-      subRow?.status === "active" ? subRow.current_period_start : null;
-    if (anchor) {
-      const windowStart = currentPeriodStart(new Date(anchor), new Date());
+    // GATED ON status === "active" inside scanWindowStart, which matters now
+    // that the row above is read regardless of status. A CANCELLED subscriber
+    // keeps their old current_period_start, and currentPeriodStart() rolls any
+    // anchor forward to the present -- so without that gate, someone who
+    // cancelled and later bought a single pack would have their usage counted
+    // from this month only, and would receive their free scan plus the whole
+    // pack again every month, forever.
+    //
+    // The rule lives in lib/quota.ts rather than here so the dashboard meter
+    // reads quota the same way this endpoint enforces it.
+    const windowStart = scanWindowStart(
+      sub as Pick<
+        SubscriptionsRow,
+        "status" | "current_period_start"
+      > | null,
+      new Date(),
+    );
+    if (windowStart) {
       scanQuery = scanQuery.gte("created_at", windowStart.toISOString());
     }
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeQuota, currentPeriodStart } from "./quota";
+import { computeQuota, currentPeriodStart, scanWindowStart } from "./quota";
 import { FREE_SCAN_QUOTA } from "./types";
 
 describe("computeQuota — free tier", () => {
@@ -161,5 +161,109 @@ describe("currentPeriodStart — monthly quota window", () => {
   it("treats a future anchor as the window start", () => {
     const now = new Date("2026-01-01T00:00:00.000Z");
     expect(currentPeriodStart(anchor, now).toISOString()).toBe(anchor.toISOString());
+  });
+});
+
+// REGRESSION -- scan-pack buyers locked out of scans they paid for.
+//
+// Both live paying customers hit this: a pack buyer's subscriptions row has
+// status "inactive" (they bought scans, they did not subscribe), so the
+// dashboard's own quota read filtered the row away and never selected
+// scan_credits. They were charged and shown an exhausted paywall. One of them
+// bought three times in a single day because the paywall kept re-offering the
+// buy button after each successful payment.
+//
+// scanWindowStart owns the billing-window decision that /api/scan used to
+// inline, so the dashboard and the API cannot drift apart again.
+describe("scan-pack buyer entitlement -- regression", () => {
+  it("grants a pack buyer the scans they bought despite an inactive status", () => {
+    const result = computeQuota({
+      scans_used: 1,
+      subscription: { status: "inactive", scan_quota: 0, scan_credits: 7 },
+    });
+    expect(result.remaining).toBe(7);
+    expect(result.allowed).toBe(true);
+    expect(result.is_paid).toBe(false);
+    expect(result.credits_remaining).toBe(7);
+  });
+
+  it("reproduces the exact five-day lockout: 1 credit bought, 1 free scan used", () => {
+    const result = computeQuota({
+      scans_used: 1,
+      subscription: { status: "inactive", scan_quota: 0, scan_credits: 1 },
+    });
+    expect(result.remaining).toBe(1);
+    expect(result.allowed).toBe(true);
+  });
+
+  it("refuses a pack buyer who has genuinely spent every scan", () => {
+    const result = computeQuota({
+      scans_used: 2,
+      subscription: { status: "inactive", scan_quota: 0, scan_credits: 1 },
+    });
+    expect(result.remaining).toBe(0);
+    expect(result.allowed).toBe(false);
+  });
+
+  it("does not widen the free allowance for a user who has bought nothing", () => {
+    const result = computeQuota({ scans_used: 1, subscription: null });
+    expect(result.remaining).toBe(0);
+    expect(result.allowed).toBe(false);
+  });
+
+  it("never adds permanent credits to a subscriber's monthly allowance", () => {
+    const result = computeQuota({
+      scans_used: 0,
+      subscription: { status: "active", scan_quota: 200, scan_credits: 5 },
+    });
+    expect(result.total_quota).toBe(200);
+    expect(result.credits_remaining).toBe(0);
+    expect(result.is_paid).toBe(true);
+  });
+});
+
+// A CANCELLED subscriber keeps their old current_period_start, and
+// currentPeriodStart() rolls any anchor forward to the present. Without the
+// status gate, someone who cancelled and later bought a single pack would have
+// usage counted from this month only -- and would receive their free scan plus
+// the whole pack again every month, forever.
+describe("scanWindowStart -- which scans count", () => {
+  const now = new Date("2026-10-28T12:00:00.000Z");
+
+  it("returns null for an inactive row even when an anchor is present", () => {
+    expect(
+      scanWindowStart(
+        { status: "inactive", current_period_start: "2026-01-15T10:00:00.000Z" },
+        now,
+      ),
+    ).toBeNull();
+  });
+
+  it("returns null for a canceled row even when an anchor is present", () => {
+    expect(
+      scanWindowStart(
+        { status: "canceled", current_period_start: "2026-01-15T10:00:00.000Z" },
+        now,
+      ),
+    ).toBeNull();
+  });
+
+  it("returns null when there is no row at all", () => {
+    expect(scanWindowStart(null, now)).toBeNull();
+  });
+
+  it("returns null for an active subscriber with no anchor recorded", () => {
+    expect(
+      scanWindowStart({ status: "active", current_period_start: null }, now),
+    ).toBeNull();
+  });
+
+  it("rolls an active subscriber's anchor forward to the current window", () => {
+    const start = scanWindowStart(
+      { status: "active", current_period_start: "2026-01-15T10:00:00.000Z" },
+      now,
+    );
+    expect(start).not.toBeNull();
+    expect(start!.toISOString()).toBe("2026-10-15T10:00:00.000Z");
   });
 });

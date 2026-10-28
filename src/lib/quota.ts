@@ -143,3 +143,35 @@ export function currentPeriodStart(anchor: Date, now: Date): Date {
   }
   return start;
 }
+
+/**
+ * The instant from which a user's scans should be counted, or null to count
+ * all-time.
+ *
+ * Owns the billing-window decision for every read path — /api/scan and the
+ * dashboard meter — so the two cannot drift apart again. The dashboard once
+ * counted all-time for everyone, which over-counted an active subscriber's
+ * usage; /api/scan hand-inlined this rule, which is why the fix never reached
+ * the meter.
+ *
+ * Returns null when there is no row, when the row is not an active
+ * subscription, or when no anchor is recorded. A NULL anchor means free tier or
+ * a comped lifetime grant, where all-time counting is correct: the free card
+ * sells "1 document scan, total", not one per month.
+ *
+ * GATED ON status === "active", and that gate is load-bearing now that the
+ * subscriptions row is read regardless of status (a pack buyer's status is
+ * "inactive"). A CANCELLED subscriber keeps their old current_period_start, and
+ * currentPeriodStart() rolls any anchor forward to the present -- so without
+ * this gate, someone who cancelled and later bought a pack would have their
+ * usage counted from this month only, and would be re-granted their free scan
+ * plus the whole pack every month, forever.
+ */
+export function scanWindowStart(
+  sub: Pick<SubscriptionsRow, "status" | "current_period_start"> | null,
+  now: Date,
+): Date | null {
+  if (sub?.status !== "active") return null;
+  if (!sub.current_period_start) return null;
+  return currentPeriodStart(new Date(sub.current_period_start), now);
+}
