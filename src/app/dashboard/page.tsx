@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { FREE_SCAN_QUOTA, type SubscriptionsRow } from "@/lib/types";
+import { computeQuota, scanWindowStart } from "@/lib/quota";
 import { UploadZone } from "./upload-zone";
 import { AbandonFollowup } from "./abandon-followup";
 import { ScanHistory } from "./scan-history";
@@ -19,6 +20,16 @@ import { trackPaywallShown } from "@/lib/events";
 type QuotaState = {
   used: number;
   total: number;
+  remaining: number;
+  /**
+   * True only for a genuine active subscription. NOT derived from a raised
+   * total: once purchased credits count toward the total, a scan-pack buyer's
+   * total exceeds the free allowance, and gating the billing portal on that
+   * would offer "Manage billing" to someone with no subscription to manage.
+   */
+  isPaid: boolean;
+  /** True when part of this allowance was bought outright (a scan pack). */
+  purchased: boolean;
   loading: boolean;
 };
 
@@ -26,6 +37,9 @@ export default function DashboardPage() {
   const [quota, setQuota] = useState<QuotaState>({
     used: 0,
     total: FREE_SCAN_QUOTA,
+    remaining: FREE_SCAN_QUOTA,
+    isPaid: false,
+    purchased: false,
     loading: true,
   });
   // Bumped when a scan batch finishes. This page reads its quota from the
@@ -38,8 +52,31 @@ export default function DashboardPage() {
     (async () => {
       const supabase = createClient();
 
-      // Used = count of this user's scans (RLS scopes to the current user).
-      const { count } = await supabase
+      // Read the billing row FIRST, because it carries the anchor that decides
+      // which scans count toward the allowance.
+      //
+      // NO STATUS FILTER, and scan_credits is selected. This read used to
+      // filter to `status = "active"` and never asked for credits, which hid a
+      // scan-pack buyer's row completely: their status is "inactive" because
+      // they bought scans, they did not subscribe. The total then fell back to
+      // the free allowance, remaining computed to 0, and the dashboard locked
+      // them out of scans they had already paid for while the exhausted paywall
+      // kept offering to sell them more. The row is per-user BILLING STATE, not
+      // proof of a plan — /api/scan reads it exactly this way.
+      //
+      // No user_id filter: RLS policy `subscriptions_select_own` already scopes
+      // this to the caller.
+      const { data: sub } = await supabase
+        .from("subscriptions")
+        .select("status, scan_quota, scan_credits, current_period_start")
+        .maybeSingle();
+
+      const subscription = sub as Pick<
+        SubscriptionsRow,
+        "status" | "scan_quota" | "scan_credits" | "current_period_start"
+      > | null;
+
+      let scanQuery = supabase
         .from("scans")
         // Must match the server-side quota check in /api/scan — partial image
         // analyses do not consume a free scan, so the meter must not show them
@@ -47,32 +84,40 @@ export default function DashboardPage() {
         .select("id", { count: "exact", head: true })
         .eq("counts_toward_quota", true);
 
-      // Quota total: paid subscription raises it; otherwise the free allowance.
-      const { data: sub } = await supabase
-        .from("subscriptions")
-        .select("id, status, plan, scan_quota")
-        .eq("status", "active")
-        .maybeSingle();
+      // A subscriber's allowance is monthly, so only this window's scans count;
+      // this page used to count all-time for everyone, which over-counted their
+      // usage. Null means all-time counting is correct (free tier, a pack
+      // buyer, or a comped lifetime grant).
+      const windowStart = scanWindowStart(subscription, new Date());
+      if (windowStart) {
+        scanQuery = scanQuery.gte("created_at", windowStart.toISOString());
+      }
+
+      const { count } = await scanQuery;
 
       if (!active) return;
 
-      const subscription = sub as Pick<
-        SubscriptionsRow,
-        "status" | "scan_quota"
-      > | null;
-      const total =
-        subscription?.status === "active" && subscription.scan_quota
-          ? subscription.scan_quota
-          : FREE_SCAN_QUOTA;
+      // Same decision the scan endpoint enforces, from the same module.
+      const result = computeQuota({
+        scans_used: count ?? 0,
+        subscription,
+      });
 
-      setQuota({ used: count ?? 0, total, loading: false });
+      setQuota({
+        used: count ?? 0,
+        total: result.total_quota,
+        remaining: result.remaining,
+        isPaid: result.is_paid,
+        purchased: !result.is_paid && (subscription?.scan_credits ?? 0) > 0,
+        loading: false,
+      });
     })();
     return () => {
       active = false;
     };
   }, [quotaEpoch]);
 
-  const remaining = Math.max(quota.total - quota.used, 0);
+  const remaining = quota.remaining;
 
   // Fires when the exhausted card actually renders — once, not per render.
   // Gated on `!quota.loading` so the first paint (used=0, total=default) cannot
@@ -83,8 +128,12 @@ export default function DashboardPage() {
     dashboardPaywallFired.current = true;
     trackPaywallShown({ surface: "dashboard_quota" });
   }, [quota.loading, remaining]);
-  const isPaid = quota.total > FREE_SCAN_QUOTA;
+  const isPaid = quota.isPaid;
   const pct = quota.total > 0 ? Math.min((quota.used / quota.total) * 100, 100) : 0;
+  // Someone who bought a scan pack spent scans they paid for, not free ones.
+  const exhaustedHeadline = quota.purchased
+    ? `You've used all ${quota.total} of your scans.`
+    : `Your free ${quota.total === 1 ? "scan has" : "scans have"} been used.`;
 
   return (
     <div className="dark min-h-screen overflow-x-hidden bg-background text-foreground">
@@ -124,6 +173,7 @@ export default function DashboardPage() {
                 total={quota.total}
                 remaining={remaining}
                 isPaid={isPaid}
+                purchased={quota.purchased}
                 pct={pct}
               />
               {/* Paid subscribers must be able to cancel from inside the product:
@@ -193,7 +243,7 @@ export default function DashboardPage() {
             <div className="mt-10 flex flex-col items-center gap-3 rounded-[var(--radius-lg)] bg-card p-6 text-center ring-1 ring-signal/30">
               <Sparkles className="h-5 w-5 text-signal" aria-hidden="true" />
               <p className="text-base font-medium text-foreground">
-                You&apos;ve used all {quota.total} free scans.
+                {exhaustedHeadline}
               </p>
               <p className="max-w-md text-sm text-muted-foreground">
                 Upgrade to keep verifying documents and unlock additional scan quota.
@@ -221,6 +271,7 @@ function QuotaMeter({
   total,
   remaining,
   isPaid,
+  purchased,
   pct,
 }: {
   loading: boolean;
@@ -228,13 +279,18 @@ function QuotaMeter({
   total: number;
   remaining: number;
   isPaid: boolean;
+  purchased: boolean;
   pct: number;
 }) {
   return (
     <div className="min-w-[200px] rounded-[var(--radius-lg)] bg-card p-4 ring-1 ring-border">
       <div className="flex items-baseline justify-between">
         <span className="font-[family-name:var(--font-mono)] text-xs uppercase tracking-wider text-muted-foreground">
-          {isPaid ? "Scans" : "Free scans"}
+          {/* "Free scans" is only true of an allowance that was given away.
+              A pack buyer paid for most of theirs, so the meter must not
+              label their purchase free -- the same claim the exhausted card
+              used to make. */}
+          {isPaid || purchased ? "Scans" : "Free scans"}
         </span>
         {loading ? (
           <span className="h-5 w-16 animate-pulse rounded-full bg-muted" aria-hidden="true" />

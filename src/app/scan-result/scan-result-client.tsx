@@ -22,8 +22,14 @@ import {
   VISION_CLEAR_BODY,
   type AnalysisMode,
 } from "@/lib/fraud/analysis-mode";
-import { FREE_SCAN_QUOTA, type FraudSignal, type ScansRow } from "@/lib/types";
+import {
+  FREE_SCAN_QUOTA,
+  type FraudSignal,
+  type ScansRow,
+  type SubscriptionsRow,
+} from "@/lib/types";
 import { hasProAccess } from "@/lib/pro-access";
+import { computeQuota, scanWindowStart } from "@/lib/quota";
 import { ScoreGauge } from "./score-gauge";
 import { SignalBreakdown } from "./signal-breakdown";
 import { ApiAccessDialog } from "./api-access-dialog";
@@ -41,13 +47,48 @@ const DOC_TYPE_LABEL: Record<string, string> = {
 
 type LoadState = "loading" | "ready" | "missing";
 
+/**
+ * What this page needs to know about the user's allowance.
+ *
+ * It used to keep a raw all-time scan count and compare it against the free
+ * allowance, which ignored scan_credits and scan_quota: a scan-pack buyer with
+ * scans still in hand was told they had spent all their free ones and sold
+ * another pack. The answer now comes from computeQuota -- the same authority
+ * /api/scan enforces -- so this surface cannot disagree with the endpoint.
+ */
+type QuotaState = {
+  /** True when the allowance is spent. Replaces the old count comparison. */
+  exhausted: boolean;
+  /** Scans left: free allowance plus purchased credits, or a plan's quota. */
+  remaining: number;
+  /** The whole allowance, for copy that names a number. */
+  total: number;
+  /**
+   * True when any of this allowance was paid for — a scan pack or an active
+   * plan. Copy only: the page must never call a paid scan a free one.
+   */
+  purchased: boolean;
+};
+
+/**
+ * FAILS OPEN on purpose. Used before the read resolves and if it throws: an
+ * unverified allowance must not raise a paywall, because the cost of a false
+ * paywall is a user paying twice for scans they already own.
+ */
+const QUOTA_UNRESOLVED: QuotaState = {
+  exhausted: false,
+  remaining: FREE_SCAN_QUOTA,
+  total: FREE_SCAN_QUOTA,
+  purchased: false,
+};
+
 export function ScanResultClient() {
   const searchParams = useSearchParams();
   const scanId = searchParams.get("id");
 
   const [state, setState] = useState<LoadState>("loading");
   const [scan, setScan] = useState<ScansRow | null>(null);
-  const [scansUsed, setScansUsed] = useState<number | null>(null);
+  const [quota, setQuota] = useState<QuotaState>(QUOTA_UNRESOLVED);
   // FAILS CLOSED. Starts false and is only ever set true by a row that says
   // active, so the window before the subscription read resolves shows the
   // locked view. The opposite default would flash the paid breakdown at every
@@ -70,34 +111,70 @@ export function ScanResultClient() {
           : query.order("created_at", { ascending: false }).limit(1);
 
         const { data } = await query.maybeSingle();
+
+        // WHO IS ALLOWED TO SEE THE BREAKDOWN, AND WHAT THEY HAVE LEFT. Read
+        // here rather than passed down from a server component because this
+        // page is a client component that already owns its own data fetching.
+        //
+        // Read BEFORE the scan count, because this row carries the anchor that
+        // decides which scans count toward the allowance.
+        //
+        // No user_id filter and no service-role client: the RLS policy
+        // subscriptions_select_own scopes this to the caller's own row, so one
+        // user cannot read another's plan. The Pro gate below stays
+        // status === "active" and nothing else, matching computeQuota and the
+        // checkout route's already-subscribed guard. A pending cancellation is
+        // deliberately still active: they have paid for the current period.
+        //
+        // scan_quota, scan_credits and current_period_start are now selected
+        // too, because status cannot answer "may this user scan again?". A
+        // scan-pack buyer's status is "inactive" -- they bought scans, they did
+        // not subscribe -- so reading status alone made every pack buyer look
+        // out of scans on the page they land on after every single scan.
+        const { data: sub } = await supabase
+          .from("subscriptions")
+          .select("status, scan_quota, scan_credits, current_period_start")
+          .maybeSingle();
+
+        const subscription = sub as Pick<
+          SubscriptionsRow,
+          "status" | "scan_quota" | "scan_credits" | "current_period_start"
+        > | null;
+
         // Matches the server-side quota check in /api/scan: a partial image
-        // analysis returns evidence but no verdict, so it does not spend a free
-        // scan and must not trigger the free-limit prompt.
-        const { count } = await supabase
+        // analysis returns evidence but no verdict, so it does not spend a
+        // scan and must not trigger the quota prompt.
+        let countQuery = supabase
           .from("scans")
           .select("id", { count: "exact", head: true })
           .eq("counts_toward_quota", true);
 
-        // WHO IS ALLOWED TO SEE THE BREAKDOWN. Read here rather than passed
-        // down from a server component because this page is a client component
-        // that already owns its own data fetching.
-        //
-        // No user_id filter and no service-role client: the RLS policy
-        // subscriptions_select_own scopes this to the caller's own row, so one
-        // user cannot read another's plan. Matches the gate used by
-        // computeQuota and by the checkout route's already-subscribed guard --
-        // status === "active" and nothing else. A pending cancellation is
-        // deliberately still active: they have paid for the current period.
-        const { data: subscription } = await supabase
-          .from("subscriptions")
-          .select("status")
-          .maybeSingle();
+        // A subscriber's allowance is monthly, so only this window's scans
+        // count. Null means all-time counting is correct (free tier, a pack
+        // buyer, or a comped lifetime grant).
+        const windowStart = scanWindowStart(subscription, new Date());
+        if (windowStart) {
+          countQuery = countQuery.gte("created_at", windowStart.toISOString());
+        }
+
+        const { count } = await countQuery;
 
         if (cancelled) return;
 
-        setIsPro(
-          hasProAccess((subscription as { status?: string } | null)?.status),
-        );
+        setIsPro(hasProAccess(subscription?.status));
+
+        // The same decision the scan endpoint enforces, from the same module.
+        const result = computeQuota({
+          scans_used: typeof count === "number" ? count : 0,
+          subscription,
+        });
+        setQuota({
+          exhausted: result.remaining <= 0,
+          remaining: result.remaining,
+          total: result.total_quota,
+          purchased:
+            result.is_paid || (subscription?.scan_credits ?? 0) > 0,
+        });
 
         const resolved = data as ScansRow | null;
         if (!resolved) {
@@ -105,18 +182,19 @@ export function ScanResultClient() {
           // falling back to demo seed data (which previously confused real
           // users into thinking the seed result was theirs).
           setScan(null);
-          setScansUsed(typeof count === "number" ? count : 0);
           setState("missing");
           return;
         }
         setScan(resolved);
-        setScansUsed(typeof count === "number" ? count : 1);
         setState("ready");
       } catch {
         if (cancelled) return;
         // On error: still avoid showing fake data. Empty-state is the safe default.
         setScan(null);
-        setScansUsed(0);
+        // Nothing was verified, so claim nothing was spent — see
+        // QUOTA_UNRESOLVED. A paywall raised by a failed read is the exact
+        // failure that charges a user for scans they already have.
+        setQuota(QUOTA_UNRESOLVED);
         setState("missing");
       }
     }
@@ -140,9 +218,6 @@ export function ScanResultClient() {
       );
     }
   }, [state, scan]);
-
-  const overFreeLimit =
-    scansUsed !== null && scansUsed >= FREE_SCAN_QUOTA;
 
   // Activation for the Phase 2 fake door: this user has received a fraud score.
   // Deliberately NOT "over the free limit" — gating the Upgrade CTA on quota
@@ -213,8 +288,7 @@ export function ScanResultClient() {
                   instance — a second one would duplicate its fire-once state. */}
               <ResultView
                 scan={scan}
-                scansUsed={scansUsed ?? 0}
-                overFreeLimit={overFreeLimit}
+                quota={quota}
                 hasActivated={hasActivated}
                 isPro={isPro}
               />
@@ -302,14 +376,12 @@ function EmptyState() {
 
 function ResultView({
   scan,
-  scansUsed,
-  overFreeLimit,
+  quota,
   hasActivated,
   isPro,
 }: {
   scan: ScansRow;
-  scansUsed: number;
-  overFreeLimit: boolean;
+  quota: QuotaState;
   hasActivated: boolean;
   isPro: boolean;
 }) {
@@ -334,10 +406,21 @@ function ResultView({
   // convert differently, so `surface` keeps them apart in the funnel.
   const quotaPaywallFired = useRef(false);
   useEffect(() => {
-    if (!overFreeLimit || quotaPaywallFired.current) return;
+    if (!quota.exhausted || quotaPaywallFired.current) return;
     quotaPaywallFired.current = true;
     trackPaywallShown({ surface: "scan_result_quota" });
-  }, [overFreeLimit]);
+  }, [quota.exhausted]);
+
+  // Someone who bought a scan pack spent scans they paid for, not free ones.
+  const exhaustedEyebrow = quota.purchased ? "Scans used" : "Free scans used";
+  const exhaustedHeadline = quota.purchased
+    ? `You've used all ${quota.total} of your scans`
+    : `Your free ${quota.total === 1 ? "scan has" : "scans have"} been used`;
+  // Same claim, other direction: the remaining count is free allowance plus
+  // anything purchased, and only the free part may be called free.
+  const remainingCopy = `${quota.remaining} ${
+    quota.purchased ? "" : "free "
+  }scan${quota.remaining === 1 ? "" : "s"} remaining.`;
 
   return (
     <div className="flex flex-col gap-12">
@@ -460,7 +543,7 @@ function ResultView({
           Sits ABOVE the signal breakdown: a quota-exhausted user has already
           read their score, and the breakdown below can run a full screen,
           which pushed the only offer they can act on off the fold. */}
-      {overFreeLimit && (
+      {quota.exhausted && (
         <section
           aria-label="Upgrade"
           className="rounded-xl bg-card p-6 ring-1 ring-suspect/40 md:p-8"
@@ -468,10 +551,10 @@ function ResultView({
           <div className="flex flex-col items-start justify-between gap-5 md:flex-row md:items-center">
             <div>
               <p className="font-mono text-xs uppercase tracking-wider text-suspect">
-                Free scans used
+                {exhaustedEyebrow}
               </p>
               <h2 className="mt-1.5 font-heading text-xl font-semibold">
-                You&apos;ve used all {FREE_SCAN_QUOTA} free scans
+                {exhaustedHeadline}
               </h2>
               <p className="mt-1 max-w-md text-sm text-muted-foreground">
                 Upgrade to keep scanning documents and unlock higher monthly
@@ -557,11 +640,9 @@ function ResultView({
         className="flex flex-col items-stretch gap-3 border-t border-border pt-8 sm:flex-row sm:items-center sm:justify-between"
       >
         <p className="text-sm text-muted-foreground">
-          {overFreeLimit
+          {quota.exhausted
             ? "Need to verify another document? Upgrade above to continue."
-            : `${Math.max(0, FREE_SCAN_QUOTA - scansUsed)} free scan${
-                FREE_SCAN_QUOTA - scansUsed === 1 ? "" : "s"
-              } remaining.`}
+            : remainingCopy}
         </p>
         <div className="flex flex-col gap-3 sm:flex-row">
           <ApiAccessDialog docType={scan.doc_type} />
