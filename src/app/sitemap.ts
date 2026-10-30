@@ -14,6 +14,9 @@ export default function sitemap(): MetadataRoute.Sitemap {
   return [
     { url: `${b}/`, lastModified: now, changeFrequency: 'weekly' as const, priority: 1.0 },
     { url: `${b}/dashboard`, lastModified: now, changeFrequency: 'weekly' as const, priority: 0.7 },
+    { url: `${b}/guides/edited-pdf`, lastModified: now, changeFrequency: 'weekly' as const, priority: 0.7 },
+    { url: `${b}/guides/fake-bank-statement`, lastModified: now, changeFrequency: 'weekly' as const, priority: 0.7 },
+    { url: `${b}/guides/fake-pay-stub`, lastModified: now, changeFrequency: 'weekly' as const, priority: 0.7 },
     { url: `${b}/login`, lastModified: now, changeFrequency: 'weekly' as const, priority: 0.7 },
     { url: `${b}/pricing`, lastModified: now, changeFrequency: 'weekly' as const, priority: 0.7 },
     { url: `${b}/auth/reset-password`, lastModified: now, changeFrequency: 'weekly' as const, priority: 0.7 },

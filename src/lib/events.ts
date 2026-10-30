@@ -1,4 +1,9 @@
 import { track } from "./analytics";
+// TYPE-ONLY on purpose. events.ts is imported by ~15 client components
+// including the landing page; a value import of the guide registry would drag
+// ~6000 words of prose into the landing-page bundle. isolatedModules erases a
+// type-only import before bundling, so this costs nothing at runtime.
+import type { GuideSlug } from "./guides-copy";
 
 // --- Event funnel stage map (generated from experiment/EVENTS.yaml) ---
 
@@ -19,6 +24,8 @@ export const EVENT_FUNNEL_MAP: Record<string, string> = {
   subscription_canceled: "retain",
   retain_return: "retain",
   feedback_submitted: "activate",
+  guide_view: "reach",
+  guide_cta_click: "demand",
 } as const;
 
 // --- Event wrappers (generated from experiment/EVENTS.yaml events map) ---
@@ -33,10 +40,27 @@ export function trackDemoView(props?: { variant?: string }) {
   track("demo_view", { ...props, funnel_stage: "reach" });
 }
 
+/**
+ * A /guides/* how-to page was loaded.
+ *
+ * `slug` is required rather than optional: an aggregate guide count cannot say
+ * which search intent is working, and h-11 reads guide_cta_click / guide_view
+ * per guide. This is also a SECOND reach entry point -- guide readers arrive
+ * from organic search and never fire visit_landing.
+ */
+export function trackGuideView(props: { slug: GuideSlug }) {
+  track("guide_view", { ...props, funnel_stage: "reach" });
+}
+
 // demand
 
 export function trackCtaClick(props?: { variant?: string }) {
   track("cta_click", { ...props, funnel_stage: "demand" });
+}
+
+/** The single "Upload it to FraudShield" CTA on a guide was clicked. */
+export function trackGuideCtaClick(props: { slug: GuideSlug }) {
+  track("guide_cta_click", { ...props, funnel_stage: "demand" });
 }
 
 /**
