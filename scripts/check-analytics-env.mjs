@@ -26,6 +26,63 @@ const isVercelBuildPlatform = process.env.CI === "1" && process.env.VERCEL === "
 const isRailwayBuildPlatform = !!process.env.RAILWAY_ENVIRONMENT_NAME;
 if (!isVercelBuildPlatform && !isRailwayBuildPlatform) process.exit(0);
 
+// --- Site URL -------------------------------------------------------------
+// Checked here rather than in vitest because this is the only place that runs
+// with the production environment's values: CI sets
+// NEXT_PUBLIC_SITE_URL=http://localhost:3000 for the vitest job, so a
+// "must not be localhost" assertion there would be permanently red.
+//
+// Why it is worth a build failure: src/app/layout.tsx builds metadataBase from
+// `process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"`, and the three
+// /guides/* pages store their canonical as a relative path that Next resolves
+// against it. Unset or localhost means three pages whose entire purpose is
+// search ranking ship a self-cancelling rel="canonical" pointing at localhost,
+// and a sitemap of localhost URLs. Nothing else in the pipeline catches it: the
+// build succeeds, the pages render, and the only symptom is that they never
+// rank.
+const LOCAL_HOSTNAMES = new Set([
+  "localhost",
+  "127.0.0.1",
+  "0.0.0.0",
+  "::1",
+  "[::1]",
+]);
+
+const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL ?? "").trim();
+
+// Parsed rather than substring-matched so that a legitimate production host
+// containing the word "localhost" in a path or query is not rejected, and so
+// that a value Next's `new URL(...)` would throw on fails here with a readable
+// message instead of mid-build.
+let siteUrlProblem = null;
+if (!siteUrl) {
+  siteUrlProblem = "it is not set";
+} else {
+  let parsed;
+  try {
+    parsed = new URL(siteUrl);
+  } catch {
+    siteUrlProblem = `'${siteUrl}' is not an absolute URL (needs the https:// scheme)`;
+  }
+  if (parsed) {
+    const host = parsed.hostname.toLowerCase();
+    if (LOCAL_HOSTNAMES.has(host) || host.endsWith(".localhost")) {
+      siteUrlProblem = `it points at this machine ('${siteUrl}')`;
+    }
+  }
+}
+
+if (siteUrlProblem) {
+  console.error(`\n[site-url] NEXT_PUBLIC_SITE_URL is unusable for a production build: ${siteUrlProblem}.`);
+  console.error(`This decides metadataBase in src/app/layout.tsx, so it decides`);
+  console.error(`the rel="canonical" on every page and every URL in the sitemap.`);
+  console.error(`\nFix:`);
+  console.error(`  Set NEXT_PUBLIC_SITE_URL to the site's public origin`);
+  console.error(`  (Vercel -> Project -> Settings -> Environment Variables),`);
+  console.error(`  e.g. https://fraudshield.example.com -- no trailing slash.\n`);
+  process.exit(1);
+}
+
 const PLACEHOLDER = "phc_TEAM_KEY";
 const envKey = process.env.NEXT_PUBLIC_POSTHOG_KEY ?? "";
 

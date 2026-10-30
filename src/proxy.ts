@@ -9,7 +9,12 @@ import { createServerClient } from "@supabase/ssr";
 // /terms is public: it is linked from the signed-out landing footer, and
 // behavior b-11 marks it `anonymous_allowed: true`, so derive_public_paths()
 // emits it. Gating it would 404-by-redirect the footer link for anonymous visitors.
-const publicPaths = ["/", "/api/health", "/auth/callback", "/auth/reset-password", "/login", "/pricing", "/signup", "/terms"];
+// The three /guides/* paths are public: behavior b-12 marks them
+// `anonymous_allowed: true`, so derive_public_paths() emits them. They exist to
+// be found by a stranger on Google who has no account. Matching below is exact
+// equality, so each guide needs its own literal entry -- a single "/guides"
+// prefix entry would match nothing.
+const publicPaths = ["/", "/api/health", "/auth/callback", "/auth/reset-password", "/guides/edited-pdf", "/guides/fake-bank-statement", "/guides/fake-pay-stub", "/login", "/pricing", "/signup", "/terms"];
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;

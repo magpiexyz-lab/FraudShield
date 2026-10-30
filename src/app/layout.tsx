@@ -41,6 +41,10 @@ export const metadata: Metadata = {
     type: "website",
     url: "/",
   },
+  // Renders <meta name="google-site-verification">. Search Console will not
+  // accept the property without it, and until it does the sitemap that lists
+  // the b-12 guides cannot be submitted.
+  verification: { google: "6jyisz8z5MiSIqP8NU8QwtQz2X-rVikhfFldreNaOrA" },
 };
 
 const jsonLd = {

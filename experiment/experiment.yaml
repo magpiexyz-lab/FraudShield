@@ -140,6 +140,26 @@ hypotheses:
     experiment_level: 1
     depends_on: []
     status: resolved
+  - id: h-11
+    category: demand
+    statement: ">3% of guide readers click through to sign up (organic search is a viable acquisition channel, not just paid)"
+    metric:
+      formula: "guide_cta_click / guide_view"
+      # PLACEHOLDER pending the manager's number. Nearest anchors are h-01 at 0.05
+      # (landing CTA, buying intent) and h-02 at 0.35 (demo engagement). Informational
+      # search traffic converts differently and nothing in this repo benchmarks it, so
+      # this threshold is an estimate, not evidence. Set too high it returns REJECTED
+      # on the only organic channel; too low it confirms on noise.
+      threshold: 0.03
+      operator: gte
+    # Deliberately below h-02's 85 so this does not take over a Validation Scorecard
+    # row. A brand-new unseeded SEO metric must not be able to drive the kill rule
+    # ("Any top-funnel (REACH or DEMAND) < 0.5") on an experiment whose paid funnel
+    # is healthy. h-01 holds DEMAND at 92.
+    priority_score: 60
+    experiment_level: 1
+    depends_on: []
+    status: pending
 
 # --- 3. Behaviors ---
 behaviors:
@@ -201,6 +221,23 @@ behaviors:
       - "Support address appears on the pricing page, on the terms page, and in the landing footer"
       - "Terms page is reachable by a signed-out visitor without an auth redirect"
       - "Every displayed price derives from PLAN_PRICES, never a hardcoded string"
+    level: 1
+  - id: b-12
+    hypothesis_id: h-11
+    pages: [guides/fake-pay-stub, guides/fake-bank-statement, guides/edited-pdf]
+    # Public by design: these pages exist to be found by a stranger on Google who
+    # has no account. anonymous_allowed drives derive_public_paths(), which is the
+    # documented source for the proxy publicPaths array.
+    anonymous_allowed: true
+    given: "Someone is mid-task reviewing a document and searches for how to tell whether it is fake"
+    when: "They land on a FraudShield guide from organic search, read it, and reach the scan prompt"
+    then: "They get a complete, honest manual checklist they can act on without an account, and one offer to run the same file through the scan"
+    tests:
+      - "Each guide page is reachable by a signed-out visitor without an auth redirect"
+      - "Each guide carries its own title, description and canonical rather than the homepage metadata"
+      - "Each guide renders exactly one Upload it to FraudShield call to action pointing at /signup"
+      - "guide_view fires once per guide load carrying that guide slug"
+      - "Guide prose matches the committed source document word for word"
     level: 1
   - id: b-05
     hypothesis_id: h-06
