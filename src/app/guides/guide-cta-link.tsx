@@ -32,7 +32,18 @@ export function GuideCtaLink({
       // the same inline treatment, taking the page's single accent for the
       // text as well as the underline, so it reads as the one thing to do here
       // without becoming a button in the middle of a sentence.
-      className="rounded-sm font-medium text-signal underline decoration-signal/60 underline-offset-4 transition-colors hover:decoration-signal focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+      //
+      // py-1 is the tap target, not spacing. Measured at 390px -- the width
+      // most of this traffic reads at -- the anchor's own box was 88x20, and
+      // this is the one target in a nine-screen document that has to be hit
+      // with a thumb, on the page whose whole job is the guide_cta_click rate.
+      // Vertical padding on an INLINE element grows the hit box without
+      // touching layout: it paints outside the 26px line box rather than
+      // pushing the lines apart, and nothing is painted here (no background,
+      // no border), so 20px becomes 28px and not one pixel moves. That is why
+      // the padding is vertical only -- horizontal padding would widen the
+      // box inside the sentence and open a visible gap around the word.
+      className="rounded-sm py-1 font-medium text-signal underline decoration-signal/60 underline-offset-4 transition-colors hover:decoration-signal focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
     >
       {children}
     </Link>
