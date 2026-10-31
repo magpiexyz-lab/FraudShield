@@ -35,13 +35,18 @@ import { test, expect } from "@playwright/test";
 // reads both `loading` and `user`.
 
 /**
- * The auth-gated routes, as a SET rather than two hard-coded link names.
+ * The auth-gated routes this browser test drives. HAND-MAINTAINED: it covers
+ * exactly the two routes written here and nothing else, so a third gated link
+ * added to the nav is not checked by this file until someone remembers to add
+ * it below. Do not read this list as a general guard.
  *
- * Stated this way on purpose: the next page appended to the nav carries no
- * forcing function to declare whether it is public, so a test naming only
- * "Dashboard" and "Scan result" would pass while a fourth gated link leaked
- * into the public fragment. Add any new auth-gated route here and the guard
- * extends with it.
+ * The general guard is the DERIVED one in tests/nav-bar.test.ts, which reads
+ * publicPaths out of src/proxy.ts and asserts every href in the public nav
+ * fragment is a known public path. That extends itself to routes that do not
+ * exist yet; this list does not. What this file adds on top is behavioural
+ * proof in a real browser -- that the rendered pre-hydration HTML omits the
+ * gated links and the hydrated signed-in nav brings them back -- which source
+ * inspection cannot show.
  */
 const AUTH_GATED_ROUTES = ["/dashboard", "/scan-result"] as const;
 
