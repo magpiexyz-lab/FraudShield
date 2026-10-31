@@ -86,7 +86,20 @@ export function NavBar() {
   // Bootstrap emits these from derive_scope_pages(experiment) — the canonical
   // SET inventory — minus auth/landing routes. Golden_path pages come first in
   // funnel order, then behavior-only pages alphabetically. See wire.md Step 5b.3.
-  const navLinks = (
+  //
+  // Split into gated and public because the derived set describes the SITE MAP,
+  // not what THIS visitor may open. /scan-result and /dashboard are absent from
+  // publicPaths in src/proxy.ts, so offering them to a signed-out visitor sent
+  // them to /login — which the three public /guides/* pages turned from a
+  // curiosity into a cost, since those exist to receive strangers from search.
+  //
+  // KEEP THE href LITERALS. The bg2-wire-nav-reachability gate
+  // (.claude/patterns/gate-evidence-rules.json) proves every static scope page
+  // is reachable by bare-slug `href=` SUBSTRING matching against this file.
+  // Collapsing these into a {href, label} array and mapping over it reads
+  // better and deletes the literals, which fails route reachability on the next
+  // /change or /bootstrap run. tests/nav-bar.test.ts pins this.
+  const gatedNavLinks = (
     <>
       {/* DERIVED-FROM: derive_scope_pages */}
       <Link
@@ -101,6 +114,15 @@ export function NavBar() {
       >
         Dashboard
       </Link>
+    </>
+  );
+
+  // /pricing stays visible to everyone: it is a deliberate hand-added entry in
+  // proxy.ts publicPaths because it is the paywall destination, and gating it
+  // bounced signed-out visitors to /login at the exact moment they were
+  // deciding whether to pay.
+  const publicNavLinks = (
+    <>
       <Link
         href="/pricing"
         className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
@@ -109,6 +131,12 @@ export function NavBar() {
       </Link>
     </>
   );
+
+  // `loading` counts as anonymous, not as signed-in. Rendering the gated links
+  // and then retracting them once the session resolves is the defect being
+  // fixed; the gated routes are themselves auth-walled, so anyone genuinely on
+  // one resolves to signed-in a moment later and the links appear.
+  const showGatedLinks = !loading && user !== null;
 
   const authSection = loading ? (
     <Button variant="outline" disabled className="min-w-[70px]">
@@ -143,7 +171,8 @@ export function NavBar() {
       <BrandLogo wordmark wordmarkSize={20} />
       {/* Desktop nav */}
       <div className="hidden md:flex items-center gap-4">
-        {navLinks}
+        {showGatedLinks && gatedNavLinks}
+        {publicNavLinks}
         {authSection}
       </div>
       {/* Mobile hamburger menu */}
@@ -158,7 +187,8 @@ export function NavBar() {
           <SheetContent side="right" className="w-[280px]">
             <SheetTitle className="sr-only">Site navigation</SheetTitle>
             <div className="flex flex-col gap-4 mt-8">
-              {navLinks}
+              {showGatedLinks && gatedNavLinks}
+              {publicNavLinks}
               {authSection}
             </div>
           </SheetContent>
