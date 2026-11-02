@@ -1,6 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
+import { normalizePathname } from "@/lib/normalize-path";
+
 // publicPaths derived from experiment.yaml via:
 // python3 .claude/scripts/lib/derive_pages.py public_paths < experiment/experiment.yaml
 // /pricing is public: it is the paywall destination, and gating it behind auth
@@ -14,14 +16,39 @@ import { createServerClient } from "@supabase/ssr";
 // be found by a stranger on Google who has no account. Matching below is exact
 // equality, so each guide needs its own literal entry -- a single "/guides"
 // prefix entry would match nothing.
+//
+// KEEP THE DECLARATION BELOW A SINGLE-LINE ARRAY LITERAL. Two test files
+// regex-parse this binding's declaration straight out of this source file:
+// tests/nav-bar.test.ts derives the auth-gated set as its complement (the AC5
+// guard from PR #100), and tests/normalize-path.test.ts derives the paths whose
+// trailing-slash form must match. Splitting it across lines, moving it to
+// another module, converting it to a Set or building it at runtime breaks both
+// parsers. Note the parsers scan the whole file, so do not write that
+// declaration's opening text inside a comment either -- the regex matches the
+// comment first and both guards fail with "parsed ZERO entries".
 const publicPaths = ["/", "/api/health", "/auth/callback", "/auth/reset-password", "/guides/edited-pdf", "/guides/fake-bank-statement", "/guides/fake-pay-stub", "/login", "/pricing", "/signup", "/terms"];
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  // Matched against publicPaths below INSTEAD OF the raw pathname, because that
+  // comparison is exact equality and next.config.ts sets
+  // `skipTrailingSlashRedirect: true` -- so Next.js never canonicalises the URL
+  // and "/pricing/" arrived here with the slash intact, failed `=== "/pricing"`,
+  // and fell through to the auth branch. Every public URL with a trailing slash
+  // was 307-ing to /login in production on 2026-11-02, including the three SEO
+  // guides whose whole purpose is to be read by strangers with no account.
+  // See src/lib/normalize-path.ts for the full write-up.
+  //
+  // Computed once, here, and used ONLY in the membership test. Deliberately not
+  // applied to the auth branch below: `pathname` stays raw there, so "/dashboard/"
+  // is still gated (its normalised form is absent from publicPaths too) and the
+  // `next=` param still carries the URL the visitor actually requested.
+  const normalized = normalizePathname(pathname);
+
   // Skip public paths, static files, API routes, analytics proxy, and variant routes
   if (
-    publicPaths.some((p) => pathname === p) ||
+    publicPaths.some((p) => normalized === p) ||
     pathname.startsWith("/_next") ||
     pathname.startsWith("/api/") ||
     pathname.startsWith("/ingest/") ||

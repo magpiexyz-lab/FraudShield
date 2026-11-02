@@ -81,8 +81,8 @@ describe("b-12: the three guide pages are publicly reachable", () => {
 
   it("matches on exact equality, so each guide path needs its own entry", () => {
     // A single "/guides" prefix entry would not work: the proxy tests
-    // `pathname === p`, never startsWith.
-    expect(proxySource).toContain("pathname === p");
+    // `normalized === p`, never startsWith.
+    expect(proxySource).toContain("normalized === p");
     for (const slug of ["fake-pay-stub", "fake-bank-statement", "edited-pdf"]) {
       expect(parsePublicPaths()).toContain(`/guides/${slug}`);
     }
