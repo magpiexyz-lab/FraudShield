@@ -131,14 +131,27 @@ export function ScanResultClient() {
         // scan-pack buyer's status is "inactive" -- they bought scans, they did
         // not subscribe -- so reading status alone made every pack buyer look
         // out of scans on the page they land on after every single scan.
+        //
+        // stripe_subscription_id and current_period_end are what expire a
+        // COMPED grant: an active row with no Stripe subscription behind it is a
+        // comp, and a comp ends at its period end. A missing
+        // current_period_end reads as "no end date", i.e. perpetual, so a
+        // shortened select here would unlock the paid breakdown for ever.
         const { data: sub } = await supabase
           .from("subscriptions")
-          .select("status, scan_quota, scan_credits, current_period_start")
+          .select(
+            "status, scan_quota, scan_credits, current_period_start, stripe_subscription_id, current_period_end",
+          )
           .maybeSingle();
 
         const subscription = sub as Pick<
           SubscriptionsRow,
-          "status" | "scan_quota" | "scan_credits" | "current_period_start"
+          | "status"
+          | "scan_quota"
+          | "scan_credits"
+          | "current_period_start"
+          | "stripe_subscription_id"
+          | "current_period_end"
         > | null;
 
         // Matches the server-side quota check in /api/scan: a partial image
@@ -161,7 +174,7 @@ export function ScanResultClient() {
 
         if (cancelled) return;
 
-        setIsPro(hasProAccess(subscription?.status));
+        setIsPro(hasProAccess(subscription, new Date()));
 
         // The same decision the scan endpoint enforces, from the same module.
         const result = computeQuota({

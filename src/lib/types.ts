@@ -71,6 +71,14 @@ export type SubscriptionsRow = {
   // who has bought nothing has bought zero, which is a fact, not an unknown.
   scan_credits: number;
   current_period_start: string | null;  // timestamptz billing anchor; NULL = all-time
+  // End of the current billing period. The column has existed since migration
+  // 009 (supabase/migrations/009_add_subscription_interval_period.sql, which
+  // adds it alongside billing_interval) and this type had drifted without it,
+  // so no read site could be typed to require the one column that expires a
+  // comped grant. NULL means the row predates 009, or it is a comped grant with
+  // no Stripe subscription behind it and so no interval to end -- which is why
+  // hasProAccess (src/lib/pro-access.ts) reads NULL as "never expires".
+  current_period_end: string | null;    // timestamptz; NULL = no period end
   created_at: string;                   // timestamptz
 };
 

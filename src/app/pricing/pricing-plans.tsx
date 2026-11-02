@@ -21,6 +21,8 @@ import { createClient } from "@/lib/supabase";
 import { PLANS, PAID_PLAN_ID, type PlanTier } from "./plans";
 import { ScanPackOptions } from "@/components/scan-pack-options";
 import { SCAN_PACKS } from "@/lib/types";
+import { hasProAccess } from "@/lib/pro-access";
+import type { EntitlementRow } from "@/lib/pro-access";
 
 // Phase 3: "Choose Pro" opens a REAL Stripe subscription checkout. The fake
 // door is retired - no pay_intent event, no early-access confirmation, and no
@@ -153,16 +155,20 @@ export function PricingPlans() {
         // a second effect, so the card never renders "Choose Pro" to a
         // subscriber during a gap between two in-flight probes. RLS scopes this
         // to their own row.
+        //
+        // ALL THREE ENTITLEMENT COLUMNS, not just status. A comped grant is
+        // active with no Stripe subscription behind it and expires at its
+        // period end, and nothing flips its status when it does -- so status
+        // alone would show an expired comp "You're on Pro" with no buy button
+        // to click, and the one cohort most likely to convert could not.
         const { data: sub } = await supabase
           .from("subscriptions")
-          .select("status")
+          .select("status, stripe_subscription_id, current_period_end")
           .maybeSingle();
         if (cancelled) return;
         setUser(authUser?.id ?? null);
         setHasActivated((count ?? 0) > 0);
-        setIsSubscribed(
-          (sub as { status?: string } | null)?.status === "active",
-        );
+        setIsSubscribed(hasProAccess(sub as EntitlementRow | null, new Date()));
       } catch {
         // FAIL OPEN, deliberately. A failed probe must not lock a non-paying
         // visitor out of buying - that would cost a sale to protect against a

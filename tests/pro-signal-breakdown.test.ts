@@ -14,12 +14,21 @@
 // vitest runs environment "node" with no jsdom, so the component cannot be
 // rendered here. The entitlement rule is therefore a pure function, tested
 // directly, plus the few structural assertions that have no other guard.
+//
+// SECOND BUG, SAME FUNCTION. The rule used to be `status === "active"` and
+// nothing else, with no date in scope. A Stripe subscription has a webhook to
+// flip its status; a COMPED row does not, so once granted it entitled its
+// owner to Pro forever. hasProAccess now takes the whole entitlement row and
+// the current instant, which is why the cases below are a table rather than a
+// list of status strings.
 
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
 import { hasProAccess } from "@/lib/pro-access";
+import type { EntitlementRow } from "@/lib/pro-access";
+import type { SubscriptionsRow } from "@/lib/types";
 
 const repoRoot = path.resolve(__dirname, "..");
 const read = (...p: string[]) =>
@@ -27,46 +36,116 @@ const read = (...p: string[]) =>
 
 const CLIENT = ["src", "app", "scan-result", "scan-result-client.tsx"];
 
+/** The instant every case below is judged against. */
+const NOW = new Date("2026-11-02T12:00:00.000Z");
+const PAST = "2026-10-01T00:00:00.000Z";
+const FUTURE = "2026-12-01T00:00:00.000Z";
+/** A row with a Stripe subscription behind it. */
+const STRIPE_ID = "sub_1QabcdEFghijkLM";
+
+// Defaults are a COMPED grant: active, no Stripe subscription, no end date --
+// the shape every comp written before migration 009 actually has.
+const row = (over: Partial<EntitlementRow> = {}): EntitlementRow => ({
+  status: "active",
+  stripe_subscription_id: null,
+  current_period_end: null,
+  ...over,
+});
+
 describe("hasProAccess", () => {
-  it("grants access to an active subscription", () => {
-    expect(hasProAccess("active")).toBe(true);
+  // THE BOUNDARY IS EXCLUSIVE: the rule is current_period_end > now, so a comp
+  // whose end date is exactly now has ENDED. current_period_end is the first
+  // instant of the next period, not the last instant of this one -- it is what
+  // Stripe bills on, and treating it as still-covered would give every grant an
+  // extra instant and make the "expired" and "not yet expired" sets overlap.
+  const cases: ReadonlyArray<readonly [string, EntitlementRow | null, boolean]> = [
+    ["an active Stripe subscription", row({ stripe_subscription_id: STRIPE_ID }), true],
+
+    // STRIPE IS THE AUTHORITY, and this case is the reason the Stripe branch
+    // comes before the date branch. current_period_end is refreshed by
+    // invoice.paid; if that webhook is late, slow or retried, the stored date
+    // goes stale while the customer is still being billed. Expiring on the
+    // stored date would revoke paid access over OUR bookkeeping lag.
+    [
+      "a Stripe subscription whose stored period end is already past",
+      row({ stripe_subscription_id: STRIPE_ID, current_period_end: PAST }),
+      true,
+    ],
+
+    // Every comp granted before migration 009 is NULL-dated and must keep
+    // working: a lifetime grant bills on no interval, so NULL is the truthful
+    // answer, not a missing one.
+    ["a comped grant with no end date", row(), true],
+    ["a comped grant inside its window", row({ current_period_end: FUTURE }), true],
+
+    // THE BUG. This row entitled its owner to Pro forever.
+    ["a comped grant past its end date", row({ current_period_end: PAST }), false],
+    [
+      "a comped grant ending at exactly this instant",
+      row({ current_period_end: NOW.toISOString() }),
+      false,
+    ],
+
+    // Status still governs first, whatever the dates say.
+    ["an inactive row", row({ status: "inactive", current_period_end: FUTURE }), false],
+    ["a canceled row", row({ status: "canceled", current_period_end: FUTURE }), false],
+    [
+      "a past_due row",
+      row({ status: "past_due", stripe_subscription_id: STRIPE_ID }),
+      false,
+    ],
+
+    // No row at all: a free user who has never subscribed. maybeSingle()
+    // returns null, which must not be truthy.
+    ["no row at all", null, false],
+  ];
+
+  it.each(cases)("%s -> %s", (_label, sub, expected) => {
+    expect(hasProAccess(sub, NOW)).toBe(expected);
   });
 
   // THE PENDING-CANCELLATION CASE. Cancelling in the portal leaves status
   // active until the paid period ends -- only customer.subscription.deleted
   // moves it to canceled. Gating on cancel_at_period_end instead would revoke
   // the breakdown the moment they click cancel, taking away a month they have
-  // already paid for.
+  // already paid for. It keeps working for free under the new rule: such a row
+  // has a stripe_subscription_id, so status alone decides it.
   it("keeps access through a pending cancellation", () => {
-    expect(hasProAccess("active")).toBe(true);
+    expect(
+      hasProAccess(row({ stripe_subscription_id: STRIPE_ID }), NOW),
+    ).toBe(true);
   });
 
   // Dunning is still retrying their card. Treating past_due as paid hands a
   // free month to anyone whose payment bounces.
-  it("refuses a past_due subscription", () => {
-    expect(hasProAccess("past_due")).toBe(false);
-  });
-
-  it("refuses canceled and inactive subscriptions", () => {
-    expect(hasProAccess("canceled")).toBe(false);
-    expect(hasProAccess("inactive")).toBe(false);
-  });
-
-  // No row at all: a free user who has never subscribed. maybeSingle() returns
-  // null, so undefined reaches this function and must not be truthy.
-  it("refuses a user with no subscription row", () => {
-    expect(hasProAccess(null)).toBe(false);
-    expect(hasProAccess(undefined)).toBe(false);
-    expect(hasProAccess("")).toBe(false);
+  it("refuses a past_due subscription even with time left on the clock", () => {
+    expect(
+      hasProAccess(row({ status: "past_due", current_period_end: FUTURE }), NOW),
+    ).toBe(false);
   });
 
   // Guards the comparison itself. "Active" or " active " must not pass: the
-  // column is written only by the webhook, but a lenient match here would
-  // quietly widen who counts as paid.
+  // column is written only by the webhook and the type says so, but these rows
+  // arrive from Supabase as untyped JSON, and a lenient match here would
+  // quietly widen who counts as paid. The cast is what a caller reading
+  // maybeSingle() has anyway.
   it("matches the status string exactly", () => {
-    expect(hasProAccess("Active")).toBe(false);
-    expect(hasProAccess("ACTIVE")).toBe(false);
-    expect(hasProAccess(" active")).toBe(false);
+    const as = (s: string) =>
+      row({ status: s as SubscriptionsRow["status"] });
+    expect(hasProAccess(as("Active"), NOW)).toBe(false);
+    expect(hasProAccess(as("ACTIVE"), NOW)).toBe(false);
+    expect(hasProAccess(as(" active"), NOW)).toBe(false);
+    expect(hasProAccess(as(""), NOW)).toBe(false);
+  });
+
+  // A malformed date must not read as "no end date". Date("nonsense") is
+  // Invalid Date, and every comparison against it is false -- including
+  // `end > now` -- so an unparseable value fails CLOSED here rather than
+  // granting the perpetual access a NULL grants.
+  it("refuses a comp whose end date cannot be parsed", () => {
+    expect(hasProAccess(row({ current_period_end: "not-a-date" }), NOW)).toBe(
+      false,
+    );
   });
 });
 
