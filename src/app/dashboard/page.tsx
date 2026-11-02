@@ -66,14 +66,27 @@ export default function DashboardPage() {
       //
       // No user_id filter: RLS policy `subscriptions_select_own` already scopes
       // this to the caller.
+      //
+      // stripe_subscription_id and current_period_end feed computeQuota's paid
+      // check: an active row with no Stripe subscription is a COMPED grant and
+      // expires at its period end. An absent current_period_end reads as "no
+      // end date" -- a lifetime grant -- so dropping it from this select would
+      // quietly give an expired comp the Pro quota for ever.
       const { data: sub } = await supabase
         .from("subscriptions")
-        .select("status, scan_quota, scan_credits, current_period_start")
+        .select(
+          "status, scan_quota, scan_credits, current_period_start, stripe_subscription_id, current_period_end",
+        )
         .maybeSingle();
 
       const subscription = sub as Pick<
         SubscriptionsRow,
-        "status" | "scan_quota" | "scan_credits" | "current_period_start"
+        | "status"
+        | "scan_quota"
+        | "scan_credits"
+        | "current_period_start"
+        | "stripe_subscription_id"
+        | "current_period_end"
       > | null;
 
       let scanQuery = supabase

@@ -10,6 +10,7 @@
  * and subscription status from Supabase.
  */
 
+import { hasProAccess } from "@/lib/pro-access";
 import { FREE_SCAN_QUOTA } from "@/lib/types";
 import type { SubscriptionsRow } from "@/lib/types";
 
@@ -25,8 +26,29 @@ export type QuotaInput = {
    */
   subscription: Pick<
     SubscriptionsRow,
-    "status" | "scan_quota" | "scan_credits"
+    | "status"
+    | "scan_quota"
+    | "scan_credits"
+    // THE ENTITLEMENT COLUMNS, both required. "Is this user paid?" is no longer
+    // answerable from status alone: an active row with no Stripe subscription
+    // is a COMPED grant, and a comp expires at its period end. Required rather
+    // than optional because an absent current_period_end reads as "no end
+    // date" and therefore as a lifetime grant -- a read site that forgot it
+    // would hand out perpetual Pro and look fine doing it.
+    | "stripe_subscription_id"
+    | "current_period_end"
   > | null;
+  /**
+   * The instant to judge expiry against. Defaults to now.
+   *
+   * OPTIONAL ON PURPOSE, unlike hasProAccess's required `now`. There, omitting
+   * the data is dangerous -- forgetting a column grants Pro for ever -- so the
+   * signature forces every caller to think. Here the only risk of omission is
+   * disagreeing about what time it is, and no caller has a reason to: all three
+   * production callers pass an object literal and mean this instant. Requiring
+   * it would be churn that buys no safety.
+   */
+  now?: Date;
 };
 
 export type QuotaResult = {
@@ -55,9 +77,12 @@ export type QuotaResult = {
  * @returns QuotaResult — use `allowed` to gate the scan endpoint
  */
 export function computeQuota(input: QuotaInput): QuotaResult {
-  const isPaid =
-    input.subscription !== null &&
-    input.subscription.status === "active";
+  // THE ONE ENTITLEMENT RULE, shared with the scan-result paywall, the pricing
+  // page and the checkout guard (src/lib/pro-access.ts). This used to be an
+  // inline `status === "active"`, which gave a comped row -- active, with no
+  // webhook behind it to ever flip that status -- the Pro monthly quota for
+  // ever.
+  const isPaid = hasProAccess(input.subscription, input.now ?? new Date());
 
   const credits = Math.max(0, input.subscription?.scan_credits ?? 0);
 

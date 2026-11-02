@@ -45,9 +45,15 @@ export async function POST(request: Request) {
   try {
     // 3. Resolve the Stripe customer from the caller OWN row. RLS scopes this
     //    to the authenticated user, so no id can be supplied by the client.
+    //    stripe_subscription_id and current_period_end come along because every
+    //    read of this row is typed on the full entitlement shape, and
+    //    tests/entitlement-select-coverage.test.ts holds every read site to it.
+    //    A select that asks for less is how an expired comp silently keeps Pro.
     const { data: sub } = await supabase
       .from("subscriptions")
-      .select("stripe_customer_id, status")
+      .select(
+        "stripe_customer_id, status, stripe_subscription_id, current_period_end",
+      )
       .eq("user_id", user.id)
       .maybeSingle();
 

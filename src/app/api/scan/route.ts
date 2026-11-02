@@ -245,9 +245,17 @@ export async function POST(request: Request) {
     // The row is per-user BILLING STATE, not proof of a plan. Reading it
     // unconditionally and letting computeQuota decide is what keeps those two
     // ideas separate.
+    //
+    // stripe_subscription_id and current_period_end are selected because
+    // computeQuota's "is this user paid?" rule reads them: an active row with no
+    // Stripe subscription is a COMPED grant and expires at its period end. A
+    // missing current_period_end reads as "no end date", i.e. a lifetime grant,
+    // so a shortened select here would hand out perpetual Pro quota silently.
     const { data: sub } = await supabase
       .from("subscriptions")
-      .select("status, scan_quota, scan_credits, current_period_start")
+      .select(
+        "status, scan_quota, scan_credits, current_period_start, stripe_subscription_id, current_period_end",
+      )
       .eq("user_id", user.id)
       .maybeSingle();
 
@@ -287,7 +295,11 @@ export async function POST(request: Request) {
       scans_used: count ?? 0,
       subscription: sub as Pick<
         SubscriptionsRow,
-        "status" | "scan_quota" | "scan_credits"
+        | "status"
+        | "scan_quota"
+        | "scan_credits"
+        | "stripe_subscription_id"
+        | "current_period_end"
       > | null,
     });
 

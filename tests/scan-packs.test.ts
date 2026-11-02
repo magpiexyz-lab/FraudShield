@@ -57,11 +57,22 @@ function packGrantBlock(): string {
     .join(NL);
 }
 
-/** A billing row for someone who has never subscribed. */
+/**
+ * A billing row for someone who has never subscribed.
+ *
+ * NO STRIPE SUBSCRIPTION AND NO PERIOD END, because a pack buyer never had
+ * either. computeQuota reads both columns now: an active row with no
+ * stripe_subscription_id is a COMPED grant, and a comp expires at its period
+ * end. Neither changes the arithmetic below -- "inactive" is not paid whatever
+ * the dates say -- but the type requires them exactly so that no read site can
+ * quietly omit the column that expires a comp.
+ */
 const unsubscribed = (credits: number) => ({
   status: "inactive" as const,
   scan_quota: 0,
   scan_credits: credits,
+  stripe_subscription_id: null,
+  current_period_end: null,
 });
 
 describe("the catalogue", () => {
@@ -127,7 +138,13 @@ describe("credits in the quota arithmetic", () => {
   it("never adds credits to a subscriber monthly quota", () => {
     const q = computeQuota({
       scans_used: 0,
-      subscription: { status: "active", scan_quota: 200, scan_credits: 5 },
+      subscription: {
+        status: "active", scan_quota: 200, scan_credits: 5,
+        // A real subscriber: Stripe is the authority for this row, so status
+        // alone decides it and the period end never revokes paid access.
+        stripe_subscription_id: "sub_1QabcdEFghijkLM",
+        current_period_end: null,
+      },
     });
     expect(q.total_quota).toBe(200);
     expect(q.credits_remaining).toBe(0);
