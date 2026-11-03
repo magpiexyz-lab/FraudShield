@@ -268,12 +268,17 @@ describe("paying and receiving nothing", () => {
   // had kept the old active-only filter because the rule was inlined here. The
   // assertion tracks it rather than the expression it used to be: the route
   // must delegate, and the gate must still exist where it now lives.
-  it("applies the monthly window only to an active subscription", () => {
+  //
+  // That gate is now hasProAccess rather than a status comparison. Status
+  // alone cannot answer "is this user on a monthly billing cycle": a comped
+  // row keeps status "active" for ever, so an expired comp passed the old gate
+  // and was handed a monthly window on top of the free allowance.
+  it("applies the monthly window only to a row that holds Pro", () => {
     expect(SCAN).toContain("scanWindowStart(");
     const quota = read("src", "lib", "quota.ts");
     const start = quota.indexOf("export function scanWindowStart");
     expect(start).toBeGreaterThan(-1);
-    expect(quota.slice(start)).toContain('sub?.status !== "active"');
+    expect(quota.slice(start)).toContain("hasProAccess(sub, now)");
   });
 });
 

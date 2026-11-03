@@ -94,13 +94,18 @@ describe("quota module — shared ownership of the window rule", () => {
     expect(QUOTA).toContain("export function scanWindowStart");
   });
 
-  it("keeps the active-status gate that makes the anchor safe to trust", () => {
+  it("keeps the entitlement gate that makes the anchor safe to trust", () => {
     // Without it, someone who cancelled and later bought a pack would have
     // usage counted from this month only, and would be re-granted their free
     // scan plus the whole pack every month, forever.
+    //
+    // The gate is hasProAccess, the same predicate computeQuota uses, and not
+    // a status comparison: a comped row keeps status "active" for ever, so an
+    // EXPIRED comp used to pass a raw status gate and draw the free allowance
+    // over a monthly window -- the same perpetual re-grant by another route.
     const start = QUOTA.indexOf("export function scanWindowStart");
     expect(start).toBeGreaterThan(-1);
-    expect(QUOTA.slice(start, start + 900)).toContain('"active"');
+    expect(QUOTA.slice(start, start + 900)).toContain("hasProAccess");
   });
 });
 

@@ -264,17 +264,28 @@ describe("scan-pack buyer entitlement -- regression", () => {
 });
 
 // A CANCELLED subscriber keeps their old current_period_start, and
-// currentPeriodStart() rolls any anchor forward to the present. Without the
-// status gate, someone who cancelled and later bought a single pack would have
-// usage counted from this month only -- and would receive their free scan plus
-// the whole pack again every month, forever.
+// currentPeriodStart() rolls any anchor forward to the present. Without this
+// gate, someone who cancelled and later bought a single pack would have usage
+// counted from this month only -- and would receive their free scan plus the
+// whole pack again every month, forever.
+//
+// The gate is hasProAccess, so every row here states the entitlement columns
+// the predicate reads. The rows that stand for real subscribers name a Stripe
+// subscription, because that is the only way an "active" row arises in
+// production outside a hand-written comp.
 describe("scanWindowStart -- which scans count", () => {
   const now = new Date("2026-10-28T12:00:00.000Z");
 
   it("returns null for an inactive row even when an anchor is present", () => {
     expect(
       scanWindowStart(
-        { status: "inactive", current_period_start: "2026-01-15T10:00:00.000Z" },
+        {
+          // A pack buyer: they bought scans, they did not subscribe.
+          status: "inactive",
+          current_period_start: "2026-01-15T10:00:00.000Z",
+          stripe_subscription_id: null,
+          current_period_end: null,
+        },
         now,
       ),
     ).toBeNull();
@@ -283,7 +294,12 @@ describe("scanWindowStart -- which scans count", () => {
   it("returns null for a canceled row even when an anchor is present", () => {
     expect(
       scanWindowStart(
-        { status: "canceled", current_period_start: "2026-01-15T10:00:00.000Z" },
+        {
+          status: "canceled",
+          current_period_start: "2026-01-15T10:00:00.000Z",
+          stripe_subscription_id: STRIPE_SUB,
+          current_period_end: "2026-02-15T10:00:00.000Z",
+        },
         now,
       ),
     ).toBeNull();
@@ -295,13 +311,26 @@ describe("scanWindowStart -- which scans count", () => {
 
   it("returns null for an active subscriber with no anchor recorded", () => {
     expect(
-      scanWindowStart({ status: "active", current_period_start: null }, now),
+      scanWindowStart(
+        {
+          status: "active",
+          current_period_start: null,
+          stripe_subscription_id: STRIPE_SUB,
+          current_period_end: "2026-11-15T10:00:00.000Z",
+        },
+        now,
+      ),
     ).toBeNull();
   });
 
-  it("rolls an active subscriber's anchor forward to the current window", () => {
+  it("rolls the anchor of an active subscriber forward to the current window", () => {
     const start = scanWindowStart(
-      { status: "active", current_period_start: "2026-01-15T10:00:00.000Z" },
+      {
+        status: "active",
+        current_period_start: "2026-01-15T10:00:00.000Z",
+        stripe_subscription_id: STRIPE_SUB,
+        current_period_end: "2026-11-15T10:00:00.000Z",
+      },
       now,
     );
     expect(start).not.toBeNull();
@@ -436,5 +465,165 @@ describe("computeQuota -- a comped grant expires", () => {
     });
     expect(farFuture.is_paid).toBe(true);
     expect(farFuture.total_quota).toBe(200);
+  });
+});
+
+// THE TWO HALVES OF THE QUOTA DECISION HAVE TO AGREE ABOUT WHO IS PAID.
+//
+// A quota is an allowance measured over a window, and this module decides each
+// half in a different function: computeQuota picks the allowance,
+// scanWindowStart picks the window the usage is counted over. The two used to
+// share a rule by coincidence -- both spelled status === "active" -- and when
+// computeQuota moved to hasProAccess, scanWindowStart was left behind on the
+// raw status.
+//
+// For an expired dated comp that split is a free subscription. The row keeps
+// status "active" for ever, because a comp is written by hand and no webhook
+// exists to flip a row Stripe never created. So:
+//
+//   computeQuota    sees hasProAccess false, allows FREE_SCAN_QUOTA + credits
+//   scanWindowStart sees status "active",     returns a MONTHLY window
+//
+// The allowance is the free-tier one and the window rolls forward every month,
+// so the free scan AND every purchased credit are re-granted monthly, for
+// ever. scanWindowStart's own doc comment warned about exactly this shape; the
+// expired comp is a new way to produce it.
+//
+// Credits are never decremented anywhere -- consumption is implied solely by
+// the all-time scan count -- which is why the window is the whole ballgame.
+describe("scanWindowStart -- agrees with computeQuota about who is paid", () => {
+  const now = new Date("2026-11-03T12:00:00.000Z");
+
+  // Declared as consts rather than inline literals because each row is passed
+  // to BOTH functions: the point of these cases is that one row shape goes to
+  // both halves of the decision and they reach the same conclusion.
+  const EXPIRED_COMP = {
+    status: "active" as const,
+    scan_quota: 200,
+    scan_credits: 5,
+    // A comp granted for September, ended 5 Oct, read on 3 Nov.
+    current_period_start: "2026-09-05T00:00:00.000Z",
+    stripe_subscription_id: null,
+    current_period_end: "2026-10-05T00:00:00.000Z",
+  };
+  const LIVE_COMP = {
+    status: "active" as const,
+    scan_quota: 200,
+    scan_credits: 0,
+    current_period_start: "2026-09-05T00:00:00.000Z",
+    stripe_subscription_id: null,
+    current_period_end: "2026-12-05T00:00:00.000Z",
+  };
+  const STRIPE_SUBSCRIBER = {
+    status: "active" as const,
+    scan_quota: 200,
+    scan_credits: 0,
+    current_period_start: "2026-01-15T10:00:00.000Z",
+    stripe_subscription_id: STRIPE_SUB,
+    // Deliberately stale and in the past: Stripe is the authority for a Stripe
+    // row, so a lagging invoice.paid must not revoke the monthly window.
+    current_period_end: "2026-10-01T00:00:00.000Z",
+  };
+
+  // THE LOAD-BEARING CASE. An expired comp is a free user, and a free user is
+  // counted all-time -- the free card sells "1 document scan, total", not one
+  // per month.
+  it("counts the scans of an expired comp all-time, not monthly", () => {
+    expect(scanWindowStart(EXPIRED_COMP, now)).toBeNull();
+  });
+
+  // THE INVARIANT, stated as an invariant rather than as a list of rows: a
+  // monthly window is only ever handed to a row that actually holds Pro. The
+  // converse is deliberately NOT asserted -- a NULL-dated lifetime comp holds
+  // Pro and still counts all-time, because it bills on no interval and so has
+  // no window to be in.
+  it.each([
+    { label: "an expired dated comp", row: EXPIRED_COMP },
+    { label: "a live dated comp", row: LIVE_COMP },
+    {
+      label: "a real Stripe subscriber on a stale period end",
+      row: STRIPE_SUBSCRIBER,
+    },
+    {
+      label: "a pack buyer who once subscribed and cancelled",
+      row: {
+        status: "canceled" as const,
+        scan_quota: 200,
+        scan_credits: 3,
+        current_period_start: "2026-01-15T10:00:00.000Z",
+        stripe_subscription_id: STRIPE_SUB,
+        current_period_end: "2026-02-15T10:00:00.000Z",
+      },
+    },
+  ])(
+    "opens no monthly window for a row the allowance treats as free: $label",
+    ({ row }) => {
+      const windowed = scanWindowStart(row, now) !== null;
+      const paid = computeQuota({
+        scans_used: 0,
+        subscription: row,
+        now,
+      }).is_paid;
+      if (windowed) {
+        expect(
+          paid,
+          "scanWindowStart returned a monthly window for a row computeQuota " +
+            "treats as free. Usage would be counted from this month while " +
+            "the allowance is the free-tier one, so the free scan and every " +
+            "purchased credit are re-granted every month, forever.",
+        ).toBe(true);
+      }
+    },
+  );
+
+  // THE RE-GRANT, SPELLED OUT OVER THREE MONTHS. This user holds 1 free scan
+  // plus 5 bought credits and has spent all 6. Nothing decrements
+  // scan_credits, so "spent" means an all-time count of 6 -- which only stays
+  // true while the window stays null. Under the defect the window rolled
+  // forward on 5 Oct, 5 Nov and 5 Dec, the count reset to 0 each time, and
+  // the whole pack was handed over again.
+  it("does not re-grant the free scan and the credits every month", () => {
+    for (const instant of [
+      new Date("2026-10-06T00:00:00.000Z"),
+      new Date("2026-11-03T00:00:00.000Z"),
+      new Date("2026-12-07T00:00:00.000Z"),
+    ]) {
+      expect(scanWindowStart(EXPIRED_COMP, instant)).toBeNull();
+      const result = computeQuota({
+        scans_used: 6,
+        subscription: EXPIRED_COMP,
+        now: instant,
+      });
+      expect(result.total_quota).toBe(FREE_SCAN_QUOTA + 5);
+      expect(result.remaining).toBe(0);
+      expect(result.allowed).toBe(false);
+    }
+  });
+
+  // A live comp keeps its monthly window: it has an end date in the future and
+  // an anchor to roll forward, so it is on a billing cycle in every sense that
+  // matters to the meter.
+  it("keeps a live dated comp on its monthly window", () => {
+    const start = scanWindowStart(LIVE_COMP, now);
+    expect(start).not.toBeNull();
+    // Anchor 5 Sep, read on 3 Nov: the window containing today opened 5 Oct.
+    expect(start!.toISOString()).toBe("2026-10-05T00:00:00.000Z");
+  });
+
+  // Every comp granted to date is NULL-dated -- migration 009 added the column
+  // and backfilled nothing -- and a lifetime grant bills on no interval, so
+  // all-time counting is the truthful answer rather than a missing one.
+  it("counts a NULL-dated lifetime comp all-time", () => {
+    expect(
+      scanWindowStart(
+        {
+          status: "active" as const,
+          current_period_start: null,
+          stripe_subscription_id: null,
+          current_period_end: null,
+        },
+        now,
+      ),
+    ).toBeNull();
   });
 });

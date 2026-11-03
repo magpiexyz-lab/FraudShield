@@ -10,7 +10,7 @@
  * and subscription status from Supabase.
  */
 
-import { hasProAccess } from "@/lib/pro-access";
+import { hasProAccess, type EntitlementRow } from "@/lib/pro-access";
 import { FREE_SCAN_QUOTA } from "@/lib/types";
 import type { SubscriptionsRow } from "@/lib/types";
 
@@ -170,33 +170,61 @@ export function currentPeriodStart(anchor: Date, now: Date): Date {
 }
 
 /**
- * The instant from which a user's scans should be counted, or null to count
- * all-time.
+ * The instant from which the scans of a user should be counted, or null to
+ * count all-time.
  *
- * Owns the billing-window decision for every read path — /api/scan and the
- * dashboard meter — so the two cannot drift apart again. The dashboard once
- * counted all-time for everyone, which over-counted an active subscriber's
- * usage; /api/scan hand-inlined this rule, which is why the fix never reached
- * the meter.
+ * Owns the billing-window decision for every read path -- /api/scan, the
+ * dashboard meter and the scan-result paywall -- so the three cannot drift
+ * apart again. The dashboard once counted all-time for everyone, which
+ * over-counted the usage of an active subscriber; /api/scan hand-inlined this
+ * rule, which is why the fix never reached the meter.
  *
- * Returns null when there is no row, when the row is not an active
- * subscription, or when no anchor is recorded. A NULL anchor means free tier or
- * a comped lifetime grant, where all-time counting is correct: the free card
- * sells "1 document scan, total", not one per month.
+ * Returns null when there is no row, when the row does not hold Pro, or when
+ * no anchor is recorded. A NULL anchor means free tier or a comped lifetime
+ * grant, where all-time counting is correct: the free card sells "1 document
+ * scan, total", not one per month.
  *
- * GATED ON status === "active", and that gate is load-bearing now that the
- * subscriptions row is read regardless of status (a pack buyer's status is
- * "inactive"). A CANCELLED subscriber keeps their old current_period_start, and
- * currentPeriodStart() rolls any anchor forward to the present -- so without
- * this gate, someone who cancelled and later bought a pack would have their
- * usage counted from this month only, and would be re-granted their free scan
- * plus the whole pack every month, forever.
+ * GATED ON hasProAccess, THE SAME PREDICATE computeQuota USES, and sharing it
+ * is the whole point. A quota is an allowance measured over a window:
+ * computeQuota picks the allowance and this function picks the window. If the
+ * two disagree about who is paid, the result is an allowance counted over the
+ * wrong clock.
+ *
+ * That is not hypothetical -- it is the bug this gate was rewritten for. The
+ * gate used to read status === "active" directly, which agreed with
+ * computeQuota only by coincidence, and the coincidence ended when
+ * computeQuota moved to hasProAccess. A COMPED row keeps status "active" for
+ * ever, because a comp is written by hand and no webhook exists to flip a row
+ * Stripe never created, so an EXPIRED comp was handed the free-tier allowance
+ * by computeQuota and a MONTHLY window by this function. Nothing decrements
+ * scan_credits -- consumption is implied solely by the all-time scan count --
+ * so rolling the window forward re-granted the free scan and the entire
+ * purchased pack every month, for ever.
+ *
+ * Status alone therefore cannot answer "is this user on a monthly billing
+ * cycle". Only the predicate can, because only the predicate knows that a
+ * Stripe-less active row is a comp and that a comp ends at its period end.
+ *
+ * The gate still does the work it was originally written for. The row is read
+ * regardless of status (a pack buyer is "inactive"), and a CANCELLED
+ * subscriber keeps their old current_period_start while currentPeriodStart()
+ * rolls any anchor forward to the present -- so without a gate, someone who
+ * cancelled and later bought a pack would have usage counted from this month
+ * only and would be re-granted everything monthly. hasProAccess refuses that
+ * row at its first branch, exactly as the old comparison did.
+ *
+ * TAKES THE ENTITLEMENT COLUMNS, all of them, for the same reason QuotaInput
+ * does: an absent current_period_end reads as "no end date" and therefore as
+ * a lifetime grant, so a read site that forgot it would quietly put an
+ * expired comp back on a monthly window. Typed as EntitlementRow rather than
+ * a hand-listed Pick so that if the predicate ever reads another column, this
+ * signature follows it instead of silently passing undefined.
  */
 export function scanWindowStart(
-  sub: Pick<SubscriptionsRow, "status" | "current_period_start"> | null,
+  sub: (EntitlementRow & Pick<SubscriptionsRow, "current_period_start">) | null,
   now: Date,
 ): Date | null {
-  if (sub?.status !== "active") return null;
+  if (!sub || !hasProAccess(sub, now)) return null;
   if (!sub.current_period_start) return null;
   return currentPeriodStart(new Date(sub.current_period_start), now);
 }
