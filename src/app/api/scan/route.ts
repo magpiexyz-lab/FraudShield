@@ -265,23 +265,34 @@ export async function POST(request: Request) {
       .eq("counts_toward_quota", true);
 
     // Paid plans count within the current monthly window. A NULL window means
-    // free tier or a comped lifetime grant, where all-time counting is correct:
-    // the free card sells "1 document scan, total", not one per month.
+    // free tier or a comped lifetime grant, where all-time counting is
+    // correct: the free card sells "1 document scan, total", not one per
+    // month.
     //
-    // GATED ON status === "active" inside scanWindowStart, which matters now
-    // that the row above is read regardless of status. A CANCELLED subscriber
-    // keeps their old current_period_start, and currentPeriodStart() rolls any
-    // anchor forward to the present -- so without that gate, someone who
-    // cancelled and later bought a single pack would have their usage counted
-    // from this month only, and would receive their free scan plus the whole
-    // pack again every month, forever.
+    // GATED ON hasProAccess inside scanWindowStart -- the same predicate
+    // computeQuota uses below -- so the window and the allowance cannot
+    // disagree about who is paid. They did disagree: the gate read status
+    // directly, and an expired comp keeps status "active" for ever, so the
+    // comp was handed the FREE allowance and a MONTHLY window at once. Since
+    // nothing decrements scan_credits, rolling the window forward re-granted
+    // the free scan and the whole purchased pack every month.
+    //
+    // The gate also still does its original job. The row above is read
+    // regardless of status, and a CANCELLED subscriber keeps their old
+    // current_period_start while currentPeriodStart() rolls any anchor
+    // forward to the present -- so without it, someone who cancelled and
+    // later bought a single pack would have usage counted from this month
+    // only and would receive everything again monthly.
     //
     // The rule lives in lib/quota.ts rather than here so the dashboard meter
     // reads quota the same way this endpoint enforces it.
     const windowStart = scanWindowStart(
       sub as Pick<
         SubscriptionsRow,
-        "status" | "current_period_start"
+        | "status"
+        | "current_period_start"
+        | "stripe_subscription_id"
+        | "current_period_end"
       > | null,
       new Date(),
     );

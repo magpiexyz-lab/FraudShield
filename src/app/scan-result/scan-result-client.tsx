@@ -121,10 +121,15 @@ export function ScanResultClient() {
         //
         // No user_id filter and no service-role client: the RLS policy
         // subscriptions_select_own scopes this to the caller's own row, so one
-        // user cannot read another's plan. The Pro gate below stays
-        // status === "active" and nothing else, matching computeQuota and the
-        // checkout route's already-subscribed guard. A pending cancellation is
-        // deliberately still active: they have paid for the current period.
+        // user cannot read another plan. The Pro gate below is hasProAccess,
+        // matching computeQuota, the dashboard meter and the already-subscribed
+        // guard in the checkout route -- four surfaces that have to agree about
+        // who is Pro. It is NOT status === "active": that is only the first of
+        // the three branches, and an active row with no Stripe subscription is
+        // a comp that expires at its period end. A pending cancellation is
+        // deliberately still Pro -- they have paid for the current period --
+        // and the predicate keeps it that way, because such a row carries a
+        // stripe_subscription_id and is governed by status alone.
         //
         // scan_quota, scan_credits and current_period_start are now selected
         // too, because status cannot answer "may this user scan again?". A
