@@ -41,12 +41,22 @@ export type QuotaInput = {
   /**
    * The instant to judge expiry against. Defaults to now.
    *
-   * OPTIONAL ON PURPOSE, unlike hasProAccess's required `now`. There, omitting
-   * the data is dangerous -- forgetting a column grants Pro for ever -- so the
-   * signature forces every caller to think. Here the only risk of omission is
-   * disagreeing about what time it is, and no caller has a reason to: all three
-   * production callers pass an object literal and mean this instant. Requiring
-   * it would be churn that buys no safety.
+   * PASS IT: ONE CLOCK PER REQUEST. A quota read decides two things -- which
+   * WINDOW scans are counted over (scanWindowStart) and how big the ALLOWANCE
+   * is (here) -- and both are derived from hasProAccess. An awaited count
+   * query sits between them, so the two decisions are tens to hundreds of
+   * milliseconds apart. Left to default, this field reads the clock a second
+   * time, and a comp expiring inside that gap gets the MONTHLY window from the
+   * first read and the FREE allowance from the second: the one disagreement
+   * the shared predicate exists to make impossible. All three production
+   * callers now capture `const now = new Date()` once and thread it through
+   * both calls.
+   *
+   * STILL OPTIONAL, unlike hasProAccess's required `now`. There, omitting the
+   * data is dangerous in a way no test would notice -- forgetting a column
+   * grants Pro for ever -- so the signature forces every caller to think.
+   * Here the default is merely a second clock read, and tests that pin a fixed
+   * instant rely on being able to omit it.
    */
   now?: Date;
 };
