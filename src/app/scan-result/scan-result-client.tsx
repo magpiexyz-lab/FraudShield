@@ -170,7 +170,15 @@ export function ScanResultClient() {
         // A subscriber's allowance is monthly, so only this window's scans
         // count. Null means all-time counting is correct (free tier, a pack
         // buyer, or a comped lifetime grant).
-        const windowStart = scanWindowStart(subscription, new Date());
+        // ONE CLOCK FOR THE WHOLE DECISION: the window picked here, the Pro
+        // flag set below and the allowance all derive from hasProAccess, and
+        // the awaited count query sits between them. Three separate clock
+        // reads let a comp expiring in that gap be Pro for the window and
+        // expired for the allowance in the same render -- a monthly window
+        // against a free allowance. QuotaInput.now exists for this.
+        const now = new Date();
+
+        const windowStart = scanWindowStart(subscription, now);
         if (windowStart) {
           countQuery = countQuery.gte("created_at", windowStart.toISOString());
         }
@@ -179,12 +187,13 @@ export function ScanResultClient() {
 
         if (cancelled) return;
 
-        setIsPro(hasProAccess(subscription, new Date()));
+        setIsPro(hasProAccess(subscription, now));
 
         // The same decision the scan endpoint enforces, from the same module.
         const result = computeQuota({
           scans_used: typeof count === "number" ? count : 0,
           subscription,
+          now,
         });
         setQuota({
           exhausted: result.remaining <= 0,

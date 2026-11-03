@@ -101,7 +101,14 @@ export default function DashboardPage() {
       // this page used to count all-time for everyone, which over-counted their
       // usage. Null means all-time counting is correct (free tier, a pack
       // buyer, or a comped lifetime grant).
-      const windowStart = scanWindowStart(subscription, new Date());
+      // ONE CLOCK FOR THE WHOLE DECISION: the awaited count query sits
+      // between the window picked here and the allowance computed below, so
+      // two clock reads let a comp expiring in that gap be judged Pro for
+      // the window and expired for the allowance -- a monthly window against
+      // a free allowance. QuotaInput.now exists for this.
+      const now = new Date();
+
+      const windowStart = scanWindowStart(subscription, now);
       if (windowStart) {
         scanQuery = scanQuery.gte("created_at", windowStart.toISOString());
       }
@@ -114,6 +121,7 @@ export default function DashboardPage() {
       const result = computeQuota({
         scans_used: count ?? 0,
         subscription,
+        now,
       });
 
       setQuota({

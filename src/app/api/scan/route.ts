@@ -286,6 +286,17 @@ export async function POST(request: Request) {
     //
     // The rule lives in lib/quota.ts rather than here so the dashboard meter
     // reads quota the same way this endpoint enforces it.
+
+    // ONE CLOCK FOR THE WHOLE DECISION. The window picked here and the
+    // allowance computed below are both derived from hasProAccess, and the
+    // awaited count query sits between them -- tens to hundreds of
+    // milliseconds, not a hair. Reading the clock twice meant a comp whose
+    // current_period_end fell inside that gap was judged Pro by the first
+    // read and expired by the second: the MONTHLY window handed the FREE
+    // allowance, which is the exact disagreement this gate exists to
+    // prevent. QuotaInput.now exists for this.
+    const now = new Date();
+
     const windowStart = scanWindowStart(
       sub as Pick<
         SubscriptionsRow,
@@ -294,7 +305,7 @@ export async function POST(request: Request) {
         | "stripe_subscription_id"
         | "current_period_end"
       > | null,
-      new Date(),
+      now,
     );
     if (windowStart) {
       scanQuery = scanQuery.gte("created_at", windowStart.toISOString());
@@ -312,6 +323,7 @@ export async function POST(request: Request) {
         | "stripe_subscription_id"
         | "current_period_end"
       > | null,
+      now,
     });
 
     if (!quota.allowed) {
