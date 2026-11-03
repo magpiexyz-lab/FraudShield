@@ -16,14 +16,14 @@
 // as untyped JSON and is cast at the call site, so a cast to a Pick<> that
 // claims a column the select never asked for compiles cleanly.
 //
-// Hence a test that reads the source. It is a source-grep, which normally pins
+// Hence a test that reads the source. It is a source test, which normally pins
 // a spelling rather than a behaviour -- here the spelling IS the behaviour,
 // because the column list in the select string is the only place the decision
 // inputs are chosen.
 //
 // WHY THIS WALKS THE TREE INSTEAD OF LISTING FILES. It used to be a hardcoded
 // list of six paths, and a list of paths can only ever guard the files someone
-// remembered to add. Two ways through it were demonstrated:
+// remembered to add. Four ways through it have been demonstrated, in order:
 //
 //   1. A NEW file doing from("subscriptions").select("status") and feeding the
 //      row to hasProAccess. Not on the list, never opened, suite green.
@@ -31,17 +31,44 @@
 //      literal for the column list. The old parser only captured
 //      double-quoted literals, and the existing literal read kept the
 //      per-file hit count above zero, so nothing threw.
+//   3. A read whose TABLE name was not spelled with double quotes: a
+//      single-quoted literal, or a const holding the name. The matcher that
+//      found subjects recognised only the double-quoted spelling, so such a
+//      read was not an unparseable subject -- it was not a SUBJECT AT ALL,
+//      invisible to the entire walk, and its status-only select granted
+//      perpetual Pro with the suite green. eslint.config.mjs has no quotes
+//      rule and prettier does not run in npm run lint, so the single-quoted
+//      spelling is committable and lint-clean.
+//   4. An ALIASED re-export of the predicate. The exemption below was policed
+//      by a substring grep for hasProAccess / computeQuota / scanWindowStart,
+//      so an `export const isEntitled = hasProAccess` in a third module let
+//      an allowlisted one-column read decide entitlement, suite still green.
 //
-// So the guard now discovers its own subjects: every from("subscriptions") in
-// src/**, found by walking the tree. Anything it cannot PARSE is a failure
-// rather than a skip -- a template literal or a computed column list is the
-// one shape that hides the column names from a source-grep, so it has to be
-// loud. An exemption exists for reads that decide no entitlement, and a file
-// claiming it must not touch the predicate.
+// WHY IT PARSES INSTEAD OF MATCHING TEXT. 2 and 3 are one bug wearing two
+// hats: a text matcher that does not match reads as "nothing here" when the
+// only safe reading is "cannot tell". So the walk uses the TypeScript compiler
+// API -- as tests/single-clock-per-quota-decision.test.ts already does for the
+// clock invariant -- and quoting style, line breaks, comments and `as const`
+// stop mattering: a string literal is a string literal whichever quote wrote
+// it, and an argument that is NOT a literal is a THROW rather than a silence.
+// A regex could have been taught the second quote character, but only the
+// spellings someone thought of; the parser is exhaustive by construction.
+//
+// WHY THE EXEMPTION IS POLICED BY THE IMPORT GRAPH. 4 cannot be answered by
+// names, because a name can be renamed: the predicate is reachable through any
+// number of aliases. What cannot be renamed is the dependency. An exempt file
+// must import no runtime value from any module that transitively reaches
+// src/lib/pro-access.ts or src/lib/quota.ts -- so the aliasing module is
+// itself tainted by its own import, and importing the alias fails.
+//
+// Anything the walk cannot PARSE is a failure rather than a skip. An exemption
+// exists for reads that decide no entitlement, and a file claiming it must not
+// be able to reach the predicate at all.
 
 import { describe, it, expect } from "vitest";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
+import ts from "typescript";
 
 const repoRoot = path.resolve(__dirname, "..");
 const SRC_DIR = path.join(repoRoot, "src");
@@ -71,6 +98,110 @@ function sourceFiles(dir: string): string[] {
   return out;
 }
 
+const parse = (file: string, source: string): ts.SourceFile =>
+  ts.createSourceFile(
+    file,
+    source,
+    ts.ScriptTarget.Latest,
+    /* setParentNodes */ true,
+    file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+  );
+
+const lineOf = (sf: ts.SourceFile, node: ts.Node): number =>
+  sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1;
+
+/** Strip parens and type assertions, which change no runtime value. */
+function unwrap(expr: ts.Expression): ts.Expression {
+  let e = expr;
+  for (;;) {
+    if (ts.isParenthesizedExpression(e)) {
+      e = e.expression;
+    } else if (
+      ts.isAsExpression(e) ||
+      ts.isSatisfiesExpression(e) ||
+      ts.isTypeAssertionExpression(e) ||
+      ts.isNonNullExpression(e)
+    ) {
+      e = e.expression;
+    } else {
+      return e;
+    }
+  }
+}
+
+/**
+ * The text of a plain string literal -- single, double or bare backtick.
+ *
+ * The quote character is a lexer detail the AST has already discarded, which
+ * is the whole reason this file parses rather than greps: evasion 3 was
+ * nothing but a second quote character. A template with a substitution is
+ * deliberately NOT one of these -- its value is not in the source, so this
+ * returns null and the caller throws.
+ */
+function literalText(expr: ts.Expression | undefined): string | null {
+  if (!expr) return null;
+  const e = unwrap(expr);
+  if (ts.isStringLiteral(e) || ts.isNoSubstitutionTemplateLiteral(e)) {
+    return e.text;
+  }
+  return null;
+}
+
+/** The called method name, for `x.from()`, `x["from"]()` and bare `from()`. */
+function callee(call: ts.CallExpression): {
+  name: string | null;
+  receiver: ts.Expression | null;
+} {
+  const target = unwrap(call.expression);
+  if (ts.isIdentifier(target)) return { name: target.text, receiver: null };
+  if (ts.isPropertyAccessExpression(target)) {
+    return { name: target.name.text, receiver: target.expression };
+  }
+  if (ts.isElementAccessExpression(target)) {
+    return {
+      name: literalText(target.argumentExpression),
+      receiver: target.expression,
+    };
+  }
+  return { name: null, receiver: null };
+}
+
+/**
+ * Statics that own the name `from` without owning a table.
+ *
+ * The ONLY receivers the walk may skip without reading their argument.
+ * Everything else calling .from() is assumed to be a query builder, so an
+ * unknown receiver with a non-literal argument fails loudly instead of
+ * passing quietly -- the direction of that error matters more than its
+ * occasional noise, and the fix is one line here.
+ */
+const NOT_A_QUERY_BUILDER = new Set([
+  "Array",
+  "Object",
+  "String",
+  "Number",
+  "Set",
+  "Map",
+  "Buffer",
+  "Int8Array",
+  "Uint8Array",
+  "Uint8ClampedArray",
+  "Int16Array",
+  "Uint16Array",
+  "Int32Array",
+  "Uint32Array",
+  "Float32Array",
+  "Float64Array",
+  "BigInt64Array",
+  "BigUint64Array",
+]);
+
+/** The table whose row answers the Pro question. */
+const TABLE = "subscriptions";
+
+/** Chain members that settle what a from() does with the row. */
+const QUERY_OPS = new Set(["select", "insert", "update", "upsert", "delete"]);
+
 /** The columns a select must carry for the predicate to be answerable. */
 const REQUIRED_COLUMNS = [
   "status",
@@ -83,8 +214,8 @@ const REQUIRED_COLUMNS = [
  *
  * An exemption from the column requirement, not from the parser: these files
  * are still walked, and a select they cannot parse still fails. Each is also
- * asserted to be free of the predicate below, so the exemption cannot be used
- * to smuggle in an entitlement read.
+ * asserted to be unable to REACH the predicate, so the exemption cannot be
+ * used to smuggle in an entitlement read.
  */
 const NON_ENTITLEMENT: ReadonlyArray<{
   readonly file: string;
@@ -109,9 +240,16 @@ const NON_ENTITLEMENT: ReadonlyArray<{
 /**
  * The functions that consume an entitlement row. A file exempted above must
  * mention none of them: if it does, its read is an entitlement read whatever
- * the allowlist claims.
+ * the allowlist claims. Names are the cheap half of that check -- renaming
+ * past them is what the import graph below exists for.
  */
 const PREDICATES = ["hasProAccess", "computeQuota", "scanWindowStart"] as const;
+
+/** The modules that DEFINE the entitlement decision. */
+const PREDICATE_MODULES = [
+  "src/lib/pro-access.ts",
+  "src/lib/quota.ts",
+] as const;
 
 /**
  * Read sites that must keep existing. The walk finds new ones on its own; this
@@ -128,66 +266,296 @@ const KNOWN_ENTITLEMENT_READS = [
 
 type Site = {
   readonly file: string;
+  readonly line: number;
   readonly kind: "read" | "write";
   /** The literal column list, for a read. */
   readonly columns: string | null;
 };
 
+/** The first query operation hanging off a from() call, walking outwards. */
+function chainOp(
+  fromCall: ts.CallExpression,
+): { name: string; call: ts.CallExpression } | null {
+  let node: ts.Node = fromCall;
+  while (
+    node.parent &&
+    ts.isPropertyAccessExpression(node.parent) &&
+    node.parent.expression === node
+  ) {
+    const access = node.parent;
+    const call = access.parent;
+    if (!ts.isCallExpression(call) || call.expression !== access) return null;
+    if (QUERY_OPS.has(access.name.text)) {
+      return { name: access.name.text, call };
+    }
+    node = call;
+  }
+  return null;
+}
+
+function classify(
+  sf: ts.SourceFile,
+  file: string,
+  fromCall: ts.CallExpression,
+): Site {
+  const line = lineOf(sf, fromCall);
+  const op = chainOp(fromCall);
+  if (!op) {
+    throw new Error(
+      `${file}:${line}: a from("${TABLE}") chain has no recognisable ` +
+        `select/upsert/update/insert/delete, so this guard cannot tell ` +
+        `whether it reads the entitlement columns. Make the chain legible ` +
+        `or this guard is a comment.`,
+    );
+  }
+  if (op.name !== "select") return { file, line, kind: "write", columns: null };
+  const columns = literalText(op.call.arguments[0]);
+  if (columns === null) {
+    throw new Error(
+      `${file}:${line}: a from("${TABLE}").select(...) does not pass a ` +
+        `plain string literal, so its column list cannot be read from ` +
+        `source. A template substitution or a computed list hides the very ` +
+        `column whose absence grants perpetual Pro. Found: ` +
+        `${JSON.stringify(
+          op.call.arguments[0]?.getText(sf).slice(0, 80) ?? "<no argument>",
+        )}`,
+    );
+  }
+  return { file, line, kind: "read", columns };
+}
+
 /**
- * Every from("subscriptions") chain in src/**, classified.
+ * Every subscriptions query in src/**, classified.
  *
  * THROWS, at module load, on anything it cannot read with confidence. A
  * vacuous pass here is worse than having no test: this file is the only thing
  * standing between a shortened select and perpetual free Pro, so when it stops
  * being able to see the column names it has to take the suite down with it
- * rather than quietly skip the site it could not parse.
+ * rather than quietly skip the site it could not parse. That now includes the
+ * TABLE name -- a from() whose table is a const is not "some other table",
+ * it is an unreadable one, and reading it as "not a subject" is how an
+ * entitlement read disappears.
  */
 function collectSites(): Site[] {
   const sites: Site[] = [];
   for (const file of sourceFiles(SRC_DIR)) {
-    const code = codeOnly(read(file));
-    for (const hit of code.matchAll(/\.from\(\s*"subscriptions"\s*\)/g)) {
-      const from = hit.index + hit[0].length;
-      const tail = code.slice(from, from + 600);
-      const op = tail.match(/\.(select|upsert|update|insert|delete)\(/);
-      if (!op) {
-        throw new Error(
-          `${file}: a from("subscriptions") chain has no recognisable ` +
-            `select/upsert/update/insert/delete within 600 characters, so ` +
-            `this guard cannot tell whether it reads the entitlement ` +
-            `columns. Make the chain legible or this guard is a comment.`,
-        );
+    const sf = parse(file, read(file));
+    const visit = (node: ts.Node): void => {
+      if (ts.isCallExpression(node)) {
+        const { name, receiver } = callee(node);
+        const builtin =
+          receiver !== null &&
+          ts.isIdentifier(receiver) &&
+          NOT_A_QUERY_BUILDER.has(receiver.text);
+        if (name === "from" && !builtin) {
+          const arg = node.arguments[0];
+          const table = literalText(arg);
+          if (table === null) {
+            throw new Error(
+              `${file}:${lineOf(sf, node)}: a .from(...) does not name its ` +
+                `table with a plain string literal, so this guard cannot ` +
+                `tell whether it reads the subscriptions row. A const or a ` +
+                `template substitution here makes an entitlement read ` +
+                `INVISIBLE to this walk, which is how a status-only select ` +
+                `hands out perpetual Pro. Found: ` +
+                `${JSON.stringify(
+                  arg?.getText(sf).slice(0, 80) ?? "<no argument>",
+                )}. Name the table inline, or add the receiver to ` +
+                `NOT_A_QUERY_BUILDER if it is not a database client.`,
+            );
+          }
+          if (table === TABLE) sites.push(classify(sf, file, node));
+        }
       }
-      if (op[1] !== "select") {
-        sites.push({ file, kind: "write", columns: null });
-        continue;
-      }
-      const afterSelect = tail.slice((op.index ?? 0) + op[0].length);
-      // THE EVASION THIS CLOSES. A backtick template literal, or a variable
-      // holding the column list, hides the names from any source-grep -- and
-      // the old parser simply did not match, which read as "nothing to check"
-      // instead of "cannot check". Only a plain double-quoted literal is
-      // readable, so anything else is a failure.
-      const literal = afterSelect.match(/^\s*"([^"]*)"/);
-      if (!literal) {
-        throw new Error(
-          `${file}: a from("subscriptions").select(...) does not use a plain ` +
-            `double-quoted string literal, so its column list cannot be ` +
-            `read from source. A template literal or a computed list hides ` +
-            `the very column whose absence grants perpetual Pro. Found: ` +
-            `${JSON.stringify(afterSelect.slice(0, 80))}`,
-        );
-      }
-      sites.push({ file, kind: "read", columns: literal[1] });
-    }
+      ts.forEachChild(node, visit);
+    };
+    visit(sf);
   }
   return sites;
+}
+
+/** An import that pulls a RUNTIME value, with the specifier it names. */
+type ValueImport = { readonly spec: string; readonly line: number };
+
+/**
+ * True for an import the compiler ERASES.
+ *
+ * `import type { EntitlementRow }` cannot decide anything at runtime, so it
+ * is not a path to the predicate and an exempt file may name the row's type
+ * without being made to over-fetch columns it never uses. A bare side-effect
+ * import runs module code, so it counts.
+ */
+function isErasedImport(node: ts.ImportDeclaration): boolean {
+  const clause = node.importClause;
+  if (!clause) return false;
+  if (clause.isTypeOnly) return true;
+  if (clause.name) return false;
+  const bindings = clause.namedBindings;
+  if (bindings && ts.isNamedImports(bindings)) {
+    return (
+      bindings.elements.length > 0 &&
+      bindings.elements.every((element) => element.isTypeOnly)
+    );
+  }
+  return false;
+}
+
+/** True for a re-export the compiler erases. */
+function isErasedExport(node: ts.ExportDeclaration): boolean {
+  if (node.isTypeOnly) return true;
+  const clause = node.exportClause;
+  if (clause && ts.isNamedExports(clause)) {
+    return (
+      clause.elements.length > 0 &&
+      clause.elements.every((element) => element.isTypeOnly)
+    );
+  }
+  return false;
+}
+
+/** Every specifier a file pulls a runtime value from, however it asks. */
+function valueImports(file: string, source: string): ValueImport[] {
+  const sf = parse(file, source);
+  const out: ValueImport[] = [];
+  const add = (spec: ts.Expression | undefined, at: ts.Node): void => {
+    const text = literalText(spec);
+    if (text !== null) out.push({ spec: text, line: lineOf(sf, at) });
+  };
+  const visit = (node: ts.Node): void => {
+    if (ts.isImportDeclaration(node)) {
+      if (!isErasedImport(node)) add(node.moduleSpecifier, node);
+    } else if (ts.isExportDeclaration(node) && node.moduleSpecifier) {
+      if (!isErasedExport(node)) add(node.moduleSpecifier, node);
+    } else if (ts.isImportEqualsDeclaration(node)) {
+      if (ts.isExternalModuleReference(node.moduleReference)) {
+        add(node.moduleReference.expression, node);
+      }
+    } else if (ts.isCallExpression(node)) {
+      if (node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+        add(node.arguments[0], node);
+      } else if (callee(node).name === "require") {
+        add(node.arguments[0], node);
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+  return out;
+}
+
+/**
+ * Path aliases as the project ACTUALLY declares them.
+ *
+ * Read from tsconfig rather than hardcoded as "@/": an alias added to the
+ * project would otherwise be a brand new blind spot in the resolver below,
+ * and a specifier the resolver cannot follow is an import-graph edge that
+ * does not exist -- which is the same fail-open shape as a regex that does
+ * not match.
+ */
+const PATH_ALIASES: ReadonlyArray<{
+  readonly prefix: string;
+  readonly targets: readonly string[];
+}> = (() => {
+  const parsed = ts.readConfigFile(
+    path.join(repoRoot, "tsconfig.json"),
+    ts.sys.readFile,
+  );
+  const paths = (parsed.config?.compilerOptions?.paths ?? {}) as Record<
+    string,
+    string[]
+  >;
+  return Object.entries(paths)
+    .filter(([pattern]) => pattern.endsWith("/*"))
+    .map(([pattern, targets]) => ({
+      prefix: pattern.slice(0, -1),
+      targets: targets.map((target) => target.replace(/\*$/, "")),
+    }));
+})();
+
+/** Resolve an import specifier to a repo-relative file under src/, or null. */
+function resolveSpecifier(from: string, spec: string): string | null {
+  const bases: string[] = [];
+  if (spec.startsWith(".")) {
+    bases.push(path.resolve(path.dirname(path.join(repoRoot, from)), spec));
+  } else {
+    for (const alias of PATH_ALIASES) {
+      if (!spec.startsWith(alias.prefix)) continue;
+      const rest = spec.slice(alias.prefix.length);
+      for (const target of alias.targets) {
+        bases.push(path.join(repoRoot, target, rest));
+      }
+    }
+  }
+  for (const base of bases) {
+    for (const candidate of [
+      base,
+      `${base}.ts`,
+      `${base}.tsx`,
+      path.join(base, "index.ts"),
+      path.join(base, "index.tsx"),
+    ]) {
+      if (existsSync(candidate) && statSync(candidate).isFile()) {
+        return path.relative(repoRoot, candidate).split(path.sep).join("/");
+      }
+    }
+  }
+  return null;
+}
+
+type Edge = {
+  readonly to: string;
+  readonly spec: string;
+  readonly line: number;
+};
+
+const VALUE_EDGES: Map<string, Edge[]> = new Map(
+  sourceFiles(SRC_DIR).map((file) => [
+    file,
+    valueImports(file, read(file))
+      .map((imported) => ({
+        to: resolveSpecifier(file, imported.spec),
+        spec: imported.spec,
+        line: imported.line,
+      }))
+      .filter((edge): edge is Edge => edge.to !== null),
+  ]),
+);
+
+/**
+ * Every module from which a runtime value can reach the entitlement rule,
+ * mapped to the chain that gets there.
+ *
+ * Importers of the predicate modules are tainted, and importers of THOSE are
+ * tainted, transitively -- which is exactly what an alias is: a module that
+ * imported the rule and re-exposes it under another name. Reachability is a
+ * property of the dependency, not of the spelling, so there is nothing left
+ * to rename past.
+ */
+function predicateReach(): Map<string, string> {
+  const chain = new Map<string, string>();
+  const queue: string[] = [];
+  for (const seed of PREDICATE_MODULES) {
+    chain.set(seed, seed);
+    queue.push(seed);
+  }
+  while (queue.length > 0) {
+    const target = queue.shift()!;
+    for (const [file, edges] of VALUE_EDGES) {
+      if (chain.has(file)) continue;
+      if (edges.some((edge) => edge.to === target)) {
+        chain.set(file, `${file} -> ${chain.get(target)}`);
+        queue.push(file);
+      }
+    }
+  }
+  return chain;
 }
 
 const SITES = collectSites();
 const READS = SITES.filter((s) => s.kind === "read");
 const EXEMPT = new Set(NON_ENTITLEMENT.map((e) => e.file));
 const ENTITLEMENT_READS = READS.filter((s) => !EXEMPT.has(s.file));
+const PREDICATE_REACH = predicateReach();
 
 describe("entitlement selects ask for everything the Pro rule reads", () => {
   // FAIL LOUD ON ZERO. collectSites() throws on anything unparseable; this
@@ -208,16 +576,17 @@ describe("entitlement selects ask for everything the Pro rule reads", () => {
   });
 
   it.each(ENTITLEMENT_READS)(
-    "$file selects the columns the Pro rule reads",
-    ({ columns, file }) => {
+    "$file:$line selects the columns the Pro rule reads",
+    ({ columns, file, line }) => {
       for (const column of REQUIRED_COLUMNS) {
         expect(
           columns!.includes(column),
-          `${file} selects "${columns}" -- missing ${column}. Without it the ` +
-            `Pro rule sees undefined, reads that as a lifetime grant, and ` +
-            `hands out perpetual Pro to an expired comp. If this read ` +
-            `decides no entitlement, add it to NON_ENTITLEMENT with a ` +
-            `reason -- do not shorten the rule to fit the select.`,
+          `${file}:${line} selects "${columns}" -- missing ${column}. ` +
+            `Without it the Pro rule sees undefined, reads that as a ` +
+            `lifetime grant, and hands out perpetual Pro to an expired ` +
+            `comp. If this read decides no entitlement, add it to ` +
+            `NON_ENTITLEMENT with a reason -- do not shorten the rule to ` +
+            `fit the select.`,
         ).toBe(true);
       }
     },
@@ -225,11 +594,59 @@ describe("entitlement selects ask for everything the Pro rule reads", () => {
 });
 
 describe("the non-entitlement exemption cannot be abused", () => {
+  // THE POSITIVE CONTROL FOR THE IMPORT GRAPH. The exemption check below
+  // asserts a set is EMPTY, which a broken specifier resolver would satisfy
+  // by knowing nothing at all. So first prove the graph can see what it is
+  // supposed to see: the predicate modules exist, and every known
+  // entitlement read is reachable to them.
+  it("tracks the predicate through the import graph", () => {
+    for (const module of PREDICATE_MODULES) {
+      expect(
+        existsSync(path.join(repoRoot, module)),
+        `${module} no longer exists, so the import-graph check below is ` +
+          `rooted at nothing and would pass for any file. Point ` +
+          `PREDICATE_MODULES at wherever the rule now lives.`,
+      ).toBe(true);
+    }
+    for (const known of KNOWN_ENTITLEMENT_READS) {
+      expect(
+        PREDICATE_REACH.has(known),
+        `${known} decides entitlement, yet the import graph cannot see it ` +
+          `reaching ${PREDICATE_MODULES.join(" or ")}. The resolver is ` +
+          `blind -- a changed path alias, a moved module -- and the ` +
+          `exemption check is passing vacuously.`,
+      ).toBe(true);
+    }
+  });
+
   // AN ALLOWLIST IS ONLY AS GOOD AS WHAT IT CANNOT EXCUSE. Exempting a file
   // from the column requirement is safe exactly while that file decides no
-  // access. The moment it calls the predicate, its short select is the
-  // original bug again -- so the exemption is conditional on the file not
-  // importing the decision.
+  // access. The moment it can call the predicate, its short select is the
+  // original bug again -- and "can call" is a question about imports, because
+  // `export const isEntitled = hasProAccess` renames the call but not the
+  // dependency.
+  it.each(NON_ENTITLEMENT)(
+    "$file cannot reach the entitlement rule",
+    ({ file, reason }) => {
+      const paths = (VALUE_EDGES.get(file) ?? [])
+        .filter((edge) => PREDICATE_REACH.has(edge.to))
+        .map(
+          (edge) =>
+            `line ${edge.line}: "${edge.spec}" -> ${PREDICATE_REACH.get(edge.to)}`,
+        );
+      expect(
+        paths,
+        `${file} is exempt from the entitlement-column requirement ` +
+          `because: ${reason} -- but it imports a runtime value from a ` +
+          `module that reaches the Pro rule, so it CAN decide entitlement ` +
+          `from this row, under any name it likes. Either drop the import, ` +
+          `or remove the exemption and select the entitlement columns.`,
+      ).toEqual([]);
+    },
+  );
+
+  // The cheap half, kept for the naive case: the predicate called under its
+  // own name, including from somewhere this file does not import.
   it.each(NON_ENTITLEMENT)(
     "$file never consumes an entitlement row",
     ({ file, reason }) => {
