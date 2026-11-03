@@ -45,9 +45,18 @@ export async function POST(request: Request) {
   try {
     // 3. Resolve the Stripe customer from the caller OWN row. RLS scopes this
     //    to the authenticated user, so no id can be supplied by the client.
+    //
+    //    stripe_customer_id AND NOTHING ELSE. This route makes no entitlement
+    //    decision -- it opens a Stripe portal for whoever already has a Stripe
+    //    customer, and it never calls hasProAccess -- so the entitlement
+    //    columns have nothing to say here. They were briefly selected to
+    //    satisfy tests/entitlement-select-coverage.test.ts, which left a
+    //    permanent over-fetch justified only by a test; that guard now names
+    //    this route as a non-entitlement read instead, and asserts the file
+    //    does not touch the predicate so the exemption cannot be abused.
     const { data: sub } = await supabase
       .from("subscriptions")
-      .select("stripe_customer_id, status")
+      .select("stripe_customer_id")
       .eq("user_id", user.id)
       .maybeSingle();
 

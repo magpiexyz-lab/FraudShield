@@ -57,11 +57,22 @@ function packGrantBlock(): string {
     .join(NL);
 }
 
-/** A billing row for someone who has never subscribed. */
+/**
+ * A billing row for someone who has never subscribed.
+ *
+ * NO STRIPE SUBSCRIPTION AND NO PERIOD END, because a pack buyer never had
+ * either. computeQuota reads both columns now: an active row with no
+ * stripe_subscription_id is a COMPED grant, and a comp expires at its period
+ * end. Neither changes the arithmetic below -- "inactive" is not paid whatever
+ * the dates say -- but the type requires them exactly so that no read site can
+ * quietly omit the column that expires a comp.
+ */
 const unsubscribed = (credits: number) => ({
   status: "inactive" as const,
   scan_quota: 0,
   scan_credits: credits,
+  stripe_subscription_id: null,
+  current_period_end: null,
 });
 
 describe("the catalogue", () => {
@@ -127,7 +138,13 @@ describe("credits in the quota arithmetic", () => {
   it("never adds credits to a subscriber monthly quota", () => {
     const q = computeQuota({
       scans_used: 0,
-      subscription: { status: "active", scan_quota: 200, scan_credits: 5 },
+      subscription: {
+        status: "active", scan_quota: 200, scan_credits: 5,
+        // A real subscriber: Stripe is the authority for this row, so status
+        // alone decides it and the period end never revokes paid access.
+        stripe_subscription_id: "sub_1QabcdEFghijkLM",
+        current_period_end: null,
+      },
     });
     expect(q.total_quota).toBe(200);
     expect(q.credits_remaining).toBe(0);
@@ -251,12 +268,17 @@ describe("paying and receiving nothing", () => {
   // had kept the old active-only filter because the rule was inlined here. The
   // assertion tracks it rather than the expression it used to be: the route
   // must delegate, and the gate must still exist where it now lives.
-  it("applies the monthly window only to an active subscription", () => {
+  //
+  // That gate is now hasProAccess rather than a status comparison. Status
+  // alone cannot answer "is this user on a monthly billing cycle": a comped
+  // row keeps status "active" for ever, so an expired comp passed the old gate
+  // and was handed a monthly window on top of the free allowance.
+  it("applies the monthly window only to a row that holds Pro", () => {
     expect(SCAN).toContain("scanWindowStart(");
     const quota = read("src", "lib", "quota.ts");
     const start = quota.indexOf("export function scanWindowStart");
     expect(start).toBeGreaterThan(-1);
-    expect(quota.slice(start)).toContain('sub?.status !== "active"');
+    expect(quota.slice(start)).toContain("hasProAccess(sub, now)");
   });
 });
 

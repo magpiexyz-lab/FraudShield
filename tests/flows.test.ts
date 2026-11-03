@@ -755,11 +755,23 @@ describe("b-06: checkout refuses a second subscription", () => {
     expect(guard).toBeLessThan(session);
   });
 
-  // ACTIVE ONLY. A canceled row must still be able to buy again - the webhook's
-  // upsert is built to reuse that row, and refusing a returning customer would
-  // turn a bug fix into lost revenue.
-  it("keys the refusal on an active status, not on the row existing", () => {
-    expect(routeSource()).toMatch(/status\s*===\s*"active"/);
+  // HOLDING PRO RIGHT NOW, not merely having a row. A canceled row must still
+  // be able to buy again - the webhook's upsert is built to reuse that row, and
+  // refusing a returning customer would turn a bug fix into lost revenue.
+  //
+  // This used to assert the literal `status === "active"`. That spelling is now
+  // WRONG, not just differently written: an expired comped grant keeps status
+  // "active" for ever, because no webhook exists to flip a row Stripe never
+  // created. Comparing the column would refuse a subscription to the one cohort
+  // most likely to buy - someone whose comped month ran out and came to pay.
+  // The decision is hasProAccess (src/lib/pro-access.ts), which reads status,
+  // stripe_subscription_id and current_period_end together and is unit-tested
+  // in tests/pro-signal-breakdown.test.ts; the inline comparison is banned here
+  // so it cannot creep back.
+  it("keys the refusal on holding Pro now, not on the row existing", () => {
+    const source = routeSource();
+    expect(source).toMatch(/hasProAccess\(/);
+    expect(source).not.toMatch(/\(existing[\s\S]{0,80}===\s*"active"/);
   });
 
   // DEMO MODE AND E2E MUST STILL REACH CHECKOUT. The demo Supabase client

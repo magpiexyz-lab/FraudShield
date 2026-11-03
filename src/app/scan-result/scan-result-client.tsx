@@ -121,24 +121,42 @@ export function ScanResultClient() {
         //
         // No user_id filter and no service-role client: the RLS policy
         // subscriptions_select_own scopes this to the caller's own row, so one
-        // user cannot read another's plan. The Pro gate below stays
-        // status === "active" and nothing else, matching computeQuota and the
-        // checkout route's already-subscribed guard. A pending cancellation is
-        // deliberately still active: they have paid for the current period.
+        // user cannot read another plan. The Pro gate below is hasProAccess,
+        // matching computeQuota, the dashboard meter and the already-subscribed
+        // guard in the checkout route -- four surfaces that have to agree about
+        // who is Pro. It is NOT status === "active": that is only the first of
+        // the three branches, and an active row with no Stripe subscription is
+        // a comp that expires at its period end. A pending cancellation is
+        // deliberately still Pro -- they have paid for the current period --
+        // and the predicate keeps it that way, because such a row carries a
+        // stripe_subscription_id and is governed by status alone.
         //
         // scan_quota, scan_credits and current_period_start are now selected
         // too, because status cannot answer "may this user scan again?". A
         // scan-pack buyer's status is "inactive" -- they bought scans, they did
         // not subscribe -- so reading status alone made every pack buyer look
         // out of scans on the page they land on after every single scan.
+        //
+        // stripe_subscription_id and current_period_end are what expire a
+        // COMPED grant: an active row with no Stripe subscription behind it is a
+        // comp, and a comp ends at its period end. A missing
+        // current_period_end reads as "no end date", i.e. perpetual, so a
+        // shortened select here would unlock the paid breakdown for ever.
         const { data: sub } = await supabase
           .from("subscriptions")
-          .select("status, scan_quota, scan_credits, current_period_start")
+          .select(
+            "status, scan_quota, scan_credits, current_period_start, stripe_subscription_id, current_period_end",
+          )
           .maybeSingle();
 
         const subscription = sub as Pick<
           SubscriptionsRow,
-          "status" | "scan_quota" | "scan_credits" | "current_period_start"
+          | "status"
+          | "scan_quota"
+          | "scan_credits"
+          | "current_period_start"
+          | "stripe_subscription_id"
+          | "current_period_end"
         > | null;
 
         // Matches the server-side quota check in /api/scan: a partial image
@@ -152,7 +170,15 @@ export function ScanResultClient() {
         // A subscriber's allowance is monthly, so only this window's scans
         // count. Null means all-time counting is correct (free tier, a pack
         // buyer, or a comped lifetime grant).
-        const windowStart = scanWindowStart(subscription, new Date());
+        // ONE CLOCK FOR THE WHOLE DECISION: the window picked here, the Pro
+        // flag set below and the allowance all derive from hasProAccess, and
+        // the awaited count query sits between them. Three separate clock
+        // reads let a comp expiring in that gap be Pro for the window and
+        // expired for the allowance in the same render -- a monthly window
+        // against a free allowance. QuotaInput.now exists for this.
+        const now = new Date();
+
+        const windowStart = scanWindowStart(subscription, now);
         if (windowStart) {
           countQuery = countQuery.gte("created_at", windowStart.toISOString());
         }
@@ -161,12 +187,13 @@ export function ScanResultClient() {
 
         if (cancelled) return;
 
-        setIsPro(hasProAccess(subscription?.status));
+        setIsPro(hasProAccess(subscription, now));
 
         // The same decision the scan endpoint enforces, from the same module.
         const result = computeQuota({
           scans_used: typeof count === "number" ? count : 0,
           subscription,
+          now,
         });
         setQuota({
           exhausted: result.remaining <= 0,

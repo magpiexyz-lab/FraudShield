@@ -31,6 +31,8 @@ import { rateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
 import { resolvePayIntentAttribution } from "@/lib/attribution";
 import { PLAN_PRICES, SCAN_PACKS, scanPackById } from "@/lib/types";
 import { hashEmailForMatching } from "@/lib/email-hash";
+import { hasProAccess } from "@/lib/pro-access";
+import type { EntitlementRow } from "@/lib/pro-access";
 
 // Closed enum of everything buyable: subscription slugs from PLAN_PRICES and
 // one-time pack ids from SCAN_PACKS. Both derived at build time, so a slug the
@@ -94,20 +96,32 @@ export async function POST(request: Request) {
   //
   //    RLS scopes this read to the caller's own row, so no service-role client
   //    is needed and one user cannot probe another's subscription state.
+  //    EVERY COLUMN THE RULE READS. status alone cannot answer "are they Pro
+  //    right now": a comped grant is active with no Stripe subscription behind
+  //    it, and expires at its period end. Selecting less than this would make
+  //    the guard read an expired comp as still paying.
   const { data: existing } = await supabase
     .from("subscriptions")
-    .select("status")
+    .select("status, stripe_subscription_id, current_period_end")
     .eq("user_id", user.id)
     .maybeSingle();
 
-  // ACTIVE ONLY. A canceled row must still be able to buy again - that is a
-  // returning customer, and the webhook's upsert is built to reuse their row.
-  // A pending cancellation (status active, cancel_at_period_end true) is
-  // deliberately refused too: they have paid for the current month and still
-  // hold access, so a second purchase would bill them twice for the same
-  // period. The portal's "Renew" is the correct route back, and the client
-  // sends them there.
-  if ((existing as { status?: string } | null)?.status === "active") {
+  // ONLY WHEN THEY GENUINELY HOLD PRO RIGHT NOW, which is what hasProAccess
+  // answers and what a bare status comparison does not. An EXPIRED COMP keeps
+  // status "active" for ever -- no webhook exists to flip it -- so comparing
+  // the column here would refuse a second subscription to exactly the cohort
+  // this is meant to convert: someone whose free month ran out, lost Pro, and
+  // came to pay for it. They would be unable to.
+  //
+  // A canceled row must still be able to buy again - that is a returning
+  // customer, and the webhook's upsert is built to reuse their row. A pending
+  // cancellation (status active, cancel_at_period_end true) is deliberately
+  // refused too: they have paid for the current month and still hold access, so
+  // a second purchase would bill them twice for the same period. The portal's
+  // "Renew" is the correct route back, and the client sends them there. That
+  // case needs nothing special from the new rule -- such a row has a
+  // stripe_subscription_id, so status governs it alone.
+  if (hasProAccess(existing as EntitlementRow | null, new Date())) {
     // Both `error` and `code`, matching the not_configured response below: the
     // shared client decision table (src/lib/checkout-client.ts) switches on
     // `code`, and dropping it here would fall through to the generic "could not

@@ -245,9 +245,17 @@ export async function POST(request: Request) {
     // The row is per-user BILLING STATE, not proof of a plan. Reading it
     // unconditionally and letting computeQuota decide is what keeps those two
     // ideas separate.
+    //
+    // stripe_subscription_id and current_period_end are selected because
+    // computeQuota's "is this user paid?" rule reads them: an active row with no
+    // Stripe subscription is a COMPED grant and expires at its period end. A
+    // missing current_period_end reads as "no end date", i.e. a lifetime grant,
+    // so a shortened select here would hand out perpetual Pro quota silently.
     const { data: sub } = await supabase
       .from("subscriptions")
-      .select("status, scan_quota, scan_credits, current_period_start")
+      .select(
+        "status, scan_quota, scan_credits, current_period_start, stripe_subscription_id, current_period_end",
+      )
       .eq("user_id", user.id)
       .maybeSingle();
 
@@ -257,25 +265,47 @@ export async function POST(request: Request) {
       .eq("counts_toward_quota", true);
 
     // Paid plans count within the current monthly window. A NULL window means
-    // free tier or a comped lifetime grant, where all-time counting is correct:
-    // the free card sells "1 document scan, total", not one per month.
+    // free tier or a comped lifetime grant, where all-time counting is
+    // correct: the free card sells "1 document scan, total", not one per
+    // month.
     //
-    // GATED ON status === "active" inside scanWindowStart, which matters now
-    // that the row above is read regardless of status. A CANCELLED subscriber
-    // keeps their old current_period_start, and currentPeriodStart() rolls any
-    // anchor forward to the present -- so without that gate, someone who
-    // cancelled and later bought a single pack would have their usage counted
-    // from this month only, and would receive their free scan plus the whole
-    // pack again every month, forever.
+    // GATED ON hasProAccess inside scanWindowStart -- the same predicate
+    // computeQuota uses below -- so the window and the allowance cannot
+    // disagree about who is paid. They did disagree: the gate read status
+    // directly, and an expired comp keeps status "active" for ever, so the
+    // comp was handed the FREE allowance and a MONTHLY window at once. Since
+    // nothing decrements scan_credits, rolling the window forward re-granted
+    // the free scan and the whole purchased pack every month.
+    //
+    // The gate also still does its original job. The row above is read
+    // regardless of status, and a CANCELLED subscriber keeps their old
+    // current_period_start while currentPeriodStart() rolls any anchor
+    // forward to the present -- so without it, someone who cancelled and
+    // later bought a single pack would have usage counted from this month
+    // only and would receive everything again monthly.
     //
     // The rule lives in lib/quota.ts rather than here so the dashboard meter
     // reads quota the same way this endpoint enforces it.
+
+    // ONE CLOCK FOR THE WHOLE DECISION. The window picked here and the
+    // allowance computed below are both derived from hasProAccess, and the
+    // awaited count query sits between them -- tens to hundreds of
+    // milliseconds, not a hair. Reading the clock twice meant a comp whose
+    // current_period_end fell inside that gap was judged Pro by the first
+    // read and expired by the second: the MONTHLY window handed the FREE
+    // allowance, which is the exact disagreement this gate exists to
+    // prevent. QuotaInput.now exists for this.
+    const now = new Date();
+
     const windowStart = scanWindowStart(
       sub as Pick<
         SubscriptionsRow,
-        "status" | "current_period_start"
+        | "status"
+        | "current_period_start"
+        | "stripe_subscription_id"
+        | "current_period_end"
       > | null,
-      new Date(),
+      now,
     );
     if (windowStart) {
       scanQuery = scanQuery.gte("created_at", windowStart.toISOString());
@@ -287,8 +317,13 @@ export async function POST(request: Request) {
       scans_used: count ?? 0,
       subscription: sub as Pick<
         SubscriptionsRow,
-        "status" | "scan_quota" | "scan_credits"
+        | "status"
+        | "scan_quota"
+        | "scan_credits"
+        | "stripe_subscription_id"
+        | "current_period_end"
       > | null,
+      now,
     });
 
     if (!quota.allowed) {
