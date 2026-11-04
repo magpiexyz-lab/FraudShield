@@ -357,10 +357,19 @@ function parseResponse(
  * Images keep the existing path: downscale, apply EXIF orientation, normalize
  * to JPEG. That conversion is what makes the hardcoded image/jpeg media type
  * below correct for a PNG or HEIC upload.
+ *
+ * `preparedImage` lets a caller that has ALREADY decoded the image hand the
+ * result over instead of paying for the decode twice. /api/free-scan runs
+ * `prepareImage` itself, above its scan-allowance counters, so an undecodable
+ * upload is refused without burning anyone an allowance; before this parameter
+ * existed that output was discarded and the same bytes were decoded again
+ * here. It is OPTIONAL and the PDF branch ignores it: a PDF is never
+ * rasterized, so there is no image to substitute.
  */
 async function documentContentBlock(
   buf: Buffer,
   mime: string,
+  preparedImage?: Buffer,
 ): Promise<Anthropic.ContentBlockParam | null> {
   if (mime === "application/pdf") {
     return {
@@ -373,7 +382,10 @@ async function documentContentBlock(
     };
   }
 
-  const image = await prepareImage(buf);
+  // `??` rather than a truthiness check: an empty Buffer is falsy-adjacent in
+  // review but is a real (if useless) value, and re-decoding on it would make
+  // the skip silently conditional on content rather than on presence.
+  const image = preparedImage ?? (await prepareImage(buf));
   if (!image) return null;
   return {
     type: "image",
@@ -401,16 +413,22 @@ async function documentContentBlock(
  * @param buf      Raw uploaded bytes (not persisted anywhere).
  * @param docType  Document type, for context in the prompt.
  * @param mime     Server-detected MIME; selects the content block.
+ * @param preparedImage
+ *   Optional output of `prepareImage` from a caller that already decoded this
+ *   image, so it is not decoded twice. LAST and OPTIONAL on purpose: /api/scan
+ *   passes nothing and must keep its exact previous behaviour, so the existing
+ *   three parameters do not move.
  */
 export async function analyzeDocumentForFraud(
   buf: Buffer,
   docType: "pay_stub" | "bank_statement" | "invoice",
   mime: string,
+  preparedImage?: Buffer,
 ): Promise<VisionResult> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return unusable("unavailable");
 
-  const block = await documentContentBlock(buf, mime);
+  const block = await documentContentBlock(buf, mime, preparedImage);
   if (!block) return unusable("unavailable");
 
   try {

@@ -327,12 +327,17 @@ describe("(d) an accepted request runs exactly one scan", () => {
     expect(input.preparedImage).toBeInstanceOf(Buffer);
   });
 
-  it("consumes exactly two tokens: per-IP then site-wide, in that order", async () => {
+  it("consumes exactly three counters: request, then per-IP, then site-wide", async () => {
     await POST(uploadRequest());
 
-    expect(rateLimit).toHaveBeenCalledTimes(2);
-    expect(rateLimit.mock.calls[0]).toEqual([`free-scan:ip:${IP}`, 3, 86400]);
-    expect(rateLimit.mock.calls[1]).toEqual(["free-scan:global", 30, 86400]);
+    // THREE, not two. `free-scan:req:` prices REQUESTS and is consumed above
+    // the sharp decode; `free-scan:ip:` and `free-scan:global` price
+    // COMPLETED SCANS and are consumed below it. The two groups are
+    // deliberately separate — see the route comment at step 5.
+    expect(rateLimit).toHaveBeenCalledTimes(3);
+    expect(rateLimit.mock.calls[0]).toEqual([`free-scan:req:${IP}`, 20, 3600]);
+    expect(rateLimit.mock.calls[1]).toEqual([`free-scan:ip:${IP}`, 3, 86400]);
+    expect(rateLimit.mock.calls[2]).toEqual(["free-scan:global", 30, 86400]);
   });
 
   it("derives severity from the shared band thresholds", async () => {
@@ -424,6 +429,9 @@ describe("(g) an IP-capped request never touches the global counter", () => {
     // every other test in this file still passes while one IP, already over
     // its own limit, silently burns all 30 site-wide scans per day through
     // requests that are refused anyway.
+    // First call is the coarse request counter, which has room; the SECOND
+    // is the per-IP scan counter, which is the one exhausted here.
+    rateLimit.mockResolvedValueOnce(allowed());
     rateLimit.mockResolvedValueOnce(exhausted());
 
     const response = await POST(uploadRequest());
@@ -436,8 +444,8 @@ describe("(g) an IP-capped request never touches the global counter", () => {
     // the failure say what actually broke: the global budget was charged.
     const keys = rateLimit.mock.calls.map((c) => c[0] as string);
     expect(keys).not.toContain("free-scan:global");
-    expect(keys).toEqual([`free-scan:ip:${IP}`]);
-    expect(rateLimit).toHaveBeenCalledTimes(1);
+    expect(keys).toEqual([`free-scan:req:${IP}`, `free-scan:ip:${IP}`]);
+    expect(rateLimit).toHaveBeenCalledTimes(2);
 
     expect(response.status).toBe(429);
     expect(body.code).toBe("ip_capped");
@@ -447,15 +455,22 @@ describe("(g) an IP-capped request never touches the global counter", () => {
   it("keys the per-IP counter off the trusted last X-Forwarded-For entry", async () => {
     // The spoofable prefix (198.51.100.7) must not reach the key, or an
     // attacker mints a fresh 3-scan allowance per request (issue #1361).
+    rateLimit.mockResolvedValueOnce(allowed());
     rateLimit.mockResolvedValueOnce(exhausted());
 
     await POST(uploadRequest());
 
-    expect(rateLimit.mock.calls[0][0]).toBe(`free-scan:ip:${IP}`);
-    expect(rateLimit.mock.calls[0][0]).not.toContain("198.51.100.7");
+    // EVERY per-IP key, the request counter included: all of them are keyed
+    // on the same address, so a spoofable prefix in any one of them is the
+    // same bypass.
+    const keys = rateLimit.mock.calls.map((c) => c[0] as string);
+    expect(keys[0]).toBe(`free-scan:req:${IP}`);
+    expect(keys[1]).toBe(`free-scan:ip:${IP}`);
+    for (const key of keys) expect(key).not.toContain("198.51.100.7");
   });
 
   it("answers an IP cap with signup-framed copy and a Retry-After", async () => {
+    rateLimit.mockResolvedValueOnce(allowed());
     rateLimit.mockResolvedValueOnce(exhausted());
 
     const response = await POST(uploadRequest());
@@ -468,6 +483,8 @@ describe("(g) an IP-capped request never touches the global counter", () => {
   });
 
   it("answers a site-wide cap with site_capped after both tokens", async () => {
+    // request: room, per-IP: room, site-wide: exhausted.
+    rateLimit.mockResolvedValueOnce(allowed());
     rateLimit.mockResolvedValueOnce(allowed());
     rateLimit.mockResolvedValueOnce(exhausted());
 
@@ -476,7 +493,7 @@ describe("(g) an IP-capped request never touches the global counter", () => {
 
     expect(response.status).toBe(429);
     expect(body.code).toBe("site_capped");
-    expect(rateLimit).toHaveBeenCalledTimes(2);
+    expect(rateLimit).toHaveBeenCalledTimes(3);
     expect(runFraudScan).not.toHaveBeenCalled();
   });
 });
@@ -485,8 +502,8 @@ describe("(g) an IP-capped request never touches the global counter", () => {
 // (h) The decode gate
 // ---------------------------------------------------------------------------
 
-describe("(h) an undecodable image consumes no global token", () => {
-  it("refuses with image_unreadable before either counter", async () => {
+describe("(h) an undecodable image consumes no SCAN token", () => {
+  it("refuses with image_unreadable before either scan counter", async () => {
     // sharp's prebuilt binaries ship WITHOUT HEIF support, so a HEIC (and a
     // truncated JPEG, and a PDF renamed to image/png) returns null here and
     // would reach no Anthropic API at all. Without this gate every one of
@@ -501,8 +518,15 @@ describe("(h) an undecodable image consumes no global token", () => {
 
     expect(response.status).toBe(415);
     expect(body.code).toBe("image_unreadable");
-    expect(rateLimit).not.toHaveBeenCalled();
+    // The COARSE REQUEST COUNTER IS CONSUMED — that is the security fix
+    // (resource-bound-placement): the decode itself is now priced, so an
+    // attacker cannot force unlimited 4 MB sharp decodes for free. What must
+    // still cost nothing is the SCAN ALLOWANCE, because HEIC uploads from
+    // mobile traffic are expected and a visitor who sends one has to be able
+    // to retry with a JPEG.
     const keys = rateLimit.mock.calls.map((c) => c[0] as string);
+    expect(keys).toEqual([`free-scan:req:${IP}`]);
+    expect(keys).not.toContain(`free-scan:ip:${IP}`);
     expect(keys).not.toContain("free-scan:global");
     expect(runFraudScan).not.toHaveBeenCalled();
   });
@@ -516,6 +540,140 @@ describe("(h) an undecodable image consumes no global token", () => {
     const body = (await response.json()) as FreeScanBody;
 
     expect(body.message).toMatch(/JPEG|PNG/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// (i) The decode itself is priced
+//
+// Security finding `resource-bound-placement`. The decode gate at step 5 runs
+// ABOVE the two scan counters, and that ordering is deliberate: an undecodable
+// image must not burn a scan allowance, because sharp's prebuilt binaries
+// have no HEIF support and HEIC uploads from mobile traffic are EXPECTED, not
+// abusive. The consequence was that the sharp decode was entirely free and
+// unmetered — an attacker could force repeated 4 MB decodes without consuming
+// any counter at all. `limitInputPixels` bounds each individual decode, so it
+// was never unbounded; it was simply unpriced.
+//
+// The fix is a THIRD counter, coarse and separate: 20 requests per hour per
+// IP, consumed after the cheap validation (API key, zod, MIME, size) but
+// BEFORE prepareImage. 20 rather than 3 so a real visitor who retries a HEIC,
+// exports a JPEG, and then scans a second document never meets it.
+//
+// WHY ORDERING IS THE WHOLE PROPERTY: rateLimit() has no peek, so "the decode
+// was priced" is not observable from any response field. It is observable only
+// as the relative order of two mock invocations, which is what the first two
+// assertions below read.
+// ---------------------------------------------------------------------------
+
+describe("(i) the sharp decode is metered by a per-IP request counter", () => {
+  it("consumes the request counter before the decode", async () => {
+    await POST(uploadRequest());
+
+    // invocationCallOrder is a global monotonic counter shared across vitest
+    // mocks, so this compares the limiter call against the decode call
+    // directly. Move the counter below prepareImage in the route and this is
+    // the assertion that reports it.
+    expect(rateLimit).toHaveBeenCalled();
+    expect(prepareImage).toHaveBeenCalled();
+    expect(rateLimit.mock.invocationCallOrder[0]).toBeLessThan(
+      prepareImage.mock.invocationCallOrder[0],
+    );
+  });
+
+  it("never reaches the decode once the request counter is exhausted", async () => {
+    rateLimit.mockResolvedValueOnce(exhausted());
+
+    const response = await POST(uploadRequest());
+    const body = (await response.json()) as FreeScanBody;
+
+    // THE POINT OF THE FIX. If prepareImage still runs here, the attacker
+    // still gets the CPU for free and the counter bought nothing.
+    expect(prepareImage).not.toHaveBeenCalled();
+    expect(response.status).toBe(429);
+    expect(body.code).toBe("too_many_requests");
+    expect(runFraudScan).not.toHaveBeenCalled();
+  });
+
+  it("charges no scan allowance when the request counter refuses", async () => {
+    rateLimit.mockResolvedValueOnce(exhausted());
+
+    await POST(uploadRequest());
+
+    // A request-rate refusal must not cost the visitor one of their 3 scans
+    // or the site one of its 30. The keys are the only observable form this
+    // guarantee has.
+    const keys = rateLimit.mock.calls.map((c) => c[0] as string);
+    expect(keys).toEqual([`free-scan:req:${IP}`]);
+    expect(keys).not.toContain(`free-scan:ip:${IP}`);
+    expect(keys).not.toContain("free-scan:global");
+    expect(rateLimit).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses a distinct code, not one of the three cap codes", async () => {
+    // decideFreeScanCap owns ip_capped / site_capped / cap_unavailable and
+    // answers the question "has this caller used up its SCANS". This counter
+    // answers a different question, so it must not borrow those codes: the
+    // client copy for ip_capped tells the visitor they have used all 3 free
+    // scans, which would be a lie here.
+    rateLimit.mockResolvedValueOnce(exhausted());
+
+    const response = await POST(uploadRequest());
+    const body = (await response.json()) as FreeScanBody;
+
+    expect(body.code).toBe("too_many_requests");
+    expect(body.code).not.toBe("ip_capped");
+    expect(body.code).not.toBe("site_capped");
+    expect(body.code).not.toBe("cap_unavailable");
+  });
+
+  it("emits Retry-After when the window reset time is known", async () => {
+    rateLimit.mockResolvedValueOnce(exhausted());
+
+    const response = await POST(uploadRequest());
+
+    expect(Number(response.headers.get("retry-after"))).toBeGreaterThan(0);
+  });
+
+  it("omits Retry-After when the window reset time is unknown", async () => {
+    rateLimit.mockResolvedValueOnce({
+      success: false,
+      remaining: 0,
+      enforcement: "memory_unconfigured",
+      resetAt: null,
+    });
+
+    const response = await POST(uploadRequest());
+    const body = (await response.json()) as FreeScanBody;
+
+    expect(body.code).toBe("too_many_requests");
+    expect(response.headers.get("retry-after")).toBeNull();
+  });
+
+  it("keys the request counter off the trusted last X-Forwarded-For entry", async () => {
+    rateLimit.mockResolvedValueOnce(exhausted());
+
+    await POST(uploadRequest());
+
+    // Same bypass as the scan counter (issue #1361): read the raw header and
+    // an attacker mints a fresh 20-request budget per request, which puts the
+    // decode back to being free.
+    expect(rateLimit.mock.calls[0][0]).toBe(`free-scan:req:${IP}`);
+    expect(rateLimit.mock.calls[0][0]).not.toContain("198.51.100.7");
+  });
+
+  it("is not consulted by refusals that are cheaper than it", async () => {
+    // The counter sits BELOW the cheap checks, so a 4 MB text/plain upload is
+    // still rejected without touching any counter at all. Hoisting it above
+    // the MIME and size gates would make those refusals consume budget, and
+    // the cheap gates are exactly the ones that should be free.
+    const response = await POST(
+      uploadRequest({ name: "notes.txt", type: "text/plain" }),
+    );
+
+    expect(response.status).toBe(415);
+    expect(rateLimit).not.toHaveBeenCalled();
+    expect(prepareImage).not.toHaveBeenCalled();
   });
 });
 
