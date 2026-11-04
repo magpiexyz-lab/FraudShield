@@ -21,17 +21,12 @@
 
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import exifr from "exifr";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { rateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
 import { computeQuota, scanWindowStart } from "@/lib/quota";
-import { computeFraudScore } from "@/lib/fraud/score";
-import { analyzeDocumentForFraud, applyVisionSignals } from "@/lib/fraud/vision";
+import { ACCEPTED_MIME, MAX_BYTES } from "@/lib/scan-intake";
+import { runFraudScan } from "@/lib/fraud/run-scan";
 import { isFullAnalysis } from "@/lib/fraud/analysis-mode";
-import type {
-  DocumentMetadata,
-  ScoringInput,
-} from "@/lib/fraud/score";
 import type { FraudSignal, SubscriptionsRow } from "@/lib/types";
 
 // sharp (image downscaling) and Buffer are Node APIs — pin the runtime rather
@@ -54,121 +49,6 @@ export type CreateScanResponse = {
   fraud_score: number;
   counts_toward_quota: boolean;
 };
-
-// Server-side accepted MIME + size cap (client also checks; the server is the
-// authoritative gate).
-const ACCEPTED_MIME = new Set([
-  "application/pdf",
-  "image/png",
-  "image/jpeg",
-  "image/webp",
-  "image/heic",
-]);
-const MAX_BYTES = 10 * 1024 * 1024; // 10 MB
-
-// Sanitize a user-supplied filename before any string interpolation.
-// Per nextjs.md SK "When handling file uploads".
-function sanitizeFilename(name: string): string {
-  return name
-    .replace(/[/\\]/g, "-")
-    .replace(/\.\./g, "")
-    .replace(/[^a-zA-Z0-9._-]/g, "-")
-    .replace(/-+/g, "-")
-    .slice(0, 255);
-}
-
-// Infer doc_type from a sanitized filename when the client did not provide one.
-function inferDocType(name: string): "pay_stub" | "bank_statement" | "invoice" {
-  const n = name.toLowerCase();
-  if (n.includes("bank") || n.includes("statement")) return "bank_statement";
-  if (n.includes("invoice") || n.includes("inv-") || n.includes("inv_"))
-    return "invoice";
-  return "pay_stub";
-}
-
-// Best-effort PDF metadata extraction. We pull a small slice of the buffer and
-// regex-match against the Info dict — this avoids pulling a heavy PDF parser
-// dependency for the MVP. Anything we can't parse just stays undefined.
-function extractPdfMetadata(buf: Buffer): Partial<DocumentMetadata> {
-  const slice = buf.subarray(0, Math.min(buf.length, 65536)).toString("latin1");
-  const meta: Partial<DocumentMetadata> = {};
-
-  const producer = /\/Producer\s*\(([^)]+)\)/.exec(slice)?.[1];
-  if (producer) meta.pdf_producer = producer.trim();
-
-  const creator = /\/Creator\s*\(([^)]+)\)/.exec(slice)?.[1];
-  if (creator) meta.pdf_creator = creator.trim();
-
-  const created = /\/CreationDate\s*\(D:?([0-9]{14})/.exec(slice)?.[1];
-  if (created) {
-    const y = created.slice(0, 4);
-    const mo = created.slice(4, 6);
-    const d = created.slice(6, 8);
-    const h = created.slice(8, 10);
-    const mi = created.slice(10, 12);
-    const s = created.slice(12, 14);
-    meta.pdf_created = `${y}-${mo}-${d}T${h}:${mi}:${s}Z`;
-  }
-
-  const modified = /\/ModDate\s*\(D:?([0-9]{14})/.exec(slice)?.[1];
-  if (modified) {
-    const y = modified.slice(0, 4);
-    const mo = modified.slice(4, 6);
-    const d = modified.slice(6, 8);
-    const h = modified.slice(8, 10);
-    const mi = modified.slice(10, 12);
-    const s = modified.slice(12, 14);
-    meta.pdf_modified = `${y}-${mo}-${d}T${h}:${mi}:${s}Z`;
-  }
-
-  const pageCount = (slice.match(/\/Type\s*\/Page[^s]/g) ?? []).length;
-  if (pageCount > 0) meta.page_count = pageCount;
-
-  return meta;
-}
-
-// Best-effort EXIF extraction for image uploads. Pulls the forensic fields the
-// image detectors in lib/fraud/score.ts consume: the Software tag (the image
-// analog of /Producer), DateTimeOriginal, and whether any EXIF block existed at
-// all — an empty EXIF is itself a signal (screenshot / editor export / stripped).
-// A file we cannot parse is reported as EXIF-absent rather than throwing.
-async function extractImageMetadata(
-  buf: Buffer,
-): Promise<Partial<DocumentMetadata>> {
-  const meta: Partial<DocumentMetadata> = { exif_present: false };
-
-  let tags: Record<string, unknown> | undefined;
-  try {
-    tags =
-      // tiff covers IFD0 (where Software lives); exif covers DateTimeOriginal.
-      (await exifr.parse(buf, { tiff: true, exif: true })) ?? undefined;
-  } catch {
-    return meta;
-  }
-  if (!tags || Object.keys(tags).length === 0) return meta;
-
-  meta.exif_present = true;
-
-  // Software is user-controlled text — cap its length before it reaches the
-  // signal detail string that the UI renders.
-  const software = tags.Software;
-  if (typeof software === "string" && software.trim()) {
-    meta.exif_software = software.trim().slice(0, 200);
-  }
-
-  // exifr returns Date objects for EXIF date tags when parseable.
-  const captured = tags.DateTimeOriginal;
-  if (captured instanceof Date && !Number.isNaN(captured.getTime())) {
-    meta.exif_datetime_original = captured.toISOString();
-  } else if (typeof captured === "string") {
-    const parsed = new Date(captured);
-    if (!Number.isNaN(parsed.getTime())) {
-      meta.exif_datetime_original = parsed.toISOString();
-    }
-  }
-
-  return meta;
-}
 
 export async function POST(request: Request) {
   // 1. Auth first — unauthenticated callers don't consume rate-limit budget.
@@ -337,51 +217,24 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Internal error" }, { status: 500 });
   }
 
-  // 5. Sanitize filename, build metadata, score in memory. Raw file bytes
-  //    are NEVER persisted — only the derived metadata + signals + score.
-  const sanitizedName = sanitizeFilename(file.name || "document");
-  const docType = parsedDocType ?? inferDocType(sanitizedName);
-
+  // 5. Sanitize filename, build metadata, score in memory, and run the AI
+  //    content pass. Raw file bytes are NEVER persisted — only the derived
+  //    metadata + signals + score.
+  //
+  //    The pipeline itself lives in lib/fraud/run-scan.ts so the anonymous
+  //    free-scan surface performs the IDENTICAL analysis. Two transcriptions
+  //    of it is how two surfaces start reporting different scores for the same
+  //    document.
   const buf = Buffer.from(await file.arrayBuffer());
-  const isImage = file.type.startsWith("image/");
-  const pdfMeta =
-    file.type === "application/pdf" ? extractPdfMetadata(buf) : {};
-  const imageMeta = isImage ? await extractImageMetadata(buf) : {};
-
-  const metadata: DocumentMetadata = {
-    filename: sanitizedName,
-    mime: file.type || "application/octet-stream",
-    size: file.size,
-    ...pdfMeta,
-    ...imageMeta,
-  };
-
-  const scoringInput: ScoringInput = { metadata, doc_type: docType };
-  let result = computeFraudScore(scoringInput);
-
-  // 5b. AI content pass — EVERY supported format, images and PDFs alike.
-  //
-  //     This used to run on images only, on the reasoning that a PDF already
-  //     got document-level forensics. The accuracy gate (#49) measured what
-  //     that was worth: 0 of 20 forged PDFs detected, with scores that were a
-  //     constant per document type and identical for genuine and tampered.
-  //     Metadata forensics cannot see an edited salary, because nothing in
-  //     that path ever reads the number. A detector that never examines the
-  //     document cannot be tuned into one that does.
-  //
-  //     analyzeDocumentForFraud never throws: on a missing key, timeout, API
-  //     error, refusal, or inconclusive verdict it reports back unanalyzed and
-  //     the scan keeps whatever the metadata detectors produced.
-  const vision = await analyzeDocumentForFraud(buf, docType, file.type);
-  metadata.vision_status = vision.status;
-  if (vision.analyzed) {
-    // Only a completed determination upgrades the scan to a full analysis
-    // (see lib/fraud/analysis-mode.ts).
-    metadata.vision_analyzed = true;
-    result = applyVisionSignals(result, vision.signals);
-  }
-
-  const { score, signals } = result;
+  const { score, signals, metadata, vision, docType } = await runFraudScan({
+    buf,
+    filename: file.name,
+    // Raw, including the empty string this route lets through validation.
+    mime: file.type,
+    // Undefined when the client sent no doc_type — runFraudScan then infers it
+    // from the sanitized filename, preserving this route's precedence.
+    docType: parsedDocType,
+  });
 
   // Strip the raw file reference — buf goes out of scope and is GC'd.
   const fileMetaForDb = metadata;

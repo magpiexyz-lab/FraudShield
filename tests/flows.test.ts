@@ -805,9 +805,12 @@ describe("b-06: checkout refuses a second subscription", () => {
 // once analyzeDocumentForFraud is called, not that the route calls it. The gate
 // that was wrong lived here, so the assertion lives here too.
 describe("b-04: every supported format reaches the content pass", () => {
+  // The content pass moved out of the route into lib/fraud/run-scan.ts when
+  // the anonymous free-scan surface needed to run the IDENTICAL analysis. The
+  // gate that was wrong is in that file now, so this guard reads it there.
   const routeSource = () =>
     readFileSync(
-      path.join(__dirname, "..", "src", "app", "api", "scan", "route.ts"),
+      path.join(__dirname, "..", "src", "lib", "fraud", "run-scan.ts"),
       "utf8",
     );
 
@@ -837,7 +840,7 @@ describe("b-04: every supported format reaches the content pass", () => {
   // through, and vision.ts selects the content block from it.
   it("passes the file's MIME type to the content pass", () => {
     expect(routeSource()).toMatch(
-      /analyzeDocumentForFraud\(\s*buf,\s*docType,\s*file\.type\s*\)/,
+      /analyzeDocumentForFraud\(\s*buf,\s*docType,\s*(?:file\.type|mime)\s*\)/,
     );
   });
 });

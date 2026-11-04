@@ -138,14 +138,26 @@ describe("privacy disclosure", () => {
 //
 // This guard fails if anyone adds a mime to the scan API's accepted list that
 // has neither deep checks nor limited-analysis classification. We read the
-// route's source (rather than importing it — the module pulls in server-only
-// deps) so the guard tracks the real accepted list.
+// source (rather than importing it — the modules pull in server-only deps) so
+// the guard tracks the real accepted list.
+//
+// The accepted list and the extraction gates used to live inline in
+// src/app/api/scan/route.ts. They moved to lib/scan-intake.ts and
+// lib/fraud/run-scan.ts when the anonymous free-scan surface needed to enforce
+// the SAME gates, so the guard follows them there. It reads both files because
+// the subject now spans them: the accept-list in one, the per-format
+// extraction gates in the other.
 // ---------------------------------------------------------------------------
 
-const ROUTE_PATH = fileURLToPath(
-  new URL("../../app/api/scan/route.ts", import.meta.url),
+const INTAKE_PATH = fileURLToPath(
+  new URL("../scan-intake.ts", import.meta.url),
 );
-const ROUTE_SRC = readFileSync(ROUTE_PATH, "utf-8");
+const PIPELINE_PATH = fileURLToPath(new URL("./run-scan.ts", import.meta.url));
+const ROUTE_PATH = `${INTAKE_PATH} + ${PIPELINE_PATH}`;
+const ROUTE_SRC = `${readFileSync(INTAKE_PATH, "utf-8")}\n${readFileSync(
+  PIPELINE_PATH,
+  "utf-8",
+)}`;
 
 /** Mimes the scan API accepts for upload. */
 function parseAcceptedMimes(src: string): string[] {
@@ -154,9 +166,16 @@ function parseAcceptedMimes(src: string): string[] {
   return [...block.matchAll(/"([^"]+)"/g)].map((m) => m[1]);
 }
 
-/** Mimes for which the route actually extracts deep PDF metadata. */
+/**
+ * Mimes for which the pipeline actually extracts deep PDF metadata.
+ *
+ * Accepts either spelling of the subject: `file.type` from when this lived in
+ * the route and read a File directly, or the `mime` parameter runFraudScan
+ * takes now.
+ */
 function parseDeepMetadataMimes(src: string): string[] {
-  const m = /file\.type === "([^"]+)"\s*\?\s*extractPdfMetadata/.exec(src);
+  const m =
+    /(?:file\.type|mime) === "([^"]+)"\s*\?\s*extractPdfMetadata/.exec(src);
   return m ? [m[1]] : [];
 }
 
@@ -168,7 +187,7 @@ function parseDeepMetadataMimes(src: string): string[] {
  */
 function parseExifMetadataPrefixes(src: string): string[] {
   const inline =
-    /file\.type\.startsWith\("([^"]+)"\)\s*\?\s*(?:await\s+)?extractImageMetadata/.exec(
+    /(?:file\.type|mime)\.startsWith\("([^"]+)"\)\s*\?\s*(?:await\s+)?extractImageMetadata/.exec(
       src,
     );
   if (inline) return [inline[1]];
@@ -176,7 +195,7 @@ function parseExifMetadataPrefixes(src: string): string[] {
   const named = /(\w+)\s*\?\s*(?:await\s+)?extractImageMetadata/.exec(src);
   if (!named) return [];
   const decl = new RegExp(
-    `const\\s+${named[1]}\\s*=\\s*file\\.type\\.startsWith\\("([^"]+)"\\)`,
+    `const\\s+${named[1]}\\s*=\\s*(?:file\\.type|mime)\\.startsWith\\("([^"]+)"\\)`,
   ).exec(src);
   return decl ? [decl[1]] : [];
 }
