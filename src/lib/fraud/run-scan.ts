@@ -34,7 +34,15 @@ export type RunFraudScanInput = {
   mime: string;
   /** When omitted, inferred from the sanitized filename. */
   docType?: DocType;
-  /** An already-decoded image, to avoid decoding twice. */
+  /**
+   * An already-decoded image (the output of `prepareImage`), forwarded to the
+   * content pass so the same bytes are not decoded twice.
+   *
+   * /api/free-scan decodes above its scan-allowance counters — an undecodable
+   * HEIC must not cost a visitor one of their 3 free scans — and hands the
+   * result over here. /api/scan passes nothing and decodes inside the content
+   * pass exactly as before.
+   */
   preparedImage?: Buffer;
 };
 
@@ -65,7 +73,7 @@ export type RunFraudScanResult = {
 export async function runFraudScan(
   input: RunFraudScanInput,
 ): Promise<RunFraudScanResult> {
-  const { buf, filename, mime, docType: docTypeOverride } = input;
+  const { buf, filename, mime, docType: docTypeOverride, preparedImage } = input;
 
   const sanitizedName = sanitizeFilename(filename || "document");
   const docType = docTypeOverride ?? inferDocType(sanitizedName);
@@ -105,7 +113,9 @@ export async function runFraudScan(
   //     analyzeDocumentForFraud never throws: on a missing key, timeout, API
   //     error, refusal, or inconclusive verdict it reports back unanalyzed and
   //     the scan keeps whatever the metadata detectors produced.
-  const vision = await analyzeDocumentForFraud(buf, docType, mime);
+  //     `preparedImage` is undefined for /api/scan, which leaves the decode
+  //     where it has always been — inside the content pass.
+  const vision = await analyzeDocumentForFraud(buf, docType, mime, preparedImage);
   metadata.vision_status = vision.status;
   if (vision.analyzed) {
     // Only a completed determination upgrades the scan to a full analysis

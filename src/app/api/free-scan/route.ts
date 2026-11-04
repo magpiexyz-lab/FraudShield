@@ -9,9 +9,14 @@
 // WHAT MAKES THIS ROUTE DIFFERENT FROM /api/scan: it spends money for a caller
 // we cannot identify or bill. One accepted request is one `claude-opus-5`
 // vision call. The only things standing between that and an uncapped spend are
-// two counters — 3 per IP per 24h, 30 per day site-wide — so THE ORDER OF THE
-// GATES BELOW IS PART OF THE SECURITY MODEL, not a style choice. Each step
+// two SCAN counters — 3 per IP per 24h, 30 per day site-wide — so THE ORDER OF
+// THE GATES BELOW IS PART OF THE SECURITY MODEL, not a style choice. Each step
 // documents what goes wrong if it moves.
+//
+// A THIRD counter (20 requests per IP per hour) sits above the decode. It is
+// not part of the scan allowance: it exists because the decode gate has to run
+// ABOVE the scan counters, which left the sharp decode itself free to anyone
+// willing to send junk. See step 5.
 //
 // Deliberately absent:
 //   - No Supabase, no `subscriptions` read, no computeQuota/scanWindowStart.
@@ -49,6 +54,28 @@ const TEASER_SIGNAL_COUNT = 2;
 
 /** Per-IP: 3 scans per rolling 24h. */
 const IP_MAX = 3;
+/**
+ * Per-IP: 20 REQUESTS per rolling hour.
+ *
+ * THIS COUNTER PRICES REQUESTS. `free-scan:ip:` prices COMPLETED SCANS. They
+ * are deliberately separate, and the reason is the decode gate at step 6:
+ * `prepareImage` has to run ABOVE the scan counters so that an undecodable
+ * upload costs no scan allowance — HEIC is the default iPhone camera format
+ * and sharp's prebuilt binaries cannot read it, so those uploads are
+ * expected traffic, not abuse. That ordering left the sharp decode itself
+ * free and unmetered: an attacker could force repeated 4 MB decodes without
+ * consuming any counter (security finding `resource-bound-placement`).
+ * sharp's `limitInputPixels` bounds each individual decode, so it was
+ * never unbounded — it was unpriced, which is a different problem and this
+ * counter is the fix.
+ *
+ * 20/hour, not 3: the number has to be loose enough that a real visitor who
+ * retries a HEIC, exports a JPEG, and then scans a second document never
+ * meets it, while still putting a ceiling on how much CPU one address can
+ * demand for free.
+ */
+const REQ_MAX = 20;
+const REQ_WINDOW_SEC = 3600;
 /** Site-wide: 30 scans per rolling 24h. Manager-approved 2026-10-30. */
 const SITE_MAX = 30;
 const WINDOW_SEC = 86400;
@@ -206,9 +233,61 @@ export async function POST(request: Request) {
     );
   }
 
+  // 5. COARSE PER-IP REQUEST COUNTER — PRICES THE DECODE, NOT THE SCAN.
+  //
+  //    Consumed here: below the cheap refusals (API key, zod, MIME, size), so
+  //    none of those start costing budget, and ABOVE the buffer read and the
+  //    decode, so the expensive work is the thing it actually meters. Move it
+  //    below `prepareImage` and the decode is free again, which is the whole
+  //    defect it closes.
+  //
+  //    IT IS NOT PART OF THE SCAN ALLOWANCE and is deliberately NOT folded
+  //    into decideFreeScanCap: that function answers "what has this caller
+  //    used of its 3 scans / the site's 30" and owns exactly three cap
+  //    codes. A request counter answers a different question, so it gets its
+  //    own code (`too_many_requests`) and its own copy. Keeping it out also
+  //    keeps decideFreeScanCap a pure, exhaustively tested function of two
+  //    rate-limit results.
+  //
+  //    Keyed via clientIpFromHeaders, never the raw X-Forwarded-For — every
+  //    entry before the last is client-supplied, so reading the header
+  //    directly would let an attacker mint a fresh 20-request budget per
+  //    request and put the decode straight back to being free (issue #1361,
+  //    CVSS-medium).
+  const ip = clientIpFromHeaders(request.headers);
+  const perIpRequests = await rateLimit(
+    `free-scan:req:${ip}`,
+    REQ_MAX,
+    REQ_WINDOW_SEC,
+  );
+  if (!perIpRequests.success) {
+    // No degraded/unconfigured branch here on purpose. This is a coarse brake
+    // on CPU, not a spend gate: the in-memory fallback is imperfect across
+    // cold starts but still bounds a single process, and the money question —
+    // "may this request run a billed AI call at all" — is answered below by
+    // decideFreeScanCap, which DOES fail closed on a degraded limiter.
+    const headers: Record<string, string> = {};
+    if (perIpRequests.resetAt !== null) {
+      const seconds = Math.max(
+        1,
+        Math.ceil((perIpRequests.resetAt - Date.now()) / 1000),
+      );
+      headers["Retry-After"] = String(seconds);
+    }
+    return NextResponse.json(
+      {
+        code: "too_many_requests",
+        message:
+          "That is a lot of uploads in a short time. Wait a few minutes, or create a free account to keep scanning now.",
+        resetAt: perIpRequests.resetAt,
+      },
+      { status: 429, headers },
+    );
+  }
+
   const buf = Buffer.from(await file.arrayBuffer());
 
-  // 5. DECODE GATE — the security fix, not a nicety. DO NOT "SIMPLIFY" AWAY.
+  // 6. DECODE GATE — the security fix, not a nicety. DO NOT "SIMPLIFY" AWAY.
   //
   //    sharp's prebuilt binaries ship WITHOUT HEIF support, so a HEIC photo —
   //    the default camera format on every iPhone — returns null here. So does
@@ -216,10 +295,12 @@ export async function POST(request: Request) {
   //    those reaches NO Anthropic API at all: `analyzeDocumentForFraud` calls
   //    this same `prepareImage` internally and gives up before the request.
   //
-  //    Without this gate those requests still consume both counters. Thirty
-  //    junk uploads is then a free 24-hour denial of the landing page's
-  //    primary CTA, at zero cost and zero risk to the sender. Running the
-  //    decode here, ABOVE the counters, is what makes that impossible.
+  //    Without this gate those requests still consume both SCAN counters.
+  //    Thirty junk uploads is then a free 24-hour denial of the landing
+  //    page's primary CTA, at zero cost and zero risk to the sender.
+  //    Running the decode here, ABOVE the scan counters, is what makes that
+  //    impossible. The price of that ordering is that the decode itself is
+  //    unmetered, which is what step 5 now charges for.
   //
   //    The decoded buffer is then handed to the pipeline so the same bytes are
   //    not decoded twice.
@@ -232,16 +313,14 @@ export async function POST(request: Request) {
     );
   }
 
-  // 6. PER-IP COUNTER FIRST.
+  // 7. PER-IP SCAN COUNTER FIRST.
   //
-  //    Keyed via clientIpFromHeaders, never the raw X-Forwarded-For: entries
-  //    before the last one are client-supplied, so reading the header directly
-  //    lets an attacker mint a fresh 3-scan allowance per request
-  //    (issue #1361, CVSS-medium).
-  const ip = clientIpFromHeaders(request.headers);
+  //    Same trusted `ip` the request counter above was keyed on. This is the
+  //    SCAN allowance — 3 per 24h — and it is reached only by a request that
+  //    decoded successfully, so a HEIC never costs one.
   const perIp = await rateLimit(`free-scan:ip:${ip}`, IP_MAX, WINDOW_SEC);
 
-  // 7. SITE-WIDE COUNTER SECOND, AND ONLY IF THE PER-IP CHECK LEFT ROOM.
+  // 8. SITE-WIDE COUNTER SECOND, AND ONLY IF THE PER-IP CHECK LEFT ROOM.
   //
   //    rateLimit() HAS NO PEEK — every call consumes. Reversing these two
   //    lines therefore means a single IP already over its own limit burns a
@@ -258,7 +337,7 @@ export async function POST(request: Request) {
     ? await rateLimit(GLOBAL_KEY, SITE_MAX, WINDOW_SEC)
     : notConsulted(perIp);
 
-  // 8. One decision from the two counters (lib/free-scan-cap.ts). isProduction
+  // 9. One decision from the two scan counters (lib/free-scan-cap.ts). isProduction
   //    rather than "are the Upstash vars set": preview deploys are public URLs
   //    with Production-scoped vars, and keying on var absence would leave them
   //    uncapped, while failing closed on absence everywhere would kill the
@@ -284,7 +363,7 @@ export async function POST(request: Request) {
     );
   }
 
-  // 9. THE ONLY AI CALL IN THIS HANDLER. runFraudScan makes exactly one
+  // 10. THE ONLY AI CALL IN THIS HANDLER. runFraudScan makes exactly one
   //    content pass; calling analyzeDocumentForFraud here as well would
   //    double the cost per visitor and halve the real value of both caps.
   const { score, signals, vision } = await runFraudScan({
@@ -294,7 +373,7 @@ export async function POST(request: Request) {
     preparedImage: prepared,
   });
 
-  // 10. Score, band, and TWO signals.
+  // 11. Score, band, and TWO signals.
   //
   //     severity comes from scoreSeverity — the shared 34/67 bands. There are
   //     already three copies of those thresholds in the codebase and a fourth
