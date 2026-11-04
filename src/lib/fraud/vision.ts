@@ -236,7 +236,7 @@ function systemPromptFor(mime: string): string {
  * anything sharp cannot decode (HEIC is the common case — the prebuilt binaries
  * ship without HEIF support), which routes the scan to the partial fallback.
  */
-async function prepareImage(buf: Buffer): Promise<Buffer | null> {
+export async function prepareImage(buf: Buffer): Promise<Buffer | null> {
   try {
     return await sharp(buf)
       .rotate()
