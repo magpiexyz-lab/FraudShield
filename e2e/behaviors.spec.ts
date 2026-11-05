@@ -47,32 +47,106 @@ test.describe("b-01: visitor reads the value prop and clicks the primary CTA", (
 });
 
 // =====================================================================
-// b-02 — sample-scan demo widget on landing (anonymous)
+// b-02 — anonymous free-scan panel on the landing (anonymous)
+//
+// SCOPE: this block covers b-02's FIRST acceptance criterion only — "Free-scan
+// panel renders the words fraud score and the AI privacy disclosure before any
+// upload". The other three (free_scan_start fires on submit; exactly two
+// signals plus a total count; an exhausted cap renders a signup CTA) all need
+// a completed scan, and a real upload from here would POST /api/free-scan,
+// run the Anthropic vision pass, and spend one of the live 3-per-IP /
+// 30-per-day tokens on whatever environment E2E_BASE_URL points at. Those
+// three are covered without a network call by tests/free-scan-panel.test.ts,
+// tests/free-scan-teaser.test.ts, tests/free-scan-route.test.ts and
+// tests/free-scan-cap.test.ts. E2E stays PRE-UPLOAD on purpose.
 // =====================================================================
-test.describe("b-02: visitor opens the live sample-scan demo", () => {
+test.describe("b-02: visitor finds a real free-scan panel on the landing", () => {
   test.beforeEach(async ({ page }) => {
     await blockAnalytics(page);
   });
 
-  test("Sample-scan demo widget renders a fraud score and signal breakdown", async ({ page }) => {
+  // Asserted first and on its own because it is the highest-value line in
+  // this file: #live-demo is a LIVE Google Ads sitelink target
+  // (experiment/ads.yaml -> https://fraudshield.draftlabs.org/#live-demo). If
+  // the id is renamed or the section is restructured away, paid clicks land
+  // mid-page against no anchor and the sitelink silently becomes a dead drop.
+  test("Landing still exposes the #live-demo anchor the ads sitelink targets", async ({ page }) => {
     await page.goto("/");
-    // Landing has a demo section/heading that references the score breakdown.
-    await expect(page.getByText(/fraud score/i).first()).toBeVisible();
+    await expect(page.locator("section#live-demo")).toBeVisible();
   });
 
-  test("demo_view event fires when the demo is opened or run", async ({ page }) => {
+  test("Free-scan panel renders the words fraud score before any upload", async ({ page }) => {
     await page.goto("/");
+    // IDLE_PROMISE in free-scan-panel.tsx: "You get back a real fraud score
+    // out of 100, ...". Scoped to the section so a copy change elsewhere on
+    // the page cannot satisfy this by accident.
+    const demo = page.locator("section#live-demo");
+    await expect(demo.getByText(/fraud score/i).first()).toBeVisible();
+  });
+
+  test("AI privacy disclosure is on screen before any upload", async ({ page }) => {
+    await page.goto("/");
+    // src/lib/fraud/vision.ts makes pre-upload disclosure a hard rule: the
+    // document leaves the machine for a third-party content pass, so the
+    // visitor has to be told before choosing a file, not after. The string is
+    // AI_PRIVACY_DISCLOSURE in src/lib/fraud/analysis-mode.ts; matched in
+    // three fragments so a punctuation edit does not read as a missing
+    // disclosure.
+    const demo = page.locator("section#live-demo");
+    await expect(demo.getByText(/is sent to Anthropic/i)).toBeVisible();
+    await expect(
+      demo.getByText(/Claude API for AI content analysis/i),
+    ).toBeVisible();
+    await expect(
+      demo.getByText(/No document is stored by FraudShield after the scan/i),
+    ).toBeVisible();
+  });
+
+  test("Upload affordance is reachable and accepts images only", async ({ page }) => {
+    await page.goto("/");
+    const demo = page.locator("section#live-demo");
+    await expect(
+      demo.getByRole("button", { name: /select an image/i }),
+    ).toBeVisible();
+    // The input is sr-only and driven by that button, so assert it is
+    // ATTACHED rather than visible — visibility here would be asserting a
+    // styling detail, not the affordance.
+    const input = demo.locator('input[type="file"]');
+    await expect(input).toHaveCount(1);
+    // IMAGES ONLY on the anonymous path (ANON_ACCEPTED_MIME filters
+    // ACCEPTED_MIME down to image/*). A PDF is a paid format here, and the
+    // accept attribute is what stops a visitor reaching that refusal at all.
+    const accept = await input.getAttribute("accept");
+    expect(accept).toMatch(/image\//);
+    expect(accept).not.toMatch(/pdf/i);
+  });
+
+  // REPLACES "demo_view event fires when the demo is opened or run".
+  //
+  // demo_view is DELETED — from experiment/EVENTS.yaml, from EVENT_FUNNEL_MAP
+  // and from src/lib/events.ts. Nothing fires it and nothing can, so the old
+  // sessionStorage probe could only ever fall through to its own fallback.
+  //
+  // Its successor is free_scan_start, which fires inside submit() AFTER the
+  // local file gate and BEFORE the POST. There is deliberately NO observable
+  // marker for a visitor who has not submitted a file, so a no-interaction
+  // test has nothing positive to watch for. This asserts the two things that
+  // ARE checkable without a scan: the panel is in a state that can fire the
+  // event, and a bare page view has not fired it. The second half is the one
+  // that catches a real regression — free_scan_start counts scan ATTEMPTS,
+  // and if a mount ever started writing it, every rate measured against it
+  // would be reporting page loads.
+  test("Panel is ready to fire free_scan_start, and a bare view does not fire it", async ({ page }) => {
+    await page.goto("/");
+    const demo = page.locator("section#live-demo");
+    const select = demo.getByRole("button", { name: /select an image/i });
+    await expect(select).toBeVisible();
+    await expect(select).toBeEnabled();
     await page.waitForTimeout(500);
-    // The demo widget on the landing fires demo_view either on mount of the
-    // interactive surface or on the "Run demo" CTA click. We accept either.
     const marker = await page.evaluate(() =>
-      window.sessionStorage.getItem("analytics:demo_view"),
+      window.sessionStorage.getItem("analytics:free_scan_start"),
     );
-    // Soft assertion — landing iteration may move the trigger. Pass if either
-    // the marker exists OR the demo container is visible (rendered = ready).
-    if (!marker) {
-      await expect(page.getByText(/fraud score/i).first()).toBeVisible();
-    }
+    expect(marker).toBeNull();
   });
 });
 
@@ -492,7 +566,7 @@ test.describe("b-08: returning user submits another document", () => {
 // =====================================================================
 // bugs #3 + #4 — landing pay-stub mockup + pricing section + header nav
 // =====================================================================
-test.describe("landing bugs #3 + #4: pay-stub mockup, pricing visibility", () => {
+test.describe("landing bugs #3 + #4: live-demo surface, pricing visibility", () => {
   test.beforeEach(async ({ page }) => {
     await blockAnalytics(page);
   });
@@ -520,13 +594,51 @@ test.describe("landing bugs #3 + #4: pay-stub mockup, pricing visibility", () =>
     await expect(loginLink).toHaveAttribute("href", "/login");
   });
 
-  test("Demo widget renders Net pay row with a mono $ amount", async ({ page }) => {
+  // REPLACES "Demo widget renders Net pay row with a mono $ amount".
+  //
+  // The Net pay row and the $1,847.20-shaped figure were both hardcoded into
+  // the canned <ScanDemo> pay-stub mockup, which is deleted. <FreeScanPanel>
+  // occupies #live-demo now and shows NO reading until a visitor uploads
+  // something, so the assertion inverts: the section must not look like a
+  // finished verdict before anyone has touched it. Looking like a result
+  // without being one was the canned demo's whole problem.
+  //
+  // Every check below is scoped to #live-demo on purpose. The hero chip
+  // further up the page legitimately prints "67+" and "Likely forged" as the
+  // published band SCALE, so none of this can be asserted page-wide.
+  test("Live-demo section shows no canned verdict before any interaction", async ({ page }) => {
     await page.goto("/");
-    // The pay-stub mockup is inside the live-demo section.
     const demo = page.locator("section#live-demo");
     await expect(demo).toBeVisible();
-    await expect(demo.getByText(/net pay/i).first()).toBeVisible();
-    // Look for at least one $ amount on the mockup (e.g. "$1,847.20" or similar).
-    await expect(demo.locator('text=/\\$[0-9][0-9,]*\\.[0-9]{2}/').first()).toBeVisible();
+
+    // The panel state rail reads the idle word, not a finished or in-flight
+    // one (stateWord in free-scan-panel.tsx).
+    await expect(demo.getByText(/^Free scan$/)).toBeVisible();
+    await expect(
+      demo.getByText(/^(Verdict|Analyzing|Not scanned)$/),
+    ).toHaveCount(0);
+
+    // No score dial. ScoreGauge renders role="img" with an aria-label of the
+    // shape "Fraud score 87 out of 100, Likely forged", which is the only
+    // place a score NUMBER reaches this surface.
+    await expect(
+      demo.getByRole("img", { name: /fraud score \d+ out of 100/i }),
+    ).toHaveCount(0);
+
+    // No verdict band word. These three are the only band labels the product
+    // prints anywhere (SEVERITY_VERDICT in app/scan-result/score-gauge.tsx).
+    await expect(
+      demo.getByText(/\b(authentic|needs review|likely forged)\b/i),
+    ).toHaveCount(0);
+
+    // No signal teaser, therefore no signal rows: teaserHeadline() is the
+    // only sentence in the product that prints a found-signal count.
+    await expect(
+      demo.getByText(/\d+ forensic signals? found on this document/i),
+    ).toHaveCount(0);
+
+    // And no invented money. The deleted mockup asserted a $N,NNN.NN figure
+    // here; any figure in this section now could only be one nobody measured.
+    await expect(demo.getByText(/\$[0-9][0-9,]*\.[0-9]{2}/)).toHaveCount(0);
   });
 });
