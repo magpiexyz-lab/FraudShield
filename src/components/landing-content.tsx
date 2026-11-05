@@ -4,9 +4,10 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
-import { trackDemoView, trackCtaClick } from "@/lib/events";
+import { trackCtaClick } from "@/lib/events";
 import { PLANS } from "@/app/pricing/plans";
 import { BrandMark } from "@/components/brand-logo";
+import { FreeScanPanel } from "@/components/free-scan-panel";
 import { HEADER_SURFACE } from "@/components/nav-bar";
 import { SUPPORT_EMAIL } from "@/lib/billing-copy";
 
@@ -18,7 +19,9 @@ import { SUPPORT_EMAIL } from "@/lib/billing-copy";
  * Shared <LandingContent> consumed by the root page and /v/[variant]
  * route wrappers (scaffold-pages). Those wrappers spread the full
  * Variant object as flat props and own the `visit_landing` mount event,
- * so this component fires only `demo_view` and `cta_click`.
+ * so this component fires only `cta_click`. The live-demo section hands
+ * the whole interaction to <FreeScanPanel>, which owns its own
+ * free_scan_* events — nothing here instruments it.
  * ------------------------------------------------------------------ */
 
 /* Footer link treatment. The severity palette (teal / amber / vermilion) and
@@ -297,440 +300,6 @@ function NoiseOverlay() {
  * src/components/brand-logo.tsx so the global NavBar, landing header/footer,
  * and auth shell all render the identical shield (post-launch bug #2). */
 
-/* ------------------------- signature scan demo ------------------------- */
-
-type DemoPhase = "idle" | "scanning" | "done";
-
-type SignalRow = {
-  code: string;
-  label: string;
-  detail: string;
-  weight: number;
-  severity: "fraud" | "suspect" | "clear";
-  revealAt: number; // ms into the sweep
-};
-
-const DEMO_SIGNALS: SignalRow[] = [
-  {
-    code: "META.PRODUCER",
-    label: "Editing tool fingerprint",
-    detail: "Producer = “Photoshop 25.x” on a payroll PDF",
-    weight: 38,
-    severity: "fraud",
-    revealAt: 420,
-  },
-  {
-    code: "META.TIMELINE",
-    label: "Timestamp anomaly",
-    detail: "Modified 4s after creation — re-saved, not issued",
-    weight: 21,
-    severity: "fraud",
-    revealAt: 980,
-  },
-  {
-    code: "TYPO.FONT",
-    label: "Typography inconsistency",
-    detail: "Net-pay figure rendered in a different font to the row",
-    weight: 16,
-    severity: "suspect",
-    revealAt: 1500,
-  },
-  {
-    code: "TPL.MATCH",
-    label: "Known-fraud template hit",
-    detail: "92% match to a circulated pay-stub generator",
-    weight: 12,
-    severity: "fraud",
-    revealAt: 2000,
-  },
-];
-
-const FINAL_SCORE = 87; // sums into the "fraud" band
-
-function severityToken(sev: "fraud" | "suspect" | "clear") {
-  return sev === "fraud"
-    ? "var(--fraud)"
-    : sev === "suspect"
-      ? "var(--suspect)"
-      : "var(--clear)";
-}
-
-function scoreBand(score: number): { label: string; sev: "fraud" | "suspect" | "clear" } {
-  if (score >= 67) return { label: "Forged — do not approve", sev: "fraud" };
-  if (score >= 34) return { label: "Suspect — manual review", sev: "suspect" };
-  return { label: "Clear — authentic", sev: "clear" };
-}
-
-function ScanDemo({ onEngage }: { onEngage: () => void }) {
-  const reduced = usePrefersReducedMotion();
-  const [phase, setPhase] = useState<DemoPhase>("idle");
-  const [beam, setBeam] = useState(0); // 0..1 sweep position
-  const [revealed, setRevealed] = useState<number>(0); // count of signals shown
-  const [score, setScore] = useState(0);
-  const timers = useRef<number[]>([]);
-
-  const clearTimers = useCallback(() => {
-    timers.current.forEach((t) => window.clearTimeout(t));
-    timers.current = [];
-  }, []);
-
-  const run = useCallback(() => {
-    onEngage();
-    clearTimers();
-    setRevealed(0);
-    setScore(0);
-
-    if (reduced) {
-      // No motion: jump straight to the resolved forensic result.
-      setPhase("done");
-      setBeam(1);
-      setRevealed(DEMO_SIGNALS.length);
-      setScore(FINAL_SCORE);
-      return;
-    }
-
-    setPhase("scanning");
-    setBeam(0);
-    // beam sweep top→bottom
-    const sweepStart = performance.now();
-    const sweepMs = 2300;
-    const sweep = (now: number) => {
-      const t = Math.min(1, (now - sweepStart) / sweepMs);
-      setBeam(t);
-      if (t < 1) timers.current.push(window.requestAnimationFrame(sweep) as unknown as number);
-    };
-    timers.current.push(window.requestAnimationFrame(sweep) as unknown as number);
-
-    // staggered signal reveals as the beam passes
-    DEMO_SIGNALS.forEach((sig, i) => {
-      timers.current.push(
-        window.setTimeout(() => setRevealed((r) => Math.max(r, i + 1)), sig.revealAt)
-      );
-    });
-
-    // lock-in: gauge fill + score count-up
-    timers.current.push(
-      window.setTimeout(() => {
-        setPhase("done");
-        const start = performance.now();
-        const dur = 900;
-        const count = (now: number) => {
-          const t = Math.min(1, (now - start) / dur);
-          const eased = 1 - Math.pow(1 - t, 3);
-          setScore(Math.round(FINAL_SCORE * eased));
-          if (t < 1)
-            timers.current.push(window.requestAnimationFrame(count) as unknown as number);
-          else setScore(FINAL_SCORE);
-        };
-        timers.current.push(window.requestAnimationFrame(count) as unknown as number);
-      }, sweepMs + 120)
-    );
-  }, [onEngage, reduced, clearTimers]);
-
-  useEffect(() => () => clearTimers(), [clearTimers]);
-
-  const band = scoreBand(phase === "done" ? FINAL_SCORE : score);
-  const gaugePct = phase === "idle" ? 0 : score / 100;
-  // circular gauge geometry
-  const R = 52;
-  const C = 2 * Math.PI * R;
-
-  return (
-    <div className="grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
-      {/* Document under the scanner */}
-      <div
-        className="group/doc relative overflow-hidden rounded-[var(--radius-lg)] bg-[oklch(0.16_0.02_252)] p-5 ring-1 ring-[oklch(0.92_0.02_220_/_14%)]"
-        style={{ boxShadow: "var(--shadow-signal-glow)" }}
-      >
-        <div className="mb-4 flex items-center justify-between">
-          <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-[oklch(0.84_0.014_244)]">
-            sample · paystub_03.pdf
-          </span>
-          <span className="font-mono text-[11px] text-[oklch(0.84_0.014_244)]">
-            forensic preview
-          </span>
-        </div>
-
-        {/* document mockup — believable pay-stub built from tokens only */}
-        <div className="relative aspect-[5/6] w-full overflow-hidden rounded-[var(--radius-md)] bg-[oklch(0.965_0.006_240)] ring-1 ring-[oklch(0.92_0.02_220_/_18%)]">
-          <div className="flex h-full flex-col gap-3 p-5 text-[oklch(0.20_0.02_252)]">
-            {/* employer header */}
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="font-heading text-[13px] font-bold leading-tight tracking-[-0.2px] text-[oklch(0.20_0.02_252)]">
-                  Acme Logistics Inc.
-                </p>
-                <p className="font-mono text-[9px] leading-tight text-[oklch(0.45_0.02_252)]">
-                  482 Industrial Way · Reno, NV 89502
-                </p>
-              </div>
-              <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-[oklch(0.50_0.02_252)]">
-                Pay stub
-              </span>
-            </div>
-
-            <div
-              aria-hidden
-              className="h-px w-full bg-[oklch(0.86_0.012_248)]"
-            />
-
-            {/* employee + period */}
-            <div className="flex flex-col gap-1">
-              <div className="flex items-baseline justify-between gap-3">
-                <span className="font-sans text-[11px] font-medium text-[oklch(0.30_0.02_252)]">
-                  Jordan A. Mitchell
-                </span>
-                <span className="font-mono text-[9px] text-[oklch(0.45_0.02_252)]">
-                  ID 04827
-                </span>
-              </div>
-              <p className="font-mono text-[9px] text-[oklch(0.50_0.02_252)]">
-                Pay period: March 1 &ndash; March 15, 2026
-              </p>
-            </div>
-
-            <div
-              aria-hidden
-              className="h-px w-full bg-[oklch(0.86_0.012_248)]"
-            />
-
-            {/* line items */}
-            <ul className="flex flex-col">
-              {[
-                { label: "Gross pay", amount: "$2,640.00" },
-                { label: "Federal tax", amount: "$316.80" },
-                { label: "State tax", amount: "$92.40" },
-                { label: "FICA", amount: "$201.96" },
-              ].map((row) => (
-                <li
-                  key={row.label}
-                  className="flex items-center justify-between border-b border-[oklch(0.90_0.012_248)] py-1.5 last:border-b-0"
-                >
-                  <span className="font-sans text-[11px] text-[oklch(0.32_0.02_252)]">
-                    {row.label}
-                  </span>
-                  <span className="font-mono text-[11px] tabular-nums text-[oklch(0.28_0.02_252)]">
-                    {row.amount}
-                  </span>
-                </li>
-              ))}
-            </ul>
-
-            <div
-              aria-hidden
-              className="h-px w-full bg-[oklch(0.86_0.012_248)]"
-            />
-
-            {/* net pay — the line a fraudster would alter */}
-            <div
-              className="mt-auto flex items-center justify-between rounded-[6px] px-3 py-2.5"
-              style={{
-                background: "oklch(0.74 0.130 213 / 0.12)",
-                boxShadow: "inset 2px 0 0 0 var(--signal)",
-              }}
-            >
-              <span className="font-heading text-[12px] font-bold uppercase tracking-[0.10em] text-[oklch(0.20_0.02_252)]">
-                Net pay
-              </span>
-              <span
-                className="font-mono text-[15px] font-semibold tabular-nums"
-                style={{ color: "oklch(0.42 0.130 213)" }}
-              >
-                $2,028.84
-              </span>
-            </div>
-          </div>
-
-          {/* scan beam */}
-          {phase !== "idle" && (
-            <div
-              aria-hidden
-              className="absolute inset-x-0 h-16"
-              style={{
-                top: `calc(${beam * 100}% - 32px)`,
-                background:
-                  "linear-gradient(to bottom, transparent, oklch(0.74 0.130 213 / 0.0) 8%, oklch(0.74 0.130 213 / 0.28) 50%, transparent)",
-                opacity: phase === "scanning" ? 1 : 0,
-                transition: "opacity 0.4s ease",
-              }}
-            >
-              <div
-                className="absolute inset-x-0 top-1/2 h-px"
-                style={{
-                  background: "oklch(0.82 0.14 210)",
-                  boxShadow: "0 0 12px 2px oklch(0.74 0.130 213 / 0.6)",
-                }}
-              />
-            </div>
-          )}
-
-          {/* signal markers dropped on the doc as beam passes */}
-          {[18, 41, 63, 80].map((topPct, i) => (
-            <div
-              key={i}
-              aria-hidden
-              className="absolute right-3"
-              style={{
-                top: `${topPct}%`,
-                opacity: revealed > i ? 1 : 0,
-                transform: revealed > i ? "scale(1)" : "scale(0.6)",
-                transition:
-                  "opacity 0.3s cubic-bezier(0.22,1,0.36,1), transform 0.3s cubic-bezier(0.22,1,0.36,1)",
-              }}
-            >
-              <span
-                className="flex h-5 items-center gap-1 rounded-full px-2 font-mono text-[9px] font-medium"
-                style={{
-                  background: "oklch(0.16 0.02 252)",
-                  color: severityToken(DEMO_SIGNALS[i].severity),
-                  boxShadow: `0 0 0 1px ${severityToken(DEMO_SIGNALS[i].severity)}`,
-                }}
-              >
-                <span
-                  className="inline-block h-1.5 w-1.5 rounded-full"
-                  style={{ background: severityToken(DEMO_SIGNALS[i].severity) }}
-                />
-                {DEMO_SIGNALS[i].code}
-              </span>
-            </div>
-          ))}
-        </div>
-
-        {/* run control */}
-        <button
-          type="button"
-          onClick={run}
-          aria-label={
-            phase === "idle"
-              ? "Run the live forensic sample scan"
-              : "Re-run the live forensic sample scan"
-          }
-          className="mt-4 flex w-full items-center justify-center gap-2 rounded-[var(--radius-pill)] bg-primary py-2.5 font-sans text-sm font-semibold text-primary-foreground transition-[transform,box-shadow,opacity] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-px hover:opacity-95"
-          style={{ boxShadow: "var(--shadow-signal-glow)" }}
-        >
-          {phase === "idle"
-            ? "Run the sample scan"
-            : phase === "scanning"
-              ? "Analyzing…"
-              : "Re-run the scan"}
-        </button>
-      </div>
-
-      {/* Result panel: gauge + per-signal breakdown */}
-      <div className="relative flex flex-col rounded-[var(--radius-lg)] bg-[oklch(0.218_0.024_252)] p-6 ring-1 ring-[oklch(0.92_0.02_220_/_14%)]">
-        <div className="flex items-center gap-5">
-          {/* circular fraud-score gauge */}
-          <div className="relative h-[128px] w-[128px] shrink-0">
-            <svg viewBox="0 0 128 128" className="h-full w-full -rotate-90">
-              <circle
-                cx="64"
-                cy="64"
-                r={R}
-                fill="none"
-                stroke="oklch(0.92 0.02 220 / 12%)"
-                strokeWidth="9"
-              />
-              <circle
-                cx="64"
-                cy="64"
-                r={R}
-                fill="none"
-                stroke={severityToken(band.sev)}
-                strokeWidth="9"
-                strokeLinecap="round"
-                strokeDasharray={C}
-                strokeDashoffset={C * (1 - gaugePct)}
-                style={{
-                  transition: reduced
-                    ? "none"
-                    : "stroke-dashoffset 0.2s linear, stroke 0.3s ease",
-                  filter: `drop-shadow(0 0 6px ${severityToken(band.sev)})`,
-                }}
-              />
-            </svg>
-            <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span
-                className="font-mono text-[34px] font-medium leading-none tabular-nums"
-                style={{ color: phase === "idle" ? "oklch(0.84 0.014 244)" : severityToken(band.sev) }}
-              >
-                {phase === "idle" ? "--" : score}
-              </span>
-              <span className="mt-1 font-mono text-[9px] uppercase tracking-[0.16em] text-[oklch(0.84_0.014_244)]">
-                fraud score
-              </span>
-            </div>
-          </div>
-
-          <div className="min-w-0">
-            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[oklch(0.84_0.014_244)]">
-              verdict
-            </p>
-            <p
-              className="mt-1 font-heading text-lg font-semibold leading-tight"
-              style={{ color: phase === "idle" ? "oklch(0.955 0.006 240)" : severityToken(band.sev) }}
-            >
-              {phase === "idle" ? "Awaiting scan" : band.label}
-            </p>
-            <p className="mt-1.5 font-sans text-[13px] leading-snug text-[oklch(0.88_0.012_244)]">
-              {phase === "idle"
-                ? "Press “Run the sample scan” to watch the forensic sweep."
-                : "Score is the weighted sum of every signal below — never a bare number."}
-            </p>
-          </div>
-        </div>
-
-        <div
-          aria-hidden
-          className="my-5 h-px w-full"
-          style={{ background: "oklch(0.92 0.02 220 / 12%)" }}
-        />
-
-        {/* per-signal breakdown — the explainability IS the product */}
-        <ul className="flex flex-col gap-2.5">
-          {DEMO_SIGNALS.map((sig, i) => {
-            const on = revealed > i;
-            return (
-              <li
-                key={sig.code}
-                className="flex items-start gap-3 rounded-[var(--radius-md)] px-3 py-2.5"
-                style={{
-                  background: on ? "oklch(0.16 0.02 252)" : "oklch(0.16 0.02 252 / 40%)",
-                  boxShadow: on ? `inset 2px 0 0 0 ${severityToken(sig.severity)}` : "none",
-                  opacity: on ? 1 : 0.35,
-                  transform: on ? "translateX(0)" : "translateX(-4px)",
-                  transition:
-                    "opacity 0.35s cubic-bezier(0.22,1,0.36,1), transform 0.35s cubic-bezier(0.22,1,0.36,1), box-shadow 0.35s ease",
-                }}
-              >
-                <span
-                  className="mt-1 inline-block h-2 w-2 shrink-0 rounded-full"
-                  style={{ background: severityToken(sig.severity) }}
-                />
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-center justify-between gap-2">
-                    <span className="font-sans text-[13px] font-semibold text-[oklch(0.955_0.006_240)]">
-                      {sig.label}
-                    </span>
-                    <span
-                      className="font-mono text-[11px] font-medium tabular-nums"
-                      style={{ color: severityToken(sig.severity) }}
-                    >
-                      +{sig.weight}
-                    </span>
-                  </span>
-                  <span className="mt-0.5 block font-mono text-[11px] leading-snug text-[oklch(0.84_0.014_244)]">
-                    {sig.code} · {sig.detail}
-                  </span>
-                </span>
-              </li>
-            );
-          })}
-        </ul>
-      </div>
-    </div>
-  );
-}
-
 /* ------------------------------ stat band ------------------------------ */
 
 const STATS = [
@@ -965,17 +534,11 @@ export function LandingContent(props: LandingContentProps) {
     urgency,
   } = props;
   const variant = { headline, subheadline, cta, pain_points, promise, proof, urgency };
-  const demoFired = useRef(false);
 
   // NOTE: `visit_landing` is fired by the route wrappers (page.tsx /
-  // variant-landing.tsx) that own the mount. We fire only the engagement
-  // events here to avoid double-counting.
-  const handleDemoEngage = useCallback(() => {
-    if (demoFired.current) return;
-    demoFired.current = true;
-    trackDemoView({ variant: slug });
-  }, [slug]);
-
+  // variant-landing.tsx) that own the mount, and the free_scan_* events are
+  // fired by <FreeScanPanel>. We fire only the CTA click here, so nothing on
+  // this page is double-counted.
   const handleCtaClick = useCallback(() => {
     trackCtaClick({ variant: slug });
   }, [slug]);
@@ -1112,7 +675,24 @@ export function LandingContent(props: LandingContentProps) {
               />
             </div>
 
-            {/* floating glass verdict chip */}
+            {/* Floating glass band chip.
+             *
+             * This used to read "87 / Forged — do not approve / 4 signals ·
+             * scored in 1.8s" — numbers mirrored off the canned demo's
+             * hardcoded signal list and final score. With the demo gone and a
+             * real scan under it, every one of those became an invented
+             * measurement of a document nobody uploaded: a visitor whose own
+             * scan returns 41 and two signals has been told something false
+             * before they ever clicked.
+             *
+             * So the chip stops pretending to be a reading and becomes the
+             * scale. 67 is the published top-band threshold (scoreSeverity in
+             * lib/fraud/score.ts) and "Likely forged" is the band word the
+             * result surface actually prints (scan-result/score-gauge.tsx) —
+             * the same words the free panel below shows, so the landing and
+             * the verdict no longer use two vocabularies for one band. The
+             * geometry, the vermilion, and the glow are untouched: the hero
+             * keeps its second focal point, it just no longer makes it up. */}
             <div
               className="absolute -bottom-4 left-4 flex items-center gap-3 rounded-[var(--radius-lg)] px-4 py-3 backdrop-blur-md sm:left-6"
               style={{
@@ -1122,14 +702,14 @@ export function LandingContent(props: LandingContentProps) {
               }}
             >
               <span className="font-mono text-[28px] font-medium leading-none tabular-nums text-[var(--fraud)]">
-                87
+                67+
               </span>
               <span className="leading-tight">
                 <span className="block font-sans text-[13px] font-semibold text-[var(--fraud)]">
-                  Forged — do not approve
+                  Likely forged
                 </span>
                 <span className="block font-mono text-[11px] text-[oklch(0.84_0.014_244)]">
-                  4 signals · scored in 1.8s
+                  Top of three score bands
                 </span>
               </span>
             </div>
@@ -1182,27 +762,77 @@ export function LandingContent(props: LandingContentProps) {
               "radial-gradient(90% 60% at 80% 30%, oklch(0.74 0.130 213 / 0.08), transparent 60%)",
           }}
         />
-        <div className="relative z-10 mx-auto max-w-6xl px-6">
-          <div className="mb-12 max-w-2xl">
+        <div className="relative z-10 mx-auto grid max-w-6xl items-start gap-10 px-6 lg:grid-cols-[0.9fr_1.1fr] lg:gap-14">
+          <div className="max-w-xl">
+            {/* The eyebrow carries the two constraints instead of naming the
+                section. Learning at the file picker that a PDF needs an
+                account, or at the response that the day is used up, refuses a
+                visitor AFTER they committed to a document. The panel handles
+                both refusals correctly; this line is what stops them being
+                reached. */}
             <BlurFade>
               <span className="font-mono text-[12px] uppercase tracking-[0.18em] text-[oklch(0.82_0.10_210)]">
-                Live sample scan
+                Three free scans a day, images only, no account
               </span>
             </BlurFade>
             <BlurFade delay={0.07}>
               <h2 className="mt-3 font-heading text-[clamp(2rem,4vw,3rem)] font-extrabold leading-[1.08] tracking-[-1.5px] text-foreground">
-                Watch a fake pay stub fall apart
+                Scan your own document
               </h2>
             </BlurFade>
             <BlurFade delay={0.14}>
+              {/* Says what the visitor gets WITHOUT restating IDLE_PROMISE,
+                  which the panel prints a few hundred pixels below in the
+                  same viewport. This paragraph owns the two facts the panel
+                  cannot state about itself: that the pipeline is the paid
+                  one, and that the result is deliberately partial. */}
               <p className="mt-4 font-sans text-[17px] leading-[1.55] text-[oklch(0.82_0.012_244)]">
-                {variant.proof} — run the real forensic sweep on a sample document. No signup, no upload. This is exactly what you see after every scan.
+                Drop in an image of a pay stub, bank statement or invoice. It
+                goes through the same forensic pipeline a paying customer
+                gets, scored by the same engine, with nothing staged for the
+                landing page. The free result shows two of the signals found
+                on your document; a free account shows all of them.
+              </p>
+            </BlurFade>
+            <BlurFade delay={0.2}>
+              {/* variant.proof, interpolated NOWHERE ELSE in this component.
+                  Drop it and the three /v/<slug> pages lose the only thing
+                  that distinguishes them here.
+
+                  It gets its own line rather than a clause inside the
+                  paragraph because the three values are different
+                  grammatical shapes: two are capability fragments, and
+                  built-for-small-operators is a positioning sentence that
+                  ends by telling you to sign up and scan. That cannot be
+                  spliced into a sentence about scanning without an account
+                  without contradicting itself. Standing alone, under a rule
+                  that marks it as the claim this widget exists to settle,
+                  all three read. */}
+              <p
+                className="mt-6 border-l-2 pl-4 font-sans text-[15px] leading-[1.5] text-[oklch(0.88_0.012_244)]"
+                style={{ borderColor: "oklch(0.74 0.130 213 / 55%)" }}
+              >
+                {variant.proof}
               </p>
             </BlurFade>
           </div>
-          <BlurFade delay={0.18}>
-            <ScanDemo onEngage={handleDemoEngage} />
-          </BlurFade>
+
+          {/* NO BlurFade wrapper, unlike every other block on this page.
+              This is the one control on the landing, and the panel already
+              runs its own four-state choreography (drop well, scanning
+              stages, verdict, refusal) which is the single orchestrated
+              motion moment in the section. A scroll entrance layered on top
+              would be a second motion system fighting the first, and at
+              delay 0.18 it would make the drop target the last thing on the
+              page to look touchable, on the surface that is paid for per
+              click.
+
+              Two columns rather than a full-width card below the heading:
+              the panel holds a 24rem floor and caps its own prose at 62ch,
+              so stretched across the 6xl container it reads as an empty
+              slab. At this ratio it lands near 560px, and the asymmetric
+              split matches the pain-points section below. */}
+          <FreeScanPanel variant={slug} />
         </div>
       </section>
 
