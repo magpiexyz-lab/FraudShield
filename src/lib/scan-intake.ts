@@ -8,20 +8,26 @@
 
 import exifr from "exifr";
 import type { DocumentMetadata } from "@/lib/fraud/score";
-
-/** The document types the scoring engine is calibrated for. */
-export type DocType = "pay_stub" | "bank_statement" | "invoice";
-
-// Server-side accepted MIME + size cap (client also checks; the server is the
-// authoritative gate).
-export const ACCEPTED_MIME = new Set([
-  "application/pdf",
-  "image/png",
-  "image/jpeg",
-  "image/webp",
-  "image/heic",
-]);
-export const MAX_BYTES = 10 * 1024 * 1024; // 10 MB
+// THE LIMITS NOW LIVE IN lib/scan-limits.ts, A MODULE WITH NO IMPORTS, and
+// are re-exported here so every existing import path keeps working and
+// /api/scan is untouched. They are the SAME objects, not copies.
+//
+// Why they moved: the `import exifr` above is top-level, and the free-scan
+// panel — a client component on the landing page, the cold paid-ad entry
+// point — needs ANON_ACCEPTED_MIME and MAX_ANON_BYTES. Webpack drops unused
+// exports but only drops that exifr import if the package declares
+// `sideEffects: false`, which could not be verified. The panel imports from
+// @/lib/scan-limits directly; nothing else had to change.
+//
+// ANON_ACCEPTED_MIME is still DERIVED from ACCEPTED_MIME by filtering, in its
+// new home. See lib/scan-limits.ts.
+export {
+  ACCEPTED_MIME,
+  ANON_ACCEPTED_MIME,
+  MAX_ANON_BYTES,
+  MAX_BYTES,
+} from "@/lib/scan-limits";
+export type { DocType } from "@/lib/scan-limits";
 
 // Sanitize a user-supplied filename before any string interpolation.
 // Per nextjs.md SK "When handling file uploads".
@@ -128,11 +134,3 @@ export async function extractImageMetadata(
 
   return meta;
 }
-
-// Anonymous free-scan limits. Deliberately STRICTER than the authenticated
-// path: an anonymous upload must never be laxer, and these two constants are
-// what bound the cost of an uncapped-by-account surface.
-export const ANON_ACCEPTED_MIME: ReadonlySet<string> = new Set(
-  [...ACCEPTED_MIME].filter((m) => m.startsWith("image/")),
-);
-export const MAX_ANON_BYTES = 4 * 1024 * 1024; // 4 MB

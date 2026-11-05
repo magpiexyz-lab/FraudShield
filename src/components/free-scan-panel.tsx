@@ -58,8 +58,16 @@ import {
   NO_INDICATORS_BODY,
   NO_INDICATORS_TITLE,
 } from "@/lib/fraud/analysis-mode";
-import { ANON_ACCEPTED_MIME, MAX_ANON_BYTES } from "@/lib/scan-intake";
+// lib/scan-limits, NOT lib/scan-intake. Same four constants -- scan-intake
+// re-exports them -- but scan-intake does a top-level `import exifr`, and this
+// component ships in the LANDING PAGE bundle, the cold paid-ad entry point.
+// Webpack drops the unused exports either way; it only drops that exifr import
+// if the package declares `sideEffects: false`, which could not be verified.
+// scan-limits has no imports at all, which is enforced by
+// tests/scan-limits.test.ts. Do not "consolidate" this back.
+import { ANON_ACCEPTED_MIME, MAX_ANON_BYTES } from "@/lib/scan-limits";
 import {
+  trackCtaClick,
   trackFreeScanCapped,
   trackFreeScanComplete,
   trackFreeScanStart,
@@ -79,6 +87,30 @@ type FreeScanOk = {
    * The VisionStatus union from lib/fraud/vision.ts, typed as the wire string
    * it arrives as: "analyzed" / "inconclusive" / "unavailable". Read ONLY
    * through isPartialVerdict below -- see the warning there.
+   *
+   * DELIBERATELY STILL `string`, NOT THE UNION, even though the route now
+   * exports it as VisionStatus. Three reasons, and they all point the same
+   * way:
+   *
+   *  1. This is a FETCH BOUNDARY. The value comes from response.json() and
+   *     reaches this type through an unchecked `as FreeScanOk` cast. Nothing
+   *     validates it. Declaring the union here would assert a guarantee no
+   *     code makes - a stale deploy, a proxy error page, or a fourth status
+   *     added to vision.ts tomorrow all arrive as something else.
+   *  2. isPartialVerdict TREATS AN UNRECOGNISED VALUE AS PARTIAL, which is
+   *     the safe direction and the one thing protecting a visitor from a
+   *     confident verdict resting on content nothing read. Narrowing this
+   *     field would make that branch look unreachable and invite its
+   *     deletion - losing the guard to the type that was supposed to help.
+   *  3. It would mean a type import from lib/fraud/vision into a client
+   *     component in the LANDING PAGE bundle. Erased at build, yes, but it
+   *     is the exact dependency direction lib/scan-limits.ts was just
+   *     created to avoid, and precedent in this file travels.
+   *
+   * The compile-error benefit the narrowing exists for lands on the ROUTE,
+   * which constructs the value from vision.status and has real type
+   * information. Nothing is lost here: the predicate below compares against
+   * "analyzed" and is tested directly.
    */
   vision_status: string;
   /** Exactly the teaser subset. Never the full set. */
@@ -534,7 +566,7 @@ export function FreeScanPanel({
         ) : null}
 
         {state.kind === "result" ? (
-          <ResultView data={state.data} onReset={reset} />
+          <ResultView data={state.data} onReset={reset} variant={variant} />
         ) : null}
 
         {refusal ? (
@@ -575,6 +607,14 @@ export function FreeScanPanel({
             {signupFramed ? (
               <Link
                 href="/signup"
+                // A REAL LANDING-PAGE EXIT, so it counts as one. This link
+                // fired nothing before, which understated h-01
+                // (cta_click / visit_landing) for the whole panel: the
+                // visitor sat in the reach denominator and was missing from
+                // the demand numerator. Same wrapper and same `variant`
+                // property the four landing CTAs send, so the five read
+                // together.
+                onClick={() => trackCtaClick({ variant })}
                 className="rounded-[var(--radius-pill)] bg-signal px-6 py-2.5 font-sans text-sm font-semibold text-signal-foreground transition-[transform,box-shadow] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-card"
                 style={{ boxShadow: "var(--shadow-signal-glow)" }}
               >
@@ -858,9 +898,16 @@ function ScanningFrame({
 function ResultView({
   data,
   onReset,
+  variant,
 }: {
   data: FreeScanOk;
   onReset: () => void;
+  /**
+   * Threaded down purely so the teaser CTA can attribute its cta_click. An
+   * unattributed click cannot be read against the variant that produced it,
+   * which is the whole reason this surface is instrumented per variant.
+   */
+  variant: string;
 }) {
   const partial = isPartialVerdict(data.vision_status);
   const shown = data.signals.length;
@@ -898,7 +945,9 @@ function ResultView({
           </ul>
         )}
 
-        {withheld > 0 ? <Teaser total={total} shown={shown} /> : null}
+        {withheld > 0 ? (
+          <Teaser total={total} shown={shown} variant={variant} />
+        ) : null}
 
         <button
           type="button"
@@ -1014,7 +1063,16 @@ function WithheldStubs({ count }: { count: number }) {
  * and it is the same sentence shape the paid result surface uses so the two
  * paywalls read as one product.
  */
-function Teaser({ total, shown }: { total: number; shown: number }) {
+function Teaser({
+  total,
+  shown,
+  variant,
+}: {
+  total: number;
+  shown: number;
+  /** Carried only so the CTA below can attribute its cta_click. */
+  variant: string;
+}) {
   return (
     <div className="mt-5 rounded-[var(--radius-md)] bg-accent/25 p-4 ring-1 ring-border">
       <p className="font-heading text-[16px] font-bold leading-snug tracking-[-0.2px] text-foreground">
@@ -1026,6 +1084,11 @@ function Teaser({ total, shown }: { total: number; shown: number }) {
       </p>
       <Link
         href="/signup"
+        // The SECOND real landing-page exit in this panel, and the one a
+        // visitor reaches after seeing a withheld count -- the strongest
+        // intent signal the free scan produces. It fired nothing before.
+        // See the cap-state CTA above for why that understated h-01.
+        onClick={() => trackCtaClick({ variant })}
         className="mt-3.5 inline-block rounded-[var(--radius-pill)] bg-signal px-5 py-2.5 font-sans text-sm font-semibold text-signal-foreground transition-[transform,box-shadow] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-card"
         style={{ boxShadow: "var(--shadow-signal-glow)" }}
       >

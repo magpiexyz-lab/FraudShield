@@ -42,6 +42,7 @@ import { scoreSeverity } from "@/lib/fraud/score";
 import { ANON_ACCEPTED_MIME, MAX_ANON_BYTES } from "@/lib/scan-intake";
 import type { FraudSignal } from "@/lib/types";
 import type { RateLimitResult } from "@/lib/rate-limit";
+import type { VisionStatus } from "@/lib/fraud/vision";
 
 // sharp (the decode gate) and Buffer are Node APIs — pin the runtime rather
 // than relying on the default. maxDuration covers the AI content pass, which
@@ -87,11 +88,23 @@ const GLOBAL_KEY = "free-scan:global";
  * `total_signal_count` is the FULL count, not `signals.length`. The panel
  * renders "N forensic signals found on this document — 2 shown", and that
  * sentence is the paywall; equal numbers make it invisible.
+ *
+ * `vision_status` IS THE UNION, NOT `string`. It is always `vision.status`,
+ * and declaring it `string` already caused a real defect: the plan for the
+ * panel said to branch on `vision_status !== "ok"`, and "ok" is not a member
+ * of VisionStatus ("analyzed" / "inconclusive" / "unavailable"). Against
+ * `string` that comparison type-checks and is true for every scan ever run,
+ * including a fully analyzed one — the panel would have stamped "Partial
+ * analysis" on every success, on the one surface whose job is proving the scan
+ * is real. It was caught by reading the type. Against the union, tsc rejects
+ * it. (Note "ok" IS a legitimate literal elsewhere in this file: it is a
+ * FreeScanCapCode member, and `cap.code !== "ok"` at step 9 is correct. The
+ * two vocabularies collide on one word, which is how the mistake happened.)
  */
 export type FreeScanResponse = {
   score: number;
   severity: ReturnType<typeof scoreSeverity>;
-  vision_status: string;
+  vision_status: VisionStatus;
   signals: FraudSignal[];
   total_signal_count: number;
   usage?: { input_tokens: number; output_tokens: number; model: string };
