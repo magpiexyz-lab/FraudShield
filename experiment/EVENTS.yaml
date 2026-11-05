@@ -81,7 +81,24 @@ events:
   # --- demand ---
   cta_click:
     funnel_stage: demand
-    trigger: User clicks the primary 'Scan your document' CTA
+    trigger: >-
+      User clicks the primary 'Scan your document' CTA.
+
+      POPULATION CHANGED 2026-11-04, and rates before and after are not
+      comparable. The anonymous free-scan panel added a FIFTH trigger site:
+      its two signup CTAs - the one under a verdict, beside the withheld
+      signal count, and the one under a cap - now fire this event, where
+      before they fired nothing. Those are the panel's real landing-page
+      exits, and the verdict one is the strongest intent the free scan
+      produces, so h-01 (cta_click over visit_landing) was understating this
+      panel - a visitor who scanned and clicked through sat in the reach
+      denominator and was absent from the demand numerator. The numerator now
+      grows accordingly. The four pre-existing landing CTAs are unaffected.
+
+      Nothing was added to tell the five sites apart. That wants a per-surface
+      field like the one checkout_started and paywall_shown carry, which is a
+      wider schema change across four existing call sites; declaring it here
+      alone would declare a property nothing sends.
     properties:
       variant:
         type: string

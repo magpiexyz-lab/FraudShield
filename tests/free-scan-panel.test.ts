@@ -269,15 +269,165 @@ describe("free-scan panel -- client-side file gate", () => {
     }
   });
 
-  it("takes both limits from lib/scan-intake rather than retyping them", () => {
+  it("takes both limits from lib/scan-limits rather than retyping them", () => {
     expect(source).toMatch(
-      /import\s*\{[^}]*\bANON_ACCEPTED_MIME\b[^}]*\}\s*from\s*"@\/lib\/scan-intake"/,
+      /import\s*\{[^}]*\bANON_ACCEPTED_MIME\b[^}]*\}\s*from\s*"@\/lib\/scan-limits"/,
     );
     expect(source).toMatch(
-      /import\s*\{[^}]*\bMAX_ANON_BYTES\b[^}]*\}\s*from\s*"@\/lib\/scan-intake"/,
+      /import\s*\{[^}]*\bMAX_ANON_BYTES\b[^}]*\}\s*from\s*"@\/lib\/scan-limits"/,
     );
     expect(source).not.toContain("4194304");
     expect(source).not.toMatch(/4\s*\*\s*1024/);
+  });
+
+  // KEEPS exifr OUT OF THE LANDING-PAGE BUNDLE. lib/scan-intake.ts re-exports
+  // the same four constants and does a top-level `import exifr from "exifr"`
+  // for extractImageMetadata. Webpack drops the unused exports either way, but
+  // it only drops that exifr import if the package declares
+  // `sideEffects: false`, which could not be verified. This component ships in
+  // the bundle the paid ads land on, so it reads the limits from
+  // lib/scan-limits.ts, which has no imports at all
+  // (tests/scan-limits.test.ts enforces that).
+  it("does not import lib/scan-intake, which would pull exifr toward the bundle", () => {
+    // Comment lines are stripped, because the panel carries a comment NAMING
+    // both scan-intake and exifr to explain why it reads from scan-limits
+    // instead. The ban is on the import, not on the explanation.
+    const NL = String.fromCharCode(10);
+    const code = source
+      .split(NL)
+      .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
+      .join(NL);
+    // Positive control: the strip left the import block intact.
+    expect(code).toMatch(/from\s*"@\/lib\/scan-limits"/);
+    expect(code).not.toMatch(/from\s*"@\/lib\/scan-intake"/);
+    expect(code).not.toContain("exifr");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The signup exits are counted
+//
+// The panel has two signup CTAs -- one under a verdict ("See all N signals")
+// and one under a cap ("Create a free account"). Both are real landing-page
+// exits, and both fired NOTHING, so h-01 (cta_click / visit_landing)
+// understated this surface: a visitor who scanned, saw a withheld count and
+// clicked through was invisible in the demand numerator while still counted in
+// the reach denominator.
+//
+// The assertion is a RATIO, not a call count: every /signup link in this file
+// must have a trackCtaClick beside it. That is what catches a THIRD signup CTA
+// added later without tracking, which is the failure mode that produced this
+// task.
+// ---------------------------------------------------------------------------
+
+describe("free-scan panel -- signup CTAs fire cta_click", () => {
+  const codeOnly = (() => {
+    const NL = String.fromCharCode(10);
+    return source
+      .split(NL)
+      .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
+      .join(NL);
+  })();
+
+  it("imports the typed wrapper rather than calling the provider", () => {
+    // Rule 2: never the analytics provider directly, always the typed wrapper.
+    expect(source).toMatch(
+      /import\s*\{[^}]*\btrackCtaClick\b[^}]*\}\s*from\s*"@\/lib\/events"/,
+    );
+  });
+
+  it("fires one cta_click per signup link, and carries the variant", () => {
+    const signupLinks = codeOnly.match(/href="\/signup"/g) ?? [];
+    const ctaCalls = codeOnly.match(/trackCtaClick\(/g) ?? [];
+    // Positive control: both CTAs still exist. A panel that lost its signup
+    // links would satisfy a bare equality with zero on each side.
+    expect(signupLinks.length).toBeGreaterThanOrEqual(2);
+    expect(ctaCalls.length).toBe(signupLinks.length);
+    // Same property the four landing CTAs send (landing-content.tsx), so the
+    // panel's exits can be read per variant alongside them.
+    expect(codeOnly).toMatch(/trackCtaClick\(\{\s*variant\s*\}\)/);
+  });
+
+  it("gives the verdict-state CTA the variant to send", () => {
+    // The teaser CTA lives in a child component. Without the prop threaded
+    // through, the only way to make it compile is to drop the property, and an
+    // unattributed click cannot be read against the variant that produced it
+    // -- which is the entire reason this surface is instrumented.
+    expect(codeOnly).toMatch(/function Teaser\(\{[\s\S]{0,160}variant/);
+    expect(codeOnly).toMatch(/function ResultView\(\{[\s\S]{0,160}variant/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// cta_click now has a fifth trigger site, and EVENTS.yaml has to say so
+//
+// Rule 2 makes experiment/EVENTS.yaml canonical. The event's population
+// changed the moment the panel started firing it, so rates measured before and
+// after are not strictly comparable -- exactly the situation checkout_started
+// already documents in its own trigger. An undated widening is how a funnel
+// step appears to improve because its numerator quietly grew a new source.
+// ---------------------------------------------------------------------------
+
+describe("cta_click declares its population change", () => {
+  /**
+   * The cta_click block as raw text, delimited the way
+   * tests/checkout-abandon-reason.test.ts delimits its event: by the next key
+   * indented exactly two spaces, which is the next EVENT rather than a
+   * property of this one. Read as text, not parsed -- js-yaml is only a
+   * transitive dependency of this project.
+   */
+  function ctaClickBlock(): string {
+    const NL = String.fromCharCode(10);
+    const lines = read("experiment", "EVENTS.yaml").split(NL);
+    const start = lines.findIndex((l) => l.startsWith("  cta_click:"));
+    if (start === -1) return "";
+    let end = lines.length;
+    for (let i = start + 1; i < lines.length; i++) {
+      const l = lines[i];
+      const twoSpaceKey =
+        l.length > 2 &&
+        l[0] === " " &&
+        l[1] === " " &&
+        l[2] !== " " &&
+        l.trimEnd().endsWith(":");
+      if (twoSpaceKey) {
+        end = i;
+        break;
+      }
+    }
+    return lines.slice(start, end).join(NL);
+  }
+
+  it("delimits the block, so the assertions below are not vacuous", () => {
+    const block = ctaClickBlock();
+    expect(block).toContain("funnel_stage: demand");
+    expect(block).toContain("trigger:");
+    // guide_cta_click is the next event. Catching it here would mean the
+    // delimiter ran long and the assertions are reading someone else's block.
+    expect(block).not.toContain("guide_cta_click:");
+  });
+
+  it("records the change, with a date, in the checkout_started shape", () => {
+    const block = ctaClickBlock();
+    expect(block).toContain("POPULATION CHANGED");
+    expect(block).toMatch(/POPULATION CHANGED 20\d\d-\d\d-\d\d/);
+    // Whitespace-tolerant: the phrase wraps across a line in the block
+    // scalar, exactly as it does in checkout_started.
+    expect(block).toMatch(/not\s+(?:strictly\s+)?comparable/);
+  });
+
+  it("names the free-scan panel as the new trigger site", () => {
+    expect(ctaClickBlock()).toMatch(/free[- ]scan/i);
+  });
+
+  // OUT OF SCOPE ON PURPOSE. Telling the five CTAs apart wants a `surface`
+  // property, the way checkout_started and paywall_shown have one -- but that
+  // is a wider schema change touching four existing call sites, and adding it
+  // to the declaration alone would declare a property nothing sends.
+  it("adds no new property to the event", () => {
+    const block = ctaClickBlock();
+    expect(block).toContain("variant:");
+    expect(block).not.toContain("surface:");
   });
 });
 

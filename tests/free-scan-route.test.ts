@@ -755,3 +755,88 @@ describe("the anonymous route reads no user state", () => {
     expect(identifiers).not.toContain("analyzeDocumentForFraud");
   });
 });
+
+// ---------------------------------------------------------------------------
+// The response type is tight enough to catch a wrong comparison
+// ---------------------------------------------------------------------------
+
+/**
+ * WHY THIS IS A TEST AND NOT JUST A TYPE.
+ *
+ * `vision_status` was declared `string` even though it is always
+ * `vision.status`, the VisionStatus union ("analyzed" / "inconclusive" /
+ * "unavailable"). That looseness already produced a real defect: the plan for
+ * the free-scan panel specified branching on `vision_status !== "ok"`, and
+ * "ok" is not a member of the union — so the comparison is true for EVERY
+ * scan, including a fully analyzed one, and the panel would have stamped
+ * "Partial analysis" on every success. Against `string`, tsc has nothing to
+ * say about it. Against the union, `!== "ok"` is a compile error.
+ *
+ * It was caught by a human reading the type. This suite is so that the next
+ * one is caught by the compiler, and so that widening the field back to
+ * `string` is a failing test rather than an invisible edit.
+ */
+describe("the exported response type pins vision_status to the vision union", () => {
+  const source = readFileSync(
+    path.resolve(__dirname, "..", "src/app/api/free-scan/route.ts"),
+    "utf8",
+  );
+  const sf = ts.createSourceFile(
+    "route.ts",
+    source,
+    ts.ScriptTarget.Latest,
+    /* setParentNodes */ true,
+    ts.ScriptKind.TS,
+  );
+
+  /** The declared type of one member of the FreeScanResponse type alias. */
+  function memberType(name: string): string | undefined {
+    let found: string | undefined;
+    const walk = (node: ts.Node): void => {
+      if (
+        ts.isTypeAliasDeclaration(node) &&
+        node.name.text === "FreeScanResponse" &&
+        ts.isTypeLiteralNode(node.type)
+      ) {
+        for (const member of node.type.members) {
+          if (
+            ts.isPropertySignature(member) &&
+            member.name &&
+            ts.isIdentifier(member.name) &&
+            member.name.text === name &&
+            member.type
+          ) {
+            found = member.type.getText(sf);
+          }
+        }
+      }
+      ts.forEachChild(node, walk);
+    };
+    walk(sf);
+    return found;
+  }
+
+  it("parses FreeScanResponse, so the assertion below cannot pass vacuously", () => {
+    // A parse failure or a renamed alias yields undefined for every member,
+    // and an assertion written as a not-equals would then pass on anything.
+    expect(memberType("score")).toBe("number");
+    expect(memberType("total_signal_count")).toBe("number");
+  });
+
+  it("types vision_status as VisionStatus, not string", () => {
+    expect(memberType("vision_status")).toBe("VisionStatus");
+  });
+
+  it("imports that type from lib/fraud/vision, where the union is declared", () => {
+    expect(source).toMatch(
+      /import\s+type\s*\{[^}]*\bVisionStatus\b[^}]*\}\s*from\s*"@\/lib\/fraud\/vision"/,
+    );
+  });
+
+  // NOT ASSERTED HERE: that the literal "ok" is absent from the route. It is
+  // legitimately present and means something else entirely — "ok" is a member
+  // of FreeScanCapCode, and `cap.code !== "ok"` at step 9 is correct. The two
+  // vocabularies collide on one word, which is part of why the vision_status
+  // mistake was easy to make. The type above is the guard; a literal ban
+  // would only forbid the cap check.
+});

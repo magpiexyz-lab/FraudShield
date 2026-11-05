@@ -149,15 +149,23 @@ describe("privacy disclosure", () => {
 // extraction gates in the other.
 // ---------------------------------------------------------------------------
 
+// The accept-list moved once more, from lib/scan-intake.ts to
+// lib/scan-limits.ts — a module with no imports at all, so the landing-page
+// bundle can read the free-scan limits without pulling exifr in with them.
+// scan-intake re-exports them, so the guard reads all three files: the
+// accept-list literal in one, the extraction gates in another, and
+// scan-intake in between in case a gate is ever added back there.
+const LIMITS_PATH = fileURLToPath(
+  new URL("../scan-limits.ts", import.meta.url),
+);
 const INTAKE_PATH = fileURLToPath(
   new URL("../scan-intake.ts", import.meta.url),
 );
 const PIPELINE_PATH = fileURLToPath(new URL("./run-scan.ts", import.meta.url));
-const ROUTE_PATH = `${INTAKE_PATH} + ${PIPELINE_PATH}`;
-const ROUTE_SRC = `${readFileSync(INTAKE_PATH, "utf-8")}\n${readFileSync(
-  PIPELINE_PATH,
-  "utf-8",
-)}`;
+const ROUTE_PATH = `${LIMITS_PATH} + ${INTAKE_PATH} + ${PIPELINE_PATH}`;
+const ROUTE_SRC = [LIMITS_PATH, INTAKE_PATH, PIPELINE_PATH]
+  .map((p) => readFileSync(p, "utf-8"))
+  .join("\n");
 
 /** Mimes the scan API accepts for upload. */
 function parseAcceptedMimes(src: string): string[] {
