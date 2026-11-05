@@ -24,7 +24,9 @@ import type { DocumentMetadata } from "@/lib/fraud/score";
 export {
   ACCEPTED_MIME,
   ANON_ACCEPTED_MIME,
+  ANON_DECODE_FORMATS,
   MAX_ANON_BYTES,
+  MAX_ANON_INPUT_PIXELS,
   MAX_BYTES,
 } from "@/lib/scan-limits";
 export type { DocType } from "@/lib/scan-limits";

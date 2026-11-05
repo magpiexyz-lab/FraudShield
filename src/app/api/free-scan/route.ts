@@ -25,11 +25,19 @@
 //   - No analytics. The three `free_scan_*` events fire from the client
 //     component that owns the panel; a server-side emit would attribute an
 //     anonymous visitor to a server distinct id, and `activate` must never
-//     fire for someone who has not signed up.
+//     fire for someone who has not signed up. The token counts ARE recorded
+//     here, as a `console.info` line at step 12 — a log is not an emit, and
+//     it is the only record of what a free scan cost now that those counts no
+//     longer ride on the response.
 //   - No persistence. There is no migration for anonymous scans and
 //     `scans.user_id` is `not null references auth.users`.
 //   - Images only, 4 MB — see ANON_ACCEPTED_MIME / MAX_ANON_BYTES in
 //     lib/scan-intake.ts. Stricter than the authenticated path on purpose.
+//     "Images only" is enforced TWICE, and the second one is the one that
+//     counts: step 3 checks the client-supplied Content-Type, step 6 sniffs
+//     the real format out of the bytes (ANON_DECODE_FORMATS) and refuses
+//     vector, multi-frame and unnamed raster formats before anything is
+//     rendered.
 
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -39,7 +47,12 @@ import { selectTeaserSignals } from "@/lib/free-scan-teaser";
 import { runFraudScan } from "@/lib/fraud/run-scan";
 import { prepareImage } from "@/lib/fraud/vision";
 import { scoreSeverity } from "@/lib/fraud/score";
-import { ANON_ACCEPTED_MIME, MAX_ANON_BYTES } from "@/lib/scan-intake";
+import {
+  ANON_ACCEPTED_MIME,
+  ANON_DECODE_FORMATS,
+  MAX_ANON_BYTES,
+  MAX_ANON_INPUT_PIXELS,
+} from "@/lib/scan-intake";
 import type { FraudSignal } from "@/lib/types";
 import type { RateLimitResult } from "@/lib/rate-limit";
 import type { VisionStatus } from "@/lib/fraud/vision";
@@ -66,9 +79,20 @@ const IP_MAX = 3;
  * expected traffic, not abuse. That ordering left the sharp decode itself
  * free and unmetered: an attacker could force repeated 4 MB decodes without
  * consuming any counter (security finding `resource-bound-placement`).
- * sharp's `limitInputPixels` bounds each individual decode, so it was
- * never unbounded — it was unpriced, which is a different problem and this
- * counter is the fix.
+ *
+ * WHAT BOUNDS ONE DECODE, ACCURATELY. This comment used to claim sharp's
+ * `limitInputPixels` bounded each decode, so the defect was "unpriced, not
+ * unbounded". THAT WAS FALSE: `prepareImage` set no such limit, and the
+ * default (~268 MP) is not a bound anyone chose. Worse, a pixel ceiling would
+ * not have helped against the decode found in review — a 0.02 MB SVG of ~300
+ * stacked `feGaussianBlur` layers, measured at 229,141 ms against a
+ * 60-second lambda, is only ~4 megapixels.
+ *
+ * What bounds a decode now is step 6: the detected format must be one of
+ * ANON_DECODE_FORMATS (so no vector, no multi-frame, no exotic raster reaches
+ * the renderer at all) and MAX_ANON_INPUT_PIXELS is passed to sharp
+ * explicitly. This counter still prices what is left, because a bounded
+ * decode repeated without limit is still free CPU.
  *
  * 20/hour, not 3: the number has to be loose enough that a real visitor who
  * retries a HEIC, exports a JPEG, and then scans a second document never
@@ -101,13 +125,33 @@ const GLOBAL_KEY = "free-scan:global";
  * FreeScanCapCode member, and `cap.code !== "ok"` at step 9 is correct. The
  * two vocabularies collide on one word, which is how the mistake happened.)
  */
+/**
+ * One shown signal, AS IT GOES OVER THE WIRE.
+ *
+ * Four fields, because those are the four src/components/free-scan-panel.tsx
+ * renders: SignalRow prints label, severity and detail, and `id` is its React
+ * key (free-scan-panel.tsx:942) and is never displayed.
+ *
+ * NOT FraudSignal. That type carries `weight`, and the panel's own docstring
+ * argues at length that weights and weighted-sum language must never reach a
+ * free-scan reader — while the response was handing both to an
+ * unauthenticated caller. Only the two SHOWN weights ever leaked
+ * (`selectTeaserSignals` returns the teaser subset, so the withheld signals
+ * are never serialised and the total cannot be reconstructed), which makes
+ * this minimisation rather than a paywall hole. It is still the component and
+ * the payload disagreeing about what the surface is allowed to say.
+ */
+export type FreeScanTeaserSignal = Pick<
+  FraudSignal,
+  "id" | "label" | "severity" | "detail"
+>;
+
 export type FreeScanResponse = {
   score: number;
   severity: ReturnType<typeof scoreSeverity>;
   vision_status: VisionStatus;
-  signals: FraudSignal[];
+  signals: FreeScanTeaserSignal[];
   total_signal_count: number;
-  usage?: { input_tokens: number; output_tokens: number; model: string };
 };
 
 export type FreeScanErrorResponse = {
@@ -315,9 +359,40 @@ export async function POST(request: Request) {
   //    impossible. The price of that ordering is that the decode itself is
   //    unmetered, which is what step 5 now charges for.
   //
+  //    IT ALSO SNIFFS THE REAL FORMAT, and that part is a security fix of its
+  //    own. Step 3 above checks `file.type` — the CLIENT-SUPPLIED multipart
+  //    Content-Type — so "images only" was a claim about a LABEL, not about
+  //    the bytes. sharp decodes SVG, TIFF, GIF and AVIF whatever the label
+  //    says, and an SVG is not a bounded raster: a 0.02 MB file of ~300
+  //    stacked `feGaussianBlur` layers was measured at 229,141 ms in this
+  //    exact chain, i.e. one request burns the whole 60s budget, answers 504,
+  //    and `free-scan:req:` allows 20 of them per IP per hour.
+  //
+  //    The policy is OPT-IN (lib/fraud/vision.ts `DecodePolicy`) and ONLY THIS
+  //    ROUTE PASSES IT. /api/scan reaches the same function through
+  //    analyzeDocumentForFraud and must keep accepting whatever sharp accepts,
+  //    including an upload with a blank type — tightening it there would be a
+  //    behaviour change on the paid path.
+  //
+  //    Cheap before expensive: `metadata()` reads the header (23 ms on the
+  //    bomb above; its render was 47,959 ms at 40 layers on this install),
+  //    because librsvg reports the document's size without rasterizing a
+  //    single filter. MAX_ANON_INPUT_PIXELS rides along as defence in depth
+  //    for the other shape of the problem — a legitimate format whose pixel
+  //    count is the attack. It does NOT cover the SVG: ~4 megapixels.
+  //
+  //    An SVG, a TIFF and a multi-frame animation all land on the SAME
+  //    `image_unreadable` refusal as a HEIC. That is deliberate: the copy is
+  //    conversion-framed ("try a JPEG or PNG"), which is the useful answer for
+  //    every one of them, and a distinct code would only tell a prober which
+  //    of our gates it hit.
+  //
   //    The decoded buffer is then handed to the pipeline so the same bytes are
   //    not decoded twice.
-  const prepared = await prepareImage(buf);
+  const prepared = await prepareImage(buf, {
+    allowedFormats: ANON_DECODE_FORMATS,
+    limitInputPixels: MAX_ANON_INPUT_PIXELS,
+  });
   if (!prepared) {
     return refuse(
       415,
@@ -398,17 +473,44 @@ export async function POST(request: Request) {
   //     innocuous metadata rows and always withholds the AI finding — a
   //     confident "87 / likely forged" above evidence that does not support
   //     it, on the one surface whose job is proving the scan is real.
+  //
+  //     The shown pair is PROJECTED to the four fields the panel renders.
+  //     `weight` is dropped on the wire, not in selectTeaserSignals: that
+  //     function ranks BY weight and stays a pure function of FraudSignal.
   const response: FreeScanResponse = {
     score,
     severity: scoreSeverity(score),
     vision_status: vision.status,
-    signals: selectTeaserSignals(signals, TEASER_SIGNAL_COUNT),
+    signals: selectTeaserSignals(signals, TEASER_SIGNAL_COUNT).map(
+      ({ id, label, severity, detail }) => ({ id, label, severity, detail }),
+    ),
     total_signal_count: signals.length,
-    // Present only when a request actually reached the model. Spread rather
-    // than set to null so a scan that never got there reads as "not measured"
-    // instead of "billed nothing", which never happens.
-    ...(vision.usage ? { usage: vision.usage } : {}),
   };
+
+  // 12. WHAT THE SCAN COST, SERVER-SIDE ONLY.
+  //
+  //     This used to ride on the response as `usage` so the panel could put
+  //     the token counts on free_scan_complete. Billing telemetry and a model
+  //     name are not the visitor's business — and token counts handed back to
+  //     the caller are a measuring tape for cost-amplification — so they come
+  //     off the wire and are logged here instead.
+  //
+  //     THE TRADE-OFF IS REAL AND DELIBERATE: nothing is persisted for an
+  //     anonymous scan, so this line is now the ONLY record of what the free
+  //     tier spends, and it lives in the platform's runtime logs rather than
+  //     in PostHog where it could be grouped by variant or joined to the
+  //     funnel. h-12 itself (free_scan_complete / free_scan_start) is
+  //     unaffected — it never read these numbers. experiment/EVENTS.yaml and
+  //     lib/events.ts were updated in the same change, because an event
+  //     declaring properties nothing sends is worse than the exposure was.
+  //
+  //     Logged only when a request actually reached the model. Zeros would be
+  //     a lie about what happened: not billed is not the same as billed
+  //     nothing. `console.info`, not an analytics call — a server-side emit
+  //     would attribute an anonymous visitor to a server distinct id.
+  if (vision.usage) {
+    console.info("[free-scan] vision usage", JSON.stringify(vision.usage));
+  }
 
   return NextResponse.json(response, { status: 200 });
 }

@@ -50,3 +50,67 @@ export const ANON_ACCEPTED_MIME: ReadonlySet<string> = new Set(
   [...ACCEPTED_MIME].filter((m) => m.startsWith("image/")),
 );
 export const MAX_ANON_BYTES = 4 * 1024 * 1024; // 4 MB
+
+// ===========================================================================
+// THE ANONYMOUS DECODE POLICY
+//
+// ANON_ACCEPTED_MIME is checked against `file.type` — the CLIENT-SUPPLIED
+// multipart Content-Type. It is a LABEL CHECK, and the two constants below
+// exist because a label is not a format: an SVG sent as `image/png` passed the
+// MIME gate, and sharp decoded it. A 0.02 MB SVG of ~300 stacked
+// `feGaussianBlur` layers was measured at 229,141 ms in the free-scan decode,
+// against a 60-second lambda — one request, a full minute of billed compute, a
+// 504 for the visitor, and 20 of them allowed per IP per hour.
+//
+// So /api/free-scan sniffs the REAL format with `sharp().metadata()` (23 ms
+// against 47,959 ms for a filtered render, measured on this install) and
+// refuses anything outside the list below. /api/scan passes neither constant
+// and is unchanged — see prepareImage in lib/fraud/vision.ts.
+// ===========================================================================
+
+/**
+ * MIME -> the format name libvips reports for it.
+ *
+ * NOT a second accept-list: it is a translation table, and the Set below is
+ * built by mapping ANON_ACCEPTED_MIME THROUGH it. A type added to
+ * ACCEPTED_MIME with no entry here is dropped from the decode allow-list, so
+ * the drift direction is fail-closed — the new format is refused at the decode
+ * rather than silently admitted.
+ */
+const VIPS_FORMAT_BY_MIME: Record<string, string> = {
+  "image/png": "png",
+  "image/jpeg": "jpeg",
+  "image/webp": "webp",
+  // libvips reports every HEIF-container image as "heif", AVIF included. HEIC
+  // stays on the list because ANON_ACCEPTED_MIME names it; sharp's prebuilt
+  // binaries have no HEVC decoder, so a real HEIC still fails the render and
+  // still gets the conversion-framed `image_unreadable` copy it gets today.
+  "image/heic": "heif",
+};
+
+/**
+ * The formats the anonymous decode will actually render, by DETECTED format.
+ *
+ * Derived from ANON_ACCEPTED_MIME, never retyped — same rule, same reason as
+ * ANON_ACCEPTED_MIME's own derivation from ACCEPTED_MIME.
+ */
+export const ANON_DECODE_FORMATS: ReadonlySet<string> = new Set(
+  [...ANON_ACCEPTED_MIME]
+    .map((m) => VIPS_FORMAT_BY_MIME[m])
+    .filter((f): f is string => Boolean(f)),
+);
+
+/**
+ * Hard ceiling on input pixels for the anonymous decode.
+ *
+ * 48 MP: the largest common phone sensor output (a 48 MP main camera), so no
+ * photograph a visitor can take of a payslip is refused by it. sharp's default
+ * is ~268 MP — about 800 MB of raw pixels — and the anonymous input is
+ * downscaled to a 1568px long edge regardless, so nothing above this is ever
+ * used. At 3 bytes per pixel this bounds one decode at ~144 MB, well inside
+ * the function's memory.
+ *
+ * DEFENCE IN DEPTH, NOT THE SVG FIX: the measured bomb was ~4 megapixels and
+ * would pass this ceiling untouched. ANON_DECODE_FORMATS is what stops it.
+ */
+export const MAX_ANON_INPUT_PIXELS = 48_000_000;

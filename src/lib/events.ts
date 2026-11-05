@@ -56,18 +56,21 @@ export function trackFreeScanStart(props?: { variant?: string }) {
  * `band` and `signal_count` are required rather than optional: a bare count of
  * completions cannot say whether the free tier found anything, and h-12 reads
  * this against free_scan_start to separate a surface that attracts attempts
- * from one that delivers verdicts. The token counts stay optional because the
- * model does not always report usage -- and they are carried here because an
- * anonymous scan persists no row, so this event is the only record of what the
- * free tier costs.
+ * from one that delivers verdicts.
+ *
+ * NO TOKEN COUNTS, DELIBERATELY REMOVED 2026-11-05. `input_tokens`,
+ * `output_tokens` and `model` used to be declared here, and the only way the
+ * client could know them was for /api/free-scan to ship its billing telemetry
+ * and the model name to an unauthenticated caller. The route logs them
+ * server-side instead. The cost of that choice: what a free scan spends is no
+ * longer groupable by variant in PostHog, only greppable in the runtime logs.
+ * EVENTS.yaml was updated in the same change -- an event declaring properties
+ * nothing sends is worse than the exposure it was carrying.
  */
 export function trackFreeScanComplete(props: {
   variant?: string;
   band: "clear" | "suspect" | "fraud";
   signal_count: number;
-  input_tokens?: number;
-  output_tokens?: number;
-  model?: string;
 }) {
   track("free_scan_complete", { ...props, funnel_stage: "reach" });
 }

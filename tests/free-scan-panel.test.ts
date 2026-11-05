@@ -566,11 +566,38 @@ describe("free-scan panel -- analytics", () => {
     expect(beforeFirstStart).toContain("async function submit");
   });
 
-  it("reports the token counts the anonymous scan cost", () => {
-    // Nothing is persisted for an anonymous scan, so free_scan_complete is
-    // the only record of what the free tier spends.
-    expect(source).toContain("input_tokens");
-    expect(source).toContain("output_tokens");
+  // REPOINTED 2026-11-05, and the direction is now the opposite one. This
+  // assertion used to require the panel to SEND input_tokens / output_tokens,
+  // on the reasoning that nothing is persisted for an anonymous scan so
+  // free_scan_complete was the only record of what the free tier spends. The
+  // route could only supply them by shipping its billing telemetry and the
+  // model name to an unauthenticated caller, so the counts came off the wire
+  // and off this event; /api/free-scan logs them server-side instead
+  // (route.ts step 12, asserted in tests/free-scan-route.test.ts (d2)) and
+  // experiment/EVENTS.yaml no longer declares them.
+  it("sends no token counts and no model name with the completion event", () => {
+    // CODE ONLY, same stripping the cta_click suite below uses. A text guard
+    // cannot tell a call from a sentence, and the panel's own comment has to
+    // be free to explain which properties were removed and why -- the first
+    // version of this assertion failed on that comment.
+    const NL = String.fromCharCode(10);
+    const codeOnly = source
+      .split(NL)
+      .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
+      .join(NL);
+
+    // POSITIVE CONTROL: the event is still fired with the properties h-12 and
+    // the verdict read, so this cannot pass on a panel that tracks nothing.
+    expect(codeOnly).toContain("trackFreeScanComplete({");
+    expect(codeOnly).toMatch(/band:\s*data\.severity/);
+    expect(codeOnly).toMatch(/signal_count:\s*data\.total_signal_count/);
+
+    expect(codeOnly).not.toMatch(/input_tokens:/);
+    expect(codeOnly).not.toMatch(/output_tokens:/);
+    expect(codeOnly).not.toMatch(/model:\s*data\./);
+    // The wire shape carries no `usage` at all now, so nothing in here can
+    // read one.
+    expect(codeOnly).not.toMatch(/data\.usage/);
   });
 });
 

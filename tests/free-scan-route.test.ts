@@ -47,6 +47,10 @@ vi.mock("@/lib/rate-limit", async (importOriginal) => ({
 vi.mock("@/lib/fraud/vision", () => ({ prepareImage }));
 
 import { POST } from "@/app/api/free-scan/route";
+import {
+  ANON_DECODE_FORMATS,
+  MAX_ANON_INPUT_PIXELS,
+} from "@/lib/scan-limits";
 import type { FraudSignal } from "@/lib/types";
 import type { RateLimitResult } from "@/lib/rate-limit";
 
@@ -145,9 +149,11 @@ type FreeScanBody = {
   score?: number;
   severity?: string;
   vision_status?: string;
-  signals?: FraudSignal[];
+  // The PROJECTED shape, not FraudSignal: the wire carries no `weight`, and
+  // typing it as FraudSignal here would assert a field the route no longer
+  // sends.
+  signals?: Array<Pick<FraudSignal, "id" | "label" | "severity" | "detail">>;
   total_signal_count?: number;
-  usage?: { input_tokens: number; output_tokens: number; model: string };
 };
 
 beforeEach(() => {
@@ -350,11 +356,129 @@ describe("(d) an accepted request runs exactly one scan", () => {
     expect(body.score).toBe(87);
     expect(body.severity).toBe("fraud");
     expect(body.vision_status).toBe("analyzed");
-    expect(body.usage).toEqual({
-      input_tokens: 1500,
-      output_tokens: 300,
-      model: "claude-opus-5",
-    });
+  });
+
+  // The decode gate is handed the ANONYMOUS policy, which is what makes the
+  // "images only" promise a property of the BYTES rather than of the
+  // client-supplied Content-Type. `prepareImage` is mocked here, so the
+  // refusal itself is proved against real sharp in
+  // tests/anon-decode-gate.test.ts; what this suite owns is that the route
+  // asks for the strict decode at all.
+  it("decodes under the anonymous format allow-list and pixel ceiling", async () => {
+    await POST(uploadRequest());
+
+    expect(prepareImage).toHaveBeenCalledTimes(1);
+    const [buf, policy] = prepareImage.mock.calls[0] as [
+      Buffer,
+      { allowedFormats: ReadonlySet<string>; limitInputPixels: number },
+    ];
+
+    expect(Buffer.isBuffer(buf)).toBe(true);
+    // THE SAME OBJECTS lib/scan-limits exports, not a local copy: a second
+    // list is how this route silently starts admitting a format the decode
+    // policy was tightened to exclude.
+    expect(policy.allowedFormats).toBe(ANON_DECODE_FORMATS);
+    expect(policy.limitInputPixels).toBe(MAX_ANON_INPUT_PIXELS);
+    // The finding, stated as an assertion: an SVG labelled image/png is the
+    // measured 229-second decode bomb.
+    expect(policy.allowedFormats.has("svg")).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// (d2) The response carries nothing the panel does not render
+//
+// The payload went to an UNAUTHENTICATED caller carrying (1) the two teaser
+// signals as whole FraudSignal objects, `weight` included, and (2) `usage` —
+// input/output token counts and the model name, which is operational billing
+// telemetry. src/components/free-scan-panel.tsx argues at length in its own
+// docstring that weights and raw ids must never reach a reader, and SignalRow
+// renders only label/severity/detail; the response contradicted the component
+// it feeds.
+//
+// SCOPE, PRECISELY. Only the two SHOWN weights ever leaked:
+// `selectTeaserSignals` returns the teaser subset, so the withheld N-2 are
+// never serialised and the weighted total cannot be reconstructed from the
+// wire. This is minimisation, not a paywall hole — which is why it is fixed by
+// projecting the fields, not by re-architecting the teaser.
+// ---------------------------------------------------------------------------
+
+describe("(d2) the success payload is minimised", () => {
+  it("projects each shown signal to the four fields the panel renders", async () => {
+    const response = await POST(uploadRequest());
+    const body = (await response.json()) as FreeScanBody;
+
+    expect(body.signals).toHaveLength(2);
+    for (const sig of body.signals ?? []) {
+      // POSITIVE CONTROL: everything SignalRow reads is present, so the
+      // assertion below cannot pass on an empty or stripped object.
+      expect(typeof sig.id).toBe("string");
+      expect(typeof sig.label).toBe("string");
+      expect(typeof sig.severity).toBe("string");
+      expect(typeof sig.detail).toBe("string");
+      // `id` is kept deliberately: the panel uses it as the React key at
+      // free-scan-panel.tsx:942. It is never rendered.
+      expect(Object.keys(sig).sort()).toEqual([
+        "detail",
+        "id",
+        "label",
+        "severity",
+      ]);
+    }
+  });
+
+  it("sends no signal weight and no token usage anywhere in the body", async () => {
+    const response = await POST(uploadRequest());
+    const text = await response.text();
+
+    // POSITIVE CONTROL: the body IS the success payload, so a route that
+    // returned `{}` could not satisfy these.
+    expect(text).toContain("total_signal_count");
+    expect(text).toContain("vision_altered_figures");
+
+    expect(text).not.toContain("weight");
+    expect(text).not.toContain("usage");
+    expect(text).not.toContain("input_tokens");
+    expect(text).not.toContain("output_tokens");
+    // The model name is the other half of the billing telemetry.
+    expect(text).not.toContain("claude-opus-5");
+  });
+
+  // WHERE THE COST WENT. Nothing is persisted for an anonymous scan, and the
+  // panel's free_scan_complete event used to carry the token counts straight
+  // off the wire. Taking them off the wire without putting them anywhere would
+  // have deleted the only record of what the free tier spends, so the route
+  // logs them instead — a structured server-side line, never a response field.
+  it("records what the scan was billed on the server instead", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    try {
+      await POST(uploadRequest());
+
+      const line = info.mock.calls.map((c) => c.join(" ")).join("\n");
+      expect(line).toContain("free-scan");
+      expect(line).toContain("1500");
+      expect(line).toContain("300");
+      expect(line).toContain("claude-opus-5");
+    } finally {
+      info.mockRestore();
+    }
+  });
+
+  it("logs nothing when no call reached the model", async () => {
+    runFraudScan.mockResolvedValue(
+      scanResult({ vision: { status: "unavailable", analyzed: false, signals: [] } }),
+    );
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    try {
+      await POST(uploadRequest());
+
+      // A zero here would be a lie about what happened: the request was never
+      // billed, which is not the same as being billed nothing.
+      const line = info.mock.calls.map((c) => c.join(" ")).join("\n");
+      expect(line).not.toContain("input_tokens");
+    } finally {
+      info.mockRestore();
+    }
   });
 });
 
@@ -410,8 +534,6 @@ describe("(f) the shown pair always includes the AI finding", () => {
     expect(body.total_signal_count).toBe(metadataOnly.length);
     expect(body.severity).toBe("clear");
     expect(body.vision_status).toBe("unavailable");
-    // No call reached the model, so there is nothing to report as billed.
-    expect(body.usage).toBeUndefined();
   });
 });
 

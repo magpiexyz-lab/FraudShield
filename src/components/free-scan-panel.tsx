@@ -17,7 +17,10 @@
  *     showing "87" beside "+5" and "+8" lets anyone read the withheld 74
  *     points straight off the screen, and an AI finding would render as raw
  *     vision_arithmetic_mismatch. Only label, severity and detail reach a
- *     reader here.
+ *     reader here -- and since 2026-11-05 only those three plus the id-as-key
+ *     reach the BROWSER at all: the route projects the shown signals and no
+ *     longer sends `weight`, so the payload and this component finally make
+ *     the same promise.
  *
  *  2. The scanning choreography is local rather than imported from the
  *     dashboard upload zone, where the equivalent is module private. Reaching
@@ -80,6 +83,15 @@ import type { FreeScanCapCode } from "@/lib/free-scan-cap";
 // Wire shapes. Mirrors the route response (src/app/api/free-scan/route.ts).
 // ---------------------------------------------------------------------------
 
+/**
+ * One shown signal as the route sends it.
+ *
+ * Four fields, which are exactly the four SignalRow reads: label, severity and
+ * detail are rendered, and `id` is the React key and is never displayed. No
+ * `weight` -- see the `signals` member below.
+ */
+type TeaserSignal = Pick<FraudSignal, "id" | "label" | "severity" | "detail">;
+
 type FreeScanOk = {
   score: number;
   severity: FraudSignal["severity"];
@@ -113,11 +125,19 @@ type FreeScanOk = {
    * "analyzed" and is tested directly.
    */
   vision_status: string;
-  /** Exactly the teaser subset. Never the full set. */
-  signals: FraudSignal[];
+  /**
+   * Exactly the teaser subset. Never the full set.
+   *
+   * `TeaserSignal`, NOT FraudSignal: the route projects each shown signal to
+   * four fields and the wire carries no `weight`. Typing it as FraudSignal
+   * here would assert a field that is no longer sent -- and it was the type
+   * that made it easy to miss that the payload was handing an
+   * unauthenticated caller the very weights point 1 of this file's docstring
+   * says must never reach a reader.
+   */
+  signals: TeaserSignal[];
   /** The FULL count. The teaser sentence is meaningless without it. */
   total_signal_count: number;
-  usage?: { input_tokens?: number; output_tokens?: number; model?: string };
 };
 
 type FreeScanRefusal = {
@@ -424,13 +444,16 @@ export function FreeScanPanel({
     // below as a partial, and counting it here would report the free tier as
     // delivering scans it did not deliver.
     if (!isPartialVerdict(data.vision_status)) {
+      // NO TOKEN COUNTS. They used to be read off `data.usage` and sent with
+      // this event, which meant the route shipped its billing telemetry and
+      // the model name to an unauthenticated caller to get them here. The
+      // route logs them server-side now (step 12) and EVENTS.yaml no longer
+      // declares them. h-12 is free_scan_complete / free_scan_start and never
+      // read them.
       trackFreeScanComplete({
         variant,
         band: data.severity,
         signal_count: data.total_signal_count,
-        input_tokens: data.usage?.input_tokens,
-        output_tokens: data.usage?.output_tokens,
-        model: data.usage?.model,
       });
     }
 
@@ -997,7 +1020,7 @@ function PartialNotice() {
  * makes the colour accessible -- the bar alone would encode the finding in
  * colour only.
  */
-function SignalRow({ signal }: { signal: FraudSignal }) {
+function SignalRow({ signal }: { signal: TeaserSignal }) {
   const tone = SEVERITY_VAR[signal.severity];
   return (
     <li className="relative py-3.5 pl-4">

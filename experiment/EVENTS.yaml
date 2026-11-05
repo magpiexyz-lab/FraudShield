@@ -173,9 +173,16 @@ events:
       A free scan returns a completed AI verdict and the result renders. Fires
       ONLY when the vision pass actually ran — not for a capped request, not for
       a refused PDF, not for an image the decoder could not read, and not for a
-      metadata-only partial result. This is h-12's numerator. Token counts are
-      carried here because an anonymous scan persists no row, so these
-      properties are the only record of what the free tier costs.
+      metadata-only partial result. This is h-12's numerator.
+
+      NO TOKEN COUNTS: input_tokens, output_tokens and model were declared here
+      until 2026-11-05 and were removed in the free-scan security review. The
+      client could only know them because /api/free-scan shipped its billing
+      telemetry and the model name to an unauthenticated caller; the route logs
+      them server-side now ("[free-scan] vision usage"). What a free scan costs
+      is therefore in the runtime logs rather than in PostHog, where it could
+      have been grouped by variant. h-12 is free_scan_complete /
+      free_scan_start and never read those properties.
     properties:
       variant:
         type: string
@@ -189,18 +196,6 @@ events:
         type: number
         required: true
         description: Total forensic signals found, not the two shown in the teaser
-      input_tokens:
-        type: number
-        required: false
-        description: Vision input tokens billed for this scan; absent when the model reported no usage
-      output_tokens:
-        type: number
-        required: false
-        description: Vision output tokens billed for this scan; absent when the model reported no usage
-      model:
-        type: string
-        required: false
-        description: Vision model identifier that produced the verdict
   free_scan_capped:
     funnel_stage: reach
     trigger: >-
