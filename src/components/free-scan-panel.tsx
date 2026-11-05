@@ -241,7 +241,7 @@ export const IDLE_PROMISE =
  */
 const LOCAL_REFUSALS = {
   pdf_not_supported:
-    "PDF scanning comes with a free account \u2014 the instant scan here takes JPEG and PNG images. Sign up to scan this PDF.",
+    "PDF scanning comes with a free account \u2014 the instant scan here takes JPEG, PNG and WebP images. Sign up to scan this PDF.",
   unsupported_type:
     "That file type is not supported here. Upload a JPEG, PNG or WebP image of the document.",
   empty_file: "That file is empty. Please choose another image.",
@@ -498,7 +498,15 @@ export function FreeScanPanel({
 
   return (
     <section
-      aria-labelledby={titleId}
+      // NAMED BY A CONSTANT, NOT BY THE STATE RAIL. aria-labelledby used to
+      // point at the h3 below, whose text cycles Free scan -> Analyzing ->
+      // Verdict -> Not scanned, so landmark and heading navigation announced
+      // this region as a transient state word with nothing to attach it to.
+      // aria-labelledby is resolved BEFORE aria-label in the accessible-name
+      // computation, so it had to be removed rather than merely overridden.
+      // The h3 keeps its id and stays the instrument readout it was written
+      // to be.
+      aria-label="Free document scan"
       className={`relative overflow-hidden rounded-[var(--radius-lg)] bg-card ring-1 ring-border ${className ?? ""}`}
     >
       {/* State rail. The one mono label in the panel, and it earns its place:
@@ -538,9 +546,18 @@ export function FreeScanPanel({
                 // as a slot you put something into rather than another card
                 // sitting on top of the section.
                 background: "oklch(0.16 0.02 252)",
+                // WCAG 1.4.11 (3:1) ON THE RESTING EDGE. The well itself is
+                // only 1.12:1 against the card -- deliberately, that IS the
+                // recess -- so the dashed edge is the only thing that says
+                // where the target begins, and at 22% alpha it measured
+                // 1.77:1 against the well. 42% measures 3.47:1 against the
+                // well and 3.11:1 against the card, clearing the threshold
+                // on both sides of the edge while leaving the fill dark. Do
+                // not lower it to recover the softer look: the recess lives
+                // in the BACKGROUND above, not in the border.
                 borderColor: dragging
                   ? "var(--signal)"
-                  : "oklch(0.92 0.02 220 / 22%)",
+                  : "oklch(0.92 0.02 220 / 42%)",
               }}
             >
               <DocumentGlyph />
@@ -555,8 +572,7 @@ export function FreeScanPanel({
               <button
                 type="button"
                 onClick={() => inputRef.current?.click()}
-                className="rounded-[var(--radius-pill)] bg-signal px-6 py-2.5 font-sans text-sm font-semibold text-signal-foreground transition-[transform,box-shadow] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[oklch(0.16_0.02_252)]"
-                style={{ boxShadow: "var(--shadow-signal-glow)" }}
+                className="rounded-[var(--radius-pill)] bg-signal px-6 py-2.5 font-sans text-sm font-semibold text-signal-foreground shadow-[var(--shadow-signal-glow)] transition-[transform,box-shadow] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[oklch(0.16_0.02_252)]"
               >
                 Select an image
               </button>
@@ -666,8 +682,7 @@ export function FreeScanPanel({
                 // property the four landing CTAs send, so the five read
                 // together.
                 onClick={() => trackCtaClick({ variant })}
-                className="rounded-[var(--radius-pill)] bg-signal px-6 py-2.5 font-sans text-sm font-semibold text-signal-foreground transition-[transform,box-shadow] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-card"
-                style={{ boxShadow: "var(--shadow-signal-glow)" }}
+                className="rounded-[var(--radius-pill)] bg-signal px-6 py-2.5 font-sans text-sm font-semibold text-signal-foreground shadow-[var(--shadow-signal-glow)] transition-[transform,box-shadow] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-card"
               >
                 Create a free account
               </Link>
@@ -1013,6 +1028,17 @@ function ResultView({
 }
 
 /**
+ * Why THIS verdict rests on metadata alone.
+ *
+ * Exported so the sentence is assertable from a node-environment test, and
+ * kept separate from the shared limited-analysis copy because it makes a
+ * different claim: the shared body is about what a full scan adds, this is
+ * about what did not finish on this one document.
+ */
+export const PARTIAL_CAUSE =
+  "The AI content review did not finish on this document, so this score rests on its metadata alone.";
+
+/**
  * A verdict that rests on metadata alone.
  *
  * Shown whenever the content pass did not return a determination. Carries the
@@ -1033,6 +1059,18 @@ function PartialNotice() {
     >
       <p className="font-sans text-[14px] font-semibold text-foreground">
         {LIMITED_ANALYSIS_TITLE}
+      </p>
+      {/* ONE LOCAL SENTENCE, AND IT SAYS SOMETHING THE SHARED COPY DOES NOT.
+          The only thing that raises this notice on the anonymous surface is
+          the content pass failing to return a determination -- never the file
+          format, because this surface accepts images only. The shared body
+          below explains the images-versus-PDF ceiling, which is true of every
+          scan here including the fully analysed ones, so on its own it sent a
+          visitor whose pass timed out off to find a PDF when the cure is to
+          try again. This names the cause; the shared body still owns the
+          claim about what a full scan adds, and is not paraphrased here. */}
+      <p className="mt-1 max-w-[58ch] font-sans text-[13px] leading-[1.55] text-muted-foreground">
+        {PARTIAL_CAUSE}
       </p>
       <p className="mt-1 max-w-[58ch] font-sans text-[13px] leading-[1.55] text-muted-foreground">
         {LIMITED_ANALYSIS_BODY}
@@ -1152,8 +1190,7 @@ function Teaser({
         // intent signal the free scan produces. It fired nothing before.
         // See the cap-state CTA above for why that understated h-01.
         onClick={() => trackCtaClick({ variant })}
-        className="mt-3.5 inline-block rounded-[var(--radius-pill)] bg-signal px-5 py-2.5 font-sans text-sm font-semibold text-signal-foreground transition-[transform,box-shadow] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-card"
-        style={{ boxShadow: "var(--shadow-signal-glow)" }}
+        className="mt-3.5 inline-block rounded-[var(--radius-pill)] bg-signal px-5 py-2.5 font-sans text-sm font-semibold text-signal-foreground shadow-[var(--shadow-signal-glow)] transition-[transform,box-shadow] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-card"
       >
         {/* NOT "See all {total} signals". Same reason as the paragraph above:
             signup does not reveal them, so the label was a promise the next

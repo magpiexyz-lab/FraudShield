@@ -266,7 +266,7 @@ export async function POST(request: Request) {
     return refuse(
       415,
       "pdf_not_supported",
-      "PDF scanning comes with a free account — the instant scan here takes JPEG and PNG images. Sign up to scan this PDF.",
+      "PDF scanning comes with a free account — the instant scan here takes JPEG, PNG and WebP images. Sign up to scan this PDF.",
     );
   }
   if (!file.type || !ANON_ACCEPTED_MIME.has(file.type)) {

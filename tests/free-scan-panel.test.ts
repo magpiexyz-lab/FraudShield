@@ -39,10 +39,14 @@ import {
   IDLE_PROMISE,
   capKindForCode,
   isPartialVerdict,
+  PARTIAL_CAUSE,
   rejectFileLocally,
   teaserHeadline,
 } from "@/components/free-scan-panel";
-import { AI_PRIVACY_DISCLOSURE } from "@/lib/fraud/analysis-mode";
+import {
+  AI_PRIVACY_DISCLOSURE,
+  LIMITED_ANALYSIS_BODY,
+} from "@/lib/fraud/analysis-mode";
 import { MAX_ANON_BYTES } from "@/lib/scan-intake";
 
 const repoRoot = path.resolve(__dirname, "..");
@@ -50,6 +54,10 @@ const read = (...p: string[]) => readFileSync(path.join(repoRoot, ...p), "utf8")
 
 const PANEL = ["src", "components", "free-scan-panel.tsx"];
 const source = read(...PANEL);
+
+const countOf = (hay: string, needle: string) =>
+  hay.split(needle).length - 1;
+
 
 /**
  * A signal id has exactly one legitimate use in a list renderer: the React
@@ -610,6 +618,100 @@ describe("free-scan panel -- motion and accessibility", () => {
     expect(source).toContain("prefers-reduced-motion");
   });
 
+  // -------------------------------------------------------------------------
+  // The focus ring has to actually paint.
+  //
+  // DIAGNOSED 2026-11-05. All three signal-filled CTAs carried
+  // `focus-visible:ring-2` in the class layer AND
+  // `style={{ boxShadow: "var(--shadow-signal-glow)" }}` inline. Tailwind
+  // implements ring-* as box-shadow, an inline style always beats the class
+  // layer, and `focus-visible:outline-none` had already removed the UA
+  // fallback -- so keyboard focus changed ZERO pixels on the primary control
+  // of a paid-ad landing page, while the resting glow made the button read as
+  // permanently highlighted. The glow now lives in the class layer, where
+  // ring-2 composes with it instead of losing to it.
+  // -------------------------------------------------------------------------
+
+  it("carries the signal glow in the class layer, never inline", () => {
+    // POSITIVE CONTROLS. Three filled CTAs (the idle Select-an-image button,
+    // the refusal/cap account link and the teaser account link) plus the two
+    // underlined reset links is five focusable controls, all five of which
+    // declare a ring. If this file ever failed to load, or the CTAs were
+    // restructured away, these fail before the negative does.
+    expect(countOf(source, "focus-visible:ring-2")).toBe(5);
+    expect(countOf(source, "shadow-[var(--shadow-signal-glow)]")).toBe(3);
+
+    // THE GUARD. The glow must never return as an inline style, under any
+    // spelling: inline wins over the class layer, so a ring declared beside
+    // it is dead code.
+    expect(source).not.toMatch(/boxShadow:\s*"var\(--shadow-signal-glow\)"/);
+    expect(source).not.toMatch(/style=\{\{[^}]*--shadow-signal-glow/);
+
+    // And more generally: every inline box-shadow left in the file is an
+    // `inset` hairline on an aria-hidden decoration. A non-inset inline
+    // box-shadow is the shape of the bug, so ban that rather than ban the
+    // property -- the two survivors are legitimate and must keep working.
+    const inlineShadows = source.match(/boxShadow:[^;]*?inset/g) ?? [];
+    expect(inlineShadows.length).toBe(2);
+    expect(countOf(source, "boxShadow:")).toBe(2);
+  });
+
+  it("pairs the glow with a ring on the same element", () => {
+    // A glow in the class layer is only half the fix: the ring has to be on
+    // the same className, or focus still changes nothing. Checked per
+    // attribute rather than file-wide.
+    const classNames = source.match(/className="[^"]*"/g) ?? [];
+    const glowing = classNames.filter((c) =>
+      c.includes("shadow-[var(--shadow-signal-glow)]"),
+    );
+    expect(glowing.length).toBe(3);
+    for (const c of glowing) {
+      expect(c).toContain("focus-visible:ring-2");
+      expect(c).toContain("focus-visible:ring-[var(--ring)]");
+      // The ring needs an offset to clear the glow's own 1px spread ring,
+      // and an offset colour, or it draws against the wrong ground.
+      expect(c).toContain("focus-visible:ring-offset-2");
+      expect(c).toMatch(/focus-visible:ring-offset-(card|\[oklch)/);
+    }
+  });
+
+  it("names the region with a constant, not with the state word", () => {
+    // The h3 cycles Free scan -> Analyzing -> Verdict -> Not scanned, so
+    // landmark and heading navigation announced this region as a transient
+    // state. aria-labelledby is resolved BEFORE aria-label in the
+    // accessible-name computation, so the fix is only real if the former is
+    // gone -- keeping both would have changed nothing.
+    // CODE ONLY. The same stripping the token-count suite below uses, and for
+    // the same reason: the attribute's own explanatory comment has to be free
+    // to NAME the attribute it removed. The first version of this assertion
+    // failed on exactly that comment.
+    const NL = String.fromCharCode(10);
+    const codeOnly = source
+      .split(NL)
+      .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
+      .join(NL);
+
+    expect(codeOnly).toContain('aria-label="Free document scan"');
+    expect(codeOnly).not.toContain("aria-labelledby");
+  });
+
+  it("keeps the resting drop-well edge above the 3:1 non-text threshold", () => {
+    // MEASURED against the well's own fill, oklch(0.16 0.02 252). At 22%
+    // alpha the dashed edge was 1.77:1 and the well itself is 1.12:1 against
+    // the card, so nothing marked the boundary. 42% measures 3.47:1 against
+    // the well and 3.11:1 against the card. The recess is the BACKGROUND,
+    // which is unchanged -- so this is a floor on the border alpha, and
+    // lowering it to soften the look is the regression.
+    const m = source.match(/: "oklch\(0\.92 0\.02 220 \/ (\d+)%\)"/);
+    expect(m).not.toBeNull();
+    expect(Number(m![1])).toBeGreaterThanOrEqual(42);
+    // POSITIVE CONTROL: the drag state still swaps to the signal colour,
+    // which measures 8.79:1 against the well and is the whole reason the
+    // resting edge is allowed to stay quiet.
+    expect(source).toContain('? "var(--signal)"');
+    expect(source).toContain('background: "oklch(0.16 0.02 252)"');
+  });
+
   it("keeps the live regions mounted and toggles visibility by class", () => {
     // WCAG 4.1.3: a live region that mounts at the same moment its content
     // appears is not announced. upload-zone.tsx solves it with sr-only, and
@@ -618,5 +720,127 @@ describe("free-scan panel -- motion and accessibility", () => {
     expect(source).toContain("aria-live=\"assertive\"");
     expect(source).toContain("role=\"status\"");
     expect(source).toContain("sr-only");
+  });
+});
+// ---------------------------------------------------------------------------
+// The panel and the route have to describe the same product.
+// ---------------------------------------------------------------------------
+
+describe("free-scan panel -- refusal copy agrees with the route", () => {
+  const routeSource = read("src", "app", "api", "free-scan", "route.ts");
+
+  /** The panel escapes its em dash; the route types one. Same sentence. */
+  const EMDASH = String.fromCharCode(8212);
+  const normalize = (s: string) => s.split("\\u2014").join(EMDASH);
+
+  const pdfLine = (src: string) => {
+    const m = src.match(/"PDF scanning comes with a free account[^"]*"/);
+    expect(m).not.toBeNull();
+    return normalize(m![0]);
+  };
+
+  it("offers every format the gate actually accepts", () => {
+    // ANON_ACCEPTED_MIME is ACCEPTED_MIME filtered to image/*, so WebP IS
+    // accepted -- and the PDF refusal, the likeliest refusal after HEIC, said
+    // "JPEG and PNG images" while the chips below the drop well said WEBP and
+    // the unsupported-type refusal said WebP as well. Three lists, and the
+    // most-seen one understated the product.
+    for (const src of [source, routeSource]) {
+      expect(pdfLine(src)).toContain("JPEG, PNG and WebP images");
+    }
+    // POSITIVE CONTROLS: the other two lists, which were already right.
+    expect(source).toContain("Upload a JPEG, PNG or WebP image");
+    expect(source).toContain('["JPG", "PNG", "WEBP"]');
+  });
+
+  it("keeps the two copies of the PDF refusal word-identical", () => {
+    // LOCAL_REFUSALS exists only to save a round trip, so a visitor must not
+    // be able to tell which side refused them. The panel's own docstring
+    // requires this; nothing enforced it until now.
+    expect(pdfLine(source)).toBe(pdfLine(routeSource));
+  });
+
+  it("keeps the PDF refusal signup-framed", () => {
+    // SIGNUP_FRAMED_CODES puts an account CTA under this message, so the copy
+    // has to go on offering one.
+    expect(pdfLine(source)).toMatch(/free account/);
+    expect(pdfLine(source)).toMatch(/Sign up/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A partial verdict has to explain the limitation it actually hit.
+// ---------------------------------------------------------------------------
+
+describe("free-scan panel -- partial verdict copy", () => {
+  it("names the cause instead of only restating the shared ceiling", () => {
+    // isPartialVerdict is true when the CONTENT pass did not complete. The
+    // shared LIMITED_ANALYSIS_BODY is about images versus PDFs, which is true
+    // of every scan on this surface including the fully analysed ones -- so
+    // on its own it told a visitor whose pass timed out to go find a PDF.
+    expect(PARTIAL_CAUSE.toLowerCase()).toContain("did not finish");
+    expect(PARTIAL_CAUSE.toLowerCase()).toContain("ai content review");
+    expect(PARTIAL_CAUSE).not.toBe(LIMITED_ANALYSIS_BODY);
+    // Not a second wording of the shared claim: it must not relitigate PDFs
+    // or what a full scan adds.
+    expect(PARTIAL_CAUSE.toLowerCase()).not.toContain("pdf");
+    expect(PARTIAL_CAUSE.toLowerCase()).not.toContain("forensics");
+    // POSITIVE CONTROL on the shared string being the one that owns that
+    // claim, so the split above is real.
+    expect(LIMITED_ANALYSIS_BODY.toLowerCase()).toContain("pdf");
+  });
+
+  it("renders the cause above the shared copy, and still renders the shared copy", () => {
+    const cause = source.indexOf("{PARTIAL_CAUSE}");
+    const shared = source.indexOf("{LIMITED_ANALYSIS_BODY}");
+    expect(cause).toBeGreaterThan(-1);
+    expect(shared).toBeGreaterThan(-1);
+    expect(cause).toBeLessThan(shared);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The shared score gauge, which this PR is what puts on the landing page.
+// ---------------------------------------------------------------------------
+
+describe("score gauge -- announced once, and legible", () => {
+  const gauge = read("src", "app", "scan-result", "score-gauge.tsx");
+
+  it("does not announce the score twice", () => {
+    // POSITIVE CONTROL: the svg label is the one announcement, and it carries
+    // both the number and the band word.
+    expect(gauge).toContain('role="img"');
+    expect(gauge).toContain("aria-label={`Fraud score ${score} out of 100,");
+    // The centre readout is a SIBLING of that svg, not a child, so without
+    // aria-hidden the tree held "Fraud score", the number and the band word a
+    // second time.
+    expect(gauge).toContain(
+      '<div aria-hidden="true" className="absolute inset-0 flex flex-col items-center justify-center">',
+    );
+  });
+
+  it("keeps the ticking number out of any live region", () => {
+    // aria-hidden on the readout is only safe while the count-up is not
+    // announced on its own. If a live region ever lands on this component the
+    // hidden number becomes a silent one.
+    expect(gauge).not.toContain("aria-live");
+    expect(gauge).not.toContain('role="status"');
+    expect(gauge).not.toContain('role="alert"');
+    expect(gauge).toContain("<NumberTicker");
+  });
+
+  it("keeps the verdict pill above 4.5:1 by keeping the tint low", () => {
+    // MEASURED. Pill text and pill tint are the SAME severity colour, and
+    // every severity colour is lighter than the card behind it, so raising
+    // the mix moves the background toward the text: fraud measured 4.39:1 at
+    // 14% and only 4.06:1 at 20%. At 10% it is 4.60:1 (suspect 8.10, clear
+    // 6.34), and light mode improves too. 12% is break-even at 4.50:1, so
+    // what this asserts is a CEILING, not a floor. 12px/500 is not large text
+    // at any weight below 18.66px bold, so the 3:1 allowance is unavailable.
+    const m = gauge.match(
+      /backgroundColor: "color-mix\(in oklch, " \+ stroke \+ " (\d+)%, transparent\)"/,
+    );
+    expect(m).not.toBeNull();
+    expect(Number(m![1])).toBeLessThanOrEqual(12);
   });
 });
