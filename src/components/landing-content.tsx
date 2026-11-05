@@ -638,7 +638,18 @@ export function LandingContent(props: LandingContentProps) {
                   href="#live-demo"
                   className="inline-flex items-center gap-2 rounded-[var(--radius-md)] px-4 py-3 font-sans text-[14px] font-medium text-[oklch(0.82_0.012_244)] ring-1 ring-[oklch(0.92_0.02_220_/_16%)] transition-colors duration-150 hover:text-foreground hover:ring-[oklch(0.74_0.130_213_/_45%)]"
                 >
-                  Watch a live scan
+                  {/* NOT "Watch a live scan". That label is a leftover from
+                      the canned animation this section used to hold. #live-demo
+                      is now <FreeScanPanel>, which asks the visitor to upload
+                      their own document -- so "watch" promises a passive demo
+                      and delivers a drop target, and a visitor who came to
+                      look leaves rather than scan.
+
+                      "No account" rather than "free" is what distinguishes it
+                      from the primary CTA beside it ("Scan your first document
+                      free", which goes to /signup); two labels both leading
+                      with "free" would read as the same door twice. */}
+                  Scan a document — no account
                 </a>
               </div>
             </BlurFade>

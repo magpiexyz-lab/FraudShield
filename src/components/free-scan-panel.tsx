@@ -573,6 +573,34 @@ export function FreeScanPanel({
                   </li>
                 ))}
               </ul>
+              {/* THE iPHONE LINE, AND WHY IT IS HERE RATHER THAN IN THE CHIPS.
+                  ACCEPT_ATTR derives from ANON_ACCEPTED_MIME, which filters
+                  ACCEPTED_MIME to image/*, so the file picker OFFERS
+                  image/heic -- a format sharp's prebuilt binaries cannot
+                  decode at all. A HEIC is therefore always refused
+                  (`image_unreadable`), and HEIC is the default iPhone camera
+                  format on the likeliest mobile visitor from paid traffic.
+
+                  The gap was closable from either side. Widening the chips to
+                  advertise HEIC was REJECTED: a chip is a promise, and
+                  promising a format that is guaranteed to fail turns an
+                  unadvertised surprise into a broken promise. The chips stay
+                  at the three formats that actually work.
+
+                  So the fix is to move the refusal EARLIER -- said before the
+                  picker opens rather than after the upload comes back. Same
+                  principle the `accept` attribute already applies to PDFs
+                  (e2e/behaviors.spec.ts: "the accept attribute is what stops
+                  a visitor reaching that refusal at all"); this is that
+                  principle for the one format `accept` cannot exclude from
+                  here, because ANON_ACCEPTED_MIME is derived in
+                  lib/scan-limits.ts.
+
+                  Muted and secondary: it must not outrank the CTA above it. */}
+              <p className="max-w-[46ch] font-sans text-[12px] leading-[1.45] text-muted-foreground">
+                iPhone photos save as HEIC, which cannot be read here — share
+                or export one as a JPEG first.
+              </p>
             </div>
             <p className="max-w-[62ch] font-sans text-[15px] leading-[1.55] text-[oklch(0.82_0.012_244)]">
               {IDLE_PROMISE}
@@ -1101,9 +1129,21 @@ function Teaser({
       <p className="font-heading text-[16px] font-bold leading-snug tracking-[-0.2px] text-foreground">
         {teaserHeadline(total, shown)}
       </p>
+      {/* HONESTY GATE, NOT MARKETING SOFTNESS. This paragraph used to read "A
+          free account opens the rest, and takes PDFs as well as images", under
+          a CTA labelled "See all N signals". A FREE ACCOUNT DOES NOT OPEN THE
+          REST: on the authenticated result surface the per-signal breakdown
+          component is rendered only when `isPro`, and every other visitor gets
+          LockedSignals instead (see the ternary in scan-result-client.tsx), so
+          a visitor who signs up on that promise arrives at a blurred wall and
+          a paid upsell. That is the bait-and-switch this teaser exists to
+          avoid, moved one click later where it costs the signup it just
+          bought. The claims below are the ones a FREE account actually
+          keeps. */}
       <p className="mt-1.5 max-w-[56ch] font-sans text-[13px] leading-[1.55] text-muted-foreground">
         Each one names what was detected and where it was found. A free account
-        opens the rest, and takes PDFs as well as images.
+        scans PDFs and larger files from your own dashboard; the full
+        per-signal breakdown comes with a paid plan.
       </p>
       <Link
         href="/signup"
@@ -1115,7 +1155,11 @@ function Teaser({
         className="mt-3.5 inline-block rounded-[var(--radius-pill)] bg-signal px-5 py-2.5 font-sans text-sm font-semibold text-signal-foreground transition-[transform,box-shadow] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-card"
         style={{ boxShadow: "var(--shadow-signal-glow)" }}
       >
-        See all {total} signals
+        {/* NOT "See all {total} signals". Same reason as the paragraph above:
+            signup does not reveal them, so the label was a promise the next
+            page breaks. This is the same wording the cap-state CTA uses, so
+            the panel's one door has one name. */}
+        Create a free account
       </Link>
     </div>
   );
