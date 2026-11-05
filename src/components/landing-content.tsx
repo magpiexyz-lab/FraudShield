@@ -792,17 +792,29 @@ export function LandingContent(props: LandingContentProps) {
               </h2>
             </BlurFade>
             <BlurFade delay={0.14}>
-              {/* Says what the visitor gets WITHOUT restating IDLE_PROMISE,
-                  which the panel prints a few hundred pixels below in the
-                  same viewport. This paragraph owns the two facts the panel
-                  cannot state about itself: that the pipeline is the paid
-                  one, and that the result is deliberately partial. */}
+              {/* OWNS THE PIPELINE CLAIM AND NOTHING ELSE.
+                  Two sentences were cut from this paragraph on 2026-11-05.
+
+                  "a free account shows all of them" WAS FALSE, and falsely in
+                  the one direction that costs a signup: the authenticated
+                  result surface renders the per-signal breakdown only when
+                  `isPro` and hands everybody else LockedSignals (the ternary
+                  in scan-result-client.tsx). The panel's own teaser had
+                  already been corrected to say the breakdown is paid; this
+                  line was still selling the opposite promise 300px to its
+                  left, so the section contradicted itself and the landing
+                  made the bait-and-switch the panel was rewritten to avoid.
+
+                  "The free result shows two of the signals" was ALSO a
+                  duplicate: IDLE_PROMISE states the same count inside the
+                  panel, in the same viewport. The panel owns what you get
+                  back. This paragraph owns the one fact the panel cannot
+                  state about itself -- that the engine is the paid one. */}
               <p className="mt-4 font-sans text-[17px] leading-[1.55] text-[oklch(0.82_0.012_244)]">
-                Drop in an image of a pay stub, bank statement or invoice. It
-                goes through the same forensic pipeline a paying customer
-                gets, scored by the same engine, with nothing staged for the
-                landing page. The free result shows two of the signals found
-                on your document; a free account shows all of them.
+                Whatever you upload goes through the forensic pipeline a paying
+                customer gets, scored by the same engine, with nothing staged
+                for the landing page. The score that comes back is the real
+                one. The findings behind it are where the free scan stops.
               </p>
             </BlurFade>
             <BlurFade delay={0.2}>

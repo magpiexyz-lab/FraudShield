@@ -519,8 +519,20 @@ export function FreeScanPanel({
         >
           {stateWord}
         </h3>
+        {/* NOT "3 free scans, no account". The section eyebrow directly
+            above this panel already reads "Three free scans a day, images
+            only, no account" -- so that slot was the same sentence twice
+            inside 580px, set in two type treatments, which reads as anxiety
+            rather than emphasis. The eyebrow keeps the offer, because it is
+            the line that has to be read BEFORE a visitor commits a document.
+
+            This slot now carries the instrument's spec, which nothing else
+            on screen states and which is the claim the free scan is actually
+            making at the point of action: it names the two passes SCAN_STAGES
+            walks through. The eyebrow says what it costs; the rail says what
+            it does. */}
         <p className="font-mono text-[11px] text-muted-foreground">
-          3 free scans, no account
+          Metadata and AI content pass
         </p>
       </div>
 
@@ -569,10 +581,19 @@ export function FreeScanPanel({
                   Pay stub, bank statement or invoice. Up to 4 MB.
                 </p>
               </div>
+              {/* py-3, NOT py-2.5, ON ALL THREE FILLED CTAs IN THIS FILE.
+                  MEASURED at a 390px viewport: py-2.5 gave this button a
+                  40px box (10 + 20 line-box + 10), under the 44px minimum
+                  touch target -- on the one control the paid-ad click in
+                  this experiment exists to reach, and the only control in
+                  the idle panel at all. py-3 lands it at exactly 44. The two
+                  account links carry the same padding for the same reason:
+                  they are the mobile exits from a refusal and from a
+                  verdict, where a missed tap is the whole funnel. */}
               <button
                 type="button"
                 onClick={() => inputRef.current?.click()}
-                className="rounded-[var(--radius-pill)] bg-signal px-6 py-2.5 font-sans text-sm font-semibold text-signal-foreground shadow-[var(--shadow-signal-glow)] transition-[transform,box-shadow] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[oklch(0.16_0.02_252)]"
+                className="rounded-[var(--radius-pill)] bg-signal px-6 py-3 font-sans text-sm font-semibold text-signal-foreground shadow-[var(--shadow-signal-glow)] transition-[transform,box-shadow] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[oklch(0.16_0.02_252)]"
               >
                 Select an image
               </button>
@@ -612,10 +633,17 @@ export function FreeScanPanel({
                   here, because ANON_ACCEPTED_MIME is derived in
                   lib/scan-limits.ts.
 
-                  Muted and secondary: it must not outrank the CTA above it. */}
-              <p className="max-w-[46ch] font-sans text-[12px] leading-[1.45] text-muted-foreground">
-                iPhone photos save as HEIC, which cannot be read here — share
-                or export one as a JPEG first.
+                  Muted and secondary: it must not outrank the CTA above it.
+
+                  CUT TO ONE LINE 2026-11-05. The well already carries a
+                  glyph, a headline, a constraint line, the CTA and the format
+                  chips; at 46ch this warning wrapped to two lines and made a
+                  sixth block, bottom-weighting the one target on the page a
+                  visitor is meant to act in. "which cannot be read here" was
+                  also doing a job the chips directly above already do by
+                  omission. What survives is the half that is actionable. */}
+              <p className="max-w-[54ch] font-sans text-[12px] leading-[1.45] text-muted-foreground">
+                iPhone photos are HEIC — export one as JPEG first.
               </p>
             </div>
             <p className="max-w-[62ch] font-sans text-[15px] leading-[1.55] text-[oklch(0.82_0.012_244)]">
@@ -682,7 +710,7 @@ export function FreeScanPanel({
                 // property the four landing CTAs send, so the five read
                 // together.
                 onClick={() => trackCtaClick({ variant })}
-                className="rounded-[var(--radius-pill)] bg-signal px-6 py-2.5 font-sans text-sm font-semibold text-signal-foreground shadow-[var(--shadow-signal-glow)] transition-[transform,box-shadow] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-card"
+                className="rounded-[var(--radius-pill)] bg-signal px-6 py-3 font-sans text-sm font-semibold text-signal-foreground shadow-[var(--shadow-signal-glow)] transition-[transform,box-shadow] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-card"
               >
                 Create a free account
               </Link>
@@ -690,7 +718,7 @@ export function FreeScanPanel({
             <button
               type="button"
               onClick={reset}
-              className="font-sans text-sm font-medium text-muted-foreground underline decoration-border underline-offset-4 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+              className="py-1.5 font-sans text-sm font-medium text-muted-foreground underline decoration-border underline-offset-4 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
             >
               Try another image
             </button>
@@ -983,14 +1011,49 @@ function ResultView({
   const withheld = total - shown;
 
   return (
-    <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:gap-8">
-      <div className="flex shrink-0 justify-center lg:w-[240px]">
-        {/* The lock-in. 120ms of delay so the dial and the rows resolve
-            together instead of racing each other. */}
-        <ScoreGauge score={data.score} startDelayMs={120} />
+    // MASTHEAD OVER EVIDENCE, AND THE BREAKPOINT IS THE PANEL'S OWN WIDTH.
+    //
+    // This was `lg:flex-row` -- a VIEWPORT query on a component whose width
+    // is set by the landing grid, not by the window. Measured on the live
+    // page, that column is 576px wide, so at every desktop size the branch
+    // fired and produced: a 240px dial pinned top-left, 256px of gutter
+    // beside it for ALL the evidence, and roughly 500px of dead space under
+    // the dial where the rows ran past it. Every signal label wrapped to two
+    // lines, every detail to three, and the severity word sat beside the
+    // first line of a wrapping label looking unattached. The verdict did not
+    // resolve; it ran down a trench.
+    //
+    // A container query asks the right question. `@lg` is 32rem, and the
+    // dial plus its gap eat 16.5rem of whatever is left, so the threshold is
+    // really "is there 15rem of room beside the dial". MEASURED content-box
+    // widths of this panel: 33rem at 1440 (pairs, 16.5rem for the sentence),
+    // 42rem at 768 where the landing grid is still one column (pairs), and
+    // 28.6rem at exactly 1024 -- the first width where the two-column grid
+    // engages and the panel is at its NARROWEST. That one stacks, which is
+    // why the threshold is @lg and not @md: @md would have matched 28.6rem
+    // and left the sentence 12rem, four lines of rag beside a 15rem dial.
+    // The evidence gets the full measure at every width either way.
+    //
+    // The count sentence moves up here out of the teaser box. It is the one
+    // line that belongs beside the number: the dial says how bad, this says
+    // how much of the reason you are being shown, the rows show it, the
+    // stubs show it being cut off, and the teaser is then just the door.
+    // That is a sequence rather than a pile.
+    <div className="@container flex flex-col gap-6">
+      <div className="flex flex-col items-center gap-3 @lg:flex-row @lg:items-center @lg:gap-6">
+        <div className="shrink-0">
+          {/* The lock-in. 120ms of delay so the dial and the rows resolve
+              together instead of racing each other. */}
+          <ScoreGauge score={data.score} startDelayMs={120} />
+        </div>
+        {shown > 0 ? (
+          <p className="max-w-[30ch] text-balance text-center font-heading text-[18px] font-bold leading-snug tracking-[-0.2px] text-foreground @lg:text-left">
+            {teaserHeadline(total, shown)}
+          </p>
+        ) : null}
       </div>
 
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0">
         {partial ? <PartialNotice /> : null}
 
         {shown === 0 ? (
@@ -1003,7 +1066,10 @@ function ResultView({
             </p>
           </div>
         ) : (
-          <ul className="divide-y divide-border">
+          // border-t: the list hangs off the masthead above it rather than
+          // floating under it. divide-y alone leaves the first row with no
+          // top edge, which is what made this read as a second pile.
+          <ul className="divide-y divide-border border-t border-border">
             {data.signals.map((sig) => (
               <SignalRow key={sig.id} signal={sig} />
             ))}
@@ -1011,14 +1077,12 @@ function ResultView({
           </ul>
         )}
 
-        {withheld > 0 ? (
-          <Teaser total={total} shown={shown} variant={variant} />
-        ) : null}
+        {withheld > 0 ? <Teaser variant={variant} /> : null}
 
         <button
           type="button"
           onClick={onReset}
-          className="mt-5 font-sans text-sm font-medium text-muted-foreground underline decoration-border underline-offset-4 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+          className="mt-5 py-1.5 font-sans text-sm font-medium text-muted-foreground underline decoration-border underline-offset-4 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
         >
           Scan another image
         </button>
@@ -1145,28 +1209,26 @@ function WithheldStubs({ count }: { count: number }) {
 }
 
 /**
- * The paywall sentence and the door.
+ * The door.
  *
- * Says how many findings exist and how many were shown. Nothing about points,
- * nothing about how the score was assembled -- the count is the whole offer,
- * and it is the same sentence shape the paid result surface uses so the two
- * paywalls read as one product.
+ * THE COUNT SENTENCE IS NO LONGER HERE. teaserHeadline now sets beside the
+ * dial in the verdict masthead (see ResultView), because it is the line that
+ * reads against the number rather than against the CTA: stating "6 found, 2
+ * shown" down here, under the two rows and the cut-off stubs that had already
+ * shown the reader exactly that, was the third time the panel made the same
+ * point in one column. What is left in this box is the half that only works
+ * next to a button -- what an account is actually good for, and the account.
+ *
+ * Still nothing about points and nothing about how the score was assembled.
  */
 function Teaser({
-  total,
-  shown,
   variant,
 }: {
-  total: number;
-  shown: number;
   /** Carried only so the CTA below can attribute its cta_click. */
   variant: string;
 }) {
   return (
     <div className="mt-5 rounded-[var(--radius-md)] bg-accent/25 p-4 ring-1 ring-border">
-      <p className="font-heading text-[16px] font-bold leading-snug tracking-[-0.2px] text-foreground">
-        {teaserHeadline(total, shown)}
-      </p>
       {/* HONESTY GATE, NOT MARKETING SOFTNESS. This paragraph used to read "A
           free account opens the rest, and takes PDFs as well as images", under
           a CTA labelled "See all N signals". A FREE ACCOUNT DOES NOT OPEN THE
@@ -1177,9 +1239,15 @@ function Teaser({
           a paid upsell. That is the bait-and-switch this teaser exists to
           avoid, moved one click later where it costs the signup it just
           bought. The claims below are the ones a FREE account actually
-          keeps. */}
-      <p className="mt-1.5 max-w-[56ch] font-sans text-[13px] leading-[1.55] text-muted-foreground">
-        Each one names what was detected and where it was found. A free account
+          keeps.
+
+          "Every finding", not "Each one". With the count sentence moved to
+          the verdict masthead this box lost the antecedent "each one" was
+          pointing at, and the pronoun quietly re-aimed itself at the grey
+          stubs directly above -- which are the findings a reader CANNOT see.
+          The subject has to be named here now that the box stands alone. */}
+      <p className="max-w-[56ch] font-sans text-[13px] leading-[1.55] text-muted-foreground">
+        Every finding names what was detected and where it was found. A free account
         scans PDFs and larger files from your own dashboard; the full
         per-signal breakdown comes with a paid plan.
       </p>
@@ -1190,7 +1258,7 @@ function Teaser({
         // intent signal the free scan produces. It fired nothing before.
         // See the cap-state CTA above for why that understated h-01.
         onClick={() => trackCtaClick({ variant })}
-        className="mt-3.5 inline-block rounded-[var(--radius-pill)] bg-signal px-5 py-2.5 font-sans text-sm font-semibold text-signal-foreground shadow-[var(--shadow-signal-glow)] transition-[transform,box-shadow] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-card"
+        className="mt-3.5 inline-block rounded-[var(--radius-pill)] bg-signal px-5 py-3 font-sans text-sm font-semibold text-signal-foreground shadow-[var(--shadow-signal-glow)] transition-[transform,box-shadow] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-card"
       >
         {/* NOT "See all {total} signals". Same reason as the paragraph above:
             signup does not reveal them, so the label was a promise the next
