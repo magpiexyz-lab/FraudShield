@@ -35,6 +35,7 @@ import { trackCheckoutStarted } from "@/lib/events";
 export function ScanPackOptions({
   surface,
   className,
+  heading = "Or just buy the scans you need",
 }: {
   /**
    * Which paywall this was offered from — carried into checkout_started.
@@ -44,6 +45,15 @@ export function ScanPackOptions({
    */
   surface: "pricing" | "scan_result" | "dashboard_quota";
   className?: string;
+  /**
+   * Overrides the default "Or just buy the scans you need".
+   *
+   * The default is correct where running out of scans is the only thing being
+   * refused. It is wrong directly beneath an unlock CTA, where "Or" offers a
+   * cheaper route to something packs cannot do — see PACKS_HEADING_AFTER_LOCK
+   * in lib/billing-copy.ts for what that cost a customer.
+   */
+  heading?: string;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
@@ -146,9 +156,7 @@ export function ScanPackOptions({
 
   return (
     <div className={cn("mt-4", className)}>
-      <p className="text-center text-sm text-muted-foreground">
-        Or just buy the scans you need
-      </p>
+      <p className="text-center text-sm text-muted-foreground">{heading}</p>
 
       <div className="mt-2 flex flex-col gap-2 sm:flex-row">
         {SCAN_PACKS.map((pack) => (

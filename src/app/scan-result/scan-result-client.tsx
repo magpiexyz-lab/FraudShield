@@ -36,6 +36,10 @@ import { ApiAccessDialog } from "./api-access-dialog";
 import { CrossDocumentInterest } from "./cross-document-interest";
 import { UpgradeCta } from "./upgrade-cta";
 import { ScanPackOptions } from "@/components/scan-pack-options";
+import {
+  PACKS_DO_NOT_UNLOCK,
+  PACKS_HEADING_AFTER_LOCK,
+} from "@/lib/billing-copy";
 import { severityOfScore } from "./severity";
 import { FeedbackWidget } from "@/components/feedback-widget";
 
@@ -769,18 +773,38 @@ function LockedSignals({
           body="Each names what was detected, where it was found, and how much it moved the score."
           ctaLabel={`Unlock all ${count} forensic signals`}
         />
-        {/* The smaller door, offered at the exact moment someone can see what
-            they are being asked to pay for. This is where intent is highest --
-            more than half of the people who reach this panel click through to
-            checkout -- and where $60/month was the thing being refused.
-
-            Only for a signed-in visitor: checkout needs a user to attach the
-            purchase to, and a signed-out one is sent to sign up by the CTA
-            above. */}
-        {user ? (
-          <ScanPackOptions surface="scan_result" className="w-full" />
-        ) : null}
       </div>
+
+      {/* Scan packs, deliberately OUTSIDE the centred unlock stack above.
+
+          They used to sit inside it, one gap-3 below "Unlock all N forensic
+          signals", under the heading "Or just buy the scans you need". On
+          6 Nov 2026 a customer with two scans still unused bought two $7 packs
+          from here expecting the signals to open, and found the same result
+          locked. Stacked centred buttons read as one menu, and "Or" named the
+          packs as the cheaper item on it.
+
+          Packs are still offered here, because this is where intent is highest
+          and the manager asked to keep them. What changed is that they are now
+          a separate region behind a rule, left-aligned rather than centred,
+          with their own heading and an explicit line saying what they do not
+          do. The separation is the fix; the sentence is the backstop.
+
+          Only for a signed-in visitor: checkout needs a user to attach the
+          purchase to, and a signed-out one is sent to sign up by the CTA
+          above. */}
+      {user ? (
+        <div className="relative border-t border-border px-6 pb-6 pt-5">
+          <ScanPackOptions
+            surface="scan_result"
+            heading={PACKS_HEADING_AFTER_LOCK}
+            className="mt-0 w-full [&>p:first-child]:text-left"
+          />
+          <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+            {PACKS_DO_NOT_UNLOCK}
+          </p>
+        </div>
+      ) : null}
     </div>
   );
 }

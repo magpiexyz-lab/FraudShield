@@ -48,6 +48,30 @@ export const PRO_PRICE_MONTHLY_USD = Math.round(PLAN_PRICES.pro / 100);
 /** The price as it appears in prose. Every surface interpolates this. */
 export const PRO_PRICE_LABEL = `$${PRO_PRICE_MONTHLY_USD}/month`;
 
+/**
+ * Shown with the scan packs on the locked-signals panel, and only there.
+ *
+ * On 6 Nov 2026 a customer with two scans still unused bought two $7 packs
+ * from this panel, expecting them to reveal the signal detail, and found the
+ * same result still locked. The packs sat directly beneath "Unlock all N
+ * forensic signals" under the heading "Or just buy the scans you need", so
+ * "Or" read as a second, cheaper route to the same thing.
+ *
+ * Packs buy scans. Only Pro reveals what a scan found. That distinction is
+ * obvious from the inside and invisible from the outside, so it is now stated
+ * at the point of payment rather than left to be inferred from the layout.
+ */
+export const PACKS_DO_NOT_UNLOCK =
+  "Scan packs add scans to your account. They do not reveal the signal detail above — only Pro does.";
+
+/**
+ * Replaces the packs' default heading on the locked-signals panel. The default
+ * is "Or just buy the scans you need", which is right on the dashboard, where
+ * running out of scans is the only thing being refused. Here the word "Or"
+ * offers an alternative to an unlock it cannot perform.
+ */
+export const PACKS_HEADING_AFTER_LOCK = "Need more scans instead?";
+
 /** One numbered clause of the billing terms. */
 export type BillingTerm = { id: string; heading: string; body: string };
 
