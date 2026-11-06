@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useCallback,
+} from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -174,9 +180,29 @@ function BlurFade({
   );
 }
 
+// useLayoutEffect warns during SSR because it cannot run there. The count-up
+// below needs to reset the displayed number to 0 BEFORE the browser paints, or
+// the real value flashes and then rewinds — so on the client it must be the
+// layout effect, and on the server it must be the no-op useEffect.
+const useBeforePaintEffect =
+  typeof window === "undefined" ? useEffect : useLayoutEffect;
+
 /**
- * NumberTicker — counts up to `value` when scrolled into view. Content is
- * visible before animation (renders the target value under reduced motion).
+ * NumberTicker — counts up to `value` when scrolled into view.
+ *
+ * The initial state is `value`, not 0, and that is the whole point. These
+ * counters render the market statistics in the landing page's stat band, and
+ * the previous version started at 0 with every path to the real number living
+ * inside an effect. Effects do not run without JavaScript, so the server-
+ * rendered HTML — which is what a crawler, a directory reviewer, or anyone
+ * with scripts blocked actually reads — said "~0x" and "1 in 0", with a
+ * citation sitting under each one. A sourced claim that renders as zero is
+ * worse than no claim at all.
+ *
+ * So the server emits the true figure and the count-up is a pure enhancement:
+ * the layout effect rewinds to 0 before the first paint, then animates up.
+ * Under reduced motion, or with no IntersectionObserver, it simply never
+ * rewinds and the number is correct from the start.
  */
 function NumberTicker({
   value,
@@ -194,11 +220,13 @@ function NumberTicker({
   className?: string;
 }) {
   const ref = useRef<HTMLSpanElement | null>(null);
-  const [display, setDisplay] = useState(0);
+  // Starts at the real figure so the server-rendered HTML carries it. The
+  // client rewinds to 0 below, before paint, only when it is going to animate.
+  const [display, setDisplay] = useState(value);
   const reduced = usePrefersReducedMotion();
   const started = useRef(false);
 
-  useEffect(() => {
+  useBeforePaintEffect(() => {
     if (reduced || typeof IntersectionObserver === "undefined") {
       setDisplay(value);
       return;
@@ -208,6 +236,9 @@ function NumberTicker({
       setDisplay(value);
       return;
     }
+    // Rewind before the browser paints, so the figure never appears and then
+    // jumps back to 0. Everything past this point is the enhancement.
+    setDisplay(0);
     const animate = () => {
       if (started.current) return;
       started.current = true;
@@ -230,11 +261,15 @@ function NumberTicker({
     });
     io.observe(el);
     // Safety: if the observer never fires (full-page snapshot, fast scroll),
-    // still count up so the figure never sticks at a misleading 0
-    // (e.g. "1 in 0"). Additive — only advances toward the real value.
-    // 250ms covers Playwright fullPage snapshots and SEO/crawler renders;
-    // IO fires <50ms when an element actually enters the viewport, so the
-    // timer is preempted during normal scroll.
+    // count up anyway so the rewind above cannot strand the figure at 0.
+    // Additive — only advances toward the real value. IO fires <50ms when an
+    // element actually enters the viewport, so this is preempted on a normal
+    // scroll.
+    //
+    // This used to claim it also covered "SEO/crawler renders". It never did:
+    // it is a setTimeout, so it needs JavaScript, and the no-JS render was the
+    // case that shipped "~0x" and "1 in 0" to the homepage. That is now fixed
+    // by the initial state, not here.
     const safety = window.setTimeout(() => {
       animate();
       io.disconnect();
