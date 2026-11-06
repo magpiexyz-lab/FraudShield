@@ -873,9 +873,8 @@ export function LandingContent(props: LandingContentProps) {
               click.
 
               Two columns rather than a full-width card below the heading:
-              the panel holds a 24rem floor and caps its own prose at 62ch,
-              so stretched across the 6xl container it reads as an empty
-              slab. At this ratio it lands near 560px, and the asymmetric
+              the panel caps its own prose at 62ch, so stretched across the
+              6xl container it reads as an empty slab. At this ratio it lands near 560px, and the asymmetric
               split matches the pain-points section below. */}
           <FreeScanPanel variant={slug} />
         </div>

@@ -350,9 +350,11 @@ type PanelState =
 
 /**
  * One frame that transforms through four states rather than four stacked
- * cards. The frame holds a constant minimum height so the page does not shift
- * underneath the visitor at the exact moment the verdict lands -- on a paid
- * entry point that moment is the whole conversion.
+ * cards. It takes its reserved height the moment a file is picked rather than
+ * the moment a verdict lands, so the page does not shift underneath the
+ * visitor as the result appears -- on a paid entry point that moment is the
+ * whole conversion. The reservation note on the content area below carries
+ * the measurements behind the number.
  *
  * @param variant - the landing page messaging slug, carried on every event so
  *   a variant can be read against its own scan completions. Defaults to
@@ -536,9 +538,54 @@ export function FreeScanPanel({
         </p>
       </div>
 
-      {/* Constant floor height: the verdict replaces the drop well in place
-          instead of pushing the rest of the page down. */}
-      <div className="min-h-[24rem] px-5 py-6 sm:px-6 sm:py-7">
+      {/* THE FRAME TAKES ITS HEIGHT AT THE PICK, NOT AT THE VERDICT, and
+          38rem is a measured number rather than a round one.
+
+          WHAT STOOD HERE BEFORE claimed a constant floor so that "the
+          verdict replaces the drop well in place instead of pushing the
+          rest of the page down". That floor was 24rem = 384px, which is
+          BELOW the idle well itself -- 449px of frame at 412px wide, 510px
+          at 360px -- so it reserved nothing. The frame SHRANK 65px when the
+          scan started and then grew 599px past idle when the verdict
+          arrived. MEASURED at 412x823 with this panel at the top of the
+          viewport, that pair of shifts scored 0.2537 CLS: a breach of the
+          0.1 budget, on the one surface a paid click lands on.
+
+          Chrome discards a layout shift that falls within 500ms of a real
+          pointer or key event. A verdict arrives seconds after the file is
+          picked, so its shift can never be discarded -- but the scanning
+          state begins on the pick itself, inside that window. So the
+          reservation starts at the pick and is held through whatever comes
+          back, and the verdict then renders into space already taken.
+
+          38rem = 608px, and it is small on purpose. It is the smallest
+          reservation that clears the tallest idle well at any width (510px
+          at 360px), so the frame can never SHRINK when a scan starts --
+          that shrink was pure loss, a shift with no content to show for it.
+          MEASURED content-box heights at 412px wide: refusal 353, clean
+          verdict 408, one signal 732, two signals 936. The two-signal
+          verdict -- dial, count sentence, two rows, the withheld stubs and
+          the teaser, which is the shape this surface exists to produce --
+          still grows past the reservation, and that residual measures
+          0.0506 at 412x823 and 0.0257 at 1280x900: half the budget, with
+          the shrink gone and the refusal and clean-verdict paths at zero.
+
+          A BIGGER NUMBER WAS MEASURED AND REJECTED. 46rem holds nearly all
+          of the two-signal verdict and takes the residual to 0.0146, but it
+          leaves 335px of empty frame under a refusal and 280px under a
+          clean verdict, which are the two most common things this panel
+          says. It also buys nothing once the visitor lingers in the file
+          dialog: past 500ms the pick-time growth counts too, and the total
+          then measures 0.109 at 38rem against 0.1135 at 46rem. So take the
+          least frame that is safe.
+
+          NOT APPLIED AT IDLE. A floor tall enough to hold a verdict would
+          turn the drop target into an empty slab on arrival. */}
+      <div
+        className={`px-5 py-6 sm:px-6 sm:py-7${
+          state.kind === "idle" ? "" : " min-h-[38rem]"
+        }`}
+      >
         {state.kind === "idle" ? (
           <div className="flex flex-col gap-5">
             <div

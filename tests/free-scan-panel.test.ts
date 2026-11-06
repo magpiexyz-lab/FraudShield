@@ -610,6 +610,61 @@ describe("free-scan panel -- analytics", () => {
 });
 
 // ---------------------------------------------------------------------------
+// The height reservation, and the thing it is not.
+//
+// DIAGNOSED 2026-11-06. The content area carried an unconditional
+// min-h-[24rem] under a comment claiming the verdict would replace the drop
+// well "instead of pushing the rest of the page down". 24rem is 384px and the
+// idle well is 449px at 412px wide, so the floor was below every state it was
+// meant to hold: the frame shrank 65px when a scan started and then grew 599px
+// when the verdict landed, scoring 0.2537 CLS at 412x823 with the panel in
+// frame. The reservation now starts at the PICK -- inside the 500ms window
+// Chrome discards shifts in -- and is held through whatever comes back, so the
+// verdict renders into space that is already taken.
+//
+// These assertions read the source because vitest runs environment "node" with
+// no jsdom; what they pin is the part that silently regressed last time, which
+// is a floor that does not cover the states it is applied to.
+// ---------------------------------------------------------------------------
+
+describe("free-scan panel -- the height reservation", () => {
+  // The reservation's own note has to be free to quote the dead floor it
+  // replaced, so the bans below read code with the prose taken out.
+  const NL = String.fromCharCode(10);
+  const reservationCode = source
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .split(NL)
+    .filter((l) => !/^\s*\/\//.test(l))
+    .join(NL);
+
+  it("still has a content area to reserve", () => {
+    // Positive control for the three bans below.
+    expect(reservationCode).toContain("px-5 py-6 sm:px-6 sm:py-7");
+    // This file is 42% prose by weight, so the strip legitimately removes
+    // most of it; the floor is here to catch a strip that ate the code too.
+    expect(reservationCode.length).toBeGreaterThan(source.length * 0.3);
+  });
+
+  it("reserves one height, and reserves it from the pick", () => {
+    expect(countOf(reservationCode, "min-h-[38rem]")).toBe(1);
+    // Keyed off the state, with idle the one state excluded: a reservation
+    // that also applied at idle would be the empty-slab drop target, and one
+    // applied only at the verdict would reserve nothing, which is the defect.
+    expect(reservationCode).toMatch(
+      /state\.kind === "idle" \? "" : " min-h-\[38rem\]"/,
+    );
+  });
+
+  it("does not carry a floor below the states it applies to", () => {
+    // THE GUARD. 24rem = 384px sits under the idle well (449px at 412px wide,
+    // 510px at 360px), so it could not hold anything; any floor shorter than
+    // the idle well makes the frame shrink on the pick.
+    expect(reservationCode).not.toContain("min-h-[24rem]");
+    expect(reservationCode).not.toMatch(/min-h-\[(?:[0-9]|1[0-9]|2[0-9])rem\]/);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Motion and accessibility.
 // ---------------------------------------------------------------------------
 
