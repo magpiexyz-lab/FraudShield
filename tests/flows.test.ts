@@ -805,9 +805,12 @@ describe("b-06: checkout refuses a second subscription", () => {
 // once analyzeDocumentForFraud is called, not that the route calls it. The gate
 // that was wrong lived here, so the assertion lives here too.
 describe("b-04: every supported format reaches the content pass", () => {
+  // The content pass moved out of the route into lib/fraud/run-scan.ts when
+  // the anonymous free-scan surface needed to run the IDENTICAL analysis. The
+  // gate that was wrong is in that file now, so this guard reads it there.
   const routeSource = () =>
     readFileSync(
-      path.join(__dirname, "..", "src", "app", "api", "scan", "route.ts"),
+      path.join(__dirname, "..", "src", "lib", "fraud", "run-scan.ts"),
       "utf8",
     );
 
@@ -836,8 +839,16 @@ describe("b-04: every supported format reaches the content pass", () => {
   // The PDF branch has to be reachable at all: the route passes the MIME
   // through, and vision.ts selects the content block from it.
   it("passes the file's MIME type to the content pass", () => {
+    // A FOURTH, OPTIONAL argument (`preparedImage`) exists as of the
+    // free-scan surface: /api/free-scan decodes the image above its scan
+    // counters and hands the result over so the same bytes are not decoded
+    // twice. /api/scan passes nothing there. The property THIS test owns is
+    // that the MIME reaches the content pass — that is what selects the PDF
+    // branch and what the 0-of-20 regression broke — not the argument count,
+    // so the trailing argument is allowed. The first three are still pinned
+    // in order, so reordering them still fails here.
     expect(routeSource()).toMatch(
-      /analyzeDocumentForFraud\(\s*buf,\s*docType,\s*file\.type\s*\)/,
+      /analyzeDocumentForFraud\(\s*buf,\s*docType,\s*(?:file\.type|mime)\s*(?:,\s*\w+\s*)?\)/,
     );
   });
 });

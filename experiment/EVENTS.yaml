@@ -54,14 +54,13 @@ events:
         type: string
         required: false
         description: utm_term from URL params (keyword)
-  demo_view:
-    funnel_stage: reach
-    trigger: Visitor opens or runs the live sample-scan demo on the landing page
-    properties:
-      variant:
-        type: string
-        required: false
-        description: Variant slug from experiment.yaml variants
+  # demo_view was REMOVED 2026-11-04. It fired only from the canned sample-scan
+  # animation's Run button, which no longer exists — the landing page now runs a
+  # real anonymous scan. There is no retire/deprecate field in this schema, so
+  # the declaration is deleted outright rather than marked. Its replacement is
+  # free_scan_start below, which measures a different and much higher-friction
+  # act (uploading your own document), so the two series are NOT comparable.
+  # h-02's formula was re-pointed in the same change; see experiment.yaml.
   guide_view:
     funnel_stage: reach
     trigger: >-
@@ -82,7 +81,24 @@ events:
   # --- demand ---
   cta_click:
     funnel_stage: demand
-    trigger: User clicks the primary 'Scan your document' CTA
+    trigger: >-
+      User clicks the primary 'Scan your document' CTA.
+
+      POPULATION CHANGED 2026-11-04, and rates before and after are not
+      comparable. The anonymous free-scan panel added a FIFTH trigger site:
+      its two signup CTAs - the one under a verdict, beside the withheld
+      signal count, and the one under a cap - now fire this event, where
+      before they fired nothing. Those are the panel's real landing-page
+      exits, and the verdict one is the strongest intent the free scan
+      produces, so h-01 (cta_click over visit_landing) was understating this
+      panel - a visitor who scanned and clicked through sat in the reach
+      denominator and was absent from the demand numerator. The numerator now
+      grows accordingly. The four pre-existing landing CTAs are unaffected.
+
+      Nothing was added to tell the five sites apart. That wants a per-surface
+      field like the one checkout_started and paywall_shown carry, which is a
+      wider schema change across four existing call sites; declaring it here
+      alone would declare a property nothing sends.
     properties:
       variant:
         type: string
@@ -124,6 +140,79 @@ events:
         type: string
         required: false
         description: Document type of the result being viewed (pay_stub | bank_statement | invoice)
+
+  # --- free scan (anonymous, landing page) ---
+  #
+  # Appended here deliberately, AFTER api_interest_click, even though all three
+  # are reach-stage. tests/demand-signals.test.ts slices fixed 700- and
+  # 120-character windows forward from "feature_interest_click:", so inserting a
+  # block between that key and its own feature: property breaks it. Nothing may
+  # be inserted inside the checkout_abandon_reason block either, which
+  # tests/checkout-abandon-reason.test.ts delimits by the next two-space key.
+  #
+  # None of these carry requires: [payment] — same reasoning as paywall_shown:
+  # they must fire whether or not Stripe is wired.
+  free_scan_start:
+    funnel_stage: reach
+    trigger: >-
+      An anonymous landing-page visitor SUBMITS a document image to the free
+      scan. Fires on request submission — NOT when the panel scrolls into view
+      and NOT when a file is merely selected. This is h-02's numerator, and it
+      counts ATTEMPTS: it fires before the cap check and before the AI call, so
+      a request that is then capped or that fails still counts here. Pair it
+      with h-12 (free_scan_complete / free_scan_start) to tell a surface that
+      attracts attempts from one that actually delivers verdicts.
+    properties:
+      variant:
+        type: string
+        required: false
+        description: Variant slug from experiment.yaml variants
+  free_scan_complete:
+    funnel_stage: reach
+    trigger: >-
+      A free scan returns a completed AI verdict and the result renders. Fires
+      ONLY when the vision pass actually ran — not for a capped request, not for
+      a refused PDF, not for an image the decoder could not read, and not for a
+      metadata-only partial result. This is h-12's numerator.
+
+      NO TOKEN COUNTS: input_tokens, output_tokens and model were declared here
+      until 2026-11-05 and were removed in the free-scan security review. The
+      client could only know them because /api/free-scan shipped its billing
+      telemetry and the model name to an unauthenticated caller; the route logs
+      them server-side now ("[free-scan] vision usage"). What a free scan costs
+      is therefore in the runtime logs rather than in PostHog, where it could
+      have been grouped by variant. h-12 is free_scan_complete /
+      free_scan_start and never read those properties.
+    properties:
+      variant:
+        type: string
+        required: false
+        description: Variant slug from experiment.yaml variants
+      band:
+        type: string
+        required: true
+        description: Verdict band for the returned score (clear | suspect | fraud)
+      signal_count:
+        type: number
+        required: true
+        description: Total forensic signals found, not the two shown in the teaser
+  free_scan_capped:
+    funnel_stage: reach
+    trigger: >-
+      A free scan is refused because a cap was reached or could not be enforced,
+      and the signup CTA renders in its place. Deliberately a separate event
+      rather than a paywall_shown surface member, because it reports WHICH cap
+      bit; the cap screen also fires paywall_shown with surface free_scan_cap so
+      it stays in the shared monetization-surface denominator.
+    properties:
+      variant:
+        type: string
+        required: false
+        description: Variant slug from experiment.yaml variants
+      cap:
+        type: string
+        required: true
+        description: Which cap refused the request (ip | site | unavailable)
 
   # --- activate ---
   signup_start:
@@ -183,8 +272,11 @@ events:
         required: true
         description: >-
           Which paywall the user hit — locked_signals, scan_result_quota,
-          dashboard_quota, or pricing. Distinguishes the four asks so a low
-          pay_intent rate can be traced to the surface that failed.
+          dashboard_quota, pricing, or free_scan_cap. Distinguishes the asks so a
+          low pay_intent rate can be traced to the surface that failed.
+          free_scan_cap was added 2026-11-04: it is the anonymous landing-page
+          free-scan cap screen, and it is the only member fired for a visitor who
+          is not signed in.
       signal_count:
         type: number
         required: false

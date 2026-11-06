@@ -180,6 +180,28 @@ export const NO_INDICATORS_BODY =
  * false, and a false sentence here is not a copy nit: it is telling a customer
  * their bank statement stays with us while sending it to a third party. If the
  * content pass is ever made conditional, this has to say so.
+ *
+ * IT NAMES NO FORMATS, AND THAT IS THE POINT -- CORRECTED 2026-11-06. The
+ * replaced wording said "images and PDFs alike", which is true of the
+ * authenticated scan route and FALSE on the anonymous free-scan panel: that
+ * surface refuses every non-raster upload (ANON_ACCEPTED_MIME in
+ * lib/scan-limits.ts, enforced again on the server). So the one sentence on
+ * that page whose whole job is to be exactly true about where a document goes
+ * was wrong about what the page would even take.
+ *
+ * The clause was GENERALISED rather than deleted or localised:
+ *   - Deleting it outright would have cost the dashboard the assurance that a
+ *     PDF is treated no differently, which is the reassurance a paying user
+ *     with a bank statement actually wants.
+ *   - A second, per-surface wording was rejected on the rule the free-scan
+ *     panel's own docstring states: one claim, one sentence. Two wordings of
+ *     where documents go is two claims to keep true, and this is the claim
+ *     that must never drift.
+ * "Every document you upload" carries no carve-out, so it covers a PDF by
+ * quantification instead of by enumeration -- strictly stronger than the list
+ * it replaces, and it stays true on any surface whatever that surface accepts.
+ * The accepted formats are stated where they are enforced and where they can
+ * differ per surface; this sentence states where documents GO.
  */
 export const AI_PRIVACY_DISCLOSURE =
-  "Every document you upload — images and PDFs alike — is sent to Anthropic's Claude API for AI content analysis. No document is stored by FraudShield after the scan, only the extracted metadata and the resulting signals.";
+  "Every document you upload is sent to Anthropic's Claude API for AI content analysis. No document is stored by FraudShield after the scan, only the extracted metadata and the resulting signals.";

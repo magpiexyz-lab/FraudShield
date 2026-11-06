@@ -229,16 +229,79 @@ function systemPromptFor(mime: string): string {
 // ---- Image preparation ----
 
 /**
+ * What a caller may demand of the bytes before they are rendered.
+ *
+ * OPT-IN, AND THAT IS THE POINT. /api/scan reaches `prepareImage` through
+ * `analyzeDocumentForFraud` and accepts whatever sharp accepts, including an
+ * upload with a blank `file.type`. Enforcing a format allow-list
+ * unconditionally would change the AUTHENTICATED path's behaviour, which is
+ * not what the free-scan hardening is allowed to do. A caller that wants the
+ * stricter decode asks for it; the paid path passes nothing and is untouched.
+ *
+ * The anonymous policy lives in lib/scan-limits.ts (ANON_DECODE_FORMATS,
+ * MAX_ANON_INPUT_PIXELS) so the route composes it without this module's
+ * sharp/Anthropic graph reaching the places that only need the numbers.
+ */
+export type DecodePolicy = {
+  /**
+   * Allowed DETECTED formats, as libvips names them ("png", "jpeg", "webp",
+   * "heif"). Compared against `metadata().format`, never against a
+   * client-supplied MIME type.
+   */
+  allowedFormats: ReadonlySet<string>;
+  /** Ceiling on input pixels, handed to sharp. Default is ~268 MP. */
+  limitInputPixels: number;
+};
+
+/**
  * Downscale to the long-edge cap and normalize to JPEG.
  *
  * `rotate()` with no argument applies the EXIF orientation tag, so a phone
  * photo reaches the model the way a human would see it. Returns null for
  * anything sharp cannot decode (HEIC is the common case — the prebuilt binaries
  * ship without HEIF support), which routes the scan to the partial fallback.
+ *
+ * WITH A POLICY the format is sniffed from the bytes FIRST and anything
+ * outside the allow-list is refused without being rendered. That ordering is
+ * the fix, not a nicety: a 0.02 MB SVG of ~300 stacked `feGaussianBlur` layers
+ * was measured at 229,141 ms in the render chain below, against a 60-second
+ * lambda. `metadata()` on the same shape of file is 23 ms against 47,959 ms
+ * for its render (40 layers, this install) — librsvg parses the document to
+ * report its size but rasterizes no filter, which is what makes the sniff
+ * cheap enough to be a gate. `limitInputPixels` does NOT cover this: the
+ * measured bomb was ~4 megapixels. It is here for the other half of the
+ * problem — an ordinary raster whose pixel count is the attack.
+ *
+ * Multi-frame input is refused as well. The render reads only the first page,
+ * so the frames are not themselves a cost; a 20,000-frame animation arriving
+ * as a "document photograph" is simply not the thing this surface accepts.
+ *
+ * `null` either way, so every existing caller's refusal path is unchanged.
  */
-async function prepareImage(buf: Buffer): Promise<Buffer | null> {
+export async function prepareImage(
+  buf: Buffer,
+  policy?: DecodePolicy,
+): Promise<Buffer | null> {
   try {
-    return await sharp(buf)
+    if (policy) {
+      // A SEPARATE sharp instance for the sniff. Reusing the pipeline instance
+      // would couple "what format is this" to the chain that renders it, and
+      // the refusal has to happen before any of that chain is built.
+      const meta = await sharp(buf, {
+        limitInputPixels: policy.limitInputPixels,
+      }).metadata();
+
+      // `format` is undefined for bytes libvips cannot identify at all.
+      if (!meta.format || !policy.allowedFormats.has(meta.format)) return null;
+      // `pages` is undefined for the single-page formats (PNG, JPEG) and a
+      // count for the paged ones, so the default must be 1 rather than 0.
+      if ((meta.pages ?? 1) > 1) return null;
+    }
+
+    return await sharp(
+      buf,
+      policy ? { limitInputPixels: policy.limitInputPixels } : undefined,
+    )
       .rotate()
       .resize({
         width: MAX_IMAGE_EDGE,
@@ -357,10 +420,19 @@ function parseResponse(
  * Images keep the existing path: downscale, apply EXIF orientation, normalize
  * to JPEG. That conversion is what makes the hardcoded image/jpeg media type
  * below correct for a PNG or HEIC upload.
+ *
+ * `preparedImage` lets a caller that has ALREADY decoded the image hand the
+ * result over instead of paying for the decode twice. /api/free-scan runs
+ * `prepareImage` itself, above its scan-allowance counters, so an undecodable
+ * upload is refused without burning anyone an allowance; before this parameter
+ * existed that output was discarded and the same bytes were decoded again
+ * here. It is OPTIONAL and the PDF branch ignores it: a PDF is never
+ * rasterized, so there is no image to substitute.
  */
 async function documentContentBlock(
   buf: Buffer,
   mime: string,
+  preparedImage?: Buffer,
 ): Promise<Anthropic.ContentBlockParam | null> {
   if (mime === "application/pdf") {
     return {
@@ -373,7 +445,10 @@ async function documentContentBlock(
     };
   }
 
-  const image = await prepareImage(buf);
+  // `??` rather than a truthiness check: an empty Buffer is falsy-adjacent in
+  // review but is a real (if useless) value, and re-decoding on it would make
+  // the skip silently conditional on content rather than on presence.
+  const image = preparedImage ?? (await prepareImage(buf));
   if (!image) return null;
   return {
     type: "image",
@@ -401,16 +476,22 @@ async function documentContentBlock(
  * @param buf      Raw uploaded bytes (not persisted anywhere).
  * @param docType  Document type, for context in the prompt.
  * @param mime     Server-detected MIME; selects the content block.
+ * @param preparedImage
+ *   Optional output of `prepareImage` from a caller that already decoded this
+ *   image, so it is not decoded twice. LAST and OPTIONAL on purpose: /api/scan
+ *   passes nothing and must keep its exact previous behaviour, so the existing
+ *   three parameters do not move.
  */
 export async function analyzeDocumentForFraud(
   buf: Buffer,
   docType: "pay_stub" | "bank_statement" | "invoice",
   mime: string,
+  preparedImage?: Buffer,
 ): Promise<VisionResult> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return unusable("unavailable");
 
-  const block = await documentContentBlock(buf, mime);
+  const block = await documentContentBlock(buf, mime, preparedImage);
   if (!block) return unusable("unavailable");
 
   try {

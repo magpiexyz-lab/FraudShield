@@ -144,6 +144,14 @@ describe("the runner agrees with the scan route it calls", () => {
       path.join(repoRoot, "src", "app", "api", "scan", "route.ts"),
       "utf8",
     );
+  // ACCEPTED_MIME moved to lib/scan-intake.ts so the anonymous free-scan
+  // surface enforces the same accept-list. The route still imports it; the
+  // literal list is read from its current home: it moved on to
+  // lib/scan-limits.ts, a module with no imports, so the landing-page bundle
+  // could read the limits without pulling exifr in with them. scan-intake
+  // re-exports them, so the scan route still imports it from there.
+  const intakeSource = () =>
+    readFileSync(path.join(repoRoot, "src", "lib", "scan-limits.ts"), "utf8");
 
   // THE CONTRACT THAT ALREADY BROKE ONCE. /api/scan answers 201 Created; the
   // runner was written against 200 and would have recorded every successful
@@ -177,12 +185,12 @@ describe("the runner agrees with the scan route it calls", () => {
   // would be measured with metadata forensics silently skipped -- a matrix
   // about an analysis the product does not perform that way.
   it("sends only MIME types the scan route accepts", () => {
-    const accepted = scanSource()
-      .slice(scanSource().indexOf("const ACCEPTED_MIME"))
+    const accepted = intakeSource()
+      .slice(intakeSource().indexOf("const ACCEPTED_MIME"))
       .slice(0, 300)
       .match(/"[a-z]+\/[a-z0-9.+-]+"/g)
       ?.map((s) => s.replace(/"/g, ""));
-    expect(accepted, "ACCEPTED_MIME not found in the scan route").toBeDefined();
+    expect(accepted, "ACCEPTED_MIME not found in lib/scan-limits.ts").toBeDefined();
 
     const sent = runnerSource()
       .slice(runnerSource().indexOf("const MIME_BY_EXT"))

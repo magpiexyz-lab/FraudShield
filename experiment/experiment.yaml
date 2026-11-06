@@ -43,10 +43,29 @@ hypotheses:
     status: pending
   - id: h-02
     category: reach
-    statement: ">35% of landing visitors engage the live sample-scan demo (qualified reach — they have the pain)"
+    statement: ">5% of landing visitors submit a document for a free scan (qualified reach — they have the pain and a document to check)"
     metric:
-      formula: "demo_view / visit_landing"
-      threshold: 0.35
+      formula: "free_scan_start / visit_landing"
+      # RE-POINTED 2026-11-04. Was "demo_view / visit_landing" at threshold 0.35,
+      # measuring a click on a canned animation over a fixed sample document.
+      # The animation is gone; the surface now runs a real scan on the visitor's
+      # own image, so the numerator changed and rates before and after are NOT
+      # comparable. The old series ran at 1.1% (3 demo_view / 274 visit_landing
+      # over 7 days; 4 / 352 over 14) — i.e. it scored 0.031 against its own
+      # threshold and had been tripping the kill rule all along. 0.35 was never
+      # grounded in anything.
+      #
+      # PLACEHOLDER pending the manager's number, same status as h-11's. 0.05 is
+      # ~4.5x the old demo rate, chosen because uploading a document off your own
+      # disk is a far higher-friction act than clicking Run on an animation, so a
+      # lower bar is warranted — but it is an estimate, not evidence.
+      #
+      # The numerator counts ATTEMPTS: free_scan_start fires on request submission,
+      # before the cap check and before the AI call, so a capped or failed scan
+      # still counts. This hypothesis is therefore UNREADABLE unless h-12 (the
+      # delivery rate) also passes — h-02 alone is satisfiable by a surface that
+      # refuses or fails every request.
+      threshold: 0.05
       operator: gte
     priority_score: 85
     experiment_level: 1
@@ -160,6 +179,32 @@ hypotheses:
     experiment_level: 1
     depends_on: []
     status: pending
+  - id: h-12
+    category: reach
+    statement: ">80% of free-scan submissions receive a completed AI verdict (the free scan actually delivers — h-02's attempt rate is unreadable without this)"
+    metric:
+      formula: "free_scan_complete / free_scan_start"
+      # ADDED 2026-11-04 alongside the h-02 re-point. This exists because h-02's
+      # numerator fires on submission, so a surface that 429s or fails every
+      # request still scores h-02 high. A hypothesis carries exactly one metric,
+      # so the delivery rate cannot live inside h-02 and needs its own row.
+      #
+      # free_scan_complete fires only when the vision pass actually ran. It does
+      # NOT fire for: either cap refusing (free_scan_capped instead), an
+      # undecodable image, a refused PDF, or a metadata-only partial result.
+      #
+      # PLACEHOLDER pending the manager's number. 0.8 allows for the daily cap
+      # being reached legitimately and for occasional Anthropic unavailability,
+      # while still failing loudly if the surface is broadly broken.
+      threshold: 0.8
+      operator: gte
+    # Below h-02's 85 deliberately: this is a health check on h-02's denominator,
+    # not an independent acquisition claim, and it must not drive the kill rule
+    # ("Any top-funnel (REACH or DEMAND) < 0.5") on its own.
+    priority_score: 70
+    experiment_level: 1
+    depends_on: []
+    status: pending
 
 # --- 3. Behaviors ---
 behaviors:
@@ -177,12 +222,22 @@ behaviors:
   - id: b-02
     hypothesis_id: h-02
     pages: [landing]
-    given: "A visitor with document-review pain is on the landing page"
-    when: "They open the live sample-scan demo and view a sample document flagged with a fraud score"
-    then: "They engage the demo (>35% of visitors) and see how the forensic signals are explained"
+    # REPLACED IN PLACE 2026-11-04. This behavior was the canned sample-scan
+    # animation over a fixed document. It now describes a real anonymous scan of
+    # the visitor's own image. Replaced rather than retired-plus-new-id because it
+    # is one surface and one behavior — a parallel b-13 would double-count against
+    # h-02. No anonymous_allowed flag: "/" is already unconditionally public via
+    # derive_pages.py auth_landing, and flagging it would inject "/landing" into
+    # the derived public-path set the moment b-01 is flagged too, breaking
+    # tests/public-routes.test.ts for no gain.
+    given: "A visitor with document-review pain is on the landing page and has a document image to check"
+    when: "They upload it to the free scan — no account, capped at 3 per visitor and 30 site-wide per day"
+    then: "They get a real fraud score, its verdict band and the first two forensic signals, with the remaining count teased behind signup"
     tests:
-      - "Sample-scan demo widget renders a fraud score and signal breakdown"
-      - "demo_view event fires when the demo is opened or run"
+      - "Free-scan panel renders the words fraud score and the AI privacy disclosure before any upload"
+      - "free_scan_start event fires when a document is submitted"
+      - "The scan returns exactly two signals plus the total count, never the full breakdown"
+      - "An exhausted cap renders a signup CTA rather than an error"
     level: 1
   - id: b-03
     hypothesis_id: h-01

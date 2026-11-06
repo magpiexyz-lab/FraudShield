@@ -96,8 +96,14 @@ export function ScoreGauge({
         />
       </svg>
 
-      {/* Center readout — absolutely positioned over the dial */}
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
+      {/* Center readout — absolutely positioned over the dial.
+          aria-hidden because the svg above is role="img" with an aria-label
+          that already carries the score AND the verdict word; without this
+          the tree held the same verdict twice, once as the image label and
+          again as "Fraud score" / the ticking number / the band word. The
+          number is not in a live region, so hiding it costs no announcement
+          as it counts up -- the single svg label is the announcement. */}
+      <div aria-hidden="true" className="absolute inset-0 flex flex-col items-center justify-center">
         <span
           className="font-mono text-[0.7rem] uppercase tracking-[0.18em] text-muted-foreground"
         >
@@ -111,7 +117,16 @@ export function ScoreGauge({
         </div>
         <span
           className="mt-1 rounded-pill px-3 py-1 font-mono text-xs font-medium uppercase tracking-wide"
-          style={{ color: stroke, backgroundColor: "color-mix(in oklch, " + stroke + " 14%, transparent)" }}
+          // WCAG 1.4.3 (4.5:1 -- 12px/500 is not large text at any weight
+          // short of 18.66px bold). The tint and the text are the SAME
+          // severity colour, and every severity colour is lighter than the
+          // card it sits on, so raising the mix drives the pill TOWARD the
+          // text and lowers contrast: the fraud band measured 4.39:1 at 14%
+          // and would reach only 4.06:1 at 20%. 10% measures 4.60:1 for
+          // fraud, 8.10:1 for suspect and 6.34:1 for clear on the dark card,
+          // and raises all three in light mode too. Lower is safer here;
+          // higher is the trap.
+          style={{ color: stroke, backgroundColor: "color-mix(in oklch, " + stroke + " 10%, transparent)" }}
         >
           {SEVERITY_VERDICT[severity]}
         </span>

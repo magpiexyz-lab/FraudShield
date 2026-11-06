@@ -9,7 +9,9 @@ import type { GuideSlug } from "./guides-copy";
 
 export const EVENT_FUNNEL_MAP: Record<string, string> = {
   visit_landing: "reach",
-  demo_view: "reach",
+  free_scan_start: "reach",
+  free_scan_complete: "reach",
+  free_scan_capped: "reach",
   cta_click: "demand",
   api_interest_click: "demand",
   feature_interest_click: "demand",
@@ -36,8 +38,58 @@ export function trackVisitLanding(props?: { variant?: string }) {
   track("visit_landing", { ...props, funnel_stage: "reach" });
 }
 
-export function trackDemoView(props?: { variant?: string }) {
-  track("demo_view", { ...props, funnel_stage: "reach" });
+/**
+ * An anonymous visitor SUBMITTED a document to the free landing scan.
+ *
+ * Fires on submission -- before the cap check and before the AI call -- so it
+ * counts ATTEMPTS: a request that is then capped, or that fails, still counts
+ * here. This is h-02's numerator, and it is a THIRD reach entry point that
+ * never fires cta_click, because the free scan never leaves the landing page.
+ */
+export function trackFreeScanStart(props?: { variant?: string }) {
+  track("free_scan_start", { ...props, funnel_stage: "reach" });
+}
+
+/**
+ * A free scan returned a completed AI verdict and the result rendered.
+ *
+ * `band` and `signal_count` are required rather than optional: a bare count of
+ * completions cannot say whether the free tier found anything, and h-12 reads
+ * this against free_scan_start to separate a surface that attracts attempts
+ * from one that delivers verdicts.
+ *
+ * NO TOKEN COUNTS, DELIBERATELY REMOVED 2026-11-05. `input_tokens`,
+ * `output_tokens` and `model` used to be declared here, and the only way the
+ * client could know them was for /api/free-scan to ship its billing telemetry
+ * and the model name to an unauthenticated caller. The route logs them
+ * server-side instead. The cost of that choice: what a free scan spends is no
+ * longer groupable by variant in PostHog, only greppable in the runtime logs.
+ * EVENTS.yaml was updated in the same change -- an event declaring properties
+ * nothing sends is worse than the exposure it was carrying.
+ */
+export function trackFreeScanComplete(props: {
+  variant?: string;
+  band: "clear" | "suspect" | "fraud";
+  signal_count: number;
+}) {
+  track("free_scan_complete", { ...props, funnel_stage: "reach" });
+}
+
+/**
+ * A free scan was refused because a cap was reached or could not be enforced.
+ *
+ * `cap` is required because WHICH cap bit is the entire diagnostic: "ip" is one
+ * visitor hitting their own limit, "site" is the day's budget gone, and
+ * "unavailable" is a misconfigured limiter refusing everyone. That distinction
+ * is why this is its own event rather than another paywall_shown surface -- the
+ * cap screen fires paywall_shown with surface "free_scan_cap" as well, so it
+ * still lands in the shared monetization-surface denominator.
+ */
+export function trackFreeScanCapped(props: {
+  variant?: string;
+  cap: "ip" | "site" | "unavailable";
+}) {
+  track("free_scan_capped", { ...props, funnel_stage: "reach" });
 }
 
 /**
@@ -116,7 +168,7 @@ export function trackFeedbackSubmitted(props: {
  * the count with every re-render and make the ratio meaningless.
  */
 export function trackPaywallShown(props: {
-  surface: "locked_signals" | "scan_result_quota" | "dashboard_quota" | "pricing";
+  surface: "locked_signals" | "scan_result_quota" | "dashboard_quota" | "pricing" | "free_scan_cap";
   signal_count?: number;
 }) {
   track("paywall_shown", { ...props, funnel_stage: "monetize" });

@@ -449,3 +449,112 @@ describe("token usage capture", () => {
     expect(result.usage).toBeUndefined();
   });
 });
+
+
+// ---------------------------------------------------------------------------
+// The caller may supply an already-decoded image.
+//
+// /api/free-scan runs `prepareImage` itself, ABOVE its scan-allowance
+// counters, so an undecodable upload (a HEIC — sharp's prebuilt binaries
+// ship without HEIF support) is refused without burning anyone's
+// allowance. Before this parameter existed that work was thrown away: the
+// route handed the decoded buffer to `runFraudScan` as `preparedImage`, which
+// never read it, and `documentContentBlock` decoded the same bytes a second
+// time. Pure wasted CPU inside a 60-second budget, on every free scan.
+//
+// THE SUBJECT IS THE `sharp` CALL COUNT, not a spy on `prepareImage`.
+// `documentContentBlock` reaches it through a module-local binding, so an ESM
+// spy on the export would not intercept the call and the test would pass
+// vacuously. "sharp was never constructed" is also the stronger property: it
+// proves no decode happened, rather than that one function reference went
+// unused. The PDF case above pins its equivalent property the same way.
+// ---------------------------------------------------------------------------
+describe("analyzeDocumentForFraud — a supplied prepared image", () => {
+  const PREPARED = Buffer.from("already-decoded-jpeg-bytes");
+
+  async function sharpMock() {
+    const mod = (await import("sharp")).default;
+    return mod as unknown as ReturnType<typeof vi.fn>;
+  }
+
+  beforeEach(async () => {
+    vi.stubEnv("ANTHROPIC_API_KEY", "sk-ant-test");
+    create.mockReset();
+    (await sharpMock()).mockClear();
+  });
+  afterEach(() => vi.unstubAllEnvs());
+
+  function sentBlocks() {
+    return create.mock.calls[0][0].messages[0].content;
+  }
+
+  it("does not decode again when the caller already did", async () => {
+    create.mockResolvedValue(apiResponse({ outcome: "no_indicators", signals: [] }));
+
+    await analyzeDocumentForFraud(IMAGE, "pay_stub", "image/jpeg", PREPARED);
+
+    expect(await sharpMock()).not.toHaveBeenCalled();
+  });
+
+  it("sends the supplied bytes, not the raw upload", async () => {
+    create.mockResolvedValue(apiResponse({ outcome: "no_indicators", signals: [] }));
+
+    await analyzeDocumentForFraud(IMAGE, "pay_stub", "image/jpeg", PREPARED);
+
+    const block = sentBlocks()[0];
+    expect(block.type).toBe("image");
+    // Still image/jpeg. The contract on this parameter is that the caller
+    // hands over the output of `prepareImage`, which normalizes to JPEG — a
+    // caller passing raw PNG bytes would mislabel them, which is why the route
+    // passes that return value and nothing else.
+    expect(block.source.media_type).toBe("image/jpeg");
+    expect(block.source.data).toBe(PREPARED.toString("base64"));
+    expect(block.source.data).not.toBe(IMAGE.toString("base64"));
+  });
+
+  // /api/scan PASSES NOTHING HERE and must keep behaving exactly as it did.
+  // The parameter is additive and optional; omitting it has to leave the
+  // decode in place, or the authenticated route silently stops downscaling and
+  // starts sending full-resolution uploads to the model.
+  it("decodes as before when no prepared image is supplied", async () => {
+    create.mockResolvedValue(apiResponse({ outcome: "no_indicators", signals: [] }));
+
+    await analyzeDocumentForFraud(IMAGE, "pay_stub", "image/jpeg");
+
+    expect(await sharpMock()).toHaveBeenCalledTimes(1);
+    const block = sentBlocks()[0];
+    expect(block.source.data).toBe(
+      Buffer.from("downscaled-jpeg-bytes").toString("base64"),
+    );
+  });
+
+  // An explicit `undefined` is exactly what run-scan.ts forwards for
+  // /api/scan, where `input.preparedImage` is absent. It must be
+  // indistinguishable from passing no fourth argument at all.
+  it("treats an explicit undefined as no prepared image", async () => {
+    create.mockResolvedValue(apiResponse({ outcome: "no_indicators", signals: [] }));
+
+    await analyzeDocumentForFraud(IMAGE, "pay_stub", "image/jpeg", undefined);
+
+    expect(await sharpMock()).toHaveBeenCalledTimes(1);
+    const block = sentBlocks()[0];
+    expect(block.source.data).toBe(
+      Buffer.from("downscaled-jpeg-bytes").toString("base64"),
+    );
+  });
+
+  // A PDF has no image branch, so a prepared image must not be able to smuggle
+  // one in: the document block has to carry the ORIGINAL bytes or the text
+  // layer is lost, which is the whole reason PDFs are not rasterized.
+  it("ignores a prepared image for a PDF", async () => {
+    create.mockResolvedValue(apiResponse({ outcome: "no_indicators", signals: [] }));
+    const pdf = Buffer.from("%PDF-1.7 raw-pdf-bytes");
+
+    await analyzeDocumentForFraud(pdf, "pay_stub", "application/pdf", PREPARED);
+
+    const block = sentBlocks()[0];
+    expect(block.type).toBe("document");
+    expect(block.source.data).toBe(pdf.toString("base64"));
+    expect(await sharpMock()).not.toHaveBeenCalled();
+  });
+});
