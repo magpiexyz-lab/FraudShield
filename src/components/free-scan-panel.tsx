@@ -590,6 +590,23 @@ export function FreeScanPanel({
                   account links carry the same padding for the same reason:
                   they are the mobile exits from a refusal and from a
                   verdict, where a missed tap is the whole funnel. */}
+              {/* THE OFFSET GROUND BELOW IS THE WELL, NOT THE CARD, AND THAT
+                  IS NOT A DIVERGENCE FROM ITS TWO SIBLINGS.
+                  Raised 2026-11-06 as the focus-ring pass having left one of
+                  three filled CTAs offsetting against the wrong ground, on
+                  the premise that all three sit on the card. They do not.
+                  This one is a child of the recessed well a few lines up,
+                  whose fill is set inline to oklch(0.16 0.02 252), and the
+                  nearest painted ancestor of this element resolves to exactly
+                  that -- CHECKED in the browser, not read off the JSX. The
+                  other two filled CTAs, the refusal account link and the
+                  teaser account link, are direct children of the content area
+                  and do sit on the card, which is why they name it. The well
+                  measures only 1.12:1 against the card, so pointing this one
+                  at the card would paint its 2px gap in a colour that is not
+                  behind it -- which is the defect the report meant to catch,
+                  reintroduced. Left as it is; each of the three names the
+                  surface it is actually on. */}
               <button
                 type="button"
                 onClick={() => inputRef.current?.click()}

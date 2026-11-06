@@ -675,6 +675,24 @@ describe("free-scan panel -- motion and accessibility", () => {
     }
   });
 
+  it("offsets each focus ring against the surface actually behind it", () => {
+    // RAISED AS AN INCONSISTENCY AND DECLINED, 2026-11-06; the reasoning sits
+    // beside the button in the component so the next scan does not re-raise
+    // it. The report held that all three filled CTAs sit on the card and that
+    // the idle one therefore named the wrong offset ground. It does not sit on
+    // the card: it is a child of the recessed well, whose fill is set inline a
+    // few lines above it, and the well measures 1.12:1 against the card. One
+    // offset colour shared by all three would be wrong for whichever two it
+    // did not describe.
+    expect(
+      countOf(source, "focus-visible:ring-offset-[oklch(0.16_0.02_252)]"),
+    ).toBe(1);
+    expect(countOf(source, "focus-visible:ring-offset-card")).toBe(2);
+    // Positive control: the one offset colour spelled out as a literal is the
+    // well's actual fill, so the pair above cannot drift apart silently.
+    expect(source).toContain("background: \"oklch(0.16 0.02 252)\"");
+  });
+
   it("names the region with a constant, not with the state word", () => {
     // The h3 cycles Free scan -> Analyzing -> Verdict -> Not scanned, so
     // landmark and heading navigation announced this region as a transient

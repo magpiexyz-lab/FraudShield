@@ -38,6 +38,29 @@ const FOOTER_LINK =
  *  stays the one place either is decided. */
 const FOOTER_TARGET = "inline-block min-h-6 py-1";
 
+/* ONE TOKEN FOR THE FILLED-CTA ROLE ON THIS PAGE: --signal.
+   Every filled call to action here -- the nav CTA, the hero CTA, the Pro
+   plan card and the closing CTA -- was bg-primary/text-primary-foreground
+   while the free-scan panel beside them in #live-demo uses
+   bg-signal/text-signal-foreground. On dark those two tokens are
+   oklch(0.72 0.125 215) and oklch(0.74 0.130 213): same role, same pill
+   radius, 0.02 apart in lightness and 2 degrees in hue, and the nav CTA is
+   co-visible with the panel's button whenever the demo is in frame. Two
+   tokens that close together do not read as two colours, they read as one
+   colour rendered badly.
+
+   Unified ONTO --signal rather than onto --primary, in that direction for
+   three reasons: globals.css declares --signal as "the CTA + key-action
+   color, used sparingly", /pricing already fills every plan CTA with it, and
+   --primary is graphite in the light palette, so a CTA built on it only
+   looks like a CTA while the page is dark. Moving the panel to --primary
+   instead would have made this page agree with itself and disagree with
+   /pricing and the pricing cards below.
+
+   The "Most popular" pill lost its hand-rolled oklch(0.74 0.130 213) in the
+   same pass -- that literal WAS --signal, spelled out, under the wrong
+   foreground token. */
+
 export type LandingContentProps = {
   slug?: string;
   headline: string;
@@ -427,8 +450,7 @@ function PricingPreviewSection({ onCtaClick }: { onCtaClick: () => void }) {
                 >
                   {isPro && (
                     <span
-                      className="absolute -top-3 right-6 rounded-[var(--radius-pill)] px-3 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-primary-foreground"
-                      style={{ background: "oklch(0.74 0.130 213)" }}
+                      className="absolute -top-3 right-6 rounded-[var(--radius-pill)] bg-signal px-3 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-signal-foreground"
                     >
                       Most popular
                     </span>
@@ -486,7 +508,7 @@ function PricingPreviewSection({ onCtaClick }: { onCtaClick: () => void }) {
                       className={cn(
                         "inline-flex w-full items-center justify-center gap-2 rounded-[var(--radius-pill)] py-2.5 font-sans text-[14px] font-semibold transition-[transform,opacity] duration-150 hover:-translate-y-px hover:opacity-95",
                         isPro
-                          ? "bg-primary text-primary-foreground"
+                          ? "bg-signal text-signal-foreground"
                           : "bg-[oklch(0.218_0.024_252)] text-foreground ring-1 ring-[oklch(0.92_0.02_220_/_22%)]",
                       )}
                       style={
@@ -575,7 +597,7 @@ export function LandingContent(props: LandingContentProps) {
           <Link
             href="/signup"
             onClick={handleCtaClick}
-            className="rounded-[var(--radius-pill)] bg-primary px-4 py-2 font-sans text-[13px] font-semibold whitespace-nowrap text-primary-foreground transition-[transform,opacity] duration-150 hover:-translate-y-px hover:opacity-95"
+            className="rounded-[var(--radius-pill)] bg-signal px-4 py-2 font-sans text-[13px] font-semibold whitespace-nowrap text-signal-foreground transition-[transform,opacity] duration-150 hover:-translate-y-px hover:opacity-95"
           >
             {/* Concise nav CTA on small screens; full variant CTA from md up */}
             <span className="md:hidden">Scan free</span>
@@ -626,7 +648,7 @@ export function LandingContent(props: LandingContentProps) {
                 <Link
                   href="/signup"
                   onClick={handleCtaClick}
-                  className="group/cta inline-flex items-center gap-2 rounded-[var(--radius-pill)] bg-primary px-7 py-3.5 font-sans text-[15px] font-semibold text-primary-foreground transition-[transform,box-shadow,opacity] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-0.5 hover:opacity-95"
+                  className="group/cta inline-flex items-center gap-2 rounded-[var(--radius-pill)] bg-signal px-7 py-3.5 font-sans text-[15px] font-semibold text-signal-foreground transition-[transform,box-shadow,opacity] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-0.5 hover:opacity-95"
                   style={{ boxShadow: "var(--shadow-signal-glow)" }}
                 >
                   Scan your first document free
@@ -1008,7 +1030,7 @@ export function LandingContent(props: LandingContentProps) {
               <Link
                 href="/signup"
                 onClick={handleCtaClick}
-                className="group/cta inline-flex items-center gap-2 rounded-[var(--radius-pill)] bg-primary px-8 py-4 font-sans text-[16px] font-semibold text-primary-foreground transition-[transform,opacity] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-0.5 hover:opacity-95"
+                className="group/cta inline-flex items-center gap-2 rounded-[var(--radius-pill)] bg-signal px-8 py-4 font-sans text-[16px] font-semibold text-signal-foreground transition-[transform,opacity] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-0.5 hover:opacity-95"
                 style={{ boxShadow: "var(--shadow-signal-glow)" }}
               >
                 Scan your first document free

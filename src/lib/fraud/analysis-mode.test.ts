@@ -126,6 +126,26 @@ describe("privacy disclosure", () => {
   it("states that nothing is retained after the scan", () => {
     expect(AI_PRIVACY_DISCLOSURE.toLowerCase()).toContain("no document is stored");
   });
+
+  it("names no upload format, so it holds on a surface that refuses PDFs", () => {
+    // This string renders on TWO surfaces: the authenticated dashboard, which
+    // takes images and PDFs, and the anonymous free-scan panel, which refuses
+    // every non-raster upload (ANON_ACCEPTED_MIME). The wording it replaced
+    // said "images and PDFs alike", so the one sentence on the landing page
+    // whose whole job is to be exactly true about where a document goes was
+    // wrong about what that page would even accept. Enumerating formats in a
+    // shared string is the defect; the formats belong where they are enforced.
+    expect(AI_PRIVACY_DISCLOSURE).not.toMatch(/PDFs?/i);
+    expect(AI_PRIVACY_DISCLOSURE).not.toMatch(
+      /JPE?Gs?|PNGs?|WEBPs?|HEICs?|images/i,
+    );
+    // Positive control: the claim survives, universally quantified, so it
+    // still covers a PDF on the authenticated route rather than going quiet
+    // about it.
+    expect(AI_PRIVACY_DISCLOSURE).toMatch(
+      /^Every document you upload is sent to Anthropic/,
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------
