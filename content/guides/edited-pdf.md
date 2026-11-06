@@ -52,7 +52,7 @@ If you have an earlier document from the same issuer, or a copy you obtained dir
 
 Everything above is work you can do by hand, and we think you should. An automated scan adds a consistent second look for signs that values or text in the document were replaced or edited, and it returns a score from 0 to 100 built from the specific signals it found. It does not know who issued the document, and it cannot see what the original said. So the score is a flag to look into, not an answer.
 
-Want a second pair of eyes on the file? Upload it to [FraudShield](/signup). Sign up and your first scan is free. In a few seconds you get a score from 0 to 100 for signs the document was altered, and how many signals the scan found. Treat the score as one more input, not a verdict.
+Want a second pair of eyes on the file? [Scan an image of it free](/#live-demo) - no account, three a day. In a few seconds you get a score from 0 to 100 for signs the document was altered, and how many signals the scan found. For PDFs, or more scans than that, [FraudShield](/signup) takes both. Treat the score as one more input, not a verdict.
 
 No scan, ours included, replaces confirming the document with whoever issued it.
 

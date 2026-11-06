@@ -168,11 +168,18 @@ describe.each(GUIDES)("$slug", (guide) => {
     }
   });
 
-  it("links only to the signup page and to the other two guides", () => {
+  it("links only to the signup page, the free scan, and the other two guides", () => {
     // No external links and no dead internal ones. Every guide page is a paid
     // landing page; a 404 in the body is money spent to show someone an error.
+    //
+    // "/#live-demo" is the anonymous free-scan panel on the landing page. The
+    // anchor is pinned by e2e/behaviors.spec.ts ("Landing still exposes the
+    // #live-demo anchor the ads sitelink targets") and by experiment/ads.yaml,
+    // which points a live Google Ads sitelink at it — so it cannot quietly
+    // disappear and leave this a dead link.
     const allowed = new Set<string>([
       "/signup",
+      "/#live-demo",
       ...GUIDES.filter((g) => g.slug !== guide.slug).map((g) => g.canonical),
     ]);
     expect(links(guide).length).toBeGreaterThan(0);
@@ -184,11 +191,37 @@ describe.each(GUIDES)("$slug", (guide) => {
     }
   });
 
+  it("offers the no-account scan, not only signup", () => {
+    // A reader who got here from "how to spot a fake pay stub" is holding the
+    // document the scan exists for. Before this, the guides' only action was a
+    // signup wall while a no-account scan sat one page away — and the copy
+    // still said "Sign up and your first scan is free", which stopped being
+    // true when the anonymous scan shipped.
+    const free = links(guide).filter((l) => l.href === "/#live-demo");
+    expect(free, "guide offers no route to the free scan").toHaveLength(1);
+    expect(free[0].text.trim()).not.toBe("");
+
+    // And the body prose has to say so, not just carry the link.
+    const prose = allSpans(guide)
+      .map((s) => (typeof s === "string" ? s : s.text))
+      .join("");
+    expect(prose).toMatch(/no account/i);
+    expect(
+      prose,
+      "copy still promises signup is required for a first scan",
+    ).not.toMatch(/sign up and your first scan is free/i);
+  });
+
   it("carries exactly one signup link, labelled FraudShield", () => {
     // One CTA per guide, with one label. guide_cta_click is attributed by
     // slug, so a second signup link in the same body makes the click rate for
     // that page unreadable, and a relabelled one makes the copy test here the
     // only place the product name was pinned.
+    //
+    // The free-scan link added alongside it points at /#live-demo, so
+    // guide-article.tsx renders it as a plain inline link rather than a
+    // GuideCtaLink and it fires nothing. This assertion is what keeps that
+    // true: a second /signup span would break per-slug attribution.
     const signup = links(guide).filter((l) => l.href === "/signup");
     expect(signup).toHaveLength(1);
     expect(signup[0].text).toBe("FraudShield");
