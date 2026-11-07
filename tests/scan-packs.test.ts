@@ -329,8 +329,23 @@ describe("where the offer appears", () => {
   const UPLOAD = read("src", "app", "dashboard", "upload-zone.tsx");
 
   it("is offered on the pricing page and the scan-result paywall", () => {
-    expect(PRICING).toContain('<ScanPackOptions surface="pricing"');
-    expect(SCAN_RESULT).toContain('<ScanPackOptions surface="scan_result"');
+    // Matched on the component and its surface rather than on one line of
+    // JSX. These used to be single-line substring checks, which broke when the
+    // scan-result call gained a `heading` prop and Prettier wrapped it — the
+    // offer was still there, only the formatting had changed. A guard that
+    // fails on a line break is a guard that gets deleted the first time it
+    // cries wolf, so it now asserts the thing it actually cares about.
+    const offers = (src: string, surface: string) =>
+      new RegExp(
+        `<ScanPackOptions[\\s\\S]{0,200}?surface=["']${surface}["']`,
+      ).test(src);
+
+    expect(offers(PRICING, "pricing")).toBe(true);
+    expect(offers(SCAN_RESULT, "scan_result")).toBe(true);
+
+    // Positive control: the matcher must be capable of returning false, or
+    // both assertions above pass for free.
+    expect(offers(PRICING, "dashboard_quota")).toBe(false);
   });
 
   // THE MOMENT SOMEONE IS ACTUALLY STOPPED. This block used to offer only a
