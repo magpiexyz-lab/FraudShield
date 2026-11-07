@@ -16,10 +16,23 @@ import {
   createServiceRoleClient,
 } from "@/lib/supabase-server";
 import { rateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
+import { VOLUME_BANDS } from "@/lib/volume-bands";
 
+// The three request-form fields are OPTIONAL at the schema level even though
+// the dialog asks for all of them. Two reasons: the pro-upgrade source posts
+// email alone and must keep working, and a visitor who fills in three of four
+// fields should not have their interest thrown away over the fourth. The form
+// asks; the route records whatever arrives.
+//
+// monthly_volume reuses VOLUME_BANDS from the enterprise-lead route rather
+// than redeclaring the scale, so the two intake surfaces cannot drift apart
+// and a single query can read both.
 export const waitlistSchema = z.object({
   email: z.email().max(254),
   source: z.string().max(64).optional(),
+  company: z.string().max(120).optional(),
+  role: z.string().max(120).optional(),
+  monthly_volume: z.enum(VOLUME_BANDS).optional(),
 });
 export type WaitlistResponse = { ok: true };
 
@@ -35,7 +48,8 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { email, source } = waitlistSchema.parse(body);
+    const { email, source, company, role, monthly_volume } =
+      waitlistSchema.parse(body);
 
     // Try to attach the authenticated user when present, but anonymous
     // submissions are explicitly allowed (b-05 fake-door surface).
@@ -59,6 +73,13 @@ export async function POST(request: Request) {
       user_id: userId,
       email,
       ...(source ? { source } : {}),
+      // Spread-when-present, matching how source is handled above: a field the
+      // caller omitted stays absent from the insert rather than being written
+      // as an empty string, so "not asked" and "asked, left blank" do not
+      // collapse into the same stored value.
+      ...(company ? { company } : {}),
+      ...(role ? { role } : {}),
+      ...(monthly_volume ? { monthly_volume } : {}),
     });
 
     if (error) {

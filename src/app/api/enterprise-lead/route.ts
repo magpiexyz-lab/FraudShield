@@ -19,15 +19,12 @@ import { z } from "zod";
 import { createServerSupabaseClient, createServiceRoleClient } from "@/lib/supabase-server";
 import { rateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
 
-// Coarse bands, not a free-text number: nobody knows their exact monthly
-// volume, and a band separates a 50-document reviewer from a 5,000 well enough
-// to route the conversation.
-export const VOLUME_BANDS = [
-  "under-100",
-  "100-500",
-  "500-2000",
-  "over-2000",
-] as const;
+// The bands moved to src/lib/volume-bands.ts so a client component can import
+// them without pulling this route’s server dependencies into the browser
+// bundle. Re-exported here so every existing importer of this route keeps
+// working and the scale has exactly one definition.
+export { VOLUME_BANDS } from "@/lib/volume-bands";
+import { VOLUME_BANDS } from "@/lib/volume-bands";
 
 export const enterpriseLeadSchema = z.object({
   company: z.string().max(120).optional(),
