@@ -105,16 +105,30 @@ export function plainText(spans: readonly Span[]): string {
 const FOOTER = "FraudShield team · October 2026";
 
 /**
- * The scan CTA. Identical on all three guides by design, and the only link to
- * /signup in any guide body — guide_cta_click is attributed by slug, so a
- * second signup link on a page makes that page's click rate unreadable.
+ * The scan CTA. Identical on all three guides by design.
+ *
+ * Still exactly ONE /signup span, and that constraint is unchanged:
+ * guide_cta_click is attributed by slug, so a second signup link on a page
+ * makes that page's click rate unreadable. The free-scan link points at
+ * /#live-demo, so it is rendered as a plain inline link by guide-article.tsx
+ * and fires nothing — the attribution is untouched.
+ *
+ * The copy used to read "Sign up and your first scan is free", which was true
+ * when these guides shipped and stopped being true when the anonymous free
+ * scan went live. A reader who arrived from a search for "how to spot a fake
+ * pay stub" is holding the document the scan exists for, and the guides were
+ * sending them to a signup wall while a no-account scan sat one page away.
+ * The lower-friction offer now leads, and signup is what it is actually for:
+ * PDFs, and more than three scans a day.
  */
 const RUN_A_SCAN: Block = {
   kind: "p",
   spans: [
-    "Want a second pair of eyes on the file? Upload it to ",
+    "Want a second pair of eyes on the file? ",
+    { text: "Scan an image of it free", href: "/#live-demo" },
+    " — no account, three a day. In a few seconds you get a score from 0 to 100 for signs the document was altered, and how many signals the scan found. For PDFs, or more scans than that, ",
     { text: "FraudShield", href: "/signup" },
-    ". Sign up and your first scan is free. In a few seconds you get a score from 0 to 100 for signs the document was altered, and how many signals the scan found. Treat the score as one more input, not a verdict.",
+    " takes both. Treat the score as one more input, not a verdict.",
   ],
 };
 

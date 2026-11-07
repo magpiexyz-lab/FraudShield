@@ -62,7 +62,7 @@ Open the document properties in your PDF reader. Statements are produced by the 
 
 ## Run a scan
 
-Want a second pair of eyes on the file? Upload it to [FraudShield](/signup). Sign up and your first scan is free. In a few seconds you get a score from 0 to 100 for signs the document was altered, and how many signals the scan found. Treat the score as one more input, not a verdict.
+Want a second pair of eyes on the file? [Scan an image of it free](/#live-demo) - no account, three a day. In a few seconds you get a score from 0 to 100 for signs the document was altered, and how many signals the scan found. For PDFs, or more scans than that, [FraudShield](/signup) takes both. Treat the score as one more input, not a verdict.
 
 ## Verify at the source
 
