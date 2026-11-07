@@ -53,3 +53,66 @@ comment on column api_waitlist.monthly_volume is
 create index if not exists api_waitlist_source_created_at_idx
   on api_waitlist (source, created_at desc)
   where source is not null;
+
+-- =============================================================================
+-- Enforce the same limits in the database that the route enforces.
+--
+-- WHY THIS IS NOT BELT-AND-BRACES. api_waitlist's INSERT policy from 001 ends
+-- in `or user_id is null`, and NEXT_PUBLIC_SUPABASE_ANON_KEY is inlined into
+-- the browser bundle. Anyone can therefore POST to
+-- /rest/v1/api_waitlist with user_id null and write a row without going
+-- through /api/waitlist at all — past the zod caps, past the monthly_volume
+-- enum, and past the per-IP rate limit. Three unconstrained TEXT columns on a
+-- table reachable that way is free storage for anybody who looks.
+--
+-- Tightening that policy is the root fix and would also close `email` and
+-- `source`, which are uncapped today. That changes an existing policy on a
+-- live table, so it is a separate decision, deliberately not made here.
+--
+-- ON THE monthly_volume CHECK. 015 originally left this to VOLUME_BANDS in the
+-- route so the two intake surfaces could not drift to different scales. The
+-- CHECK reintroduces that drift risk — add a band in TypeScript, forget the
+-- migration, and the insert fails in production. That is answered by a test
+-- which parses this constraint and asserts it lists exactly VOLUME_BANDS, so
+-- the drift fails in CI instead. A loud CI failure beats an uncapped column.
+--
+-- Safe on existing rows: all three columns were added nullable moments ago, so
+-- every existing row holds NULL, and each CHECK admits NULL. Idempotent via
+-- pg_constraint so re-running this file is harmless.
+-- =============================================================================
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'api_waitlist'::regclass
+      and conname = 'api_waitlist_company_len'
+  ) then
+    alter table api_waitlist
+      add constraint api_waitlist_company_len
+      check (company is null or char_length(company) <= 120);
+  end if;
+
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'api_waitlist'::regclass
+      and conname = 'api_waitlist_role_len'
+  ) then
+    alter table api_waitlist
+      add constraint api_waitlist_role_len
+      check (role is null or char_length(role) <= 120);
+  end if;
+
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'api_waitlist'::regclass
+      and conname = 'api_waitlist_monthly_volume_band'
+  ) then
+    alter table api_waitlist
+      add constraint api_waitlist_monthly_volume_band
+      check (
+        monthly_volume is null
+        or monthly_volume in ('under-100', '100-500', '500-2000', 'over-2000')
+      );
+  end if;
+end $$;

@@ -202,4 +202,85 @@ describe("the API access request form", () => {
     expect(MIGRATION).toMatch(/create index if not exists/);
     expect(MIGRATION).toContain("source");
   });
+
+  // The three columns sit on a table whose INSERT policy from 001 ends in
+  // `or user_id is null`, and NEXT_PUBLIC_SUPABASE_ANON_KEY ships in the
+  // browser bundle. So PostgREST will accept a direct insert from anyone,
+  // bypassing the schema above and the rate limiter with it. The route's caps
+  // are therefore not the only thing standing between these columns and
+  // arbitrary data — the database has to carry them too.
+  describe("the database enforces the same limits as the route", () => {
+    const SQL = MIGRATION.split("\n")
+      .filter((l) => !l.trimStart().startsWith("--"))
+      .join("\n");
+
+    /** The `add constraint ... check (...)` chunk that mentions a column. */
+    function constraintFor(column: string) {
+      return SQL.split("add constraint")
+        .slice(1)
+        .map((chunk) => chunk.slice(0, chunk.indexOf(");") + 1))
+        .find((chunk) => chunk.includes("check") && chunk.includes(column));
+    }
+
+    const CAPS: Record<string, RegExp> = {
+      company: /char_length\(company\)\s*<=\s*(\d+)/,
+      role: /char_length\(role\)\s*<=\s*(\d+)/,
+    };
+
+    it("constrains every column it adds", () => {
+      for (const col of ["company", "role", "monthly_volume"]) {
+        expect(
+          constraintFor(col),
+          `${col} is added with no CHECK constraint, so a direct PostgREST insert can put anything in it`,
+        ).toBeTruthy();
+      }
+    });
+
+    it("admits NULL in each constraint, so existing rows survive", () => {
+      // api_waitlist already holds pro-upgrade rows and pre-form API rows. A
+      // CHECK that rejects NULL would make this migration fail on contact.
+      for (const col of ["company", "role", "monthly_volume"]) {
+        expect(constraintFor(col), `${col} CHECK rejects NULL`).toContain(
+          col + " is null",
+        );
+      }
+    });
+
+    it("lists exactly the bands TypeScript knows about", () => {
+      // This is the assertion that makes the CHECK safe to have. Adding a band
+      // to VOLUME_BANDS without extending the constraint means the route
+      // accepts a value the database then rejects — an insert failure in
+      // production. Pinning the two together turns that into a CI failure.
+      const check = constraintFor("monthly_volume");
+      expect(check).toBeTruthy();
+      const listed = [...check!.matchAll(/'([^']+)'/g)].map((m) => m[1]);
+      expect(listed.slice().sort()).toEqual([...VOLUME_BANDS].sort());
+    });
+
+    it("caps company and role at the number the schema caps them at", () => {
+      // Driven FROM the SQL, not from a retyped literal: raise the zod cap and
+      // forget the migration, and the reject-at-cap+1 assertion below fails.
+      for (const [col, pattern] of Object.entries(CAPS)) {
+        const cap = SQL.match(pattern);
+        expect(cap, `${col} has no length cap in the migration`).toBeTruthy();
+        const limit = Number(cap![1]);
+        expect(limit).toBeGreaterThan(0);
+
+        expect(() =>
+          waitlistSchema.parse({
+            email: "a@b.example",
+            [col]: "x".repeat(limit),
+          }),
+        ).not.toThrow();
+        expect(
+          () =>
+            waitlistSchema.parse({
+              email: "a@b.example",
+              [col]: "x".repeat(limit + 1),
+            }),
+          `the schema accepts a longer ${col} than the database will store`,
+        ).toThrow();
+      }
+    });
+  });
 });
