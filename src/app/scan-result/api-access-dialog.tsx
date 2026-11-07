@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { trackApiInterestClick } from "@/lib/events";
+import { VOLUME_BANDS, VOLUME_BAND_LABELS } from "@/lib/volume-bands";
 
 type Status = "idle" | "submitting" | "success" | "error";
 
@@ -23,6 +24,9 @@ type Status = "idle" | "submitting" | "success" | "error";
 export function ApiAccessDialog({ docType }: { docType: string }) {
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState("");
+  const [company, setCompany] = useState("");
+  const [role, setRole] = useState("");
+  const [volume, setVolume] = useState("");
   const [status, setStatus] = useState<Status>("idle");
   const [errorMessage, setErrorMessage] = useState("");
   const firedRef = useRef(false);
@@ -48,7 +52,15 @@ export function ApiAccessDialog({ docType }: { docType: string }) {
       const res = await fetch("/api/waitlist", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, source: "scan-result-api-access" }),
+        // source stays "scan-result-api-access" so these rows remain
+        // separable from the pro-upgrade waitlist, which posts email alone.
+        body: JSON.stringify({
+          email,
+          source: "scan-result-api-access",
+          company,
+          role,
+          monthly_volume: volume,
+        }),
       });
       if (!res.ok) throw new Error("request failed");
       setStatus("success");
@@ -85,6 +97,60 @@ export function ApiAccessDialog({ docType }: { docType: string }) {
 
         {status !== "success" ? (
           <form onSubmit={onSubmit} className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="api-waitlist-company">Company</Label>
+              <Input
+                id="api-waitlist-company"
+                type="text"
+                required
+                maxLength={120}
+                value={company}
+                onChange={(e) => setCompany(e.target.value)}
+                placeholder="Northfield Lending"
+                autoComplete="organization"
+                className="h-11 text-base"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="api-waitlist-role">Your role</Label>
+              <Input
+                id="api-waitlist-role"
+                type="text"
+                required
+                maxLength={120}
+                value={role}
+                onChange={(e) => setRole(e.target.value)}
+                placeholder="Head of underwriting"
+                autoComplete="organization-title"
+                className="h-11 text-base"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="api-waitlist-volume">Documents per month</Label>
+              {/* A coarse band, not a number: nobody knows their exact volume,
+                  and a band separates a 50-document reviewer from a 5,000 well
+                  enough to route the conversation. Same scale as the
+                  enterprise-lead form, from one shared definition. */}
+              <select
+                id="api-waitlist-volume"
+                required
+                value={volume}
+                onChange={(e) => setVolume(e.target.value)}
+                className="h-11 w-full rounded-md border border-input bg-background px-3 text-base text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal"
+              >
+                <option value="" disabled>
+                  Select a range
+                </option>
+                {VOLUME_BANDS.map((band) => (
+                  <option key={band} value={band}>
+                    {VOLUME_BAND_LABELS[band]}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <div className="space-y-1.5">
               <Label htmlFor="api-waitlist-email">Work email</Label>
               <Input
