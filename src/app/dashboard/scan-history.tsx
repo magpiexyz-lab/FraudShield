@@ -9,6 +9,9 @@ import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { isFullAnalysis } from "@/lib/fraud/analysis-mode";
 import type { ScansRow } from "@/lib/types";
+import { topReasonFor } from "@/lib/top-reason";
+import { severityLabel, severityVar } from "@/app/scan-result/severity";
+import type { EntitlementTier } from "@/lib/pro-access";
 
 type Severity = "clear" | "suspect" | "fraud";
 
@@ -49,7 +52,22 @@ function relativeTime(iso: string | undefined): string {
   return `${days}d ago`;
 }
 
-export function ScanHistory() {
+/**
+ * THE TIER ARRIVES AS A PROP, and this component must never fetch it.
+ *
+ * Answering "what has this user paid for" here would mean a second
+ * from("subscriptions") read, and that read fails silently in the expensive
+ * direction. The column guard in tests/entitlement-select-coverage.test.ts
+ * requires status, stripe_subscription_id and current_period_end -- and
+ * deliberately NOT scan_credits, because two Pro-only reads have no business
+ * fetching it. So a read here can satisfy every guard in the suite, hand
+ * entitlementTier a row whose scan_credits is undefined, and demote every
+ * scan-pack buyer to "free" with nothing anywhere to show it happened.
+ *
+ * src/app/dashboard/page.tsx already makes the one compliant read, already
+ * selects scan_credits, and already owns the single clock the decision shares.
+ */
+export function ScanHistory({ tier }: { tier: EntitlementTier }) {
   const [scans, setScans] = useState<ScansRow[] | null>(null);
   const [error, setError] = useState("");
 
@@ -140,6 +158,11 @@ export function ScanHistory() {
         // EXIF metadata checks only — show a neutral chip rather than a
         // verdict-coded score.
         const fullAnalysis = isFullAnalysis(scan.file_meta);
+        // The one reason this document was flagged, for a scan-pack buyer and
+        // for Pro (b-13). Null for a free reader, for a clean document with no
+        // signals, and for every malformed shape the jsonb column can hold --
+        // all of which must render no line at all, not an empty one.
+        const reason = topReasonFor(tier, scan.signals);
         return (
           <li key={scan.id}>
             <Link
@@ -175,6 +198,44 @@ export function ScanHistory() {
                 <p className="truncate font-[family-name:var(--font-mono)] text-xs text-muted-foreground">
                   {scan.file_meta?.filename ?? "document"} · {relativeTime(scan.created_at)}
                 </p>
+                {/* THE TOP REASON (b-13). One line, set apart from the row's
+                    identity above it by a severity rail -- the same device
+                    /scan-result uses for a signal, so a finding looks like a
+                    finding on both surfaces. The rail is the only accessory
+                    here; colour alone never carries the severity, which is
+                    why the word is spoken below.
+
+                    THE CAPTION FOLLOWS fullAnalysis, because the chip on this
+                    row already does. A partial analysis is an image whose AI
+                    content pass never completed: it gets EXIF checks, no
+                    score, and a neutral "Limited" chip. Calling an EXIF
+                    finding the reason the document was "flagged" would assert
+                    the very verdict that chip withholds, so that row says what
+                    was found instead of what it means.
+
+                    severityLabel and severityVar come from the SIGNAL
+                    vocabulary (Clear / Suspect / Fraud), not from this file's
+                    SEVERITY_LABEL. That map names a SCORE BAND for the whole
+                    document -- "Forged" on the chip to the right -- and the
+                    two are different subjects: a verdict about a document
+                    versus one piece of evidence within it. Adopting either
+                    vocabulary into the other would make one of them a lie. */}
+                {reason ? (
+                  <p
+                    className="mt-1.5 truncate border-l-2 pl-2 text-xs text-foreground/80"
+                    style={{ borderColor: severityVar(reason.severity) }}
+                  >
+                    <span className="sr-only">
+                      {fullAnalysis
+                        ? "Top reason flagged: "
+                        : "Top metadata finding: "}
+                    </span>
+                    {reason.label}
+                    <span className="sr-only">
+                      , {severityLabel(reason.severity)} signal
+                    </span>
+                  </p>
+                ) : null}
               </div>
               {fullAnalysis ? (
                 <span

@@ -8,6 +8,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { FREE_SCAN_QUOTA, type SubscriptionsRow } from "@/lib/types";
 import { computeQuota, scanWindowStart } from "@/lib/quota";
+import { entitlementTier, type EntitlementTier } from "@/lib/pro-access";
 import { UploadZone } from "./upload-zone";
 import { AbandonFollowup } from "./abandon-followup";
 import { ScanHistory } from "./scan-history";
@@ -46,6 +47,28 @@ export default function DashboardPage() {
   // client, so router.refresh() cannot re-run the fetch below on its own —
   // the counter is what re-runs it.
   const [quotaEpoch, setQuotaEpoch] = useState(0);
+
+  // WHICH TIER THIS USER HAS PAID FOR, derived HERE and handed to the scan
+  // history as a prop (b-13).
+  //
+  // It is deliberately not ScanHistory's own business. That component would
+  // need a from("subscriptions") read to answer the question itself, and such
+  // a read fails silently in the expensive direction: the column guard in
+  // tests/entitlement-select-coverage.test.ts requires status,
+  // stripe_subscription_id and current_period_end, and NOT scan_credits --
+  // adding it there would force two Pro-only reads to over-fetch. So a new
+  // read can satisfy every guard in the suite, hand entitlementTier a row
+  // whose scan_credits is undefined, and demote every scan-pack buyer to
+  // "free" with nothing to show it happened.
+  //
+  // The read below is already compliant, already selects scan_credits because
+  // computeQuota needs it, and already owns the one clock the whole decision
+  // shares. One read, three judgements, one instant.
+  //
+  // Separate from QuotaState on purpose: that object is about how many scans
+  // are left, this is about what may be shown, and the quota meter's copy must
+  // not start varying with an entitlement tier.
+  const [tier, setTier] = useState<EntitlementTier>("free");
 
   useEffect(() => {
     let active = true;
@@ -123,6 +146,9 @@ export default function DashboardPage() {
         subscription,
         now,
       });
+
+      // Same row, same instant as the window and the allowance above.
+      setTier(entitlementTier(subscription, now));
 
       setQuota({
         used: count ?? 0,
@@ -252,7 +278,7 @@ export default function DashboardPage() {
                 Recent scans
               </h2>
             </div>
-            <ScanHistory />
+            <ScanHistory tier={tier} />
           </section>
 
           {/* Contextual forward CTA — dashboard is a behavior-only destination
