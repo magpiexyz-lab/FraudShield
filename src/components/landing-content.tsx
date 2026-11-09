@@ -36,6 +36,32 @@ import { SUPPORT_EMAIL } from "@/lib/billing-copy";
    as the tagline beside it and earns its affordance from a faint rule; hover
    brightens the text and the rule together. Keyboard focus borrows the
    hairline accent already drawn across the top of the footer. */
+/**
+ * Where this page's calls to action send a visitor: the free-scan panel further
+ * down the same page.
+ *
+ * They pointed at /signup until 2026-11-09. The free scan shipped on 6 Nov and
+ * in the days after it NO outside visitor started one, because the only route
+ * to it was the small "Scan a document — no account" link beside the hero CTA.
+ * Every prominent button asked for an account first, which is the wall the free
+ * scan exists to remove.
+ *
+ * A BARE HASH, NOT "/#live-demo". The three ad variants at /v/<slug> render
+ * this same component, so each already has its own free-scan panel on the page.
+ * A rooted "/#live-demo" would send an ad visitor from the variant they were
+ * recruited into over to the generic homepage, losing the variant mid-test —
+ * and ad traffic is precisely who this change is for. The bare hash scrolls to
+ * the panel on whichever landing surface the visitor is already on.
+ *
+ * The nav CTA is safe to anchor this way because this header only exists on
+ * landing surfaces; every other page renders <NavBar>, which carries no
+ * Scan-free button to mis-target.
+ *
+ * The /pricing plan CTA deliberately still goes to /signup: that card sells the
+ * account plan, so sign-up is the right next step there.
+ */
+const FREE_SCAN_ANCHOR = "#live-demo";
+
 const FOOTER_LINK =
   "rounded-[2px] text-[oklch(0.82_0.014_244)] underline decoration-[oklch(0.82_0.014_244_/_35%)] underline-offset-4 transition-colors hover:text-foreground hover:decoration-[oklch(0.74_0.130_213_/_70%)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[oklch(0.74_0.130_213)]";
 
@@ -629,15 +655,15 @@ export function LandingContent(props: LandingContentProps) {
           >
             Log in
           </Link>
-          <Link
-            href="/signup"
+          <a
+            href={FREE_SCAN_ANCHOR}
             onClick={handleCtaClick}
             className="rounded-[var(--radius-pill)] bg-signal px-4 py-2 font-sans text-[13px] font-semibold whitespace-nowrap text-signal-foreground transition-[transform,opacity] duration-150 hover:-translate-y-px hover:opacity-95"
           >
             {/* Concise nav CTA on small screens; full variant CTA from md up */}
             <span className="md:hidden">Scan free</span>
             <span className="hidden md:inline">{variant.cta}</span>
-          </Link>
+          </a>
         </nav>
         </div>
       </header>
@@ -680,8 +706,8 @@ export function LandingContent(props: LandingContentProps) {
 
             <BlurFade delay={0.21}>
               <div className="mt-8 flex flex-col items-start gap-3 sm:flex-row sm:items-center">
-                <Link
-                  href="/signup"
+                <a
+                  href={FREE_SCAN_ANCHOR}
                   onClick={handleCtaClick}
                   className="group/cta inline-flex items-center gap-2 rounded-[var(--radius-pill)] bg-signal px-7 py-3.5 font-sans text-[15px] font-semibold text-signal-foreground transition-[transform,box-shadow,opacity] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-0.5 hover:opacity-95"
                   style={{ boxShadow: "var(--shadow-signal-glow)" }}
@@ -690,9 +716,9 @@ export function LandingContent(props: LandingContentProps) {
                   <svg viewBox="0 0 16 16" className="h-4 w-4 transition-transform duration-150 group-hover/cta:translate-x-0.5" aria-hidden>
                     <path d="M3 8h9M8 4l4 4-4 4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
-                </Link>
+                </a>
                 <a
-                  href="#live-demo"
+                  href={FREE_SCAN_ANCHOR}
                   className="inline-flex items-center gap-2 rounded-[var(--radius-md)] px-4 py-3 font-sans text-[14px] font-medium text-[oklch(0.82_0.012_244)] ring-1 ring-[oklch(0.92_0.02_220_/_16%)] transition-colors duration-150 hover:text-foreground hover:ring-[oklch(0.74_0.130_213_/_45%)]"
                 >
                   {/* NOT "Watch a live scan". That label is a leftover from
@@ -1061,8 +1087,8 @@ export function LandingContent(props: LandingContentProps) {
           </BlurFade>
           <BlurFade delay={0.16}>
             <div className="mt-9 flex flex-col items-center gap-4">
-              <Link
-                href="/signup"
+              <a
+                href={FREE_SCAN_ANCHOR}
                 onClick={handleCtaClick}
                 className="group/cta inline-flex items-center gap-2 rounded-[var(--radius-pill)] bg-signal px-8 py-4 font-sans text-[16px] font-semibold text-signal-foreground transition-[transform,opacity] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-0.5 hover:opacity-95"
                 style={{ boxShadow: "var(--shadow-signal-glow)" }}
@@ -1071,7 +1097,7 @@ export function LandingContent(props: LandingContentProps) {
                 <svg viewBox="0 0 16 16" className="h-4 w-4 transition-transform duration-150 group-hover/cta:translate-x-0.5" aria-hidden>
                   <path d="M3 8h9M8 4l4 4-4 4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
-              </Link>
+              </a>
               <p className="font-mono text-[12px] text-[oklch(0.84_0.014_244)]">
                 No card required · forensic score in seconds · self-serve, no sales call
               </p>
