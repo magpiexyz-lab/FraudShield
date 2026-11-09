@@ -17,6 +17,7 @@
 // derives its display price from. A hardcoded figure here would survive a
 // price change and quietly become a promise we do not honour.
 
+import type { EntitlementTier } from "@/lib/pro-access";
 import { PLAN_PRICES } from "@/lib/types";
 
 // Why this copy names an in-app control AND an email address: the self-serve
@@ -94,6 +95,121 @@ export const PACKS_HEADING_AFTER_LOCK = "Need more scans instead?";
  */
 export const PACK_TOP_REASON_NOTE =
   "This is the top reason this document was flagged. The rest of the signal detail comes with Pro — another scan pack adds more scans, not more reasons.";
+
+/**
+ * Replaces PACKS_DO_NOT_UNLOCK for the reader who HAS been shown a reason.
+ *
+ * Both sentences sit in the same place -- beside the scan packs, under the
+ * locked panel -- and only one of them is true of any given reader. The
+ * original is read by someone shown nothing, and says packs reveal no signal
+ * detail. Shown to a pack buyer who can see one named reason, that sentence
+ * is false on its face, and a reader who catches us being wrong about what
+ * they bought has no reason to believe the next sentence either.
+ *
+ * So this one answers the question that reader is actually asking, standing in
+ * front of a buy button: what does the NEXT pack get me? More scans. Not
+ * another reason. That half is load-bearing -- it is the inference that cost a
+ * customer $14 on 6 Nov 2026 -- and it is the half PACK_TOP_REASON_NOTE also
+ * carries, higher up the panel. Twice is deliberate: once beside the reason,
+ * once beside the price.
+ *
+ * It does NOT soften to "not the FULL signal detail". That phrasing invites
+ * precisely the inference it is meant to block -- that enough packs add up to
+ * the rest -- and it reads as green against a test for the word "not".
+ */
+export const PACKS_DO_NOT_ADD_REASONS =
+  "Scan packs add scans to your account. Another pack will not name another reason — the rest of the signal detail comes with Pro.";
+
+/**
+ * The clause that closes the /scan-result header, per reader.
+ *
+ * WHY THIS MOVED OUT OF THE JSX. It was one sentence, ungated: "Your score is
+ * below; the signal-by-signal evidence behind it is part of Pro." Every reader
+ * got it, including subscribers -- so the page told a paying Pro customer that
+ * the breakdown printed in full further down was something they had yet to
+ * buy. A pack buyer now has a third, different truth to be told, and three
+ * readers is one too many for a sentence nothing can assert against: vitest
+ * runs environment "node" here with no jsdom, so copy is only testable from a
+ * module.
+ *
+ * `free` is byte-identical to the sentence that shipped. It is still exactly
+ * right for a reader who can see nothing.
+ */
+export const SCORE_EVIDENCE_NOTE: Record<EntitlementTier, string> = {
+  pro: "Your score and the signal-by-signal evidence behind it are both below.",
+  pack: "Your score is below, and so is the top reason it was flagged.",
+  free: "Your score is below; the signal-by-signal evidence behind it is part of Pro.",
+};
+
+/**
+ * The sentence under the "Forensic signal breakdown" heading, per reader.
+ *
+ * The free line ends "Pro shows you which", which is the second claim a pack
+ * buyer can now disprove by reading three lines further down. Their version
+ * says what IS there instead of what is missing; the note beneath the reason
+ * itself (PACK_TOP_REASON_NOTE) handles what is still withheld, so saying it
+ * twice here would only nag.
+ *
+ * "The most serious one" is the honest description of the ranking actually
+ * used: src/lib/signal-rank.ts orders by severity first and weight second, so
+ * the top-ranked signal is not necessarily the one that added the most points.
+ * Copy calling it "the one that moved the score most" would be false whenever
+ * a light fraud signal outranks a heavy suspect one.
+ *
+ * Singular, because PACK_TOP_SIGNAL_COUNT is 1. Raising that count means
+ * rewriting this line; tests/pack-top-reason.test.ts pins the two together.
+ */
+export const SIGNAL_BREAKDOWN_NOTE: Record<EntitlementTier, string> = {
+  pro: "Every point in the score traces to a specific, inspectable signal.",
+  pack: "Every point in the score traces to a specific, inspectable signal. The most serious one is named below.",
+  free: "Every point in the score traces to a specific, inspectable signal. Pro shows you which.",
+};
+
+/**
+ * Which tier's sentences a reader actually gets.
+ *
+ * A pack buyer with no reason on screen is not a bug to be hidden: a clean
+ * document produces no signals at all, and a malformed jsonb array can produce
+ * none we are willing to name (see topNamedReasons). Either way the pack
+ * sentences promise a reason that is not on the page, so such a reader is
+ * handed the fully locked wording -- which is true for them, because they have
+ * been shown nothing.
+ *
+ * PRO IS NEVER DEMOTED. Pro's rows come from SignalBreakdown, not from the
+ * projection, so a zero count here says nothing about what Pro can see.
+ *
+ * AND NOBODY IS EVER PROMOTED. The count cannot raise a tier; it can only
+ * withdraw a claim this page would otherwise make.
+ */
+export function tierForCopy(
+  tier: EntitlementTier,
+  reasonsShown: number,
+): EntitlementTier {
+  return tier === "pack" && reasonsShown < 1 ? "free" : tier;
+}
+
+/**
+ * The count beside the "Forensic signal breakdown" heading.
+ *
+ * "5 signals" is a true statement of what the scan found and it is what free
+ * and Pro readers see today -- unchanged here, because b-13 changes neither
+ * view. Beside ONE readable reason, though, it reads as a promise of five, to
+ * the one cohort that has already paid us money and already once inferred more
+ * than we delivered. "1 of 5 shown" is the same total, with the gap named.
+ *
+ * `shown` is the number of reasons ACTUALLY rendered, not PACK_TOP_SIGNAL_COUNT:
+ * a count taken from the constant would claim a reason on a scan where the
+ * projection produced none.
+ */
+export function signalCountLabel(
+  tier: EntitlementTier,
+  total: number,
+  shown: number,
+): string {
+  return tier === "pack" && shown > 0
+    ? `${shown} of ${total} shown`
+    : `${total} signals`;
+}
 
 /** One numbered clause of the billing terms. */
 export type BillingTerm = { id: string; heading: string; body: string };
