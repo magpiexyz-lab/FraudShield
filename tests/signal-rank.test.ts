@@ -205,10 +205,17 @@ describe("byRank", () => {
     // `jsonb[] not null`, so nothing in the database forbids one. Comparing a
     // null must not throw: it has no severity and no weight, so it ranks last
     // like any other value we cannot interpret.
+    // TWO nulls, deliberately. One null never exercises the weight read: it
+    // differs from a real signal on severity, so the comparator returns before
+    // it looks at `weight`. Two nulls TIE on severity, which is the only way
+    // the weight read sees one. (An `undefined` entry proves nothing either --
+    // Array.prototype.sort moves those to the end without calling the
+    // comparator at all -- so it is here as input noise, not as the case.)
     const real = sig("fraud_high", "fraud", 40);
     const input = [
       null as unknown as FraudSignal,
       real,
+      null as unknown as FraudSignal,
       undefined as unknown as FraudSignal,
     ];
 
