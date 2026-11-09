@@ -53,7 +53,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { ScoreGauge } from "@/app/scan-result/score-gauge";
-import { SEVERITY_LABEL, SEVERITY_VAR } from "@/app/scan-result/severity";
+import { severityLabel, severityVar } from "@/app/scan-result/severity";
 import {
   AI_PRIVACY_DISCLOSURE,
   LIMITED_ANALYSIS_BODY,
@@ -1215,7 +1215,7 @@ function PartialNotice() {
  * colour only.
  */
 function SignalRow({ signal }: { signal: TeaserSignal }) {
-  const tone = SEVERITY_VAR[signal.severity];
+  const tone = severityVar(signal.severity);
   return (
     <li className="relative py-3.5 pl-4">
       <span
@@ -1231,7 +1231,7 @@ function SignalRow({ signal }: { signal: TeaserSignal }) {
           className="shrink-0 font-mono text-[10px] uppercase tracking-[0.14em]"
           style={{ color: tone }}
         >
-          {SEVERITY_LABEL[signal.severity]}
+          {severityLabel(signal.severity)}
         </span>
       </div>
       <p className="mt-1 max-w-[58ch] font-sans text-[13px] leading-[1.5] text-muted-foreground">
