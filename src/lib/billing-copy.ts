@@ -58,12 +58,30 @@ export const PRO_PRICE_LABEL = `$${PRO_PRICE_MONTHLY_USD}/month`;
  * forensic signals" under the heading "Or just buy the scans you need", so
  * "Or" read as a second, cheaper route to the same thing.
  *
- * Packs buy scans. Only Pro reveals what a scan found. That distinction is
- * obvious from the inside and invisible from the outside, so it is now stated
- * at the point of payment rather than left to be inferred from the layout.
+ * Packs buy scans, and they now name the worst reasons behind a result. Only
+ * Pro reveals the WHOLE of what a scan found. That distinction is obvious from
+ * the inside and invisible from the outside, so it is stated at the point of
+ * payment rather than left to be inferred from the layout.
+ *
+ * REWORDED 2026-11-09, ON THE MANAGER'S INSTRUCTION. It read: "Scan packs add
+ * scans to your account. They do not reveal the signal detail above — only Pro
+ * does." That stopped being true the day PACK_TOP_SIGNAL_COUNT gave a pack
+ * buyer named reasons. This is the sentence a reader meets AT the buy button,
+ * and it was denying the very thing the purchase does; a reader who catches us
+ * understating what we sell has no reason to believe the next sentence either.
+ *
+ * WHAT THE REWORD KEPT, AND WHY IT HAD TO. The $14 was refunded for the FULL
+ * per-signal breakdown — every signal, its detail, and the points it added —
+ * not for a reason. The second clause still refuses that and still names Pro
+ * as the only route to it, which is the load-bearing half of the sentence.
+ * tests/packs-not-an-unlock.test.ts holds that clause against any further
+ * reword (its three regexes cannot: they pass against a sentence that has
+ * dropped it). The byte pins in tests/entitlement-tier.test.ts and
+ * tests/pack-top-reason.test.ts keep changing this text a decision rather
+ * than an edit.
  */
 export const PACKS_DO_NOT_UNLOCK =
-  "Scan packs add scans to your account. They do not reveal the signal detail above — only Pro does.";
+  "Scan packs show why each result was flagged. Only Pro shows the full breakdown.";
 
 /**
  * Replaces the packs' default heading on the locked-signals panel. The default
@@ -74,37 +92,44 @@ export const PACKS_DO_NOT_UNLOCK =
 export const PACKS_HEADING_AFTER_LOCK = "Need more scans instead?";
 
 /**
- * Shown to a SCAN-PACK BUYER, beneath the one signal b-13 reveals to them.
+ * Shown to a SCAN-PACK BUYER, beneath the reasons b-13 reveals to them.
  *
- * A different sentence for a different reader, and deliberately NOT a rewrite
- * of PACKS_DO_NOT_UNLOCK. That one sits under a fully locked panel and is read
- * by someone who has seen nothing; it stays exactly right for them. This one is
- * read by someone who has now seen ONE reason, which is a harder thing to
- * explain -- the panel beside it still sells scan packs, so "one pack bought
- * one reason" is the obvious misreading, and it is an expensive one.
+ * A different sentence for a different reader, and deliberately NOT the same
+ * one as PACKS_DO_NOT_UNLOCK. That one is read by somebody who has been shown
+ * nothing and is deciding whether to buy, so it describes what a pack does.
+ * This one is read by somebody who has already bought and can see their
+ * reasons -- the harder case, because the panel beside it still sells scan
+ * packs, so "one pack bought two reasons" invites "two packs buy four".
  *
- * Expensive because it has already happened. On 6 Nov 2026 a customer bought
- * two $7 packs from that panel expecting them to reveal the signal detail, and
- * lost $14. Showing that same cohort a single reason next to the same button is
- * a second invitation to make the same purchase, so this sentence has to carry
- * both halves: this is the top reason, and the rest comes with PRO -- not with
- * more packs. The second half is the load-bearing one.
+ * That misreading is expensive, and it has already happened. On 6 Nov 2026 a
+ * customer bought two $7 packs from that panel expecting them to reveal the
+ * signal detail, and lost $14. Showing that same cohort named reasons next to
+ * the same button is a second invitation to make the same purchase, so this
+ * sentence has to carry both halves: these are the top reasons, and the rest
+ * comes with PRO -- not with more packs. The second half is load-bearing.
+ *
+ * PLURAL BUT NUMBERLESS, since 2026-11-09. PACK_TOP_SIGNAL_COUNT is 2 and the
+ * note is printed ONCE, beneath the whole list, so the singular demonstrative
+ * it shipped with ("This is the top reason") named the wrong number of things
+ * it was sitting under. It states no number either: the count is a ceiling, a
+ * one-signal scan shows one, and signalCountLabel is what reports how many
+ * were actually rendered.
  *
  * It names no price, so it cannot drift from what we charge, and it claims
  * nothing about comparing documents (tests/no-unbuilt-claims.test.ts).
  */
 export const PACK_TOP_REASON_NOTE =
-  "This is the top reason this document was flagged. The rest of the signal detail comes with Pro — another scan pack adds more scans, not more reasons.";
+  "These are the top reasons this document was flagged, worst first. The rest of the signal detail comes with Pro — another scan pack adds more scans, not more reasons.";
 
 /**
  * Replaces PACKS_DO_NOT_UNLOCK for the reader who HAS been shown a reason.
  *
  * Both sentences sit in the same place -- beside the scan packs, under the
- * locked panel -- and only one of them is true of any given reader. The
- * original is read by someone shown nothing, and says packs reveal no signal
- * detail. Shown to a pack buyer who can see one named reason, that sentence
- * is false on its face, and a reader who catches us being wrong about what
- * they bought has no reason to believe the next sentence either.
+ * locked panel -- and only one of them is true of any given reader. The other
+ * is written for somebody shown nothing who is deciding whether to buy, so it
+ * describes what a pack DOES. Said instead to a pack buyer with their reasons
+ * already on screen a few lines above, a description of the purchase is an
+ * invitation to make it a second time.
  *
  * So this one answers the question that reader is actually asking, standing in
  * front of a buy button: what does the NEXT pack get me? More scans. Not
@@ -134,10 +159,17 @@ export const PACKS_DO_NOT_ADD_REASONS =
  *
  * `free` is byte-identical to the sentence that shipped. It is still exactly
  * right for a reader who can see nothing.
+ *
+ * `pack` went plural on 2026-11-09 with PACK_TOP_SIGNAL_COUNT. It closes the
+ * page header, a long way above the panel, and a header promising "the top
+ * reason" over a panel naming two leaves the same page telling one reader two
+ * different things about what they bought -- the disagreement this module
+ * exists to prevent. It states no number, because the count is a ceiling and a
+ * one-signal scan shows one.
  */
 export const SCORE_EVIDENCE_NOTE: Record<EntitlementTier, string> = {
   pro: "Your score and the signal-by-signal evidence behind it are both below.",
-  pack: "Your score is below, and so is the top reason it was flagged.",
+  pack: "Your score is below, and so are the top reasons it was flagged.",
   free: "Your score is below; the signal-by-signal evidence behind it is part of Pro.",
 };
 
@@ -156,12 +188,17 @@ export const SCORE_EVIDENCE_NOTE: Record<EntitlementTier, string> = {
  * Copy calling it "the one that moved the score most" would be false whenever
  * a light fraud signal outranks a heavy suspect one.
  *
- * Singular, because PACK_TOP_SIGNAL_COUNT is 1. Raising that count means
- * rewriting this line; tests/pack-top-reason.test.ts pins the two together.
+ * PLURAL SINCE 2026-11-09, when PACK_TOP_SIGNAL_COUNT rose to 2. This line
+ * shares a heading row with signalCountLabel, so "The most serious one is
+ * named below" beside a label reading "2 of 5 shown" would make one of the
+ * two wrong. "Of them" rather than "the two", because the count is a ceiling:
+ * a one-signal scan still shows one, and the sentence must stay true for it.
+ * tests/pack-top-reason.test.ts pins the wording and the count together,
+ * which is what forced this line to be re-read rather than left to rot.
  */
 export const SIGNAL_BREAKDOWN_NOTE: Record<EntitlementTier, string> = {
   pro: "Every point in the score traces to a specific, inspectable signal.",
-  pack: "Every point in the score traces to a specific, inspectable signal. The most serious one is named below.",
+  pack: "Every point in the score traces to a specific, inspectable signal. The most serious of them are named below.",
   free: "Every point in the score traces to a specific, inspectable signal. Pro shows you which.",
 };
 
@@ -193,13 +230,14 @@ export function tierForCopy(
  *
  * "5 signals" is a true statement of what the scan found and it is what free
  * and Pro readers see today -- unchanged here, because b-13 changes neither
- * view. Beside ONE readable reason, though, it reads as a promise of five, to
+ * view. Beside two readable reasons, though, it reads as a promise of five, to
  * the one cohort that has already paid us money and already once inferred more
- * than we delivered. "1 of 5 shown" is the same total, with the gap named.
+ * than we delivered. "2 of 5 shown" is the same total, with the gap named.
  *
- * `shown` is the number of reasons ACTUALLY rendered, not PACK_TOP_SIGNAL_COUNT:
- * a count taken from the constant would claim a reason on a scan where the
- * projection produced none.
+ * `shown` is the number of reasons ACTUALLY rendered, not PACK_TOP_SIGNAL_COUNT.
+ * A count taken from the constant would claim a reason on a scan where the
+ * projection produced none, and would read "2 of 1 shown" on a document with a
+ * single signal -- promising a finding the scan never made.
  */
 export function signalCountLabel(
   tier: EntitlementTier,

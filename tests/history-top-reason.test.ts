@@ -283,8 +283,8 @@ describe("topReasonFor -- no row shape makes an empty line or a crash", () => {
   });
 
   // A LABELLED SIGNAL BEHIND AN UNLABELLED ONE IS STILL WITHHELD, and that is
-  // deliberate rather than an oversight. PACK_TOP_SIGNAL_COUNT is 1: the pack
-  // tier is entitled to the TOP reason, not to the top PRINTABLE one. Falling
+  // deliberate rather than an oversight. A history row prints ONE reason: the
+  // tier is entitled to the TOP one, not to the top PRINTABLE one. Falling
   // through to the second signal would reveal a reason that is not the top
   // one while telling the reader it is -- and on a two-signal scan that is
   // half the paid breakdown, handed over by one malformed record.

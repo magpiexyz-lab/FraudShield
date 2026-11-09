@@ -785,8 +785,8 @@ function RevealedReason({ reason }: { reason: NamedReason }) {
  * who can see the shape of genuine findings has a reason to unlock them, and a
  * fabricated preview would misrepresent what is actually behind the lock.
  *
- * A SCAN-PACK BUYER STAYS IN THIS COMPONENT, with one reason revealed at the
- * top and the rest of the panel untouched. They are not lifted into a surface
+ * A SCAN-PACK BUYER STAYS IN THIS COMPONENT, with their reasons revealed at
+ * the top and the rest of the panel untouched. They are not lifted into a surface
  * of their own for two reasons. The offer below -- UpgradeCta and the scan
  * packs -- is the only instance on the page, and a second one would duplicate
  * the id="upgrade-pro" anchor and could open two Stripe sessions. And
@@ -838,7 +838,7 @@ function LockedSignals({
         <div className="relative z-10 border-b border-border px-6 pb-5 pt-6">
           <ul
             className="flex flex-col gap-4"
-            aria-label="Top reason this document was flagged"
+            aria-label="Top reasons this document was flagged"
           >
             {reasons.map((reason, index) => (
               <RevealedReason key={index} reason={reason} />
@@ -914,13 +914,14 @@ function LockedSignals({
             className="mt-0 w-full [&>p:first-child]:text-left"
           />
           {/* Two sentences, one per reader, and only one of them is true of
-              any given one. PACKS_DO_NOT_UNLOCK says packs reveal no signal
-              detail, which is exactly right for someone shown nothing. Said to
-              a pack buyer who can see a named reason a few lines above, it is
-              false on its face -- and being caught out about what they already
-              bought is what makes the next sentence unbelievable. Theirs
-              answers what they are actually standing in front of a buy button
-              asking: what does the NEXT pack get me. */}
+              any given one. PACKS_DO_NOT_UNLOCK describes what a pack DOES --
+              it shows why a result was flagged, and the full breakdown stays
+              Pro -- which is what somebody shown nothing needs in order to
+              decide. Said instead to a pack buyer with their reasons already
+              on screen a few lines above, a description of the purchase is an
+              invitation to make it a second time. Theirs answers what that
+              reader is actually standing in front of a buy button asking:
+              what does the NEXT pack get me. */}
           <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
             {reasons.length > 0
               ? PACKS_DO_NOT_ADD_REASONS

@@ -50,11 +50,19 @@ function raw(id: string, severity: unknown, weight: unknown): FraudSignal {
 const ids = (signals: FraudSignal[]) => signals.map((s) => s.id);
 
 describe("PACK_TOP_SIGNAL_COUNT", () => {
-  // A named constant rather than a literal 1 at the call site: b-13 says "the
-  // single top reason", and if that number ever changes it changes in one
-  // place, with this test as the record of what it was.
-  it("is one", () => {
-    expect(PACK_TOP_SIGNAL_COUNT).toBe(1);
+  // A named constant rather than a literal at the call site: b-13 shipped as
+  // "the single top reason", that number has now changed once, and it changed
+  // in one place -- with this test as the record of what it is.
+  //
+  // TWO SINCE 2026-11-09, by the manager's decision. It was 1. The anonymous
+  // free scan has always shown two (selectTeaserSignals defaults to n = 2),
+  // so a customer who bought a scan pack saw strictly less of their own
+  // document than a visitor who paid us nothing. What stays Pro-only is the
+  // full per-signal breakdown -- every signal, each with its detail and the
+  // points it added. This count is of NAMED REASONS, which carry neither
+  // (see NamedReason: label and severity, nothing else).
+  it("is two", () => {
+    expect(PACK_TOP_SIGNAL_COUNT).toBe(2);
   });
 });
 
@@ -130,8 +138,18 @@ describe("topSignals", () => {
       sig("a_three", "fraud", 10),
     ];
 
-    expect(topSignals(input)).toHaveLength(PACK_TOP_SIGNAL_COUNT);
-    expect(ids(topSignals(input))).toEqual(["a_one"]);
+    // THE LITERAL, NOT THE CONSTANT. `toHaveLength(PACK_TOP_SIGNAL_COUNT)`
+    // compared the default against the very value that defines it, so it was
+    // green for 1, is green for 2, and would be green for 7 -- it never
+    // asserted anything about the default at all. Three signals go in, so the
+    // number is a real truncation rather than "everything it was given".
+    expect(topSignals(input)).toHaveLength(2);
+    expect(ids(topSignals(input))).toEqual(["a_one", "a_two"]);
+    // And the default IS the constant -- the one thing the literal above
+    // cannot say by itself.
+    expect(ids(topSignals(input))).toEqual(
+      ids(topSignals(input, PACK_TOP_SIGNAL_COUNT)),
+    );
   });
 
   describe("does not inherit the teaser's vision bias", () => {
