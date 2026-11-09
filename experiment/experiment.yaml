@@ -55,7 +55,11 @@ hypotheses:
       # threshold and had been tripping the kill rule all along. 0.35 was never
       # grounded in anything.
       #
-      # PLACEHOLDER pending the manager's number, same status as h-11's. 0.05 is
+      # STILL AN ESTIMATE, and now knowingly so. The manager's number landed on
+      # 2026-11-09 as h-13, a different metric on a narrower population, not as
+      # a revision to this one. He never set a figure for the attempt rate over
+      # ALL landing traffic, so 0.05 stays an estimate and must not be read as
+      # his. h-13 is what decides the free scan. 0.05 is
       # ~4.5x the old demo rate, chosen because uploading a document off your own
       # disk is a far higher-friction act than clicking Run on an animation, so a
       # lower bar is warranted — but it is an estimate, not evidence.
@@ -193,7 +197,10 @@ hypotheses:
       # NOT fire for: either cap refusing (free_scan_capped instead), an
       # undecodable image, a refused PDF, or a metadata-only partial result.
       #
-      # PLACEHOLDER pending the manager's number. 0.8 allows for the daily cap
+      # CONFIRMED 2026-11-09. The manager kept 0.8 explicitly as a HEALTH
+      # CHECK rather than a go/no-go: "your 80% (scans finished out of scans
+      # started) works well as a health check, but for go/no-go we'll use the
+      # line from the group on 11/04". That line is now h-13. 0.8 allows for the daily cap
       # being reached legitimately and for occasional Anthropic unavailability,
       # while still failing loudly if the surface is broadly broken.
       threshold: 0.8
@@ -202,6 +209,68 @@ hypotheses:
     # not an independent acquisition claim, and it must not drive the kill rule
     # ("Any top-funnel (REACH or DEMAND) < 0.5") on its own.
     priority_score: 70
+    experiment_level: 1
+    depends_on: []
+    status: pending
+  # ADDED 2026-11-09. THE GO/NO-GO FOR THE FREE SCAN.
+  #
+  # Set by the manager on 2026-11-04 with the group and confirmed to me on
+  # 2026-11-09: "at least 35% of ad clicks should end in a finished first scan,
+  # and if it's still under 25% two weeks after launch, or paying users haven't
+  # picked up, we'd go back to sign-up first."
+  #
+  # WHY THIS IS A THIRD HYPOTHESIS RATHER THAN A CHANGE TO h-02 OR h-12. Those
+  # two measure different things and neither is the decision. h-02 is the
+  # ATTEMPT rate over ALL landing visits; h-12 is the DELIVERY rate of attempts
+  # that were made. This is the composite -- did a paid visit end in a finished
+  # scan -- over paid traffic only, and it is the one that decides whether the
+  # free scan stays. The manager explicitly kept h-12's 80% as a health check
+  # rather than a go/no-go, so it is left as it is.
+  #
+  # THE DENOMINATOR IS PAID TRAFFIC, COUNTED AS VISITS THAT REACHED THE PAGE.
+  # Asked directly whether "ad clicks" meant Google's reported click count or
+  # visits that actually arrive, he chose the latter on 2026-11-09: "count
+  # visits that actually reach the page, like our other targets, not Google's
+  # click count, and keep it that way for the two-week numbers." The two differ
+  # by roughly 10-20% -- people who tap an ad and leave before the page loads --
+  # which is wide enough to decide a 35%-vs-25% question on its own, so it is
+  # recorded here rather than left to whoever runs the query.
+  #
+  # So: visit_landing events CARRYING A gclid. This is a narrower denominator
+  # than h-02's plain visit_landing, which counts organic and guide traffic too.
+  # Do not reuse h-02's number here; they are different populations and the
+  # rates are not comparable. `.claude/scripts/lib/gclid_filter.py` holds the
+  # paid-traffic predicate the verdict pipeline already uses.
+  #
+  # THE NUMERATOR IS ONE PER PERSON. "A finished FIRST scan" -- a visitor may
+  # run up to 3 free scans a day, so counting every free_scan_complete would
+  # inflate this against its own denominator of visits. Count the first
+  # completed scan per distinct_id within the window.
+  #
+  # THE KILL RULE, which has no schema field and so lives here: if this is still
+  # under 0.25 two weeks after the free scan became reachable, revert to
+  # sign-up first. The clock starts from the PR #109 deploy on 2026-11-09, not
+  # from the free scan shipping on 2026-11-06 -- until #109 every prominent CTA
+  # still sent visitors to /signup, and no outside visitor had started a free
+  # scan. So the window closes 2026-11-23.
+  #
+  # "OR PAYING USERS HAVEN'T PICKED UP" is the second half of his kill rule and
+  # he gave no number for it. MY READING, not his, so overrule it freely: at
+  # least one new paid conversion -- subscription or scan pack -- from a visitor
+  # who arrived on a paid click and completed a free scan, inside the same
+  # window. Zero means the surface produces scans but not customers, which is
+  # the thing sign-up first was protecting. One is a deliberately low bar: this
+  # is a kill rule, and it should only fire on a clear negative.
+  - id: h-13
+    category: reach
+    statement: ">=35% of paid landing visits end in a completed first free scan (the go/no-go: does a real scan convert ad traffic better than the sign-up wall did?)"
+    metric:
+      formula: "free_scan_complete / visit_landing"
+      threshold: 0.35
+      operator: gte
+    # Above h-02's 85: this is the decision metric for the whole free-scan bet,
+    # and h-02 and h-12 are both inputs to reading it rather than rivals to it.
+    priority_score: 95
     experiment_level: 1
     depends_on: []
     status: pending
