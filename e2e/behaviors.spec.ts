@@ -5,7 +5,7 @@ import { blockAnalytics, getTestCredentials, login } from "./helpers";
 // Anonymous behaviors come first; auth-gated behaviors follow.
 
 // =====================================================================
-// b-01 — landing CTA navigates to signup (anonymous)
+// b-01 — landing CTA reaches the free scan (anonymous)
 // =====================================================================
 test.describe("b-01: visitor reads the value prop and clicks the primary CTA", () => {
   test.beforeEach(async ({ page }) => {
@@ -21,13 +21,21 @@ test.describe("b-01: visitor reads the value prop and clicks the primary CTA", (
     ).toBeVisible();
   });
 
-  test("Clicking the CTA navigates to signup", async ({ page }) => {
+  // Repointed 2026-11-09. This asserted the CTA reached /signup, which was the
+  // defect: the free scan shipped on 6 Nov and no outside visitor started one,
+  // because every prominent button asked for an account first.
+  test("Clicking the CTA reaches the free-scan panel without asking for an account", async ({
+    page,
+  }) => {
     await page.goto("/");
     await page
       .getByRole("link", { name: /scan your first document free/i })
       .first()
       .click();
-    await expect(page).toHaveURL(/\/signup/);
+    await expect(page).toHaveURL(/#live-demo/);
+    // The point of the change: no account wall between the click and the scan.
+    await expect(page).not.toHaveURL(/\/signup/);
+    await expect(page.locator("#live-demo")).toBeVisible();
   });
 
   test("cta_click event fires with the variant slug", async ({ page }) => {
@@ -38,7 +46,7 @@ test.describe("b-01: visitor reads the value prop and clicks the primary CTA", (
       .getByRole("link", { name: /scan your first document free/i })
       .first()
       .click();
-    await expect(page).toHaveURL(/\/signup/);
+    await expect(page).toHaveURL(/#live-demo/);
     const marker = await page.evaluate(() =>
       window.sessionStorage.getItem("analytics:cta_click"),
     );

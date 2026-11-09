@@ -133,9 +133,23 @@ keywords:
   - manual document review
   - outsource document review
   - document scanner app
+  # Added 2026-11-09. Each took a paid click this week and none is about pay
+  # stubs or bank statements, which is all this product scores.
+  - fake certificate detection
+  - ai document verification
+  - forgery detector
   # NOTE: vs / versus / comparison / review / reviews were negatives in v1 and are
   # deliberately NOT here. They blocked competitor-alternative searches, which is
   # the one high-intent segment v1 proved exists (snappt queries).
+  #
+  # "snappt" was requested as a PHRASE negative on 2026-11-09 and is deliberately
+  # NOT here pending an answer. Phrase-negating it would also block the
+  # `snappt alternative` phrase keyword above, which this campaign actively bids
+  # on — we would be paying for a keyword that can never serve, and switching
+  # off the segment the note above records as the only proven one. An EXACT
+  # negative [snappt] blocks the bare navigational query (someone looking for
+  # that product, which was the stated concern) while leaving "snappt
+  # alternative" and "cheaper than snappt" reachable. Awaiting confirmation.
 ads:
 - headlines:
   - FraudShield

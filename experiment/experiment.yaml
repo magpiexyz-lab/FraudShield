@@ -214,9 +214,16 @@ behaviors:
     given: "A small lender, landlord, or gig-platform reviewer visits the FraudShield landing page"
     when: "They read the value proposition and see the primary CTA"
     then: "They click 'Scan your document' (>5% of visitors)"
+    # CTA DESTINATION CHANGED 2026-11-09. Every prominent CTA on this page sent
+    # the visitor to /signup; only a small secondary link reached the free scan.
+    # In the days after the free scan shipped (6 Nov) no outside visitor started
+    # one, so the primary CTAs now scroll to the free-scan panel instead. The
+    # manager asked for this and counts the free-scan test window from the day
+    # it goes live. h-01 is unaffected — cta_click still fires on the same
+    # button, and the metric is cta_click / visit_landing either way.
     tests:
       - "Landing page renders the primary CTA button"
-      - "Clicking the CTA navigates to signup"
+      - "Clicking the CTA reaches the free-scan panel without asking for an account"
       - "cta_click event fires with the variant slug"
     level: 1
   - id: b-02
@@ -359,6 +366,16 @@ golden_path:
     page: landing
   - step: "Click 'Scan your document'"
     event: cta_click
+    page: landing
+  # INSERTED 2026-11-09 alongside the b-01 CTA repoint. The CTA lands on the
+  # free-scan panel, so a visitor now reaches a fraud score BEFORE being asked
+  # for an account. Signup follows from the panel's own "See all N signals"
+  # CTA rather than from the landing CTA.
+  #
+  # Expect signup_complete / cta_click to fall sharply once this is live. That
+  # is the change working, not a regression: the CTA stopped pointing at signup.
+  - step: "Scan a document free, without an account"
+    event: free_scan_complete
     page: landing
   - step: "Create account (email + password)"
     event: signup_complete
