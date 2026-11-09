@@ -358,6 +358,32 @@ behaviors:
       - "signup_complete fires server-side with provider=google and the relayed attribution"
       - "Acquisition gclid and utm_campaign are persisted onto the user record on first signup"
     level: 2
+  # ADDED 2026-11-09. The per-signal paywall has governed this product since
+  # launch but was never declared: b-04 says the result page "renders a
+  # per-signal breakdown" with no mention of who may see it, so the rule lived
+  # only in code. This behavior writes it down and adds the third tier the
+  # manager asked for.
+  #
+  # Filed under h-04 (monetize) rather than h-03 (does the scan work), because
+  # what a tier may see is a pricing decision read through the paywall funnel,
+  # not a claim about what the engine detects.
+  #
+  # b-04 and b-06 are deliberately left untouched: b-04 remains true (the
+  # breakdown does render; this behavior says to whom) and b-06 still describes
+  # the upgrade flow unchanged.
+  - id: b-13
+    hypothesis_id: h-04
+    pages: [scan-result, dashboard]
+    given: "A user who bought a scan pack but never subscribed opens a scan result, or their scan history"
+    when: "The result carries at least one forensic signal"
+    then: "They see the single top reason the document was flagged - the most serious signal, and the heaviest among equals - while every other signal stays withheld. Pro still shows the full per-signal breakdown; a user who has paid nothing still sees none of it. Buying another pack reveals nothing further: the rest comes with Pro"
+    tests:
+      - "A scan-pack buyer sees the top reason and cannot reach the full breakdown"
+      - "A Pro subscriber still sees every signal, unchanged"
+      - "A user who has never paid sees no signal detail, unchanged"
+      - "The top reason is the highest-severity signal, then the heaviest, resolved the same way every time"
+      - "A result with no signals shows no top reason rather than an empty one"
+    level: 3
 
 # --- 4. Journey ---
 golden_path:
