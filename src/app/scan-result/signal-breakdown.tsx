@@ -1,7 +1,7 @@
 "use client";
 
 import type { FraudSignal } from "@/lib/types";
-import { SEVERITY_LABEL, SEVERITY_VAR } from "./severity";
+import { severityLabel, severityVar } from "./severity";
 
 // The explainability IS the product (visual-brief guardrail #7): a fraud score is
 // never shown without its per-signal forensic breakdown. Each signal is a row with
@@ -18,7 +18,7 @@ export function SignalBreakdown({ signals }: { signals: FraudSignal[] }) {
   return (
     <ul className="flex flex-col gap-3" aria-label="Forensic signal breakdown">
       {ordered.map((signal, index) => {
-        const color = SEVERITY_VAR[signal.severity];
+        const color = severityVar(signal.severity);
         return (
           <li
             key={signal.id}
@@ -48,7 +48,7 @@ export function SignalBreakdown({ signals }: { signals: FraudSignal[] }) {
                       backgroundColor: `color-mix(in oklch, ${color} 16%, transparent)`,
                     }}
                   >
-                    {SEVERITY_LABEL[signal.severity]}
+                    {severityLabel(signal.severity)}
                   </span>
                 </div>
                 <h3 className="mt-1.5 font-heading text-base font-semibold text-foreground">
