@@ -72,6 +72,29 @@ export const PACKS_DO_NOT_UNLOCK =
  */
 export const PACKS_HEADING_AFTER_LOCK = "Need more scans instead?";
 
+/**
+ * Shown to a SCAN-PACK BUYER, beneath the one signal b-13 reveals to them.
+ *
+ * A different sentence for a different reader, and deliberately NOT a rewrite
+ * of PACKS_DO_NOT_UNLOCK. That one sits under a fully locked panel and is read
+ * by someone who has seen nothing; it stays exactly right for them. This one is
+ * read by someone who has now seen ONE reason, which is a harder thing to
+ * explain -- the panel beside it still sells scan packs, so "one pack bought
+ * one reason" is the obvious misreading, and it is an expensive one.
+ *
+ * Expensive because it has already happened. On 6 Nov 2026 a customer bought
+ * two $7 packs from that panel expecting them to reveal the signal detail, and
+ * lost $14. Showing that same cohort a single reason next to the same button is
+ * a second invitation to make the same purchase, so this sentence has to carry
+ * both halves: this is the top reason, and the rest comes with PRO -- not with
+ * more packs. The second half is the load-bearing one.
+ *
+ * It names no price, so it cannot drift from what we charge, and it claims
+ * nothing about comparing documents (tests/no-unbuilt-claims.test.ts).
+ */
+export const PACK_TOP_REASON_NOTE =
+  "This is the top reason this document was flagged. The rest of the signal detail comes with Pro — another scan pack adds more scans, not more reasons.";
+
 /** One numbered clause of the billing terms. */
 export type BillingTerm = { id: string; heading: string; body: string };
 
