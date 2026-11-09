@@ -164,9 +164,25 @@ describe("scan-result quota read -- regression", () => {
     expect(SCAN_RESULT).not.toContain("FREE_SCAN_QUOTA - scansUsed");
   });
 
-  it("keeps the Pro breakdown gate on status alone, which is correct", () => {
-    // A pack buyer genuinely is not Pro, so hasProAccess must NOT start
-    // counting credits -- that gate answers a different question.
-    expect(SCAN_RESULT).toContain("hasProAccess");
+  it("keeps the breakdown gate off the credit count, which is correct", () => {
+    // A pack buyer genuinely is not Pro. b-13 gave this page a third tier, so
+    // the gate reads entitlementTier now -- which answers "pro" from
+    // hasProAccess and from nothing else, and answers "pack" separately. The
+    // intent of the assertion this replaced is unchanged and is what the
+    // second half pins: the CREDIT COUNT must never be what unlocks the full
+    // breakdown. That is the widening src/lib/pro-access.ts refuses, because
+    // the same predicate also picks the billing WINDOW -- a pack buyer made
+    // Pro by their credits would be handed a monthly window against a count
+    // nothing decrements, re-granting their entire pack every month.
+    expect(SCAN_RESULT).toContain("entitlementTier");
+    expect(SCAN_RESULT).toMatch(/const isPro = tier === "pro"/);
+
+    // And the unlocked breakdown is reached from that tier, not from a credit
+    // comparison. scan_credits legitimately still appears on this page -- it
+    // is part of the quota copy -- so the ban is on it GATING the breakdown.
+    const breakdown = SCAN_RESULT.indexOf("<SignalBreakdown");
+    expect(breakdown).toBeGreaterThan(-1);
+    expect(SCAN_RESULT.slice(breakdown - 200, breakdown)).toContain("isPro ?");
+    expect(SCAN_RESULT).not.toMatch(/scan_credits\s*>\s*0\s*\?/);
   });
 });

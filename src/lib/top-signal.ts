@@ -62,3 +62,68 @@ export function topSignals(
   // reads Infinity as "to the end", which is exactly what both mean here.
   return [...signals].sort(byRank).slice(0, n);
 }
+
+/**
+ * A reason as it may appear on a surface that is withholding the rest.
+ *
+ * Deliberately NOT a FraudSignal. b-13 shows a scan-pack buyer the top reason
+ * their document was flagged, and a FraudSignal also carries `weight` and
+ * `id` -- two fields that must not reach that screen:
+ *
+ *   WEIGHT. The score is the sum of the weights. Printing the top signal's
+ *   weight beside a score of 72 tells the reader that 32 points are hiding
+ *   somewhere, which is the thing Pro is sold on. The same ban is on the
+ *   anonymous free-scan panel (tests/free-scan-panel.test.ts) for exactly
+ *   this reason.
+ *
+ *   ID. `vision_arithmetic_mismatch` is engine vocabulary. Pro's breakdown
+ *   prints it beside the detail that explains it; alone it is not a reason,
+ *   it is a leak of how the detector is built.
+ *
+ * `detail` is withheld too -- it is the "where it was found and how much it
+ * moved the score" that the upgrade CTA promises. The label alone answers
+ * "why was this flagged", which is what the pack buyer paid for.
+ *
+ * Making this a TYPE rather than a code-review promise means the projection
+ * is what the renderer receives, so a weight cannot be printed by accident.
+ */
+export type NamedReason = {
+  /** What was detected, in the engine's own words, fit to read. */
+  label: string;
+  /** How serious it is. Any value: the renderer's lookup is total. */
+  severity: FraudSignal["severity"];
+};
+
+/**
+ * The top `n` reasons, projected to what may be printed.
+ *
+ * RANK, THEN SLICE, THEN DROP WHAT CANNOT BE RENDERED -- in that order, and
+ * the order is a decision. `signals` is a jsonb column, so an entry can be
+ * `null` or an object with no usable label. Dropping those FIRST would hand
+ * the reader the SECOND-ranked signal under a sentence calling it the top
+ * reason, which is a false claim about the evidence. Dropping them last means
+ * a broken top entry yields nothing, the caller shows the fully locked panel
+ * it showed before, and no sentence on the page is a lie.
+ *
+ * So the returned length is at most `n`, never more, and a caller must treat
+ * an empty result as "nothing to reveal" rather than as impossible.
+ *
+ * A severity outside the union is PASSED THROUGH, not dropped: the render
+ * lookups in src/app/scan-result/severity.ts are total and print "Unknown" in
+ * muted grey for it. Dropping the signal would withhold a reason we do have;
+ * substituting a known severity would assert something false about the
+ * document.
+ *
+ * Pure and total: no I/O, no randomness, no `Date`, no input it throws on, and
+ * the caller's array is never mutated (topSignals copies before sorting).
+ */
+export function topNamedReasons(
+  signals: FraudSignal[] | null | undefined,
+  n: number = PACK_TOP_SIGNAL_COUNT,
+): NamedReason[] {
+  return topSignals(signals, n).flatMap((signal) =>
+    typeof signal?.label === "string" && signal.label.trim() !== ""
+      ? [{ label: signal.label, severity: signal.severity }]
+      : [],
+  );
+}

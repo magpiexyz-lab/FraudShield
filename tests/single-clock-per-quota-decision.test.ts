@@ -47,8 +47,22 @@ const SRC_DIR = path.join(repoRoot, "src");
  */
 const DEFINING_MODULE = "src/lib/quota.ts";
 
-/** Calls that take an instant and must therefore share one. */
-const SECOND_ARG_CLOCK = new Set(["scanWindowStart", "hasProAccess"]);
+/**
+ * Calls that take an instant and must therefore share one.
+ *
+ * entitlementTier joined the list with b-13. It is a layer on hasProAccess
+ * that adds the scan-pack tier, and /scan-result now asks it -- rather than
+ * the predicate -- which of three views to render. That makes it a FOURTH
+ * reader of the same instant inside the same decision: a second clock read
+ * there could put the rendered tier on one side of a comp expiry and the
+ * allowance on the other, in one render. Listing it here is what makes the
+ * assertions below see the call at all.
+ */
+const SECOND_ARG_CLOCK = new Set([
+  "scanWindowStart",
+  "hasProAccess",
+  "entitlementTier",
+]);
 
 type ClockSite = {
   fn: string;
