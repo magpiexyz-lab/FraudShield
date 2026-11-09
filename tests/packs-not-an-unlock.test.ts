@@ -58,13 +58,45 @@ describe("scan packs are not offered as an unlock", () => {
     expect(PACKS).toContain("export function ScanPackOptions");
   });
 
-  it("states plainly that packs do not reveal the signals", () => {
+  it("states plainly what a pack is, in the vocabulary of the panel", () => {
     // The sentence is the backstop, not the fix — but it has to say the two
-    // things the customer could not infer: packs add scans, Pro unlocks.
+    // things the customer could not infer: what a pack buys, and that Pro is
+    // what the rest needs.
+    //
+    // THESE THREE REGEXES ARE KEPT AS A POSITIVE CONTROL, NOT AS THE GUARD.
+    // All three were green against the sentence this replaced on 2026-11-09,
+    // and all three are green against the new one; that is exactly what makes
+    // them useless on their own, and it is why the test below exists.
     expect(PACKS_DO_NOT_UNLOCK).toMatch(/scan/i);
     expect(PACKS_DO_NOT_UNLOCK).toMatch(/\bPro\b/);
     expect(PACKS_DO_NOT_UNLOCK).toMatch(/not|only/i);
     expect(CLIENT_CODE).toContain("PACKS_DO_NOT_UNLOCK");
+  });
+
+  // THE GUARD WITH TEETH, and the reason the three regexes above are not it.
+  //
+  // The sentence was reworded on 2026-11-09 on the manager's instruction:
+  // packs now show a buyer two named reasons, so "they do not reveal the
+  // signal detail" had become a false thing to tell a reader at the buy
+  // button. What may NEVER be reworded away is the reason the sentence was
+  // written -- on 6 Nov 2026 a customer bought two 7 dollar packs from this
+  // panel expecting the full per-signal breakdown, and was refunded 14
+  // dollars.
+  //
+  // /scan/i, /\bPro\b/ and /not|only/i cannot hold that. Every one of them
+  // passes against "Scan packs show why each result was flagged. Pro is not
+  // required." -- a sentence that gives away precisely what the refund was
+  // for. Proven by mutation rather than argued. So this asserts the CLAIM
+  // instead of the vocabulary: whatever words are used, the full breakdown
+  // has to be the part that takes Pro, in one clause, not two sentences that
+  // merely both exist.
+  it("still says the full breakdown is the part that takes Pro", () => {
+    expect(
+      PACKS_DO_NOT_UNLOCK,
+      "this sentence no longer ties the FULL BREAKDOWN to Pro. That clause is what prevents the 6 Nov 2026 refund (two packs bought for a breakdown they did not buy) and it cannot be reworded away: say that the full breakdown is what Pro shows.",
+    ).toMatch(
+      /only Pro[^.]*\bfull\b[^.]*\bbreakdown\b|\bfull\b[^.]*\bbreakdown\b[^.]*only Pro/i,
+    );
   });
 
   it("does not head the packs with 'Or' on the locked panel", () => {

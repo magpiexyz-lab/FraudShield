@@ -135,9 +135,9 @@ describe("privacy disclosure", () => {
     // whose whole job is to be exactly true about where a document goes was
     // wrong about what that page would even accept. Enumerating formats in a
     // shared string is the defect; the formats belong where they are enforced.
-    expect(AI_PRIVACY_DISCLOSURE).not.toMatch(/PDFs?/i);
+    expect(AI_PRIVACY_DISCLOSURE).not.toMatch(/\bPDFs?\b/i);
     expect(AI_PRIVACY_DISCLOSURE).not.toMatch(
-      /JPE?Gs?|PNGs?|WEBPs?|HEICs?|images/i,
+      /\bJPE?Gs?\b|\bPNGs?\b|\bWEBPs?\b|\bHEICs?\b|\bimages\b/i,
     );
     // Positive control: the claim survives, universally quantified, so it
     // still covers a PDF on the authenticated route rather than going quiet

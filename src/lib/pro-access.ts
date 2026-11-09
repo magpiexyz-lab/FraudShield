@@ -106,3 +106,68 @@ export function hasProAccess(sub: EntitlementRow | null, now: Date): boolean {
   if (!sub.current_period_end) return true;
   return new Date(sub.current_period_end) > now;
 }
+
+/**
+ * How much a billing row has paid for. Three tiers, cheapest last.
+ *
+ * "pack" is a scan-pack buyer: someone who has handed over money but is not a
+ * subscriber. b-13 shows them the top reasons a document was flagged.
+ */
+export type EntitlementTier = "pro" | "pack" | "free";
+
+/**
+ * The columns the TIER decision reads: the Pro columns, plus the credit count.
+ *
+ * Mirrors QuotaInput["subscription"] (src/lib/quota.ts), which already carries
+ * all four for the same reason -- the row is per-user BILLING state, not proof
+ * of a plan. Someone who has only ever bought a one-time pack has a row here
+ * with status "inactive" and a non-zero scan_credits.
+ */
+export type TierRow = EntitlementRow & Pick<SubscriptionsRow, "scan_credits">;
+
+/**
+ * Which tier this billing row has paid for at `now`.
+ *
+ * A LAYER ON hasProAccess, NEVER A WIDENING OF IT. The obvious way to add a
+ * third tier is to teach hasProAccess about scan_credits, and it is the one
+ * thing that must not happen. That predicate is what computeQuota and
+ * scanWindowStart both read, so widening it would hand every pack buyer the
+ * Pro monthly ALLOWANCE and a monthly billing WINDOW. Nothing decrements
+ * scan_credits -- consumption is implied solely by the all-time scan count --
+ * so rolling that window forward re-grants the free scan and the entire
+ * purchased pack every month, for ever. That is the bug documented at
+ * src/lib/quota.ts:197-224, fixed once by putting scanWindowStart ON the
+ * predicate; a wider predicate would reinstate it from the other direction.
+ *
+ * PRO IS TESTED FIRST, and the order is the decision. A subscriber who also
+ * bought a pack months ago is "pro": testing credits first would demote a
+ * paying customer to the one-reason view -- taking away the headline paid
+ * feature over a $7 purchase they had forgotten about.
+ *
+ * IT READS scan_credits, NOT credits_remaining, AND THAT IS DELIBERATE
+ * (user-approved, 2026-11-09). credits_remaining is CLAMPED to what is left
+ * (quota.ts, Math.min(credits, remaining)), so a pack buyer who has spent
+ * every credit reads as 0 and would be demoted to the free tier on the very
+ * scan they paid for. scan_credits is cumulative and never decremented (the
+ * pack branch of the Stripe webhook only ever adds to it), so this tier means
+ * "has ever bought a pack" -- and it is PERMANENT. Someone who paid is not
+ * un-paid by spending what they bought.
+ *
+ * STRICTLY GREATER THAN ZERO, not truthy and not non-zero. The count arrives
+ * from Supabase as untyped JSON; a negative value is corruption, and
+ * corruption must buy nothing.
+ *
+ * FAILS CLOSED at every step. A null row -- a user who has never transacted,
+ * and equally a read that failed and was defaulted to null -- is "free", the
+ * tier that reveals nothing. Being wrong in that direction shows a paying
+ * customer less than they bought, which they can tell us about; being wrong
+ * the other way gives away what is sold, silently.
+ */
+export function entitlementTier(
+  sub: TierRow | null,
+  now: Date,
+): EntitlementTier {
+  if (hasProAccess(sub, now)) return "pro";
+  if (sub && sub.scan_credits > 0) return "pack";
+  return "free";
+}

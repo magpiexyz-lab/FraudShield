@@ -26,7 +26,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import { hasProAccess } from "@/lib/pro-access";
+import { entitlementTier, hasProAccess } from "@/lib/pro-access";
 import type { EntitlementRow } from "@/lib/pro-access";
 import type { SubscriptionsRow } from "@/lib/types";
 
@@ -167,9 +167,22 @@ describe("the breakdown is actually wired to that rule", () => {
 
   // The decision goes through the tested rule rather than an inline string
   // comparison -- an inline check is the shape of what went missing before.
-  it("decides via hasProAccess", () => {
+  //
+  // IT NAMES entitlementTier, NOT hasProAccess, AND THAT IS NOT A WEAKENING.
+  // b-13 gave this page a third audience: a scan-pack buyer, who is shown the
+  // single top reason and still not the breakdown. entitlementTier is the rule
+  // that sorts the three, and it answers "pro" from hasProAccess and from
+  // nothing else (src/lib/pro-access.ts) -- so the Pro gate is the same
+  // predicate, reached through one more function.
+  // tests/entitlement-tier.test.ts holds the behavioural pair: hasProAccess
+  // stays FALSE for a pack buyer while entitlementTier returns "pack".
+  //
+  // The assertion this replaced read RAW source, so the comment block above
+  // the subscription read satisfied it on its own -- that prose still names
+  // hasProAccess while explaining the layering. This one reads code only, for
+  // the same reason the ban below does.
+  it("decides via entitlementTier", () => {
     const src = read(...CLIENT);
-    expect(src).toContain("hasProAccess");
 
     // CODE ONLY. Comment lines are stripped first -- the prose above the rule
     // names the very comparison being banned, and an assertion that cannot
@@ -183,13 +196,32 @@ describe("the breakdown is actually wired to that rule", () => {
         return !t.startsWith("//") && !t.startsWith("*") && !t.startsWith("/*");
       })
       .join(" ");
+    expect(code).toContain("entitlementTier(");
+    expect(code).toMatch(/tier === "pro"/);
     expect(code).not.toMatch(/status\s*===\s*"active"/);
   });
 
-  // FAILS CLOSED. isPro must start false, so the gap before the subscription
-  // read resolves shows the locked view. Defaulting true would flash the paid
-  // breakdown at every free user on every page load.
-  it("defaults to locked while the subscription is still loading", () => {
-    expect(read(...CLIENT)).toMatch(/useState\(false\)/);
+  // FAILS CLOSED. The tier must START at the least-privileged one, so the gap
+  // before the subscription read resolves shows the fully locked view.
+  //
+  // This used to read /useState\(false\)/ against a boolean isPro. The state
+  // is a tier now, and the invariant has to survive the change of type: it is
+  // not "the literal false", it is "whatever reveals least". So the expected
+  // value is taken FROM THE RULE -- what entitlementTier answers for a user
+  // who has never transacted -- rather than hardcoded here. Initialising the
+  // state to "pro" or to "pack" fails this; so does deleting the type
+  // argument, because then there is no declared initial tier to read.
+  it("defaults to the least-privileged tier while the subscription is still loading", () => {
+    const code = read(...CLIENT)
+      .split(/\r?\n/)
+      .filter((line) => !line.trim().startsWith("//"))
+      .join("\n");
+
+    const declared = code.match(/useState<EntitlementTier>\("(\w+)"\)/);
+    expect(
+      declared,
+      "the tier state is no longer initialised with a literal tier",
+    ).not.toBeNull();
+    expect(declared![1]).toBe(entitlementTier(null, new Date()));
   });
 });

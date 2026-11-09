@@ -1,4 +1,5 @@
 import type { FraudSignal } from "@/lib/types";
+import { byRank } from "@/lib/signal-rank";
 
 /**
  * Picks the handful of forensic signals the anonymous free scan is allowed to
@@ -24,14 +25,15 @@ import type { FraudSignal } from "@/lib/types";
  * Pure and total -- no I/O, no randomness, no `Date`. The input array is never
  * mutated (`Array.prototype.sort` is in-place, and callers reuse the array
  * they pass in, so every sort here runs on a copy).
+ *
+ * THE RANKING ITSELF now lives in src/lib/signal-rank.ts, because b-13 gives a
+ * scan-pack buyer the top flagging reason and that is the same ordering
+ * question. What stays here is the one thing unique to the anonymous teaser:
+ * the forced AI-finding slot. `byRank` is unchanged in behaviour for every
+ * input this module can produce, and additionally total for severities and
+ * weights outside their declared types -- see signal-rank.ts for why that is a
+ * bug fix and not a nicety.
  */
-
-/** Rank order for the teaser: most damning evidence first. */
-const SEVERITY_RANK: Record<FraudSignal["severity"], number> = {
-  fraud: 0,
-  suspect: 1,
-  clear: 2,
-};
 
 /**
  * Every signal emitted by the AI content pass is namespaced with this prefix,
@@ -42,13 +44,6 @@ const VISION_PREFIX = "vision_";
 
 function isVisionSignal(signal: FraudSignal): boolean {
   return signal.id.startsWith(VISION_PREFIX);
-}
-
-/** Severity first, then weight descending. Ties keep their input order. */
-function byRank(a: FraudSignal, b: FraudSignal): number {
-  const bySeverity = SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity];
-  if (bySeverity !== 0) return bySeverity;
-  return b.weight - a.weight;
 }
 
 /**

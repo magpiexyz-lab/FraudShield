@@ -28,7 +28,8 @@ import {
   type ScansRow,
   type SubscriptionsRow,
 } from "@/lib/types";
-import { hasProAccess } from "@/lib/pro-access";
+import { entitlementTier, type EntitlementTier } from "@/lib/pro-access";
+import { topNamedReasons, type NamedReason } from "@/lib/top-signal";
 import { computeQuota, scanWindowStart } from "@/lib/quota";
 import { ScoreGauge } from "./score-gauge";
 import { SignalBreakdown } from "./signal-breakdown";
@@ -37,10 +38,16 @@ import { CrossDocumentInterest } from "./cross-document-interest";
 import { UpgradeCta } from "./upgrade-cta";
 import { ScanPackOptions } from "@/components/scan-pack-options";
 import {
+  PACKS_DO_NOT_ADD_REASONS,
   PACKS_DO_NOT_UNLOCK,
   PACKS_HEADING_AFTER_LOCK,
+  PACK_TOP_REASON_NOTE,
+  SCORE_EVIDENCE_NOTE,
+  SIGNAL_BREAKDOWN_NOTE,
+  signalCountLabel,
+  tierForCopy,
 } from "@/lib/billing-copy";
-import { severityOfScore } from "./severity";
+import { severityLabel, severityOfScore, severityVar } from "./severity";
 import { FeedbackWidget } from "@/components/feedback-widget";
 
 const DOC_TYPE_LABEL: Record<string, string> = {
@@ -93,11 +100,12 @@ export function ScanResultClient() {
   const [state, setState] = useState<LoadState>("loading");
   const [scan, setScan] = useState<ScansRow | null>(null);
   const [quota, setQuota] = useState<QuotaState>(QUOTA_UNRESOLVED);
-  // FAILS CLOSED. Starts false and is only ever set true by a row that says
-  // active, so the window before the subscription read resolves shows the
-  // locked view. The opposite default would flash the paid breakdown at every
+  // FAILS CLOSED. Starts on "free" -- the one tier that reveals nothing -- and
+  // is only ever moved by a row that has actually been read, so the window
+  // before the subscription read resolves shows the fully locked view. Any
+  // other default would flash a paid reason, or the whole breakdown, at every
   // free user on every page load.
-  const [isPro, setIsPro] = useState(false);
+  const [tier, setTier] = useState<EntitlementTier>("free");
   const activateFiredRef = useRef(false);
 
   useEffect(() => {
@@ -125,10 +133,12 @@ export function ScanResultClient() {
         //
         // No user_id filter and no service-role client: the RLS policy
         // subscriptions_select_own scopes this to the caller's own row, so one
-        // user cannot read another plan. The Pro gate below is hasProAccess,
-        // matching computeQuota, the dashboard meter and the already-subscribed
-        // guard in the checkout route -- four surfaces that have to agree about
-        // who is Pro. It is NOT status === "active": that is only the first of
+        // user cannot read another plan. The gate below is entitlementTier,
+        // which answers "pro" from hasProAccess and from nothing else -- so it
+        // still matches computeQuota, the dashboard meter and the
+        // already-subscribed guard in the checkout route, four surfaces that
+        // have to agree about who is Pro, while adding the third tier b-13
+        // needs. It is NOT status === "active": that is only the first of
         // the three branches, and an active row with no Stripe subscription is
         // a comp that expires at its period end. A pending cancellation is
         // deliberately still Pro -- they have paid for the current period --
@@ -191,7 +201,13 @@ export function ScanResultClient() {
 
         if (cancelled) return;
 
-        setIsPro(hasProAccess(subscription, now));
+        // ONE ROW, ONE CLOCK, THREE TIERS. `now` is the binding the window
+        // above and the allowance below both use; a second clock read here
+        // could put this render on one side of a comp expiry and the quota on
+        // the other. entitlementTier LAYERS on hasProAccess rather than
+        // widening it -- see src/lib/pro-access.ts for why a pack buyer must
+        // not pick up Pro's monthly window or allowance.
+        setTier(entitlementTier(subscription, now));
 
         // The same decision the scan endpoint enforces, from the same module.
         const result = computeQuota({
@@ -321,7 +337,7 @@ export function ScanResultClient() {
                 scan={scan}
                 quota={quota}
                 hasActivated={hasActivated}
-                isPro={isPro}
+                tier={tier}
               />
             </>
           )
@@ -409,17 +425,33 @@ function ResultView({
   scan,
   quota,
   hasActivated,
-  isPro,
+  tier,
 }: {
   scan: ScansRow;
   quota: QuotaState;
   hasActivated: boolean;
-  isPro: boolean;
+  tier: EntitlementTier;
 }) {
   const docLabel = DOC_TYPE_LABEL[scan.doc_type] ?? "Document";
   const severity = severityOfScore(scan.fraud_score);
   const meta = scan.file_meta;
   const fraudSignals: FraudSignal[] = scan.signals ?? [];
+  // ONE TIER, THREE CONSEQUENCES: whether the full breakdown renders, which
+  // reasons are named, and which of the three sentences around them is true.
+  //
+  // isPro stays a boolean because the render branch is binary -- "pro" gets
+  // SignalBreakdown and the other two tiers get the locked panel, which is
+  // what keeps paywall_shown firing for a pack buyer.
+  const isPro = tier === "pro";
+  // Empty for everyone but a pack buyer, and empty for a pack buyer whose
+  // signals column held nothing we are willing to name (topNamedReasons drops
+  // a null or label-less top entry rather than promoting the runner-up).
+  // Zero-signal scans never reach this branch at all: they take
+  // NoIndicatorsFound or EmptySignals.
+  const revealedReasons = tier === "pack" ? topNamedReasons(fraudSignals) : [];
+  // Which tier's sentences this reader gets. A pack buyer with nothing named
+  // reads the free ones, because those are the true ones for them.
+  const copyTier = tierForCopy(tier, revealedReasons.length);
   // Three depths, three read-outs. PDFs get document forensics; images get EXIF
   // plus an AI content pass; an image whose content pass didn't complete gets
   // EXIF alone — real signals, but not a complete picture, so we show the
@@ -469,9 +501,8 @@ function ResultView({
           <p className="mt-2 max-w-2xl text-base leading-relaxed text-muted-foreground">
             FraudShield ran metadata forensics, AI content review, and
             template matching on{" "}
-            <span className="font-mono text-foreground">{meta.filename}</span>.
-            Your score is below; the signal-by-signal evidence behind it is
-            part of Pro.
+            <span className="font-mono text-foreground">{meta.filename}</span>.{" "}
+            {SCORE_EVIDENCE_NOTE[copyTier]}
           </p>
         ) : mode === "full_image" ? (
           <p className="mt-2 max-w-2xl text-base leading-relaxed text-muted-foreground">
@@ -619,14 +650,16 @@ function ResultView({
             Forensic signal breakdown
           </h2>
           <span className="font-mono text-xs text-muted-foreground">
-            {fraudSignals.length} signals
+            {signalCountLabel(
+              copyTier,
+              fraudSignals.length,
+              revealedReasons.length,
+            )}
           </span>
         </div>
         <p className="mt-1 mb-5 text-sm text-muted-foreground">
           {fraudSignals.length > 0
-            ? isPro
-              ? "Every point in the score traces to a specific, inspectable signal."
-              : "Every point in the score traces to a specific, inspectable signal. Pro shows you which."
+            ? SIGNAL_BREAKDOWN_NOTE[copyTier]
             : fullAnalysis
               ? "Every point in the score traces to a specific, inspectable signal."
               : "Every finding from the image metadata checks is listed here as a specific, inspectable signal."}
@@ -648,6 +681,7 @@ function ResultView({
           ) : (
             <LockedSignals
               signals={fraudSignals}
+              reasons={revealedReasons}
               user={scan.user_id}
               hasActivated={hasActivated}
             />
@@ -708,11 +742,57 @@ function FingerprintField({ term, value }: { term: string; value: string }) {
 }
 
 /**
+ * The one reason a scan-pack buyer is shown, unblurred, inside the locked
+ * panel (b-13).
+ *
+ * It takes a NamedReason rather than a FraudSignal, and that is the whole
+ * point of the projection: the type carries a label and a severity and nothing
+ * else, so the weight -- from which the withheld points could be read off the
+ * screen -- cannot be printed here by accident. src/lib/top-signal.ts does the
+ * projecting; this only renders what survived it.
+ *
+ * Borrowed vocabulary, deliberately. The severity chip and the severity colour
+ * are the same recipe SignalBreakdown uses for a Pro subscriber's rows, so the
+ * reason a pack buyer reads looks like the evidence it is -- and like the
+ * evidence they would get more of. The rail is a left border rather than the
+ * absolutely-positioned span used there because this row sits in flow at the
+ * top of the panel, not in a card of its own.
+ */
+function RevealedReason({ reason }: { reason: NamedReason }) {
+  const color = severityVar(reason.severity);
+  return (
+    <li className="border-l-2 pl-4" style={{ borderColor: color }}>
+      <span
+        className="rounded-pill px-2 py-0.5 font-mono text-[0.65rem] font-medium uppercase tracking-wide"
+        style={{
+          color: "var(--foreground)",
+          backgroundColor: `color-mix(in oklch, ${color} 16%, transparent)`,
+        }}
+      >
+        {severityLabel(reason.severity)}
+      </span>
+      <p className="mt-2 font-heading text-base font-semibold leading-snug text-foreground">
+        {reason.label}
+      </p>
+    </li>
+  );
+}
+
+/**
  * The paywall over the signal breakdown.
  *
  * Blurs the REAL signal labels rather than inventing placeholder rows. A user
  * who can see the shape of genuine findings has a reason to unlock them, and a
  * fabricated preview would misrepresent what is actually behind the lock.
+ *
+ * A SCAN-PACK BUYER STAYS IN THIS COMPONENT, with their reasons revealed at
+ * the top and the rest of the panel untouched. They are not lifted into a surface
+ * of their own for two reasons. The offer below -- UpgradeCta and the scan
+ * packs -- is the only instance on the page, and a second one would duplicate
+ * the id="upgrade-pro" anchor and could open two Stripe sessions. And
+ * `paywall_shown` fires from here: a cohort moved out of this component
+ * silently leaves the funnel denominator that checkout_start is measured
+ * against.
  *
  * Fires `paywall_shown` once per mount, never per render: the measurement is
  * checkout_start over paywall_shown, and re-render inflation would destroy
@@ -720,10 +800,17 @@ function FingerprintField({ term, value }: { term: string; value: string }) {
  */
 function LockedSignals({
   signals,
+  reasons,
   user,
   hasActivated,
 }: {
   signals: FraudSignal[];
+  /**
+   * What a scan-pack buyer has paid to read. Empty for every other tier, and
+   * empty is the signal to render the panel exactly as it shipped -- which is
+   * what keeps the free view, and the e2e test over it, unchanged.
+   */
+  reasons: NamedReason[];
   user: string | null;
   hasActivated: boolean;
 }) {
@@ -737,6 +824,32 @@ function LockedSignals({
 
   return (
     <div className="relative overflow-hidden rounded-xl bg-card ring-1 ring-border">
+      {/* What the pack buyer paid for, in the place the blur already
+          occupied: above the lock, inside the same panel, with nothing moved
+          around it. z-10 lifts it over the gradient scrim below, which is
+          absolutely positioned across the whole panel and would otherwise
+          wash out the one thing on it that is meant to be read.
+
+          Rendered only when there is something to name, so the free tier gets
+          byte-identical markup and a pack buyer whose signals could not be
+          named falls back to the panel they saw before rather than to an empty
+          promise. */}
+      {reasons.length > 0 ? (
+        <div className="relative z-10 border-b border-border px-6 pb-5 pt-6">
+          <ul
+            className="flex flex-col gap-4"
+            aria-label="Top reasons this document was flagged"
+          >
+            {reasons.map((reason, index) => (
+              <RevealedReason key={index} reason={reason} />
+            ))}
+          </ul>
+          <p className="mt-4 max-w-prose text-xs leading-relaxed text-muted-foreground">
+            {PACK_TOP_REASON_NOTE}
+          </p>
+        </div>
+      ) : null}
+
       {/* Decorative: aria-hidden and unselectable so the blurred labels are not
           read out or copied. The blur is presentation, not a security control —
           nothing is charged, so there is nothing to protect. */}
@@ -800,8 +913,19 @@ function LockedSignals({
             heading={PACKS_HEADING_AFTER_LOCK}
             className="mt-0 w-full [&>p:first-child]:text-left"
           />
+          {/* Two sentences, one per reader, and only one of them is true of
+              any given one. PACKS_DO_NOT_UNLOCK describes what a pack DOES --
+              it shows why a result was flagged, and the full breakdown stays
+              Pro -- which is what somebody shown nothing needs in order to
+              decide. Said instead to a pack buyer with their reasons already
+              on screen a few lines above, a description of the purchase is an
+              invitation to make it a second time. Theirs answers what that
+              reader is actually standing in front of a buy button asking:
+              what does the NEXT pack get me. */}
           <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
-            {PACKS_DO_NOT_UNLOCK}
+            {reasons.length > 0
+              ? PACKS_DO_NOT_ADD_REASONS
+              : PACKS_DO_NOT_UNLOCK}
           </p>
         </div>
       ) : null}
