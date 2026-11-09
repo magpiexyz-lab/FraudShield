@@ -74,19 +74,62 @@ function sig(
 // ---------------------------------------------------------------------------
 
 describe("topNamedReasons -- the top reason, projected to what may be printed", () => {
-  it("returns exactly PACK_TOP_SIGNAL_COUNT reasons for a normal scan", () => {
-    const signals = [sig("a", "clear", 5), sig("b", "fraud", 10)];
+  it("returns exactly two reasons for a scan with more signals than that", () => {
+    // THE LITERAL, NOT THE CONSTANT -- AND MORE SIGNALS THAN IT ASKS FOR. The
+    // old form was toHaveLength(PACK_TOP_SIGNAL_COUNT) over a TWO-signal
+    // input, which is two assertions short of one: it compared the default
+    // against the value that defines the default, and it was equally green if
+    // the function simply returned everything it was handed. Four signals in
+    // and a literal 2 out is an assertion about the slice.
+    const signals = [
+      sig("a", "clear", 5),
+      sig("b", "fraud", 10),
+      sig("c", "suspect", 90),
+      sig("d", "fraud", 60),
+    ];
+    expect(topNamedReasons(signals)).toHaveLength(2);
+    // Two SPECIFIC reasons, in rank order: severity first, weight second, so
+    // the weight-90 suspect signal is beaten by both fraud ones.
+    expect(topNamedReasons(signals).map((r) => r.label)).toEqual([
+      "Label for d",
+      "Label for b",
+    ]);
+    // And that is exactly what the pack tier is entitled to.
     expect(topNamedReasons(signals)).toHaveLength(PACK_TOP_SIGNAL_COUNT);
   });
 
-  it("names the same signal topSignals ranks first", () => {
+  it("shows one reason, not a padded two, when the scan found one signal", () => {
+    // THE COUNT IS A CEILING, NOT A QUOTA. Raising it from 1 to 2 on
+    // 2026-11-09 must not invent a second reason on a document that only has
+    // one -- and the count label beside it must never read "2 of 1 shown",
+    // which would promise a signal the scan never found.
+    const one = [sig("only", "fraud", 40)];
+    expect(topNamedReasons(one)).toEqual([
+      { label: "Label for only", severity: "fraud" },
+    ]);
+    const shown = topNamedReasons(one).length;
+    expect(signalCountLabel("pack", 1, shown)).toBe("1 of 1 shown");
+    expect(signalCountLabel("pack", 1, shown)).not.toBe("2 of 1 shown");
+  });
+
+  it("names the same signals topSignals ranks, in the same order", () => {
     // Positive control for the projection: the selection rule is
     // src/lib/signal-rank.ts and this function must not have its own.
     const signals = [sig("a", "clear", 90), sig("b", "suspect", 12), sig("c", "fraud", 1)];
-    const [ranked] = topSignals(signals);
+    // SPELLED OUT, not derived from topSignals alone. An expectation built
+    // only out of the dependency agrees with the function under test however
+    // wrong both of them are. Severity decides first, so the weight-1 fraud
+    // signal leads, the weight-90 clear one is not shown at all, and the
+    // second slot goes to the suspect signal.
     expect(topNamedReasons(signals)).toEqual([
-      { label: ranked.label, severity: ranked.severity },
+      { label: "Label for c", severity: "fraud" },
+      { label: "Label for b", severity: "suspect" },
     ]);
+    // Having said what the answer is, say that it is the ranker's answer --
+    // the part that must not drift.
+    expect(topNamedReasons(signals)).toEqual(
+      topSignals(signals).map((s) => ({ label: s.label, severity: s.severity })),
+    );
   });
 
   it("prints a label and a severity, and NOTHING else", () => {
@@ -129,6 +172,30 @@ describe("topNamedReasons -- values the type system cannot stop", () => {
       sig("b", "suspect", 10),
     ] as unknown as FraudSignal[];
     expect(topNamedReasons(headless)).toEqual([]);
+  });
+
+  it("costs the broken slot only, when it is the SECOND in the window", () => {
+    // THE OTHER HALF OF THE GATE, and it is not symmetrical with the case
+    // above. The top entry gates the list because anything shown is shown as
+    // the worst finding. A broken entry FURTHER DOWN misdescribes nothing: the
+    // reader loses that slot, signalCountLabel reports "1 of 3 shown", and the
+    // one reason they do read is genuinely the worst.
+    //
+    // AND IT DOES NOT SLIDE THE THIRD SIGNAL UP INTO THE GAP. The window is
+    // the top two by rank, not the top two that happen to parse -- promoting
+    // the third would hand over a reason outside what the tier is entitled to.
+    const signals = [
+      sig("top", "fraud", 90),
+      { id: "broken", severity: "fraud", weight: 50, detail: "d" },
+      sig("third", "suspect", 80),
+    ] as unknown as FraudSignal[];
+
+    expect(topNamedReasons(signals)).toEqual([
+      { label: "Label for top", severity: "fraud" },
+    ]);
+    expect(signalCountLabel("pack", 3, topNamedReasons(signals).length)).toBe(
+      "1 of 3 shown",
+    );
   });
 
   it("treats a blank label as no label", () => {
@@ -218,6 +285,32 @@ describe("tierForCopy -- which tier's sentences a reader actually gets", () => {
   it("never promotes anyone", () => {
     expect(tierForCopy("free", 4)).toBe("free");
   });
+
+  it("falls all the way back to the free wording when the projection is empty", () => {
+    // END TO END, because this is the pairing that keeps the page honest. A
+    // clean document produces no signals and a malformed jsonb array produces
+    // none we are willing to name; either way every pack sentence would
+    // promise a reason that is not on the screen. Raising
+    // PACK_TOP_SIGNAL_COUNT to 2 on 2026-11-09 changes nothing here -- a
+    // CEILING of two makes two reasons out of nothing exactly as readily as a
+    // ceiling of one did -- and this asserts that it still changes nothing.
+    const nothing = topNamedReasons([]);
+    const malformed = topNamedReasons("nope" as unknown as FraudSignal[]);
+    expect(nothing).toEqual([]);
+    expect(malformed).toEqual([]);
+
+    const copyTier = tierForCopy("pack", nothing.length);
+    expect(copyTier).toBe("free");
+    expect(tierForCopy("pack", malformed.length)).toBe("free");
+
+    // The plain total, with no subset claimed: "0 of 5 shown" is a promise of
+    // nothing, printed beside nothing.
+    expect(signalCountLabel(copyTier, 5, nothing.length)).toBe("5 signals");
+    // And the free tier's own sentences, which are true for this reader
+    // because they have been shown exactly what a free reader is shown.
+    expect(SCORE_EVIDENCE_NOTE[copyTier]).toBe(SCORE_EVIDENCE_NOTE.free);
+    expect(SIGNAL_BREAKDOWN_NOTE[copyTier]).toBe(SIGNAL_BREAKDOWN_NOTE.free);
+  });
 });
 
 describe("the page header stops telling a paying reader the evidence is Pro-only", () => {
@@ -241,6 +334,19 @@ describe("the page header stops telling a paying reader the evidence is Pro-only
   it("tells a pack buyer a reason is on the page", () => {
     expect(SCORE_EVIDENCE_NOTE.pack).not.toMatch(/part of Pro/i);
     expect(SCORE_EVIDENCE_NOTE.pack).toMatch(/top reason/i);
+  });
+
+  it("does not promise a pack buyer one reason now that two are shown", () => {
+    // PACK_TOP_SIGNAL_COUNT rose to 2 on 2026-11-09. This sentence closes the
+    // page header, three surfaces down from the panel, and "the top reason"
+    // singular would leave the header and the panel disagreeing about how
+    // much the same reader can see -- which is the exact drift this module
+    // exists to stop.
+    expect(SCORE_EVIDENCE_NOTE.pack).not.toMatch(/\bthe top reason\b/i);
+    expect(SCORE_EVIDENCE_NOTE.pack).toMatch(/top reasons/i);
+    // No number: a one-signal scan shows one, and signalCountLabel is what
+    // states the count, from what was actually rendered.
+    expect(SCORE_EVIDENCE_NOTE.pack).not.toMatch(/\btwo\b|\b2\b/i);
   });
 });
 
@@ -272,23 +378,51 @@ describe("the sentence under the breakdown heading is tier-aware", () => {
     expect(SIGNAL_BREAKDOWN_NOTE.pack).not.toMatch(/moved the score/i);
   });
 
-  it("is written for one reason, matching PACK_TOP_SIGNAL_COUNT", () => {
-    // The pack wording is singular. If the count ever rises, this is where
-    // that decision has to be re-read rather than silently contradicted.
-    expect(PACK_TOP_SIGNAL_COUNT).toBe(1);
-    expect(SIGNAL_BREAKDOWN_NOTE.pack).toMatch(/\bone\b/i);
+  it("is no longer written for a single reason, matching PACK_TOP_SIGNAL_COUNT", () => {
+    // THE RE-READ THIS TEST EXISTED TO FORCE. The pack wording was singular
+    // -- "The most serious one is named below" -- and billing-copy.ts said in
+    // so many words that raising the count means rewriting this line. The
+    // count rose to 2 on 2026-11-09, so the line is rewritten: "one" sits on
+    // the same heading row as a count label now reading "2 of 5 shown", and
+    // one of the two would have to be wrong.
+    expect(PACK_TOP_SIGNAL_COUNT).toBe(2);
+    expect(SIGNAL_BREAKDOWN_NOTE.pack).not.toMatch(/\bone\b/i);
+    // It still says what is there and where, which is the job of the sentence.
+    expect(SIGNAL_BREAKDOWN_NOTE.pack).toMatch(/most serious/i);
+    expect(SIGNAL_BREAKDOWN_NOTE.pack).toMatch(/below/i);
+    // And it names no number, deliberately: the number is not fixed, because
+    // a one-signal scan shows one. signalCountLabel is what states the count,
+    // from what was actually rendered.
+    expect(SIGNAL_BREAKDOWN_NOTE.pack).not.toMatch(/\btwo\b|\b2\b/i);
   });
 });
 
 describe("the scan-pack sentence inside the locked panel", () => {
-  it("keeps the fully-locked wording byte for byte", () => {
+  it("pins the fully-locked wording byte for byte", () => {
     // THE DECISION THIS PINS. It followed a 14 dollar refund on 6 Nov 2026: a
     // customer with scans still unused bought two packs from this panel
-    // expecting an unlock. Softening it to "do not reveal the FULL signal
-    // detail" leaves tests/packs-not-an-unlock.test.ts green and guts the
-    // decision, so the literal is pinned here rather than a pattern.
+    // expecting an unlock. A pattern cannot hold that decision -- softening
+    // the sentence to "do not reveal the FULL signal detail" leaves every
+    // regex in tests/packs-not-an-unlock.test.ts green while conceding
+    // exactly the thing that cost the money -- so the literal is pinned.
+    //
+    // REWORDED 2026-11-09 ON THE MANAGER'S INSTRUCTION, and the pin moved
+    // with the text rather than being deleted: changing this sentence still
+    // takes a deliberate edit in three files.
+    //
+    // WHY IT CHANGED. "They do not reveal the signal detail above" was true
+    // for as long as a pack bought nothing but scans. PACK_TOP_SIGNAL_COUNT
+    // now gives a pack buyer two named reasons, and this sentence is read by
+    // someone standing at the buy button -- so it was denying the very thing
+    // the purchase does.
+    //
+    // WHAT DID NOT CHANGE. The refund was for the FULL per-signal breakdown,
+    // not for a reason: that customer wanted the detail and the points behind
+    // each signal. The new sentence still refuses it, and still names Pro as
+    // the only way to it. tests/packs-not-an-unlock.test.ts holds that clause
+    // with a guard a weakening reword cannot pass.
     expect(PACKS_DO_NOT_UNLOCK).toBe(
-      "Scan packs add scans to your account. They do not reveal the signal detail above — only Pro does.",
+      "Scan packs show why each result was flagged. Only Pro shows the full breakdown.",
     );
     expect(PACKS_HEADING_AFTER_LOCK).toBe("Need more scans instead?");
   });
@@ -328,6 +462,19 @@ describe("the note beneath the revealed reason", () => {
     expect(PACK_TOP_REASON_NOTE).toMatch(/\bPro\b/);
     expect(PACK_TOP_REASON_NOTE).toMatch(/scan pack/i);
   });
+
+  it("does not call a list of two reasons a single one", () => {
+    // THE NOTE IS PRINTED ONCE, BENEATH THE WHOLE LIST. With
+    // PACK_TOP_SIGNAL_COUNT at 2 since 2026-11-09, "This is the top reason
+    // this document was flagged" points a singular demonstrative at two
+    // items: the reader is told the page is naming one thing while two are
+    // named above it.
+    expect(PACK_TOP_REASON_NOTE).not.toMatch(/\bthis is the top reason\b/i);
+    expect(PACK_TOP_REASON_NOTE).toMatch(/top reasons/i);
+    // And it still claims no number, because the list is as short as the scan
+    // allows: one signal, one reason.
+    expect(PACK_TOP_REASON_NOTE).not.toMatch(/\btwo\b|\b2\b/i);
+  });
 });
 
 describe("signalCountLabel -- the count beside the breakdown heading", () => {
@@ -339,9 +486,15 @@ describe("signalCountLabel -- the count beside the breakdown heading", () => {
   });
 
   it("tells a pack buyer how much of the total they are looking at", () => {
-    // The honest answer beside ONE named reason. "5 signals" on its own, with
-    // one of the five readable, reads as a promise of five.
+    // The honest answer beside the named reasons. "5 signals" on its own,
+    // with two of the five readable, reads as a promise of five.
+    expect(signalCountLabel("pack", 5, 2)).toBe("2 of 5 shown");
+    // DRIVEN BY WHAT WAS RENDERED, not by PACK_TOP_SIGNAL_COUNT. A scan that
+    // could only name one reason says one, and a one-signal scan says so
+    // without claiming a second signal exists.
     expect(signalCountLabel("pack", 5, 1)).toBe("1 of 5 shown");
+    expect(signalCountLabel("pack", 1, 1)).toBe("1 of 1 shown");
+    expect(signalCountLabel("pack", 1, 1)).not.toBe("2 of 1 shown");
   });
 
   it("falls back to the total when a pack buyer was shown nothing", () => {
@@ -479,7 +632,7 @@ describe("what the locked panel renders, per reader", () => {
   it("renders the revealed reason outside the aria-hidden blurred stack", () => {
     // Inside it, the one thing a pack buyer paid for would be hidden from a
     // screen reader and impossible to select or copy.
-    const revealed = LOCKED.indexOf("Top reason this document was flagged");
+    const revealed = LOCKED.indexOf("Top reasons this document was flagged");
     const blurred = LOCKED.indexOf("select-none space-y-4 p-6 blur-");
     expect(revealed).toBeGreaterThan(-1);
     expect(blurred).toBeGreaterThan(-1);

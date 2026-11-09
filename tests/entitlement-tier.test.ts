@@ -309,9 +309,26 @@ describe("the pack-tier sentence", () => {
   // satisfies: "do not reveal the FULL signal detail" passes every one of
   // them while conceding exactly the thing the customer lost $14 to. Equality
   // is the only assertion that cannot be reworded past.
-  it("leaves PACKS_DO_NOT_UNLOCK byte-identical", () => {
+  it("pins PACKS_DO_NOT_UNLOCK byte for byte", () => {
+    // REWORDED 2026-11-09 ON THE MANAGER'S INSTRUCTION. This pin was added to
+    // stop a reword; the reword is now the decision, so the pin is UPDATED
+    // rather than deleted -- changing this sentence still takes a deliberate
+    // edit in three files, which is the whole point of pinning it.
+    //
+    // WHY IT CHANGED. "They do not reveal the signal detail above" held for
+    // as long as a scan pack bought nothing but scans. PACK_TOP_SIGNAL_COUNT
+    // now shows a pack buyer two named reasons, and this is the sentence a
+    // reader sees at the buy button, so it had started denying the thing the
+    // purchase actually does.
+    //
+    // WHAT MUST NOT BE LOST. The sentence exists because of a 14 dollar refund
+    // on 6 Nov 2026: a customer bought two packs from this panel expecting the
+    // FULL per-signal breakdown -- every signal, its detail, its points. The
+    // new wording still refuses that and still names Pro as the only route to
+    // it. tests/packs-not-an-unlock.test.ts holds that clause with a guard a
+    // weakening reword cannot pass; the regexes beside it cannot.
     expect(PACKS_DO_NOT_UNLOCK).toBe(
-      "Scan packs add scans to your account. They do not reveal the signal detail above — only Pro does.",
+      "Scan packs show why each result was flagged. Only Pro shows the full breakdown.",
     );
   });
 

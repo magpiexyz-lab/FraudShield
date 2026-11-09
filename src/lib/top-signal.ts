@@ -18,12 +18,30 @@ import { byRank } from "@/lib/signal-rank";
 /**
  * How many reasons a scan-pack buyer sees.
  *
- * One, deliberately: b-13 sells the full per-signal breakdown with Pro, and
- * "buying another pack reveals nothing further". A named constant rather than
- * a literal at the call site so the number changes in one line if the pricing
- * tier changes.
+ * TWO SINCE 2026-11-09, by the manager's decision. It shipped as one, on the
+ * reading that b-13 sells the full per-signal breakdown with Pro and that
+ * "buying another pack reveals nothing further" -- both of which still hold.
+ * What did not hold was the comparison. The ANONYMOUS free scan has always
+ * shown two (selectTeaserSignals in src/lib/free-scan-teaser.ts defaults to
+ * n = 2), so a customer who paid $7 for a scan pack saw strictly less of
+ * their own document than a visitor who paid us nothing.
+ *
+ * WHAT THIS IS NOT A SHARE OF. The breakdown is every signal WITH its detail
+ * and the points it added; it is what Pro is sold on and it is untouched by
+ * this number. What this counts is NamedReason values -- a label and a
+ * severity, no detail, no weight, no id -- so raising it reveals more of WHY
+ * and none of HOW MUCH. tierForCopy and signalCountLabel keep the sentences
+ * around it honest about the gap that remains.
+ *
+ * A CEILING, NOT A QUOTA. topSignals slices and never pads, so a one-signal
+ * scan yields one reason, and the copy beside it claims no number.
+ *
+ * A named constant rather than a literal at the call site, which is what made
+ * raising it a one-line change rather than a hunt. A surface that must show
+ * ONE line whatever this number says passes an explicit 1 instead -- see
+ * src/lib/top-reason.ts, the dashboard history row.
  */
-export const PACK_TOP_SIGNAL_COUNT = 1;
+export const PACK_TOP_SIGNAL_COUNT = 2;
 
 /**
  * The top `n` signals, ranked by severity then weight descending, with ties
@@ -87,6 +105,20 @@ export function topSignals(
  * Making this a TYPE rather than a code-review promise means the projection
  * is what the renderer receives, so a weight cannot be printed by accident.
  */
+/**
+ * Whether a signal can be printed as a reason at all.
+ *
+ * Typed as `| undefined` so that an out-of-range index is one of the cases it
+ * answers rather than a crash on the way to asking. A blank label is no label:
+ * rendered, it is a severity badge with nothing beside it, which is the empty
+ * reason line b-13 forbids arriving from data instead of from an empty array.
+ */
+function isNameable(
+  signal: FraudSignal | undefined,
+): signal is FraudSignal & { label: string } {
+  return typeof signal?.label === "string" && signal.label.trim() !== "";
+}
+
 export type NamedReason = {
   /** What was detected, in the engine's own words, fit to read. */
   label: string;
@@ -105,6 +137,19 @@ export type NamedReason = {
  * a broken top entry yields nothing, the caller shows the fully locked panel
  * it showed before, and no sentence on the page is a lie.
  *
+ * AND THE TOP ENTRY GATES THE WHOLE LIST, which is a separate rule and not a
+ * restatement of the one above. "Drop last" delivered "a broken top entry
+ * yields nothing" only while `n` was 1; the day PACK_TOP_SIGNAL_COUNT became
+ * 2 (2026-11-09) the same code started returning the runner-up on its own --
+ * under a note reading "These are the top reasons this document was flagged,
+ * worst first" and beside a severity badge. A fraud-severity finding would sit
+ * hidden behind an unparsable record while the page showed a suspect one and
+ * called it the worst. So an unnameable TOP-ranked signal still withholds
+ * everything, exactly as it did at n = 1, and the caller falls back to the
+ * panel it rendered before. A broken entry FURTHER DOWN the window only costs
+ * its own slot: the reader sees fewer reasons, signalCountLabel says how many,
+ * and nothing they do see is misdescribed.
+ *
  * So the returned length is at most `n`, never more, and a caller must treat
  * an empty result as "nothing to reveal" rather than as impossible.
  *
@@ -121,9 +166,19 @@ export function topNamedReasons(
   signals: FraudSignal[] | null | undefined,
   n: number = PACK_TOP_SIGNAL_COUNT,
 ): NamedReason[] {
-  return topSignals(signals, n).flatMap((signal) =>
-    typeof signal?.label === "string" && signal.label.trim() !== ""
-      ? [{ label: signal.label, severity: signal.severity }]
-      : [],
-  );
+  const ranked = topSignals(signals, n);
+
+  // THE GATE. An empty window and an unnameable top entry are the same answer
+  // -- nothing may be shown -- because anything shown would be presented as
+  // the worst of what was found. `ranked[0]` is `undefined` for an empty
+  // window and isNameable rejects it, so the two cases need no separate
+  // branch.
+  if (!isNameable(ranked[0])) return [];
+
+  // Past the gate the top reason is real, so the rest of the window is simply
+  // whatever else can be printed. The label is passed through UNTRIMMED: the
+  // trim is how a blank is recognised, not a change to what is rendered.
+  return ranked
+    .filter(isNameable)
+    .map((signal) => ({ label: signal.label, severity: signal.severity }));
 }

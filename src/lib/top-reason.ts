@@ -1,6 +1,6 @@
 import type { FraudSignal } from "@/lib/types";
 import type { EntitlementTier } from "@/lib/pro-access";
-import { topSignals, PACK_TOP_SIGNAL_COUNT } from "@/lib/top-signal";
+import { topSignals } from "@/lib/top-signal";
 
 /**
  * The one reason a scan-history row is allowed to print (b-13).
@@ -79,8 +79,8 @@ export function revealsTopReason(tier: EntitlementTier): boolean {
  * timing difference or anything else.
  *
  * AN UNPRINTABLE TOP SIGNAL WITHHOLDS THE LINE rather than falling through to
- * the next one. PACK_TOP_SIGNAL_COUNT is 1: this tier is entitled to the TOP
- * reason, not to the top PRINTABLE one. Sliding down the list would present
+ * the next one. This row prints ONE reason, and the tier is entitled to the
+ * TOP one, not to the top PRINTABLE one. Sliding down the list would present
  * the second-worst finding as though it were the worst -- and on a two-signal
  * scan that hands over half the paid breakdown because one record was
  * malformed.
@@ -97,7 +97,12 @@ export function topReasonFor(
 ): TopReason | null {
   if (!revealsTopReason(tier)) return null;
 
-  const [top] = topSignals(signals, PACK_TOP_SIGNAL_COUNT);
+  // AN EXPLICIT 1, NOT PACK_TOP_SIGNAL_COUNT. A history row has one line to
+  // spare, so this surface shows one reason whatever /scan-result shows -- and
+  // on 2026-11-09 that number became 2. Passing the constant and then reading
+  // only the first element would give the same answer by accident, and would
+  // silently start printing two the day a refactor mapped over the result.
+  const [top] = topSignals(signals, 1);
   // THE ONLY ENTRY THAT CAN THROW IS A NULLISH ONE. Property access on a
   // string, number or boolean sitting where an object was promised does not
   // throw -- JavaScript boxes the primitive and yields undefined -- so the
