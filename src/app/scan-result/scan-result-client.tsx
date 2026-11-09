@@ -765,7 +765,7 @@ function RevealedReason({ reason }: { reason: NamedReason }) {
       <span
         className="rounded-pill px-2 py-0.5 font-mono text-[0.65rem] font-medium uppercase tracking-wide"
         style={{
-          color,
+          color: "var(--foreground)",
           backgroundColor: `color-mix(in oklch, ${color} 16%, transparent)`,
         }}
       >

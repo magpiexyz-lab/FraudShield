@@ -111,7 +111,7 @@ export function hasProAccess(sub: EntitlementRow | null, now: Date): boolean {
  * How much a billing row has paid for. Three tiers, cheapest last.
  *
  * "pack" is a scan-pack buyer: someone who has handed over money but is not a
- * subscriber. b-13 shows them the single top reason a document was flagged.
+ * subscriber. b-13 shows them the top reasons a document was flagged.
  */
 export type EntitlementTier = "pro" | "pack" | "free";
 

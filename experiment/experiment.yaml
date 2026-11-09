@@ -371,14 +371,19 @@ behaviors:
   # b-04 and b-06 are deliberately left untouched: b-04 remains true (the
   # breakdown does render; this behavior says to whom) and b-06 still describes
   # the upgrade flow unchanged.
+  # COUNT SETTLED 2026-11-09. The then-clause below read 'the single top reason'
+  # when it was first written, before the manager answered. He chose TWO, so that
+  # nobody who paid sees less than the anonymous free scan already shows. The scan
+  # result shows two; a dashboard history row, being one line in a list rather than
+  # a panel, shows one.
   - id: b-13
     hypothesis_id: h-04
     pages: [scan-result, dashboard]
     given: "A user who bought a scan pack but never subscribed opens a scan result, or their scan history"
     when: "The result carries at least one forensic signal"
-    then: "They see the single top reason the document was flagged - the most serious signal, and the heaviest among equals - while every other signal stays withheld. Pro still shows the full per-signal breakdown; a user who has paid nothing still sees none of it. Buying another pack reveals nothing further: the rest comes with Pro"
+    then: "They see the top reasons the document was flagged - most serious first, heaviest among equals - while every other signal stays withheld. Two on the scan result, matching what the free scan already shows an anonymous visitor; one per row in the dashboard history. Pro still shows the full per-signal breakdown; a user who has paid nothing still sees none of it. Buying another pack reveals nothing further: the rest comes with Pro"
     tests:
-      - "A scan-pack buyer sees the top reason and cannot reach the full breakdown"
+      - "A scan-pack buyer sees the top reasons and cannot reach the full breakdown"
       - "A Pro subscriber still sees every signal, unchanged"
       - "A user who has never paid sees no signal detail, unchanged"
       - "The top reason is the highest-severity signal, then the heaviest, resolved the same way every time"

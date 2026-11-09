@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { isFullAnalysis } from "@/lib/fraud/analysis-mode";
 import type { ScansRow } from "@/lib/types";
 import { topReasonFor } from "@/lib/top-reason";
-import { severityLabel, severityVar } from "@/app/scan-result/severity";
+import { severityLabel } from "@/app/scan-result/severity";
 import type { EntitlementTier } from "@/lib/pro-access";
 
 type Severity = "clear" | "suspect" | "fraud";
@@ -213,17 +213,28 @@ export function ScanHistory({ tier }: { tier: EntitlementTier }) {
                     the very verdict that chip withholds, so that row says what
                     was found instead of what it means.
 
-                    severityLabel and severityVar come from the SIGNAL
+                    severityLabel comes from the SIGNAL
                     vocabulary (Clear / Suspect / Fraud), not from this file's
                     SEVERITY_LABEL. That map names a SCORE BAND for the whole
                     document -- "Forged" on the chip to the right -- and the
                     two are different subjects: a verdict about a document
-                    versus one piece of evidence within it. Adopting either
-                    vocabulary into the other would make one of them a lie. */}
+                    versus one piece of evidence within it. Adopting either vocabulary into the other would make one of them a lie.
+
+                    THE RAIL IS DECORATIVE, DELIBERATELY. It used to be tinted
+                    with the signal severity, which made colour the only cue a
+                    sighted reader had for it -- the severity word beside it is
+                    sr-only, and the chip to the right is the document verdict,
+                    not this signal. That is WCAG 1.4.1, and the tint also
+                    measured 1.99:1 for suspect against the card, under the 3:1
+                    that 1.4.11 asks of a meaningful graphic. A neutral border
+                    carries no meaning, so neither rule applies, and the
+                    severity still reaches assistive tech through the sr-only
+                    span below. Making the word visible instead was rejected:
+                    two severity vocabularies on one row is the confusion the
+                    note above exists to avoid. */}
                 {reason ? (
                   <p
-                    className="mt-1.5 truncate border-l-2 pl-2 text-xs text-foreground/80"
-                    style={{ borderColor: severityVar(reason.severity) }}
+                    className="mt-1.5 truncate border-l-2 border-border pl-2 text-xs text-foreground/80"
                   >
                     <span className="sr-only">
                       {fullAnalysis
